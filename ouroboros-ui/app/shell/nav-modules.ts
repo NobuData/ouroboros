@@ -180,10 +180,11 @@ export const SEEDED_NAV_ENTRIES: readonly NavEntry[] = [
     soonNote: "The needs-you inbox arrives with its own roadmap (mockup 16).",
     badgeSource: INBOX_BADGE_SOURCE,
   },
-  // Live since #141: the settings section has one built tab, Ticket sources
-  // (`app/(app)/settings/sources/page.tsx`), and `/settings` redirects to it until BS.1 (#491)
-  // builds the hub the row was waiting for. The route stays `SETTINGS_PATH` rather than the
-  // tab's own, so the entry lights on every settings URL and #491 changes nothing here.
+  // Live since #141, when the settings section had one built tab and `/settings` redirected to
+  // it; since BS.1 (#491) the route is the administration hub itself
+  // (`app/(app)/settings/page.tsx`). The route was always `SETTINGS_PATH` rather than a tab's
+  // own, so the entry lights on the hub and on every surface mounted under it, and #491
+  // changed nothing here.
   {
     id: "settings",
     label: "Settings",

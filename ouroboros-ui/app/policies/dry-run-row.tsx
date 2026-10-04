@@ -3,17 +3,14 @@
 import { type FormEvent, useId, useRef, useState } from "react";
 
 import type { DryRunPolicy } from "@/app/api/policies";
-import { SettingsFrame } from "@/app/settings/settings-frame";
 import { ShellOverlay } from "@/app/shell/overlay";
-import { Button, Card, cx } from "@/app/ui";
+import { Button, cx } from "@/app/ui";
 
 import { setDryRun } from "./policy-actions";
 import {
   DRY_RUN_SUMMARY,
   DRY_RUN_TITLE,
   type FlipConfirmation,
-  POLICIES_SUBLINE,
-  POLICIES_TITLE,
   POLICY_CANCEL,
   POLICY_READ_ONLY,
   POLICY_SENDING,
@@ -27,24 +24,35 @@ import {
 import "./policies.css";
 
 /**
- * Settings → Policies (BA.3, [#382](https://github.com/NobuData/ouroboros/issues/382)) — the
- * dry-run row and its flip.
+ * The dry-run policy's row and its flip (BA.3,
+ * [#382](https://github.com/NobuData/ouroboros/issues/382)) — mounted in the settings hub's
+ * **Policies** section.
+ *
+ * It was a page of its own, *Settings → Policies*, until BS.1
+ * ([#491](https://github.com/NobuData/ouroboros/issues/491)) built the hub: the section is an
+ * anchor of that page now, and this is the one policy control that exists to put in it. The
+ * rest of mockup 17's Autonomy policies card is BS.4's
+ * ([#494](https://github.com/NobuData/ouroboros/issues/494)).
  *
  * **The flip is a real decision**, so it is never one press: it opens a confirmation that states
- * the consequences in plain terms, and only the confirmation sends. A reader below admin sees the
- * policy and why they may not change it; the service refuses them on a direct call too.
+ * the consequences in plain terms, and only the confirmation sends. That is also what kind of
+ * control it is under the hub's save model (decision S7): an **immediate action behind a
+ * confirmation**, not a field — it never joins the page's unsaved changes, and **Save changes**
+ * never sends it.
  *
- * @param props The workspace's name, the policy as read, whether this reader may flip it, and the
- *   action to flip it with (the Server Action unless a test passes one).
- * @returns The page.
+ * **A reader below admin sees the policy, not a switched-off button.** Where it stands, when it
+ * last changed and why they may not change it are all text; the hub's read-only rule is that
+ * nothing on the page looks broken. The service refuses them on a direct call too.
+ *
+ * @param props The policy as read, whether this reader may flip it, and the action to flip it
+ *   with (the Server Action unless a test passes one).
+ * @returns The row, and its confirmation while one is open.
  */
-export function PoliciesScreen({
-  workspaceName,
+export function DryRunRow({
   policy: initial,
   mayAdminister,
   onFlip = setDryRun,
 }: Readonly<{
-  workspaceName: string;
   policy: DryRunPolicy;
   mayAdminister: boolean;
   onFlip?: (dryRun: boolean) => Promise<PolicyFlipResult>;
@@ -55,52 +63,46 @@ export function PoliciesScreen({
   const attribution = attributionLine(policy);
 
   return (
-    <SettingsFrame
-      actions={null}
-      active="policies"
-      subline={POLICIES_SUBLINE}
-      title={POLICIES_TITLE}
-      workspaceName={workspaceName}
-    >
-      <Card as="section" aria-label={DRY_RUN_TITLE}>
-        <div className="policies__row">
-          <div className="policies__text">
-            <h2 className="policies__name">{DRY_RUN_TITLE}</h2>
-            <p className="policies__summary">{DRY_RUN_SUMMARY}</p>
-            <p
-              className={cx(
-                "policies__status",
-                policy.dryRun ? "policies__status--on" : "policies__status--off",
-              )}
-              role="status"
-            >
-              {policyStatus(policy)}
-            </p>
-            {attribution !== null && <p className="policies__attribution">{attribution}</p>}
-          </div>
+    <div aria-label={DRY_RUN_TITLE} className="policies" role="group">
+      <div className="policies__row">
+        <div className="policies__text">
+          <h3 className="policies__name">{DRY_RUN_TITLE}</h3>
+          <p className="policies__summary">{DRY_RUN_SUMMARY}</p>
+          <p
+            className={cx(
+              "policies__status",
+              policy.dryRun ? "policies__status--on" : "policies__status--off",
+            )}
+            role="status"
+          >
+            {policyStatus(policy)}
+          </p>
+          {attribution !== null && <p className="policies__attribution">{attribution}</p>}
+        </div>
+        {mayAdminister && (
           <Button
             aria-haspopup="dialog"
             onClick={() => {
               setOutcome(null);
               setConfirming(flipConfirmation(policy));
             }}
-            reason={mayAdminister ? undefined : POLICY_READ_ONLY}
-            tone={policy.dryRun ? "danger" : "primary"}
+            // Never the accent fill: the page's one primary action is **Save changes**.
+            tone={policy.dryRun ? "danger" : "default"}
           >
             {flipLabel(policy)}
           </Button>
-        </div>
-        {!mayAdminister && (
-          <p className="policies__readonly" role="note">
-            {POLICY_READ_ONLY}
-          </p>
         )}
-        {outcome !== null && (
-          <p className="policies__outcome" role="status">
-            {outcome}
-          </p>
-        )}
-      </Card>
+      </div>
+      {!mayAdminister && (
+        <p className="policies__readonly" role="note">
+          {POLICY_READ_ONLY}
+        </p>
+      )}
+      {outcome !== null && (
+        <p className="policies__outcome" role="status">
+          {outcome}
+        </p>
+      )}
 
       <FlipDialog
         confirmation={confirming}
@@ -118,7 +120,7 @@ export function PoliciesScreen({
           return result;
         }}
       />
-    </SettingsFrame>
+    </div>
   );
 }
 

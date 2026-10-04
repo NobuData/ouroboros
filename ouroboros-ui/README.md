@@ -415,9 +415,23 @@ ouroboros-ui/
 │   │   ├── run-missing.tsx  #   the not-found page for a run this workspace cannot see
 │   │   ├── run-skeleton.tsx #   the loading state: head, stepper, transcript and the three cards, at their geometry
 │   │   └── run-screen.tsx   #   the contextual frame: breadcrumb, banners, head — polled
-│   ├── settings/            # the settings section's frame and tab row — mockup 17 · #141
-│   │   ├── view.ts          #   the eight tabs, two live (Sources, Farm tokens); the eyebrow
-│   │   └── settings-frame.tsx #  the head, the tab row, and the page beneath
+│   ├── settings/            # the settings hub: frame, section nav, save model — mockup 17 · #491 (#141)
+│   │   ├── view.ts          #   the head's copy, the eight sections, the six anchors, the four mounted tabs
+│   │   ├── access.ts        #   owner · admin · read-only — the page's three variants, from the reported roles
+│   │   ├── save-model.ts    #   the dirty state as functions: edit, count, validate, commit per section (S7)
+│   │   ├── save-provider.tsx #  …met by React: the provider, useSettingsSection(), useSettingsSave()
+│   │   ├── save-controls.tsx #  Save changes (n), the head's actions, the dirty bar
+│   │   ├── leave.ts         #   what counts as leaving, and what the question says
+│   │   ├── leave-guard.tsx  #   …asked: beforeunload, link presses, the shell's own departures
+│   │   ├── section-spy.ts   #   which section is current — measured against the pane's scroll
+│   │   ├── use-section-spy.ts # …met by React
+│   │   ├── settings-subnav.tsx # the tab row: six anchors, a rule, the mounted surfaces
+│   │   ├── settings-seat.tsx #  a section's seat: its span, its anchor id, its place in the save model
+│   │   ├── appearance.ts    #   the Appearance card's copy and choices
+│   │   ├── appearance-card.tsx # theme, the five-step font size, the preview — per user, instant
+│   │   ├── data.ts          #   readSettings() — what the hub reads, each part read or explained
+│   │   ├── settings-screen.tsx # the hub: head, nav, the grid of seats
+│   │   └── settings-frame.tsx #  the head, the tab row, and the page beneath — the hub's and the mounted pages'
 │   ├── sources/             # ticket sources — the section's first built tab · #141
 │   │   ├── view.ts          #   the status pill, the summary, the sync line, every label
 │   │   ├── catalog.ts       #   the kind picker's tiles, and a submission's shape
@@ -534,8 +548,9 @@ ouroboros-ui/
 `(app)` and `(auth)` are **route groups**: the parentheses are organisational and
 contribute nothing to the URL, so the dashboard is `/dashboard`, model routing is
 `/models`, the workflow studio is `/workflows` (and `/workflows/<slug>` for one workflow),
-ticket sources are `/settings/sources`, the build farm's enrollment tokens are
-`/settings/farm-tokens`, the dry-run policy is `/settings/policies` and sign-in is `/login`.
+workspace settings are `/settings` (its sections are fragments — the dry-run policy is
+`/settings#policies`), ticket sources are `/settings/sources`, the build farm's enrollment
+tokens are `/settings/farm-tokens` and sign-in is `/login`.
 `/` belongs to no module and is a redirect to the dashboard, kept so that everything
 already pointing at it still arrives. `(app)`
 renders its screens inside the [app shell](#app-shell); `(auth)` is a pass-through, because
@@ -2749,15 +2764,158 @@ connection that has reported nothing gets the honest empty state the contract gu
 (`empty` is non-null exactly when `candidates` is), naming the connection and linking to
 Providers & keys.
 
+## Workspace settings
+
+`/settings` (BS.1, [#491](https://github.com/NobuData/ouroboros/issues/491)) is the administration
+hub — mockup 17's frame: the page head, the section nav with the existing admin surfaces mounted
+beside it, the grid of sections, and the explicit **Save** model. It renders in the shell's content
+pane, which is the page's only scroll container, and is reached from the sidebar's **Settings**
+entry and the header menus' *Workspace settings* items. The redirect that stood at this address
+(the `/settings` placeholder #49 held) is gone.
+
+```
+SETTINGS · acme-robotics
+Workspace settings                                   [ Export audit CSV ]  [ Save changes (3) ]
+Who can do what, what merges on its own, and where the record lives.
+
+ Workspace · Members · Policies · Integrations · Audit · Danger zone │ Sources · Providers · Farm tokens · Knowledge / env
+─────────────────────────────────────────────────────────────────────────────────────────────────
+ 3 unsaved changes · [ Save changes (3) ] [ Discard ]              ← only while something is unsaved
+
+ ┌ WORKSPACE (5) ───────┐ ┌ MEMBERS & ROLES (7) ─────────────┐
+ └──────────────────────┘ └──────────────────────────────────┘
+ ┌ APPEARANCE (12) ───────────────────── per user · applies instantly ┐
+ └────────────────────────────────────────────────────────────────────┘
+ ┌ AUTONOMY POLICIES (7) ──────────┐ ┌ AUDIT LOG (5) ───────┐
+ ┌ INTEGRATIONS (7) ───────────────┐ ┌ NOTIFICATIONS (5) ───┐
+ ┌ DANGER ZONE (12) ────────────────────────────── applies instantly ┐
+```
+
+**The cards are other issues'.** BS.2–BS.6 (#492–#496) each mount a card in its **seat**
+([`settings-seat.tsx`](app/settings/settings-seat.tsx)); until then a seat draws the section's
+heading and one line naming what fills it. Two are filled today: **Appearance**, and **Policies**,
+which holds [the dry-run policy's row](#the-dry-run-policy-382). A seat owns three facts so a card
+owns none of them — where it sits (the mockup's `c-5`/`c-7`/`c-12`), the id the nav's anchor lands
+on, and which section it is to the save model.
+
+### The section nav
+
+One list ([`view.ts`](app/settings/view.ts)), drawn by the hub and by every mounted page:
+
+| Tab | What it is |
+|---|---|
+| Workspace · Members · Policies · Integrations · Audit · Danger zone | **anchors** — fragments of the hub (`/settings#policies`). On the hub they are router links to `#…` — a native fragment jump leaves a history entry the router cannot come Back to; from a mounted page they lead back to the hub |
+| Sources · Farm tokens | **mounted routes drawn in this frame** (`/settings/sources`, `/settings/farm-tokens`) — the tab is `aria-current="page"` there |
+| Providers | the Models section's page (`/models/providers`), which keeps its frame and its place in the Models tab set — a second way in, not a move |
+| Knowledge / env | the repo profile card on the Knowledge page (`/knowledge#repo-profile`), where a repository's environment recipe is edited |
+
+It is the CP.4 `PageSubnav`, so it sticks against the pane and publishes its height; it **wraps**,
+because ten tabs do not fit one line at the 125% and 150% font steps and the pane never scrolls
+sideways.
+
+**The scroll-spy reads the pane, not the window** ([`section-spy.ts`](app/settings/section-spy.ts)).
+A section is current once its top reaches the pane's own `scroll-padding-top` — the line an anchor
+jump lands it on — so a pressed tab is the tab that lights at every font scale. Three rules cover
+what a line cannot:
+
+- two sections that share a row share a top, and the left one wins;
+- at the end of the page the last section is current, since the Danger zone is shorter than the pane
+  and never reaches the line;
+- a section the reader **named** — by pressing its tab or any other link to it (*Export audit CSV*),
+  or arriving on its link — is held as current until they scroll, which is what lights *Audit*
+  beside *Policies*. What is remembered is where the section sits on screen, not the pane's
+  offset, so content arriving above the cards (the dirty bar) does not release it.
+
+**A deep link lands correctly on first load.** The browser's own fragment jump runs before the
+sticky row has measured itself and stops short by exactly its height; the spy lands the section
+again once the chrome is published. `/settings#danger` is where the lifecycle banner's action leads.
+
+### The save model (S7)
+
+A page that mixes instant-apply switches with a Save button is the worst of both, so the rule is
+explicit: **field edits accumulate into a dirty state keyed by section, and Save changes commits
+them a section at a time; a control with an immediate consequence is not a field and cannot become
+one.** [`save-model.ts`](app/settings/save-model.ts) is the bookkeeping, as pure functions;
+[`save-provider.tsx`](app/settings/save-provider.tsx) is where it meets React.
+
+A card joins with one hook, and never names its own section — the seat it is mounted in does:
+
+```tsx
+const fields = useSettingsSection({
+  baseline: { name: settings.name.value, domain: settings.domain.value }, // what the server holds
+  labels: { name: "Workspace name", domain: "Tenant domain" },            // for the refusal's sentence
+  validate: (draft) => (draft.name === "" ? { name: "A workspace needs a name." } : {}),
+  commit: (changes) => saveWorkspace(changes),   // ONE request: all of the section, or none
+});
+
+<TextField
+  id={fields.id("name")}            // so a refusal can move focus here
+  label="Workspace name"
+  value={fields.values.name}
+  error={fields.error("name")}
+  readOnly={!fields.editable}
+  onChange={(event) => fields.set("name", event.target.value)}
+/>
+```
+
+| | |
+|---|---|
+| **The count** | `Save changes (3)` is the number of fields that differ from what is saved. A field set back to its saved value is dropped, so the count is of what a save would write |
+| **Validation** | every dirty section's `validate` runs first; anything invalid means **nothing is sent**, anywhere |
+| **Commit** | sections are written in page order, each in one request that takes all of its changes or none, and the save **stops at the first refusal** — what landed stays saved, what comes after is not sent, and the bar says which is which |
+| **Errors** | a refusal's `fields` go to their inputs through `fields.error(name)`, the bar names the section and the field, and focus moves to the first input an error names |
+| **Landed** | a section that landed stops counting at once, and its values are drawn over the stale baseline for as long as the re-read takes — `router.refresh()` runs inside the save's own transition, so *Saving…* lasts until the fresh page has rendered. After it the baseline is the truth, even when the service normalised the value back to what it held |
+| **One card per section** | `commit` is the section's atomicity, so a second `useSettingsSection` in the same seat throws rather than replacing the first |
+| **Losing the right to edit** | a reader whose role stops allowing edits holds none: the dirty state is emptied, not hidden |
+| **Immediate sections** | Danger zone and Appearance are `saves: "immediate"`: `useSettingsSection` **throws** in their seats, so *pause all loops* cannot be put behind a Save button |
+| **Leaving** | while anything is unsaved, a reload or close gets the browser's prompt, a link inside the app gets *Leave without saving?*, and the shell's own departures — the command palette, a workspace switch, signing out — ask through [`app/shell/leave-guard.ts`](app/shell/leave-guard.ts). Leaving is what discards the edits: a departure that does not happen (a refused workspace switch) leaves them intact |
+
+The dirty bar under the tab row (`3 unsaved changes · Save · Discard`) is the CP.4 `StickyBar`, as
+the Models page's is, and exists only while something is unsaved. Back and Forward are not held: a
+traversal has already happened by the time a page can hear it.
+
+**See it working** at `/workshop/settings-save`
+([`settings-save-story.tsx`](app/workshop/settings-save-story.tsx)) — the real provider, bar, seats
+and leave guard over two fixture cards whose refusals can be produced on purpose. The hub itself
+holds no field until BS.2 lands.
+
+### Every control is one kind or the other
+
+| Control on `/settings` | Kind |
+|---|---|
+| **Save changes**, **Discard** | the batch's own: commit / drop every unsaved field |
+| **Export audit CSV**, the ten tabs | navigation |
+| **Turn dry-run on / off** | immediate, behind a confirmation that states the consequences — never a saved field |
+| **Theme**, **Font size** | immediate, no confirmation: the reader's own display preference, tagged *per user · applies instantly* |
+| *Leave without saving?* — **Stay** / **Discard changes and leave** | the leave guard's answer |
+| a field in a card's seat (BS.2–BS.5) | the dirty batch, through `useSettingsSection` |
+| a control in the Danger zone (BS.6) | immediate by construction — the seat refuses fields |
+
+### Who sees what
+
+[`access.ts`](app/settings/access.ts) turns the roles the service reported into the page's three
+variants. **Owner** and **admin** get *Save changes* and the dry-run flip (`mayOwn` separates the
+owner-only operations — delete, restore — for BS.6). A **viewer** or **member** reads the whole page:
+no *Save changes*, one note naming their role, the dry-run policy as text, and **no control drawn
+switched off** — the only things they can operate are their own Appearance preferences. This is
+presentation: each card follows its own payload's affordances (`editable`, `canManage`), and every
+write is gated at the service.
+
+### Appearance
+
+[`appearance-card.tsx`](app/settings/appearance-card.tsx) is `docs/DESIGN_SYSTEM_APP_SHELL.md` § 4's
+full font-size control — five steps, 87.5 to 150%, with a preview — beside the theme choice. It
+holds no state of its own: the font size is [the font scale](#the-font-scale)'s store, which the
+profile menu's stepper reads and writes too, so a step taken in either is the other's next render,
+with no reload. A step is live on the press and persisted quietly behind it.
+
 ## Ticket sources
 
 `/settings/sources` ([#141](https://github.com/NobuData/ouroboros/issues/141)) is where a
-workspace says where its tickets come from — mockup 17's **Ticket sources** section, mounted
-as the first built tab of the settings frame. The sidebar's **Settings** entry is live and
-leads to `/settings`, which redirects here until BS.1
-([#491](https://github.com/NobuData/ouroboros/issues/491)) builds the hub; the six mockup
-tabs — Workspace, Members, Policies, Integrations, Audit, Danger zone — are drawn in the tab
-row and say honestly that they arrive with #491. The second mounted tab is
+workspace says where its tickets come from — mounted as a tab of
+[the settings hub](#workspace-settings) (decision S2). The sidebar's **Settings** entry leads to
+the hub at `/settings`; this page draws the same tab row with **Sources** current, and the six
+section tabs lead back to the hub. The other mounted tab drawn in this frame is
 [**Farm tokens**](#the-enroll-card) ([#258](https://github.com/NobuData/ouroboros/issues/258)).
 
 ```
@@ -3010,12 +3168,13 @@ member — no selector, no copy, no sheet — is presentation.
 
 ### The dry-run policy (#382)
 
-**Settings → Policies** (`/settings/policies`,
-[`app/policies/`](app/policies)) shows the workspace's dry-run policy — *PRs open as drafts and
+**Settings → Policies** (`/settings#policies` — the hub's Policies section since
+[#491](https://github.com/NobuData/ouroboros/issues/491); the old `/settings/policies` redirects
+there — [`app/policies/`](app/policies)) shows the workspace's dry-run policy — *PRs open as drafts and
 nothing merges* — read through `GET /api/v1/policies/dry-run`, the one source every surface uses.
 An owner or admin flips it through a confirmation that states the consequences first (turning it
-off lets the loop merge without a person); anybody else sees the policy and why they may not, and
-the service refuses them on a direct call too. On the PR page, while it is active, the merge plan
+off lets the loop merge without a person); anybody else sees the policy and why they may not — as
+text, with no switched-off button — and the service refuses them on a direct call too. On the PR page, while it is active, the merge plan
 card's control and the head's are relabelled **Dry-run — review the draft PR**, inert, and the card
 states the policy — and an overridden workflow auto-merge — with a link to the flip
 ([`view.ts`](app/policies/view.ts) holds every sentence).
@@ -6329,7 +6488,7 @@ awaiting a session there would hold up the shell a route's `loading.tsx` is draw
      ├─ Switch workspace  acme-robotics  ▸ ─┬─ ● acme-robotics
      │                                      ├─ ○ acme-labs
      │                                      └─ ○ kensuenobu
-     ├─ Workspace settings                  (#491)
+     ├─ Workspace settings ─▶ /settings     (#491)
      ├─ Keyboard shortcuts ─▶ sheet over the pane (ShellOverlay)
      └─ Sign out ─▶ session row deleted ─▶ /login
 ```

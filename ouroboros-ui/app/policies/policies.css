@@ -1,6 +1,12 @@
 /*
- * Settings → Policies (BA.3, #382) — the dry-run row and its confirmation. Tokens only.
+ * The dry-run policy (BA.3, #382) — its row in the settings hub's Policies section (BS.1, #491)
+ * and its confirmation. Tokens only.
  */
+
+/* The row's block in the section's card: clear of whatever the card draws under it. */
+.policies {
+  margin-bottom: var(--sp-7);
+}
 
 .policies__row {
   display: flex;

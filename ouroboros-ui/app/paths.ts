@@ -68,21 +68,41 @@ export const MODELS_PATH = "/models";
  * The Models tab set (`app/models/models-subnav.tsx`) links here and links back to
  * `MODELS_PATH` from the same list, so the two pages cannot disagree about where the other
  * one is. The Workspace Settings roadmap (decision S2,
- * [#491](https://github.com/NobuData/ouroboros/issues/491)) relocates this surface's
- * *navigation entry* under `/settings` when that section arrives; the route is written down
- * once so that move is one edit.
+ * [#491](https://github.com/NobuData/ouroboros/issues/491)) mounts this surface in the
+ * settings nav as well: `app/settings/view.ts` links its **Providers** tab here, and the page,
+ * its frame and its place in the Models tab set are unchanged.
  */
 export const PROVIDERS_PATH = `${MODELS_PATH}/providers`;
 
 /**
  * Workspace settings ([#491](https://github.com/NobuData/ouroboros/issues/491)) — mockup 17.
  *
- * The administration hub, and the route the sidebar's **Settings** entry leads to. Until BS.1
- * builds the hub itself, `app/(app)/settings/page.tsx` redirects here to the section's one
- * built tab, {@link SOURCES_PATH} — a redirect rather than a placeholder, because a settings
- * entry that leads to a working surface is more honest than one that leads to *soon*.
+ * The administration hub, and the route the sidebar's **Settings** entry leads to
+ * (`app/(app)/settings/page.tsx`). Its sections are fragments beneath it
+ * ({@link settingsSectionPath}), and the admin surfaces that mount as its tabs —
+ * {@link SOURCES_PATH}, {@link FARM_TOKENS_PATH} — are segments beneath it, so the
+ * **Settings** entry stays lit on all of them.
  */
 export const SETTINGS_PATH = "/settings";
+
+/**
+ * One section of the settings hub — `/settings#policies`
+ * (BS.1, [#491](https://github.com/NobuData/ouroboros/issues/491)).
+ *
+ * A fragment rather than a route: mockup 17 is one page of cards, and its section nav moves
+ * the pane to one of them. Written down here for the reason every route in this file is — the
+ * hub renders the id on its section (`app/settings/settings-screen.tsx`), the section nav
+ * links to it from the mounted tabs' pages (`app/settings/settings-subnav.tsx`), and every
+ * surface that points a reader at a setting builds the link from it, so the link and its
+ * target are one string. `ouroboros-rest` agrees about the same strings: the lifecycle
+ * banner's action leads to `/settings#danger`.
+ *
+ * @param section The section's id — one of `app/settings/view.ts`'s `SETTINGS_SECTIONS`.
+ * @returns The path.
+ */
+export function settingsSectionPath(section: string): string {
+  return `${SETTINGS_PATH}#${section}`;
+}
 
 /**
  * Ticket sources ([#141](https://github.com/NobuData/ouroboros/issues/141)) — the settings
@@ -92,8 +112,8 @@ export const SETTINGS_PATH = "/settings";
  * reason: the sidebar highlights the entry whose route the URL is under, so a sources page at
  * `/sources` would be a settings surface on which the **Settings** entry went dark. It is also
  * the URL decision S2 of the Workspace Settings roadmap wants — the surface mounts as a tab
- * under `/settings` when BS.1 builds the frame, and a URL that is already under it moves
- * nowhere on that day.
+ * of the hub BS.1 ([#491](https://github.com/NobuData/ouroboros/issues/491)) built, and a URL
+ * that was already under it moved nowhere on that day.
  *
  * Three modules agree about it and none can import the others: the sidebar's registry entry,
  * the settings tab set (`app/settings/settings-subnav.tsx`), and the intake screen's no-token
@@ -108,21 +128,23 @@ export const SOURCES_PATH = `${SETTINGS_PATH}/sources`;
  *
  * The amendment on #258 is decision S2 applied to it: the token list is an admin surface, so it
  * mounts under `/settings` beside {@link SOURCES_PATH}, and it is spelled from
- * {@link SETTINGS_PATH} for that constant's reason — the **Settings** entry stays lit here, and
- * BS.1's hub moves no URL. The same list opens as a sheet from the enroll card on
+ * {@link SOURCES_PATH}'s reason — the **Settings** entry stays lit here, and BS.1's hub moved
+ * no URL. The same list opens as a sheet from the enroll card on
  * {@link BUILD_FARM_PATH}; this is its address.
  */
 export const FARM_TOKENS_PATH = `${SETTINGS_PATH}/farm-tokens`;
 
 /**
  * Policies (BA.3, [#382](https://github.com/NobuData/ouroboros/issues/382)) — the settings
- * section's Policies tab, where an owner or admin flips the workspace's **dry-run** policy.
+ * hub's Policies section, where an owner or admin flips the workspace's **dry-run** policy.
  *
  * Every surface that states the dry-run promise — the merge plan card, the PR page's head, the
- * refusals — points here for the flip. Spelled from {@link SETTINGS_PATH} for
- * {@link SOURCES_PATH}'s reason.
+ * refusals — points here for the flip. It was a page of its own at `/settings/policies` until
+ * BS.1 ([#491](https://github.com/NobuData/ouroboros/issues/491)) built the hub; the policy's
+ * card is mounted in the hub's section now, and the old address redirects here
+ * (`app/(app)/settings/policies/page.tsx`), because `ouroboros-rest` still names it.
  */
-export const POLICIES_PATH = `${SETTINGS_PATH}/policies`;
+export const POLICIES_PATH = settingsSectionPath("policies");
 
 /**
  * The model registry ([#591](https://github.com/NobuData/ouroboros/issues/591)) — mockup 21.
@@ -189,6 +211,25 @@ export const INSIGHTS_PATH = "/insights";
  * retires the `/knowledge` placeholder #49 held for it.
  */
 export const KNOWLEDGE_PATH = "/knowledge";
+
+/**
+ * The Knowledge page's repo profile seat, as an element id — where the settings nav's
+ * **Knowledge / env** tab goes (BS.1, [#491](https://github.com/NobuData/ouroboros/issues/491)).
+ *
+ * The card under it holds the Environment block — the repository's environment recipe, the one
+ * *env* admin surface the product has — and `app/knowledge/knowledge-screen.tsx` renders the id
+ * on the card's seat. Written down here for {@link ROUTING_MATRIX_HASH}'s reason: the tab and
+ * its target are one string rather than two literals a rename would part.
+ */
+export const KNOWLEDGE_PROFILE_HASH = "repo-profile";
+
+/**
+ * Where a repository's environment is administered — `/knowledge#repo-profile`.
+ *
+ * Decision S2 of the Workspace Settings roadmap mounts the existing admin surfaces in the
+ * settings nav; this one keeps its page and its sidebar entry, and the nav links to it.
+ */
+export const KNOWLEDGE_ENV_PATH = `${KNOWLEDGE_PATH}#${KNOWLEDGE_PROFILE_HASH}`;
 
 /**
  * One playbook's row on the Knowledge page, as an element id — `playbook-5eed…`

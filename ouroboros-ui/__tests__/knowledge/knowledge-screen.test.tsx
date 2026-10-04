@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Reading } from "@/app/api/reading";
 import type { SkillList } from "@/app/api/skills";
 
+import { KNOWLEDGE_ENV_PATH } from "@/app/paths";
 import { CREATE_SUBMIT, DESCRIPTION_LABEL, NAME_LABEL, createdToast } from "@/app/knowledge/create";
 import { FACTS_FOOT } from "@/app/knowledge/facts";
 import { PREVIEW_ACTION, PREVIEW_TITLE } from "@/app/knowledge/preview";
@@ -247,6 +248,42 @@ describe("the regions", () => {
     draw(false);
 
     for (const toggle of screen.getAllByRole("switch")) expect(toggle).toHaveAttribute("aria-disabled", "true");
+  });
+});
+
+describe("a fragment in the address (#491)", () => {
+  /** What a landing calls on its target — jsdom has no `scrollIntoView` of its own. */
+  const scrollIntoView = vi.fn();
+
+  beforeEach(() => {
+    scrollIntoView.mockClear();
+    Element.prototype.scrollIntoView = scrollIntoView;
+  });
+
+  afterEach(() => {
+    // @ts-expect-error jsdom defines none; the stub is taken back off so no other case sees it.
+    delete Element.prototype.scrollIntoView;
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("is landed on once the screen has mounted — the settings nav's Knowledge / env tab", () => {
+    // The route streams behind a loading state, so on a client-side navigation the router
+    // looked for `#repo-profile` in the skeleton and found nothing.
+    window.history.replaceState(null, "", KNOWLEDGE_ENV_PATH);
+
+    const { container } = draw();
+
+    expect(KNOWLEDGE_ENV_PATH).toBe(`/knowledge#${PROFILE_REGION_ID}`);
+    expect(scrollIntoView).toHaveBeenCalledExactlyOnceWith({ block: "start" });
+    expect(scrollIntoView.mock.contexts[0]).toBe(container.querySelector(`#${PROFILE_REGION_ID}`));
+  });
+
+  it("is not looked for on a visit with none", () => {
+    window.history.replaceState(null, "", "/knowledge");
+
+    draw();
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
   });
 });
 

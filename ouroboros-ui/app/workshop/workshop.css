@@ -138,3 +138,31 @@
   font-size: var(--t-xs);
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------- the settings save model story (#491) ---------- */
+
+/* A fixture card's fields, at the rhythm mockup 17's workspace card stacks its own. */
+.wk-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-7);
+}
+
+/* The mockup's `.switch-row`: the switch, what it controls, and whether it is unsaved. */
+.wk-switch-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-5);
+}
+
+.wk-switch-text {
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+/* The sentence under the grid that offers a way out, to try the leave guard with. */
+.wk-leave {
+  margin-top: var(--sp-9);
+}

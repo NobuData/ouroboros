@@ -734,6 +734,8 @@
   font: inherit;
   font-size: var(--t-sm);
   text-align: left;
+  /* An item may be a link (Workspace settings, issue 491); it reads as an item, not as prose. */
+  text-decoration: none;
 }
 
 .shell-menu__item[aria-disabled="true"] {

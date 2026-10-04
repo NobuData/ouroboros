@@ -7,6 +7,7 @@ import {
   DRY_RUN_NOTE,
   attributionLine,
   dryRunNotes,
+  dryRunUnread,
   flipConfirmation,
   flipLabel,
   policyStatus,
@@ -51,7 +52,13 @@ describe("the PR page's words", () => {
   });
 });
 
-describe("the Policies tab's words", () => {
+describe("the Policies section's words", () => {
+  it("says what is missing, then why, when the policy could not be read (#491)", () => {
+    expect(dryRunUnread("The service is restarting.")).toBe(
+      "The dry-run policy could not be read. The service is restarting.",
+    );
+  });
+
   it("states where the policy stands — and that a never-set workspace is off until onboarding", () => {
     expect(policyStatus(policy())).toMatch(/^On — /);
     expect(policyStatus(policy({ dryRun: false }))).toMatch(/without a person/);

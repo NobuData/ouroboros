@@ -1,27 +1,22 @@
-import { requireWorkspace } from "@/app/api/access";
-import { mayAdminister } from "@/app/api/membership";
-import { dryRunPolicy } from "@/app/api/policies";
-import { PoliciesScreen } from "@/app/policies/policies-screen";
+import { redirect } from "next/navigation";
+
+import { POLICIES_PATH } from "@/app/paths";
 
 /**
- * Settings → Policies (BA.3, [#382](https://github.com/NobuData/ouroboros/issues/382)) — the
- * workspace's dry-run policy, at `/settings/policies`.
+ * `/settings/policies` — the address the dry-run policy had before the hub, redirecting to the
+ * hub's Policies section (BS.1, [#491](https://github.com/NobuData/ouroboros/issues/491)).
  *
- * Thin, the shape the other settings tabs take: the gate returns the workspace, the policy is read
- * through the one read every surface uses, and `app/policies/policies-screen.tsx` draws it. The
- * read is every member's; whether this reader may flip is answered once, here, through
- * `mayAdminister` — and the gate that **enforces** is the service's.
+ * The policy's page was *Settings → Policies* (BA.3,
+ * [#382](https://github.com/NobuData/ouroboros/issues/382)); its row is mounted in the hub's
+ * section now, at `/settings#policies`. The old address is kept rather than left to `404`
+ * because it is in circulation: `ouroboros-rest` names it in what it tells the onboarding
+ * wizard, and so does every bookmark and pasted link made before today.
  *
- * @returns The Policies page, for the workspace this request is operating in.
+ * No gate here: the destination gates. `redirect` signals by throwing, so nothing after it runs
+ * and there is nothing to render.
+ *
+ * @returns Never — the redirect throws.
  */
-export default async function Page() {
-  const access = await requireWorkspace();
-
-  return (
-    <PoliciesScreen
-      mayAdminister={mayAdminister(access.membership.roles)}
-      policy={await dryRunPolicy.read()}
-      workspaceName={access.membership.name}
-    />
-  );
+export default function Page(): never {
+  redirect(POLICIES_PATH);
 }

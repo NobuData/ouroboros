@@ -2,8 +2,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { DryRunPolicy } from "@/app/api/policies";
-import { POLICIES_PATH } from "@/app/paths";
-import { PoliciesScreen } from "@/app/policies/policies-screen";
+import { DryRunRow } from "@/app/policies/dry-run-row";
 import {
   DRY_RUN_TITLE,
   POLICY_CANCEL,
@@ -12,9 +11,10 @@ import {
 } from "@/app/policies/view";
 
 /**
- * Settings → Policies (BA.3, #382), rendered: the flip is a confirmation that states its
- * consequences, only the confirmation sends, a refusal is said in the dialog, and a reader below
- * admin sees the policy and why they may not flip it.
+ * The dry-run policy's row (BA.3, #382), rendered — as the settings hub's Policies section
+ * mounts it since BS.1 (#491): the flip is a confirmation that states its consequences, only the
+ * confirmation sends, a refusal is said in the dialog, and a reader below admin sees the policy
+ * and why they may not flip it, with no switched-off control.
  */
 
 // The Server Action is never reached: every case passes its own flip.
@@ -36,7 +36,7 @@ const OFF: DryRunPolicy = {
 };
 
 /**
- * Draw the screen.
+ * Draw the row.
  *
  * @param options The policy, whether the reader may flip, and the flip.
  * @returns The flip spy.
@@ -52,20 +52,19 @@ function draw(
     options.flip ?? vi.fn(() => Promise.resolve<PolicyFlipResult>({ ok: true, policy: OFF }));
 
   render(
-    <PoliciesScreen
+    <DryRunRow
       mayAdminister={options.mayAdminister ?? true}
       onFlip={flip}
       policy={options.policy ?? ON}
-      workspaceName="Acme Robotics"
     />,
   );
 
   return flip;
 }
 
-/** The dry-run card. */
+/** The dry-run row. */
 function row(): HTMLElement {
-  return screen.getByRole("region", { name: DRY_RUN_TITLE });
+  return screen.getByRole("group", { name: DRY_RUN_TITLE });
 }
 
 /**
@@ -79,26 +78,28 @@ async function press(element: HTMLElement): Promise<void> {
   });
 }
 
-describe("the Policies tab", () => {
-  it("is the settings section's Policies tab, current", () => {
+describe("the row", () => {
+  it("names the policy under the section's own heading, and draws no page chrome", () => {
     draw();
 
-    const tabs = screen.getByRole("navigation", { name: "Settings" });
-
-    expect(within(tabs).getByRole("link", { name: "Policies" })).toHaveAttribute(
-      "href",
-      POLICIES_PATH,
-    );
-    expect(within(tabs).getByRole("link", { name: "Policies" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    // The section's card owns the `h2`; the policy is a row of it.
+    expect(within(row()).getByRole("heading", { level: 3 })).toHaveTextContent(DRY_RUN_TITLE);
+    expect(screen.queryByRole("main")).toBeNull();
+    expect(screen.queryByRole("navigation")).toBeNull();
   });
 
   it("states where the policy stands", () => {
     draw();
 
     expect(within(row()).getByRole("status")).toHaveTextContent(/^On — /);
+  });
+
+  it("never takes the accent fill: the page's one primary action is Save changes", () => {
+    draw({ policy: OFF });
+
+    const on = within(row()).getByRole("button", { name: "Turn dry-run on" });
+
+    expect(on).not.toHaveClass("ou-btn--primary");
   });
 });
 
@@ -163,15 +164,15 @@ describe("the flip", () => {
 });
 
 describe("a reader below admin", () => {
-  it("sees the policy and why they may not flip it, and cannot open the confirmation", async () => {
+  it("sees the policy and why they may not flip it, with no control drawn switched off", () => {
     const flip = draw({ mayAdminister: false });
-    const button = within(row()).getByRole("button", { name: "Turn dry-run off" });
 
-    expect(button).toHaveAttribute("aria-disabled", "true");
+    // Read-only is legible, not disabled: where it stands and why it cannot be changed are
+    // text, and there is no button to look broken.
+    expect(within(row()).getAllByRole("status")[0]).toHaveTextContent(/^On — /);
     expect(within(row()).getByRole("note")).toHaveTextContent(POLICY_READ_ONLY);
-
-    await press(button);
-
+    expect(within(row()).queryByRole("button")).toBeNull();
+    expect(row().querySelector("[aria-disabled]")).toBeNull();
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(flip).not.toHaveBeenCalled();
   });

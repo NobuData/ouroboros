@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { authStub, menuWorkspaces, signedIn, signedOut, stillLoading } from "../helpers/account";
 import { renderInBothPalettes } from "../helpers/palettes";
+import { SETTINGS_PATH } from "@/app/paths";
+import { resetLeaveGuard, setLeaveGuard } from "@/app/shell/leave-guard";
 
 /**
  * The tenant chip, now that it switches things (H.1,
@@ -91,6 +93,7 @@ async function listed() {
 beforeEach(() => {
   signedIn();
   refresh.mockClear();
+  resetLeaveGuard();
   window.localStorage.clear();
   resetFocusRepos();
   readFocusRepos.mockReset();
@@ -242,15 +245,27 @@ describe("the menu", () => {
     expect(within(menu).getByRole("menuitem", { name: "Workspace settings" })).toBeInTheDocument();
   });
 
-  it("waits for #491 rather than linking to a screen that is not there", () => {
+  it("links to the administration hub, now that #491 has built it, and closes behind itself", () => {
     render(<TenantChip />);
     open();
 
-    // aria-disabled, not disabled: a control removed from the tab order takes its own
-    // explanation with it, and would break the arrow ring mid-walk besides.
+    // A link, and still an item of the arrow ring: out of the tab order, reached by the arrows.
     const settings = screen.getByRole("menuitem", { name: "Workspace settings" });
-    expect(settings).toHaveAttribute("aria-disabled", "true");
-    expect(settings).toHaveAttribute("title", expect.stringContaining("#491"));
+    expect(settings.tagName).toBe("A");
+    expect(settings).toHaveAttribute("href", SETTINGS_PATH);
+    expect(settings).not.toHaveAttribute("aria-disabled");
+    expect(settings).toHaveAttribute("tabindex", "-1");
+
+    // Prevented at the far end of the press's path, after the menu has heard it: there is
+    // no router here to take the navigation, and jsdom cannot follow a link.
+    const swallow = (event: Event): void => {
+      event.preventDefault();
+    };
+    window.addEventListener("click", swallow);
+    fireEvent.click(settings);
+    window.removeEventListener("click", swallow);
+
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 
   it("closes on a press outside itself", () => {
@@ -287,6 +302,25 @@ describe("switching workspace", () => {
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
     expect(authStub.setActive).toHaveBeenCalledWith({ organizationId: WORKSPACES[1].id });
     expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("asks a page holding unsaved work before it moves, and moves when told to (#491)", async () => {
+    render(<TenantChip />);
+    const { submenu } = openBranch("Switch workspace");
+
+    let proceed: (() => void) | undefined;
+    setLeaveGuard((next) => {
+      proceed = next;
+    });
+
+    fireEvent.click(within(submenu).getByRole("menuitemradio", { name: WORKSPACES[1].slug }));
+
+    expect(authStub.setActive).not.toHaveBeenCalled();
+
+    proceed?.();
+
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    expect(authStub.setActive).toHaveBeenCalledWith({ organizationId: WORKSPACES[1].id });
   });
 
   it("announces where the session landed", async () => {

@@ -1,24 +1,30 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { FARM_TOKENS_PATH, POLICIES_PATH, SOURCES_PATH } from "@/app/paths";
+import {
+  FARM_TOKENS_PATH,
+  KNOWLEDGE_ENV_PATH,
+  PROVIDERS_PATH,
+  SOURCES_PATH,
+  settingsSectionPath,
+} from "@/app/paths";
 import { SettingsFrame } from "@/app/settings/settings-frame";
-import { HUB_NOTE, SETTINGS_TABS, isLiveTab, settingsEyebrow } from "@/app/settings/view";
+import { MOUNTED_TABS, SECTION_TABS, settingsEyebrow } from "@/app/settings/view";
 
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 
 /**
- * The settings section's frame and tab row
- * ([#141](https://github.com/NobuData/ouroboros/issues/141), ahead of BS.1 #491): mockup 17's
- * chrome, the mounted live tabs — Sources, Farm tokens since #258 and Policies since #382 — and
- * five honest `soon` ones.
+ * The settings section's frame and tab row, as a mounted page draws them (BS.1,
+ * [#491](https://github.com/NobuData/ouroboros/issues/491)): mockup 17's chrome, the six
+ * sections as links back to the hub, and the four mounted admin surfaces (decision S2). The
+ * hub's own row — anchors and the scroll-spy — is `settings-subnav.test.tsx`'s.
  */
 
-function frame() {
+function frame(active: "sources" | "farm-tokens" = "sources") {
   return render(
     <SettingsFrame
       actions={<button type="button">An action</button>}
-      active="sources"
+      active={active}
       subline="The promise."
       title="The title"
       workspaceName="Acme Robotics"
@@ -26,6 +32,11 @@ function frame() {
       <p>The content</p>
     </SettingsFrame>,
   );
+}
+
+/** The tab row. */
+function tabs(): HTMLElement {
+  return screen.getByRole("navigation", { name: "Settings" });
 }
 
 describe("the anatomy", () => {
@@ -62,7 +73,9 @@ describe("the anatomy", () => {
 
     expect(order).toEqual(["head", "subnav", "content"]);
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    expect(within(document.querySelector(".settings__actions") as HTMLElement).getByRole("button")).toBeInTheDocument();
+    expect(
+      within(document.querySelector(".settings__actions") as HTMLElement).getByRole("button"),
+    ).toBeInTheDocument();
   });
 
   it("is busy and named while loading", () => {
@@ -76,71 +89,84 @@ describe("the anatomy", () => {
   });
 });
 
-describe("the tab row", () => {
-  it("draws mockup 17's sections with the mounted surfaces slotted among them, in one order on every page", () => {
+describe("the tab row on a mounted page", () => {
+  it("draws mockup 17's six sections, then the mounted surfaces, in one order on every page", () => {
     frame();
 
-    const tabs = screen.getByRole("navigation", { name: "Settings" });
-
-    expect([...tabs.children].map((tab) => tab.textContent)).toEqual([
-      "Workspacesoon",
-      "Memberssoon",
+    expect([...tabs().querySelectorAll("a")].map((tab) => tab.textContent)).toEqual([
+      "Workspace",
+      "Members",
       "Policies",
+      "Integrations",
+      "Audit",
+      "Danger zone",
       "Sources",
+      "Providers",
       "Farm tokens",
-      "Integrationssoon",
-      "Auditsoon",
-      "Danger zonesoon",
+      "Knowledge / env",
     ]);
   });
 
-  it("links the built surfaces — the active one current — and names BS.1 on every other", () => {
+  it("separates the two groups with a rule a screen reader does not hear", () => {
     frame();
 
-    const tabs = screen.getByRole("navigation", { name: "Settings" });
-    const sources = within(tabs).getByRole("link", { name: "Sources" });
-    const farmTokens = within(tabs).getByRole("link", { name: "Farm tokens" });
+    const rule = tabs().querySelector(".settings__subnav-rule") as HTMLElement;
 
-    expect(sources).toHaveAttribute("href", SOURCES_PATH);
-    expect(sources).toHaveAttribute("aria-current", "page");
-    // The build farm's enrollment tokens, mounted by the amendment on #258 (decision S2).
-    expect(farmTokens).toHaveAttribute("href", FARM_TOKENS_PATH);
-    expect(farmTokens).not.toHaveAttribute("aria-current");
-    // The dry-run policy's flip (BA.3, #382).
-    expect(within(tabs).getByRole("link", { name: "Policies" })).toHaveAttribute(
-      "href",
-      POLICIES_PATH,
-    );
-    expect(within(tabs).getAllByRole("link")).toHaveLength(3);
+    expect(rule).toHaveAttribute("aria-hidden", "true");
+    // After the last section and before the first mounted tab.
+    expect(rule.previousElementSibling).toHaveTextContent("Danger zone");
+    expect(rule.nextElementSibling).toHaveTextContent("Sources");
+  });
 
-    for (const tab of SETTINGS_TABS) {
-      if (isLiveTab(tab)) continue;
+  it("leads each section back to the hub's own fragment, and marks none current", () => {
+    frame();
 
-      const soon = within(tabs).getByText(tab.label, { selector: ".ou-subnav__soon" });
+    for (const tab of SECTION_TABS) {
+      const link = within(tabs()).getByRole("link", { name: tab.label });
 
-      expect(soon.tagName).toBe("SPAN");
-      expect(soon).toHaveAttribute("title", `${tab.label} — ${HUB_NOTE}`);
-      expect(HUB_NOTE).toContain("#491");
+      expect(link).toHaveAttribute("href", settingsSectionPath(tab.id));
+      expect(link).not.toHaveAttribute("aria-current");
     }
+  });
+
+  it("links every mounted surface where it lives, with no tab left as a stub", () => {
+    frame();
+
+    const hrefs = Object.fromEntries(
+      MOUNTED_TABS.map((tab) => [
+        tab.label,
+        within(tabs()).getByRole("link", { name: tab.label }).getAttribute("href"),
+      ]),
+    );
+
+    expect(hrefs).toEqual({
+      Sources: SOURCES_PATH,
+      Providers: PROVIDERS_PATH,
+      "Farm tokens": FARM_TOKENS_PATH,
+      "Knowledge / env": KNOWLEDGE_ENV_PATH,
+    });
+    // The honest *soon* tabs the row drew while it waited for #491 are all gone.
+    expect(tabs().querySelector(".ou-subnav__soon")).toBeNull();
+  });
+
+  it("marks the page's own tab current, and only that one", () => {
+    frame("sources");
+
+    expect(within(tabs()).getByRole("link", { name: "Sources" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(tabs().querySelectorAll("[aria-current]")).toHaveLength(1);
   });
 
   it("moves the underline to Farm tokens on that page", () => {
-    render(
-      <SettingsFrame actions={null} active="farm-tokens" subline="s" title="t" workspaceName="w">
-        <p />
-      </SettingsFrame>,
+    frame("farm-tokens");
+
+    expect(within(tabs()).getByRole("link", { name: "Farm tokens" })).toHaveAttribute(
+      "aria-current",
+      "page",
     );
-
-    const tabs = screen.getByRole("navigation", { name: "Settings" });
-
-    expect(within(tabs).getByRole("link", { name: "Farm tokens" })).toHaveAttribute("aria-current", "page");
-    expect(within(tabs).getByRole("link", { name: "Sources" })).not.toHaveAttribute("aria-current");
-  });
-
-  it("makes the honesty pair a type: a live tab has an href, a soon tab a note, never both", () => {
-    for (const tab of SETTINGS_TABS) {
-      expect("href" in tab).not.toBe("note" in tab);
-    }
+    expect(within(tabs()).getByRole("link", { name: "Sources" })).not.toHaveAttribute("aria-current");
   });
 });
 

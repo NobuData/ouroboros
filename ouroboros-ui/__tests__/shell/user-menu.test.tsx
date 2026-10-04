@@ -11,6 +11,8 @@ import {
 } from "../helpers/account";
 import { renderThemed } from "../helpers/theme";
 import { FONT_SCALE_ATTRIBUTE, setFontScale } from "@/app/font-scale";
+import { SETTINGS_PATH } from "@/app/paths";
+import { resetLeaveGuard, setLeaveGuard } from "@/app/shell/leave-guard";
 
 /**
  * The account menu, now that it has a session to draw
@@ -81,6 +83,7 @@ beforeEach(() => {
   signedIn();
   refresh.mockClear();
   signOutOfSession.mockClear();
+  resetLeaveGuard();
 });
 
 describe("the avatar", () => {
@@ -234,6 +237,39 @@ describe("the workspace switcher", () => {
     expect(authStub.setActive).toHaveBeenCalledWith({ organizationId: WORKSPACES[1].id });
   });
 
+  it("asks a page holding unsaved work before it moves, and moves when told to (#491)", async () => {
+    // The switch re-renders the route for another workspace: edits made for this one would
+    // vanish without a word, so the page that holds them is asked first.
+    renderThemed(<UserMenu />);
+    openSwitcher();
+
+    let proceed: (() => void) | undefined;
+    setLeaveGuard((next) => {
+      proceed = next;
+    });
+
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "acme-labs" }));
+
+    expect(authStub.setActive).not.toHaveBeenCalled();
+
+    proceed?.();
+
+    await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+    expect(authStub.setActive).toHaveBeenCalledWith({ organizationId: WORKSPACES[1].id });
+  });
+
+  it("does not ask about the workspace the session is already in", () => {
+    renderThemed(<UserMenu />);
+    openSwitcher();
+
+    const guard = vi.fn();
+    setLeaveGuard(guard);
+
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "acme-robotics" }));
+
+    expect(guard).not.toHaveBeenCalled();
+  });
+
   it("closes and hands focus back to the avatar once the move lands", async () => {
     renderThemed(<UserMenu />);
     const { trigger } = openSwitcher();
@@ -329,16 +365,55 @@ describe("signing out", () => {
     );
   });
 
-  it("leaves the settings item marked unavailable, with the reason it cannot act", () => {
-    // #491 is the screen. A control that cannot act says why, and stays in the tab order to
-    // be able to (§ 3.5).
+  it("asks a page holding unsaved work before it signs out (#491)", () => {
+    // Signing out is a departure no link carries, so the form waits for the guard — and is
+    // sent by it when the reader agrees to leave.
+    renderThemed(<UserMenu />);
+    open();
+
+    let proceed: (() => void) | undefined;
+    setLeaveGuard((next) => {
+      proceed = next;
+    });
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sign out" }));
+
+    expect(signOutOfSession).not.toHaveBeenCalled();
+
+    proceed?.();
+
+    expect(signOutOfSession).toHaveBeenCalledOnce();
+  });
+});
+
+describe("workspace settings", () => {
+  it("is the link to the administration hub, now that #491 has built it", () => {
     renderThemed(<UserMenu />);
     open();
 
     const item = screen.getByRole("menuitem", { name: "Workspace settings" });
-    expect(item).toHaveAttribute("aria-disabled", "true");
-    expect(item).not.toBeDisabled();
-    expect(item.getAttribute("title")).toMatch(/arrive with #491/);
+
+    expect(item.tagName).toBe("A");
+    expect(item).toHaveAttribute("href", SETTINGS_PATH);
+    expect(item).not.toHaveAttribute("aria-disabled");
+    // Still an item of the menu's arrow ring: out of the tab order, reached by the arrows.
+    expect(item).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("closes the menu behind itself", () => {
+    renderThemed(<UserMenu />);
+    open();
+
+    // The press's default is prevented at the far end of its path, after the menu has heard
+    // it: there is no router here to take the navigation, and jsdom cannot follow a link.
+    const swallow = (event: Event): void => {
+      event.preventDefault();
+    };
+    window.addEventListener("click", swallow);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Workspace settings" }));
+    window.removeEventListener("click", swallow);
+
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 });
 

@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { useListOrganizations, useSession } from "@/app/api/auth-client";
 import type { EnabledRepo } from "@/app/api/enablement";
+import { SETTINGS_PATH } from "@/app/paths";
 
 import { type MenuWorkspace, accountView, tenantChipLabel, tenantChipTitle } from "./account";
 import {
@@ -14,6 +16,7 @@ import {
   setFocusRepo,
   useFocusRepo,
 } from "./focus-repo";
+import { requestLeave } from "./leave-guard";
 import { menuConsumesKey, menuFocusTarget, menuItems, menuKeyAction } from "./menu";
 import { type FocusRepoReading, readFocusRepos } from "./repo-actions";
 import { switchWorkspace } from "./switch-workspace";
@@ -35,7 +38,7 @@ import { switchWorkspace } from "./switch-workspace";
  *        ├─ Focus repository   ▸ ─┬─ ● All repos
  *        │                        ├─ ○ helios-firmware
  *        │                        └─ … the enabled repositories
- *        └─ Workspace settings              (#491)
+ *        └─ Workspace settings ─▶ /settings
  * ```
  *
  * CP.1 ([#643](https://github.com/NobuData/ouroboros/issues/643)) drew the half that was true
@@ -229,9 +232,13 @@ export function TenantChip() {
    * Server Components — which are scoped by `session."activeOrganizationId"` — without a
    * navigation, which is the issue's *"repaints dashboard data without a full page reload"*.
    *
+   * A page holding unsaved work is asked first (`app/shell/leave-guard.ts`,
+   * [#491](https://github.com/NobuData/ouroboros/issues/491)), for the account menu's reason:
+   * edits made for the workspace being left would otherwise vanish without a word.
+   *
    * @param workspace The workspace to move to.
    */
-  async function choose(workspace: MenuWorkspace): Promise<void> {
+  function choose(workspace: MenuWorkspace): void {
     if (moving !== null) return;
 
     if (workspace.id === active?.id) {
@@ -241,6 +248,15 @@ export function TenantChip() {
       return;
     }
 
+    requestLeave(() => void move(workspace));
+  }
+
+  /**
+   * Make the switch {@link choose} was asked for.
+   *
+   * @param workspace The workspace to move to.
+   */
+  async function move(workspace: MenuWorkspace): Promise<void> {
     setMoving(workspace.id);
     setFailure(null);
 
@@ -431,7 +447,7 @@ export function TenantChip() {
                         aria-checked={workspace.id === active.id}
                         aria-busy={moving === workspace.id || undefined}
                         aria-describedby={failure === null ? undefined : failureId}
-                        onClick={() => void choose(workspace)}
+                        onClick={() => choose(workspace)}
                       >
                         {workspace.slug}
                       </button>
@@ -537,21 +553,18 @@ export function TenantChip() {
             </div>
 
             {/*
-              aria-disabled, not disabled: a control removed from the tab order takes its own
-              explanation with it, and would break the arrow ring mid-walk besides. #491 turns
-              this into a link to /settings — the same placeholder, and the same wait, as the
-              account menu's row of the same name.
+              The administration hub (#491) — the same link, and the same close-behind-itself,
+              as the account menu's row of the same name.
             */}
-            <button
-              type="button"
+            <Link
               className="shell-menu__item"
+              href={SETTINGS_PATH}
               role="menuitem"
               tabIndex={-1}
-              aria-disabled="true"
-              title="Workspace settings arrive with #491."
+              onClick={() => close(false)}
             >
               Workspace settings
-            </button>
+            </Link>
           </div>
 
           {failure !== null && (

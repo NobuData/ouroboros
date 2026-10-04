@@ -48,8 +48,8 @@ import { UserMenu } from "./user-menu";
  * used to stand here promised: the theme toggle (#42) became the account menu's radio group
  * — a second surface over the same #17 engine, not a second engine — and the disabled
  * settings gear was absorbed by the menu's *Workspace settings* item, which already said the
- * same thing (#491). § 1.1 puts both inside the profile menu, and a control drawn twice is a
- * state that can be read twice differently.
+ * same thing and which #491 has since made the link to `/settings`. § 1.1 puts both inside the
+ * profile menu, and a control drawn twice is a state that can be read twice differently.
  *
  * @returns The header row.
  */
