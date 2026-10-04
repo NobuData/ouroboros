@@ -228,14 +228,14 @@ Inbox v2`** created at filing; every issue assigned. Complexity chips:
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BM.1 | #457 | 🟡 Open | ouroboros-db: [BM.1] Decision items & kind registry schema | Typed items, versioned kind declarations, refs, severity (X1/X2) | mvp, inbox, db | N (after AO.1, AW.1, BE.2) | Y | M | ouroboros-db |
+| BM.1 | #457 ✅ | 🟢 Done | ouroboros-db: [BM.1] Decision items & kind registry schema | Typed items, versioned kind declarations, refs, severity (X1/X2) | mvp, inbox, db | N (after AO.1, AW.1, BE.2) | Y | M | ouroboros-db |
 | BM.2 | #458 | 🟡 Open | ouroboros-db: [BM.2] Resolutions, snooze & metrics spans | Actor/action/channel/latency, auto-accept class, snooze TTLs (X4/X6) | mvp, inbox, db | N (after BM.1) | Y | S | ouroboros-db |
 | BM.3 | #459 | 🟡 Open | ouroboros-db: [BM.3] Guardrail exceptions & action tokens | Scoped allow-once grants; signed channel-token storage (X3/X5) | mvp, inbox, db | N (after BM.1, AO.4) | Y | M | ouroboros-db |
 | BM.4 | #460 | 🟡 Open | ouroboros-db: [BM.4] Inbox seeds — mockup-16 parity + probes | Three open decisions, five resolutions, policy rows; ci checks | mvp, inbox, db, ci | N (after BM.2/BM.3, #24) | Y | S | ouroboros-db, .github |
 
 ### Issue BM.1 — ouroboros-db: [BM.1] Decision items & kind registry schema
 
-> **GitHub issue:** #457 · **Status:** 🟡 Open · **Parent epic:** #453
+> **GitHub issue:** #457 ✅ · **Status:** 🟢 Done · **Parent epic:** #453
 
 - **Problem Statement:** The unified queue needs typed items whose shape,
   prose, and actions come from versioned kind declarations (X1/X2).

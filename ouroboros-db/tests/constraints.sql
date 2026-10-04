@@ -14511,8 +14511,11 @@ select pg_temp.must_hold(
    -- audit can be written by a transition and by nothing else — asserted in V071's section.
    -- #434 added `sync_intervention_events()`, `record_intervention_event()` and
    -- `intervention_hook_classification()`, so a hook can draw a run's context from planes the
-   -- writer cannot read — asserted in V079's section.
-   and (select array_agg(proname::text order by proname) = array['fact_transitions_record',
+   -- writer cannot read — asserted in V079's section. #457 added `decision_ref_resolves()`, so a
+   -- decision item's run and ticket refs resolve for a writer that cannot read either table —
+   -- asserted in V093's section.
+   and (select array_agg(proname::text order by proname) = array['decision_ref_resolves',
+                                                                 'fact_transitions_record',
                                                                  'failure_classifications_routed_valid',
                                                                  'intervention_hook_classification',
                                                                  'pr_gate_evidence_ref_resolves',
@@ -14522,7 +14525,7 @@ select pg_temp.must_hold(
                                                                  'sync_intervention_events']
           from pg_proc
          where pronamespace = 'ouroboros'::regnamespace and prosecdef),
-  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit and #434''s three intervention hooks are the only functions in the schema that run as the owner at all');
+  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks and #457''s decision ref resolver are the only functions in the schema that run as the owner at all');
 
 -- --- the cascades ----------------------------------------------------------------
 delete from ouroboros.runs where id = 'a6100000-0000-0000-0000-000000000484';
@@ -31047,6 +31050,682 @@ select pg_temp.must_hold(
   'a deleted (or purged) workspace takes its policy history with it');
 
 drop table v092_doc;
+
+-- ===========================================================================
+-- V093 — decision_kinds and decision_items: the decision domain (#457, BM.1)
+-- ===========================================================================
+--
+-- The two tables the Needs-You inbox stands on. Asked here: the three shipped declarations
+-- render mockup 16's exact question, why and tags from facts alone; a payload that fails its
+-- kind's schema is refused at write time, and so is the emission carrying it; emitting twice with
+-- one (plane, source_ref) leaves one row; typed refs resolve in the item's own workspace and
+-- nowhere else; a kind bump leaves open items rendering at the version they pinned; merge-class
+-- kinds can never become auto-resolvable; every rule of a declaration is refused when broken; the
+-- queue, pill and reverse-lookup reads are index reads; and the service role can file an item
+-- whose refs name tables it cannot itself read.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v093',       'Decision Works', 'decision-works-v093', now()),
+  ('org-v093-other', 'Other Works',    'other-works-v093',    now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a9310000-0000-0000-0000-00000000000a', 'org-v093',       'decision-v093', true),
+  ('a9310000-0000-0000-0000-00000000000b', 'org-v093-other', 'other-v093',    true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a931f000-0000-0000-0000-00000000000a', 'a9310000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('a931f000-0000-0000-0000-00000000000b', 'a9310000-0000-0000-0000-00000000000b',
+   'other-firmware', true, 'main');
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('a9320000-0000-0000-0000-00000000000a', 'org-v093',       'github', 'GitHub · decision'),
+  ('a9320000-0000-0000-0000-00000000000b', 'org-v093-other', 'github', 'GitHub · other');
+
+-- The mockup's universe: issues #465 and #479, loops #1843 and #1851, PRs #509 and #514 — and one
+-- PR of another workspace, which no card here may link to.
+insert into ouroboros.tickets
+    (id, organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values
+    ('a9330000-0000-0000-0000-000000000465', 'org-v093', 'a9320000-0000-0000-0000-00000000000a',
+     '465', '#465', 'https://github.com/decision-v093/helios-firmware/issues/465',
+     'Refactor the telemetry ring buffer', 'open', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z'),
+    ('a9330000-0000-0000-0000-000000000479', 'org-v093', 'a9320000-0000-0000-0000-00000000000a',
+     '479', '#479', 'https://github.com/decision-v093/helios-firmware/issues/479',
+     'OTA rollback flag is never cleared', 'open', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, loop_seq)
+  values
+    ('a9360000-0000-0000-0000-000000001843', 'org-v093', 'a931f000-0000-0000-0000-00000000000a',
+     465, 'Refactor the telemetry ring buffer', 'standard-fix', 'claude-fable-5', 'review',
+     'Review', 7, 8, '2026-09-01T09:00:00Z', 1843),
+    ('a9360000-0000-0000-0000-000000001851', 'org-v093', 'a931f000-0000-0000-0000-00000000000a',
+     479, 'OTA rollback flag is never cleared', 'standard-fix', 'claude-fable-5', 'review',
+     'Review', 7, 8, '2026-09-01T09:30:00Z', 1851);
+
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title, head_branch,
+     base_branch, run_id, ticket_id, state)
+  values
+    ('a9370000-0000-0000-0000-000000000509', 'org-v093', 'a9320000-0000-0000-0000-00000000000a',
+     509, 'https://github.com/decision-v093/helios-firmware/pull/509', 'telemetry: refactor ring',
+     'loop/465', 'main', 'a9360000-0000-0000-0000-000000001843',
+     'a9330000-0000-0000-0000-000000000465', 'open'),
+    ('a9370000-0000-0000-0000-000000000514', 'org-v093', 'a9320000-0000-0000-0000-00000000000a',
+     514, 'https://github.com/decision-v093/helios-firmware/pull/514', 'can: fix flake',
+     'loop/482', 'main', null, null, 'open'),
+    ('a9370000-0000-0000-0000-00000000f514', 'org-v093-other', 'a9320000-0000-0000-0000-00000000000b',
+     514, 'https://github.com/other-v093/other-firmware/pull/514', 'someone else''s PR',
+     'loop/1', 'main', null, null, 'open');
+
+-- The three cards' facts and refs, exactly as an emitter would hand them over.
+create temporary table v093_card (
+  kind_id text primary key, payload jsonb not null, refs jsonb not null, source_ref text not null);
+
+insert into v093_card values
+  ('merge_approval',
+   '{"pr_kind": "refactor", "policy_label": "refactor", "checks_passed": 14, "checks_total": 14,
+     "matrix_state": "all ✓", "added": 214, "removed": 180, "files": 6}',
+   '[{"type": "run",    "id": "a9360000-0000-0000-0000-000000001843", "label": "loop #1843"},
+     {"type": "pr",     "id": "a9370000-0000-0000-0000-000000000509", "label": "PR #509"},
+     {"type": "ticket", "id": "a9330000-0000-0000-0000-000000000465", "label": "issue #465"}]',
+   'pr:a9370000-0000-0000-0000-000000000509:human_review'),
+  ('protected_path_allow_once',
+   '{"subject": "The OTA rollback fix", "edit_summary": "add one line",
+     "path": "boot/rollback_flag.c", "diff_lines": 3}',
+   '[{"type": "run",    "id": "a9360000-0000-0000-0000-000000001851", "label": "loop #1851"},
+     {"type": "ticket", "id": "a9330000-0000-0000-0000-000000000479", "label": "issue #479"},
+     {"type": "path",   "id": "boot/rollback_flag.c",                 "label": "boot/rollback_flag.c"}]',
+   'run:a9360000-0000-0000-0000-000000001851:path:boot/rollback_flag.c'),
+  ('claim_waiver',
+   '{"claim": "Flake must not reappear across temperature range",
+     "missing_capability": "thermal chamber"}',
+   '[{"type": "pr", "id": "a9370000-0000-0000-0000-000000000514", "label": "PR #514"}]',
+   'pr:a9370000-0000-0000-0000-000000000514:criterion:thermal');
+
+-- --- the shipped declarations -----------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(kind_id || ' v' || version || ' ' || severity_default order by kind_id)
+          = array['claim_waiver v1 warn', 'merge_approval v1 err', 'protected_path_allow_once v1 warn']
+     from ouroboros.decision_kinds),
+  'the three declarations mockup 16 fixes ship at v1 — merge_approval err, the other two warn — and no others');
+
+select pg_temp.must_hold(
+  (select merge_class and resolution_semantics -> 'auto_resolvable' = 'false'::jsonb
+     from ouroboros.decision_kinds where kind_id = 'merge_approval')
+  and (select bool_and(escalation_window = interval '30 minutes') from ouroboros.decision_kinds),
+  'merge_approval is merge-class and not auto-resolvable, and every kind escalates after mockup 19''s thirty minutes');
+
+select pg_temp.must_hold(
+  (select array_agg(a ->> 'label' || '|' || (a ->> 'style') order by o)
+          = array['Approve & merge|primary', 'Open PR verification →|ghost', 'Return to loop with note|ghost']
+     from ouroboros.decision_kinds k,
+          jsonb_array_elements(k.actions) with ordinality as x(a, o)
+    where k.kind_id = 'merge_approval')
+  and (select array_agg(a ->> 'label' order by o)
+          = array['Allow once', 'View diff →', 'Deny', 'Edit protected paths →']
+     from ouroboros.decision_kinds k,
+          jsonb_array_elements(k.actions) with ordinality as x(a, o)
+    where k.kind_id = 'protected_path_allow_once')
+  and (select array_agg(a ->> 'label' order by o)
+          = array['Waive & annotate', 'Require bench upgrade', 'See evidence →']
+     from ouroboros.decision_kinds k,
+          jsonb_array_elements(k.actions) with ordinality as x(a, o)
+    where k.kind_id = 'claim_waiver'),
+  'each card''s action row is the mockup''s, in order, with its primary first');
+
+-- --- the emission and the rendering fixture ---------------------------------------
+-- The emission's upsert arbitrates on this key; asked first, so losing it names the guarantee
+-- rather than surfacing as the upsert's own error.
+select pg_temp.must_hold(
+  (select count(*) = 1 from pg_constraint
+    where conname = 'decision_items_idempotency_key' and contype = 'u'
+      and conrelid = 'ouroboros.decision_items'::regclass),
+  '(plane, source_ref) is unique per workspace — an emitter cannot double-file');
+
+select ouroboros.decision_item_emit('org-v093', c.kind_id, c.payload, c.refs,
+                                    case c.kind_id when 'protected_path_allow_once' then 'guardrails'
+                                                   else 'pr.gates' end,
+                                    c.source_ref)
+  from v093_card c;
+
+select pg_temp.must_hold(
+  (select question = 'Approve merge for a refactor PR?'
+      and why = 'Policy: anything labeled refactor needs a human. 14/14 checks green, verification matrix all ✓, +214 −180 across 6 files.'
+      and tags = array['refactor']
+      and severity = 'err' and status = 'open' and kind_version = 1
+     from ouroboros.decision_items_rendered
+    where organization_id = 'org-v093' and kind_id = 'merge_approval'),
+  'card 1 renders the mockup''s exact question, why and refactor tag from its facts, at err');
+
+select pg_temp.must_hold(
+  (select question = 'Allow a one-time edit to a protected path?'
+      and why = 'The OTA rollback fix wants to add one line to boot/rollback_flag.c — a protected path. Diff is 3 lines, shown in the run console.'
+      and tags = '{}'::text[]
+      and severity = 'warn'
+     from ouroboros.decision_items_rendered
+    where organization_id = 'org-v093' and kind_id = 'protected_path_allow_once'),
+  'card 2 renders the mockup''s exact question and why, at warn');
+
+select pg_temp.must_hold(
+  (select question = 'Waive a claim the bench can''t verify?'
+      and why = '“Flake must not reappear across temperature range” — the rig has no thermal chamber. Waiving annotates the PR publicly.'
+      and tags = array['verification']
+      and severity = 'warn'
+     from ouroboros.decision_items_rendered
+    where organization_id = 'org-v093' and kind_id = 'claim_waiver'),
+  'card 3 renders the mockup''s exact question, why and verification tag, at warn');
+
+select pg_temp.must_hold(
+  (select array_agg(r ->> 'label' order by o) = array['loop #1843', 'PR #509', 'issue #465']
+     from ouroboros.decision_items i, jsonb_array_elements(i.refs) with ordinality as x(r, o)
+    where i.organization_id = 'org-v093' and i.kind_id = 'merge_approval'),
+  'the ref tags keep the emitter''s order: loop, PR, issue');
+
+select pg_temp.must_hold(
+  ouroboros.decision_template_render('{a} and {b}', '{"a": "{b}", "b": "B"}') = '{b} and B',
+  'a fact that looks like a slot is printed, never expanded');
+
+select pg_temp.must_raise(
+  $$select ouroboros.decision_template_render('{files} files', '{}')$$, '22023',
+  'rendering a slot with no fact raises rather than printing a hole');
+
+-- --- idempotency --------------------------------------------------------------------
+-- An AP.3 evaluation fires on every attempt of a stage: three emissions, one card.
+create temporary table v093_first as
+  select id, created_at from ouroboros.decision_items
+   where organization_id = 'org-v093' and kind_id = 'protected_path_allow_once';
+
+select pg_temp.must_hold(
+  (select bool_and(ouroboros.decision_item_emit('org-v093', c.kind_id,
+                     jsonb_set(c.payload, '{diff_lines}', to_jsonb(n)), c.refs, 'guardrails',
+                     c.source_ref) = f.id)
+     from v093_card c, v093_first f, generate_series(4, 5) n
+    where c.kind_id = 'protected_path_allow_once'),
+  'emitting again with the same (plane, source_ref) returns the item already filed');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.decision_items
+    where organization_id = 'org-v093' and kind_id = 'protected_path_allow_once'),
+  'and leaves one row, not a card per retry');
+
+select pg_temp.must_hold(
+  (select i.payload ->> 'diff_lines' = '5' and i.created_at = f.created_at
+          and i.idempotency_key = 'guardrails:run:a9360000-0000-0000-0000-000000001851:path:boot/rollback_flag.c'
+     from ouroboros.decision_items i, v093_first f where i.id = f.id),
+  'a repeat refreshes the facts and keeps the card''s age; the key is plane:source_ref');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_items (organization_id, kind_id, kind_version, payload, refs,
+                                         emitted_by, source_ref)
+      select 'org-v093', kind_id, 1, payload, refs, 'guardrails', source_ref
+        from v093_card where kind_id = 'protected_path_allow_once'$$,
+  'a second row with the same (plane, source_ref) is refused', 'decision_items_idempotency_key');
+
+update ouroboros.decision_items set status = 'resolved'
+ where id = (select id from v093_first);
+
+select pg_temp.must_hold(
+  (select ouroboros.decision_item_emit('org-v093', c.kind_id,
+            jsonb_set(c.payload, '{diff_lines}', '9'), c.refs, 'guardrails', c.source_ref) = f.id
+     from v093_card c, v093_first f where c.kind_id = 'protected_path_allow_once'),
+  'a repeat after the item was answered still returns the item filed');
+
+-- A statement of its own: the emission's write is invisible to the statement that made it.
+select pg_temp.must_hold(
+  (select payload ->> 'diff_lines' = '5' and status = 'resolved'
+     from ouroboros.decision_items where id = (select id from v093_first))
+  and (select count(*) = 1 from ouroboros.decision_items
+        where organization_id = 'org-v093' and kind_id = 'protected_path_allow_once'),
+  'a repeat after the item was answered changes nothing and files nothing');
+
+update ouroboros.decision_items set status = 'open'
+ where id = (select id from v093_first);
+
+select ouroboros.decision_item_emit('org-v093', 'claim_waiver', payload, refs, 'pr.gates',
+                                    'pr:a9370000-0000-0000-0000-000000000514:criterion:frame-order')
+  from v093_card where kind_id = 'claim_waiver';
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.decision_items
+    where organization_id = 'org-v093' and kind_id = 'claim_waiver'),
+  'a different source_ref is a different question and files its own item');
+
+-- --- the payload is held to its schema at write time ----------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_items (organization_id, kind_id, kind_version, payload, refs,
+                                         emitted_by, source_ref)
+      select 'org-v093', kind_id, 1, jsonb_set(payload, '{checks_passed}', '"14"'), refs,
+             'pr.gates', 'probe:string-count'
+        from v093_card where kind_id = 'merge_approval'$$,
+  'a count written as a string is refused at write time', 'decision_items_payload_conforms');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_items (organization_id, kind_id, kind_version, payload, refs,
+                                         emitted_by, source_ref)
+      select 'org-v093', kind_id, 1, payload - 'files', refs, 'pr.gates', 'probe:missing'
+        from v093_card where kind_id = 'merge_approval'$$,
+  'a payload missing a required fact is refused', 'decision_items_payload_conforms');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_items (organization_id, kind_id, kind_version, payload, refs,
+                                         emitted_by, source_ref)
+      select 'org-v093', kind_id, 1, payload || '{"question": "Merge it?"}', refs, 'pr.gates',
+             'probe:prose'
+        from v093_card where kind_id = 'merge_approval'$$,
+  'a payload carrying an undeclared field — prose smuggled in as a fact — is refused',
+  'decision_items_payload_conforms');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_items (organization_id, kind_id, kind_version, payload, refs,
+                                         emitted_by, source_ref)
+      select 'org-v093', kind_id, 1, jsonb_set(payload, '{matrix_state}', '"mostly fine"'), refs,
+             'pr.gates', 'probe:enum'
+        from v093_card where kind_id = 'merge_approval'$$,
+  'a fact outside its enum is refused', 'decision_items_payload_conforms');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_items (organization_id, kind_id, kind_version, payload, refs,
+                                         emitted_by, source_ref)
+      select 'org-v093', kind_id, 1, jsonb_set(payload, '{added}', '-1'), refs, 'pr.gates',
+             'probe:minimum'
+        from v093_card where kind_id = 'merge_approval'$$,
+  'a fact below its minimum is refused', 'decision_items_payload_conforms');
+
+select pg_temp.must_reject(
+  $$select ouroboros.decision_item_emit('org-v093', kind_id, jsonb_set(payload, '{diff_lines}', '0'),
+                                        refs, 'guardrails', 'probe:emitted')
+      from v093_card where kind_id = 'protected_path_allow_once'$$,
+  'an emission whose payload fails its schema is rejected', 'decision_items_payload_conforms');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.decision_items where source_ref like 'probe:%'),
+  'and no rejected emission filed an item');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_items set payload = payload - 'claim'
+     where organization_id = 'org-v093' and kind_id = 'claim_waiver'$$,
+  'an update is held to the schema too', 'decision_items_payload_conforms');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_items (organization_id, kind_id, kind_version, payload, refs,
+                                         emitted_by, source_ref)
+      select 'org-v093', kind_id, 1, '[]', refs, 'pr.gates', 'probe:array'
+        from v093_card where kind_id = 'merge_approval'$$,
+  'a payload is an object', 'decision_items_payload_object');
+
+select pg_temp.must_raise(
+  $$select ouroboros.decision_item_emit('org-v093', 'plan_sign_off', '{}', '[]', 'workflows', 'probe:x')$$,
+  '23503', 'emitting a kind with no declaration is refused');
+
+-- --- typed refs ---------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$select ouroboros.decision_item_emit('org-v093', kind_id, payload,
+          '[{"type": "pr", "id": "a9370000-0000-0000-0000-00000000f514", "label": "PR #514"}]',
+          'pr.gates', 'probe:foreign-pr')
+      from v093_card where kind_id = 'claim_waiver'$$,
+  'a ref to another workspace''s PR does not resolve', 'decision_items_refs_resolve');
+
+select pg_temp.must_reject(
+  $$select ouroboros.decision_item_emit('org-v093', kind_id, payload,
+          '[{"type": "pr", "id": "a9370000-0000-0000-0000-000000000514", "label": "PR #514"},
+            {"type": "run", "id": "a9360000-0000-0000-0000-00000000dead", "label": "loop #9"}]',
+          'pr.gates', 'probe:no-run')
+      from v093_card where kind_id = 'claim_waiver'$$,
+  'a ref to a run that does not exist does not resolve', 'decision_items_refs_resolve');
+
+select pg_temp.must_reject(
+  $$select ouroboros.decision_item_emit('org-v093', kind_id, payload,
+          '[{"type": "pr", "id": "a9370000-0000-0000-0000-000000000514", "label": "PR #514"},
+            {"type": "ticket", "id": "a9330000-0000-0000-0000-00000000dead", "label": "issue #9"}]',
+          'pr.gates', 'probe:no-ticket')
+      from v093_card where kind_id = 'claim_waiver'$$,
+  'a ref to a ticket that does not exist does not resolve', 'decision_items_refs_resolve');
+
+select pg_temp.must_reject(
+  $$select ouroboros.decision_item_emit('org-v093', kind_id, payload,
+          '[{"type": "pr", "id": "https://github.com/decision-v093/helios-firmware/pull/514", "label": "PR #514"}]',
+          'pr.gates', 'probe:url')
+      from v093_card where kind_id = 'claim_waiver'$$,
+  'a provider URL is not a ref — refs are canonical ids', 'decision_items_refs_well_formed');
+
+select pg_temp.must_reject(
+  $$select ouroboros.decision_item_emit('org-v093', kind_id, payload,
+          refs || '[{"type": "commit", "id": "3f9c2ae", "label": "3f9c2ae"}]', 'pr.gates', 'probe:commit')
+      from v093_card where kind_id = 'claim_waiver'$$,
+  'a ref type outside run|pr|ticket|path is refused', 'decision_items_refs_well_formed');
+
+select pg_temp.must_reject(
+  $$select ouroboros.decision_item_emit('org-v093', kind_id, payload,
+          jsonb_set(refs, '{2,id}', '"../boot/rollback_flag.c"'), 'guardrails', 'probe:dotdot')
+      from v093_card where kind_id = 'protected_path_allow_once'$$,
+  'a path ref is repository-relative — no .. segment', 'decision_items_refs_well_formed');
+
+select pg_temp.must_reject(
+  $$select ouroboros.decision_item_emit('org-v093', kind_id, payload, refs || refs, 'pr.gates', 'probe:twice')
+      from v093_card where kind_id = 'claim_waiver'$$,
+  'a ref is listed once', 'decision_items_refs_well_formed');
+
+select pg_temp.must_reject(
+  $$select ouroboros.decision_item_emit('org-v093', kind_id, payload, refs - 1, 'pr.gates', 'probe:no-pr')
+      from v093_card where kind_id = 'merge_approval'$$,
+  'an item missing a ref its kind requires is refused', 'decision_items_ref_shape');
+
+select pg_temp.must_reject(
+  $$select ouroboros.decision_item_emit('org-v093', kind_id, payload,
+          refs || '[{"type": "path", "id": "boot/rollback_flag.c", "label": "boot/rollback_flag.c"}]',
+          'pr.gates', 'probe:extra-path')
+      from v093_card where kind_id = 'claim_waiver'$$,
+  'an item carrying a ref type its kind does not allow is refused', 'decision_items_ref_shape');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.decision_items
+    where refs @> '[{"type": "run", "id": "a9360000-0000-0000-0000-000000001851"}]')
+  and (select count(*) = 2 from ouroboros.decision_items
+        where refs @> '[{"type": "pr", "id": "a9370000-0000-0000-0000-000000000514"}]'),
+  'reverse lookup finds every item naming a run or a PR');
+
+-- --- versioning ---------------------------------------------------------------------
+-- Monday's kind gains an action and rewords its why; Friday's open item renders as it was filed.
+insert into ouroboros.decision_kinds
+  (kind_id, version, severity_default, question_template, why_template, payload_schema, actions,
+   resolution_semantics, ref_shape, escalation_window, merge_class, created_at)
+select kind_id, 2, severity_default, question_template,
+       'Policy {policy_label} asks a human. {checks_passed} of {checks_total} checks green.',
+       payload_schema,
+       actions || '[{"id": "request_changes", "label": "Request changes", "style": "danger",
+                     "required_role": "approver", "consequence_text": "Asks the loop for changes.",
+                     "takes_note": true, "handler_binding": "pr.request_changes"}]',
+       resolution_semantics, ref_shape, escalation_window, merge_class, now()
+  from ouroboros.decision_kinds where kind_id = 'merge_approval' and version = 1;
+
+select pg_temp.must_hold(
+  (select kind_version = 1
+      and why = 'Policy: anything labeled refactor needs a human. 14/14 checks green, verification matrix all ✓, +214 −180 across 6 files.'
+      and jsonb_array_length(actions) = 3
+     from ouroboros.decision_items_rendered
+    where organization_id = 'org-v093' and kind_id = 'merge_approval'),
+  'bumping a kind leaves an open item rendering at its pinned version — v1''s why and v1''s three actions');
+
+select ouroboros.decision_item_emit('org-v093', 'merge_approval', payload, refs, 'pr.gates',
+                                    'pr:a9370000-0000-0000-0000-000000000509:second-look')
+  from v093_card where kind_id = 'merge_approval';
+
+select pg_temp.must_hold(
+  (select version = 2 from ouroboros.decision_kinds_current where kind_id = 'merge_approval')
+  and (select kind_version = 2
+              and why = 'Policy refactor asks a human. 14 of 14 checks green.'
+              and jsonb_array_length(actions) = 4
+         from ouroboros.decision_items_rendered
+        where id = (select id from ouroboros.decision_items
+                     where source_ref = 'pr:a9370000-0000-0000-0000-000000000509:second-look')),
+  'a new emission pins the newest version and renders with it');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_items set kind_version = 2
+     where organization_id = 'org-v093' and kind_id = 'merge_approval' and kind_version = 1$$,
+  'an open item is never re-pinned to a newer version', 'decision_items_pinned');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_items set created_at = now() - interval '1 hour'
+     where organization_id = 'org-v093' and kind_id = 'claim_waiver'$$,
+  'and its age is never reset', 'decision_items_pinned');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_kinds set why_template = 'Rewritten.'
+     where kind_id = 'merge_approval' and version = 1$$,
+  'a declaration cannot be revised in place', 'decision_kinds_immutable');
+
+select pg_temp.must_reject(
+  $$delete from ouroboros.decision_kinds where kind_id = 'claim_waiver' and version = 1$$,
+  'a declaration cannot be deleted', 'decision_kinds_immutable');
+
+-- --- declarations: every rule refused when broken -------------------------------------
+-- A valid custom declaration, and a helper that inserts it with one thing changed.
+create function pg_temp.v093_declare(patch jsonb) returns void language sql as $$
+  insert into ouroboros.decision_kinds
+  select * from jsonb_populate_record(null::ouroboros.decision_kinds, jsonb_build_object(
+    'kind_id', 'custom:v093-probe', 'version', 1, 'severity_default', 'info',
+    'question_template', 'Review {count} things?',
+    'why_template', 'There are {count} things in {area}.',
+    'payload_schema', '{"type": "object", "additionalProperties": false, "required": ["count", "area"],
+                        "properties": {"count": {"type": "integer", "minimum": 0},
+                                       "area": {"type": "string", "maxLength": 40},
+                                       "note": {"type": "string"}}}'::jsonb,
+    'actions', '[{"id": "accept", "label": "Accept", "style": "primary", "required_role": "member",
+                  "consequence_text": "Accepts them.", "takes_note": false, "handler_binding": "probe.accept"},
+                 {"id": "look", "label": "Look →", "style": "ghost", "required_role": "viewer",
+                  "consequence_text": "Opens them.", "takes_note": false, "handler_binding": "navigate.probe"}]'::jsonb,
+    'resolution_semantics', '{"answered_by": ["accept"], "closes_source": [], "auto_resolvable": false}'::jsonb,
+    'ref_shape', '{"required": [], "optional": ["ticket"], "tags": ["{area}", "probe"]}'::jsonb,
+    'escalation_window', '30 minutes', 'merge_class', false, 'created_at', now()) || patch)
+$$;
+
+select pg_temp.must_reject($$select pg_temp.v093_declare('{"kind_id": "auto_approve"}')$$,
+  'a kind id outside the vocabulary is refused', 'decision_kinds_kind_id_known');
+select pg_temp.must_reject($$select pg_temp.v093_declare('{"kind_id": "custom:Night Freeze"}')$$,
+  'a custom kind id is a lower-case slug', 'decision_kinds_kind_id_known');
+select pg_temp.must_reject($$select pg_temp.v093_declare('{"severity_default": "critical"}')$$,
+  'a severity outside err|warn|info is refused', 'decision_kinds_severity_default');
+select pg_temp.must_reject($$select pg_temp.v093_declare('{"question_template": "  "}')$$,
+  'a question is never blank', 'decision_kinds_question_present');
+select pg_temp.must_reject($$select pg_temp.v093_declare('{"question_template": "Review {total} things?"}')$$,
+  'a question slot names a declared fact', 'decision_kinds_question_slotted');
+select pg_temp.must_reject($$select pg_temp.v093_declare('{"why_template": "Because {note}."}')$$,
+  'a why slot names a required fact — an optional one could render a hole', 'decision_kinds_why_slotted');
+select pg_temp.must_reject($$select pg_temp.v093_declare('{"why_template": "There are {count} things {"}')$$,
+  'a stray brace is not a template', 'decision_kinds_why_slotted');
+select pg_temp.must_reject(
+  $$select pg_temp.v093_declare(jsonb_build_object('payload_schema',
+      '{"type": "object", "additionalProperties": false, "required": ["count", "area"],
+        "properties": {"count": {"type": "integer"}, "area": {"type": "string", "format": "uri"}}}'::jsonb))$$,
+  'a JSON Schema keyword the validator does not enforce is refused, not ignored',
+  'decision_kinds_payload_schema_supported');
+select pg_temp.must_reject(
+  $$select pg_temp.v093_declare(jsonb_build_object('payload_schema',
+      '{"type": "object", "additionalProperties": true, "required": ["count", "area"],
+        "properties": {"count": {"type": "integer"}, "area": {"type": "string"}}}'::jsonb))$$,
+  'a payload schema is closed — facts only', 'decision_kinds_payload_schema_supported');
+select pg_temp.must_reject(
+  $$select pg_temp.v093_declare(jsonb_build_object('actions',
+      '[{"id": "accept", "label": "Accept", "style": "loud", "required_role": "member",
+         "consequence_text": "Accepts them.", "takes_note": false, "handler_binding": "probe.accept"}]'::jsonb))$$,
+  'an action style outside primary|ghost|danger is refused', 'decision_kinds_actions_valid');
+select pg_temp.must_reject(
+  $$select pg_temp.v093_declare(jsonb_build_object('actions',
+      '[{"id": "accept", "label": "Accept", "style": "primary", "required_role": "member",
+         "consequence_text": "Accepts them.", "takes_note": false, "handler_binding": "probe.accept"},
+        {"id": "accept", "label": "Again", "style": "ghost", "required_role": "member",
+         "consequence_text": "Accepts them.", "takes_note": false, "handler_binding": "probe.accept"}]'::jsonb))$$,
+  'action ids are unique', 'decision_kinds_actions_valid');
+select pg_temp.must_reject(
+  $$select pg_temp.v093_declare(jsonb_build_object('actions',
+      '[{"id": "accept", "label": "Accept", "style": "primary", "required_role": "member",
+         "consequence_text": "Accepts them.", "takes_note": false, "handler_binding": "probe.accept"},
+        {"id": "also", "label": "Also", "style": "primary", "required_role": "member",
+         "consequence_text": "Accepts them.", "takes_note": false, "handler_binding": "probe.also"}]'::jsonb))$$,
+  'a row has at most one primary action', 'decision_kinds_actions_valid');
+select pg_temp.must_reject(
+  $$select pg_temp.v093_declare(jsonb_build_object('actions',
+      '[{"id": "accept", "label": "Accept", "style": "primary", "required_role": "member",
+         "consequence_text": "Accepts them.", "takes_note": false}]'::jsonb))$$,
+  'an action carries all seven fields', 'decision_kinds_actions_valid');
+select pg_temp.must_reject(
+  $$select pg_temp.v093_declare(jsonb_build_object('actions',
+      '[{"id": "accept", "label": "Accept", "style": "primary", "required_role": "member",
+         "consequence_text": "Accepts them.", "takes_note": false, "handler_binding": "probe.accept"},
+        {"id": "look", "label": "Look →", "style": "ghost", "required_role": "viewer",
+         "consequence_text": "Opens them.", "takes_note": true, "handler_binding": "navigate.probe"}]'::jsonb))$$,
+  'a link takes no note', 'decision_kinds_actions_valid');
+select pg_temp.must_reject(
+  $$select pg_temp.v093_declare('{"resolution_semantics": {"answered_by": ["look"], "closes_source": [], "auto_resolvable": false}}')$$,
+  'a link cannot answer an item', 'decision_kinds_resolution_valid');
+select pg_temp.must_reject(
+  $$select pg_temp.v093_declare('{"resolution_semantics": {"answered_by": ["accept"], "closes_source": ["reject"], "auto_resolvable": false}}')$$,
+  'what closes the source is one of the answers', 'decision_kinds_resolution_valid');
+select pg_temp.must_reject(
+  $$select pg_temp.v093_declare('{"resolution_semantics": {"answered_by": [], "closes_source": [], "auto_resolvable": true}}')$$,
+  'something answers every kind', 'decision_kinds_resolution_valid');
+select pg_temp.must_reject(
+  $$select pg_temp.v093_declare('{"ref_shape": {"required": ["commit"], "optional": [], "tags": []}}')$$,
+  'a ref shape names run|pr|ticket|path only', 'decision_kinds_ref_shape_valid');
+select pg_temp.must_reject(
+  $$select pg_temp.v093_declare('{"ref_shape": {"required": ["run"], "optional": ["run"], "tags": []}}')$$,
+  'a ref type is required or optional, not both', 'decision_kinds_ref_shape_valid');
+select pg_temp.must_reject(
+  $$select pg_temp.v093_declare('{"ref_shape": {"required": [], "optional": [], "tags": ["{label}"]}}')$$,
+  'a tag slot names a required fact', 'decision_kinds_ref_shape_valid');
+select pg_temp.must_reject($$select pg_temp.v093_declare('{"escalation_window": "0 minutes"}')$$,
+  'an escalation window is positive', 'decision_kinds_escalation_window_positive');
+select pg_temp.must_reject($$select pg_temp.v093_declare('{"version": 2}')$$,
+  'a kind''s first declaration is v1', 'decision_kinds_next_version');
+
+select pg_temp.v093_declare('{}');
+
+select pg_temp.must_hold(
+  (select array_agg(tag) = array['triage', 'probe'] from unnest(
+     (select tags from (select array(select ouroboros.decision_template_render(g, '{"count": 2, "area": "triage"}')
+                                     from jsonb_array_elements_text(ref_shape -> 'tags') g) as tags
+                          from ouroboros.decision_kinds where kind_id = 'custom:v093-probe') t)) tag),
+  'a custom:* kind registers with no schema change, its tags a slot and a literal');
+
+select pg_temp.must_reject($$select pg_temp.v093_declare('{"version": 3}')$$,
+  'declarations are dense — the next is exactly one above the highest', 'decision_kinds_next_version');
+select pg_temp.must_reject($$select pg_temp.v093_declare('{"version": 1}')$$,
+  'a kind version is declared once', 'decision_kinds_next_version');
+
+-- --- merge-class and auto-resolvability --------------------------------------------------
+select pg_temp.must_reject(
+  $$select pg_temp.v093_declare('{"version": 2, "resolution_semantics": {"answered_by": ["accept"], "closes_source": [], "auto_resolvable": true}}')$$,
+  'a kind marked non-auto-resolvable cannot be flagged auto-resolvable by a later version',
+  'decision_kinds_no_loosening');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_kinds
+      (kind_id, version, severity_default, question_template, why_template, payload_schema,
+       actions, resolution_semantics, ref_shape, merge_class)
+    select kind_id, 3, severity_default, question_template, why_template, payload_schema,
+           actions, resolution_semantics, ref_shape, false
+      from ouroboros.decision_kinds where kind_id = 'merge_approval' and version = 2$$,
+  'merge_approval cannot shed merge-class in a later version', 'decision_kinds_no_loosening');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v093_declare('{"kind_id": "custom:v093-merge", "merge_class": true,
+      "resolution_semantics": {"answered_by": ["accept"], "closes_source": [], "auto_resolvable": true}}')$$,
+  'a merge-class kind is never auto-resolvable', 'decision_kinds_merge_class_not_auto_resolvable');
+
+-- The no-loosening trigger fires ahead of the CHECKs; with it switched off for one statement
+-- (rolled back with the refusal), the constraint underneath is asked on its own.
+select pg_temp.must_reject(
+  $q$do $probe$ begin
+      alter table ouroboros.decision_kinds disable trigger decision_kinds_no_loosening;
+      insert into ouroboros.decision_kinds
+        (kind_id, version, severity_default, question_template, why_template, payload_schema,
+         actions, resolution_semantics, ref_shape, merge_class)
+      select kind_id, 3, severity_default, question_template, why_template, payload_schema,
+             actions, resolution_semantics, ref_shape, false
+        from ouroboros.decision_kinds where kind_id = 'merge_approval' and version = 2;
+    end $probe$$q$,
+  'merge_approval is always merge-class — a constraint, not a convention',
+  'decision_kinds_merge_approval_is_merge_class');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from pg_trigger
+    where tgname = 'decision_kinds_no_loosening' and tgenabled = 'O'
+      and tgrelid = 'ouroboros.decision_kinds'::regclass),
+  'and the trigger is back on');
+
+-- --- items: the vocabularies ------------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.decision_items set status = 'dismissed'
+     where organization_id = 'org-v093' and kind_id = 'claim_waiver'$$,
+  'a status outside open|snoozed|resolved|expired is refused', 'decision_items_status');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_items set severity = 'critical'
+     where organization_id = 'org-v093' and kind_id = 'claim_waiver'$$,
+  'an item severity outside err|warn|info is refused', 'decision_items_severity');
+
+select ouroboros.decision_item_emit('org-v093', 'claim_waiver', payload, refs, 'pr.gates',
+                                    'pr:a9370000-0000-0000-0000-000000000514:criterion:info', 'info')
+  from v093_card where kind_id = 'claim_waiver';
+
+select pg_temp.must_hold(
+  exists (select 1 from ouroboros.decision_items
+           where source_ref = 'pr:a9370000-0000-0000-0000-000000000514:criterion:info'
+             and severity = 'info'),
+  'severity defaults from the kind and is overridable per item');
+
+select pg_temp.must_reject(
+  $$select ouroboros.decision_item_emit('org-v093', kind_id, payload, refs, 'pr:gates', 'x')
+      from v093_card where kind_id = 'claim_waiver'$$,
+  'a plane identifier has no colon, so plane:source_ref is unambiguous', 'decision_items_emitted_by_plane');
+
+select pg_temp.must_reject(
+  $$select ouroboros.decision_item_emit('org-v093', kind_id, payload, refs, 'pr.gates', ' ')
+      from v093_card where kind_id = 'claim_waiver'$$,
+  'a source ref is never blank', 'decision_items_source_ref_present');
+
+-- --- the queue, the pill and the reverse lookup are index reads ---------------------------
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select id from ouroboros.decision_items
+     where organization_id = 'org-v093' and status in ('open', 'snoozed')
+     order by status, created_at desc$$,
+  'decision_items_queue_idx');
+
+select pg_temp.must_use_index(
+  $$select count(*) from ouroboros.decision_items
+     where organization_id = 'org-v093' and status in ('open')$$,
+  'decision_items_open_idx');
+
+select pg_temp.must_use_index(
+  $$select id from ouroboros.decision_items
+     where refs @> '[{"type": "pr", "id": "a9370000-0000-0000-0000-000000000514"}]'$$,
+  'decision_items_refs_idx');
+
+reset enable_seqscan;
+
+-- --- the service role files an item whose refs it could not read itself ------------------
+select pg_temp.must_hold(
+  not has_table_privilege('ouroboros_app', 'ouroboros.runs', 'select')
+  and has_function_privilege('ouroboros_app', 'ouroboros.decision_ref_resolves(text, jsonb)', 'execute')
+  and not has_function_privilege('public', 'ouroboros.decision_ref_resolves(text, jsonb)', 'execute')
+  and (select prosecdef and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+         from pg_proc where oid = 'ouroboros.decision_ref_resolves(text, jsonb)'::regprocedure),
+  'the ref resolver runs as its owner with its search_path pinned, executable by the service only');
+
+-- The card table is pg_temp's, so it is the owner's: the service may read it for this section.
+grant select on v093_card to ouroboros_app;
+
+set local role ouroboros_app;
+
+select pg_temp.must_hold(
+  (select ouroboros.decision_item_emit('org-v093', c.kind_id, c.payload, c.refs, 'guardrails',
+                                       'run:a9360000-0000-0000-0000-000000001843:path:boot/rollback_flag.c')
+     from v093_card c where c.kind_id = 'protected_path_allow_once') is not null,
+  'the service role files an item whose run and ticket refs it cannot select');
+
+select pg_temp.must_reject(
+  $$select ouroboros.decision_item_emit('org-v093', kind_id, jsonb_set(payload, '{diff_lines}', '"3"'),
+                                        refs, 'guardrails', 'probe:as-app')
+      from v093_card where kind_id = 'protected_path_allow_once'$$,
+  'and is held to the payload schema as the service', 'decision_items_payload_conforms');
+
+reset role;
+
+-- --- a deleted workspace takes its inbox with it ---------------------------------------
+delete from ouroboros.organization where "id" in ('org-v093', 'org-v093-other');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.decision_items where organization_id in ('org-v093', 'org-v093-other')),
+  'a deleted (or purged) workspace takes its decision items with it');
+
+drop table v093_card;
+drop table v093_first;
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

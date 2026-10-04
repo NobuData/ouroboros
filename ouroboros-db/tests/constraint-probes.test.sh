@@ -391,4 +391,14 @@ check_contains "$WORKFLOW" 'verify-constraint-probes.sh' \
 check_contains "$WORKFLOW" 'registry-invariants.sql' \
   'and runs the registry probes against the seeded database'
 
+# BM.1 (#457): the decision refs are asked of the seeded universe by a suite of their own, which
+# must own and roll back its transaction — ci/db runs it against the seeded database it then
+# re-checks with seed.sql.
+check_contains "$TEST_DIR/decision-refs.sql" 'ir lib/assert\.sql' \
+  'the decision-refs suite brings the assertion helpers with it'
+check_contains "$TEST_DIR/decision-refs.sql" '^rollback;' \
+  'and rolls back what it files'
+check_contains "$WORKFLOW" '/tests/decision-refs\.sql' \
+  'and ci/db runs it against the seeded database'
+
 check_summary

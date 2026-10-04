@@ -538,6 +538,21 @@ jobs:
       - name: Assert the change-point analyzer rediscovers the seeded findings
         run: OURO_DB_NAME="$SEED_DB_NAME" ouroboros-db/tests/verify-analyzer-rediscovery.sh --runner docker
 
+      # BM.1 (#457): *"typed refs resolve against runs, PRs, tickets and paths in the seeded
+      # universe"*. constraints.sql proves the decision refs against fixtures of its own; this asks
+      # the criterion of the seeded rows — loop #1847, PR #514, canonical #482 and a file that loop
+      # changed — and that none of them resolves from another seeded workspace. It files its items
+      # inside a transaction it rolls back, and the registry step below re-runs seed.sql against
+      # this database to say so.
+      - name: Assert decision refs resolve against the seeded universe
+        run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            --volume "$PWD/ouroboros-db/tests:/tests:ro" \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
+              -v ON_ERROR_STOP=1 -f /tests/decision-refs.sql
+
       # CG.5's third acceptance criterion (#583): *"probes run against the seeded database
       # from #582 without mutating it"*. The registry rules are asserted twice, and this is
       # the second time — the first is inside constraints.sql two steps up, which includes

@@ -540,6 +540,42 @@
 #   a publish-created handle reads unanswered    rewrite org_policies_effective to V075's
 #                                                  row-existence is_explicit
 #
+# #457 (BM.1, V093) adds the decision domain — versioned kind declarations and the typed items
+# filed against them. One probe per rule the inbox's truthfulness rests on:
+#
+#   V093 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   a declaration is never revised or deleted    drop decision_kinds_immutable
+#   declarations are dense from v1 per kind      drop decision_kinds_next_version
+#   no later version loosens auto-resolvability  drop decision_kinds_no_loosening
+#   a merge-class kind is never auto-resolvable  drop decision_kinds_merge_class_not_auto_resolvable
+#   merge_approval is always merge-class         drop decision_kinds_merge_approval_is_merge_class
+#   kind ids are the vocabulary or custom:<slug> drop decision_kinds_kind_id_known
+#   severity defaults are err|warn|info          drop decision_kinds_severity_default
+#   payload schemas use only enforced keywords   drop decision_kinds_payload_schema_supported
+#   question slots name declared facts           drop decision_kinds_question_slotted
+#   why slots name required facts                drop decision_kinds_why_slotted
+#   the action row is well formed                drop decision_kinds_actions_valid
+#   a link never answers; closes ⊆ answers       drop decision_kinds_resolution_valid
+#   ref shapes name run|pr|ticket|path           drop decision_kinds_ref_shape_valid
+#   a payload conforms at write time             drop decision_items_payload_conforms
+#   (plane, source_ref) is unique per workspace  drop decision_items_idempotency_key
+#   a repeat after an answer changes nothing     rewrite decision_item_emit() to refresh any status
+#   refs resolve in the item's own workspace     drop decision_items_refs_resolve
+#     (and the resolver checks the workspace)    rewrite decision_ref_resolves() without it
+#   the resolver runs as its owner (the closed   alter decision_ref_resolves() security invoker
+#     list of definer functions names it)
+#   refs carry what their kind requires          drop decision_items_ref_shape
+#   refs are canonical ids, never URLs           drop decision_items_refs_well_formed
+#   an item never re-pins or resets its age      drop decision_items_pinned
+#   items render at their pinned version         rewrite decision_items_rendered over the
+#                                                  newest version
+#   status and severity vocabularies             drop decision_items_status
+#                                                drop decision_items_severity
+#   the queue, pill and reverse lookup indexes   drop decision_items_queue_idx
+#                                                drop decision_items_open_idx
+#                                                drop decision_items_refs_idx
+#
 # #409 (BE.5) seeds mockup 14 and adds a probe per `ci/db` scope bullet the BE.1–BE.3 rows above
 # leave unwatched — each one a *subtler* loss than dropping the rule outright:
 #
@@ -2264,6 +2300,161 @@ expect_red 'a handle a publish created reads as a dry-run answer' \
           p.updated_by
      from ouroboros.organization o
      left join ouroboros.org_policies p on p.organization_id = o."id";'
+
+
+expect_red 'a decision declaration may be revised' \
+  'a declaration cannot be revised in place' \
+  'drop trigger decision_kinds_immutable on ouroboros.decision_kinds;'
+
+expect_red 'a decision kind may skip or repeat a version' \
+  'first declaration is v1' \
+  'drop trigger decision_kinds_next_version on ouroboros.decision_kinds;'
+
+expect_red 'a later declaration may make a kind auto-resolvable' \
+  'cannot be flagged auto-resolvable' \
+  'drop trigger decision_kinds_no_loosening on ouroboros.decision_kinds;'
+
+expect_red 'a merge-class kind may be auto-resolvable' \
+  'a merge-class kind is never auto-resolvable' \
+  'alter table ouroboros.decision_kinds drop constraint decision_kinds_merge_class_not_auto_resolvable;'
+
+expect_red 'merge_approval may shed merge-class' \
+  'merge_approval is always merge-class' \
+  'alter table ouroboros.decision_kinds drop constraint decision_kinds_merge_approval_is_merge_class;'
+
+expect_red 'a decision kind id may be anything' \
+  'a kind id outside the vocabulary is refused' \
+  'alter table ouroboros.decision_kinds drop constraint decision_kinds_kind_id_known;'
+
+expect_red 'a decision kind severity may be anything' \
+  'a severity outside err' \
+  'alter table ouroboros.decision_kinds drop constraint decision_kinds_severity_default;'
+
+expect_red 'a payload schema may use a keyword nothing enforces' \
+  'the validator does not enforce is refused' \
+  'alter table ouroboros.decision_kinds drop constraint decision_kinds_payload_schema_supported;'
+
+expect_red 'a question slot may name no fact' \
+  'a question slot names a declared fact' \
+  'alter table ouroboros.decision_kinds drop constraint decision_kinds_question_slotted;'
+
+expect_red 'a why slot may name an optional fact' \
+  'a why slot names a required fact' \
+  'alter table ouroboros.decision_kinds drop constraint decision_kinds_why_slotted;'
+
+expect_red 'a decision action row may be any shape' \
+  'an action style outside primary' \
+  'alter table ouroboros.decision_kinds drop constraint decision_kinds_actions_valid;'
+
+expect_red 'a link may answer a decision' \
+  'a link cannot answer an item' \
+  'alter table ouroboros.decision_kinds drop constraint decision_kinds_resolution_valid;'
+
+expect_red 'a ref shape may name any type' \
+  'a ref shape names run' \
+  'alter table ouroboros.decision_kinds drop constraint decision_kinds_ref_shape_valid;'
+
+expect_red 'a decision payload may break its schema' \
+  'a count written as a string is refused at write time' \
+  'drop trigger decision_items_payload_conforms on ouroboros.decision_items;'
+
+expect_red 'an emitter may double-file' \
+  'is unique per workspace' \
+  'alter table ouroboros.decision_items drop constraint decision_items_idempotency_key;'
+
+expect_red 'a repeat emission may rewrite an answered item' \
+  'a repeat after the item was answered changes nothing' \
+  'create or replace function ouroboros.decision_item_emit(
+     p_organization_id text, p_kind_id text, p_payload jsonb, p_refs jsonb,
+     p_emitted_by text, p_source_ref text, p_severity text default null)
+   returns uuid language plpgsql as $$
+   declare pinned integer; item_id uuid;
+   begin
+     select version into pinned from ouroboros.decision_kinds_current where kind_id = p_kind_id;
+     if pinned is null then
+       raise exception $m$no such kind$m$ using errcode = $m$foreign_key_violation$m$;
+     end if;
+     insert into ouroboros.decision_items
+       (organization_id, kind_id, kind_version, payload, severity, refs, emitted_by, source_ref)
+     values (p_organization_id, p_kind_id, pinned, p_payload, p_severity, p_refs, p_emitted_by, p_source_ref)
+     on conflict (organization_id, idempotency_key) do update
+        set payload = excluded.payload, refs = excluded.refs
+     returning id into item_id;
+     return item_id;
+   end;
+   $$;'
+
+expect_red 'a decision ref may name another workspace' \
+  'does not resolve' \
+  'drop trigger decision_items_refs_resolve on ouroboros.decision_items;'
+
+expect_red 'the decision ref resolver may forget the workspace' \
+  'another workspace' \
+  'create or replace function ouroboros.decision_ref_resolves(p_organization_id text, p_ref jsonb)
+   returns boolean language sql stable security definer
+   set search_path = pg_catalog, ouroboros, pg_temp as $$
+     select case
+              when not ouroboros.decision_refs_well_formed(jsonb_build_array(p_ref)) then false
+              when p_ref ->> $m$type$m$ = $m$run$m$ then exists (
+                select 1 from ouroboros.runs r where r.id = (p_ref ->> $m$id$m$)::uuid)
+              when p_ref ->> $m$type$m$ = $m$pr$m$ then exists (
+                select 1 from ouroboros.pull_requests p where p.id = (p_ref ->> $m$id$m$)::uuid)
+              when p_ref ->> $m$type$m$ = $m$ticket$m$ then exists (
+                select 1 from ouroboros.tickets t where t.id = (p_ref ->> $m$id$m$)::uuid)
+              when p_ref ->> $m$type$m$ = $m$path$m$ then true
+              else false
+            end
+   $$;'
+
+expect_red 'the decision ref resolver may run as the caller' \
+  'decision ref resolver are the only functions' \
+  'alter function ouroboros.decision_ref_resolves(text, jsonb) security invoker;'
+
+expect_red 'a decision item may miss a ref its kind requires' \
+  'missing a ref its kind requires' \
+  'drop trigger decision_items_ref_shape on ouroboros.decision_items;'
+
+expect_red 'a decision ref may be a provider URL' \
+  'a provider URL is not a ref' \
+  'alter table ouroboros.decision_items drop constraint decision_items_refs_well_formed;'
+
+expect_red 'a decision item may be re-pinned' \
+  'never re-pinned to a newer version' \
+  'drop trigger decision_items_pinned on ouroboros.decision_items;'
+
+expect_red 'a decision item may render at the newest version' \
+  'leaves an open item rendering at its pinned version' \
+  'create or replace view ouroboros.decision_items_rendered with (security_invoker = true) as
+   select i.id, i.organization_id, i.kind_id, i.kind_version, i.severity, i.status,
+          ouroboros.decision_template_render(k.question_template, i.payload) as question,
+          ouroboros.decision_template_render(k.why_template, i.payload) as why,
+          i.refs,
+          array(select ouroboros.decision_template_render(g.tag, i.payload)
+                  from jsonb_array_elements_text(k.ref_shape -> $m$tags$m$) with ordinality as g(tag, ord)
+                 order by g.ord) as tags,
+          k.actions, k.merge_class, i.created_at, i.updated_at
+     from ouroboros.decision_items i
+     join ouroboros.decision_kinds_current k on k.kind_id = i.kind_id;'
+
+expect_red 'a decision item status may be anything' \
+  'a status outside open' \
+  'alter table ouroboros.decision_items drop constraint decision_items_status;'
+
+expect_red 'a decision item severity may be anything' \
+  'an item severity outside err' \
+  'alter table ouroboros.decision_items drop constraint decision_items_severity;'
+
+expect_red 'the decision queue has no index' \
+  'did not use index decision_items_queue_idx' \
+  'drop index ouroboros.decision_items_queue_idx;'
+
+expect_red 'the needs-you pill count has no index' \
+  'did not use index decision_items_open_idx' \
+  'drop index ouroboros.decision_items_open_idx;'
+
+expect_red 'a decision reverse lookup has no index' \
+  'did not use index decision_items_refs_idx' \
+  'drop index ouroboros.decision_items_refs_idx;'
 
 
 printf '\n'

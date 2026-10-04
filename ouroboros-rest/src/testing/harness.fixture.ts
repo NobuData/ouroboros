@@ -228,8 +228,18 @@ const HISTORY_TABLE = "flyway_schema_history";
  * `intervention_cause_rules` (V079) is the intervention-cause mapping, likewise shipped and
  * select-only: emptied, every later intervention hook would refuse for a missing residue rule
  * (BI.3, #434). `intervention_events` references it and is still emptied.
+ *
+ * `decision_kinds` (V093) ships the inbox's kind declarations and is immutable — a trigger refuses
+ * every update and delete — so a suite cannot put the shipped versions back once emptied, and every
+ * later emission would refuse for a missing kind (BM.1, #457). `decision_items` references it and is
+ * still emptied. A kind a suite declares stays for the run: declare it under a `custom:` id of its own.
  */
-const REFERENCE_TABLES = ["flake_score_formulas", "metric_definitions", "intervention_cause_rules"];
+const REFERENCE_TABLES = [
+  "flake_score_formulas",
+  "metric_definitions",
+  "intervention_cause_rules",
+  "decision_kinds",
+];
 
 export class ApiHarness {
   /** Every table {@link truncate} empties, discovered once and remembered. */
