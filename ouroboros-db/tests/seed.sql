@@ -5253,12 +5253,15 @@ select pg_temp.must_hold(
     where policy.organization_id = '5eed0049-0000-4000-8000-000000000001'),
   'dry-run is on in the onboarding workspace — the onboarding default, with nobody''s name on it');
 
+-- acme-robotics holds a policy handle since #484 seeded its published versions, but a handle a
+-- publish created answers nothing about dry-run (V092: `dry_run` null), so it still reads off.
 select pg_temp.must_hold(
-  (select count(*) = 1 from ouroboros.org_policies where organization_id like '5eed%')
+  (select count(*) = 1 from ouroboros.org_policies
+    where organization_id like '5eed%' and dry_run is not null)
   and (select not policy.dry_run and not policy.is_explicit
          from ouroboros.org_policies_effective policy
         where policy.organization_id = '5eed0001-0000-4000-8000-000000000001'),
-  'acme-robotics has no policy row and reads dry-run off, so the merges its PR seed arms are not refused');
+  'acme-robotics has never answered dry-run and reads it off, so the merges its PR seed arms are not refused');
 
 -- --- #488 is the intake seed's #488 ------------------------------------------------------------------
 --
@@ -6555,6 +6558,194 @@ select pg_temp.must_hold(
      from ouroboros.analyzer_calibration_history h
     where h.analyzer = 'cache_window' and h.impact_class = 'duration_delta'),
   'the analyzer revised its cache model: 1 → 0.6545, citing the measurement that moved it');
+
+-- ===========================================================================
+-- R__dev_seed_workspace_settings.sql — mockup 17's Settings page (#484, BQ.5)
+-- ===========================================================================
+--
+-- Every card is asserted as the page would read it: the counts and ticks are computed here from
+-- the rows (*Webhooks · 2 active*, *Stream to SIEM ✓*, the lock on PagerDuty), never read from a
+-- stored literal, and every audit line's subject is required to exist. Times are checked against
+-- the seed's own clock — the service key's *41s* is the one stamp written as `now()` minus a
+-- constant, so `last_used_at + 41 s` is the moment the file ran, and Flyway runs a file in one
+-- transaction, so every `now()` in it is that moment.
+
+create temporary view settings_seed_clock as
+  select token.last_used_at + interval '41 seconds' as seeded_at
+    from ouroboros.service_tokens token
+   where token.id = '5eed0072-0000-4000-8000-000000000001';
+
+-- --- autonomy policies: policy v7, and a v6 one rule away --------------------------------------
+select pg_temp.must_hold(
+  (select handle.current_version = 7
+          and (select array_agg(v.version order by v.version) = array[1, 2, 3, 4, 5, 6, 7]
+                 from ouroboros.org_policy_versions v
+                where v.organization_id = handle.organization_id)
+     from ouroboros.org_policies handle
+    where handle.organization_id = '5eed0001-0000-4000-8000-000000000001'),
+  'acme-robotics is at policy v7, with a dense history v1 … v7 behind it');
+
+select pg_temp.must_hold(
+  (select array_agg(rule order by rule) = array['auto_merge']
+     from ouroboros.org_policy_versions v6
+     join ouroboros.org_policy_versions v7
+       on v7.organization_id = v6.organization_id and v7.version = 7
+     cross join lateral jsonb_object_keys(v7.document) rule
+    where v6.organization_id = '5eed0001-0000-4000-8000-000000000001' and v6.version = 6
+      and v6.document -> rule is distinct from v7.document -> rule)
+  and (select (v6.document #> '{auto_merge,enabled}') = 'false'
+              and (v7.document #> '{auto_merge,enabled}') = 'true'
+              and v6.document #> '{auto_merge,conditions}' = v7.document #> '{auto_merge,conditions}'
+         from ouroboros.org_policy_versions v6
+         join ouroboros.org_policy_versions v7
+           on v7.organization_id = v6.organization_id and v7.version = 7
+        where v6.organization_id = '5eed0001-0000-4000-8000-000000000001' and v6.version = 6),
+  'the history popover diffs v6 → v7 as one rule: auto-merge switched on, its conditions unchanged');
+
+select pg_temp.must_hold(
+  (select v7.document = '{"auto_merge":        {"enabled": true, "conditions": {"all": [{"effort_lte": "m"}, {"not": {"label": "refactor"}}]}},
+                          "human_review":      {"enabled": true, "conditions": {"any": [{"label": "refactor"}, {"effort_gte": "l"}]}},
+                          "protected_paths":   {"enabled": true, "conditions": {"path_globs": ["boot/**", "keys/**", ".github/**"]}},
+                          "spend_guard":       {"enabled": true, "conditions": {"per_run_cap_cents": 250, "monthly_cap_cents": 60000}},
+                          "dry_run_new_repos": {"enabled": true, "conditions": {"first_n_loops": 10}}}'::jsonb
+     from ouroboros.org_policy_versions v7
+    where v7.organization_id = '5eed0001-0000-4000-8000-000000000001' and v7.version = 7),
+  'policy v7 carries the five mockup rules with their exact terms — effort ≤ M non-refactor, label:refactor OR effort ≥ L, boot/ keys/ .github/, $2.50/run and $600/provider, first 10 loops');
+
+select pg_temp.must_hold(
+  (select person."email" = 'ken@acme-robotics.dev' and v7.change_note = 'Enable auto-merge'
+          and event.occurred_at = v7.published_at and event.actor_id = v7.published_by
+          and event.detail = '{"version": 7, "rule": "auto_merge", "change": "enabled"}'::jsonb
+     from ouroboros.org_policy_versions v7
+     join ouroboros."user" person on person."id" = v7.published_by
+     join ouroboros.audit_events event on event.id = '5eed0074-0000-4000-8000-000000000003'
+    where v7.organization_id = '5eed0001-0000-4000-8000-000000000001' and v7.version = 7),
+  'Ken published v7, and the audit line "Ken enabled auto-merge (policy v7)" is that publish — same person, same moment');
+
+-- --- members: the five row classes ---------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(person."email" || ':' || m."role" || ':'
+                    || coalesce(cap.can_approve_loops::text, 'default') order by m."role" desc)
+          = array['ken@acme-robotics.dev:owner:default',
+                  'jorge@acme-robotics.dev:member:default',
+                  'maya@acme-robotics.dev:admin:true']
+     from ouroboros.member m
+     join ouroboros."user" person on person."id" = m."userId"
+     left join ouroboros.member_capabilities cap on cap.member_id = m."id"
+    where m."organizationId" = '5eed0001-0000-4000-8000-000000000001'
+      and person."email" like '%@acme-robotics.dev'),
+  'the people: Ken the owner, Maya admin (Maintainer) with approve ✓ written down, Jorge a member (Viewer) on the role default');
+
+select pg_temp.must_hold(
+  (select account.name = 'devops-bot' and account.scopes = '["api.read", "farm.submit"]'::jsonb
+          and account.disabled_at is null
+          and (select count(*) = 1 from ouroboros.service_tokens t
+                where t.service_account_id = account.id and t.revoked_at is null)
+     from ouroboros.service_accounts account
+    where account.organization_id = '5eed0001-0000-4000-8000-000000000001'),
+  'the Service row: devops-bot, the only service account, holding one live key');
+
+select pg_temp.must_hold(
+  (select invite."email" = 'priya@acme.dev' and invite."role" = 'admin' and invite."status" = 'pending'
+          and invite."createdAt" = clock.seeded_at - interval '2 hours'
+          and invite."expiresAt" > invite."createdAt"
+          and not exists (select 1 from ouroboros."user" u where u."email" = 'priya@acme.dev')
+     from ouroboros.invitation invite, settings_seed_clock clock
+    where invite."organizationId" = '5eed0001-0000-4000-8000-000000000001'),
+  'the dimmed row: priya@acme.dev, a pending Maintainer invitation sent two hours before the seed ran, nobody yet');
+
+-- --- the audit card: today's five lines, in the shared universe ------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(event.action || ':' || case when event.actor_id is not null then 'human'
+                                                when event.actor_service is not null then 'bot'
+                                                else 'system' end
+                    order by event.id)
+          = array['pr_revision.pushed:bot', 'provider.rotated:human', 'policy.published:human',
+                  'triage.waived:human', 'runner.marked_offline:system']
+     from ouroboros.audit_events event
+    where event.id::text like '5eed0074-%'),
+  'five audit lines — push, rotation, policy, waiver, runner offline — across all three actor kinds: human, bot and system');
+
+select pg_temp.must_hold(
+  (select count(*) = 5 from ouroboros.audit_events event
+     left join ouroboros.pr_revisions rev
+       on event.subject_type = 'pr_revision' and rev.id::text = event.subject_id
+      and rev.pushed_at = event.occurred_at and rev.revision_seq = 2
+     left join ouroboros.pull_requests pr on pr.id = rev.pr_id and pr.external_number = 514
+     left join ouroboros.provider_connections conn
+       on event.subject_type = 'provider_connection' and conn.id::text = event.subject_id
+      and conn.organization_id = event.organization_id and conn.kind = 'anthropic'
+     left join ouroboros.org_policy_versions v7
+       on event.subject_type = 'org_policy' and v7.organization_id = event.subject_id and v7.version = 7
+     left join ouroboros.runs run
+       on event.subject_type = 'run' and run.id::text = event.subject_id
+      and run.organization_id = event.organization_id and run.pr_number = 509
+     left join ouroboros.runners runner
+       on event.subject_type = 'runner' and runner.id::text = event.subject_id
+      and runner.organization_id = event.organization_id and runner.name = 'forge-03'
+      and runner.status = 'offline' and event.occurred_at > runner.last_seen_at
+    where event.id::text like '5eed0074-%'
+      and coalesce(pr.id::text, conn.id::text, v7.organization_id, run.id::text, runner.id::text)
+          is not null),
+  'every line resolves: PR #514 rev 2 at its push, the Anthropic key, policy v7, run #471 (PR #509), and offline forge-03 after its last heartbeat');
+
+select pg_temp.must_hold(
+  (select bool_and(event.occurred_at <= clock.seeded_at
+                   and event.occurred_at > clock.seeded_at - interval '3 hours')
+     from ouroboros.audit_events event, settings_seed_clock clock
+    where event.id::text like '5eed0074-%'),
+  'all five happened in the three hours before the seed ran — the card''s today, never the future');
+
+-- --- workspace card: retention ------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(policy.data_class || '=' || policy.days order by policy.data_class)
+          = array['artifacts=30', 'audit=400', 'build_logs=30', 'transcripts=30']
+     from ouroboros.retention_policies policy
+    where policy.organization_id = '5eed0001-0000-4000-8000-000000000001'),
+  'retention is 30 days for transcripts, logs and artifacts and "retained 400d" for audit');
+
+-- --- integrations: what is connected is what the rows say ------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.webhook_endpoints e
+    where e.organization_id = '5eed0001-0000-4000-8000-000000000001' and e.active),
+  'Webhooks · 2 active — counted from the endpoints, not stored');
+
+select pg_temp.must_hold(
+  (select latest.status = 'succeeded'
+     from ouroboros.webhook_endpoints siem
+     cross join lateral (select d.status from ouroboros.webhook_deliveries d
+                          where d.endpoint_id = siem.id
+                          order by d.attempted_at desc, d.attempt desc limit 1) latest
+    where siem.organization_id = '5eed0001-0000-4000-8000-000000000001'
+      and siem.siem and siem.active and siem.event_families ? 'audit.*'),
+  'Stream to SIEM ✓ — derived: the SIEM endpoint takes audit.* and its newest delivery succeeded');
+
+select pg_temp.must_hold(
+  (select count(*) filter (where d.status = 'failed') = 1
+          and count(*) filter (where d.status = 'succeeded') = 6
+     from ouroboros.webhook_deliveries d
+    where d.organization_id = '5eed0001-0000-4000-8000-000000000001')
+  and (select count(*) = 5 from ouroboros.webhook_deliveries d
+         join ouroboros.audit_events event on event.id = d.event_id
+        where d.event_type = 'audit.' || event.action),
+  'the delivery log is not uniformly green — one 503, retried — and each of today''s audit lines reached the SIEM as audit.<action>');
+
+select pg_temp.must_hold(
+  (select array_agg(src.kind || ':' || src.status order by src.kind) = array['github:active', 'jira:active']
+     from ouroboros.ticket_sources src
+    where src.organization_id = '5eed0001-0000-4000-8000-000000000001'),
+  'GitHub ✓ and Jira ✓ are the two connected sources, and no Linear source exists — its tile reads Connect');
+
+-- --- notifications: the lock is derived, and Slack is absent ----------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(r.kind || '|' || r.channel || '|' || r.delivering || '|' || coalesce(r.locked_reason, '')
+                    || '|' || coalesce(r.config ->> 'time', '') order by r.kind)
+          = array['daily_digest|email|true||09:00',
+                  'loop_failures|pagerduty|false|connect PagerDuty first|',
+                  'weekly_insights|email|true||09:00']
+     from ouroboros.notification_routes_effective r
+    where r.organization_id = '5eed0001-0000-4000-8000-000000000001'),
+  'daily digest 09:00 → email on, weekly insights → email on, loop failures → PagerDuty locked: "connect PagerDuty first"; no needs-you DM, since there is no Slack');
 
 \o
 \echo 'seed.sql: all assertions passed'

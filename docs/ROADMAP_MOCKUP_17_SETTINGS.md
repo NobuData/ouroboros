@@ -242,7 +242,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 | BQ.2 | #481 | 🟡 Open | ouroboros-rest: [BQ.2] Policy resolution & enforcement wiring | One resolver; AX/AP.3/caps/dry-run consume it (amendments) | mvp, settings, rest, pr, runs | N (after BQ.1, AX.2, AP.3, BA.3) | Y | L | ouroboros-rest |
 | BQ.3 | #482 | 🟡 Open | ouroboros-rest: [BQ.3] Retention policy service | Per-class tiers; the three sweeps + audit consume (S5) | mvp, settings, rest | N (after AO.2/AH.5/AT.5) | Y | M | ouroboros-rest, ouroboros-db |
 | BQ.4 | #483 ✅ | 🟢 Done | ouroboros-rest: [BQ.4] Workspace config & deployment truth | Name/domain edit, region/training truth rendering (S6) | mvp, settings, rest | N (after BA-B.3, AD.5) | Y | S | ouroboros-rest |
-| BQ.5 | #484 | 🟡 Open | ouroboros-db: [BQ.5] Settings seeds — mockup-17 parity + probes | Policy v7, members, audit rows, webhooks, tiers; ci checks | mvp, settings, db, ci | N (after BQ.1–BQ.4, #24) | Y | S | ouroboros-db, .github |
+| BQ.5 | #484 ✅ | 🟢 Done | ouroboros-db: [BQ.5] Settings seeds — mockup-17 parity + probes | Policy v7, members, audit rows, webhooks, tiers; ci checks | mvp, settings, db, ci | N (after BQ.1–BQ.4, #24) | Y | S | ouroboros-db, .github |
 
 ### Issue BQ.1 — ouroboros-db: [BQ.1] Versioned org-policy document schema
 
@@ -325,6 +325,8 @@ publish v8 (owner, loosening) ─▶ audit "enabled auto-merge (policy v8)" · e
 ### Issue BQ.3 — ouroboros-rest: [BQ.3] Retention policy service
 
 > **GitHub issue:** #482 · **Status:** 🟡 Open · **Parent epic:** #476
+>
+> **Schema already shipped (#484):** V094 created `retention_policies` (class CHECK, audit ≥ 90 / others ≥ 7 days) and BQ.5 seeds 30/30/30/400 — build the service over it rather than re-creating it.
 
 - **Problem Statement:** Four retention knobs exist in four sweeps; the
   workspace card's selector must govern them all (decision S5).
@@ -377,7 +379,7 @@ self-hosted: region "self-hosted (single region)" ro · training "off — never 
 
 ### Issue BQ.5 — ouroboros-db: [BQ.5] Settings seeds — mockup-17 parity + probes
 
-> **GitHub issue:** #484 · **Status:** 🟡 Open · **Parent epic:** #476
+> **GitHub issue:** #484 ✅ · **Status:** 🟢 Done · **Parent epic:** #476
 
 - **Problem Statement:** Design review needs the mockup's exact admin
   state, coherent with the seeded universe.
@@ -482,6 +484,8 @@ purge: audit > 400d ─▶ tombstone counts (never silent)
 ### Issue BR.3 — ouroboros-rest: [BR.3] Outbound webhooks & SIEM streaming
 
 > **GitHub issue:** #487 · **Status:** 🟡 Open · **Parent epic:** #477
+>
+> **Schema already shipped (#484):** V094 created `webhook_endpoints` (https, sealed `hmac_key_sealed`, registered `event_families`, one `siem` route) and `webhook_deliveries` (per-attempt log, subscribed families only) — build the pipeline over them and drain V090's `audit_event_outbox`.
 
 - **Problem Statement:** The extensibility substrate (decision S8): signed
   event delivery to customer endpoints — and the SIEM row is its first
@@ -514,6 +518,8 @@ event(audit.provider.rotated) ─▶ outbox ─▶ POST https://siem.acme.dev/ho
 ### Issue BR.4 — ouroboros-rest: [BR.4] Integrations status hub & org notification routes
 
 > **GitHub issue:** #488 · **Status:** 🟡 Open · **Parent epic:** #477
+>
+> **Schema already shipped (#484):** V094 created `notification_routes` and `notification_routes_effective` (lock derived: only email delivers until Slack/PagerDuty connections exist) — wire the senders and the status hub over them.
 
 - **Problem Statement:** The integrations grid is a truth composition
   (S10), and the notifications card adds *org-level* routes above BN.3's

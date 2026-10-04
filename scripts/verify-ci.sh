@@ -708,6 +708,13 @@ check_contains "$DB_WORKFLOW" '^        run: uv sync --locked$' \
 check_contains "$DB_WORKFLOW" 'tests/verify-analyzer-rediscovery\.sh' \
   'db.yml runs the change-point analyzer over the seeded corpus'
 
+# The Settings page's (#484), the same two halves: the seeded rows hold every invariant, and each
+# goes red when its rule is broken.
+check_contains "$DB_WORKFLOW" 'tests/settings-invariants\.sql' \
+  'db.yml asserts the settings invariants against the seeded database'
+check_contains "$DB_WORKFLOW" 'tests/verify-settings-invariants\.sh' \
+  'db.yml plants bad settings rows and requires the invariants to go red'
+
 # It reads the library out of the installed dependency, so the job has to install and
 # build. Without the build the check cannot load the configuration that decides the
 # schema, and would fail for a reason that has nothing to do with drift.

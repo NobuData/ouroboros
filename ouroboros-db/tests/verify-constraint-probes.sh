@@ -540,6 +540,31 @@
 #   a publish-created handle reads unanswered    rewrite org_policies_effective to V075's
 #                                                  row-existence is_explicit
 #
+# #484 (BQ.5, V094) adds retention tiers, outbound webhooks and org notification routes. One
+# probe per rule the Settings page's honesty rests on:
+#
+#   V094 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   loop data is kept at least 7 days, audit 90  drop retention_policies_days_floor
+#   a data class is one of four or custom:<slug> drop retention_policies_data_class_known
+#   one tier per data class                      drop retention_policies_pkey
+#   a signing key is only ever sealed            drop webhook_endpoints_hmac_key_envelope
+#   no other column could hold a key in clear    add a plaintext signing_secret column
+#   an endpoint is https, with no user-info      drop webhook_endpoints_url_https
+#   families come from the registry, ≥ 1         drop webhook_endpoints_event_families_registered
+#   families are a list                          drop webhook_endpoints_event_families_array
+#   the SIEM route subscribes to audit.*         drop webhook_endpoints_siem_subscribes_audit
+#   one SIEM route per workspace                 drop webhook_endpoints_one_siem_idx
+#   a delivery is of a subscribed family         drop webhook_deliveries_family_subscribed
+#   a status agrees with its response code       drop webhook_deliveries_outcome_recorded
+#   an event type is family.event or ping        drop webhook_deliveries_event_type_grammar
+#   a delivery stays in its endpoint's workspace drop webhook_deliveries_endpoint_fk
+#   the captured body is bounded                 drop webhook_deliveries_response_excerpt_bounded
+#   only email delivers; the lock is derived     rewrite notification_routes_effective unlocked
+#   a route kind is one of four or custom:<slug> drop notification_routes_kind_known
+#   a channel is email, slack or pagerduty       drop notification_routes_channel_known
+#   a route config is time/weekday/recipients    drop notification_routes_config_shape
+#
 # #457 (BM.1, V093) adds the decision domain — versioned kind declarations and the typed items
 # filed against them. One probe per rule the inbox's truthfulness rests on:
 #
@@ -2456,6 +2481,86 @@ expect_red 'a decision reverse lookup has no index' \
   'did not use index decision_items_refs_idx' \
   'drop index ouroboros.decision_items_refs_idx;'
 
+
+expect_red 'loop data may be kept under a week' \
+  'loop data is kept at least seven days' \
+  'alter table ouroboros.retention_policies drop constraint retention_policies_days_floor;'
+
+expect_red 'a retention tier may name any data class' \
+  'a data class is one of the four or custom' \
+  'alter table ouroboros.retention_policies drop constraint retention_policies_data_class_known;'
+
+expect_red 'a data class may hold two tiers' \
+  'one tier per data class' \
+  'alter table ouroboros.retention_policies drop constraint retention_policies_pkey;'
+
+expect_red 'a webhook signing key may be stored in the clear' \
+  'a signing key is sealed under the vault' \
+  'alter table ouroboros.webhook_endpoints drop constraint webhook_endpoints_hmac_key_envelope;'
+
+expect_red 'a webhook table may grow a plaintext key column' \
+  'the webhook tables hold one key column' \
+  'alter table ouroboros.webhook_endpoints add column signing_secret text;'
+
+expect_red 'a webhook endpoint may be plain http' \
+  'an endpoint is https' \
+  'alter table ouroboros.webhook_endpoints drop constraint webhook_endpoints_url_https;'
+
+expect_red 'a webhook endpoint may subscribe to an unregistered family' \
+  'an endpoint subscribes only to registered families' \
+  'alter table ouroboros.webhook_endpoints drop constraint webhook_endpoints_event_families_registered;'
+
+expect_red 'webhook families may be an object' \
+  'event families are a list' \
+  'alter table ouroboros.webhook_endpoints drop constraint webhook_endpoints_event_families_array;'
+
+expect_red 'the SIEM route may skip audit.*' \
+  'the SIEM route subscribes to audit' \
+  'alter table ouroboros.webhook_endpoints drop constraint webhook_endpoints_siem_subscribes_audit;'
+
+expect_red 'a workspace may have two SIEM routes' \
+  'one SIEM route per workspace' \
+  'drop index ouroboros.webhook_endpoints_one_siem_idx;'
+
+expect_red 'an endpoint may be sent a family it never subscribed to' \
+  'an endpoint is sent only the families it subscribed to' \
+  'drop trigger webhook_deliveries_family_subscribed on ouroboros.webhook_deliveries;'
+
+expect_red 'a delivery status may disagree with its response' \
+  'a success is a 2xx' \
+  'alter table ouroboros.webhook_deliveries drop constraint webhook_deliveries_outcome_recorded;'
+
+expect_red 'a delivery event type may be anything' \
+  'an event type is family.event or ping' \
+  'alter table ouroboros.webhook_deliveries drop constraint webhook_deliveries_event_type_grammar;'
+
+expect_red 'a delivery may be filed under another workspace' \
+  'cannot be filed under another workspace' \
+  'alter table ouroboros.webhook_deliveries drop constraint webhook_deliveries_endpoint_fk;'
+
+expect_red 'a delivery may capture an unbounded body' \
+  'the captured body is bounded' \
+  'alter table ouroboros.webhook_deliveries drop constraint webhook_deliveries_response_excerpt_bounded;'
+
+expect_red 'a PagerDuty route may read as delivering' \
+  'only email delivers in this build' \
+  'create or replace view ouroboros.notification_routes_effective with (security_invoker = true) as
+   select r.organization_id, r.kind, r.channel, r.config, r.enabled,
+          null::text as locked_reason, false as locked, r.enabled as delivering,
+          r.updated_by, r.updated_at
+     from ouroboros.notification_routes r;'
+
+expect_red 'a notification route may name any kind' \
+  'a route kind is one of the four or custom' \
+  'alter table ouroboros.notification_routes drop constraint notification_routes_kind_known;'
+
+expect_red 'a notification route may use any channel' \
+  'a channel is email, slack or pagerduty' \
+  'alter table ouroboros.notification_routes drop constraint notification_routes_channel_known;'
+
+expect_red 'a notification route config may be any shape' \
+  'a route time is HH:MM' \
+  'alter table ouroboros.notification_routes drop constraint notification_routes_config_shape;'
 
 printf '\n'
 if check_summary; then
