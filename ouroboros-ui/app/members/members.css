@@ -1,0 +1,324 @@
+/*
+ * The Members & Roles card (BS.3, #493) — mockup 17's `c-7` members card on the #16 tokens.
+ *
+ * Tokens and rem only, so the font-size preference scales all of it. The table is the `Table`
+ * primitive, which owns its own horizontal scroll; nothing here scrolls or sticks. The pending
+ * row is dimmed by colour rather than opacity, so its Resend and Revoke stay full-contrast.
+ */
+
+/* ---------- the member cell ---------- */
+
+.members__who {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+
+.members__avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 1.625rem;
+  height: 1.625rem;
+  border-radius: var(--r-round);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-size: var(--t-2xs);
+  font-weight: 600;
+}
+
+.members__avatar--service {
+  background: var(--raised);
+  color: var(--ink-mut);
+}
+
+.members__name {
+  color: var(--ink);
+}
+
+.members__mono {
+  font-family: var(--f-mono);
+}
+
+/* ---------- the pending row ---------- */
+
+.members__row--pending .members__name,
+.members__row--pending .members__muted {
+  color: var(--ink-dim);
+}
+
+.members__muted {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.members__actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+/* ---------- the capability column ---------- */
+
+.members__cap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.members__yes {
+  color: var(--ok);
+}
+
+.members__no {
+  color: var(--ink-faint);
+}
+
+.members__box {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+/*
+ * The consequence, stated before the box is used: shown on hover and on keyboard focus, and
+ * always the box's accessible description.
+ */
+.members__tip {
+  position: absolute;
+  inset-block-start: calc(100% + var(--sp-2));
+  inset-inline-start: 0;
+  z-index: 1;
+  display: none;
+  width: 22rem;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  color: var(--ink);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  white-space: normal;
+}
+
+.members__cap:hover .members__tip,
+.members__cap:focus-within .members__tip {
+  display: block;
+}
+
+/* ---------- the role cell ---------- */
+
+.members__role {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-decoration: underline dotted var(--ink-faint);
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+.members__role:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+/* ---------- the footer and the toast ---------- */
+
+.members__footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-6);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.members__sync {
+  color: var(--ok);
+}
+
+.members__toast {
+  margin: var(--sp-5) 0 0;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  color: var(--ink);
+  font-size: var(--t-xs);
+}
+
+.members__toast--error {
+  border-color: var(--err-line);
+  background: var(--err-tint);
+  color: var(--err);
+}
+
+/* ---------- service accounts ---------- */
+
+.members__services {
+  margin-top: var(--sp-8);
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--line);
+}
+
+.members__services-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-5);
+}
+
+.members__services-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.members__services-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.members__service {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+
+.members__service-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-5);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+/* ---------- dialogs ---------- */
+
+.members-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  padding: var(--sp-8);
+}
+
+.members-dialog__title {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-lg);
+}
+
+.members-dialog__note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.members-dialog__choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.members-dialog__legend {
+  margin-bottom: var(--sp-3);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.members-dialog__choice {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  color: var(--ink);
+  font-size: var(--t-sm);
+}
+
+.members-dialog__why {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.members-dialog__warning {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+  color: var(--ink);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.members-dialog__refusal {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.members-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-4);
+}
+
+.members-dialog__danger {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--line);
+}
+
+/* ---------- the one-time token ---------- */
+
+.members-token__value {
+  display: block;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--inset);
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.members-token__copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.members-token__copied {
+  color: var(--ok);
+  font-size: var(--t-xs);
+}
+
+.members-token__failed {
+  color: var(--err);
+  font-size: var(--t-xs);
+}

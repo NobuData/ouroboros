@@ -7,6 +7,7 @@ import { DRY_RUN_TITLE } from "@/app/policies/view";
 import { SETTINGS_TITLE, settingsEyebrow } from "@/app/settings/view";
 
 import { membership, sessionUser } from "../helpers/login";
+import { MEMBERS_READ_AT, SERVICE_LIST, membersPage } from "../helpers/members";
 import { renderThemed as render } from "../helpers/theme";
 
 /**
@@ -26,6 +27,17 @@ const redirect = vi.fn((path: string) => {
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
 vi.mock("@/app/settings/data", () => ({ readSettings: (access: unknown) => readSettings(access) }));
 vi.mock("@/app/policies/policy-actions", () => ({ setDryRun: vi.fn() }));
+// The Members card's Server Actions are never reached here: its own suites drive them.
+vi.mock("@/app/members/members-actions", () => ({
+  inviteMember: vi.fn(),
+  resendInvitation: vi.fn(),
+  revokeInvitation: vi.fn(),
+  updateMember: vi.fn(),
+  removeMember: vi.fn(),
+  createServiceAccount: vi.fn(),
+  rotateServiceAccount: vi.fn(),
+  revokeServiceAccount: vi.fn(),
+}));
 vi.mock("@/app/shell/preference-actions", () => ({ saveFontScale: vi.fn() }));
 vi.mock("next/navigation", () => ({
   redirect: (path: string) => redirect(path),
@@ -77,7 +89,17 @@ function workspaceControls(): (string | null)[] {
 
 beforeEach(() => {
   requireWorkspace.mockReset().mockResolvedValue(access(["owner"]));
-  readSettings.mockReset().mockResolvedValue({ dryRun: { ok: true, value: POLICY } });
+  readSettings.mockReset().mockImplementation((gate: ReturnType<typeof access>) => {
+    // The members page says whether the reader may manage, as the service does.
+    const canManage = gate.membership.roles.some((role) => role === "owner" || role === "admin");
+
+    return Promise.resolve({
+      dryRun: { ok: true, value: POLICY },
+      members: { ok: true, value: membersPage({ canManage }) },
+      serviceAccounts: canManage ? SERVICE_LIST : null,
+      readAt: MEMBERS_READ_AT,
+    });
+  });
   redirect.mockClear();
 });
 

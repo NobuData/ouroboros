@@ -432,6 +432,16 @@ ouroboros-ui/
 │   │   ├── data.ts          #   readSettings() — what the hub reads, each part read or explained
 │   │   ├── settings-screen.tsx # the hub: head, nav, the grid of seats
 │   │   └── settings-frame.tsx #  the head, the tab row, and the page beneath — the hub's and the mounted pages'
+│   ├── members/             # the Members & Roles card in the settings hub — mockup 17 c-7 · #493
+│   │   ├── view.ts          #   every sentence and decision: roles, relative ages, rows, the gated sync line
+│   │   ├── members-actions.ts # the Server Actions — a refusal becomes a sentence, never a thrown page
+│   │   ├── members-card.tsx #   the table (people · Service · pending), the capability box, the footer, the toast
+│   │   ├── invite-dialog.tsx #  + Invite member — an address and a role
+│   │   ├── member-dialog.tsx #  change role or remove — demotions and removals confirm; the last owner explained
+│   │   ├── role-choices.tsx #   Owner · Maintainer · Viewer, each unavailable choice saying why
+│   │   ├── service-accounts.tsx # scopes, masked token, last use; create with a scope picker; rotate · revoke
+│   │   ├── token-once.tsx   #   the one showing of a token — #229's clipboard discipline
+│   │   └── confirm-dialog.tsx # a destructive action's confirmation
 │   ├── sources/             # ticket sources — the section's first built tab · #141
 │   │   ├── view.ts          #   the status pill, the summary, the sync line, every label
 │   │   ├── catalog.ts       #   the kind picker's tiles, and a submission's shape
@@ -2793,8 +2803,9 @@ Who can do what, what merges on its own, and where the record lives.
 
 **The cards are other issues'.** BS.2–BS.6 (#492–#496) each mount a card in its **seat**
 ([`settings-seat.tsx`](app/settings/settings-seat.tsx)); until then a seat draws the section's
-heading and one line naming what fills it. Two are filled today: **Appearance**, and **Policies**,
-which holds [the dry-run policy's row](#the-dry-run-policy-382). A seat owns three facts so a card
+heading and one line naming what fills it. Three are filled today: **Appearance**, [**Members &
+roles**](#members--roles-493), and **Policies**, which holds
+[the dry-run policy's row](#the-dry-run-policy-382). A seat owns three facts so a card
 owns none of them — where it sits (the mockup's `c-5`/`c-7`/`c-12`), the id the nav's anchor lands
 on, and which section it is to the save model.
 
@@ -2888,7 +2899,8 @@ holds no field until BS.2 lands.
 | **Turn dry-run on / off** | immediate, behind a confirmation that states the consequences — never a saved field |
 | **Theme**, **Font size** | immediate, no confirmation: the reader's own display preference, tagged *per user · applies instantly* |
 | *Leave without saving?* — **Stay** / **Discard changes and leave** | the leave guard's answer |
-| a field in a card's seat (BS.2–BS.5) | the dirty batch, through `useSettingsSection` |
+| **Can approve loops**, **+ Invite member**, **Resend** / **Revoke**, role changes, removals, service-account create / rotate / revoke | immediate — the Members section is `saves: "immediate"`; each destructive one confirms |
+| a field in a card's seat (BS.2, BS.4, BS.5) | the dirty batch, through `useSettingsSection` |
 | a control in the Danger zone (BS.6) | immediate by construction — the seat refuses fields |
 
 ### Who sees what
@@ -2908,6 +2920,55 @@ full font-size control — five steps, 87.5 to 150%, with a preview — beside t
 holds no state of its own: the font size is [the font scale](#the-font-scale)'s store, which the
 profile menu's stepper reads and writes too, so a step taken in either is the other's next render,
 with no reload. A step is live on the press and persisted quietly behind it.
+
+### Members & roles (#493)
+
+[`members-card.tsx`](app/members/members-card.tsx) is mockup 17's `c-7` over
+`GET /api/v1/settings/members` (BR.1, #485) — and, for an owner or admin,
+`GET /api/v1/settings/service-accounts` for the masked token hints and the scope registry. Every
+write goes through `/api/v1/settings/…` ([`app/api/settings-members.ts`](app/api/settings-members.ts)),
+never the organization plugin's own routes, so the last-owner rule and the audit trail are the
+service's in one place.
+
+```
+ MEMBERS & ROLES  applies instantly                                   [ + Invite member ]
+ Member                Role          Can approve loops   Last active
+ [KS] Ken S  you       Owner ▾       ☑ ✓                 now
+ [MC] Maya Chen        Maintainer ▾  ☑ ✓                 12m
+ [JR] Jorge Reyes      Viewer ▾      ☐ —                 3d
+ [⚙] devops-bot        Service       —                   41s
+ [P] priya@acme.dev    Maintainer    invited 2h ago      [Resend] [Revoke]      ← dimmed
+ Service accounts                                            [ + Create service account ]
+ devops-bot  farm.submit · api.read  orb_svc_••••ab12  used 41s ago   [Rotate] [Revoke]
+ Owner > Maintainer (approve/merge) > Viewer (read-only)
+```
+
+- **Three kinds of row, no blank-cell confusion.** A person has a role, the capability and a real
+  *last active* (`—` when there is none — never fabricated). A service account has the service
+  avatar, `Service`, never the capability, and when its token last authenticated. A pending
+  invitation is dimmed (by colour, so its buttons keep their contrast), shows *invited 2h ago*
+  where the capability would be, and offers **Resend** and **Revoke**.
+- **Can approve loops is a permission editor.** For an owner or admin it is a checkbox whose
+  consequence — approve and merge on the Needs-You inbox and on pull requests — is its accessible
+  description and its hover/focus tooltip, so it is stated before it is used. It moves at once;
+  a refusal puts it back and says why in the card's error toast.
+- **Roles.** The role cell opens *Change role or remove*: Owner · Maintainer · Viewer, where
+  **Viewer sends `viewer`** (decided with the user; a `member` keeps its role until changed). A
+  change that takes power away and every removal confirm first. The Owner choice stays listed for
+  an admin with *Only an owner can make someone an owner.*, and the last owner's dialog prints the
+  service's own sentence instead of the options vanishing. Changing your own role refreshes the
+  page, because what you may do here moved.
+- **Service tokens are shown once** ([`token-once.tsx`](app/members/token-once.tsx)): create (name
+  + a scope picker from the registered allow-list) or rotate, and the token appears in one
+  alert dialog with **Copy** (#229's discipline — *Copied.* claims nothing about the clipboard, and a
+  refused write says to select the value instead), *you will not see it again*, and rotation named
+  as the remedy. Closing it drops the token from the card's state; it is never rendered again.
+- **The footer** prints the hierarchy the service renders from the mapping it enforces. The
+  directory-sync line (*Roles sync from Okta …*) exists only when the service reports a real sync —
+  `footer.directorySync` is `null` until SCIM (BT.1) — so the page never promises that removing
+  someone from an IdP group removes them here.
+- **A viewer** reads the same table: marks instead of boxes, roles as text, no buttons, no token
+  hints (only an administrator's read carries them).
 
 ## Ticket sources
 
