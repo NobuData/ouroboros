@@ -75,7 +75,8 @@ export type AuditSubjectType =
   | "workspace"
   | "member"
   | "invitation"
-  | "service_account";
+  | "service_account"
+  | "decision_item";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -507,6 +508,19 @@ export const SERVICE_ACCOUNT_ROTATED_EVENT = "service_account.rotated";
 export const SERVICE_ACCOUNT_REVOKED_EVENT = "service_account.revoked";
 
 /**
+ * A plane filed a decision item into the Needs-You inbox (#461, X9). Subject `decision_item`;
+ * actor null — a plane, not a person, asked. Detail: kind, version, plane, source ref, severity.
+ */
+export const DECISION_FILED_EVENT = "decision.filed";
+/** An open item's facts or refs were refreshed by a repeat emission of its key (#461). */
+export const DECISION_REFRESHED_EVENT = "decision.refreshed";
+/**
+ * An item closed itself because its source settled out of band — a PR merged on its host, a run
+ * that ended — as `policy(source_resolved)` (#461, X4). Detail names the settlement.
+ */
+export const DECISION_SOURCE_RESOLVED_EVENT = "decision.source_resolved";
+
+/**
  * Every action this service writes.
  *
  * A named list rather than a dozen loose constants, so `openapi.yaml`'s prose, the trail
@@ -582,6 +596,9 @@ export const AUDIT_ACTIONS = [
   SERVICE_ACCOUNT_CREATED_EVENT,
   SERVICE_ACCOUNT_ROTATED_EVENT,
   SERVICE_ACCOUNT_REVOKED_EVENT,
+  DECISION_FILED_EVENT,
+  DECISION_REFRESHED_EVENT,
+  DECISION_SOURCE_RESOLVED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

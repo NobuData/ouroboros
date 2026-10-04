@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**367 of 454 ordered issues are closed** — P0 through P10, P12 and P13 are complete, and P11 and P14 are in progress.
+**368 of 454 ordered issues are closed** — P0 through P10, P12 and P13 are complete, and P11 and P14 are in progress.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P12, P13 | **322** |
-| 🟡 **In progress** | P11, P14 | **45** of 69 |
+| 🟡 **In progress** | P11, P14 | **46** of 69 |
 | — **Not started** | P15–P17 | 0 of 63 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -117,7 +117,7 @@ position is not forced by dependencies, one of these decided it.
 | **P11** | Evidence — tests & PR verification | 🟡 36/38 | 38 | 119 | Mockups 11, 12 |
 | **P12** | Knowledge & onboarding mechanism | ✅ 28/28 | 28 | 83 | Mockups 14, 13 |
 | **P13** | Analytics — insights & build analyzer | ✅ 32/32 | 32 | 109 | Mockups 15, 18 |
-| **P14** | Decisions & governance — inbox, settings | 🟡 7/31 | 31 | 102 | Mockups 16, 17 |
+| **P14** | Decisions & governance — inbox, settings | 🟡 10/31 | 31 | 102 | Mockups 16, 17 |
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
 | **P16** | Intelligence — research & copilot | — 0/42 | 42 | 147 | Mockups 22, 20 |
 | **P17** | ChatOps — Slack integration | — 0/15 | 15 | 50 | Mockup 19 |
@@ -1635,7 +1635,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **31 issues** · 102 complexity points · order **#361–#391** · 10 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_16_NEEDS_YOU_INBOX.md`, `ROADMAP_MOCKUP_17_SETTINGS.md`
-> **Status:** 🟡 **In progress** — 9 of 31 issues closed
+> **Status:** 🟡 **In progress** — 10 of 31 issues closed
 
 **Goal.** Deliver the typed decision-kind registry with items emitted by every live plane and actions that resume loops through the real machinery, and the one versioned policy document that drives every enforcement point — auto-merge conditions, review-required, protected paths, spend guard, dry-run-for-new-repos — plus members, audit and lifecycle.
 
@@ -1656,7 +1656,7 @@ the blockquote above that records what it did and what it did differently.
 | 367 | **BS.1** | ✅ [#491](https://github.com/NobuData/ouroboros/issues/491) | Settings frame, section nav & save model | ouroboros-ui | M | 5.3, D.5 |
 | 368 | **BM.2** | ✅ [#458](https://github.com/NobuData/ouroboros/issues/458) | Resolutions, snooze & metrics spans | ouroboros-db | S | BM.1 |
 | 369 | **BM.3** | ✅ [#459](https://github.com/NobuData/ouroboros/issues/459) | Guardrail exceptions & action tokens | ouroboros-db | M | AO.4, BM.1 |
-| 370 | **BN.1** | [#461](https://github.com/NobuData/ouroboros/issues/461) | DecisionKind SPI & emitter wiring | ouroboros-rest | L | BM.1 |
+| 370 | **BN.1** | ✅ [#461](https://github.com/NobuData/ouroboros/issues/461) | DecisionKind SPI & emitter wiring | ouroboros-rest | L | BM.1 |
 | 371 | **BR.3** | [#487](https://github.com/NobuData/ouroboros/issues/487) | Outbound webhooks & SIEM streaming | ouroboros-rest, ouroboros-db | L | AD.1, AD.4 |
 | 372 | **BS.3** | [#493](https://github.com/NobuData/ouroboros/issues/493) | Members & roles card | ouroboros-ui | M | BR.1, BS.1 |
 | 373 | **BM.4** | [#460](https://github.com/NobuData/ouroboros/issues/460) | Inbox seeds — mockup-16 parity + probes | ouroboros-db, .github | S | 3.6, BM.2, BM.3 |

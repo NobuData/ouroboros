@@ -6108,6 +6108,119 @@ export interface ServiceTokensTable {
   revoked_at: Date | null;
 }
 
+/** `decision_items.severity` — the card's left border (V093). */
+export type DecisionSeverity = "err" | "warn" | "info";
+
+/** `decision_items.status` (V093, V095). The pill counts `open`. */
+export type DecisionItemStatus = "open" | "snoozed" | "resolved" | "expired";
+
+/** `decision_resolutions.resolver` — who answered: a person or a policy (V095). */
+export type DecisionResolver = "human" | "policy";
+
+/** `decision_resolutions.channel` — where the answer came from (V095). */
+export type DecisionChannel = "web" | "email" | "github" | "slack" | "push" | "api";
+
+/**
+ * A PostgreSQL `interval` as `pg` parses it — `postgres-interval`'s object, whose fields are
+ * present only when non-zero. Written as interval text (`'30 minutes'`).
+ */
+export interface PgInterval {
+  readonly years?: number;
+  readonly months?: number;
+  readonly days?: number;
+  readonly hours?: number;
+  readonly minutes?: number;
+  readonly seconds?: number;
+  readonly milliseconds?: number;
+}
+
+/**
+ * `ouroboros.decision_kinds` — one published version of a decision kind's declaration (V093,
+ * [#457](https://github.com/NobuData/ouroboros/issues/457); the six remaining MVP kinds V097,
+ * [#461](https://github.com/NobuData/ouroboros/issues/461)).
+ *
+ * **Immutable for every role**: a trigger refuses UPDATE and DELETE, so an item pinned to a
+ * version renders as it was filed. `DecisionKindRegistry` reads the newest version of each kind
+ * for new emissions and appends a version when a kind registers a changed declaration.
+ */
+export interface DecisionKindsTable {
+  /** One of the nine MVP kinds, an amendment kind, or `custom:<slug>`. */
+  kind_id: string;
+  /** 1, 2, 3 … dense per kind — the writer names the next one, which the database checks. */
+  version: number;
+  severity_default: DecisionSeverity;
+  /** `{slot}` names a required scalar fact of `payload_schema` (X2). */
+  question_template: string;
+  why_template: string;
+  /** JSON Schema — V093's supported subset, closed. */
+  payload_schema: ColumnType<unknown, string, never>;
+  /** The ordered action row. */
+  actions: ColumnType<unknown, string, never>;
+  /** `{answered_by, closes_source, auto_resolvable}`. */
+  resolution_semantics: ColumnType<unknown, string, never>;
+  /** `{required, optional, tags}`. */
+  ref_shape: ColumnType<unknown, string, never>;
+  escalation_window: ColumnType<PgInterval, string | undefined, never>;
+  merge_class: ColumnType<boolean, boolean | undefined, never>;
+  created_at: Stamped;
+}
+
+/**
+ * `ouroboros.decision_items` — one question asked of a workspace, filed against a pinned kind
+ * version (V093, #457; snooze columns V095, #458).
+ *
+ * Filed only through `ouroboros.decision_item_emit` — the upsert on `(organization_id,
+ * idempotency_key)` — and closed out of band only through `ouroboros.decision_item_source_resolve`
+ * (V097, #461). Its payload is validated against the pinned schema at write time.
+ */
+export interface DecisionItemsTable {
+  id: Generated<string>;
+  organization_id: string;
+  kind_id: string;
+  kind_version: number;
+  /** Facts only — `{checks_passed: 14, …}`. */
+  payload: ColumnType<Record<string, unknown>, string, string>;
+  severity: DecisionSeverity;
+  status: ColumnType<DecisionItemStatus, DecisionItemStatus | undefined, DecisionItemStatus>;
+  /** Ordered typed refs `[{type: run|pr|ticket|path, id, label}]`. */
+  refs: ColumnType<unknown, string | undefined, string>;
+  /** The plane that filed it — `guardrails`, `pr.gates`. */
+  emitted_by: string;
+  /** The plane's own reference — `run:<id>:path:boot/rollback_flag.c`. */
+  source_ref: string;
+  /** `emitted_by:source_ref`, generated. */
+  idempotency_key: ColumnType<string, never, never>;
+  created_at: Stamped;
+  updated_at: Stamped;
+  snoozed_until: Date | null;
+  snoozed_by: string | null;
+  snooze_reason: string | null;
+}
+
+/**
+ * `ouroboros.decision_resolutions` — how an item was answered, or that it was closed because its
+ * source settled elsewhere (V095, #458; `source_resolved` V097, #461). One per item, immutable.
+ */
+export interface DecisionResolutionsTable {
+  item_id: string;
+  organization_id: string;
+  /** A declared action of the pinned kind, or the reserved `source_resolved`. */
+  action_id: string;
+  resolver: DecisionResolver;
+  resolved_by_user: string | null;
+  /** `auto_accept_resize`, the reserved `source_resolved`, or `custom:<slug>`. */
+  resolved_by_policy: string | null;
+  channel: DecisionChannel;
+  note: string | null;
+  /** The handler's receipt — `{merge_sha}`, `{source: "pr_merged"}`. */
+  outcome: ColumnType<Record<string, unknown>, string | undefined, never>;
+  resolved_at: Stamped;
+  /** Computed by the database; any value written is replaced. */
+  answer_latency: ColumnType<PgInterval, never, never>;
+  loop_wait: ColumnType<PgInterval | null, never, never>;
+  created_at: Stamped;
+}
+
 /**
  * `ouroboros.audit_event_outbox` — `audit.*` events awaiting outbound delivery (V090,
  * [#489](https://github.com/NobuData/ouroboros/issues/489)). BR.3
@@ -6371,6 +6484,9 @@ export interface Database {
   member_capabilities: MemberCapabilitiesTable;
   service_accounts: ServiceAccountsTable;
   service_tokens: ServiceTokensTable;
+  decision_kinds: DecisionKindsTable;
+  decision_items: DecisionItemsTable;
+  decision_resolutions: DecisionResolutionsTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -7743,6 +7859,53 @@ export const TABLE_COLUMNS = {
     "created_at",
     "last_used_at",
     "revoked_at",
+  ],
+  decision_kinds: [
+    "kind_id",
+    "version",
+    "severity_default",
+    "question_template",
+    "why_template",
+    "payload_schema",
+    "actions",
+    "resolution_semantics",
+    "ref_shape",
+    "escalation_window",
+    "merge_class",
+    "created_at",
+  ],
+  decision_items: [
+    "id",
+    "organization_id",
+    "kind_id",
+    "kind_version",
+    "payload",
+    "severity",
+    "status",
+    "refs",
+    "emitted_by",
+    "source_ref",
+    "idempotency_key",
+    "created_at",
+    "updated_at",
+    "snoozed_until",
+    "snoozed_by",
+    "snooze_reason",
+  ],
+  decision_resolutions: [
+    "item_id",
+    "organization_id",
+    "action_id",
+    "resolver",
+    "resolved_by_user",
+    "resolved_by_policy",
+    "channel",
+    "note",
+    "outcome",
+    "resolved_at",
+    "answer_latency",
+    "loop_wait",
+    "created_at",
   ],
   org_policies_effective: ["organization_id", "dry_run", "is_explicit", "updated_at", "updated_by"],
   env_recipes_current: [

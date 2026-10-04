@@ -49,6 +49,25 @@ describe("the fact lifecycle service", () => {
     service = new FactsService(store.asRepository(), database);
   });
 
+  describe("the Needs-You inbox (#461)", () => {
+    it("files a proposal's review card, and settles it when the fact is decided", async () => {
+      const reviews = {
+        review: jest.fn().mockResolvedValue(undefined),
+        settled: jest.fn().mockResolvedValue(undefined),
+      };
+      const database = {
+        transaction: jest.fn((work: (trx: unknown) => Promise<unknown>) => work({})),
+      } as unknown as DatabaseService;
+      const withInbox = new FactsService(store.asRepository(), database, reviews as never);
+
+      const fact = await withInbox.proposeManual(ORG, { text: "CI needs `west update`" }, KEN);
+      await withInbox.confirm(ORG, fact.id, MAYA);
+
+      expect(reviews.review).toHaveBeenCalledWith(ORG, [fact.id]);
+      expect(reviews.settled).toHaveBeenCalledWith(ORG);
+    });
+  });
+
   describe("propose", () => {
     it("creates a proposal, audited with its author, and says an anchor-less fact is not swept", async () => {
       const fact = await service.proposeManual(ORG, { text: "  CI needs `west update`  " }, KEN);

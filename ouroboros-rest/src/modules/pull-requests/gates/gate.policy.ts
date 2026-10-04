@@ -8,9 +8,14 @@
  * config through {@link OrgGatePolicy}, bound to {@link DEFAULT_ORG_GATE_POLICY} — no overrides and
  * a permissive allow-list — and #481 rebinds {@link ORG_GATE_POLICY} to its resolver without the
  * engine changing.
+ *
+ * **Since #461** the module binds {@link ORG_GATE_POLICY} to `OrgPolicyGateResolver`
+ * (`gate.org-policy.ts`), which keeps these defaults for overrides and licenses and adds the one
+ * rule the inbox needs now: the published policy's `human_review`. #481 widens that resolver.
  */
 
 import type { BuiltInGateKey } from "../../db/schema";
+import type { HumanReviewRule } from "./gate.human-review";
 import { isKnownLicense } from "./gate.spdx";
 
 /** One org override of one built-in gate. */
@@ -35,6 +40,12 @@ export interface OrgGateConfig {
   readonly overrides: Readonly<Partial<Record<BuiltInGateKey, GateOverride>>>;
   /** The license layer's allow-list. */
   readonly license: LicensePolicy;
+  /**
+   * The published org policy's `human_review` rule (V092 `org_policy_versions`, #461's #358
+   * amendment) — *anything labeled refactor needs a human*. Null or absent when the workspace has
+   * published no policy.
+   */
+  readonly humanReview?: HumanReviewRule | null;
 }
 
 /** The port. */

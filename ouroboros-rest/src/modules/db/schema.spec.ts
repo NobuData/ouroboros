@@ -463,7 +463,11 @@ describe("TABLE_COLUMNS", () => {
     //
     // The hundred-and-twenty-eighth is V096's `guardrail_exceptions_live` (BM.3, #459), the view
     // AP.3 reads a run's allow-once grants from.
-    expect(TABLE_NAMES).toHaveLength(128);
+    //
+    // The hundred-and-twenty-ninth to thirty-first are the decision domain BN.1 (#461) files
+    // into and closes: V093's `decision_kinds` and `decision_items`, and V095's
+    // `decision_resolutions`.
+    expect(TABLE_NAMES).toHaveLength(131);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

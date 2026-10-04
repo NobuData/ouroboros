@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.39.4"
+  version: "0.39.5"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -578,6 +578,14 @@ tags:
       Reading is every member's, `viewer` included. Deciding is `owner`, `admin` or `member`;
       running the sweep on demand is `owner` or `admin`.
 
+  - name: inbox
+    description: |-
+      **The Needs-You inbox** (mockup 16, epic [#454](https://github.com/NobuData/ouroboros/issues/454))
+      — today its pill feed ([#461](https://github.com/NobuData/ouroboros/issues/461), BN.1, delivering
+      DASH-J.2's contract [#90](https://github.com/NobuData/ouroboros/issues/90)): how many decisions
+      the workspace's planes have filed and are waiting on, by severity, snooze-aware — the shell's
+      sidebar **Needs You** badge. Every plane that blocks on a person files typed items through the
+      decision kind registry; the queue, resolved list, stats and snooze routes arrive with BN.4.
   - name: fact-proposers
     description: |-
       **"Learned by the loop", deterministically** (BF.3,
@@ -21557,6 +21565,65 @@ paths:
             `fact_anchor_invalid` — an anchor V071 would refuse (`details.kind`, `details.value`).
             `fact_provenance_unresolved` — a cited run, pull request or ticket is not this workspace's.
             `validation_failed` — a malformed body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/inbox/feed:
+    get:
+      tags: [inbox]
+      summary: How many decisions are waiting — the sidebar badge
+      description: |-
+        Real counts from the decision items every plane files (#461): `open` is what the sidebar
+        **Needs You** badge shows — items asking now, by severity in `bySeverity` (the badge lights
+        red while any `err` is open). **Snooze-aware**: an item snoozed and still hidden counts in
+        `snoozed`, not `open`; one whose snooze has already elapsed counts as `open` even before the
+        wake sweep has run, so the badge never hides a question longer than its snooze asked.
+        `nextWakeAt` is when the soonest hidden item comes back. Resolved and expired items count
+        nowhere. The queue (BN.4) lists exactly the items `open` counts.
+
+        **Every member**, `viewer` included.
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: readInboxFeed
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxFeed"
+              example:
+                open: 3
+                bySeverity: { err: 1, warn: 2, info: 0 }
+                snoozed: 0
+                nextWakeAt: null
+                asOf: "2026-10-04T09:12:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
           content:
             application/json:
               schema:
@@ -49049,6 +49116,46 @@ components:
           format: date-time
           description: When it started waiting — the proposal's creation, or the stale flag.
 
+    InboxFeed:
+      type: object
+      title: InboxFeed
+      description: |-
+        `GET /api/v1/inbox/feed` — the Needs-You badge's counts (#461). `open` equals the sum of
+        `bySeverity`; `snoozed` is counted apart from it.
+      additionalProperties: false
+      required: [open, bySeverity, snoozed, nextWakeAt, asOf]
+      properties:
+        open:
+          type: integer
+          minimum: 0
+          description: Items asking now — the badge's number. Zero hides the badge.
+        bySeverity:
+          type: object
+          additionalProperties: false
+          required: [err, warn, info]
+          description: "`open`, by the card's severity."
+          properties:
+            err:
+              type: integer
+              minimum: 0
+            warn:
+              type: integer
+              minimum: 0
+            info:
+              type: integer
+              minimum: 0
+        snoozed:
+          type: integer
+          minimum: 0
+          description: Items snoozed and still hidden. Not in `open`.
+        nextWakeAt:
+          type: [string, "null"]
+          format: date-time
+          description: When the soonest hidden item wakes; null when none is snoozed.
+        asOf:
+          type: string
+          format: date-time
+          description: The instant the counts are as of.
     FactNeedsYou:
       type: object
       title: FactNeedsYou

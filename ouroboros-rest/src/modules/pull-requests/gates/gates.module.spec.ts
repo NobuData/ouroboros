@@ -1,9 +1,10 @@
 import { DbModule } from "../../db/db.module";
 import { GATE_EVIDENCE } from "./gate.evidence";
 import { GateListeners } from "./gate.listeners";
+import { OrgPolicyGateResolver } from "./gate.org-policy";
 import { DEFAULT_ORG_GATE_POLICY, ORG_GATE_POLICY } from "./gate.policy";
 import { GateEngineService } from "./gate.service";
-import { GatesModule, gateEvidenceProvider } from "./gates.module";
+import { GatesModule, gateEvidenceProvider, orgGatePolicyProvider } from "./gates.module";
 
 /**
  * The wiring (AX.2, [#358](https://github.com/NobuData/ouroboros/issues/358)): the evidence token
@@ -24,13 +25,14 @@ describe("the gates module", () => {
     ]);
   });
 
-  it("binds the org policy to the defaults", () => {
+  it("binds the org policy to the resolver that reads the published human_review rule (#461)", () => {
     const providers = Reflect.getMetadata("providers", GatesModule) as unknown[];
 
-    expect(providers).toContainEqual({
+    expect(orgGatePolicyProvider).toEqual({
       provide: ORG_GATE_POLICY,
-      useValue: DEFAULT_ORG_GATE_POLICY,
+      useClass: OrgPolicyGateResolver,
     });
+    expect(providers).toContainEqual(orgGatePolicyProvider);
   });
 
   it("imports only the database module", () => {

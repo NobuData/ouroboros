@@ -59,11 +59,11 @@ import { registerNavEntry } from "./nav-registry";
 /**
  * The name the needs-you count is published under.
  *
- * Exported because two sides have to agree on it and only one of them exists today: the entry
- * below declares it, and [#464](https://github.com/NobuData/ouroboros/issues/464) (BN.4, the
- * inbox counts endpoint) is what will call `setNavBadge` with it. Until something does, the
- * source is absent and the badge is **not drawn** — never drawn as `0`, which would be a
- * claim that nothing needs you rather than an admission that nobody has counted.
+ * Exported because two sides have to agree on it: the entry below declares it, and
+ * `app/shell/inbox-badge.tsx` ([#461](https://github.com/NobuData/ouroboros/issues/461), BN.1's
+ * inbox feed) calls `setNavBadge` with it from `GET /api/v1/inbox/feed`'s `open` count. Until the
+ * first answer the source is absent and the badge is **not drawn** — never drawn as `0`, which
+ * would be a claim that nothing needs you rather than an admission that nobody has counted.
  */
 export const INBOX_BADGE_SOURCE = "inbox";
 

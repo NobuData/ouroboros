@@ -24,6 +24,7 @@ import {
   type DraftSizingOutcome,
 } from "./estimation.orchestrator";
 import type { EstimableTicketRow } from "./estimation.ticket";
+import type { ResizeReviewEmitter } from "./resize-review.emitter";
 import type {
   EstimableDraftRow,
   EstimableIssueRow,
@@ -90,6 +91,10 @@ interface Behaviour {
   assemblyFails?: boolean;
   /** Make the injection record fail. */
   recordFails?: boolean;
+  /** The version the ticket's write answers with — 2 and up is a re-estimate. */
+  ticketVersion?: number;
+  /** The Needs-You emitter (#461), when the case listens to it. */
+  resizes?: ResizeReviewEmitter;
 }
 
 /**
@@ -185,8 +190,8 @@ function build(behaviour: Behaviour = {}) {
         return Promise.reject(new Error("the column refused it"));
       }
 
-      log.ticketsPersisted.push({ ticketId, status, row: make(1) });
-      return Promise.resolve(1);
+      log.ticketsPersisted.push({ ticketId, status, row: make(behaviour.ticketVersion ?? 1) });
+      return Promise.resolve(behaviour.ticketVersion ?? 1);
     },
     settleTicket: async (ticketId: string, status: EstimatedStatus) => {
       if (behaviour.settleFails === true) {
@@ -244,6 +249,7 @@ function build(behaviour: Behaviour = {}) {
       context,
       config,
       new EstimationKnowledge(assembly),
+      behaviour.resizes,
     ),
     log,
     requests,
@@ -754,6 +760,19 @@ describe("sizing a canonical ticket (AL.5, #281 — one sizer, decision N9)", ()
     expect(log.claimed).toEqual([]);
     expect(log.persisted).toEqual([]);
     expect(log.draftsPersisted).toEqual([]);
+  });
+
+  it("hands a stored re-estimate to the re-size emitter (#461)", async () => {
+    const resizes = { estimated: jest.fn().mockResolvedValue(undefined) };
+    const { orchestrator } = build({
+      ticketVersion: 2,
+      resizes: resizes as unknown as ResizeReviewEmitter,
+    });
+
+    orchestrator.enqueueTicket(TICKET_ID);
+    await orchestrator.settled();
+
+    expect(resizes.estimated).toHaveBeenCalledWith(TICKET_ID, 2);
   });
 
   it("applies the same confidence floor as an issue", async () => {

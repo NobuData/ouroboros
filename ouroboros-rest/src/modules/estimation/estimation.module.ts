@@ -55,6 +55,7 @@ import { ScheduleModule } from "@nestjs/schedule";
 
 import { ContextAssemblyModule } from "../context-assembly/context-assembly.module";
 import { DbModule } from "../db/db.module";
+import { DecisionsModule } from "../decisions/decisions.module";
 import { EngineModule } from "../engine/engine.module";
 import { RoutingModule } from "../routing/routing.module";
 import { WorkflowsModule } from "../workflows/workflows.module";
@@ -66,6 +67,7 @@ import { EstimationOrchestrator } from "./estimation.orchestrator";
 import { EstimationRepository } from "./estimation.repository";
 import { EstimationSweeper } from "./estimation.sweeper";
 import { EstimationTriggerService } from "./estimation.trigger.service";
+import { ResizeReviewEmitter } from "./resize-review.emitter";
 
 @Module({
   imports: [
@@ -75,6 +77,7 @@ import { EstimationTriggerService } from "./estimation.trigger.service";
     WorkflowsModule,
     ContextAssemblyModule,
     ScheduleModule.forRoot(),
+    DecisionsModule,
   ],
   controllers: [EstimationController],
   providers: [
@@ -87,6 +90,8 @@ import { EstimationTriggerService } from "./estimation.trigger.service";
     // One limiter per process, for the reason `GithubRateLimiter` is one: a second instance
     // would be a second counter, and a limit of thirty enforced twice is a limit of sixty.
     EstimationLimiter,
+    // BN.1 (#461): a ticket's re-size files a `resize_review` card in the Needs-You inbox.
+    ResizeReviewEmitter,
   ],
   // The orchestrator alone, still. `BacklogSyncModule` binds `ESTIMATION_INTAKE` to it, and
   // L.4's trigger calls `enqueue()` and `estimating()` on it from inside this module. The

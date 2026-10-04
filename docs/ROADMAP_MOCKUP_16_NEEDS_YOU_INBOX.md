@@ -365,7 +365,7 @@ seeds: 3 open (err 8m · warn 21m · warn 34m) + 5 resolved (1 policy-auto) + we
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BN.1 | #461 | 🟡 Open | ouroboros-rest: [BN.1] DecisionKind SPI & emitter wiring | Registry service + the eight MVP kinds wired to their planes | mvp, inbox, rest | N (after BM.1) | Y | L | ouroboros-rest |
+| BN.1 | #461 ✅ | 🟢 Done | ouroboros-rest: [BN.1] DecisionKind SPI & emitter wiring | Registry service + the eight MVP kinds wired to their planes | mvp, inbox, rest | N (after BM.1) | Y | L | ouroboros-rest |
 | BN.2 | #462 | 🟡 Open | ouroboros-rest: [BN.2] Action executor & allow-once exceptions | Handler bindings to AX/AP/planning; exception grants (X3) | mvp, inbox, rest, runs, pr | N (after BN.1, BM.3) | Y | L | ouroboros-rest |
 | BN.3 | #463 | 🟡 Open | ouroboros-rest: [BN.3] Channels — GitHub mirror & email tokens | Idempotent mirroring; digest + instant mails with signed tokens | mvp, inbox, rest, sources | N (after BN.1, BM.3, BJ.4) | Y | M | ouroboros-rest |
 | BN.4 | #464 | 🟡 Open | ouroboros-rest: [BN.4] Inbox APIs, snooze & policy read-view | Queue/resolved/stat payloads, snooze, composed policy rows (X6/X7) | mvp, inbox, rest | N (after BN.1, BM.2) | Y | M | ouroboros-rest |
@@ -373,7 +373,7 @@ seeds: 3 open (err 8m · warn 21m · warn 34m) + 5 resolved (1 policy-auto) + we
 
 ### Issue BN.1 — ouroboros-rest: [BN.1] DecisionKind SPI & emitter wiring
 
-> **GitHub issue:** #461 · **Status:** 🟡 Open · **Parent epic:** #454
+> **GitHub issue:** #461 ✅ · **Status:** 🟢 Done · **Parent epic:** #454
 
 - **Problem Statement:** The registry (X1) and the emitters: every plane
   that blocks on a human must file a typed item exactly once.
@@ -409,7 +409,9 @@ PR#509 merged out-of-band ─▶ item auto-resolved (resolver: policy(source_res
 
 > **GitHub issue:** #462 · **Status:** 🟡 Open · **Parent epic:** #454
 >
-> **Schema already shipped (#458):** answer by inserting a `decision_resolutions` row (it marks the item resolved; its primary key is the race's 409); record a run's wait in `run_blocks` (`blocked_at` when it stops, `unblocked_at` when it resumes). A policy may only answer an `auto_resolvable` kind — `source_resolved` on a merge-class kind needs an amendment.
+> **Schema already shipped (#458):** answer by inserting a `decision_resolutions` row (it marks the item resolved; its primary key is the race's 409); record a run's wait in `run_blocks` (`blocked_at` when it stops, `unblocked_at` when it resumes). A policy may only answer an `auto_resolvable` kind — the one exception is V097's out-of-band closure (#461).
+>
+> **Already shipped (#461):** `DecisionKindRegistry` (`ouroboros-rest/src/modules/decisions/`) gives each item's pinned declaration (`pinnedKind`), its rendered prose (`render`) and its action row resolved against the member (`actionsFor` — `approver` is `can_approve_loops`). Answer by inserting the `decision_resolutions` row, then tell `DecisionLifecycle` a `resolved` event (#536's hook). The action's `handler_binding` names the plane operation. An item whose source settled elsewhere is already closed as `policy(source_resolved)` by the watcher — a handler finds it `resolved` and must answer 409, not act.
 >
 > **Schema already shipped (#459):** allow-once inserts a `guardrail_exceptions` row (run, narrow glob, `granted_via` the item, TTL within `guardrail_exception_max_ttl_minutes`); AP.3's `GuardrailService` already consumes live grants on its next `allowed_paths` pass, so the handler grants and triggers re-evaluation — nothing else.
 
@@ -446,6 +448,8 @@ action(approve_merge) ─▶ AX.5 approve ─▶ gate green ─▶ AX.4 merges (
 
 > **GitHub issue:** #463 · **Status:** 🟡 Open · **Parent epic:** #454
 >
+> **Already shipped (#461):** render a card for a mail or a PR comment with `DecisionKindRegistry.render(kind, payload, "html" | "markdown")` — escaping is per destination — and mirror on `DecisionLifecycle` events (`filed`, `refreshed`, `resolved`), never by polling items.
+>
 > **Schema already shipped (#459):** mint with `action_token_mint(item, action, user, hmac, key_ref, channel)` (supersedes the live token; HMAC under a vault key, never the token), spend with `action_token_use(hmac)` — `accepted`, or `used` / `revoked` / `expired` / `unknown` for the three designed errors; `requires_confirm` tokens must land on a session-confirm page. Resolution by any channel already revokes the rest.
 
 - **Problem Statement:** Answer-from-anywhere starts with two real
@@ -480,6 +484,8 @@ email [Allow once] link ─▶ token ✓ ─▶ receipt · [Approve & merge] lin
 ### Issue BN.4 — ouroboros-rest: [BN.4] Inbox APIs, snooze & policy read-view
 
 > **GitHub issue:** #464 · **Status:** 🟡 Open · **Parent epic:** #454
+>
+> **Already shipped (#461):** `GET /api/v1/inbox/feed` (open by severity, snooze-aware: an elapsed snooze counts as open) is in `decisions/inbox.controller.ts` — add the queue, resolved, stats and snooze routes beside it, and list exactly the items `open` counts. The policy card reads `DecisionKindRegistry.kinds()`: `spend_approval` comes back `dormant: true`, so the card must not claim cap approvals exist. The resolved list shows `source_resolved` closures (`resolver: policy`); the weekly metrics already leave them out.
 >
 > **Schema already shipped (#458):** snooze through `decision_item_snooze` / `decision_items_snooze_all` (one scope-all event), re-surface with `decision_items_wake(org)` before reading the queue, and serve `GET /stats` from `decision_metrics_weekly` (UTC ISO weeks).
 

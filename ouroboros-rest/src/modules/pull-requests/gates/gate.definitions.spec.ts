@@ -7,6 +7,7 @@ import {
   ORG_CONFIG_SOURCE,
   REVIEW_REQUESTED_SOURCE,
   materializeDefinitions,
+  policyReviewSource,
   type DefinitionInput,
 } from "./gate.definitions";
 import { DEFAULT_ORG_GATE_CONFIG } from "./gate.policy";
@@ -140,6 +141,39 @@ describe("materializeDefinitions", () => {
     });
     // The request touches no other gate.
     expect(byKey({ ...PR_514, reviewRequested: true }).build).toEqual(byKey(PR_514).build);
+  });
+
+  it("makes human approval required when the org policy's human_review rule matches, naming the policy (#461)", () => {
+    const org = {
+      ...DEFAULT_ORG_GATE_CONFIG,
+      overrides: { human_approval: { disabled: true } },
+    };
+    const policyReview = { required: true, label: "refactor" };
+
+    expect(byKey({ ...PR_514, org, policyReview }).human_approval).toMatchObject({
+      required: true,
+      disabled: false,
+      source: "standard-fix@v14 pin + org policy: refactor → human review",
+    });
+    expect(
+      byKey({ ...PR_514, policyReview: { required: true, label: null } }).human_approval.source,
+    ).toBe("standard-fix@v14 pin + org policy → human review");
+    // A rule that matched nothing leaves the gate as the pin set it.
+    expect(
+      byKey({ ...PR_514, org, policyReview: { required: false, label: null } }).human_approval,
+    ).toMatchObject({ required: false, disabled: true, source: ORG_CONFIG_SOURCE });
+  });
+
+  it("keeps the policy's provenance when a person also asks for a review", () => {
+    expect(
+      byKey({ ...PR_514, reviewRequested: true, policyReview: { required: true, label: "refactor" } })
+        .human_approval.source,
+    ).toBe(`standard-fix@v14 pin + org policy: refactor → human review + ${REVIEW_REQUESTED_SOURCE}`);
+  });
+
+  it("names the policy for a match on effort alone without inventing a label", () => {
+    expect(policyReviewSource(null)).toBe("org policy → human review");
+    expect(policyReviewSource("refactor")).toBe("org policy: refactor → human review");
   });
 
   it("is a pure function of its inputs", () => {

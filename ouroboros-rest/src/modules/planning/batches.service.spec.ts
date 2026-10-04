@@ -13,6 +13,7 @@ import type { TicketSourceRegistry } from "../ticket-sources/ticket-source.regis
 import type { TicketSourcesService } from "../ticket-sources/ticket-sources.service";
 import type { WorkflowRegistryService } from "../workflows/registry.service";
 import { BatchesService, isComposedPlanner, prefixOf } from "./batches.service";
+import type { SplitApprovalEmitter } from "./split-approval.emitter";
 import type { CreateBatchBody } from "./planning.dto";
 import { PLANNING_ERRORS } from "./planning.errors";
 import { OTHER_ORG, PlanningStore, STORE_ORG, STORE_SOURCE } from "./planning.store.fixture";
@@ -49,6 +50,8 @@ interface Behaviour {
   writable?: boolean;
   milestones?: boolean;
   pushing?: boolean;
+  /** The Needs-You emitter (#461), when the case listens to it. */
+  splits?: SplitApprovalEmitter;
 }
 
 /**
@@ -118,6 +121,7 @@ function build(behaviour: Behaviour = {}) {
       orchestrator,
       pusher,
       queueSmall,
+      behaviour.splits,
     ),
     store,
     plans,
@@ -179,6 +183,15 @@ describe("generating a batch", () => {
       milestone: "Helios 2.1",
       localKeyPrefix: "OTA",
     });
+  });
+
+  it("files the batch's split-approval card once it is stored (#461)", async () => {
+    const splits = { drafted: jest.fn().mockResolvedValue(undefined) };
+    const { service } = build({ splits: splits as unknown as SplitApprovalEmitter });
+
+    const batch = await service.generate(STORE_ORG, "user-1", body());
+
+    expect(splits.drafted).toHaveBeenCalledWith(STORE_ORG, batch.id);
   });
 
   it("sizes every draft through the one orchestrator, naming the push target", async () => {

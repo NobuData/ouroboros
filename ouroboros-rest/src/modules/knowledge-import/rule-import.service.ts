@@ -24,7 +24,7 @@
  * write is either exactly the preview or nothing.
  */
 
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import type { Transaction } from "kysely";
 
 import { KNOWLEDGE_IMPORTED_EVENT, type AuditRecord } from "../audit/audit.events";
@@ -32,6 +32,7 @@ import { AuditService } from "../audit/audit.service";
 import { DatabaseService } from "../db/db.service";
 import type { Database } from "../db/schema";
 import { DetectionService } from "../detection/detection.service";
+import { FactReviewEmitter } from "../facts/fact-review.emitter";
 import { FactsRepository } from "../facts/facts.repository";
 import { SKILL_CONSTRAINTS, violates } from "../skills/skills.errors";
 import { SkillsRepository } from "../skills/skills.repository";
@@ -92,6 +93,8 @@ export class RuleImportService {
    * @param database - The pool, for the apply's transaction.
    * @param reader - What reads the repository's files.
    * @param audit - Where the apply is recorded.
+   * @param reviews - The Needs-You emitter (#461): each imported fact files a `fact_review` card.
+   *   Absent in a context without the inbox.
    */
   constructor(
     @Inject(RuleImportRepository) private readonly store: RuleImportStore,
@@ -100,6 +103,7 @@ export class RuleImportService {
     private readonly database: DatabaseService,
     @Inject(DetectionService) private readonly reader: RuleFileReader,
     @Inject(AuditService) private readonly audit: RuleImportAudit,
+    @Optional() private readonly reviews?: FactReviewEmitter,
   ) {}
 
   /**
@@ -192,6 +196,13 @@ export class RuleImportService {
         skill_slugs: created.skills.map((skill) => skill.slug).join(","),
       },
     });
+
+    // Every imported fact is born proposed and waits on a person: file its inbox card (#461).
+    // Never throws — the import has committed and been audited.
+    await this.reviews?.review(
+      organizationId,
+      created.facts.map((fact) => fact.id),
+    );
 
     return { ...preview, created };
   }

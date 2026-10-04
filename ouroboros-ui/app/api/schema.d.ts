@@ -6387,6 +6387,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inbox/feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * How many decisions are waiting — the sidebar badge
+         * @description Real counts from the decision items every plane files (#461): `open` is what the sidebar
+         *     **Needs You** badge shows — items asking now, by severity in `bySeverity` (the badge lights
+         *     red while any `err` is open). **Snooze-aware**: an item snoozed and still hidden counts in
+         *     `snoozed`, not `open`; one whose snooze has already elapsed counts as `open` even before the
+         *     wake sweep has run, so the badge never hides a question longer than its snooze asked.
+         *     `nextWakeAt` is when the soonest hidden item comes back. Resolved and expired items count
+         *     nowhere. The queue (BN.4) lists exactly the items `open` counts.
+         *
+         *     **Every member**, `viewer` included.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        get: operations["readInboxFeed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/facts/needs-you": {
         parameters: {
             query?: never;
@@ -21892,6 +21924,33 @@ export interface components {
              * @description When it started waiting — the proposal's creation, or the stale flag.
              */
             since: string;
+        };
+        /**
+         * InboxFeed
+         * @description `GET /api/v1/inbox/feed` — the Needs-You badge's counts (#461). `open` equals the sum of
+         *     `bySeverity`; `snoozed` is counted apart from it.
+         */
+        InboxFeed: {
+            /** @description Items asking now — the badge's number. Zero hides the badge. */
+            open: number;
+            /** @description `open`, by the card's severity. */
+            bySeverity: {
+                err: number;
+                warn: number;
+                info: number;
+            };
+            /** @description Items snoozed and still hidden. Not in `open`. */
+            snoozed: number;
+            /**
+             * Format: date-time
+             * @description When the soonest hidden item wakes; null when none is snoozed.
+             */
+            nextWakeAt: string | null;
+            /**
+             * Format: date-time
+             * @description The instant the counts are as of.
+             */
+            asOf: string;
         };
         /** FactNeedsYou */
         FactNeedsYou: {
@@ -54483,6 +54542,111 @@ export interface operations {
              *     `validation_failed` — a malformed body.
              */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readInboxFeed: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "open": 3,
+                     *       "bySeverity": {
+                     *         "err": 1,
+                     *         "warn": 2,
+                     *         "info": 0
+                     *       },
+                     *       "snoozed": 0,
+                     *       "nextWakeAt": null,
+                     *       "asOf": "2026-10-04T09:12:00.000Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["InboxFeed"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

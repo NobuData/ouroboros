@@ -61,7 +61,7 @@
 
 import { randomUUID } from "node:crypto";
 
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 
 import { AppConfigService } from "../config/config.service";
 import type { EstimableIssue, EstimationIntake } from "../backlog-sync/estimation.intake";
@@ -71,6 +71,7 @@ import type { Estimate, EstimateRequest, EstimationContext } from "../engine/eng
 import { describeForLog } from "../errors/failure";
 import { EstimationContextService, type EstimationVocabulary } from "./estimation.context";
 import { EstimationKnowledge, factsOf } from "./estimation.knowledge";
+import { ResizeReviewEmitter } from "./resize-review.emitter";
 import { draftEstimateRow, estimateRow, statusFor, ticketEstimateRow } from "./estimation.outcome";
 import { EstimationQueue } from "./estimation.queue";
 import {
@@ -204,6 +205,8 @@ export class EstimationOrchestrator implements EstimationIntake {
    * @param context - The vocabularies an estimate may use, resolved through routing (Z.4).
    * @param config - The concurrency, the confidence floor and the staleness threshold.
    * @param knowledge - The estimator's context-assembly manifest and injection record (#414).
+   * @param resizes - The Needs-You emitter (#461): a ticket's new estimate that moves its effort
+   *   files a `resize_review` card. Absent in a context without the inbox.
    */
   constructor(
     private readonly issues: EstimationRepository,
@@ -211,6 +214,7 @@ export class EstimationOrchestrator implements EstimationIntake {
     private readonly context: EstimationContextService,
     private readonly config: AppConfigService,
     private readonly knowledge: EstimationKnowledge,
+    @Optional() private readonly resizes?: ResizeReviewEmitter,
   ) {
     this.queue = new EstimationQueue(config.estimationConcurrency);
   }
@@ -470,6 +474,8 @@ export class EstimationOrchestrator implements EstimationIntake {
       }));
 
       await this.knowledge.record(ticket.organizationId, estimateId, manifest);
+      // A re-size moves the size the queue was planned on: ask a person (#461). Never throws.
+      await this.resizes?.estimated(ticketId, version);
 
       this.logger.log(
         `${subject} is ${status} — ${estimate.effort.toUpperCase()}, ` +

@@ -9,6 +9,7 @@ import { FactsModule } from "./facts.module";
 import { FACT_COMMIT_OBSERVER } from "./facts.observer";
 import { FactsRepository } from "./facts.repository";
 import { FactSweepScheduler } from "./facts.scheduler";
+import { FactReviewEmitter } from "./fact-review.emitter";
 import { FactsService } from "./facts.service";
 import { FactSweepService } from "./facts.sweep";
 
@@ -27,10 +28,11 @@ describe("the facts module", () => {
     await moduleRef.close();
   });
 
-  it("exports the proposers' entry point and the commit observer, nothing else", () => {
+  it("exports the proposers' entry point, the commit observer and the review emitter, nothing else", () => {
     const exports = Reflect.getMetadata("exports", FactsModule) as unknown[] | undefined;
 
-    expect(exports).toEqual([FactsService, FACT_COMMIT_OBSERVER]);
+    // The review emitter (#461) for BF.4's import, whose proposals its own transaction writes.
+    expect(exports).toEqual([FactsService, FACT_COMMIT_OBSERVER, FactReviewEmitter]);
   });
 
   it("imports nothing of the PR plane, so the two cannot form a cycle", () => {

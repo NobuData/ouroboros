@@ -25,11 +25,17 @@
  * **Every evaluation is told to {@link GateListeners}** after its transaction commits — the merge
  * executor (AX.4, #360) fires an armed plan there, or disarms it.
  *
+ * **The org policy's `human_review` rule** (#461, the #358 amendment) is applied to the PR's
+ * ticket on every evaluation: a match makes `human_approval` required with the policy as its
+ * provenance, and is told to listeners, so the inbox's merge-approval emitter files the card that
+ * names the policy.
+ *
  * **Approval slots** (AX.5, #361) are read first: a requested review makes `human_approval`
  * required (`reviewRequested`), and the newest slot is what its provider answers from.
  *
  * **Not wired yet, deliberately:** a gate-level waiver action, a second-model provider (AZ.1,
- * #371), and the org policy document's resolver (#481), which rebinds {@link ORG_GATE_POLICY}.
+ * #371), and the rest of the org policy document's resolver (#481), which widens
+ * {@link ORG_GATE_POLICY}'s binding.
  */
 
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
@@ -48,6 +54,7 @@ import { evaluateGate, statePath, unchanged, type GateAggregate } from "./gate.e
 import { AFFECTED_GATES, type GateEvidenceEvent, type GateEvidenceSink } from "./gate.evidence";
 import { GateListeners } from "./gate.listeners";
 import { ORG_GATE_POLICY, type OrgGatePolicy } from "./gate.policy";
+import { matchHumanReview, type HumanReviewMatch } from "./gate.human-review";
 import { GATE_PROVIDERS } from "./gate.providers";
 import { GateRepository, type GateStore, type PolicySources } from "./gate.repository";
 import type { GateFacts, GateWaiver } from "./gate.types";
@@ -66,6 +73,8 @@ export interface GateEvaluation {
   readonly state: PullRequestState;
   /** Whether every required gate is satisfied — the merge executor's (#360) armed-ready. */
   readonly armedReady: boolean;
+  /** What the org policy's `human_review` rule decided for the PR (#461). */
+  readonly humanReview: HumanReviewMatch;
 }
 
 /** The policy as the engine reads it, derived from its sources. */
@@ -148,6 +157,7 @@ export class GateEngineService implements GateEvidenceSink {
             state: result.state,
             mergeReady: result.armedReady,
             redCount: result.aggregate?.redCount ?? 0,
+            humanReview: result.humanReview,
           });
         }
       } catch (error) {
@@ -184,6 +194,10 @@ export class GateEngineService implements GateEvidenceSink {
       const org = await this.org.forOrganization(pr.organizationId);
       const derived = derivePolicy(sources);
       const approval = await tx.approval(pr);
+      const humanReview = matchHumanReview(org.humanReview, {
+        labels: sources.ticket.labels,
+        effort: asQueueEffort(sources.ticket.effort),
+      });
       const specs = materializeDefinitions({
         pin: derived.pin,
         policy: derived.policy,
@@ -191,6 +205,7 @@ export class GateEngineService implements GateEvidenceSink {
         blockUntilGreen: sources.blockUntilGreen,
         org,
         reviewRequested: approval !== null,
+        policyReview: humanReview,
       });
       const definitions = await tx.upsertDefinitions(pr.id, specs);
       const idle = {
@@ -199,6 +214,7 @@ export class GateEngineService implements GateEvidenceSink {
         aggregate: null,
         state: pr.state,
         armedReady: false,
+        humanReview,
       };
 
       if (revision === null) {
@@ -263,6 +279,7 @@ export class GateEngineService implements GateEvidenceSink {
         aggregate: result,
         state: path.at(-1) ?? pr.state,
         armedReady: result.mergeReady,
+        humanReview,
       };
     });
   }

@@ -35,6 +35,7 @@ function build(
   const world = new ImportWorld();
   const reader = new FixtureReader(files);
   const audit = new RecordingAudit();
+  const reviews = { review: jest.fn().mockResolvedValue(undefined) };
   const service = new RuleImportService(
     world.store(),
     world.skills(),
@@ -42,9 +43,10 @@ function build(
     world.database(),
     reader,
     audit,
+    reviews as never,
   );
 
-  return { world, reader, audit, service };
+  return { world, reader, audit, service, reviews };
 }
 
 /**
@@ -82,6 +84,18 @@ async function refusal(promise: Promise<unknown>): Promise<DomainError> {
 }
 
 describe("the preview", () => {
+  it("files a review card for every imported proposal, once the import has committed (#461)", async () => {
+    const { service, reviews } = build();
+
+    const { result } = await previewAndApply(service);
+
+    expect(result.created.facts.length).toBeGreaterThan(0);
+    expect(reviews.review).toHaveBeenCalledWith(
+      IMPORT_WORKSPACE,
+      result.created.facts.map((fact) => fact.id),
+    );
+  });
+
   it("counts and samples per file and kind, deduped included, and writes nothing", async () => {
     const { service, world, audit } = build();
     const preview = await service.preview(IMPORT_WORKSPACE, "Acme-Robotics/Helios-Firmware");

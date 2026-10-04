@@ -9,8 +9,8 @@
  * It exports {@link GateListeners} too — the registry the merge executor (#360) hears each
  * evaluation on, without the engine importing it.
  *
- * {@link ORG_GATE_POLICY} is bound to the defaults until the org policy document's resolver
- * (#481) rebinds it.
+ * {@link ORG_GATE_POLICY} is bound to `OrgPolicyGateResolver` since #461: the published org policy's
+ * `human_review` rule (the refactor label), and the defaults for everything else until #481.
  */
 
 import { Module } from "@nestjs/common";
@@ -19,9 +19,16 @@ import { DbModule } from "../../db/db.module";
 import { GuardrailsRepository } from "../../guardrails/guardrails.repository";
 import { GATE_EVIDENCE } from "./gate.evidence";
 import { GateListeners } from "./gate.listeners";
-import { DEFAULT_ORG_GATE_POLICY, ORG_GATE_POLICY } from "./gate.policy";
+import { OrgPolicyGateResolver } from "./gate.org-policy";
+import { ORG_GATE_POLICY } from "./gate.policy";
 import { GateRepository } from "./gate.repository";
 import { GateEngineService } from "./gate.service";
+
+/**
+ * The org policy binding (#461's #358 amendment): the published policy's `human_review` rule, with
+ * every other setting at the defaults until #481 widens the resolver.
+ */
+export const orgGatePolicyProvider = { provide: ORG_GATE_POLICY, useClass: OrgPolicyGateResolver };
 
 /** The sink binding, stated once so the module and its spec agree on it. */
 export const gateEvidenceProvider = { provide: GATE_EVIDENCE, useExisting: GateEngineService };
@@ -33,7 +40,7 @@ export const gateEvidenceProvider = { provide: GATE_EVIDENCE, useExisting: GateE
     GateRepository,
     GateEngineService,
     GateListeners,
-    { provide: ORG_GATE_POLICY, useValue: DEFAULT_ORG_GATE_POLICY },
+    orgGatePolicyProvider,
     gateEvidenceProvider,
   ],
   exports: [GateEngineService, GATE_EVIDENCE, GateListeners],
