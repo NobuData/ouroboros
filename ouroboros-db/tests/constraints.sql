@@ -31946,6 +31946,637 @@ select pg_temp.must_hold(
   'retention tiers, webhooks, their deliveries and notification routes cascade with their workspace');
 
 -- ===========================================================================
+-- V095 — decision resolutions, run blocks, snooze and the weekly metrics (#458, BM.2)
+-- ===========================================================================
+--
+-- Asked here: both of mockup 16's resolved-row classes are representable — a person's approve and
+-- a policy's auto-accept with its policy named; a resolution names exactly the resolver its class
+-- needs; answer latency and loop wait are computed, distinct, and the wait is null (never zero)
+-- when no run was blocked; snooze hides an item without resetting its age and Snooze all is one
+-- audited event; and decision_metrics_weekly equals a hand-computed oracle on a fixture week built
+-- to read 11 · 41s · 6m — counted in UTC ISO weeks, whatever the session's time zone.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v095',       'Resolution Works', 'resolution-works-v095', now()),
+  ('org-v095-other', 'Other Works',      'other-works-v095',      now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a9500000-0000-0000-0000-00000000000a', 'Ken Resolver', 'ken@resolution-works.example', true),
+  ('a9500000-0000-0000-0000-00000000000b', 'Ana Resolver', 'ana@resolution-works.example', true);
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a9510000-0000-0000-0000-00000000000a', 'org-v095',       'resolution-v095', true),
+  ('a9510000-0000-0000-0000-00000000000b', 'org-v095-other', 'other-v095',      true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a951f000-0000-0000-0000-00000000000a', 'a9510000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('a951f000-0000-0000-0000-00000000000b', 'a9510000-0000-0000-0000-00000000000b',
+   'other-firmware', true, 'main');
+
+-- Three loops of this workspace, and one of another's.
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, loop_seq)
+  values
+    ('a9560000-0000-0000-0000-000000001847', 'org-v095', 'a951f000-0000-0000-0000-00000000000a',
+     482, 'CAN bus flake', 'standard-fix', 'claude-fable-5', 'review', 'Review', 7, 8,
+     '2026-09-20T09:00:00Z', 1847),
+    ('a9560000-0000-0000-0000-000000001851', 'org-v095', 'a951f000-0000-0000-0000-00000000000a',
+     479, 'OTA rollback flag', 'standard-fix', 'claude-fable-5', 'review', 'Review', 7, 8,
+     '2026-09-20T09:30:00Z', 1851),
+    ('a9560000-0000-0000-0000-000000001860', 'org-v095', 'a951f000-0000-0000-0000-00000000000a',
+     490, 'Telemetry epic', 'standard-fix', 'claude-fable-5', 'review', 'Review', 7, 8,
+     '2026-09-20T10:00:00Z', 1860),
+    ('a9560000-0000-0000-0000-00000000f001', 'org-v095-other', 'a951f000-0000-0000-0000-00000000000b',
+     1, 'someone else''s loop', 'standard-fix', 'claude-fable-5', 'review', 'Review', 7, 8,
+     '2026-09-20T10:00:00Z', 1);
+
+-- Three kinds of this section's own (custom ids, so no future declaration of the MVP kinds
+-- collides): a split approval and a fact review a policy may not answer, and a re-size a policy
+-- may (BP.4's auto_accept_resize).
+create function pg_temp.v095_declare(kind text, auto boolean) returns void language sql as $$
+  insert into ouroboros.decision_kinds
+    (kind_id, version, severity_default, question_template, why_template, payload_schema, actions,
+     resolution_semantics, ref_shape)
+  values
+    (kind, 1, 'info', 'Decide on #{ticket}?', 'Ticket #{ticket} needs an answer.',
+     '{"type": "object", "additionalProperties": false, "required": ["ticket"],
+       "properties": {"ticket": {"type": "integer", "minimum": 1}}}',
+     '[{"id": "approve", "label": "Approve", "style": "primary", "required_role": "member",
+        "consequence_text": "Approves it.", "takes_note": false, "handler_binding": "planning.approve"},
+       {"id": "return_to_loop", "label": "Return to loop with note", "style": "ghost",
+        "required_role": "member", "consequence_text": "Returns it with your note.",
+        "takes_note": true, "handler_binding": "run.return_with_note"},
+       {"id": "look", "label": "Look →", "style": "ghost", "required_role": "viewer",
+        "consequence_text": "Opens it.", "takes_note": false, "handler_binding": "navigate.ticket"}]',
+     jsonb_build_object('answered_by', '["approve", "return_to_loop"]'::jsonb,
+                        'closes_source', '["approve"]'::jsonb, 'auto_resolvable', auto),
+     '{"required": [], "optional": ["run"], "tags": []}')
+$$;
+
+select pg_temp.v095_declare('custom:v095-split',  false);
+select pg_temp.v095_declare('custom:v095-resize', true);
+select pg_temp.v095_declare('custom:v095-fact',   false);
+
+-- An item of a kind, asked at a given instant, about a run or about none.
+create function pg_temp.v095_item(kind text, key text, asked timestamptz, run uuid default null,
+                                  org text default 'org-v095')
+returns uuid language sql as $$
+  insert into ouroboros.decision_items
+    (organization_id, kind_id, kind_version, payload, refs, emitted_by, source_ref, created_at)
+  values
+    (org, kind, 1, '{"ticket": 490}',
+     case when run is null then '[]'::jsonb
+          else jsonb_build_array(jsonb_build_object('type', 'run', 'id', run::text,
+                                                    'label', 'loop #' || right(run::text, 4)))
+     end,
+     'planning', key, asked)
+  returning id
+$$;
+
+create function pg_temp.v095_id(key text) returns uuid language sql stable as $$
+  select id from ouroboros.decision_items where source_ref = key
+$$;
+
+-- A human (Ken, by default) or a policy answering an item.
+create function pg_temp.v095_resolve(key text, answered timestamptz, channel text default 'web',
+                                     action text default 'approve', resolver text default 'human',
+                                     who text default 'a9500000-0000-0000-0000-00000000000a',
+                                     policy text default null, note text default null)
+returns void language sql as $$
+  insert into ouroboros.decision_resolutions
+    (item_id, organization_id, action_id, resolver, resolved_by_user, resolved_by_policy, channel,
+     note, resolved_at)
+  select i.id, i.organization_id, action, resolver, who, policy, channel, note, answered
+    from ouroboros.decision_items i where i.source_ref = key
+$$;
+
+create function pg_temp.v095_block(key text, run uuid, blocked timestamptz,
+                                   unblocked timestamptz default null)
+returns void language sql as $$
+  insert into ouroboros.run_blocks (organization_id, decision_item_id, run_id, blocked_at, unblocked_at)
+  select i.organization_id, i.id, run, blocked, unblocked
+    from ouroboros.decision_items i where i.source_ref = key
+$$;
+
+-- --- the fixture week: Monday 2026-09-28 … Sunday 2026-10-04, UTC ----------------------------
+--
+--   item  kind    asked (UTC)          run blocked            answered   latency  loop wait
+--   S1    split   Tue 09:11:34         #1847 09:11:52 → …     09:12:15   41s      23s
+--   S2    split   Tue 10:00:00         #1851 10:00:40 → …     10:06:40   400s     6m (the max)
+--   S3    split   Tue 11:00:00         #1860 10:58:00 → …     11:01:35   95s      215s (stopped first)
+--   S4    split   Tue 12:00:00         #1847 12:00:05 → 12:00:30  12:00:55  55s   25s (moved on)
+--   S5    split   Tue 13:00:00         #1851, never blocked   13:00:20   20s      null
+--   R1    resize  Wed 08:47:00         —                      08:47:12   12s      null (policy, api)
+--   R2    resize  Wed 09:00:00         —                      09:00:33   33s      null (email)
+--   R3    resize  Wed 09:30:00         —                      09:33:00   180s     null (github)
+--   F1    fact    Mon 00:00:05         —                      00:00:30   25s      null (slack)
+--   F2    fact    Thu 14:00:00         #1860, never blocked   14:00:38   38s      null (push)
+--   F3    fact    Sun 23:58:49         —                      23:59:59   70s      null
+--
+-- Sorted latencies 12 20 25 33 38 [41] 55 70 95 180 400: eleven decisions, median 41s; the
+-- longest wait 6m; one policy answer, 1/11 = 0.0909. Per kind: split 20 41 [55] 95 400 → 55s,
+-- resize 12 [33] 180 → 33s, fact 25 [38] 70 → 38s. P1 is the prior week's, and stays there.
+select pg_temp.v095_item('custom:v095-split',  'S1', '2026-09-29T09:11:34Z', 'a9560000-0000-0000-0000-000000001847');
+select pg_temp.v095_item('custom:v095-split',  'S2', '2026-09-29T10:00:00Z', 'a9560000-0000-0000-0000-000000001851');
+select pg_temp.v095_item('custom:v095-split',  'S3', '2026-09-29T11:00:00Z', 'a9560000-0000-0000-0000-000000001860');
+select pg_temp.v095_item('custom:v095-split',  'S4', '2026-09-29T12:00:00Z', 'a9560000-0000-0000-0000-000000001847');
+select pg_temp.v095_item('custom:v095-split',  'S5', '2026-09-29T13:00:00Z', 'a9560000-0000-0000-0000-000000001851');
+select pg_temp.v095_item('custom:v095-resize', 'R1', '2026-09-30T08:47:00Z');
+select pg_temp.v095_item('custom:v095-resize', 'R2', '2026-09-30T09:00:00Z');
+select pg_temp.v095_item('custom:v095-resize', 'R3', '2026-09-30T09:30:00Z');
+select pg_temp.v095_item('custom:v095-fact',   'F1', '2026-09-28T00:00:05Z');
+select pg_temp.v095_item('custom:v095-fact',   'F2', '2026-10-01T14:00:00Z', 'a9560000-0000-0000-0000-000000001860');
+select pg_temp.v095_item('custom:v095-fact',   'F3', '2026-10-04T23:58:49Z');
+select pg_temp.v095_item('custom:v095-split',  'P1', '2026-09-25T09:00:00Z', 'a9560000-0000-0000-0000-000000001860');
+
+select pg_temp.v095_block('S1', 'a9560000-0000-0000-0000-000000001847', '2026-09-29T09:11:52Z');
+select pg_temp.v095_block('S2', 'a9560000-0000-0000-0000-000000001851', '2026-09-29T10:00:40Z');
+select pg_temp.v095_block('S3', 'a9560000-0000-0000-0000-000000001860', '2026-09-29T10:58:00Z');
+select pg_temp.v095_block('S4', 'a9560000-0000-0000-0000-000000001847', '2026-09-29T12:00:05Z',
+                          '2026-09-29T12:00:30Z');
+select pg_temp.v095_block('P1', 'a9560000-0000-0000-0000-000000001860', '2026-09-25T09:10:00Z');
+
+select pg_temp.v095_resolve('S1', '2026-09-29T09:12:15Z');
+select pg_temp.v095_resolve('S2', '2026-09-29T10:06:40Z');
+select pg_temp.v095_resolve('S3', '2026-09-29T11:01:35Z', 'email');
+select pg_temp.v095_resolve('S4', '2026-09-29T12:00:55Z');
+select pg_temp.v095_resolve('S5', '2026-09-29T13:00:20Z', 'web', 'return_to_loop',
+                            note => 'Keep the DMA path as it is.');
+select pg_temp.v095_resolve('R1', '2026-09-30T08:47:12Z', 'api', resolver => 'policy', who => null,
+                            policy => 'auto_accept_resize');
+select pg_temp.v095_resolve('R2', '2026-09-30T09:00:33Z', 'email',
+                            who => 'a9500000-0000-0000-0000-00000000000b');
+select pg_temp.v095_resolve('R3', '2026-09-30T09:33:00Z', 'github');
+select pg_temp.v095_resolve('F1', '2026-09-28T00:00:30Z', 'slack');
+select pg_temp.v095_resolve('F2', '2026-10-01T14:00:38Z', 'push');
+select pg_temp.v095_resolve('F3', '2026-10-04T23:59:59Z');
+select pg_temp.v095_resolve('P1', '2026-09-25T11:00:00Z');
+
+-- --- the mockup's two resolved-row classes -----------------------------------------------------
+select pg_temp.must_hold(
+  (select r.resolver = 'human' and r.resolved_by_user = 'a9500000-0000-0000-0000-00000000000a'
+          and r.resolved_by_policy is null and r.action_id = 'approve' and r.channel = 'web'
+          and to_char(r.resolved_at at time zone 'UTC', 'HH24:MI') = '09:12'
+          and i.status = 'resolved' and d.question = 'Decide on #490?'
+     from ouroboros.decision_resolutions r
+     join ouroboros.decision_items i on i.id = r.item_id
+     join ouroboros.decision_items_rendered d on d.id = r.item_id
+    where i.source_ref = 'S1'),
+  'a person''s answer is a resolution row: approved, by whom, through which channel, at 09:12');
+
+select pg_temp.must_hold(
+  (select r.resolver = 'policy' and r.resolved_by_policy = 'auto_accept_resize'
+          and r.resolved_by_user is null and r.channel = 'api' and i.status = 'resolved'
+     from ouroboros.decision_resolutions r
+     join ouroboros.decision_items i on i.id = r.item_id
+    where i.source_ref = 'R1'),
+  'auto-accepted by policy is a resolution row naming its policy — recorded, never a missing row');
+
+-- --- the resolver class names exactly what it needs ----------------------------------------------
+select pg_temp.v095_item('custom:v095-resize', 'X1', '2026-09-30T10:00:00Z');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v095_resolve('X1', '2026-09-30T10:00:10Z', 'api', resolver => 'policy', who => null)$$,
+  'a policy resolution with no policy ref is refused', 'decision_resolutions_resolver_class');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v095_resolve('X1', '2026-09-30T10:00:10Z', 'api', resolver => 'policy',
+                                policy => 'auto_accept_resize')$$,
+  'a policy resolution names no person', 'decision_resolutions_resolver_class');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v095_resolve('X1', '2026-09-30T10:00:10Z', who => null)$$,
+  'a human resolution with no user is refused', 'decision_resolutions_human_named');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v095_resolve('X1', '2026-09-30T10:00:10Z', policy => 'auto_accept_resize')$$,
+  'a human resolution names no policy', 'decision_resolutions_resolver_class');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v095_resolve('X1', '2026-09-30T10:00:10Z', resolver => 'robot')$$,
+  'a resolver is human or policy', 'decision_resolutions_resolver');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v095_resolve('X1', '2026-09-30T10:00:10Z', 'api', resolver => 'policy', who => null,
+                                policy => 'Auto Accept')$$,
+  'a policy ref is a slug or custom:<slug>', 'decision_resolutions_policy_ref_format');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v095_resolve('X1', '2026-09-30T10:00:10Z', 'fax')$$,
+  'a channel is web, email, github, slack, push or api', 'decision_resolutions_channel');
+
+-- --- the action is the kind's answer, and carries a note exactly when it takes one ---------------
+select pg_temp.must_reject(
+  $$select pg_temp.v095_resolve('X1', '2026-09-30T10:00:10Z', action => 'look')$$,
+  'a link does not answer an item', 'decision_resolutions_action_answers');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v095_resolve('X1', '2026-09-30T10:00:10Z', action => 'allow_once')$$,
+  'another kind''s action does not answer this one', 'decision_resolutions_action_answers');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v095_resolve('X1', '2026-09-30T10:00:10Z', action => 'return_to_loop')$$,
+  'an action that takes a note is refused without one', 'decision_resolutions_action_answers');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v095_resolve('X1', '2026-09-30T10:00:10Z', note => 'Looks fine.')$$,
+  'an action that takes no note carries none', 'decision_resolutions_action_answers');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v095_resolve('X1', '2026-09-30T10:00:10Z', action => 'return_to_loop', note => '  ')$$,
+  'a note is never blank', 'decision_resolutions_note_bounded');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_resolutions
+      (item_id, organization_id, action_id, resolver, resolved_by_user, channel, outcome)
+    select id, organization_id, 'approve', 'human', 'a9500000-0000-0000-0000-00000000000a', 'web', '[]'
+      from ouroboros.decision_items where source_ref = 'X1'$$,
+  'an outcome is an object', 'decision_resolutions_outcome_object');
+
+-- --- a policy answers only what may be auto-resolved ---------------------------------------------
+select pg_temp.v095_item('custom:v095-split', 'X2', '2026-09-30T10:00:00Z');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v095_resolve('X2', '2026-09-30T10:00:10Z', 'api', resolver => 'policy', who => null,
+                                policy => 'auto_accept_split')$$,
+  'a policy cannot answer a kind that is not auto-resolvable', 'decision_resolutions_policy_may_answer');
+
+-- --- one answer per item, only while it is asking -----------------------------------------------
+select pg_temp.must_reject(
+  $$select pg_temp.v095_resolve('S1', '2026-09-29T09:20:00Z')$$,
+  'an answered item is not asking any more', 'decision_resolutions_item_open');
+
+-- Two answerers racing both see the item open; the key beneath the trigger is what lets one win.
+select pg_temp.must_reject(
+  $q$do $probe$ begin
+      alter table ouroboros.decision_resolutions disable trigger decision_resolutions_item_open;
+      perform pg_temp.v095_resolve('S1', '2026-09-29T09:20:00Z');
+    end $probe$$q$,
+  'a second answer is refused — the first one wins', 'decision_resolutions_pkey');
+
+update ouroboros.decision_items set status = 'expired' where source_ref = 'X2';
+
+select pg_temp.must_reject(
+  $$select pg_temp.v095_resolve('X2', '2026-09-30T10:00:10Z')$$,
+  'an expired item cannot be answered', 'decision_resolutions_item_open');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v095_resolve('X1', '2026-09-30T09:59:00Z')$$,
+  'an answer before the question was asked is refused', 'decision_resolutions_answer_latency_nonnegative');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_resolutions
+      (item_id, organization_id, action_id, resolver, resolved_by_user, channel)
+    select id, 'org-v095-other', 'approve', 'human', 'a9500000-0000-0000-0000-00000000000a', 'web'
+      from ouroboros.decision_items where source_ref = 'X1'$$,
+  'a resolution is filed in its item''s workspace', 'decision_resolutions_item_fk');
+
+-- --- the spans: computed, distinct, and null rather than zero -----------------------------------
+select pg_temp.must_hold(
+  (select answer_latency = interval '41 seconds' and loop_wait = interval '23 seconds'
+     from ouroboros.decision_resolutions where item_id = pg_temp.v095_id('S1')),
+  'answer latency (asked → answered, 41s) and loop wait (blocked → answered, 23s) are distinct spans');
+
+select pg_temp.must_hold(
+  (select answer_latency = interval '95 seconds' and loop_wait = interval '215 seconds'
+     from ouroboros.decision_resolutions where item_id = pg_temp.v095_id('S3'))
+  and (select answer_latency = interval '55 seconds' and loop_wait = interval '25 seconds'
+         from ouroboros.decision_resolutions where item_id = pg_temp.v095_id('S4')),
+  'a run that stopped before the question waited longer than it; one that moved on stopped waiting');
+
+select pg_temp.must_hold(
+  (select loop_wait is null from ouroboros.decision_resolutions where item_id = pg_temp.v095_id('S5'))
+  and (select loop_wait is null from ouroboros.decision_resolutions where item_id = pg_temp.v095_id('R1')),
+  'loop_wait is null, not zero, when no run was blocked — with a run ref or without one');
+
+select pg_temp.v095_item('custom:v095-split', 'X3', '2026-09-30T11:00:00Z');
+
+insert into ouroboros.decision_resolutions
+  (item_id, organization_id, action_id, resolver, resolved_by_user, channel, resolved_at,
+   answer_latency, loop_wait)
+select id, organization_id, 'approve', 'human', 'a9500000-0000-0000-0000-00000000000a', 'web',
+       '2026-09-30T11:00:07Z', interval '1 day', interval '1 hour'
+  from ouroboros.decision_items where source_ref = 'X3';
+
+select pg_temp.must_hold(
+  (select answer_latency = interval '7 seconds' and loop_wait is null
+     from ouroboros.decision_resolutions where item_id = pg_temp.v095_id('X3')),
+  'spans written by the caller are replaced by the computed ones');
+
+-- --- the oracle: 11 · 41s · 6m, in UTC weeks whatever the session's zone --------------------------
+--
+-- X3 was only there to be answered with forged spans; it leaves the week with its item — the one
+-- delete that reaches a resolution.
+delete from ouroboros.decision_items where source_ref = 'X3';
+
+set local timezone = 'America/Los_Angeles';
+
+select pg_temp.must_hold(
+  (select decisions = 11
+          and median_answer_latency = interval '41 seconds'
+          and max_loop_wait = interval '6 minutes'
+          and policy_resolutions = 1
+          and auto_accept_share = 0.0909
+          and per_kind_median_answer_seconds
+                = '{"custom:v095-fact": 38, "custom:v095-resize": 33, "custom:v095-split": 55}'::jsonb
+     from ouroboros.decision_metrics_weekly
+    where organization_id = 'org-v095' and week = date '2026-09-28'),
+  'decision_metrics_weekly matches the hand-computed oracle: 11 decisions · median 41s · longest wait 6m · 1/11 by policy');
+
+select pg_temp.must_hold(
+  (select array_agg(week || ':' || decisions || ':' || max_loop_wait order by week)
+          = array['2026-09-21:1:01:50:00', '2026-09-28:11:00:06:00']
+     from ouroboros.decision_metrics_weekly where organization_id = 'org-v095'),
+  'weeks start Monday 00:00 UTC — F1 (Mon 00:00:30 UTC, Sunday afternoon in the session''s zone) and F3 (Sun 23:59:59) are this week, P1 the last');
+
+select pg_temp.must_hold(
+  (select array_agg(kind_id || ':' || decisions || ':' || extract(epoch from median_answer_latency)::integer
+                    order by kind_id)
+          = array['custom:v095-fact:3:38', 'custom:v095-resize:3:33', 'custom:v095-split:5:55']
+     from ouroboros.decision_metrics_weekly_by_kind
+    where organization_id = 'org-v095' and week = date '2026-09-28'),
+  'per-kind median answer latencies are queryable for the head''s time estimate');
+
+reset timezone;
+
+-- --- a block recorded after the answer moves the wait; one begun after it does not ---------------
+select pg_temp.v095_block('S5', 'a9560000-0000-0000-0000-000000001851', '2026-09-29T13:00:05Z');
+
+select pg_temp.must_hold(
+  (select loop_wait = interval '15 seconds'
+     from ouroboros.decision_resolutions where item_id = pg_temp.v095_id('S5')),
+  'a block the run plane records after the answer is joined into the wait');
+
+select pg_temp.v095_block('F2', 'a9560000-0000-0000-0000-000000001860', '2026-10-01T14:05:00Z');
+
+select pg_temp.must_hold(
+  (select loop_wait is null from ouroboros.decision_resolutions where item_id = pg_temp.v095_id('F2')),
+  'a block that began after the answer is not a wait on it');
+
+update ouroboros.run_blocks set unblocked_at = '2026-09-29T09:30:00Z'
+ where decision_item_id = pg_temp.v095_id('S1');
+
+select pg_temp.must_hold(
+  (select loop_wait = interval '23 seconds'
+     from ouroboros.decision_resolutions where item_id = pg_temp.v095_id('S1')),
+  'a run that moves on after the answer waited until the answer, not until it moved');
+
+-- --- run blocks -----------------------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$select pg_temp.v095_block('R2', 'a9560000-0000-0000-0000-000000001847', '2026-09-30T09:00:01Z')$$,
+  'a run is blocked only on an item that is about it', 'run_blocks_item_names_run');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v095_block('S2', 'a9560000-0000-0000-0000-000000001851', '2026-09-29T10:01:00Z')$$,
+  'one block per item and run', 'run_blocks_item_run_key');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_blocks set unblocked_at = blocked_at
+     where decision_item_id = pg_temp.v095_id('S2')$$,
+  'a block ends after it begins', 'run_blocks_unblocked_after_blocked');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_blocks set unblocked_at = '2026-09-29T09:40:00Z'
+     where decision_item_id = pg_temp.v095_id('S1')$$,
+  'a block is closed once', 'run_blocks_close_once');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_blocks set blocked_at = '2026-09-29T09:12:00Z'
+     where decision_item_id = pg_temp.v095_id('S1')$$,
+  'a block''s start is never moved — a measured wait cannot be shortened', 'run_blocks_close_once');
+
+-- The trigger catches a foreign run first; with it off for one statement, the key beneath it.
+select pg_temp.must_reject(
+  $q$do $probe$ begin
+      alter table ouroboros.run_blocks disable trigger run_blocks_item_names_run;
+      perform pg_temp.v095_block('F2', 'a9560000-0000-0000-0000-00000000f001', '2026-10-01T14:00:01Z');
+    end $probe$$q$,
+  'a block names a run of its own workspace', 'run_blocks_run_fk');
+
+-- --- resolutions are history ---------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.decision_resolutions set channel = 'email' where item_id = pg_temp.v095_id('S1')$$,
+  'the channel an answer came through cannot be rewritten', 'decision_resolutions_immutable');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_resolutions set loop_wait = interval '1 second'
+     where item_id = pg_temp.v095_id('S2')$$,
+  'a wait is computed from its blocks and cannot be written', 'decision_resolutions_immutable');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_resolutions set resolved_by_user = 'a9500000-0000-0000-0000-00000000000b'
+     where item_id = pg_temp.v095_id('S1')$$,
+  'who answered cannot be replaced', 'decision_resolutions_immutable');
+
+select pg_temp.must_reject(
+  $$delete from ouroboros.decision_resolutions where item_id = pg_temp.v095_id('S1')$$,
+  'a resolution cannot be deleted while its item stands', 'decision_resolutions_immutable');
+
+delete from ouroboros."user" where "id" = 'a9500000-0000-0000-0000-00000000000b';
+
+select pg_temp.must_hold(
+  (select resolver = 'human' and resolved_by_user is null
+     from ouroboros.decision_resolutions where item_id = pg_temp.v095_id('R2')),
+  'a person who answered can be deleted: the answer stays human, its person is forgotten');
+
+-- --- an item is resolved exactly when it has a resolution (checked at commit) -------------------
+select pg_temp.must_reject(
+  $q$do $probe$ begin
+      update ouroboros.decision_items set status = 'resolved' where source_ref = 'X1';
+      set constraints ouroboros.decision_items_resolution_agrees immediate;
+    end $probe$$q$,
+  'an item cannot be marked resolved without a resolution', 'decision_items_resolution_agrees');
+
+select pg_temp.must_reject(
+  $q$do $probe$ begin
+      update ouroboros.decision_items set status = 'open' where source_ref = 'S1';
+      set constraints ouroboros.decision_items_resolution_agrees immediate;
+    end $probe$$q$,
+  'an answered item cannot be put back in the queue', 'decision_items_resolution_agrees');
+
+-- --- snooze: visibility, never age ----------------------------------------------------------------
+create temporary table v095_snooze (key text primary key, id uuid, asked timestamptz);
+
+insert into v095_snooze
+select k, pg_temp.v095_item('custom:v095-fact', k, now() - m * interval '1 minute'), now() - m * interval '1 minute'
+  from (values ('N1', 34), ('N2', 21), ('N3', 8)) as v(k, m);
+
+select pg_temp.must_hold(
+  ouroboros.decision_item_snooze((select id from v095_snooze where key = 'N1'),
+                                 now() + interval '1 hour',
+                                 'a9500000-0000-0000-0000-00000000000a', 'After standup') is not null,
+  'one item is snoozed for an hour');
+
+select pg_temp.must_hold(
+  (select status = 'snoozed' and snoozed_until = now() + interval '1 hour'
+          and snoozed_by = 'a9500000-0000-0000-0000-00000000000a' and snooze_reason = 'After standup'
+     from ouroboros.decision_items where source_ref = 'N1')
+  and (select array_agg(source_ref order by source_ref) = array['N2', 'N3', 'X1']
+         from ouroboros.decision_items where organization_id = 'org-v095' and status = 'open'),
+  'a snoozed item says until when and by whom, and the pill (open items) leaves it out');
+
+select pg_temp.must_hold(
+  ouroboros.decision_items_wake('org-v095') = 0
+  and (select status = 'snoozed' from ouroboros.decision_items where source_ref = 'N1'),
+  'nothing wakes before its time');
+
+select pg_temp.must_hold(
+  ouroboros.decision_items_wake('org-v095', now() + interval '61 minutes') = 1,
+  'the item wakes once its snooze has passed');
+
+select pg_temp.must_hold(
+  (select i.status = 'open' and i.created_at = s.asked
+          and i.snoozed_until is null and i.snoozed_by is null and i.snooze_reason is null
+          and now() + interval '61 minutes' - i.created_at = interval '95 minutes'
+     from ouroboros.decision_items i join v095_snooze s on s.key = i.source_ref
+    where i.source_ref = 'N1'),
+  'snooze expiry re-opens the item with its original created_at — 34m old, snoozed an hour, now 95m old');
+
+select pg_temp.v095_resolve('N1', now() + interval '2 hours');
+
+select pg_temp.must_hold(
+  (select answer_latency = interval '2 hours 34 minutes'
+     from ouroboros.decision_resolutions where item_id = pg_temp.v095_id('N1')),
+  'its answer latency counts the snooze — the metrics do not exclude snoozed time');
+
+select pg_temp.must_raise(
+  $$select ouroboros.decision_item_snooze(pg_temp.v095_id('N1'), now() + interval '1 hour',
+                                          'a9500000-0000-0000-0000-00000000000a')$$,
+  '22023', 'an answered item cannot be snoozed');
+
+select pg_temp.must_reject(
+  $$select ouroboros.decision_item_snooze(pg_temp.v095_id('N2'), now() - interval '1 minute',
+                                          'a9500000-0000-0000-0000-00000000000a')$$,
+  'a snooze ends in the future', 'decision_snooze_events_until_ahead');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_items set status = 'snoozed' where source_ref = 'N2'$$,
+  'a snoozed item says until when', 'decision_items_snooze_complete');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_items set snoozed_until = now() + interval '1 hour' where source_ref = 'N2'$$,
+  'an open item carries no snooze', 'decision_items_snooze_complete');
+
+-- --- Snooze all 1h: one scoped event -------------------------------------------------------------
+select ouroboros.decision_item_snooze(pg_temp.v095_id('N3'), now() + interval '10 minutes',
+                                      'a9500000-0000-0000-0000-00000000000a');
+update ouroboros.decision_items set status = 'open', snoozed_until = null, snoozed_by = null
+ where source_ref = 'N3';
+
+create temporary table v095_all as
+select ouroboros.decision_items_snooze_all('org-v095', now() + interval '1 hour',
+                                           'a9500000-0000-0000-0000-00000000000a') as event_id;
+
+select pg_temp.must_hold(
+  (select e.scope = 'all' and e.item_id is null and e."until" = now() + interval '1 hour'
+          and e.actor = 'a9500000-0000-0000-0000-00000000000a'
+          and e.items = array[pg_temp.v095_id('X1'), pg_temp.v095_id('N2'), pg_temp.v095_id('N3')]
+     from ouroboros.decision_snooze_events e join v095_all a on a.event_id = e.id),
+  'Snooze all is one event of scope all, listing exactly the open items it caught, oldest first');
+
+select pg_temp.must_hold(
+  (select array_agg(i.source_ref order by i.source_ref) = array['N2', 'N3', 'X1']
+     from ouroboros.decision_snooze_events e, v095_all a,
+          unnest(e.items) as caught(id)
+     join ouroboros.decision_items i on i.id = caught.id
+    where e.id = a.event_id and i.status = 'snoozed')
+  and (select count(*) = 0 from ouroboros.decision_items
+        where organization_id = 'org-v095' and status = 'open'),
+  'and is reconstructable from the trail: those items, and nothing left open');
+
+select pg_temp.must_hold(
+  (select array_agg(scope || ':' || cardinality(items) order by created_at, scope desc)
+          = array['item:1', 'item:1', 'all:3']
+     from ouroboros.decision_snooze_events where organization_id = 'org-v095'),
+  'the trail holds the two single snoozes and the one Snooze all');
+
+select pg_temp.must_hold(
+  ouroboros.decision_items_snooze_all('org-v095', now() + interval '1 hour',
+                                      'a9500000-0000-0000-0000-00000000000a') is null
+  and (select count(*) = 3 from ouroboros.decision_snooze_events where organization_id = 'org-v095'),
+  'Snooze all with nothing open records nothing');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_snooze_events (organization_id, scope, item_id, items, "until")
+    values ('org-v095', 'all', pg_temp.v095_id('N2'), array[pg_temp.v095_id('N2')], now() + interval '1 hour')$$,
+  'an all event names no single item', 'decision_snooze_events_scope_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_snooze_events (organization_id, scope, item_id, items, "until")
+    values ('org-v095', 'item', pg_temp.v095_id('N2'), array[pg_temp.v095_id('N3')], now() + interval '1 hour')$$,
+  'an item event lists exactly its item', 'decision_snooze_events_scope_shape');
+
+-- --- the reads are index reads -------------------------------------------------------------------
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select item_id from ouroboros.decision_resolutions
+     where organization_id = 'org-v095' and resolved_at >= '2026-09-29T00:00:00Z'
+     order by resolved_at desc$$,
+  'decision_resolutions_organization_resolved_idx');
+
+select pg_temp.must_use_index(
+  $$select id from ouroboros.decision_items
+     where organization_id = 'org-v095' and status = 'snoozed' and snoozed_until <= now()$$,
+  'decision_items_snoozed_idx');
+
+select pg_temp.must_use_index(
+  $$select max(blocked_at) from ouroboros.run_blocks
+     where decision_item_id = 'a9560000-0000-0000-0000-000000001847'$$,
+  'run_blocks_item_run_key');
+
+reset enable_seqscan;
+
+-- --- the methodology registry knows the stat card's numbers ---------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(metric_id || ':' || unit order by metric_id)
+          = array['decision_answer_latency:duration_ms', 'decision_answer_latency_by_kind:duration_ms',
+                  'decision_auto_accept_share:pct', 'decision_loop_wait_max:duration_ms',
+                  'decisions_resolved:count']
+     from ouroboros.metric_definitions where family = 'decisions'),
+  'the decision metrics are registered in the methodology registry (BI.1 amendment), family decisions');
+
+-- --- the service role answers, blocks, snoozes and reads ------------------------------------------
+select pg_temp.v095_item('custom:v095-split', 'A1', '2026-10-02T09:00:00Z', 'a9560000-0000-0000-0000-000000001847');
+
+set local role ouroboros_app;
+
+select pg_temp.v095_block('A1', 'a9560000-0000-0000-0000-000000001847', '2026-10-02T09:00:10Z');
+select pg_temp.v095_resolve('A1', '2026-10-02T09:00:50Z');
+
+select pg_temp.must_hold(
+  (select answer_latency = interval '50 seconds' and loop_wait = interval '40 seconds'
+     from ouroboros.decision_resolutions where item_id = pg_temp.v095_id('A1'))
+  and (select status = 'resolved' from ouroboros.decision_items where source_ref = 'A1')
+  and (select w.decisions = (select count(*) from ouroboros.decision_resolutions r
+                              where r.organization_id = 'org-v095'
+                                and r.resolved_at >= '2026-09-28T00:00:00Z'
+                                and r.resolved_at <  '2026-10-05T00:00:00Z')
+         from ouroboros.decision_metrics_weekly w
+        where w.organization_id = 'org-v095' and w.week = date '2026-09-28')
+  and ouroboros.decision_items_wake('org-v095', now() + interval '2 hours') = 3,
+  'the service role records a block and an answer, gets both spans, reads the week and wakes snoozes');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_resolutions set note = 'rewritten' where item_id = pg_temp.v095_id('S5')$$,
+  'and is held to a resolution''s history as the service', 'decision_resolutions_immutable');
+
+reset role;
+
+-- --- a deleted workspace takes all of it ----------------------------------------------------------
+delete from ouroboros.organization where "id" in ('org-v095', 'org-v095-other');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.decision_resolutions where organization_id = 'org-v095')
+  and not exists (select 1 from ouroboros.run_blocks where organization_id = 'org-v095')
+  and not exists (select 1 from ouroboros.decision_snooze_events where organization_id = 'org-v095'),
+  'resolutions, run blocks and the snooze trail cascade with their workspace');
+
+drop table v095_snooze;
+drop table v095_all;
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

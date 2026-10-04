@@ -229,7 +229,7 @@ Inbox v2`** created at filing; every issue assigned. Complexity chips:
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BM.1 | #457 ✅ | 🟢 Done | ouroboros-db: [BM.1] Decision items & kind registry schema | Typed items, versioned kind declarations, refs, severity (X1/X2) | mvp, inbox, db | N (after AO.1, AW.1, BE.2) | Y | M | ouroboros-db |
-| BM.2 | #458 | 🟡 Open | ouroboros-db: [BM.2] Resolutions, snooze & metrics spans | Actor/action/channel/latency, auto-accept class, snooze TTLs (X4/X6) | mvp, inbox, db | N (after BM.1) | Y | S | ouroboros-db |
+| BM.2 | #458 ✅ | 🟢 Done | ouroboros-db: [BM.2] Resolutions, snooze & metrics spans | Actor/action/channel/latency, auto-accept class, snooze TTLs (X4/X6) | mvp, inbox, db | N (after BM.1) | Y | S | ouroboros-db |
 | BM.3 | #459 | 🟡 Open | ouroboros-db: [BM.3] Guardrail exceptions & action tokens | Scoped allow-once grants; signed channel-token storage (X3/X5) | mvp, inbox, db | N (after BM.1, AO.4) | Y | M | ouroboros-db |
 | BM.4 | #460 | 🟡 Open | ouroboros-db: [BM.4] Inbox seeds — mockup-16 parity + probes | Three open decisions, five resolutions, policy rows; ci checks | mvp, inbox, db, ci | N (after BM.2/BM.3, #24) | Y | S | ouroboros-db, .github |
 
@@ -279,7 +279,7 @@ erDiagram
 
 ### Issue BM.2 — ouroboros-db: [BM.2] Resolutions, snooze & metrics spans
 
-> **GitHub issue:** #458 · **Status:** 🟡 Open · **Parent epic:** #453
+> **GitHub issue:** #458 ✅ · **Status:** 🟢 Done · **Parent epic:** #453
 
 - **Problem Statement:** Resolution truth (X4) and snooze mechanics (X6)
   need rows the resolved list, pill math, and stat card compute from.
@@ -334,6 +334,8 @@ action_token{item, allow_once, ken, hash, TTL 48h, requires_confirm: false} · m
 ### Issue BM.4 — ouroboros-db: [BM.4] Inbox seeds — mockup-16 parity + probes
 
 > **GitHub issue:** #460 · **Status:** 🟡 Open · **Parent epic:** #453
+>
+> **Schema already shipped (#458):** V095 created `decision_resolutions`, `run_blocks`, the snooze columns + `decision_snooze_events` and `decision_metrics_weekly` (+ `_by_kind`). The week's 6m is a `run_blocks` span, so seed the blocks beside the resolutions; the policy row needs an `auto_resolvable` resize kind; `constraints.sql`'s V095 fixture week is the 11 · 41s · 6m shape to copy.
 
 - **Problem Statement:** Design review needs the mockup's exact inbox
   moment, coherent with the seeded #482/#514/#509 universe.
@@ -406,6 +408,8 @@ PR#509 merged out-of-band ─▶ item auto-resolved (resolver: policy(source_res
 ### Issue BN.2 — ouroboros-rest: [BN.2] Action executor & allow-once exceptions
 
 > **GitHub issue:** #462 · **Status:** 🟡 Open · **Parent epic:** #454
+>
+> **Schema already shipped (#458):** answer by inserting a `decision_resolutions` row (it marks the item resolved; its primary key is the race's 409); record a run's wait in `run_blocks` (`blocked_at` when it stops, `unblocked_at` when it resumes). A policy may only answer an `auto_resolvable` kind — `source_resolved` on a merge-class kind needs an amendment.
 
 - **Problem Statement:** Buttons must execute the owning machinery and
   resume the loop (X3) — with the allow-once grant as the one new
@@ -472,6 +476,8 @@ email [Allow once] link ─▶ token ✓ ─▶ receipt · [Approve & merge] lin
 ### Issue BN.4 — ouroboros-rest: [BN.4] Inbox APIs, snooze & policy read-view
 
 > **GitHub issue:** #464 · **Status:** 🟡 Open · **Parent epic:** #454
+>
+> **Schema already shipped (#458):** snooze through `decision_item_snooze` / `decision_items_snooze_all` (one scope-all event), re-surface with `decision_items_wake(org)` before reading the queue, and serve `GET /stats` from `decision_metrics_weekly` (UTC ISO weeks).
 
 - **Problem Statement:** The page's reads (queue, resolved, stats, head
   math), snooze mechanics, and the composed policy card.
