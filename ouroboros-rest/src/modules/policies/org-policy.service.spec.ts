@@ -33,6 +33,7 @@ function stored(dryRun: boolean): OrgPolicies {
     updated_by: ACTOR,
     created_at: AT,
     updated_at: AT,
+    current_version: null,
   };
 }
 

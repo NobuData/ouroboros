@@ -1,0 +1,48 @@
+{
+  "auto_merge": {
+    "enabled": false,
+    "conditions": {
+      "all": [
+        {
+          "effort_lte": "m"
+        },
+        {
+          "not": {
+            "label": "refactor"
+          }
+        }
+      ]
+    }
+  },
+  "human_review": {
+    "enabled": false,
+    "conditions": {
+      "any": [
+        {
+          "label": "refactor"
+        },
+        {
+          "effort_gte": "l"
+        }
+      ]
+    }
+  },
+  "protected_paths": {
+    "enabled": false,
+    "conditions": {
+      "path_globs": []
+    }
+  },
+  "spend_guard": {
+    "enabled": false,
+    "conditions": {
+      "monthly_cap_cents": 60000
+    }
+  },
+  "dry_run_new_repos": {
+    "enabled": false,
+    "conditions": {
+      "first_n_loops": 0
+    }
+  }
+}

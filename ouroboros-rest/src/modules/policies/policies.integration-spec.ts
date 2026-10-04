@@ -175,4 +175,49 @@ describe("the dry-run policy endpoint", () => {
     await expect(policies.read(unset.id)).resolves.toMatchObject({ dryRun: true, explicit: true });
     await expect(policies.read(chose.id)).resolves.toMatchObject({ dryRun: false });
   });
+
+  it("reads a workspace whose policy document was published first as unanswered, and onboarding still turns it on", async () => {
+    // V092 (#480): the publish creates the org_policies handle with dry_run null.
+    const owner = await api.signIn();
+    const workspace = await api.workspace(owner);
+    const policies = api.nest.get(OrgPolicyService);
+
+    await api.sql.query(`select ${SCHEMA_NAME}.org_policy_publish($1, $2::jsonb, $3)`, [
+      workspace.id,
+      JSON.stringify(POLICY_V7),
+      owner.id,
+    ]);
+
+    await expect(policies.dryRunNow(workspace.id)).resolves.toBe(false);
+    await expect(policies.read(workspace.id)).resolves.toMatchObject({
+      dryRun: false,
+      explicit: false,
+      updatedAt: null,
+      updatedBy: null,
+    });
+
+    await expect(policies.adoptDefault(workspace.id)).resolves.toBe(true);
+    await expect(policies.read(workspace.id)).resolves.toMatchObject({
+      dryRun: true,
+      explicit: true,
+    });
+  });
 });
+
+/** Mockup 17's `policy v7` — `schemas/org-policy/fixtures/valid/policy-v7.json`. */
+const POLICY_V7 = {
+  auto_merge: {
+    enabled: true,
+    conditions: { all: [{ effort_lte: "m" }, { not: { label: "refactor" } }] },
+  },
+  human_review: {
+    enabled: true,
+    conditions: { any: [{ label: "refactor" }, { effort_gte: "l" }] },
+  },
+  protected_paths: {
+    enabled: true,
+    conditions: { path_globs: ["boot/**", "keys/**", ".github/**"] },
+  },
+  spend_guard: { enabled: true, conditions: { per_run_cap_cents: 250, monthly_cap_cents: 60000 } },
+  dry_run_new_repos: { enabled: true, conditions: { first_n_loops: 10 } },
+};

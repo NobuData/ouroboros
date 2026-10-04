@@ -516,6 +516,30 @@
 #     a service account while clearing them
 #                                                  V022 column list, without actor_service
 #
+# #480 (BQ.1, V092) adds the versioned org-policy document. One probe per rule that keeps
+# "policy v7" naming what v7 said when it was published:
+#
+#   V092 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   a published version is never revised         drop org_policy_versions_immutable
+#   nor deleted, except with its workspace       rewrite org_policy_versions_refuse_change()
+#                                                  to let every DELETE through
+#   versions are dense and unique per policy     drop org_policy_versions_next_version
+#   (organization_id, version) is the key        drop org_policy_versions_pkey (cascade)
+#   rule ids are the five or custom:<slug>       drop org_policy_versions_rule_ids
+#   the five core rules are always present       drop org_policy_versions_core_rules
+#   a rule is {enabled: boolean, conditions}     drop org_policy_versions_rule_shape
+#   spend caps are positive integer cents        drop org_policy_versions_spend_cents
+#   a document is an object                      drop org_policy_versions_document_object
+#   current_version is only ever the newest      drop org_policies_current_is_latest
+#   current_version names a real version         drop org_policies_current_version_fk
+#   a publish advances the pointer atomically    rewrite org_policy_publish() without the
+#                                                  pointer update
+#   a publish answers nothing about dry-run      rewrite org_policy_publish() to insert the
+#                                                  column default (dry_run true)
+#   a publish-created handle reads unanswered    rewrite org_policies_effective to V075's
+#                                                  row-existence is_explicit
+#
 # #409 (BE.5) seeds mockup 14 and adds a probe per `ci/db` scope bullet the BE.1–BE.3 rows above
 # leave unwatched — each one a *subtler* loss than dropping the rule outright:
 #
@@ -2140,6 +2164,106 @@ expect_red "a person's event may be re-attributed to a service account" \
      raise exception $m$audit_events is append-only$m$ using errcode = $m$restrict_violation$m$;
    end;
    $$;'
+
+expect_red 'a published policy version may be revised' \
+  'a published policy version cannot be revised' \
+  'drop trigger org_policy_versions_immutable on ouroboros.org_policy_versions;'
+
+expect_red 'a published policy version may be deleted' \
+  'a published policy version cannot be deleted' \
+  'create or replace function ouroboros.org_policy_versions_refuse_change() returns trigger
+   language plpgsql as $$
+   begin
+     if tg_op = $m$DELETE$m$ then
+       return old;
+     end if;
+     raise exception $m$immutable$m$ using errcode = $m$restrict_violation$m$,
+       constraint = $m$org_policy_versions_immutable$m$;
+   end;
+   $$;'
+
+expect_red 'a policy version may skip or repeat a number' \
+  'version is unique per policy' \
+  'drop trigger org_policy_versions_next_version on ouroboros.org_policy_versions;'
+
+expect_red 'a policy version has no natural key' \
+  'is the natural key' \
+  'alter table ouroboros.org_policy_versions drop constraint org_policy_versions_pkey cascade;'
+
+expect_red 'a policy document may name an unknown rule' \
+  'an unknown rule id is refused' \
+  'alter table ouroboros.org_policy_versions drop constraint org_policy_versions_rule_ids;'
+
+expect_red 'a policy document may leave out a core rule' \
+  'refused whole' \
+  'alter table ouroboros.org_policy_versions drop constraint org_policy_versions_core_rules;'
+
+expect_red 'a policy rule may be any shape' \
+  'enabled is a boolean' \
+  'alter table ouroboros.org_policy_versions drop constraint org_policy_versions_rule_shape;'
+
+expect_red 'a spend cap may be a float' \
+  'money is integer cents' \
+  'alter table ouroboros.org_policy_versions drop constraint org_policy_versions_spend_cents;'
+
+expect_red 'a policy document may be an array' \
+  'a document is an object' \
+  'alter table ouroboros.org_policy_versions drop constraint org_policy_versions_document_object;'
+
+expect_red 'current_version may move back' \
+  'only ever names the newest version' \
+  'drop trigger org_policies_current_is_latest on ouroboros.org_policies;'
+
+expect_red 'current_version may name no version' \
+  'held to a real version' \
+  'alter table ouroboros.org_policies drop constraint org_policies_current_version_fk;'
+
+expect_red 'a publish may append without advancing the pointer' \
+  'publishing advances current_version' \
+  'create or replace function ouroboros.org_policy_publish(
+     p_organization_id text, p_document jsonb, p_published_by text, p_change_note text default null)
+   returns integer language plpgsql as $$
+   declare next_version integer;
+   begin
+     insert into ouroboros.org_policies (organization_id, dry_run) values (p_organization_id, null)
+       on conflict (organization_id) do nothing;
+     select coalesce(max(version), 0) + 1 into next_version
+       from ouroboros.org_policy_versions where organization_id = p_organization_id;
+     insert into ouroboros.org_policy_versions (organization_id, version, document, published_by, change_note)
+       values (p_organization_id, next_version, p_document, p_published_by, p_change_note);
+     return next_version;
+   end;
+   $$;'
+
+expect_red 'a publish may turn dry-run on' \
+  'answers nothing about dry-run' \
+  'create or replace function ouroboros.org_policy_publish(
+     p_organization_id text, p_document jsonb, p_published_by text, p_change_note text default null)
+   returns integer language plpgsql as $$
+   declare next_version integer;
+   begin
+     insert into ouroboros.org_policies (organization_id) values (p_organization_id)
+       on conflict (organization_id) do nothing;
+     select coalesce(current_version, 0) + 1 into next_version
+       from ouroboros.org_policies where organization_id = p_organization_id for update;
+     insert into ouroboros.org_policy_versions (organization_id, version, document, published_by, change_note)
+       values (p_organization_id, next_version, p_document, p_published_by, p_change_note);
+     update ouroboros.org_policies set current_version = next_version
+      where organization_id = p_organization_id;
+     return next_version;
+   end;
+   $$;'
+
+expect_red 'a handle a publish created reads as a dry-run answer' \
+  'reads as never answered' \
+  'create or replace view ouroboros.org_policies_effective with (security_invoker = true) as
+   select o."id" as organization_id,
+          coalesce(p.dry_run, false) as dry_run,
+          (p.organization_id is not null) as is_explicit,
+          p.updated_at,
+          p.updated_by
+     from ouroboros.organization o
+     left join ouroboros.org_policies p on p.organization_id = o."id";'
 
 
 printf '\n'

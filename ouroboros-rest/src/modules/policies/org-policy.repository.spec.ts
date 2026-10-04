@@ -25,6 +25,7 @@ const ROW = {
   updated_by: ACTOR,
   created_at: AT,
   updated_at: AT,
+  current_version: null,
 } satisfies OrgPolicies;
 
 /** @returns The statements, without the transaction's own. */
@@ -56,8 +57,12 @@ describe("the org policy repository", () => {
 
     await expect(policies.adoptDefault(ORG)).resolves.toBe(true);
     expect(database.statements[0].sql).toContain('insert into "ouroboros"."org_policies"');
-    expect(database.statements[0].sql).toContain('on conflict ("organization_id") do nothing');
-    expect(database.statements[0].parameters).toEqual([ORG, true]);
+    // V092: an existing row is answered only while its dry_run is null — a handle a policy
+    // publish created — so an explicit false is never overwritten.
+    expect(database.statements[0].sql).toContain(
+      'on conflict ("organization_id") do update set "dry_run" = $3 where "ouroboros"."org_policies"."dry_run" is null',
+    );
+    expect(database.statements[0].parameters).toEqual([ORG, true, true]);
   });
 
   it("reports an explicit answer left alone", async () => {
@@ -87,6 +92,19 @@ describe("the org policy repository", () => {
     expect(lock).toContain("for update");
     expect(update).toContain('update "ouroboros"."org_policies" set "dry_run" = $1');
     expect(update).not.toContain("updated_at");
+  });
+
+  it("reads a handle a policy publish created (dry_run null) as never answered", async () => {
+    database.answers(
+      { rows: [] },
+      { rows: [{ dry_run: null }] },
+      { rows: [{ ...ROW, dry_run: true, current_version: 7 }] },
+    );
+
+    await expect(policies.setDryRun(ORG, true, ACTOR)).resolves.toMatchObject({
+      previous: false,
+      previousExplicit: false,
+    });
   });
 
   it("names an explicit prior value as explicit", async () => {

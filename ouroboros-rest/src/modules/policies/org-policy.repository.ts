@@ -28,7 +28,8 @@ export interface OrgPolicyStore {
    */
   effective(organizationId: string): Promise<OrgPoliciesEffective | undefined>;
   /**
-   * Write `dry_run = true` when the workspace has never answered; leave any answer alone.
+   * Write `dry_run = true` when the workspace has never answered — no row, or a row whose
+   * `dry_run` is null because a policy publish created it (V092) — and leave any answer alone.
    *
    * @param organizationId - The workspace.
    * @returns `true` when a row was written.
@@ -59,12 +60,22 @@ export class OrgPolicyRepository implements OrgPolicyStore {
       .executeTakeFirst();
   }
 
-  /** @inheritdoc */
+  /**
+   * @inheritdoc
+   *
+   * V092's form of V075's statement: an existing row is answered only when its `dry_run` is
+   * null, so an explicit `false` survives and a publish-created handle is turned on.
+   */
   async adoptDefault(organizationId: string): Promise<boolean> {
     const written = await this.database.db
       .insertInto("org_policies")
       .values({ organization_id: organizationId, dry_run: true })
-      .onConflict((conflict) => conflict.column("organization_id").doNothing())
+      .onConflict((conflict) =>
+        conflict
+          .column("organization_id")
+          .doUpdateSet({ dry_run: true })
+          .where("org_policies.dry_run", "is", null),
+      )
       .returning("organization_id")
       .executeTakeFirst();
 
@@ -77,7 +88,8 @@ export class OrgPolicyRepository implements OrgPolicyStore {
    * One transaction: the row is created when absent (so there is a row to lock), locked, then
    * updated — two concurrent flips each read the value the other left, so each audit row's
    * `previous` is true. A row this call created stood for a workspace that never answered, so its
-   * prior value is the view's `false`, not the column default it was written with.
+   * prior value is the view's `false`, not the column default it was written with; so did a row
+   * whose `dry_run` is null (a policy publish created it, V092).
    */
   setDryRun(organizationId: string, dryRun: boolean, updatedBy: string): Promise<DryRunFlip> {
     return this.database.db.transaction().execute(async (trx) => {
@@ -100,9 +112,9 @@ export class OrgPolicyRepository implements OrgPolicyStore {
         .returningAll()
         .executeTakeFirstOrThrow();
 
-      const previousExplicit = created === undefined;
+      const previousExplicit = created === undefined && prior.dry_run !== null;
 
-      return { row, previous: previousExplicit ? prior.dry_run : false, previousExplicit };
+      return { row, previous: previousExplicit ? prior.dry_run === true : false, previousExplicit };
     });
   }
 }

@@ -26258,9 +26258,16 @@ select pg_temp.must_hold(
     where organization_id = 'org-v075'),
   'the onboarding default leaves an explicit false alone');
 
-select pg_temp.must_reject(
-  $$update ouroboros.org_policies set dry_run = null where organization_id = 'org-v075'$$,
-  'dry_run cannot be null — absence of the row is the only "unset"');
+-- Since V092 (#480) null is the other "unset": a handle a policy publish created. It reads exactly
+-- like an absent row.
+update ouroboros.org_policies set dry_run = null where organization_id = 'org-v075';
+
+select pg_temp.must_hold(
+  (select not dry_run and not is_explicit from ouroboros.org_policies_effective
+    where organization_id = 'org-v075'),
+  'a null dry_run reads as never answered, like an absent row');
+
+update ouroboros.org_policies set dry_run = false where organization_id = 'org-v075';
 
 select pg_temp.must_reject(
   $$insert into ouroboros.org_policies (organization_id) values ('org-nowhere')$$,
@@ -30803,6 +30810,243 @@ select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.service_accounts where organization_id = 'org-v091')
    and (select count(*) = 0 from ouroboros.service_tokens where organization_id = 'org-v091'),
   'service accounts and their tokens cascade with their workspace');
+
+-- ===========================================================================
+-- V092 — org_policy_versions: the versioned org-policy document (#480, BQ.1)
+-- ===========================================================================
+--
+-- org_policies becomes the handle and org_policy_versions its immutable history. Asked here:
+-- the mockup's policy v7 stores; publishing appends and advances current_version atomically;
+-- versions are dense and unique per policy; an UPDATE or DELETE is refused by the database, not
+-- by convention; the envelope (rule ids, the five core rules, {enabled, conditions}, integer
+-- cents) is refused when malformed and a custom:* rule is not; and a publish answers nothing
+-- about dry-run, while onboarding's default still turns it on.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v092',       'Policy Works', 'policy-works-v092',  now()),
+  ('org-v092-other', 'Other Works',  'other-works-v092',   now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a9200000-0000-0000-0000-00000000000a', 'Ken Policy', 'ken@policy-works.example', true);
+
+-- The mockup's card, as the document stores it — schemas/org-policy/fixtures/valid/policy-v7.json.
+create temporary table v092_doc (document jsonb not null);
+insert into v092_doc values ('{
+  "auto_merge":        {"enabled": true, "conditions": {"all": [{"effort_lte": "m"}, {"not": {"label": "refactor"}}]}},
+  "human_review":      {"enabled": true, "conditions": {"any": [{"label": "refactor"}, {"effort_gte": "l"}]}},
+  "protected_paths":   {"enabled": true, "conditions": {"path_globs": ["boot/**", "keys/**", ".github/**"]}},
+  "spend_guard":       {"enabled": true, "conditions": {"per_run_cap_cents": 250, "monthly_cap_cents": 60000}},
+  "dry_run_new_repos": {"enabled": true, "conditions": {"first_n_loops": 10}}
+}');
+
+-- --- the publish ------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select ouroboros.org_policy_publish('org-v092', document, 'a9200000-0000-0000-0000-00000000000a',
+                                       'Initial policy') = 1 from v092_doc),
+  'the first publish is v1, and creates the handle');
+
+select pg_temp.must_hold(
+  (select current_version = 1 and dry_run is null from ouroboros.org_policies
+    where organization_id = 'org-v092'),
+  'publishing advances current_version and answers nothing about dry-run (dry_run null)');
+
+select pg_temp.must_hold(
+  (select not dry_run and not is_explicit and updated_at is null and updated_by is null
+     from ouroboros.org_policies_effective where organization_id = 'org-v092'),
+  'a handle only a publish created reads as never answered: dry-run off, no stamps');
+
+select pg_temp.must_hold(
+  (select ouroboros.org_policy_publish('org-v092',
+            jsonb_set(document, '{auto_merge,enabled}', 'false'), null) = 2 from v092_doc),
+  'the next publish appends v2');
+
+select pg_temp.must_hold(
+  (select current_version = 2 from ouroboros.org_policies where organization_id = 'org-v092')
+  and (select count(*) = 2 from ouroboros.org_policy_versions where organization_id = 'org-v092'),
+  'and advances the pointer with it — two versions, the newest in force');
+
+select pg_temp.must_hold(
+  (select v.document = d.document
+     from ouroboros.org_policy_versions v, v092_doc d
+    where v.organization_id = 'org-v092' and v.version = 1),
+  'all five mockup rules round-trip with their exact terms — effort ≤ M · non-refactor, refactor OR effort ≥ L, three globs, 250 and 60000 cents, first 10 loops');
+
+select pg_temp.must_hold(
+  (select ouroboros.org_policy_publish('org-v092-other', document, null) = 1 from v092_doc),
+  'versions are numbered per policy — another workspace starts at v1');
+
+-- An atomic publish: a document the table refuses leaves neither a version nor a moved pointer.
+select pg_temp.must_reject(
+  $$select ouroboros.org_policy_publish('org-v092', '{"auto_merge": {"enabled": true, "conditions": {}}}', null)$$,
+  'a publish the table refuses is refused whole', 'org_policy_versions_core_rules');
+
+select pg_temp.must_hold(
+  (select current_version = 2 from ouroboros.org_policies where organization_id = 'org-v092'),
+  'and leaves current_version where it was');
+
+-- --- numbering ----------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.org_policy_versions (organization_id, version, document)
+      select 'org-v092', 2, document from v092_doc$$,
+  'version is unique per policy', 'org_policy_versions_next_version');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.org_policy_versions (organization_id, version, document)
+      select 'org-v092', 5, document from v092_doc$$,
+  'versions are dense — the next is exactly one above the highest', 'org_policy_versions_next_version');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.org_policy_versions (organization_id, version, document)
+      select 'org-v092', 0, document from v092_doc$$,
+  'a version is at least 1', 'org_policy_versions_version_positive');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from pg_constraint
+    where conname = 'org_policy_versions_pkey' and contype = 'p'
+      and conrelid = 'ouroboros.org_policy_versions'::regclass),
+  '(organization_id, version) is the natural key');
+
+-- --- immutability ---------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.org_policy_versions set document = jsonb_set(document, '{spend_guard,enabled}', 'false')
+     where organization_id = 'org-v092' and version = 1$$,
+  'a published policy version cannot be revised', 'org_policy_versions_immutable');
+
+select pg_temp.must_reject(
+  $$update ouroboros.org_policy_versions set change_note = 'rewritten'
+     where organization_id = 'org-v092' and version = 1$$,
+  'not even its change note', 'org_policy_versions_immutable');
+
+select pg_temp.must_reject(
+  $$delete from ouroboros.org_policy_versions where organization_id = 'org-v092' and version = 1$$,
+  'a published policy version cannot be deleted', 'org_policy_versions_immutable');
+
+select pg_temp.must_reject(
+  $$delete from ouroboros.org_policies where organization_id = 'org-v092'$$,
+  'nor erased by deleting its handle', 'org_policy_versions_immutable');
+
+-- --- the pointer -----------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.org_policies set current_version = 1 where organization_id = 'org-v092'$$,
+  'current_version only ever names the newest version — a rollback is a new publish',
+  'org_policies_current_is_latest');
+
+select pg_temp.must_reject(
+  $$update ouroboros.org_policies set current_version = null where organization_id = 'org-v092'$$,
+  'and never returns to null once something is published', 'org_policies_current_is_latest');
+
+select pg_temp.must_reject(
+  $$update ouroboros.org_policies set current_version = 3 where organization_id = 'org-v092'$$,
+  'and never names a version not yet published', 'org_policies_current_is_latest');
+
+-- The trigger refuses a missing version before the foreign key is reached; the key is the
+-- backstop that holds the pointer to a real row of this workspace's own policy whatever the
+-- trigger does.
+select pg_temp.must_hold(
+  (select count(*) = 1 from pg_constraint
+    where conname = 'org_policies_current_version_fk' and contype = 'f'
+      and conrelid = 'ouroboros.org_policies'::regclass
+      and confrelid = 'ouroboros.org_policy_versions'::regclass),
+  'current_version is held to a real version of the workspace''s own policy by a foreign key');
+
+-- --- the envelope ------------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.org_policy_versions (organization_id, version, document)
+      select 'org-v092', 3, document || '{"auto_approve": {"enabled": true, "conditions": {}}}' from v092_doc$$,
+  'an unknown rule id is refused', 'org_policy_versions_rule_ids');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.org_policy_versions (organization_id, version, document)
+      select 'org-v092', 3, document || '{"custom:Night Freeze": {"enabled": true, "conditions": {}}}' from v092_doc$$,
+  'a custom rule id is a lower-case slug', 'org_policy_versions_rule_ids');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.org_policy_versions (organization_id, version, document)
+      select 'org-v092', 3, document - 'dry_run_new_repos' from v092_doc$$,
+  'the five core rules are always present — enabled: false switches one off', 'org_policy_versions_core_rules');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.org_policy_versions (organization_id, version, document)
+      select 'org-v092', 3, jsonb_set(document, '{human_review,enabled}', '"yes"') from v092_doc$$,
+  'a rule''s enabled is a boolean', 'org_policy_versions_rule_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.org_policy_versions (organization_id, version, document)
+      select 'org-v092', 3, jsonb_set(document, '{human_review,note}', '"why"') from v092_doc$$,
+  'a rule is exactly {enabled, conditions}', 'org_policy_versions_rule_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.org_policy_versions (organization_id, version, document)
+      select 'org-v092', 3, jsonb_set(document, '{spend_guard,conditions,per_run_cap_cents}', '2.5') from v092_doc$$,
+  'money is integer cents — 2.5 is refused', 'org_policy_versions_spend_cents');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.org_policy_versions (organization_id, version, document)
+      select 'org-v092', 3, jsonb_set(document, '{spend_guard,conditions,monthly_cap_cents}', '"60000"') from v092_doc$$,
+  'a cap is a number, not a string', 'org_policy_versions_spend_cents');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.org_policy_versions (organization_id, version, document)
+      select 'org-v092', 3, jsonb_set(document, '{spend_guard,conditions,monthly_cap_cents}', '0') from v092_doc$$,
+  'a cap is positive', 'org_policy_versions_spend_cents');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.org_policy_versions (organization_id, version, document) values ('org-v092', 3, '[]')$$,
+  'a document is an object', 'org_policy_versions_document_object');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.org_policy_versions (organization_id, version, document, change_note)
+      select 'org-v092', 3, document, '   ' from v092_doc$$,
+  'a change note is never blank', 'org_policy_versions_change_note_present');
+
+select pg_temp.must_hold(
+  (select ouroboros.org_policy_publish('org-v092',
+            document || '{"custom:night-freeze": {"enabled": true, "conditions": {"label": "hotfix"}}}',
+            null, 'Freeze at night') = 3 from v092_doc),
+  'a custom:* rule is accepted without a schema change');
+
+select pg_temp.must_hold(
+  not exists (select 1 from information_schema.columns
+               where table_schema = 'ouroboros'
+                 and table_name in ('org_policies', 'org_policy_versions')
+                 and data_type in ('real', 'double precision', 'numeric', 'money')),
+  'no float, numeric or money column carries policy money — integer cents throughout');
+
+-- --- dry-run still answers as V075 says -----------------------------------------------
+-- Onboarding completion's default (V092's form) turns a publish-created handle on, and the flip
+-- is unchanged.
+insert into ouroboros.org_policies (organization_id, dry_run) values ('org-v092', true)
+  on conflict (organization_id) do update set dry_run = true
+    where ouroboros.org_policies.dry_run is null;
+
+select pg_temp.must_hold(
+  (select dry_run and is_explicit from ouroboros.org_policies_effective
+    where organization_id = 'org-v092'),
+  'onboarding''s default turns dry-run on over a handle only a publish created');
+
+select pg_temp.must_hold(
+  (select ouroboros.org_policy_publish('org-v092', document, null) = 4 from v092_doc)
+  and (select dry_run from ouroboros.org_policies where organization_id = 'org-v092'),
+  'and a later publish leaves the dry-run answer alone');
+
+-- --- the publisher may be forgotten, the publication may not -------------------------
+delete from ouroboros."user" where "id" = 'a9200000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select published_by is null and change_note = 'Initial policy'
+     from ouroboros.org_policy_versions where organization_id = 'org-v092' and version = 1),
+  'deleting the publisher clears published_by and nothing else');
+
+-- --- the workspace's deletion is the one delete that reaches the history ----------------
+delete from ouroboros.organization where "id" in ('org-v092', 'org-v092-other');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.org_policy_versions
+               where organization_id in ('org-v092', 'org-v092-other'))
+  and not exists (select 1 from ouroboros.org_policies
+                   where organization_id in ('org-v092', 'org-v092-other')),
+  'a deleted (or purged) workspace takes its policy history with it');
+
+drop table v092_doc;
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
