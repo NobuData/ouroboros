@@ -15,6 +15,7 @@ import {
   groupCommandActions,
   runnableCommandActions,
 } from "./command";
+import { requestLeave } from "./leave-guard";
 import { menuFocusTarget } from "./menu";
 import { permittedNavEntries } from "./nav";
 import { ShellOverlay } from "./overlay";
@@ -124,13 +125,21 @@ export function CommandPalette({ onClose }: CommandPaletteProps) {
   const context = useMemo<CommandContext>(
     () => ({
       nav,
-      navigate: (route) => router.push(route),
+      // Both departures go through the leave guard (#491): a command is a function call, not
+      // a press on a link, so a page holding unsaved work has no other way to hear one coming.
+      navigate: (route) => {
+        requestLeave(() => {
+          router.push(route);
+        });
+      },
       theme: resolved,
       setTheme,
       // Invoked rather than submitted, which is the one difference from the account menu's
       // sign-out: there is no form here to carry a press, and the action redirects, so what
       // follows it is a navigation the browser is already being given.
-      signOut: () => void signOutOfSession(),
+      signOut: () => {
+        requestLeave(() => void signOutOfSession());
+      },
     }),
     [nav, router, resolved, setTheme],
   );

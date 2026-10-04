@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { Role } from "@/app/api/membership";
 import type { SkillScope } from "@/app/api/skills";
 import { useFocusRepo } from "@/app/shell/focus-repo";
+import { landOnFragment } from "@/app/shell/pane-anchor";
 import { Button, Eyebrow } from "@/app/ui";
 
 import { FactsCard } from "./facts-card";
@@ -68,6 +69,14 @@ import "./knowledge.css";
  * component's — so a second pair is handed down for the table to draw where the reader is
  * looking, for the same roles the head draws them for.
  *
+ * ### A fragment in the address is landed on
+ *
+ * The seats carry ids that links elsewhere name — the toast's anchors, a playbook's row, and the
+ * repo profile, which the settings nav's **Knowledge / env** tab leads to (BS.1,
+ * [#491](https://github.com/NobuData/ouroboros/issues/491)). The route has a `loading.tsx`, so on
+ * a client-side navigation the router looks for the fragment's element in the skeleton and finds
+ * none; the screen lands on it once it has mounted (`app/shell/pane-anchor.ts`).
+ *
  * ### The ladder's steps are decided here, because they narrow two other cards
  *
  * The scope card's steps are computed in this component (`ladder`, `app/knowledge/scope.ts`) from
@@ -106,6 +115,13 @@ export function KnowledgeScreen({
   const [toast, setToast] = useState<KnowledgeToast | null>(null);
   const [narrowed, setNarrowed] = useState<SkillScope | null>(null);
   const focus = useFocusRepo(workspaceId);
+
+  // A link that arrives with a fragment lands on it — the settings nav's Knowledge / env tab
+  // on the repo profile (#491), a playbook link on its row. The route streams behind a loading
+  // state, so the router looked for the target before it existed; by now it does.
+  useEffect(() => {
+    landOnFragment();
+  }, []);
 
   const steps = ladder({
     skills: readings.skills,

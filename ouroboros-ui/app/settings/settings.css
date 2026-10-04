@@ -1,12 +1,15 @@
 /*
- * The settings section's frame — mockup 17's chrome, on the #16 tokens
- * ([#141](https://github.com/NobuData/ouroboros/issues/141), ahead of BS.1 #491).
+ * The settings hub — mockup 17's frame, on the #16 tokens (BS.1, #491).
  *
- * The measurements are `app/models/models.css`'s frame rules, so a settings page and a models
- * page in the same product start their content on the same line and draw the same tab row in
- * the same place. Two sheets rather than one shared frame sheet because each section's frame
- * is that section's to grow — BS.1 adds a save bar to this one and Models adds nothing — and a
- * shared sheet would make every growth a change to both.
+ * The frame's measurements are `app/models/models.css`'s frame rules, so a settings page and a
+ * models page in the same product start their content on the same line and draw the same tab
+ * row in the same place. Two sheets rather than one shared frame sheet because each section's
+ * frame is that section's to grow — this one has a section grid, a dirty bar and a leave
+ * dialog, and Models has none of them — and a shared sheet would make every growth a change to
+ * both.
+ *
+ * Everything is rem and tokens: the pane scrolls, the tab row and the dirty bar stick against
+ * it (CP.4's primitives own that), and the font-size preference scales all of it.
  */
 
 /* ---------- the page frame ---------- */
@@ -58,4 +61,244 @@
 .settings__subnav {
   margin: calc(var(--sp-4) * -1) calc(var(--sp-10) * -1) var(--sp-9);
   padding: 0 var(--sp-10);
+}
+
+/*
+ * Ten tabs do not fit one line at the larger font-size steps, and a row that ran on would
+ * scroll the pane sideways — the one thing the pane never does (§ 1.3). So this row wraps, as
+ * mockup 17's `.section-nav` does; `PageSubnav` measures its own height, so the chrome stacked
+ * beneath a two-line row still starts where it ends. Qualified by the primitive's class so the
+ * wrap holds whichever sheet the bundle orders first.
+ */
+.ou-subnav.settings__subnav {
+  flex-wrap: wrap;
+}
+
+/*
+ * The rule between the six anchors and the mounted tabs — the roadmap's `│`. A hairline the
+ * height of a tab's text, so the row reads as two groups without a second row.
+ */
+.settings__subnav-rule {
+  align-self: center;
+  width: 1px;
+  height: 1.125rem;
+  margin: 0 var(--sp-4);
+  background: var(--line-strong);
+}
+
+/* ---------- the read-only note ---------- */
+
+/* The mounted pages' own note (`app/sources/sources.css`), so the section says it one way. */
+.settings__readonly {
+  max-width: 72ch;
+  margin: 0 0 var(--sp-9);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.settings__readonly-head {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+/* ---------- the section grid ---------- */
+
+/* The mockup's `.grid`: twelve columns at one gap. */
+.settings__grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--sp-8);
+}
+
+/*
+ * A section's seat. `min-width: 0` because a grid item's automatic minimum is its content's:
+ * the members table and the audit rows are wide by nature, and at zero they scroll inside their
+ * own wrappers instead of pushing the pane sideways. A grid of its own, of one cell, so the card
+ * inside takes the height its row has — two cards in a row end on one line, as the mockup's do,
+ * where a card is itself the grid item.
+ */
+.settings__seat {
+  display: grid;
+  min-width: 0;
+}
+
+.settings__seat > * {
+  min-width: 0;
+}
+
+/* The mockup's `c-5`, `c-7` and `c-12`. */
+.settings__seat--5 {
+  grid-column: span 5;
+}
+
+.settings__seat--7 {
+  grid-column: span 7;
+}
+
+.settings__seat--12 {
+  grid-column: span 12;
+}
+
+/* The mockup's own breakpoint: below it every card takes the full measure. */
+@media (max-width: 68.75rem) {
+  .settings__seat--5,
+  .settings__seat--7 {
+    grid-column: span 12;
+  }
+}
+
+/* The mockup's `.danger-card`: the error rim, and the title in the error hue. */
+.settings__card--danger {
+  border-color: var(--err-line);
+}
+
+.settings__card--danger .ou-card__title {
+  color: var(--err);
+}
+
+/* A section holding unsaved fields — the accent, on the tag beside its title. */
+.settings__unsaved {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+/* What a seat says when the one thing it holds could not be read. */
+.settings__unread {
+  max-width: 72ch;
+  margin: 0 0 var(--sp-7);
+  color: var(--warn);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the Appearance card ---------- */
+
+/* The mockup's row: theme, font size, preview — wrapping, with the preview taking what is left. */
+.settings-appearance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-9);
+}
+
+/* The mockup's `min-width: 180px` on the theme field, in rem. */
+.settings-appearance__theme {
+  min-width: 11.25rem;
+}
+
+/*
+ * The mockup's `.fs-seg`: five segments in one control. It wraps rather than scrolls — at the
+ * 150% step five segments are wider than a narrow pane, and the pane never scrolls sideways.
+ */
+.settings-appearance__steps {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-self: flex-start;
+  gap: 1px;
+  padding: 1px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+.settings-appearance__step {
+  padding: var(--sp-4) var(--sp-6);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.settings-appearance__step:hover {
+  color: var(--ink-dim);
+}
+
+/* The step in force — the mockup's `.sel`: the accent, on its wash, inside its hairline. */
+.settings-appearance__step[aria-pressed="true"] {
+  background: var(--accent-wash);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+  color: var(--accent);
+}
+
+/* The preview takes the rest of the row, and a row of its own when there is no rest. */
+.settings-appearance__preview-field {
+  flex: 1;
+  min-width: 15rem;
+}
+
+/* The mockup's `.fs-preview`: a dashed well, in the size body text is read at. */
+.settings-appearance__preview {
+  margin: 0;
+  padding: var(--sp-5) var(--sp-7);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.settings-appearance__code {
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* ---------- the dirty-state bar ---------- */
+
+/*
+ * The CP.4 sticky bar in its place on this page: flush under the tab set, spanning the pane
+ * the way the tab set does — the page's own gutter undone as margin and re-applied as padding,
+ * for the reason `.settings__subnav` gives — so the two stick as one stack. The primitive owns
+ * the sticking, the ground and the rim; this owns where it sits. Qualified by `.settings` so
+ * the gutter wins over the primitive's own padding whichever sheet the bundle orders first.
+ * The measurements are the Models page's bar's (`.models .models-dirty`).
+ */
+.settings .settings-dirty {
+  flex-wrap: wrap;
+  margin: calc(var(--sp-9) * -1) calc(var(--sp-10) * -1) var(--sp-9);
+  padding-right: var(--sp-10);
+  padding-left: var(--sp-10);
+}
+
+/* The count — `3 unsaved changes` — in the full ink, because it is the bar's subject. */
+.settings-dirty__label {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+/* The `·` between the count and the actions. Decoration, aria-hidden. */
+.settings-dirty__sep {
+  color: var(--ink-faint);
+}
+
+.settings-dirty__actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+/*
+ * A save that did not land, on its own line under the actions. `flex-basis: 100%` is what puts
+ * it there rather than beside the buttons at the wide end.
+ */
+.settings-dirty__failure {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the leave dialog ---------- */
+
+.settings-leave__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  margin-top: var(--sp-8);
 }

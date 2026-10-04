@@ -650,7 +650,7 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BS.1 | #491 | 🟡 Open | ouroboros-ui: [BS.1] Settings frame, section nav & save model | Route, tabs (+mounted existing surfaces), dirty-state Save (S7) | mvp, settings, ui, design | N (after #41, BA-D.5) | Y | M | ouroboros-ui |
+| BS.1 | #491 ✅ | 🟢 Done | ouroboros-ui: [BS.1] Settings frame, section nav & save model | Route, tabs (+mounted existing surfaces), dirty-state Save (S7) | mvp, settings, ui, design | N (after #41, BA-D.5) | Y | M | ouroboros-ui |
 | BS.2 | #492 | 🟡 Open | ouroboros-ui: [BS.2] Workspace card | Name/domain/region/retention/training — deployment-truth variants | mvp, settings, ui, design | N (after BS.1, BQ.3/BQ.4) | Y | S | ouroboros-ui |
 | BS.3 | #493 | 🟡 Open | ouroboros-ui: [BS.3] Members & roles card | Table with all row classes, invites, capabilities, service accounts | mvp, settings, ui, design | N (after BS.1, BR.1) | Y | M | ouroboros-ui |
 | BS.4 | #494 | 🟡 Open | ouroboros-ui: [BS.4] Autonomy policies card | Rule rows with terms chips, editing, version tag, publish flow | mvp, settings, ui, design | N (after BS.1, BQ.2) | Y | L | ouroboros-ui |
@@ -659,7 +659,43 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 
 ### Issue BS.1 — ouroboros-ui: [BS.1] Settings frame, section nav & save model
 
-> **GitHub issue:** #491 · **Status:** 🟡 Open · **Parent epic:** #478
+> **GitHub issue:** #491 ✅ · **Status:** 🟢 Done · **Parent epic:** #478
+>
+> **Shipped (#491).** `/settings` is the hub: mockup 17's head, the section nav on `PageSubnav`
+> (six anchors, a rule, then Sources · Providers · Farm tokens · Knowledge / env), a grid of
+> eight section **seats**, and the save model. What the cards inherit:
+>
+> - **A card mounts in its seat and nothing else** (`app/settings/settings-seat.tsx`): the seat
+>   owns the grid span, the anchor's id and the section's key in the save model.
+> - **`useSettingsSection({ baseline, commit, validate, labels })`** joins the dirty batch as the
+>   seat's section. `commit` is one request that takes all of the section's changes or none.
+>   A save validates every dirty section first (anything invalid sends nothing), then commits in
+>   page order and **stops at the first refusal** — what landed stays saved, the rest is not sent.
+>   Field errors return through `fields.error(name)`; focus moves to the first refused input.
+>   One card per section: a second hook call in the same seat throws. Use `fields.id(name)` as
+>   the control's id (`settings-<section>-field-<name>`).
+> - **Danger zone and Appearance are immediate by construction**: the hook throws in their seats.
+> - **The page's variant** is `useSettingsAccess()` — `owner`, `admin`, `read-only` (`mayOwn`
+>   separates delete/restore). A read-only reader gets no Save button and no switched-off control.
+> - **Leaving with unsaved changes asks first** — links, the command palette, a workspace switch,
+>   sign-out (`app/shell/leave-guard.ts`), and the tab's own unload.
+> - **The scroll-spy reads the pane's scroll**, holds a pressed tab until the reader scrolls, and
+>   re-lands a deep link once the sticky row has measured itself. A link to a section from
+>   inside a card should be a router link to `#<section>` (a native fragment jump leaves a
+>   history entry Back cannot return to); the spy hears the press and lights the tab.
+> - `/workshop/settings-save` demonstrates all of it over two fixture cards.
+>
+> **Decided with the user:** *Providers* is a cross-link to `/models/providers` — the page keeps
+> the Models frame and its tab in the Models subnav (mockups 06/07/21) — and *Knowledge / env*
+> links to the repo profile card, `/knowledge#repo-profile`. **Decided here:** the dry-run
+> policy's page (#382) became a row of the hub's Policies section, with `/settings/policies`
+> redirecting to `/settings#policies`; the **Appearance** card (the App Shell amendment, CQ.2)
+> is built in this issue rather than BS.2; the grid seats Appearance on a row of its own under
+> Workspace · Members, so no card leaves a hole.
+>
+> **Left for BS.6:** the hub's loading and error states, and moving `/settings` from the
+> readability matrix's awaited list (`tests/e2e/support/readability.ts`) into the matrix with
+> recorded baselines — no e2e leg was run or changed here.
 
 - **Problem Statement:** The frame: section nav with anchor tabs (plus
   the S2-mounted existing admin surfaces), and the explicit Save model
@@ -687,6 +723,10 @@ Workspace · Members · Policies · Integrations · Audit · Danger zone │ Sou
 ### Issue BS.2 — ouroboros-ui: [BS.2] Workspace card
 
 > **GitHub issue:** #492 · **Status:** 🟡 Open · **Parent epic:** #478
+>
+> **Already shipped (#491):** the Appearance card — theme, the five-step font-size control and
+> its live preview, in sync with the profile menu's stepper — is `app/settings/appearance-card.tsx`.
+> This issue mounts the workspace card in the `workspace` seat through `useSettingsSection`.
 
 - **Problem Statement:** The workspace card with S6's deployment-truth
   variants — no SaaS cosplay.
@@ -1079,9 +1119,9 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| BS.1 | #491 | 🟡 Open | Mounts in the shell content pane; navigation via the sidebar **Settings** entry (CP.2 registry), not a topbar link; in-page subnavs via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
+| BS.1 | #491 ✅ | 🟢 Done | Mounts in the shell content pane; navigation via the sidebar **Settings** entry (CP.2 registry), not a topbar link; in-page subnavs via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
 | BS.2–BS.5 | rem-based type (CQ.1 tokens); sticky elements stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
-| BS.2 | #492 | 🟡 Open | Gains the **font-size preference control** (App Shell CQ.2 — five steps 87.5–150%, rendered beside the theme control with a live preview) |
+| BS.2 | #492 | 🟡 Open | ~~Gains the **font-size preference control** (App Shell CQ.2 — five steps 87.5–150%, rendered beside the theme control with a live preview)~~ — shipped with BS.1 (#491) as the Appearance card, which the App Shell roadmap had filed on that issue |
 | BS.6 | #496 | 🟡 Open | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state, and a font-scale (125%) render check |
 
 ## Next Step

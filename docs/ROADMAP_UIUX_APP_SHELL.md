@@ -384,7 +384,8 @@ sidebar: ▦ Dashboard ◉ Issues ⑂ Workflows ⬡ Models ⛭ Build Farm ▤ Kn
 > files. The disabled settings gear was absorbed by the menu's *Workspace settings* item —
 > still honestly `aria-disabled` naming #491, because the issue's "links → `/settings`"
 > clause has no route to point at until that ticket builds one. A link to a 404 is worse
-> than a marked wait.
+> than a marked wait. *(#491 has since built the route: the item — and the tenant chip's — is
+> the link to `/settings`.)*
 >
 > **The stepper's press is the preview.** `setFontScale` stamps `<html>` before the
 > Server Action is even called, so "live preview as you step" is the ordering of two
@@ -876,7 +877,7 @@ Amendments posted at filing:
 | #40 | Global styles: rem type scale, the `html`/`body` scroll lock, and the lint rule with its documented allowlist |
 | #46 | **ShellHeader, ContentPane, SidebarNav, StickyBar, PageSubnav** join the primitive set, plus the sticky table-header recipe; existing primitives swept for `px` type |
 | #48 | Gains a **shell chrome story** — subnav + dirty bar + sticky table header over a long fixture, both themes, multiple scales |
-| BS.1 (#491) | Settings gains an **Appearance** section with the full font-size control beside the theme choice (CQ.2, #649); density and nav-reset controls join it in v2 |
+| BS.1 (#491) | Settings gains an **Appearance** section with the full font-size control beside the theme choice (CQ.2, #649); density and nav-reset controls join it in v2 — **shipped with #491** (`ouroboros-ui/app/settings/appearance-card.tsx`), in sync with the profile menu's stepper without a reload |
 | BN.4 (#464) | Wires the sidebar's **Needs You badge**; when the count source is absent the badge is **hidden**, never `0` |
 | #31 | The preferences surface gains **`font_scale`** (five CHECK-constrained steps, default 100), with density and sidebar preferences alongside it in v2 |
 | #17 | The **no-flash boot pattern is reused, not re-implemented**, for font scale; the theme toggle itself is reused by the profile menu |

@@ -326,6 +326,21 @@ describe("a traversal into a destination still streaming", () => {
 
     expect(pane.scrollTop).toBe(0);
   });
+
+  it("stops deciding when the reader presses something, so an anchor jump is not snapped back (#491)", () => {
+    const { rerender } = render(<PaneRestoration />);
+    readerScrollsTo(800);
+    pushed(rerender, "/dashboard");
+    traversed(rerender, "/workshop/chrome");
+    expect(pane.scrollTop).toBe(800);
+
+    // Inside the loop's window the reader presses a section tab, which jumps the pane.
+    fireEvent.pointerDown(window);
+    pane.scrollTop = 134;
+    nextFrame();
+
+    expect(pane.scrollTop).toBe(134);
+  });
 });
 
 describe("outside the shell", () => {

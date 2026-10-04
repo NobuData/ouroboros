@@ -17,7 +17,7 @@ import {
  *
  * `useSyncExternalStore` for the reason `app/shell/client-value.ts` lays out at length: the
  * server snapshot is the default, the browser corrects it in the same pass hydration runs
- * in, and every subscriber — the menu's stepper (CP.3), Settings → Appearance (#492), and
+ * in, and every subscriber — the menu's stepper (CP.3), Settings → Appearance (#491), and
  * the session reconciler — re-renders from one value the moment any of them moves it.
  */
 

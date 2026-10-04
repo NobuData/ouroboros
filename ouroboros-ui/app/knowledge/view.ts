@@ -30,6 +30,7 @@ import type { Reading } from "@/app/api/reading";
 import type { RepoMapStatusList } from "@/app/api/repo-map";
 import type { FactList } from "@/app/api/facts";
 import type { SkillList, SkillStats } from "@/app/api/skills";
+import { KNOWLEDGE_PROFILE_HASH } from "@/app/paths";
 
 /* ------------------------------------------------------------------ the head */
 
@@ -107,8 +108,14 @@ export const FACTS_REGION_ID = "facts-awaiting";
  */
 export const PLAYBOOKS_REGION_ID = "playbooks";
 
-/** The repo-profile card's seat — the right column's second card, BG.4's as well. */
-export const PROFILE_REGION_ID = "repo-profile";
+/**
+ * The repo-profile card's seat — the right column's second card, BG.4's as well.
+ *
+ * The string is `app/paths.ts`'s, because the settings nav's **Knowledge / env** tab links to it
+ * (BS.1, [#491](https://github.com/NobuData/ouroboros/issues/491)): the card holds the
+ * Environment block, and the link and its target stay one string.
+ */
+export const PROFILE_REGION_ID = KNOWLEDGE_PROFILE_HASH;
 
 /**
  * The scope card's seat — the right column's third card, which BG.5

@@ -1,6 +1,7 @@
 "use client";
 
 import { CircleUser, Monitor, Moon, Sun } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 
@@ -12,12 +13,14 @@ import { FONT_SCALES, setFontScale } from "@/app/font-scale";
 // signed-in person is the single case it does not describe (`app/login/monogram.tsx`). The
 // shell draws the same person, so it reads the same function rather than a second copy of it.
 import { initials } from "@/app/login/monogram";
+import { SETTINGS_PATH } from "@/app/paths";
 import { describeTheme, resolveTheme, type Theme } from "@/app/theme";
 import { useTheme } from "@/app/theme-provider";
 import { useFontScale } from "@/app/use-font-scale";
 
 import { type AccountView, type MenuWorkspace, accountMenuLabel, accountView } from "./account";
 import { signOutOfSession } from "./actions";
+import { isLeaveGuarded, requestLeave } from "./leave-guard";
 import { menuConsumesKey, menuFocusTarget, menuItems, menuKeyAction } from "./menu";
 import { saveFontScale } from "./preference-actions";
 import { ShortcutsSheet } from "./shortcuts-sheet";
@@ -31,8 +34,8 @@ import { switchWorkspace } from "./switch-workspace";
  * the session; this issue fills in the rest — the font-size stepper (over #649's engine),
  * the theme control (a second surface over the #17 engine, moved in from the header row as
  * the roadmap promised), the person's role in the acting workspace, and the
- * keyboard-shortcuts sheet. The one placeholder left standing is *Workspace settings*,
- * because `/settings` is #491's to build and a link to a 404 is worse than an honest wait:
+ * keyboard-shortcuts sheet. The one placeholder it left standing, *Workspace settings*, became
+ * a link when BS.1 ([#491](https://github.com/NobuData/ouroboros/issues/491)) built `/settings`:
  *
  * ```
  * [ (avatar) ▾ ]
@@ -42,7 +45,7 @@ import { switchWorkspace } from "./switch-workspace";
  *      ├─ Switch workspace  ▸ ─┬─ ● acme-robotics
  *      │                       ├─ ○ acme-labs
  *      │                       └─ ○ kensuenobu
- *      ├─ Workspace settings           (#491)
+ *      ├─ Workspace settings ─▶ /settings
  *      ├─ Keyboard shortcuts ─▶ sheet over the pane
  *      └─ Sign out ─▶ session row deleted ─▶ /login
  * ```
@@ -50,7 +53,7 @@ import { switchWorkspace } from "./switch-workspace";
  * ### The two controls hold no state of their own
  *
  * The stepper reads `useFontScale()` and writes through `setFontScale` — the store #649
- * built, and the same one Settings → Appearance (#492) will subscribe to, which is the
+ * built, and the same one Settings → Appearance (#491) subscribes to, which is the
  * whole of how the two stay in sync — then persists through the `saveFontScale` Server
  * Action, quietly: the step already applied, and a reader mid-squint is not interested in
  * why the durable half is slow. The theme radios read `useTheme()` and call `setTheme`,
@@ -252,9 +255,13 @@ export function UserMenu() {
    * tells the *server*, so every Server Component on the route re-renders against the
    * workspace the session now names.
    *
+   * A page holding unsaved work is asked first (`app/shell/leave-guard.ts`,
+   * [#491](https://github.com/NobuData/ouroboros/issues/491)): the switch re-renders the route
+   * for another workspace, and edits made for this one would otherwise vanish without a word.
+   *
    * @param workspace The workspace to move to.
    */
-  async function choose(workspace: MenuWorkspace): Promise<void> {
+  function choose(workspace: MenuWorkspace): void {
     if (moving !== null) return;
 
     if (view.state === "signed-in" && workspace.id === view.active?.id) {
@@ -264,6 +271,15 @@ export function UserMenu() {
       return;
     }
 
+    requestLeave(() => void move(workspace));
+  }
+
+  /**
+   * Make the switch {@link choose} was asked for.
+   *
+   * @param workspace The workspace to move to.
+   */
+  async function move(workspace: MenuWorkspace): Promise<void> {
     setMoving(workspace.id);
     setFailure(null);
 
@@ -563,7 +579,7 @@ export function UserMenu() {
                         aria-checked={workspace.id === view.active?.id}
                         aria-busy={moving === workspace.id || undefined}
                         aria-describedby={failure === null ? undefined : failureId}
-                        onClick={() => void choose(workspace)}
+                        onClick={() => choose(workspace)}
                       >
                         {workspace.slug}
                       </button>
@@ -574,19 +590,19 @@ export function UserMenu() {
             )}
 
             {/*
-              aria-disabled, not disabled: a control removed from the tab order takes its own
-              explanation with it. #491 turns this into a link to /settings.
+              The administration hub (#491). A link rather than a button, because it navigates —
+              and one that closes the menu behind itself, so the reader arrives on the page
+              rather than on the page under an open menu.
             */}
-            <button
-              type="button"
+            <Link
               className="shell-menu__item"
+              href={SETTINGS_PATH}
               role="menuitem"
               tabIndex={-1}
-              aria-disabled="true"
-              title="Workspace settings arrive with #491."
+              onClick={() => close(false)}
             >
               Workspace settings
-            </button>
+            </Link>
 
             <button
               type="button"
@@ -603,7 +619,19 @@ export function UserMenu() {
               `app/shell/actions.ts`. role="none" keeps the transport out of the
               accessibility tree, so the button inside it is the menu's own child.
             */}
-            <form className="shell-menu__form" role="none" action={signOutOfSession}>
+            <form
+              className="shell-menu__form"
+              role="none"
+              action={signOutOfSession}
+              // A page holding unsaved work is asked first (#491): signing out is a departure
+              // no link carries, so the form waits for the guard and is sent by it.
+              onSubmit={(event) => {
+                if (!isLeaveGuarded()) return;
+
+                event.preventDefault();
+                requestLeave(() => void signOutOfSession());
+              }}
+            >
               <button type="submit" className="shell-menu__item" role="menuitem" tabIndex={-1}>
                 Sign out
               </button>

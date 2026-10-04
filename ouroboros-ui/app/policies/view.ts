@@ -1,8 +1,8 @@
 /**
  * The dry-run policy, as words and decisions (BA.3,
  * [#382](https://github.com/NobuData/ouroboros/issues/382), decision **O3**) — shared by every
- * surface that states it: the Settings → Policies tab that flips it, and the PR page's merge
- * plan card and head that render its refusal.
+ * surface that states it: the settings hub's Policies section that flips it, and the PR page's
+ * merge plan card and head that render its refusal.
  *
  * **One source.** Each surface reads the same policy — `GET /policies/dry-run`, or the merge
  * plan's `dryRun`, which the service fills from it — and draws it with the sentences below, so the
@@ -52,12 +52,7 @@ export function dryRunNotes(
   return { note: DRY_RUN_NOTE, override: state.autoMerge.overridden ? AUTO_MERGE_OVERRIDDEN : null };
 }
 
-// --- the Policies tab ------------------------------------------------------------------------
-
-/** The tab's title and the sentence under it. */
-export const POLICIES_TITLE = "Policies";
-export const POLICIES_SUBLINE =
-  "What the loop may do without a person — enforced by the PR plane, not promised by a screen.";
+// --- the Policies section --------------------------------------------------------------------
 
 /** The dry-run row's name and what it is. */
 export const DRY_RUN_TITLE = "Dry-run";
@@ -67,6 +62,16 @@ export const DRY_RUN_SUMMARY =
 
 /** Why a reader below admin finds the flip read-only. */
 export const POLICY_READ_ONLY = "Only an owner or admin can change the dry-run policy.";
+
+/**
+ * What the Policies section says when the policy could not be read.
+ *
+ * @param reason The message the service gave for refusing the read.
+ * @returns The sentence — what is missing, then why.
+ */
+export function dryRunUnread(reason: string): string {
+  return `The dry-run policy could not be read. ${reason}`;
+}
 
 /** What an unreachable service means for a flip. */
 export const POLICY_WRITE_FAILURE =

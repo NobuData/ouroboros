@@ -181,8 +181,8 @@ export function PaneRestoration() {
  *
  * So the write is re-applied on an animation-frame loop for a short window — long enough
  * to outlast the refetch and the router's own scroll, cheap enough to not matter — with
- * one early exit that means "stop deciding for the reader": the reader scrolling on
- * their own (wheel, touch, or keys — neither this loop's writes nor the router's
+ * one early exit that means "stop deciding for the reader": the reader moving the pane
+ * themselves (wheel, touch, keys, or a press — neither this loop's writes nor the router's
  * `scrollIntoView` fire any of those).
  *
  * @param pane The scroll container, from {@link shellPane}.
@@ -223,7 +223,9 @@ function restoreAsContentArrives(pane: HTMLElement, target: number): (() => void
   return stop;
 }
 
-/** The events that mean the *reader* is scrolling — none of which a `scrollTop` write
+/** The events that mean the *reader* is moving the pane — none of which a `scrollTop` write
  *  fires, which is what lets them cancel the restoration loop without being tripped by
- *  it. */
-const READER_SCROLL_EVENTS = ["wheel", "touchstart", "keydown"] as const;
+ *  it. A press is among them since #491: a press on an anchor tab jumps the pane, and a loop
+ *  still holding the remembered offset snapped the jump back while the address said it had
+ *  happened. */
+const READER_SCROLL_EVENTS = ["wheel", "touchstart", "keydown", "pointerdown"] as const;

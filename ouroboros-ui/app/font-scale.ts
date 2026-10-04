@@ -36,7 +36,7 @@ import type { components } from "@/app/api/schema";
  * screens honor the local mirror", implemented by *where the script is* rather than by code.
  *
  * An external store rather than a context, exactly as the sidebar argues: two controls in
- * two subtrees (the menu's stepper, CP.3; Settings → Appearance, #492) must read one value
+ * two subtrees (the menu's stepper, CP.3; Settings → Appearance, #491) must read one value
  * and hear one another's writes, and a provider wrapping both would be the shape
  * `app/shell/regions.ts` already argued against. `app/use-font-scale.ts` holds the hook.
  *
@@ -152,7 +152,7 @@ export function currentFontScale(): FontScale {
  * Apply a step: stamp it, mirror it, and tell everyone waiting.
  *
  * **Persistence to the account is deliberately not here.** The two callers want different
- * halves: a control (the CP.3 stepper, #492's Settings row) applies locally *and* calls the
+ * halves: a control (the CP.3 stepper, #491's Settings card) applies locally *and* calls the
  * `saveFontScale` Server Action — the local write is the live preview — while the
  * session-load reconciliation applies a value that came *from* the server and must not be
  * PATCHed straight back at it. One function that sometimes persisted would need a flag, and

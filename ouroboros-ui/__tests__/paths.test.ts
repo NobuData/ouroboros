@@ -6,7 +6,9 @@ import {
   DASHBOARD_QUEUE_HASH,
   FARM_RUNNERS_HASH,
   FARM_TOKENS_PATH,
+  KNOWLEDGE_ENV_PATH,
   KNOWLEDGE_PATH,
+  KNOWLEDGE_PROFILE_HASH,
   POLICIES_PATH,
   ISSUES_PATH,
   LOGIN_PATH,
@@ -36,6 +38,7 @@ import {
   TESTS_SUITE_PARAM,
   testsPath,
   safeReturnTo,
+  settingsSectionPath,
   workflowPath,
 } from "@/app/paths";
 
@@ -109,9 +112,24 @@ describe("the paths themselves", () => {
     expect(FARM_TOKENS_PATH.startsWith(`${BUILD_FARM_PATH}/`)).toBe(false);
   });
 
-  it("mounts the dry-run policy's flip under settings (#382)", () => {
-    expect(POLICIES_PATH).toBe("/settings/policies");
-    expect(POLICIES_PATH.startsWith(`${SETTINGS_PATH}/`)).toBe(true);
+  it("addresses the hub's sections as fragments of the hub (#491)", () => {
+    // Mockup 17 is one page of cards, so a section is a fragment rather than a route — and the
+    // string is the one `ouroboros-rest` uses for the lifecycle banner's action.
+    expect(settingsSectionPath("danger")).toBe("/settings#danger");
+    expect(settingsSectionPath("workspace").startsWith(`${SETTINGS_PATH}#`)).toBe(true);
+  });
+
+  it("points the dry-run policy's flip at the hub's Policies section (#382, #491)", () => {
+    // It was a page of its own until BS.1 built the hub; every surface that states the dry-run
+    // promise links here, and the section's id is what the fragment names.
+    expect(POLICIES_PATH).toBe("/settings#policies");
+    expect(POLICIES_PATH).toBe(settingsSectionPath("policies"));
+  });
+
+  it("sends the settings nav's Knowledge / env tab to the repo profile card (#491)", () => {
+    // The card holds the Environment block; the fragment is the id its seat carries.
+    expect(KNOWLEDGE_ENV_PATH).toBe(`${KNOWLEDGE_PATH}#${KNOWLEDGE_PROFILE_HASH}`);
+    expect(KNOWLEDGE_ENV_PATH).toBe("/knowledge#repo-profile");
   });
 
   it("give the workflow studio a section of its own, with each workflow beneath it (#147)", () => {

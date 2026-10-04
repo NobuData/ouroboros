@@ -1,24 +1,43 @@
-import { redirect } from "next/navigation";
-
-import { SOURCES_PATH } from "@/app/paths";
+import { requireWorkspace } from "@/app/api/access";
+import { settingsAccess } from "@/app/settings/access";
+import { readSettings } from "@/app/settings/data";
+import { SettingsScreen } from "@/app/settings/settings-screen";
 
 /**
- * `/settings` — the administration hub's address, redirecting to the section's one built tab.
+ * Workspace settings (BS.1, [#491](https://github.com/NobuData/ouroboros/issues/491)) — mockup
+ * 17's `/settings`, the administration hub.
  *
- * Mockup 17's workspace settings — the frame, the six sections, the save model — are BS.1's
- * ([#491](https://github.com/NobuData/ouroboros/issues/491)). Until it lands, the settings
- * section has exactly one surface, Ticket sources
- * ([#141](https://github.com/NobuData/ouroboros/issues/141)), and this route sends a visitor
- * there rather than answering a `404` under a sidebar entry that is now live. A redirect
- * rather than a placeholder page, because a settings entry that leads to a working surface is
- * more honest than one that leads to *soon* — and because #491 replaces this file with the
- * hub, which is one file rather than a placeholder to retire *and* a redirect to remove.
+ * Thin on purpose, the shape every screen in `(app)` takes: the gate returns the workspace this
+ * request may render, the reader turns it into what the screen draws, and a component draws it.
+ * The decisions are in `app/settings/view.ts` (the sections and the tabs),
+ * `app/settings/access.ts` (who may do what) and `app/settings/save-model.ts` (how saving works).
  *
- * No gate here: the destination gates. `redirect` signals by throwing, so nothing after it
- * runs and there is nothing to render.
+ * **This retires the redirect that stood here** — the route sent a visitor to the section's one
+ * built tab until the hub existed — and with it the `/settings` placeholder #49 held. The
+ * sidebar's **Settings** entry and the header menus' *Workspace settings* items lead here.
  *
- * @returns Never — the redirect throws.
+ * `requireWorkspace()` is called here rather than in the group's layout for the reason
+ * `app/(app)/layout.tsx` sets out. The gate is also two of the page's **inputs**: the eyebrow
+ * names the workspace, and which of the page's three variants this reader gets — owner, admin,
+ * read-only — is answered once, here, from the roles the service reported for them. The gate
+ * that **enforces** is the service's, on every write behind the page.
+ *
+ * **Keyed by the workspace.** The screen holds the page's unsaved edits, and they are one
+ * workspace's: a switch from the header menus re-renders this route in place, and the key is
+ * what stops an edit made for one workspace from being offered for saving in another.
+ *
+ * @returns The settings hub, for the workspace this request is operating in.
  */
-export default function Page(): never {
-  redirect(SOURCES_PATH);
+export default async function Page() {
+  const access = await requireWorkspace();
+  const readings = await readSettings(access);
+
+  return (
+    <SettingsScreen
+      access={settingsAccess(access.membership.roles)}
+      dryRun={readings.dryRun}
+      key={access.membership.id}
+      workspaceName={access.membership.name}
+    />
+  );
 }

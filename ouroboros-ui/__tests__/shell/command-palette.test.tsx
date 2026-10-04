@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderThemed } from "../helpers/theme";
 import { registerCommandSource } from "@/app/shell/command-registry";
+import { resetLeaveGuard, setLeaveGuard } from "@/app/shell/leave-guard";
 import { COMMAND_SEARCH_DELAY_MS } from "@/app/shell/use-command-actions";
 import { THEME_STORAGE_KEY } from "@/app/theme";
 
@@ -68,6 +69,7 @@ beforeEach(() => {
   push.mockClear();
   signOutOfSession.mockClear();
   onClose.mockClear();
+  resetLeaveGuard();
   // The theme command writes through the #17 engine, which persists; without this the
   // second case to press it starts from the palette the first one chose.
   localStorage.removeItem(THEME_STORAGE_KEY);
@@ -259,6 +261,44 @@ describe("running an action", () => {
     fireEvent.keyDown(box, { key: "Enter" });
 
     expect(signOutOfSession).toHaveBeenCalled();
+  });
+
+  it("asks a page holding unsaved work before it navigates, and navigates when told to (#491)", () => {
+    // A command is a function call, not a press on a link, so a page with unsaved edits has
+    // no click to intercept: the palette asks the shell's leave guard instead.
+    const box = open();
+
+    let proceed: (() => void) | undefined;
+    setLeaveGuard((next) => {
+      proceed = next;
+    });
+
+    type(box, "dashboard");
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    expect(push).not.toHaveBeenCalled();
+
+    proceed?.();
+
+    expect(push).toHaveBeenCalledWith("/dashboard");
+  });
+
+  it("asks before it signs out, too", () => {
+    const box = open();
+
+    let proceed: (() => void) | undefined;
+    setLeaveGuard((next) => {
+      proceed = next;
+    });
+
+    type(box, "sign out");
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    expect(signOutOfSession).not.toHaveBeenCalled();
+
+    proceed?.();
+
+    expect(signOutOfSession).toHaveBeenCalledOnce();
   });
 
   it("navigates to the issues screen, now that #115 has built it", () => {

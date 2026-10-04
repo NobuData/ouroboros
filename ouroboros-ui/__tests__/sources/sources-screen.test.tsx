@@ -88,13 +88,18 @@ describe("the page head", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(SOURCES_TITLE);
   });
 
-  it("draws the settings tab row with Sources current and the hub's sections honestly soon", () => {
+  it("draws the settings tab row with Sources current and the hub's sections linked back to it", () => {
     seeded();
 
     const tabs = screen.getByRole("navigation", { name: "Settings" });
 
     expect(within(tabs).getByRole("link", { name: "Sources" })).toHaveAttribute("aria-current", "page");
-    expect(within(tabs).getByText("Workspace", { selector: ".ou-subnav__soon" })).toHaveTextContent("soon");
+    // The hub exists since #491, so its sections are links to it rather than *soon* stubs.
+    expect(within(tabs).getByRole("link", { name: "Workspace" })).toHaveAttribute(
+      "href",
+      "/settings#workspace",
+    );
+    expect(tabs.querySelector(".ou-subnav__soon")).toBeNull();
   });
 
   it("carries the add action, live for an administrator", () => {
