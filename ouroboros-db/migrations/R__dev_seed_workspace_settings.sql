@@ -1,7 +1,7 @@
 -- R__dev_seed_workspace_settings.sql — mockup 17's Settings page as rows, in a development
 -- database and nowhere else.
 --
--- The last development seed. It is the **administration state** of `acme-robotics`: who may do
+-- This seed is the **administration state** of `acme-robotics`: who may do
 -- what, what merges by itself, how long the record is kept, and where events go. Mockup 17 is a page about configuration, and every card on it is reviewed
 -- against these rows — so they cover the rows that tend to break first: a bot in the members
 -- table, an invitation still pending, an audit line with no person behind it, a delivery that
@@ -34,7 +34,7 @@
 --   |                   | their delivery log, one attempt failed            | `5eed0077…` |
 --   | Notifications     | three routes: digest, weekly insights, loop failures | keyed by org |
 --
--- **It must sort last**, and is named `workspace_settings` for that. Every audit line names a row
+-- **It must sort after the seeds it names** (only the inbox seed, #460, sorts later), and is named `workspace_settings` for that. Every audit line names a row
 -- another seed writes — the PR #514 revision (verification), the Anthropic connection
 -- (providers), the forge-03 runner (farm), run #471 (dashboard) — and its times are read off
 -- those rows. Sorting earlier would find nothing on a database migrated from empty.

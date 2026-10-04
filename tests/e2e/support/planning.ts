@@ -91,7 +91,7 @@ export const SEEDED_SYNC = {
   title: "Tracker sync",
   cadence: "every 5m",
   rows: [
-    { name: "GitHub · acme-robotics", sub: "two-way sync · 42 issues", state: "ok" },
+    { name: "GitHub · acme-robotics", sub: "two-way sync · 46 issues", state: "ok" },
     { name: "Jira · PROJ", sub: "not syncing · 0 issues", state: "idle" },
     { name: "Linear", sub: "not connected", state: "idle" },
   ],
@@ -104,14 +104,17 @@ export const SEEDED_SYNC = {
  * Every one of the four figures is an aggregate the seed shaped a near-miss into, and the seed's
  * own header names each: `count(*)` over the dependency edges reads 6 where *Blocked* is 4, a
  * stale count that forgot `state = 'open'` reads 14 where it is 6, and a sized count that forgot
- * it reads 48/52 where it is 38/42. A leg asserting these four is asserting that four `where`
+ * it reads 59/66 where it is 39/46. A leg asserting these four is asserting that four `where`
  * clauses are still what they were.
+ *
+ * Mockup 09 draws `42 open` and `38/42`; the inbox seed (#460) files the canonical twins of #465,
+ * #479, #486 and #490 for its cards' ticket refs — four more open tickets, one of them sized.
  */
 export const SEEDED_HEALTH = {
   title: "Backlog health",
-  open: "42 open",
+  open: "46 open",
   meters: [
-    { label: "Sized", value: "38/42" },
+    { label: "Sized", value: "39/46" },
     { label: "Blocked", value: "4" },
     { label: "Stale > 30d", value: "6" },
   ],
