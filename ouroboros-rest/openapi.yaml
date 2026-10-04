@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.39.7"
+  version: "0.39.8"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -22173,6 +22173,496 @@ paths:
           description: |-
             `unauthenticated` — this request carries no session, or one this service will not
             honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/inbox:
+    get:
+      tags: [inbox]
+      summary: The Needs-You queue — asking items, snoozed items and the head
+      description: |-
+        Everything the page's main column reads (#464, BN.4). **Items** are the workspace's asking
+        decisions — open, or snoozed with the snooze already elapsed (elapsed snoozes are woken
+        first) — newest first, each with its **question, why and tags rendered server-side** at the
+        kind version it pinned, the structured `facts` they were composed from, typed `refs`, its
+        age (counted through any snooze), and its **actions resolved against the caller**: every
+        declared action comes back, a disallowed one with `allowed: false` and a `disabledReason`
+        (`capability_required` for an `approver` action without `can_approve_loops`,
+        `role_required` otherwise). **Snoozed** items come back apart, soonest to wake first.
+
+        The **head** is computed (X8): `estimateSeconds` sums, over the queue, each item's kind
+        median answer time this UTC week (`decision_metrics_weekly_by_kind`), a kind nobody
+        answered this week costing the week's median; with no answers this week there is no
+        estimate and the sentence names only the count. `sentence` is the page's
+        `3 decisions. About 90 seconds of your time.` (`1 decision.` / `No decisions waiting.`).
+
+        **Every member**, `viewer` included.
+      operationId: readInboxQueue
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The queue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxQueue"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/inbox/resolved:
+    get:
+      tags: [inbox]
+      summary: One day's answered decisions
+      description: |-
+        The resolved list (#464): one UTC day's resolutions, newest first, each with its resolver
+        class (`human` with the person, or `policy` with the policy ref — `auto_accept_resize`, or
+        `source_resolved` for an item closed because its source settled elsewhere), channel, time,
+        note, receipt and the composed line (`Split #490 into 6 tickets — approved`,
+        `Estimator re-size #486 L→M — auto-accepted by policy`). `previousDay` is the latest
+        earlier day with any answer and `nextDay` the day after (null for today) — the history's
+        paging. **Every member.**
+      operationId: readInboxResolved
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: day
+          in: query
+          required: false
+          description: A UTC day, `YYYY-MM-DD`; today when absent.
+          schema:
+            type: string
+            pattern: "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
+          example: "2026-10-04"
+      responses:
+        "200":
+          description: The day.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxResolved"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "`validation_failed` — `day` is not `YYYY-MM-DD`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/inbox/stats:
+    get:
+      tags: [inbox]
+      summary: This week's stat card
+      description: |-
+        `decision_metrics_weekly` for the current UTC ISO week (#464, BM.2's view): decisions
+        answered, the median answer time, the longest loop wait, and the policy share. Snoozed time
+        is **included** — snoozing hides an item, it never stops its clock — and out-of-band
+        closures are left out. On a workspace that answered nothing this week every figure is
+        `null` and every `display` string `—`, never a zero. **Every member.**
+      operationId: readInboxStats
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The figures.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxStats"
+              example:
+                week: "2026-09-28"
+                decisions: 11
+                medianAnswerSeconds: 41
+                maxLoopWaitSeconds: 360
+                policyResolutions: 1
+                autoAcceptShare: 0.0909
+                display: { decisions: "11", medianAnswer: "41s", maxLoopWait: "6m" }
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/inbox/policies:
+    get:
+      tags: [inbox]
+      summary: What Needs A Human — the rules that send a decision to a person
+      description: |-
+        The policy card (#464, X7). Every row **derives from the live config that enforces it**,
+        carries that `source`, and links the surface that owns it (`editHref`):
+
+        - `human_review` of the published org policy (the gate engine enforces it): one row per
+          `label` condition (`refactor label → human review`) and per `effort_gte`
+          (`effort L+ → human review`), one more for any other predicate; none when the rule is
+          off — `/settings#policies`;
+        - `protected paths → allow-once` from BA.1's `protected_path_policies` (what AP.3 judges
+          against), its globs in `detail`; absent when no repository protects a path —
+          `/knowledge#repo-profile`;
+        - `unverifiable claims → explicit waiver` (PR verification, AX.3) — `/settings#policies`.
+
+        **Absent rows**: `spend > $X/run → approval` while no per-run cap is enforced (AF.4, #237;
+        `spend_approval` is dormant), and `effort XL+ → plan sign-off`, which no workflow human gate
+        or threshold enforces. They are omitted, not greyed. The `caption` follows BA.3's dry-run:
+        `Everything else merges itself when gates are green.` only outside dry-run. **Every member.**
+      operationId: readInboxPolicies
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The card.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxPolicyCard"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/inbox/items/{id}/snooze:
+    post:
+      tags: [inbox]
+      summary: Snooze one decision
+      description: |-
+        Hides one open (or re-snoozes one snoozed) item until `minutes` from now (#464, X6). It
+        leaves the queue and the pill (`GET /api/v1/inbox/feed`) but **not the metrics**, and its
+        age keeps counting. Recorded as a V095 snooze event and audited `decision.snoozed`.
+        **Owner, admin or member.**
+      operationId: snoozeInboxItem
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          description: The decision item.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InboxSnoozeRequest"
+            example:
+              minutes: 60
+      responses:
+        "200":
+          description: Snoozed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxSnoozeResult"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — snoozing hides an item from the whole workspace, so it needs the `owner`,
+            `admin` or `member` role; a viewer may not.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "`decision_item_not_found` — no such item in this workspace."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "`decision_item_not_open` — the item is resolved or expired."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "`validation_failed` — `minutes` outside 1–10080, or a padded `reason`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/inbox/snooze-all:
+    post:
+      tags: [inbox]
+      summary: Snooze all — every open decision, as one event
+      description: |-
+        *Snooze all 1h* (#464, X6): snoozes every open item of the workspace until `minutes` from
+        now (default 60) as **one** V095 scope-all event listing them, audited
+        `decision.snoozed_all`. With nothing open it snoozes nothing, records nothing and answers
+        `snoozed: []`. **Owner, admin or member.**
+      operationId: snoozeAllInboxItems
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InboxSnoozeRequest"
+            example:
+              minutes: 60
+      responses:
+        "200":
+          description: The items caught.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxSnoozeResult"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — snoozing hides an item from the whole workspace, so it needs the `owner`,
+            `admin` or `member` role; a viewer may not.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "`validation_failed` — `minutes` outside 1–10080, or a padded `reason`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/inbox/items/{id}/unsnooze:
+    post:
+      tags: [inbox]
+      summary: Bring one snoozed decision back now
+      description: |-
+        Re-opens one snoozed item before its time (#464); `unsnoozed` is empty when it was not
+        snoozed. Audited `decision.unsnoozed`. **Owner, admin or member.**
+      operationId: unsnoozeInboxItem
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          description: The decision item.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The item, if it was snoozed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxUnsnoozeResult"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — snoozing hides an item from the whole workspace, so it needs the `owner`,
+            `admin` or `member` role; a viewer may not.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "`decision_item_not_found` — no such item in this workspace."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/inbox/unsnooze-all:
+    post:
+      tags: [inbox]
+      summary: Bring every snoozed decision back now
+      description: |-
+        Re-opens every snoozed item of the workspace (#464) — the undo of *Snooze all*. Audited
+        `decision.unsnoozed` when anything came back. **Owner, admin or member.**
+      operationId: unsnoozeAllInboxItems
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The items re-opened.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxUnsnoozeResult"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — snoozing hides an item from the whole workspace, so it needs the `owner`,
+            `admin` or `member` role; a viewer may not.
           content:
             application/json:
               schema:
@@ -50161,6 +50651,338 @@ components:
           format: date-time
           description: When it started waiting — the proposal's creation, or the stale flag.
 
+    InboxHead:
+      type: object
+      description: The page head (#464, X8) — computed, never seeded.
+      additionalProperties: false
+      required: [count, noun, estimateSeconds, estimate, sentence]
+      properties:
+        count:
+          type: integer
+        noun:
+          type: string
+          enum: [decision, decisions]
+        estimateSeconds:
+          type: [number, "null"]
+          description: Σ of each queued item's kind median this week; null when no answer time is known.
+        estimate:
+          type: [string, "null"]
+          example: About 90 seconds of your time.
+        sentence:
+          type: string
+          example: 3 decisions. About 90 seconds of your time.
+    InboxActionView:
+      type: object
+      description: One declared action, resolved against the caller.
+      additionalProperties: false
+      required: [id, label, style, requiredRole, consequenceText, takesNote, navigates, allowed, disabledReason]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        style:
+          type: string
+          enum: [primary, ghost, danger]
+        requiredRole:
+          type: string
+          enum: [viewer, member, approver, admin, owner]
+        consequenceText:
+          type: string
+        takesNote:
+          type: boolean
+        navigates:
+          type: boolean
+          description: A link — it decides nothing.
+        allowed:
+          type: boolean
+        disabledReason:
+          oneOf:
+            - type: "null"
+            - type: string
+              enum: [role_required, capability_required]
+    InboxRef:
+      type: object
+      additionalProperties: false
+      required: [type, id, label]
+      properties:
+        type:
+          type: string
+          enum: [run, pr, ticket, path]
+        id:
+          type: string
+        label:
+          type: string
+    InboxItem:
+      type: object
+      description: One asking decision, rendered (#464).
+      additionalProperties: false
+      required: [id, kindId, kindVersion, severity, status, question, why, tags, facts, refs, mergeClass, actions, createdAt, ageSeconds, snooze]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kindId:
+          type: string
+        kindVersion:
+          type: integer
+        severity:
+          type: string
+          enum: [err, warn, info]
+        status:
+          type: string
+          enum: [open, snoozed]
+        question:
+          type: string
+        why:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        facts:
+          type: object
+          additionalProperties: true
+          description: The facts the prose was composed from.
+        refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/InboxRef"
+        mergeClass:
+          type: boolean
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/InboxActionView"
+        createdAt:
+          type: string
+          format: date-time
+        ageSeconds:
+          type: integer
+          description: Seconds since it was asked, counted through any snooze.
+        snooze:
+          type: object
+          additionalProperties: false
+          required: [allowed]
+          properties:
+            allowed:
+              type: boolean
+    InboxSnoozedItem:
+      type: object
+      additionalProperties: false
+      required: [id, kindId, severity, question, refs, createdAt, ageSeconds, snoozedUntil, snoozedBy, reason]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kindId:
+          type: string
+        severity:
+          type: string
+          enum: [err, warn, info]
+        question:
+          type: string
+        refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/InboxRef"
+        createdAt:
+          type: string
+          format: date-time
+        ageSeconds:
+          type: integer
+        snoozedUntil:
+          type: string
+          format: date-time
+        snoozedBy:
+          type: [string, "null"]
+        reason:
+          type: [string, "null"]
+    InboxQueue:
+      type: object
+      description: "`GET /api/v1/inbox` (#464)."
+      additionalProperties: false
+      required: [head, items, snoozed, asOf]
+      properties:
+        head:
+          $ref: "#/components/schemas/InboxHead"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InboxItem"
+        snoozed:
+          type: array
+          items:
+            $ref: "#/components/schemas/InboxSnoozedItem"
+        asOf:
+          type: string
+          format: date-time
+    InboxResolvedRow:
+      type: object
+      additionalProperties: false
+      required: [itemId, kindId, summary, actionId, resolver, policy, actor, channel, note, outcome, resolvedAt, answerLatencySeconds, loopWaitSeconds]
+      properties:
+        itemId:
+          type: string
+          format: uuid
+        kindId:
+          type: string
+        summary:
+          type: string
+          example: Split #490 into 6 tickets — approved
+        actionId:
+          type: string
+        resolver:
+          type: string
+          enum: [human, policy]
+        policy:
+          type: [string, "null"]
+        actor:
+          oneOf:
+            - type: "null"
+            - type: object
+              additionalProperties: false
+              required: [id, name]
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+        channel:
+          type: string
+          enum: [web, email, github, slack, push, api]
+        note:
+          type: [string, "null"]
+        outcome:
+          type: object
+          additionalProperties: true
+        resolvedAt:
+          type: string
+          format: date-time
+        answerLatencySeconds:
+          type: number
+        loopWaitSeconds:
+          type: [number, "null"]
+    InboxResolved:
+      type: object
+      description: "`GET /api/v1/inbox/resolved` (#464)."
+      additionalProperties: false
+      required: [day, count, rows, previousDay, nextDay]
+      properties:
+        day:
+          type: string
+        count:
+          type: integer
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/InboxResolvedRow"
+        previousDay:
+          type: [string, "null"]
+        nextDay:
+          type: [string, "null"]
+    InboxStats:
+      type: object
+      description: "`GET /api/v1/inbox/stats` (#464) — null and `—` where nothing was answered."
+      additionalProperties: false
+      required: [week, decisions, medianAnswerSeconds, maxLoopWaitSeconds, policyResolutions, autoAcceptShare, display]
+      properties:
+        week:
+          type: string
+        decisions:
+          type: [integer, "null"]
+        medianAnswerSeconds:
+          type: [number, "null"]
+        maxLoopWaitSeconds:
+          type: [number, "null"]
+        policyResolutions:
+          type: [integer, "null"]
+        autoAcceptShare:
+          type: [number, "null"]
+        display:
+          type: object
+          additionalProperties: false
+          required: [decisions, medianAnswer, maxLoopWait]
+          properties:
+            decisions:
+              type: string
+            medianAnswer:
+              type: string
+            maxLoopWait:
+              type: string
+    InboxPolicyRow:
+      type: object
+      additionalProperties: false
+      required: [id, rule, outcome, source, detail, editHref]
+      properties:
+        id:
+          type: string
+        rule:
+          type: string
+          example: refactor label
+        outcome:
+          type: string
+          example: human review
+        source:
+          type: string
+        detail:
+          type: [string, "null"]
+        editHref:
+          type: string
+          example: /settings#policies
+    InboxPolicyCard:
+      type: object
+      description: "`GET /api/v1/inbox/policies` (#464, X7)."
+      additionalProperties: false
+      required: [rows, caption, dryRun, policyVersion]
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/InboxPolicyRow"
+        caption:
+          type: string
+        dryRun:
+          type: boolean
+        policyVersion:
+          type: [integer, "null"]
+    InboxSnoozeRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        minutes:
+          type: integer
+          minimum: 1
+          maximum: 10080
+          default: 60
+        reason:
+          type: string
+          maxLength: 500
+    InboxSnoozeResult:
+      type: object
+      additionalProperties: false
+      required: [snoozed, until, eventId]
+      properties:
+        snoozed:
+          type: array
+          items:
+            type: string
+            format: uuid
+        until:
+          type: [string, "null"]
+          format: date-time
+        eventId:
+          type: [string, "null"]
+    InboxUnsnoozeResult:
+      type: object
+      additionalProperties: false
+      required: [unsnoozed]
+      properties:
+        unsnoozed:
+          type: array
+          items:
+            type: string
+            format: uuid
     InboxActionRequest:
       type: object
       description: |-

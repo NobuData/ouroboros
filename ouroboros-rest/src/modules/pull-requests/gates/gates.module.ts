@@ -28,7 +28,10 @@ import { GateEngineService } from "./gate.service";
  * The org policy binding (#461's #358 amendment): the published policy's `human_review` rule, with
  * every other setting at the defaults until #481 widens the resolver.
  */
-export const orgGatePolicyProvider = { provide: ORG_GATE_POLICY, useClass: OrgPolicyGateResolver };
+export const orgGatePolicyProvider = {
+  provide: ORG_GATE_POLICY,
+  useExisting: OrgPolicyGateResolver,
+};
 
 /** The sink binding, stated once so the module and its spec agree on it. */
 export const gateEvidenceProvider = { provide: GATE_EVIDENCE, useExisting: GateEngineService };
@@ -40,9 +43,12 @@ export const gateEvidenceProvider = { provide: GATE_EVIDENCE, useExisting: GateE
     GateRepository,
     GateEngineService,
     GateListeners,
+    OrgPolicyGateResolver,
     orgGatePolicyProvider,
     gateEvidenceProvider,
   ],
-  exports: [GateEngineService, GATE_EVIDENCE, GateListeners],
+  // `OrgPolicyGateResolver` too (BN.4, #464): the inbox's policy card reads the document the engine
+  // enforces through the same reader, bound `useExisting` so both are one instance.
+  exports: [GateEngineService, GATE_EVIDENCE, GateListeners, OrgPolicyGateResolver],
 })
 export class GatesModule {}

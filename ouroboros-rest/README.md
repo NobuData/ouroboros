@@ -4335,6 +4335,32 @@ event it writes directly are its record.
 disconnect, delete → restore, and delete → day 30 → purge on a fixture tenant in `ci/rest`. It
 asserts that a value sealed before the purge no longer decrypts after it.
 
+## Needs-You reads, snooze and the policy card
+
+BN.4 ([#464](https://github.com/NobuData/ouroboros/issues/464)) — everything mockup 16 reads, beside
+the feed (`decisions/inbox.queue.ts`, `decisions/inbox.compose.ts`, `inbox-policies/`):
+
+```
+GET  /api/v1/inbox              open items newest first: question/why/tags rendered at the pinned
+                                version, facts, refs, age, actions resolved per viewer (disabled with
+                                role_required | capability_required); snoozed items apart; the head
+GET  /api/v1/inbox/resolved     one UTC day (?day=YYYY-MM-DD): resolver class, policy ref, channel,
+                                the composed line ("Split #490 into 6 tickets — approved"), paging
+GET  /api/v1/inbox/stats        this UTC week's decision_metrics_weekly — null / "—" when cold
+GET  /api/v1/inbox/policies     What Needs A Human, each row from the config that enforces it
+POST /api/v1/inbox/items/:id/snooze · /snooze-all · /items/:id/unsnooze · /unsnooze-all   (contributors)
+```
+
+**The head is computed** (X8): Σ over the queue of each kind's median answer time this week, a kind
+unanswered this week costing the week's median; no answers this week → no estimate. **Snooze is
+honest** (X6): out of the queue and the pill, never out of the metrics, `created_at` untouched; Snooze
+all is one V095 scope-all event; every snooze write is audited. **The policy card derives** (X7):
+`human_review` rows from the published org policy through `OrgPolicyGateResolver.document` (the gate
+engine's reader, widened rather than duplicated), protected paths from BA.1's
+`protected_path_policies`, the claim-waiver row from AX.3, the caption from BA.3's dry-run. The spend
+row is absent while `spend_approval` is dormant, and *effort XL+ → plan sign-off* is absent because
+no workflow human gate enforces it.
+
 ## Needs-You action executor
 
 `POST /api/v1/inbox/items/{id}/actions/{actionId}` (`src/modules/inbox-actions/`, BN.2
@@ -4408,7 +4434,8 @@ contract (`run.opened`), the console's abort (`run.canceled`) and the merge exec
 **The registry is versioned** (`webhook.registry.ts`). Version 1 is a literal list; a release that
 adds a type appends a version, and an endpoint receives only the types of the version it
 subscribed under until it is moved. The spec fails if an audit action is registered nowhere.
-Version 2 (#462) adds `decision.answered` and `decision.answer_failed`, as audit and decision types.
+Version 2 (#462) adds `decision.answered` and `decision.answer_failed`, as audit and decision types;
+version 3 (#464) adds `decision.snoozed`, `decision.snoozed_all` and `decision.unsnoozed`.
 Matching is exact: a family wildcard covers its own family only.
 
 **The dispatcher** (`WebhookDispatcher`, every `OURO_WEBHOOK_DISPATCH_SECONDS`) claims outbox rows

@@ -7,6 +7,7 @@
  * decision.watchers        out-of-band detectors, the sweep, and its once-a-minute timer
  * decision.lifecycle       who hears that an item was filed, refreshed or resolved (#536)
  * inbox.feed / controller  GET /api/v1/inbox/feed — the sidebar badge
+ * inbox.queue / controller GET /api/v1/inbox, /resolved, /stats, snooze (BN.4, #464)
  * ```
  *
  * It imports only `DbModule`, `AuditModule` and the scheduler, so every plane can import it for the registry and
@@ -25,7 +26,10 @@ import { DecisionLifecycle } from "./decision.lifecycle";
 import { DecisionRepository } from "./decision.repository";
 import { DecisionSourceSweeper, DecisionSourceWatcher } from "./decision.watchers";
 import { InboxController } from "./inbox.controller";
+import { CapabilityRepository } from "../tenancy/capability.repository";
 import { InboxFeedService } from "./inbox.feed";
+import { InboxQueueService } from "./inbox.queue";
+import { InboxRepository } from "./inbox.repository";
 
 @Module({
   imports: [DbModule, AuditModule, ScheduleModule.forRoot()],
@@ -37,6 +41,9 @@ import { InboxFeedService } from "./inbox.feed";
     DecisionSourceWatcher,
     DecisionSourceSweeper,
     InboxFeedService,
+    InboxRepository,
+    InboxQueueService,
+    CapabilityRepository,
   ],
   exports: [DecisionKindRegistry, DecisionLifecycle, DecisionSourceWatcher],
 })

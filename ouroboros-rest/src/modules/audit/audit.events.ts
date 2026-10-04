@@ -531,6 +531,18 @@ export const DECISION_ANSWERED_EVENT = "decision.answered";
  * stays open. Detail: kind, version, action, channel, the attempt, and the error's code and status.
  */
 export const DECISION_ANSWER_FAILED_EVENT = "decision.answer_failed";
+/**
+ * A person snoozed one decision item (#464, X6): hidden from the queue and the pill until the time
+ * named, its age still counting. Detail: kind, until, the V095 snooze event.
+ */
+export const DECISION_SNOOZED_EVENT = "decision.snoozed";
+/**
+ * A person pressed *Snooze all* (#464, X6): every open item, one V095 scope-all event. Subject the
+ * workspace's items as a whole (`subject_id` null); detail: until, count, the event.
+ */
+export const DECISION_SNOOZED_ALL_EVENT = "decision.snoozed_all";
+/** A person brought snoozed items back before their time (#464). Detail: how many, or the item. */
+export const DECISION_UNSNOOZED_EVENT = "decision.unsnoozed";
 
 /**
  * The webhook management API's mutations (BR.3, [#487](https://github.com/NobuData/ouroboros/issues/487)),
@@ -633,6 +645,9 @@ export const AUDIT_ACTIONS = [
   DECISION_SOURCE_RESOLVED_EVENT,
   DECISION_ANSWERED_EVENT,
   DECISION_ANSWER_FAILED_EVENT,
+  DECISION_SNOOZED_EVENT,
+  DECISION_SNOOZED_ALL_EVENT,
+  DECISION_UNSNOOZED_EVENT,
   WEBHOOK_CREATED_EVENT,
   WEBHOOK_UPDATED_EVENT,
   WEBHOOK_ENABLED_EVENT,

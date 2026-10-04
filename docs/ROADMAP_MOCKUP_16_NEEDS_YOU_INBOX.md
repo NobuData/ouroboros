@@ -368,7 +368,7 @@ seeds: 3 open (err 8m · warn 21m · warn 34m) + 5 resolved (1 policy-auto) + we
 | BN.1 | #461 ✅ | 🟢 Done | ouroboros-rest: [BN.1] DecisionKind SPI & emitter wiring | Registry service + the eight MVP kinds wired to their planes | mvp, inbox, rest | N (after BM.1) | Y | L | ouroboros-rest |
 | BN.2 | #462 ✅ | 🟢 Done | ouroboros-rest: [BN.2] Action executor & allow-once exceptions | Handler bindings to AX/AP/planning; exception grants (X3) | mvp, inbox, rest, runs, pr | N (after BN.1, BM.3) | Y | L | ouroboros-rest |
 | BN.3 | #463 | 🟡 Open | ouroboros-rest: [BN.3] Channels — GitHub mirror & email tokens | Idempotent mirroring; digest + instant mails with signed tokens | mvp, inbox, rest, sources | N (after BN.1, BM.3, BJ.4) | Y | M | ouroboros-rest |
-| BN.4 | #464 | 🟡 Open | ouroboros-rest: [BN.4] Inbox APIs, snooze & policy read-view | Queue/resolved/stat payloads, snooze, composed policy rows (X6/X7) | mvp, inbox, rest | N (after BN.1, BM.2) | Y | M | ouroboros-rest |
+| BN.4 | #464 ✅ | 🟢 Done | ouroboros-rest: [BN.4] Inbox APIs, snooze & policy read-view | Queue/resolved/stat payloads, snooze, composed policy rows (X6/X7) | mvp, inbox, rest | N (after BN.1, BM.2) | Y | M | ouroboros-rest |
 | BN.5 | #465 | 🟡 Open | ouroboros-rest: [BN.5] Inbox integration tests | Registry, handlers, exceptions, tokens, channels, metrics | mvp, inbox, rest, ci | N (after BN.2–BN.4) | Y | M | ouroboros-rest |
 
 ### Issue BN.1 — ouroboros-rest: [BN.1] DecisionKind SPI & emitter wiring
@@ -487,7 +487,9 @@ email [Allow once] link ─▶ token ✓ ─▶ receipt · [Approve & merge] lin
 
 ### Issue BN.4 — ouroboros-rest: [BN.4] Inbox APIs, snooze & policy read-view
 
-> **GitHub issue:** #464 · **Status:** 🟡 Open · **Parent epic:** #454
+> **GitHub issue:** #464 ✅ · **Status:** 🟢 Done · **Parent epic:** #454
+>
+> **Delivered (#464):** `GET /api/v1/inbox`, `/resolved?day=`, `/stats`, `/policies` and the snooze routes (`decisions/inbox.queue.ts`, `inbox-policies/`), OpenAPI 0.39.8. Decided on the ticket: the **plan sign-off row is absent** (no DSL human gate or threshold exists — like the spend row while AF.4 is unbuilt), and human_review's `effort_gte` renders as its own row (*effort L+ → human review*); the **claim-waiver row is shown**, sourced to AX.3; #481's resolver does not exist, so **`OrgPolicyGateResolver.document`** (gates) was widened and is the card's reader; resolved lines come from a **REST per-kind summary map**. The seeded acme-robotics has no BA.1 protected-path rows (only the onboarding workspace does), so its card shows no protected-paths row.
 >
 > **Seeded (#460):** the head's estimate is each open card's kind median this UTC week from `decision_metrics_weekly_by_kind`, falling back to the week's overall median for a kind nobody answered this week — on the seed, merge_approval 41 + protected_path_allow_once 8 + claim_waiver 41 = 90 s. `tests/inbox-invariants.sql` holds the seed to that rule, so serve exactly it.
 >
@@ -563,6 +565,8 @@ dark-only).
 ### Issue BO.1 — ouroboros-ui: [BO.1] Inbox route, head & pill wiring
 
 > **GitHub issue:** #466 · **Status:** 🟡 Open · **Parent epic:** #455
+>
+> **Already shipped (#464):** `GET /api/v1/inbox` returns `head.sentence` (render it as given — never recompute the estimate), `items[]` with rendered `question`/`why`/`tags`, `facts`, `refs`, `ageSeconds` and `actions[]` (`allowed`, `disabledReason`), and `snoozed[]`; Snooze all is `POST /api/v1/inbox/snooze-all {minutes: 60}`.
 >
 > **Seeded (#460):** the cards read the seeded universe, not the mockup's numbers — `loop #1830 · PR #504 · issue #465 · refactor` (13/13 checks: PR #504 holds 13 required gates green and `human_approval` pending, as the dashboard's 13/14 says), `loop #1844 · issue #479 · boot/rollback_flag.c` (*change 3 lines*), and `PR #514 · verification`. Ages are relative to the load; on a Monday the week's answers clamp onto today, so *Resolved today* can list more than five.
 
@@ -656,6 +660,8 @@ topbar: [● Needs you · 3] ← lit (warn glow) on this page · excludes snooze
 ### Issue BO.4 — ouroboros-ui: [BO.4] Channels & policy cards
 
 > **GitHub issue:** #469 · **Status:** 🟡 Open · **Parent epic:** #455
+>
+> **Already shipped (#464):** `GET /api/v1/inbox/policies` — `rows[]` `{rule, outcome, source, detail, editHref}` each derived from its live config (render `source` as the ⓘ, `detail` beside protected paths), `caption` from dry-run. Absent rows (spend, plan sign-off) are simply not in `rows` — draw nothing for them.
 
 - **Problem Statement:** The side cards: channel rows in truth state
   with working prefs, and the composed policy read-view.

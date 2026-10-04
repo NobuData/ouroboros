@@ -6,6 +6,7 @@
  * family     audit.*  decision.*  run.*  pr.*
  * version 1  audit.<every AD.4 action> · decision.filed … · run.opened … · pr.criterion_verified …
  * version 2  audit.decision.answered · audit.decision.answer_failed · decision.answered · decision.answer_failed (#462)
+ * version 3  audit.decision.snoozed · …snoozed_all · …unsnoozed, and their decision.* types (#464)
  * ```
  *
  * **Versioned so a subscription never widens by itself.** An endpoint records the registry
@@ -57,6 +58,9 @@ export const DERIVED_EVENT_TYPES: Readonly<Partial<Record<AuditAction, string>>>
   "decision.source_resolved": "decision.source_resolved",
   "decision.answered": "decision.answered",
   "decision.answer_failed": "decision.answer_failed",
+  "decision.snoozed": "decision.snoozed",
+  "decision.snoozed_all": "decision.snoozed_all",
+  "decision.unsnoozed": "decision.unsnoozed",
   "pr_criterion.verified": "pr.criterion_verified",
   "pr_criterion.unverified": "pr.criterion_unverified",
   "pr_criterion.waived": "pr.criterion_waived",
@@ -192,6 +196,18 @@ export const WEBHOOK_REGISTRY: readonly WebhookRegistryVersion[] = [
       "audit.decision.answer_failed",
       "decision.answered",
       "decision.answer_failed",
+    ],
+  },
+  {
+    version: 3,
+    // BN.4 (#464): snoozing one item, Snooze all, and bringing items back early.
+    adds: [
+      "audit.decision.snoozed",
+      "audit.decision.snoozed_all",
+      "audit.decision.unsnoozed",
+      "decision.snoozed",
+      "decision.snoozed_all",
+      "decision.unsnoozed",
     ],
   },
 ];

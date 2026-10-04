@@ -1,4 +1,5 @@
 import { InboxController } from "./inbox.controller";
+import type { InboxQueueService } from "./inbox.queue";
 import { InboxFeedService, inboxFeedOf } from "./inbox.feed";
 import { DecisionStore } from "./decision.store.fixture";
 import type { Organization } from "../db/schema";
@@ -45,13 +46,71 @@ describe("InboxFeedService", () => {
     const base = { kindVersion: 1, payload: {}, refs: [], plane: "p", snoozedUntil: null };
 
     store.items.push(
-      { ...base, id: "1", organizationId: "acme", kindId: "merge_approval", severity: "err", status: "open", sourceRef: "a" },
-      { ...base, id: "2", organizationId: "acme", kindId: "protected_path_allow_once", severity: "warn", status: "open", sourceRef: "b" },
-      { ...base, id: "3", organizationId: "acme", kindId: "claim_waiver", severity: "warn", status: "open", sourceRef: "c" },
-      { ...base, id: "4", organizationId: "acme", kindId: "fact_review", severity: "info", status: "snoozed", sourceRef: "d", snoozedUntil: new Date("2026-10-04T10:12:00Z") },
-      { ...base, id: "5", organizationId: "acme", kindId: "fact_review", severity: "info", status: "snoozed", sourceRef: "e", snoozedUntil: new Date("2026-10-04T09:00:00Z") },
-      { ...base, id: "6", organizationId: "acme", kindId: "split_approval", severity: "info", status: "resolved", sourceRef: "f" },
-      { ...base, id: "7", organizationId: "globex", kindId: "merge_approval", severity: "err", status: "open", sourceRef: "g" },
+      {
+        ...base,
+        id: "1",
+        organizationId: "acme",
+        kindId: "merge_approval",
+        severity: "err",
+        status: "open",
+        sourceRef: "a",
+      },
+      {
+        ...base,
+        id: "2",
+        organizationId: "acme",
+        kindId: "protected_path_allow_once",
+        severity: "warn",
+        status: "open",
+        sourceRef: "b",
+      },
+      {
+        ...base,
+        id: "3",
+        organizationId: "acme",
+        kindId: "claim_waiver",
+        severity: "warn",
+        status: "open",
+        sourceRef: "c",
+      },
+      {
+        ...base,
+        id: "4",
+        organizationId: "acme",
+        kindId: "fact_review",
+        severity: "info",
+        status: "snoozed",
+        sourceRef: "d",
+        snoozedUntil: new Date("2026-10-04T10:12:00Z"),
+      },
+      {
+        ...base,
+        id: "5",
+        organizationId: "acme",
+        kindId: "fact_review",
+        severity: "info",
+        status: "snoozed",
+        sourceRef: "e",
+        snoozedUntil: new Date("2026-10-04T09:00:00Z"),
+      },
+      {
+        ...base,
+        id: "6",
+        organizationId: "acme",
+        kindId: "split_approval",
+        severity: "info",
+        status: "resolved",
+        sourceRef: "f",
+      },
+      {
+        ...base,
+        id: "7",
+        organizationId: "globex",
+        kindId: "merge_approval",
+        severity: "err",
+        status: "open",
+        sourceRef: "g",
+      },
     );
 
     return store;
@@ -74,7 +133,9 @@ describe("InboxFeedService", () => {
     const service = new InboxFeedService(seeded().asRepository());
     jest.spyOn(service, "now").mockReturnValue(NOW);
 
-    const answer = await new InboxController(service).read({ id: "globex" } as Organization);
+    const answer = await new InboxController(service, {} as InboxQueueService).read({
+      id: "globex",
+    } as Organization);
 
     expect(answer.open).toBe(1);
     expect(answer.bySeverity.err).toBe(1);

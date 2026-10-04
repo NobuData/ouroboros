@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.39.7",
+    "version": "0.39.8",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -24128,6 +24128,632 @@
           },
           "401": {
             "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inbox": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "The Needs-You queue — asking items, snoozed items and the head",
+        "description": "Everything the page's main column reads (#464, BN.4). **Items** are the workspace's asking\ndecisions — open, or snoozed with the snooze already elapsed (elapsed snoozes are woken\nfirst) — newest first, each with its **question, why and tags rendered server-side** at the\nkind version it pinned, the structured `facts` they were composed from, typed `refs`, its\nage (counted through any snooze), and its **actions resolved against the caller**: every\ndeclared action comes back, a disallowed one with `allowed: false` and a `disabledReason`\n(`capability_required` for an `approver` action without `can_approve_loops`,\n`role_required` otherwise). **Snoozed** items come back apart, soonest to wake first.\n\nThe **head** is computed (X8): `estimateSeconds` sums, over the queue, each item's kind\nmedian answer time this UTC week (`decision_metrics_weekly_by_kind`), a kind nobody\nanswered this week costing the week's median; with no answers this week there is no\nestimate and the sentence names only the count. `sentence` is the page's\n`3 decisions. About 90 seconds of your time.` (`1 decision.` / `No decisions waiting.`).\n\n**Every member**, `viewer` included.",
+        "operationId": "readInboxQueue",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The queue.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxQueue"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inbox/resolved": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "One day's answered decisions",
+        "description": "The resolved list (#464): one UTC day's resolutions, newest first, each with its resolver\nclass (`human` with the person, or `policy` with the policy ref — `auto_accept_resize`, or\n`source_resolved` for an item closed because its source settled elsewhere), channel, time,\nnote, receipt and the composed line (`Split #490 into 6 tickets — approved`,\n`Estimator re-size #486 L→M — auto-accepted by policy`). `previousDay` is the latest\nearlier day with any answer and `nextDay` the day after (null for today) — the history's\npaging. **Every member.**",
+        "operationId": "readInboxResolved",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "day",
+            "in": "query",
+            "required": false,
+            "description": "A UTC day, `YYYY-MM-DD`; today when absent.",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$"
+            },
+            "example": "2026-10-04"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The day.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxResolved"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `day` is not `YYYY-MM-DD`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inbox/stats": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "This week's stat card",
+        "description": "`decision_metrics_weekly` for the current UTC ISO week (#464, BM.2's view): decisions\nanswered, the median answer time, the longest loop wait, and the policy share. Snoozed time\nis **included** — snoozing hides an item, it never stops its clock — and out-of-band\nclosures are left out. On a workspace that answered nothing this week every figure is\n`null` and every `display` string `—`, never a zero. **Every member.**",
+        "operationId": "readInboxStats",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The figures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxStats"
+                },
+                "example": {
+                  "week": "2026-09-28",
+                  "decisions": 11,
+                  "medianAnswerSeconds": 41,
+                  "maxLoopWaitSeconds": 360,
+                  "policyResolutions": 1,
+                  "autoAcceptShare": 0.0909,
+                  "display": {
+                    "decisions": "11",
+                    "medianAnswer": "41s",
+                    "maxLoopWait": "6m"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inbox/policies": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "What Needs A Human — the rules that send a decision to a person",
+        "description": "The policy card (#464, X7). Every row **derives from the live config that enforces it**,\ncarries that `source`, and links the surface that owns it (`editHref`):\n\n- `human_review` of the published org policy (the gate engine enforces it): one row per\n  `label` condition (`refactor label → human review`) and per `effort_gte`\n  (`effort L+ → human review`), one more for any other predicate; none when the rule is\n  off — `/settings#policies`;\n- `protected paths → allow-once` from BA.1's `protected_path_policies` (what AP.3 judges\n  against), its globs in `detail`; absent when no repository protects a path —\n  `/knowledge#repo-profile`;\n- `unverifiable claims → explicit waiver` (PR verification, AX.3) — `/settings#policies`.\n\n**Absent rows**: `spend > $X/run → approval` while no per-run cap is enforced (AF.4, #237;\n`spend_approval` is dormant), and `effort XL+ → plan sign-off`, which no workflow human gate\nor threshold enforces. They are omitted, not greyed. The `caption` follows BA.3's dry-run:\n`Everything else merges itself when gates are green.` only outside dry-run. **Every member.**",
+        "operationId": "readInboxPolicies",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The card.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxPolicyCard"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inbox/items/{id}/snooze": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Snooze one decision",
+        "description": "Hides one open (or re-snoozes one snoozed) item until `minutes` from now (#464, X6). It\nleaves the queue and the pill (`GET /api/v1/inbox/feed`) but **not the metrics**, and its\nage keeps counting. Recorded as a V095 snooze event and audited `decision.snoozed`.\n**Owner, admin or member.**",
+        "operationId": "snoozeInboxItem",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The decision item.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboxSnoozeRequest"
+              },
+              "example": {
+                "minutes": 60
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Snoozed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxSnoozeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — snoozing hides an item from the whole workspace, so it needs the `owner`,\n`admin` or `member` role; a viewer may not.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`decision_item_not_found` — no such item in this workspace.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`decision_item_not_open` — the item is resolved or expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `minutes` outside 1–10080, or a padded `reason`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inbox/snooze-all": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Snooze all — every open decision, as one event",
+        "description": "*Snooze all 1h* (#464, X6): snoozes every open item of the workspace until `minutes` from\nnow (default 60) as **one** V095 scope-all event listing them, audited\n`decision.snoozed_all`. With nothing open it snoozes nothing, records nothing and answers\n`snoozed: []`. **Owner, admin or member.**",
+        "operationId": "snoozeAllInboxItems",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InboxSnoozeRequest"
+              },
+              "example": {
+                "minutes": 60
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The items caught.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxSnoozeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — snoozing hides an item from the whole workspace, so it needs the `owner`,\n`admin` or `member` role; a viewer may not.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `minutes` outside 1–10080, or a padded `reason`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inbox/items/{id}/unsnooze": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Bring one snoozed decision back now",
+        "description": "Re-opens one snoozed item before its time (#464); `unsnoozed` is empty when it was not\nsnoozed. Audited `decision.unsnoozed`. **Owner, admin or member.**",
+        "operationId": "unsnoozeInboxItem",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The decision item.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The item, if it was snoozed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxUnsnoozeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — snoozing hides an item from the whole workspace, so it needs the `owner`,\n`admin` or `member` role; a viewer may not.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`decision_item_not_found` — no such item in this workspace.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inbox/unsnooze-all": {
+      "post": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "Bring every snoozed decision back now",
+        "description": "Re-opens every snoozed item of the workspace (#464) — the undo of *Snooze all*. Audited\n`decision.unsnoozed` when anything came back. **Owner, admin or member.**",
+        "operationId": "unsnoozeAllInboxItems",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The items re-opened.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxUnsnoozeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — snoozing hides an item from the whole workspace, so it needs the `owner`,\n`admin` or `member` role; a viewer may not.",
             "content": {
               "application/json": {
                 "schema": {
@@ -62868,6 +63494,685 @@
             "type": "string",
             "format": "date-time",
             "description": "When it started waiting — the proposal's creation, or the stale flag."
+          }
+        }
+      },
+      "InboxHead": {
+        "type": "object",
+        "description": "The page head (#464, X8) — computed, never seeded.",
+        "additionalProperties": false,
+        "required": [
+          "count",
+          "noun",
+          "estimateSeconds",
+          "estimate",
+          "sentence"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "noun": {
+            "type": "string",
+            "enum": [
+              "decision",
+              "decisions"
+            ]
+          },
+          "estimateSeconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Σ of each queued item's kind median this week; null when no answer time is known."
+          },
+          "estimate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "About 90 seconds of your time."
+          },
+          "sentence": {
+            "type": "string",
+            "example": "3 decisions. About 90 seconds of your time."
+          }
+        }
+      },
+      "InboxActionView": {
+        "type": "object",
+        "description": "One declared action, resolved against the caller.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "label",
+          "style",
+          "requiredRole",
+          "consequenceText",
+          "takesNote",
+          "navigates",
+          "allowed",
+          "disabledReason"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "style": {
+            "type": "string",
+            "enum": [
+              "primary",
+              "ghost",
+              "danger"
+            ]
+          },
+          "requiredRole": {
+            "type": "string",
+            "enum": [
+              "viewer",
+              "member",
+              "approver",
+              "admin",
+              "owner"
+            ]
+          },
+          "consequenceText": {
+            "type": "string"
+          },
+          "takesNote": {
+            "type": "boolean"
+          },
+          "navigates": {
+            "type": "boolean",
+            "description": "A link — it decides nothing."
+          },
+          "allowed": {
+            "type": "boolean"
+          },
+          "disabledReason": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  "role_required",
+                  "capability_required"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "InboxRef": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "id",
+          "label"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "run",
+              "pr",
+              "ticket",
+              "path"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        }
+      },
+      "InboxItem": {
+        "type": "object",
+        "description": "One asking decision, rendered (#464).",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kindId",
+          "kindVersion",
+          "severity",
+          "status",
+          "question",
+          "why",
+          "tags",
+          "facts",
+          "refs",
+          "mergeClass",
+          "actions",
+          "createdAt",
+          "ageSeconds",
+          "snooze"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kindId": {
+            "type": "string"
+          },
+          "kindVersion": {
+            "type": "integer"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "err",
+              "warn",
+              "info"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "snoozed"
+            ]
+          },
+          "question": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "facts": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "The facts the prose was composed from."
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxRef"
+            }
+          },
+          "mergeClass": {
+            "type": "boolean"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxActionView"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ageSeconds": {
+            "type": "integer",
+            "description": "Seconds since it was asked, counted through any snooze."
+          },
+          "snooze": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "allowed"
+            ],
+            "properties": {
+              "allowed": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      },
+      "InboxSnoozedItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kindId",
+          "severity",
+          "question",
+          "refs",
+          "createdAt",
+          "ageSeconds",
+          "snoozedUntil",
+          "snoozedBy",
+          "reason"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kindId": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "err",
+              "warn",
+              "info"
+            ]
+          },
+          "question": {
+            "type": "string"
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxRef"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ageSeconds": {
+            "type": "integer"
+          },
+          "snoozedUntil": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "snoozedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "InboxQueue": {
+        "type": "object",
+        "description": "`GET /api/v1/inbox` (#464).",
+        "additionalProperties": false,
+        "required": [
+          "head",
+          "items",
+          "snoozed",
+          "asOf"
+        ],
+        "properties": {
+          "head": {
+            "$ref": "#/components/schemas/InboxHead"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxItem"
+            }
+          },
+          "snoozed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxSnoozedItem"
+            }
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "InboxResolvedRow": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "itemId",
+          "kindId",
+          "summary",
+          "actionId",
+          "resolver",
+          "policy",
+          "actor",
+          "channel",
+          "note",
+          "outcome",
+          "resolvedAt",
+          "answerLatencySeconds",
+          "loopWaitSeconds"
+        ],
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kindId": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string",
+            "example": "Split"
+          },
+          "actionId": {
+            "type": "string"
+          },
+          "resolver": {
+            "type": "string",
+            "enum": [
+              "human",
+              "policy"
+            ]
+          },
+          "policy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "actor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "web",
+              "email",
+              "github",
+              "slack",
+              "push",
+              "api"
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "outcome": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "resolvedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "answerLatencySeconds": {
+            "type": "number"
+          },
+          "loopWaitSeconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        }
+      },
+      "InboxResolved": {
+        "type": "object",
+        "description": "`GET /api/v1/inbox/resolved` (#464).",
+        "additionalProperties": false,
+        "required": [
+          "day",
+          "count",
+          "rows",
+          "previousDay",
+          "nextDay"
+        ],
+        "properties": {
+          "day": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxResolvedRow"
+            }
+          },
+          "previousDay": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "nextDay": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "InboxStats": {
+        "type": "object",
+        "description": "`GET /api/v1/inbox/stats` (#464) — null and `—` where nothing was answered.",
+        "additionalProperties": false,
+        "required": [
+          "week",
+          "decisions",
+          "medianAnswerSeconds",
+          "maxLoopWaitSeconds",
+          "policyResolutions",
+          "autoAcceptShare",
+          "display"
+        ],
+        "properties": {
+          "week": {
+            "type": "string"
+          },
+          "decisions": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "medianAnswerSeconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "maxLoopWaitSeconds": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "policyResolutions": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "autoAcceptShare": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "display": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "decisions",
+              "medianAnswer",
+              "maxLoopWait"
+            ],
+            "properties": {
+              "decisions": {
+                "type": "string"
+              },
+              "medianAnswer": {
+                "type": "string"
+              },
+              "maxLoopWait": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "InboxPolicyRow": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "rule",
+          "outcome",
+          "source",
+          "detail",
+          "editHref"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string",
+            "example": "refactor label"
+          },
+          "outcome": {
+            "type": "string",
+            "example": "human review"
+          },
+          "source": {
+            "type": "string"
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "editHref": {
+            "type": "string",
+            "example": "/settings#policies"
+          }
+        }
+      },
+      "InboxPolicyCard": {
+        "type": "object",
+        "description": "`GET /api/v1/inbox/policies` (#464, X7).",
+        "additionalProperties": false,
+        "required": [
+          "rows",
+          "caption",
+          "dryRun",
+          "policyVersion"
+        ],
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InboxPolicyRow"
+            }
+          },
+          "caption": {
+            "type": "string"
+          },
+          "dryRun": {
+            "type": "boolean"
+          },
+          "policyVersion": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        }
+      },
+      "InboxSnoozeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10080,
+            "default": 60
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      },
+      "InboxSnoozeResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "snoozed",
+          "until",
+          "eventId"
+        ],
+        "properties": {
+          "snoozed": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "eventId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "InboxUnsnoozeResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "unsnoozed"
+        ],
+        "properties": {
+          "unsnoozed": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         }
       },
