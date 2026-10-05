@@ -8,11 +8,14 @@ import { RULE_NAMES } from "@/app/policies/document";
 import { DRY_RUN_TITLE, POLICY_READ_ONLY, dryRunUnread } from "@/app/policies/view";
 import { FONT_SCALE_ATTRIBUTE, setFontScale } from "@/app/font-scale";
 import { AUDIT_ADMINS_ONLY, auditUnread } from "@/app/audit-log/view";
+import { DELETE_OWNER_ONLY, PAUSE_ROLE_NOTE, lifecycleUnread } from "@/app/lifecycle/danger";
 import { routesUnread } from "@/app/integrations/routes";
 import { integrationsUnread } from "@/app/integrations/view";
 import { READ_ONLY_BODY, settingsAccess } from "@/app/settings/access";
 import { APPEARANCE_TAG } from "@/app/settings/appearance";
 import { NOTHING_TO_SAVE } from "@/app/settings/save-model";
+import { SETTINGS_LOADING_LABEL, SKELETON_ROWS } from "@/app/settings/settings-skeleton";
+import { unreadHeadline } from "@/app/settings/unread";
 import {
   IMMEDIATE_MARK,
   SECTION_TABS,
@@ -26,6 +29,7 @@ import { ThemeProvider } from "@/app/theme-provider";
 
 import { auditToday } from "../helpers/audit-log";
 import { integrations, notificationRoutes } from "../helpers/integrations";
+import { lifecycle, pausedLifecycle } from "../helpers/lifecycle";
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 import { webhookList } from "../helpers/webhooks";
 import { renderThemed } from "../helpers/theme";
@@ -52,6 +56,17 @@ vi.mock("@/app/policies/card-actions", () => ({
 vi.mock("@/app/settings/workspace-actions", () => ({ saveWorkspaceCard: vi.fn() }));
 // BS.5's cards (#495) reach their Server Actions only in their own suites.
 vi.mock("@/app/audit-log/audit-actions", () => ({ readAuditLog: vi.fn() }));
+// The Danger zone's Server Actions (#496) are reached only in its own suite.
+vi.mock("@/app/lifecycle/lifecycle-actions", () => ({
+  readLifecycle: vi.fn(),
+  pauseWorkspace: vi.fn(),
+  resumeWorkspace: vi.fn(),
+  // Opened once here, to show the switch is not a saved field; the read never answers.
+  readDisconnectPreview: vi.fn(() => new Promise(() => {})),
+  disconnectWorkspace: vi.fn(),
+  deleteWorkspace: vi.fn(),
+  restoreWorkspace: vi.fn(),
+}));
 vi.mock("@/app/integrations/routes-actions", () => ({ saveRoutes: vi.fn() }));
 vi.mock("@/app/webhooks/webhook-actions", () => ({
   readWebhooks: vi.fn(),
@@ -82,8 +97,12 @@ const { saveFontScale } = vi.hoisted(() => ({
 vi.mock("@/app/shell/preference-actions", () => ({
   saveFontScale: (scale: string) => saveFontScale(scale),
 }));
+/** The router's re-read — what the error state's Retry calls. */
+const refresh = vi.fn();
+
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+  useRouter: () => ({ refresh, push: vi.fn(), replace: vi.fn() }),
+  usePathname: () => "/settings",
   unstable_rethrow: () => {},
 }));
 
@@ -122,6 +141,7 @@ afterEach(() => {
   // The font-size engine is module state on `<html>`; each case starts at the default.
   setFontScale("100");
   saveFontScale.mockClear();
+  refresh.mockClear();
 });
 
 /** The head's actions. */
@@ -239,16 +259,13 @@ describe("the section grid", () => {
     }
   });
 
-  it("says, in every seat whose card is not built, what is coming and with which issue", () => {
+  it("announces no card still to come: every seat's card is built", () => {
     hub();
 
     for (const section of SETTINGS_SECTIONS) {
-      if (section.arrives === null) continue;
-
-      expect(within(seat(section.id)).getByText(section.arrives)).toHaveClass("ou-empty__note");
+      expect(section.arrives, section.id).toBeNull();
+      expect(seat(section.id).querySelector(".ou-empty__note"), section.id).toBeNull();
     }
-    // The one card that is built has nothing left to announce.
-    expect(seat("appearance").querySelector(".ou-empty__note")).toBeNull();
   });
 
   it("marks the sections whose controls act at once, and only those", () => {
@@ -528,6 +545,202 @@ describe("the record surfaces — Audit, Integrations and Notifications (#495)",
 
       expect(maskIds(light!), role).toBe(maskIds(dark!));
     }
+  });
+});
+
+describe("the Danger zone (#496)", () => {
+  /**
+   * Draw the hub with the workspace's lifecycle.
+   *
+   * @param roles The reader's roles.
+   * @param read The lifecycle as read.
+   * @returns The render result.
+   */
+  function danger(
+    roles: Parameters<typeof settingsAccess>[0] = ["owner"],
+    read: Parameters<typeof SettingsScreen>[0]["lifecycle"] = { ok: true, value: lifecycle() },
+  ) {
+    return renderThemed(
+      <SettingsScreen
+        access={settingsAccess(roles)}
+        dryRun={READ}
+        lifecycle={read}
+        workspaceName="acme-robotics"
+      />,
+    );
+  }
+
+  it("seats the card in the error rim: the switch, Disconnect, and Delete naming the workspace", () => {
+    danger();
+
+    const card = within(seat("danger"));
+
+    expect(screen.getByRole("region", { name: "Danger zone" })).toHaveClass("settings__card--danger");
+    expect(card.getByRole("switch", { name: "Pause all loops" })).toHaveAttribute("aria-checked", "false");
+    expect(card.getByRole("button", { name: "Disconnect…" })).toBeInTheDocument();
+    expect(card.getByRole("button", { name: "Delete acme-robotics…" })).toBeInTheDocument();
+    expect(card.getByText(IMMEDIATE_MARK)).toHaveClass("ou-tag");
+  });
+
+  it("draws the switch on for a paused workspace", () => {
+    danger(["admin"], { ok: true, value: pausedLifecycle() });
+
+    expect(within(seat("danger")).getByRole("switch", { name: "Resume all loops" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+  });
+
+  it("keeps its controls out of the page's unsaved changes: nothing here can be saved later", () => {
+    danger();
+
+    fireEvent.click(within(seat("danger")).getByRole("switch"));
+
+    expect(within(actions()).getByRole("button", { name: "Save changes" })).toHaveAttribute(
+      "title",
+      NOTHING_TO_SAVE,
+    );
+  });
+
+  it("gives a viewer the three rows as text, and no control", () => {
+    danger(["viewer"], { ok: true, value: pausedLifecycle() });
+
+    const card = within(seat("danger"));
+
+    expect(card.getByText(PAUSE_ROLE_NOTE)).toBeInTheDocument();
+    expect(card.getByText(DELETE_OWNER_ONLY)).toBeInTheDocument();
+    expect(card.queryByRole("switch")).toBeNull();
+    expect(card.queryByRole("button")).toBeNull();
+    expect(screen.getByRole("main").querySelector("[aria-disabled='true'], [disabled]")).toBeNull();
+  });
+
+  it("draws no control at all when the lifecycle could not be read, and says why", () => {
+    danger(["owner"], { ok: false, reason: "The service is restarting." });
+
+    const card = within(seat("danger"));
+
+    expect(card.getByRole("note")).toHaveTextContent(lifecycleUnread("The service is restarting."));
+    expect(card.queryByRole("switch")).toBeNull();
+    expect(card.queryByRole("button")).toBeNull();
+    expect(screen.getByRole("region", { name: "Danger zone" })).toHaveClass("settings__card--danger");
+  });
+
+  it("draws the same markup in both palettes — owner, viewer, and paused", () => {
+    for (const [role, read] of [
+      ["owner", lifecycle()],
+      ["viewer", lifecycle()],
+      ["owner", pausedLifecycle()],
+    ] as const) {
+      const [light, dark] = renderInBothPalettes(
+        <ThemeProvider>
+          <SettingsScreen
+            access={settingsAccess([role])}
+            dryRun={READ}
+            lifecycle={{ ok: true, value: read }}
+            workspaceName="acme-robotics"
+          />
+        </ThemeProvider>,
+      );
+
+      expect(maskIds(light!), `${role} ${read.state}`).toBe(maskIds(dark!));
+    }
+  });
+});
+
+describe("the page's error state (#496)", () => {
+  const DOWN = { ok: false, reason: "The service is restarting." } as const;
+
+  it("draws no retry box while every read that was made succeeded", () => {
+    renderThemed(
+      <SettingsScreen
+        access={settingsAccess(["viewer"])}
+        // Never requested for a viewer — which is not a failure.
+        audit={null}
+        dryRun={READ}
+        lifecycle={{ ok: true, value: lifecycle() }}
+        workspaceName="acme-robotics"
+      />,
+    );
+
+    expect(document.querySelector(".ou-retry")).toBeNull();
+  });
+
+  it("says once, above the grid, how many sections could not be read — and which", () => {
+    renderThemed(
+      <SettingsScreen
+        access={settingsAccess(["owner"])}
+        audit={DOWN}
+        dryRun={DOWN}
+        lifecycle={DOWN}
+        policy={DOWN}
+        workspaceName="acme-robotics"
+      />,
+    );
+
+    const box = document.querySelector(".ou-retry") as HTMLElement;
+
+    // The policy document and the dry-run switch are one section.
+    expect(box).toHaveTextContent(unreadHeadline(3));
+    expect(box).toHaveTextContent("Autonomy policies, Audit log, Danger zone");
+    expect(box).toHaveClass("settings__retry");
+    expect(box.compareDocumentPosition(document.querySelector(".settings__grid") as Element)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    // Every seat is still drawn, each with its own reason.
+    expect(document.querySelectorAll(".settings__seat")).toHaveLength(8);
+  });
+
+  it("re-reads the page on Retry", () => {
+    renderThemed(
+      <SettingsScreen
+        access={settingsAccess(["owner"])}
+        dryRun={DOWN}
+        workspaceName="acme-robotics"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+});
+
+describe("the loading state (#496)", () => {
+  it("draws the hub's own frame, busy and named, with the real head and tab row", async () => {
+    const { SettingsSkeleton } = await import("@/app/settings/settings-skeleton");
+    renderThemed(<SettingsSkeleton />);
+
+    const main = screen.getByRole("main", { name: SETTINGS_LOADING_LABEL });
+
+    expect(main).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(SETTINGS_TITLE);
+    expect(screen.getByRole("navigation", { name: "Settings" }).querySelectorAll("a")).toHaveLength(10);
+  });
+
+  it("fills the eight seats at the page's spans, so nothing jumps when the cards arrive", async () => {
+    const { SettingsSkeleton } = await import("@/app/settings/settings-skeleton");
+    renderThemed(<SettingsSkeleton />);
+
+    const grid = document.querySelector(".settings__grid") as HTMLElement;
+    const seats = [...grid.querySelectorAll(".settings__seat")];
+
+    expect(grid).toHaveAttribute("aria-hidden", "true");
+    expect(seats.map((one) => [...one.classList].find((name) => name.startsWith("settings__seat--")))).toEqual(
+      SETTINGS_SECTIONS.map((section) => `settings__seat--${String(section.span)}`),
+    );
+    expect(seats.map((one) => one.querySelectorAll(".settings-skeleton__bar").length)).toEqual(
+      SETTINGS_SECTIONS.map((section) => SKELETON_ROWS[section.id] + 1),
+    );
+    // A skeleton card is not a section to land on, and offers nothing to press.
+    expect(seats.every((one) => one.id === "")).toBe(true);
+    expect(within(grid).queryAllByRole("button")).toHaveLength(0);
+  });
+
+  it("is what the route's loading file draws", async () => {
+    const Loading = (await import("@/app/(app)/settings/loading")).default;
+    renderThemed(<Loading />);
+
+    expect(screen.getByRole("main", { name: SETTINGS_LOADING_LABEL })).toBeInTheDocument();
   });
 });
 

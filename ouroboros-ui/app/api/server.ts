@@ -46,10 +46,11 @@ import {
   type SessionCookies,
   createApiClient,
 } from "@/app/api/client";
+import { isWorkspaceFrozen } from "@/app/api/errors";
 import { loginDestination } from "@/app/api/request";
 import { ACTIVE_TENANT_COOKIE, assertTenantReference, isTenantReference } from "@/app/api/tenant";
 import { restUrl } from "@/app/env";
-import { LOGIN_PATH } from "@/app/paths";
+import { LOGIN_PATH, RECOVERY_PATH } from "@/app/paths";
 
 /**
  * Where a request with no usable session is sent — the login screen
@@ -198,6 +199,14 @@ export function api(): ApiClient {
       // `redirect` signals by throwing, and that throw is the one that reaches Next.js —
       // which is the whole of "401 responses route to login". Nothing here catches it.
       redirect(await loginDestination());
+    },
+    onRefused: (error) => {
+      // The one refusal that is about the workspace rather than the request
+      // ([#496](https://github.com/NobuData/ouroboros/issues/496)): while a workspace is
+      // pending deletion every route answers this, so there is no screen to draw and one
+      // place to be — the recovery screen, which reads through `anonymousApi()` precisely so
+      // that this redirect cannot send it to itself.
+      if (isWorkspaceFrozen(error)) redirect(RECOVERY_PATH);
     },
   });
   return client;

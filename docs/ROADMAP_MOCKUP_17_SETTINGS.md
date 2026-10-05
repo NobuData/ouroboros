@@ -770,7 +770,7 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 | BS.3 | #493 ✅ | 🟢 Done | ouroboros-ui: [BS.3] Members & roles card | Table with all row classes, invites, capabilities, service accounts | mvp, settings, ui, design | N (after BS.1, BR.1) | Y | M | ouroboros-ui |
 | BS.4 | #494 ✅ | 🟢 Done | ouroboros-ui: [BS.4] Autonomy policies card | Rule rows with terms chips, editing, version tag, publish flow | mvp, settings, ui, design | N (after BS.1, BQ.2) | Y | L | ouroboros-ui |
 | BS.5 | #495 ✅ | 🟢 Done | ouroboros-ui: [BS.5] Audit, integrations & notifications cards | Viewer + export + SIEM row; truth-state grid; org routes | mvp, settings, ui, design | N (after BS.1, BR.2–BR.4) | Y | M | ouroboros-ui |
-| BS.6 | #496 | 🟡 Open | ouroboros-ui: [BS.6] Danger zone, states & e2e leg | Lifecycle flows with safety UX; banners; full e2e | mvp, settings, ui, ci | N (after BS.2–BS.5, BR.5) | Y | M | ouroboros-ui, .github |
+| BS.6 | #496 ✅ | 🟢 Done | ouroboros-ui: [BS.6] Danger zone, states & e2e leg | Lifecycle flows with safety UX; banners; full e2e | mvp, settings, ui, ci | N (after BS.2–BS.5, BR.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue BS.1 — ouroboros-ui: [BS.1] Settings frame, section nav & save model
 
@@ -1043,7 +1043,7 @@ Loop failures → PagerDuty 🔒 "connect PagerDuty first"
 
 ### Issue BS.6 — ouroboros-ui: [BS.6] Danger zone, states & e2e leg
 
-> **GitHub issue:** #496 · **Status:** 🟡 Open · **Parent epic:** #478
+> **GitHub issue:** #496 ✅ · **Status:** 🟢 Done · **Parent epic:** #478
 
 - **Problem Statement:** The danger zone's safety UX, the global paused
   banner, and the page's end-to-end certification.
@@ -1072,6 +1072,37 @@ Loop failures → PagerDuty 🔒 "connect PagerDuty first"
 [Pause all loops] ─▶ confirm ─▶ banner "⏸ all loops paused — stages finishing" ─▶ resume
 [Delete acme-robotics…] ─▶ type name + step-up ─▶ pending-delete (29d 23h to recover) [Restore]
 ```
+
+- **Delivered** (`ouroboros-ui` 0.138.0 `app/lifecycle/`, `tests/e2e` 0.32.0 leg 26; no service
+  change — BR.5 already serves the lifecycle).
+  - **Danger zone card.** *Pause all loops* is a switch behind a confirmation that states the
+    semantics verbatim and the runs in flight now — **decided with the user: the count is the
+    disconnect preview's `activeRuns`**, read when the dialog opens, so the lifecycle read gained
+    no field. *Disconnect* shows the live preview, takes the typed workspace name, and summarises
+    what ran. *Delete* is an owner's: consequence list, exact name, and the password when the
+    service answers `step_up_required`.
+  - **Paused banner.** A row of the shell's grid on every signed-in screen, fed by one poll per
+    shell; **Resume** inline for an owner or admin, a link to the Danger zone for anybody else.
+  - **Pending deletion.** Every `403 workspace_pending_delete` becomes `/workspace-recovery`,
+    outside the shell: the live countdown, what is frozen, **Restore workspace** for an owner, and
+    for anybody else who can act.
+  - **States.** A loading skeleton at the hub's geometry, and DASH-I.7's retry box above the grid
+    naming the sections that could not be read.
+  - **The e2e leg — decided with the user: written and run here**, on an isolated compose
+    project. Leg 26 (`tests/e2e/specs/settings.spec.ts`) is ten tests in about a minute of the
+    three allowed; `/settings` joined the readability matrix; and
+    `tests/e2e/scripts/verify-settings.sh` breaks each of the nine layers once and requires the
+    matching test to go red. A TLS fixture receiver (`tests/e2e/fixtures/webhook-receiver`) takes
+    the test ping.
+  - **Found by the leg and fixed here.** The SIEM row's warning sentence could not wrap and
+    pushed the pane sideways; at 150% the Members card's head pushed **+ Invite member** out of
+    its seat; and the integration tiles' cut status lines offered no tooltip.
+  - **Asserted differently than the issue words it.** *Retention reaches a sweep*: sweeps are
+    hourly with no trigger, so the leg asserts the stored tiers the sweep reads, that the next
+    sweep is booked, and the audit events — not a sweep observed. *Inbox approve refused*: the
+    leg calls the approver-only answer as the member (`403` without the capability) rather than
+    driving their inbox page. **Disconnect is not pressed** in e2e — it deletes the stored GitHub
+    token and nothing restores it; its preview is exercised through the pause dialog.
 
 ---
 
@@ -1322,7 +1353,7 @@ Issue-level impact:
 | BS.1 | #491 ✅ | 🟢 Done | Mounts in the shell content pane; navigation via the sidebar **Settings** entry (CP.2 registry), not a topbar link; in-page subnavs via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
 | BS.2–BS.5 | rem-based type (CQ.1 tokens); sticky elements stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
 | BS.2 | #492 ✅ | 🟢 Done | ~~Gains the **font-size preference control** (App Shell CQ.2 — five steps 87.5–150%, rendered beside the theme control with a live preview)~~ — shipped with BS.1 (#491) as the Appearance card, which the App Shell roadmap had filed on that issue |
-| BS.6 | #496 | 🟡 Open | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state, and a font-scale (125%) render check |
+| BS.6 | #496 ✅ | 🟢 Done | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state, and a font-scale (125%) render check |
 
 ## Next Step
 

@@ -7,6 +7,7 @@ import { DRY_RUN_TITLE } from "@/app/policies/view";
 import { SETTINGS_TITLE, settingsEyebrow } from "@/app/settings/view";
 
 import { membership, sessionUser } from "../helpers/login";
+import { pausedLifecycle } from "../helpers/lifecycle";
 import { MEMBERS_READ_AT, SERVICE_LIST, membersPage } from "../helpers/members";
 import { renderThemed as render } from "../helpers/theme";
 
@@ -38,6 +39,16 @@ vi.mock("@/app/policies/card-actions", () => ({
 vi.mock("@/app/settings/workspace-actions", () => ({ saveWorkspaceCard: vi.fn() }));
 // BS.5's cards (#495) reach their Server Actions only in their own suites.
 vi.mock("@/app/audit-log/audit-actions", () => ({ readAuditLog: vi.fn() }));
+// The Danger zone's Server Actions (#496) are reached only in its own suite.
+vi.mock("@/app/lifecycle/lifecycle-actions", () => ({
+  readLifecycle: vi.fn(),
+  pauseWorkspace: vi.fn(),
+  resumeWorkspace: vi.fn(),
+  readDisconnectPreview: vi.fn(),
+  disconnectWorkspace: vi.fn(),
+  deleteWorkspace: vi.fn(),
+  restoreWorkspace: vi.fn(),
+}));
 vi.mock("@/app/integrations/routes-actions", () => ({ saveRoutes: vi.fn() }));
 vi.mock("@/app/webhooks/webhook-actions", () => ({
   readWebhooks: vi.fn(),
@@ -118,6 +129,7 @@ beforeEach(() => {
       dryRun: { ok: true, value: POLICY },
       members: { ok: true, value: membersPage({ canManage }) },
       serviceAccounts: canManage ? SERVICE_LIST : null,
+      lifecycle: { ok: true, value: pausedLifecycle() },
       readAt: MEMBERS_READ_AT,
     });
   });
@@ -158,6 +170,18 @@ describe("the route", () => {
         name: DRY_RUN_TITLE,
       }),
     ).toBeInTheDocument();
+  });
+
+  it("hands the Danger zone the lifecycle and the workspace's own name to type", async () => {
+    render(await Page());
+
+    const danger = within(document.getElementById("danger") as HTMLElement);
+
+    expect(danger.getByRole("switch", { name: "Resume all loops" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(danger.getByRole("button", { name: `Delete ${membership().name}…` })).toBeInTheDocument();
   });
 
   it("keys the screen by the workspace, so a switch cannot carry one workspace's edits into another", async () => {

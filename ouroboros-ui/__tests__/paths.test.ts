@@ -10,6 +10,7 @@ import {
   KNOWLEDGE_PATH,
   KNOWLEDGE_PROFILE_HASH,
   POLICIES_PATH,
+  RECOVERY_PATH,
   ISSUES_PATH,
   LOGIN_PATH,
   MODELS_PATH,
@@ -58,6 +59,13 @@ describe("the paths themselves", () => {
   it("are the two segments the application redirects between", () => {
     expect(LOGIN_PATH).toBe("/login");
     expect(DASHBOARD_PATH).toBe("/dashboard");
+  });
+
+  it("give the recovery screen a segment of its own, outside every section (#496)", () => {
+    // Where a frozen workspace's every request is sent. Outside `/settings` and outside the
+    // shell: a path under a section would be drawn in a frame whose own reads are frozen.
+    expect(RECOVERY_PATH).toBe("/workspace-recovery");
+    expect(safeReturnTo(RECOVERY_PATH)).toBe(RECOVERY_PATH);
   });
 
   it("give the issues screen a segment of its own, outside the Models section (#115)", () => {

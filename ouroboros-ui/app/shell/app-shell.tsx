@@ -1,5 +1,7 @@
 import { Suspense } from "react";
 
+import { LifecycleBanner } from "@/app/lifecycle/lifecycle-banner";
+
 import { FontScaleSync } from "./font-scale-sync";
 import { PaneRestoration } from "./pane-restoration";
 import { CONTENT_ID, OVERLAY_LAYER_ID, PANE_ATTRIBUTE } from "./regions";
@@ -74,6 +76,11 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
         Skip to content
       </a>
       <ShellHeader />
+      {/*
+        The app-wide paused banner (#496): a row of the frame between the header and the pane,
+        so it holds still without being fixed, and draws nothing unless the workspace is paused.
+      */}
+      <LifecycleBanner />
       <SidebarNav />
       <div
         className="app-shell__pane"

@@ -12,7 +12,8 @@ import "server-only";
  * card (BS.2, #492): the workspace card's payload and the retention tiers — and BS.5's three
  * (#495): the Audit card's today view and the webhook endpoints behind its SIEM row (both for an
  * administrator only, who is the only reader the service answers), the integrations grid, and the
- * org notification routes. Each is read
+ * org notification routes — and BS.6's (#496): the workspace's lifecycle, which the Danger zone
+ * draws its pause switch from. Each is read
  * through the one read every surface uses (`app/api/policies.ts`) and kept
  * as a {@link Reading}, for the rule every screen here keeps — **one failed read is one
  * degraded region, never a blank page**: a policy that could not be read costs the Policies
@@ -33,6 +34,7 @@ import {
   type NotificationRoutes,
   settingsIntegrations,
 } from "@/app/api/settings-integrations";
+import { type WorkspaceLifecycle, settingsLifecycle } from "@/app/api/settings-lifecycle";
 import {
   type MembersPage,
   type ServiceAccountList,
@@ -78,6 +80,8 @@ export interface SettingsReadings {
   readonly integrations: Reading<Integrations>;
   /** The Notifications card's org routes. */
   readonly routes: Reading<NotificationRoutes>;
+  /** Where the workspace stands — the Danger zone card. Any member may read it. */
+  readonly lifecycle: Reading<WorkspaceLifecycle>;
   /** When these were read — what the card's relative ages are measured against. */
   readonly readAt: string;
 }
@@ -104,6 +108,7 @@ export async function readSettings(access: Workspace): Promise<SettingsReadings>
     webhooks,
     integrations,
     routes,
+    lifecycle,
   ] = await Promise.all([
     attempt(() => dryRunPolicy.read()),
     attempt(() => orgPolicy.read()),
@@ -115,6 +120,7 @@ export async function readSettings(access: Workspace): Promise<SettingsReadings>
     administers ? attempt(() => settingsWebhooks.list()) : Promise.resolve(null),
     attempt(() => settingsIntegrations.read()),
     attempt(() => settingsIntegrations.routes()),
+    attempt(() => settingsLifecycle.read()),
   ]);
 
   return {
@@ -128,6 +134,7 @@ export async function readSettings(access: Workspace): Promise<SettingsReadings>
     webhooks: webhooks?.ok === true ? webhooks.value : null,
     integrations,
     routes,
+    lifecycle,
     readAt: new Date().toISOString(),
   };
 }

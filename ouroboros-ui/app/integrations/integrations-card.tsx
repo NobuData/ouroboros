@@ -121,7 +121,10 @@ function Tile({
       <span className="integrations__name">{tile.label}</span>
       <span className="integrations__status">
         <span aria-hidden className="integrations__dot" />
-        <span className="integrations__line">{statusLine(tile)}</span>
+        {/* One line, cut with an ellipsis when the tile is narrow — the title offers the rest. */}
+        <span className="integrations__line" title={statusLine(tile)}>
+          {statusLine(tile)}
+        </span>
       </span>
       {tile.reason !== null && tile.reason !== "" && (
         <span className="integrations__reason">{tile.reason}</span>

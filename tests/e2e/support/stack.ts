@@ -68,6 +68,17 @@ export const TRACKER_URL = address("OURO_E2E_TRACKER_URL", "http://localhost:410
 export const TAP_URL = address("OURO_E2E_TAP_URL", "http://localhost:4200");
 
 /**
+ * Where the suite's own webhook receiver answers its **controls** — what it was sent, and the
+ * one fault it can be asked to have ([#496](https://github.com/NobuData/ouroboros/issues/496),
+ * the settings leg).
+ *
+ * `docker-compose.e2e.yml` publishes them on `127.0.0.1:4300`. The port that receives —
+ * `https://webhook-receiver:8443`, on the compose network — has no host address at all: only
+ * `ouroboros-rest` delivers to it (`fixtures/webhook-receiver/server.mjs`).
+ */
+export const RECEIVER_URL = address("OURO_E2E_RECEIVER_URL", "http://localhost:4300");
+
+/**
  * The suite's whole wall-clock budget, in milliseconds.
  *
  * Ten minutes, which is issue [#56](https://github.com/NobuData/ouroboros/issues/56)'s

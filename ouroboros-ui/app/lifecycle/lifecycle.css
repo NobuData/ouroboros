@@ -1,0 +1,156 @@
+/*
+ * The workspace lifecycle's chrome (BS.6, #496): the app-wide paused banner, and the
+ * pending-delete recovery screen. Tokens and rem only.
+ */
+
+/* ---------- the paused banner ---------- */
+
+/*
+ * A row of the shell's grid, between the header and the pane (`app/shell/shell.css` gives the
+ * frame its three rows). It spans both columns and never scrolls: the pane beneath it is the
+ * only scrolling cell, so the banner holds still without being fixed or stuck.
+ */
+.lifecycle-banner {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-6);
+  padding: var(--sp-4) var(--sp-8);
+  border-bottom: 1px solid var(--warn-line);
+  background: var(--warn-tint);
+  color: var(--ink);
+  font-size: var(--t-sm);
+}
+
+.lifecycle-banner__line {
+  display: flex;
+  flex: 1 1 16rem;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2) var(--sp-4);
+  min-width: 0;
+  margin: 0;
+}
+
+.lifecycle-banner__glyph {
+  color: var(--warn);
+}
+
+.lifecycle-banner__headline {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.lifecycle-banner__message {
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+}
+
+.lifecycle-banner__link {
+  color: var(--accent);
+  font-size: var(--t-xs);
+  text-underline-offset: 0.2em;
+}
+
+.lifecycle-banner__refusal {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+}
+
+/* ---------- the recovery screen ---------- */
+
+.lifecycle-recovery {
+  display: grid;
+  min-height: 100%;
+  place-items: center;
+  padding: var(--sp-8);
+  overflow-y: auto;
+  background: var(--ground);
+}
+
+.lifecycle-recovery__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  width: 100%;
+  max-width: 34rem;
+  padding: var(--sp-9);
+  border: 1px solid var(--err-line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.lifecycle-recovery__title {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--f-disp);
+  font-size: var(--t-2xl);
+  line-height: var(--lh-tight);
+}
+
+.lifecycle-recovery__lead {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.lifecycle-recovery__countdown {
+  margin: 0;
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-lg);
+}
+
+.lifecycle-recovery__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.lifecycle-recovery__heading {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.lifecycle-recovery__facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding-left: var(--sp-7);
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.lifecycle-recovery__note {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.lifecycle-recovery__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.lifecycle-recovery__refusal {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}

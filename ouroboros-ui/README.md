@@ -251,6 +251,9 @@ ouroboros-ui/
 │   │   ├── settings/audit/export.csv/route.ts # …on this origin, for the Export CSV dialog's link
 │   │   ├── settings-webhooks.ts # settingsWebhooks.* — endpoints, secret rotation, ping, delivery log, redeliver · #495
 │   │   ├── settings-integrations.ts # settingsIntegrations.* — the status hub and the org notification routes · #495
+│   │   ├── settings-lifecycle.ts # settingsLifecycle.* — state, pause · resume, disconnect (+ preview), delete · restore · #496
+│   │   ├── settings-lifecycle-poll.ts # the shell's lifecycle poll; a frozen refusal reads as `pending_delete`
+│   │   ├── settings/lifecycle/route.ts # …on this origin
 │   │   ├── sources.ts       #   sources.* — /api/v1/sources, the catalog, test, sync, status
 │   │   ├── workflows.ts     #   workflows.list() / read() / create() / saveDraft() / publish() / dryRun()
 │   │   ├── planning.ts      #   planning.roadmap() / createEpic() — mockup 09's roadmap head and New roadmap
@@ -439,7 +442,26 @@ ouroboros-ui/
 │   │   ├── workspace-actions.ts # the Server Action — workspace PATCH, then retention PATCH
 │   │   ├── data.ts          #   readSettings() — what the hub reads, each part read or explained
 │   │   ├── settings-screen.tsx # the hub: head, nav, the grid of seats
+│   │   ├── unread.ts        #   which sections could not be read, and the retry box's sentences · #496
+│   │   ├── read-banner.tsx  #   the hub's error state: DASH-I.7's box with Retry
+│   │   ├── settings-skeleton.tsx # the hub's loading state, at its own geometry
 │   │   └── settings-frame.tsx #  the head, the tab row, and the page beneath — the hub's and the mounted pages'
+│   ├── lifecycle/           # the workspace lifecycle — the Danger zone card, the shell's banner, recovery · #496
+│   │   ├── outcome.ts       #   what a lifecycle call answers the browser with
+│   │   ├── lifecycle-actions.ts # the Server Actions: read · pause · resume · preview · disconnect · delete · restore
+│   │   ├── danger.ts        #   the card's copy and rules, pure: mockup 17's rows, the exact-name rule, every sentence
+│   │   ├── danger-card.tsx  #   the c-12 card: the pause switch, Disconnect…, Delete <name>… — per role, no dead control
+│   │   ├── pause-dialog.tsx #   the pause confirmation: the semantics verbatim + runs in flight now
+│   │   ├── disconnect-dialog.tsx # live consequence preview → typed name → what it did
+│   │   ├── delete-dialog.tsx #  owner only: consequence list, exact name, step-up — the password never held
+│   │   ├── typed-name.tsx   #   the field both destructive dialogs share
+│   │   ├── banner.ts        #   the paused banner's copy and rules: when it draws, who is offered Resume
+│   │   ├── lifecycle-poll.ts #  the shell's poll of GET /api/settings/lifecycle
+│   │   ├── lifecycle-store.tsx # LifecycleProvider / useLifecycle(): one poll, a write's answer applied at once
+│   │   ├── lifecycle-banner.tsx # ⏸ all loops paused — a row of the shell's grid, with Resume or "Who can resume?"
+│   │   ├── recovery.ts      #   the countdown's arithmetic (rounds down) and the screen's sentences
+│   │   ├── recovery-data.ts #   the recovery screen's one read, through the client that redirects nowhere
+│   │   └── recovery-screen.tsx # the lockout screen: countdown, what is frozen, Restore for an owner, ways out
 │   ├── policies/            # the Autonomy policies card in the settings hub — mockup 17 c-7 · #494
 │   │   ├── document.ts      #   the org policy document: parse → typed terms → compose, chips, invariants
 │   │   ├── money.ts         #   cents from typed amounts, as text — no floating point
@@ -2851,10 +2873,11 @@ Who can do what, what merges on its own, and where the record lives.
 
 **The cards are other issues'.** BS.2–BS.6 (#492–#496) each mount a card in its **seat**
 ([`settings-seat.tsx`](app/settings/settings-seat.tsx)); until then a seat draws the section's
-heading and one line naming what fills it. Every seat but the Danger zone (#496) is filled today:
+heading and one line naming what fills it. Every seat is filled today:
 **Workspace**, **Appearance**, [**Members & roles**](#members--roles-493),
-[**Policies**](#autonomy-policies-494), and the three record surfaces —
-[**Audit**, **Integrations** and **Notifications**](#audit-integrations--notifications-495). A seat owns three facts so a card
+[**Policies**](#autonomy-policies-494), the three record surfaces —
+[**Audit**, **Integrations** and **Notifications**](#audit-integrations--notifications-495) — and
+the [**Danger zone**](#danger-zone-496). A seat owns three facts so a card
 owns none of them — where it sits (the mockup's `c-5`/`c-7`/`c-12`), the id the nav's anchor lands
 on, and which section it is to the save model.
 
@@ -2955,7 +2978,7 @@ holds no field until BS.2 lands.
 | **filters ▾**, **Load more**, **Export CSV**, **Stream to SIEM**, a tile's **Connect** / **Manage** | reads and navigation — nothing is written |
 | in the webhook sheet: add / edit, pause, **Test ping**, **Rotate secret**, **Delete**, **Redeliver** | immediate — rotate and delete confirm first |
 | a field in a card's seat (BS.2, BS.4, BS.5) | the dirty batch, through `useSettingsSection` |
-| a control in the Danger zone (BS.6) | immediate by construction — the seat refuses fields |
+| the **Pause all loops** switch, **Disconnect…**, **Delete <name>…** | immediate by construction — the seat refuses fields; each confirms with what will happen to this workspace |
 
 ### Who sees what
 
@@ -3088,7 +3111,8 @@ edit rules ─▶ Save changes ─▶ validate ─▶ preview (classify) ─▶ 
   text. The workspace-wide [dry-run switch](#the-dry-run-policy-382) sits under the rules and stays
   an immediate action behind its own confirmation.
 
-The e2e edit → publish → enforcement round-trip is BS.6's (#496).
+The e2e edit → publish → enforcement round-trip is leg 26 of
+[`tests/e2e`](../tests/e2e/README.md) (#496).
 
 ### Audit, integrations & notifications (#495)
 
@@ -3152,7 +3176,65 @@ is not available.** All three draw reads the service already had (BR.2 #486, BR.
 - **A viewer** is told the audit log is read by owners and admins, sees every tile's state with
   Connect / Manage links and no webhook sheet, and reads the routes as text.
 
-The e2e leg — the delivery sheet against the fixture receiver, filter + CSV — is BS.6's (#496).
+The e2e leg — the delivery sheet against the fixture receiver, filter + CSV — is leg 26 of
+[`tests/e2e`](../tests/e2e/README.md) (#496).
+
+### Danger zone (#496)
+
+[`danger-card.tsx`](app/lifecycle/danger-card.tsx) is mockup 17's `c-12` card over the workspace
+lifecycle (BR.5, #489), read and written through
+[`app/api/settings-lifecycle.ts`](app/api/settings-lifecycle.ts). These are the only controls on
+the page whose mistakes are not undone by pressing the button again, so each confirmation tells
+the reader something about *this* workspace.
+
+```
+ DANGER ZONE  applies instantly
+ Pause all loops        queued issues stay queued; running loops finish their stage   Running [ ○ ]
+ Disconnect GitHub App  open PRs remain, loops stop                                   [ Disconnect… ]
+ Delete workspace       type the workspace name to confirm · 30-day recovery window   [ Delete acme-robotics… ]
+```
+
+- **Pause all loops** is a switch. Turning it on opens a confirmation that states the semantics in
+  the mockup's words and the number of runs in flight now, read when the dialog opens (from the
+  disconnect preview's `activeRuns`). If the count cannot be read the dialog says so and the pause
+  is still confirmable. Turning it off resumes at once. A landed pause or resume is handed to the
+  lifecycle store, so the app-wide banner moves in the same moment.
+- **Disconnect GitHub App** shows the service's preview computed against live state, read on every
+  open and never kept. The reader types the workspace's name to enable **Disconnect GitHub**; with
+  no preview there is nothing to confirm and the button says why. The result summary is drawn from
+  the answer's counts, as they stood when it ran.
+- **Delete workspace** is an owner's. The dialog lists the consequences with the recovery window the
+  service reports, takes the name typed exactly ([`danger.ts`](app/lifecycle/danger.ts)'s
+  `nameMatches` — nothing trimmed, no case folded), and handles the step-up: when the service
+  answers `step_up_required` the dialog asks for the password and sends again. The password is never
+  held in state. On success the app leaves for `/workspace-recovery`.
+- **An admin** gets the pause and the disconnect and is told deleting is an owner's. **A viewer**
+  reads the three rows — where the switch stands in words, who can act — and is drawn no control.
+
+**Pausing is visible everywhere.** While the workspace is paused the shell draws *⏸ all loops
+paused — stages finishing* on every signed-in screen
+([`lifecycle-banner.tsx`](app/lifecycle/lifecycle-banner.tsx)) — a row of the shell's grid between
+the header and the pane, so it holds still without being fixed. An owner or admin gets **Resume**
+inline; anybody else a link to the Danger zone. One poll per shell
+([`lifecycle-store.tsx`](app/lifecycle/lifecycle-store.tsx)) keeps it true, and a write's answer is
+applied at once, so the banner clears on the press here and on the next poll in every other tab.
+
+**A workspace pending deletion has one screen.** `ouroboros-rest` answers every route
+`403 workspace_pending_delete`; [`app/api/server.ts`](app/api/server.ts) turns that into
+`/workspace-recovery`, and the shell's poll leaves for it too. The screen
+([`recovery-screen.tsx`](app/lifecycle/recovery-screen.tsx)) is outside the shell: the workspace,
+the day its window closes, a live countdown (`29d 23h to recover`, rounded down), what is frozen,
+and **Restore workspace** for an owner. Anybody else is told an owner can act, and both can open
+another workspace or sign out.
+
+### Loading and error states (#496)
+
+[`settings-skeleton.tsx`](app/settings/settings-skeleton.tsx) is the hub's `loading.tsx`: the real
+head and tab row over the eight seats at their spans. Every read is a `Reading`, so a failed one
+costs its own seat; [`read-banner.tsx`](app/settings/read-banner.tsx) says it once above the grid —
+*2 sections could not be read. Workspace, Audit log — …* — with **Retry** (`router.refresh()`).
+A read never made (the audit log for a viewer) is not a failure
+([`unread.ts`](app/settings/unread.ts)).
 
 ## Ticket sources
 

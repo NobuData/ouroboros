@@ -115,6 +115,12 @@
 #   mailpit   inbox.spec.ts       the email answers really travel through a mail: with mailpit
 #             (the email test)    stopped there is no digest to read a link from, and the test
 #                                 says so before it writes anything (#470)
+#   db        settings.spec.ts    the hub's eight cards, and every plane they govern, are read
+#                                 out of the database: with it stopped nobody can sign in, and
+#                                 nothing is published, paused or deleted (#496)
+#   webhook-  settings.spec.ts    the test ping really leaves the service: with the receiver
+#   receiver  (the webhook test)  stopped the test stops where it asks the receiver to forget,
+#                                 before it creates an endpoint, naming the fixture (#496)
 #
 # ## The issues pairs, and the service each one takes down (#121)
 #
@@ -759,6 +765,14 @@ expect_red engine analyzer.spec.ts "the analysis could not be started" "run anal
 expect_red db inbox.spec.ts "sign-in for .* answered 5[0-9][0-9]"
 expect_red tracker-stub inbox.spec.ts "sandbox tracker is not answering"
 expect_red mailpit inbox.spec.ts "mailpit is not answering" "email: the digest's links"
+
+# The settings leg (#496). `db` takes it down in its first hook, at the owner's sign-in, before a
+# single write. `webhook-receiver` is aimed at the webhook test alone, whose first act is to ask
+# the receiver to forget what it has seen — so it stops there by name with nothing created. The
+# leg's nine layer breakages are `scripts/verify-settings.sh`'s: they break state beneath the
+# service rather than stop one, and each is undone by the test it is aimed at.
+expect_red db settings.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+expect_red webhook-receiver settings.spec.ts "the webhook receiver is not answering" "webhook: an endpoint made in the sheet"
 
 # The knowledge leg (#422) — see the header. `db` takes the whole leg down at sign-in, before a
 # single write, so it leaves the stack cold.

@@ -36,6 +36,31 @@ export const UNAUTHENTICATED_CODE = "unauthenticated";
 export const STEP_UP_REQUIRED_CODE = "step_up_required";
 
 /**
+ * The `403` that is about the whole workspace rather than the request: it is **pending
+ * deletion**, and every surface of it is frozen behind the recovery screen
+ * ([#489](https://github.com/NobuData/ouroboros/issues/489),
+ * [#496](https://github.com/NobuData/ouroboros/issues/496)). `details.restorable` says whether
+ * this caller is an owner who may restore it, and `details.purgeAfter` when the window closes.
+ *
+ * Declared here rather than beside the lifecycle resource because `app/api/server.ts` — which
+ * every resource file imports — is what turns this answer into the recovery screen.
+ */
+export const WORKSPACE_FROZEN_CODE = "workspace_pending_delete";
+
+/**
+ * Whether an error is the frozen-workspace refusal.
+ *
+ * The status is part of the test: the dispatch points answer the same code as a `409` to the
+ * engine, which is a hold on new work and not a frozen surface.
+ *
+ * @param error Anything caught.
+ * @returns `true` for a `403` carrying {@link WORKSPACE_FROZEN_CODE}.
+ */
+export function isWorkspaceFrozen(error: unknown): error is ApiError {
+  return isApiError(error) && error.status === 403 && error.code === WORKSPACE_FROZEN_CODE;
+}
+
+/**
  * The `code` used when a failure carried no envelope this client could read.
  *
  * The `client_` prefix is the point: every code the service can answer with is named in
