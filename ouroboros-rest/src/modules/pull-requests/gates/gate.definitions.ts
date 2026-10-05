@@ -16,7 +16,7 @@
  * human_approval    always — the policy owns the question; its verdict is the policy's answer.
  *                   When the org policy's human_review rule matches the ticket (#461 — the refactor
  *                   label) it is required whatever org config says, with the source
- *                   `… + org policy: refactor → human review`. Once a person asks for a review
+ *                   `… + org policy v7: refactor → human review`. Once a person asks for a review
  *                   (AX.5, #361) it is required too, with `… + review requested` appended
  * ```
  *
@@ -62,13 +62,19 @@ export const REVIEW_REQUESTED_SOURCE = "review requested";
 
 /**
  * What the org policy's `human_review` rule appends to `human_approval`'s provenance (#461) —
- * `org policy: refactor → human review`, or `org policy → human review` for a match on effort.
+ * `org policy v7: refactor → human review`, or `org policy v7 → human review` for a match on
+ * effort. The version is the one that required it (BQ.2, #481), so a review is traceable to one
+ * line of one published policy; without one the fragment says `org policy`.
  *
  * @param label - The label the rule matched, or null.
+ * @param version - The policy version, or null/undefined when the caller did not say.
  * @returns The provenance fragment.
  */
-export function policyReviewSource(label: string | null): string {
-  return label === null ? "org policy → human review" : `org policy: ${label} → human review`;
+export function policyReviewSource(label: string | null, version?: number | null): string {
+  const policy =
+    version === null || version === undefined ? "org policy" : `org policy v${String(version)}`;
+
+  return label === null ? `${policy} → human review` : `${policy}: ${label} → human review`;
 }
 
 /** What a PR's gate set is materialized from. */
@@ -141,7 +147,7 @@ export function materializeDefinitions(input: DefinitionInput): GateDefinitionSp
     if (gateKey === "human_approval" && input.policyReview?.required === true) {
       required = true;
       disabled = false;
-      source = `${pinSource} + ${policyReviewSource(input.policyReview.label)}`;
+      source = `${pinSource} + ${policyReviewSource(input.policyReview.label, input.policyReview.version)}`;
     }
 
     // A person asked for a review: the gate is theirs to answer, not config's to switch off.

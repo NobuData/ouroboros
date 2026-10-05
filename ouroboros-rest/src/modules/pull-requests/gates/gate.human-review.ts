@@ -24,18 +24,9 @@
  */
 
 import type { QueueEffort } from "../../db/schema";
+import { evaluatePredicate } from "../../policies/org-policy.predicate";
 
-/** The five sizes, smallest first — V009's scale. */
-const EFFORT_ORDER: readonly QueueEffort[] = ["xs", "s", "m", "l", "xl"];
-
-/** One predicate of the org policy grammar: exactly one key. */
-export type PolicyPredicate =
-  | { readonly effort_lte: QueueEffort }
-  | { readonly effort_gte: QueueEffort }
-  | { readonly label: string }
-  | { readonly not: PolicyPredicate }
-  | { readonly any: readonly PolicyPredicate[] }
-  | { readonly all: readonly PolicyPredicate[] };
+export type { PolicyPredicate } from "../../policies/org-policy.predicate";
 
 /** The `human_review` rule as the document stores it. */
 export interface HumanReviewRule {
@@ -60,95 +51,15 @@ export interface HumanReviewMatch {
    * first positive `label` term that held, in document order.
    */
   readonly label: string | null;
+  /**
+   * The published policy version that required it (BQ.2, #481) — what the gate row's provenance
+   * names. Absent where the caller did not say.
+   */
+  readonly version?: number | null;
 }
 
 /** A rule that requires nothing. */
 export const NO_HUMAN_REVIEW: HumanReviewMatch = Object.freeze({ required: false, label: null });
-
-/**
- * One predicate's verdict, and the positive labels that made it true.
- *
- * @param predicate - The predicate, unvalidated.
- * @param facts - The ticket's labels and effort.
- * @param negated - Whether an enclosing `not` flips it — a label under `not` never names a match.
- * @returns Whether it holds (undefined for a shape this reader does not know) and the labels that
- *   held positively.
- */
-function evaluate(
-  predicate: unknown,
-  facts: HumanReviewFacts,
-  negated: boolean,
-): { holds: boolean | undefined; labels: string[] } {
-  if (typeof predicate !== "object" || predicate === null || Array.isArray(predicate)) {
-    return { holds: undefined, labels: [] };
-  }
-
-  const entries: [string, unknown][] = Object.entries(predicate as Record<string, unknown>);
-
-  if (entries.length !== 1) {
-    return { holds: undefined, labels: [] };
-  }
-
-  const [key, value] = entries[0];
-
-  switch (key) {
-    case "label": {
-      if (typeof value !== "string") {
-        return { holds: undefined, labels: [] };
-      }
-
-      const holds = facts.labels.includes(value);
-
-      return { holds, labels: holds && !negated ? [value] : [] };
-    }
-    case "effort_gte":
-    case "effort_lte": {
-      const floor = EFFORT_ORDER.indexOf(value as QueueEffort);
-
-      if (floor < 0) {
-        return { holds: undefined, labels: [] };
-      }
-
-      if (facts.effort === undefined) {
-        // An unestimated ticket satisfies no size comparison — the routing rules' posture.
-        return { holds: false, labels: [] };
-      }
-
-      const size = EFFORT_ORDER.indexOf(facts.effort);
-
-      return { holds: key === "effort_gte" ? size >= floor : size <= floor, labels: [] };
-    }
-    case "not": {
-      const inner = evaluate(value, facts, !negated);
-
-      return { holds: inner.holds === undefined ? undefined : !inner.holds, labels: [] };
-    }
-    case "any":
-    case "all": {
-      if (!Array.isArray(value) || value.length === 0) {
-        return { holds: undefined, labels: [] };
-      }
-
-      const parts = value.map((part) => evaluate(part, facts, negated));
-
-      if (parts.some((part) => part.holds === undefined)) {
-        return { holds: undefined, labels: [] };
-      }
-
-      const holds =
-        key === "any"
-          ? parts.some((part) => part.holds === true)
-          : parts.every((part) => part.holds);
-
-      return {
-        holds,
-        labels: holds ? parts.filter((part) => part.holds).flatMap((part) => part.labels) : [],
-      };
-    }
-    default:
-      return { holds: undefined, labels: [] };
-  }
-}
 
 /**
  * Apply the `human_review` rule to one PR's ticket.
@@ -165,7 +76,7 @@ export function matchHumanReview(
     return NO_HUMAN_REVIEW;
   }
 
-  const verdict = evaluate(rule.conditions, facts, false);
+  const verdict = evaluatePredicate(rule.conditions, facts);
 
   if (verdict.holds !== true) {
     return NO_HUMAN_REVIEW;

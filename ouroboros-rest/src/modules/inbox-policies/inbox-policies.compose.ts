@@ -10,7 +10,7 @@
  * <label> label → human review          org policy human_review (gate engine, #461)  /settings#policies
  * effort <E>+ → human review            org policy human_review effort_gte           /settings#policies
  * other review conditions → human review  any other human_review predicate           /settings#policies
- * protected paths → allow-once          BA.1 protected_path_policies (AP.3, #380)    /knowledge#repo-profile
+ * protected paths → allow-once          org policy protected_paths ∪ BA.1 rows (AP.3)  /settings#policies, or the repo profile
  * unverifiable claims → explicit waiver AX.3 criteria waiver (claim_waiver kind)     /settings#policies
  * spend > $X/run → approval             spend_guard — ABSENT while AF.4 (#237) is unbuilt
  * effort XL+ → plan sign-off            ABSENT: no workflow human gate or threshold exists (#464)
@@ -18,9 +18,16 @@
  *
  * The caption is BA.3's (#382): *"Everything else merges itself when gates are green"* is only
  * true outside dry-run, so dry-run changes the sentence.
+ *
+ * **Since BQ.2** ([#481](https://github.com/NobuData/ouroboros/issues/481)) the document is read
+ * through `PolicyResolutionService` — the reader the gate engine, the merge executor and AP.3
+ * enforce through — so this card and the settings card cannot disagree, and the protected-paths
+ * row lists exactly what AP.3 gates on: the union of the document's org-wide globs and each
+ * repository's own rows.
  */
 
-import type { OrgPolicyRule, PublishedOrgPolicy } from "../pull-requests/gates/gate.org-policy";
+import type { OrgPolicyRule, PublishedOrgPolicy } from "../policies/org-policy.document";
+import { protectedPathsVerdict } from "../policies/policy-resolution";
 
 /** Where the document's rules are edited — mockup 17's policies card (#494). */
 export const POLICIES_HREF = "/settings#policies";
@@ -152,30 +159,40 @@ export function humanReviewRows(
 }
 
 /**
- * The protected-paths row, from BA.1's globs — absent when no repository protects a path.
+ * The protected-paths row — what AP.3 gates on: the org policy's globs, which protect every
+ * repository, joined with BA.1's per-repository rows. Absent when nothing is protected anywhere.
  *
- * @param paths - The globs and how many repositories hold each.
+ * Once the document protects a glob the settings card is where the rule is edited, so the row
+ * links there; with BA.1's rows alone it links to the repo profile, as before.
+ *
+ * @param paths - BA.1's globs and how many repositories hold each.
+ * @param org - The org policy's globs and the version they were read from, or null for none.
  * @returns The row, or null.
  */
 export function protectedPathsRow(
   paths: readonly { readonly glob: string; readonly repos: number }[],
+  org: { readonly globs: readonly string[]; readonly version: number } | null = null,
 ): PolicyRowResource | null {
-  if (paths.length === 0) {
+  const orgGlobs = org?.globs ?? [];
+
+  if (paths.length === 0 && orgGlobs.length === 0) {
     return null;
   }
 
-  const repos = Math.max(...paths.map((path) => path.repos));
+  const repos = paths.length === 0 ? 0 : Math.max(...paths.map((path) => path.repos));
+  const perRepository = `up to ${String(repos)} ${repos === 1 ? "repository" : "repositories"}`;
+  const source =
+    org === null || orgGlobs.length === 0
+      ? `Protected paths (BA.1) — AP.3 stops an edit, a person may allow it once · ${perRepository}`
+      : `Org policy v${String(org.version)} · protected_paths in every repository${paths.length === 0 ? "" : `, and BA.1's rows · ${perRepository}`} — AP.3 stops an edit, a person may allow it once`;
 
   return {
     id: "protected_paths",
     rule: "protected paths",
     outcome: "allow-once",
-    source: `Protected paths (BA.1) — AP.3 stops an edit, a person may allow it once · up to ${String(repos)} ${repos === 1 ? "repository" : "repositories"}`,
-    detail: [...paths]
-      .map((path) => path.glob)
-      .sort()
-      .join(" · "),
-    editHref: PROTECTED_PATHS_HREF,
+    source,
+    detail: [...new Set([...orgGlobs, ...paths.map((path) => path.glob)])].sort().join(" · "),
+    editHref: orgGlobs.length === 0 ? PROTECTED_PATHS_HREF : POLICIES_HREF,
   };
 }
 
@@ -228,11 +245,15 @@ export const CLAIM_WAIVER_ROW: PolicyRowResource = {
 export function policyCard(sources: PolicySources): PolicyCardResource {
   const version = sources.policy?.version ?? 0;
   const rules = sources.policy?.rules ?? {};
+  const orgGlobs = protectedPathsVerdict(sources.policy).value.globs;
   const rows: PolicyRowResource[] = [
     ...humanReviewRows(rules.human_review, version),
-    ...[protectedPathsRow(sources.protectedPaths)].filter(
-      (row): row is PolicyRowResource => row !== null,
-    ),
+    ...[
+      protectedPathsRow(
+        sources.protectedPaths,
+        sources.policy === null ? null : { globs: orgGlobs, version: sources.policy.version },
+      ),
+    ].filter((row): row is PolicyRowResource => row !== null),
     CLAIM_WAIVER_ROW,
     ...[spendRow(rules.spend_guard, sources.spendDormant, version)].filter(
       (row): row is PolicyRowResource => row !== null,

@@ -12,6 +12,12 @@
  * surfaces            dryRunStateOf(dryRun, pinned)           → one shape for the plan, the PR page, the wizard
  * ```
  *
+ * **Since BQ.2** ([#481](https://github.com/NobuData/ouroboros/issues/481)) "is dry-run active" is
+ * asked **per PR**: the org-wide switch is the stricter override, and otherwise the policy
+ * document's `dry_run_new_repos` keeps each repository's first N loops in dry-run
+ * (`policy-resolution.ts`, `effectiveDryRun`). A requested auto-merge is also subject to the
+ * document's `auto_merge` rule; {@link autoMergeUnderPolicy} takes its eligibility.
+ *
  * **Overriding, not mutating.** A workflow whose terminal is `open_pr_automerge` keeps that
  * terminal in its stored document; {@link autoMergeUnderPolicy} decides what it *means* while
  * dry-run is active. Flipping the policy off changes the answer and nothing else, so the original
@@ -33,7 +39,7 @@ export const DRY_RUN_MERGE_LABEL = "Dry-run — review the draft PR";
 export interface AutoMergeUnderPolicy {
   /** What the pinned workflow's terminal asks for — its stored config, untouched. */
   readonly requested: boolean;
-  /** What happens: `requested`, unless dry-run overrides it. */
+  /** What happens: `requested`, unless dry-run overrides it or the `auto_merge` rule refuses it. */
   readonly effective: boolean;
   /** Whether dry-run is what turned a requested auto-merge off. */
   readonly overridden: boolean;
@@ -47,6 +53,24 @@ export interface DryRunState {
   readonly reason: string | null;
   /** The pinned workflow's auto-merge under the policy. */
   readonly autoMerge: AutoMergeUnderPolicy;
+  /**
+   * What made it active (#481): `org_override` — the workspace-wide switch — or
+   * `dry_run_new_repos`, the policy document's per-repository rule. Null while inactive; absent
+   * where the caller has no per-PR answer.
+   */
+  readonly source?: "org_override" | "dry_run_new_repos" | null;
+  /** The policy version, when `dry_run_new_repos` is the source; otherwise null. */
+  readonly policyVersion?: number | null;
+}
+
+/** What the org policy document said about one PR (#481), for {@link dryRunStateOf}. */
+export interface PolicyStanding {
+  /** Which said dry-run is active, or null when it is not. */
+  readonly source: "org_override" | "dry_run_new_repos" | null;
+  /** The policy version, when the document's rule is the source. */
+  readonly version: number | null;
+  /** Whether the `auto_merge` rule lets this PR merge unattended. */
+  readonly autoMergeEligible: boolean;
 }
 
 /**
@@ -65,10 +89,19 @@ export function draftFor(requested: boolean | undefined, dryRun: boolean): boole
  *
  * @param requested - Whether the pinned workflow's terminal is `open_pr_automerge`.
  * @param dryRun - Whether dry-run is active.
+ * @param eligible - Whether the org policy's `auto_merge` rule lets this PR merge unattended (#481).
  * @returns What it asks, what happens, and whether dry-run is the difference.
  */
-export function autoMergeUnderPolicy(requested: boolean, dryRun: boolean): AutoMergeUnderPolicy {
-  return { requested, effective: requested && !dryRun, overridden: requested && dryRun };
+export function autoMergeUnderPolicy(
+  requested: boolean,
+  dryRun: boolean,
+  eligible = true,
+): AutoMergeUnderPolicy {
+  return {
+    requested,
+    effective: requested && !dryRun && eligible,
+    overridden: requested && dryRun,
+  };
 }
 
 /**
@@ -76,12 +109,29 @@ export function autoMergeUnderPolicy(requested: boolean, dryRun: boolean): AutoM
  *
  * @param dryRun - Whether dry-run is active.
  * @param workflowAutoMerges - Whether the pinned workflow's terminal requests auto-merge.
+ * @param standing - What the org policy document said about this PR (#481), when the caller knows.
  * @returns The state.
  */
-export function dryRunStateOf(dryRun: boolean, workflowAutoMerges: boolean): DryRunState {
-  return {
+export function dryRunStateOf(
+  dryRun: boolean,
+  workflowAutoMerges: boolean,
+  standing?: PolicyStanding,
+): DryRunState {
+  const state: DryRunState = {
     active: dryRun,
     reason: dryRun ? DRY_RUN_REASON : null,
-    autoMerge: autoMergeUnderPolicy(workflowAutoMerges, dryRun),
+    autoMerge: autoMergeUnderPolicy(
+      workflowAutoMerges,
+      dryRun,
+      standing?.autoMergeEligible ?? true,
+    ),
   };
+
+  return standing === undefined
+    ? state
+    : {
+        ...state,
+        source: dryRun ? standing.source : null,
+        policyVersion: dryRun ? standing.version : null,
+      };
 }

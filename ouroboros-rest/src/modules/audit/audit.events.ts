@@ -388,6 +388,18 @@ export const KNOWLEDGE_ENV_RECIPE_SAVED_EVENT = "knowledge.env_recipe_saved";
 export const POLICY_DRY_RUN_CHANGED_EVENT = "policy.dry_run_changed";
 
 /**
+ * A person published a new version of the workspace's org policy document (BQ.2,
+ * [#481](https://github.com/NobuData/ouroboros/issues/481)) — the settings card's Autonomy Policies
+ * edit. Subject `org_policy`, whose id is the workspace id. The detail carries `version` (the one
+ * published), `previous_version` (the one it replaced, or null), `classification` (`tightening`,
+ * `loosening` or `neutral`), `changed_rules`, `loosening_rules` and `tightening_rules` (comma-
+ * separated rule ids), `summary` — the audit card's line, *"enabled auto-merge (policy v8)"* —
+ * and `change_note`. Loosening publishes are the owner's alone, so *"who let more merge without a
+ * person"* is one query.
+ */
+export const POLICY_PUBLISHED_EVENT = "policy.published";
+
+/**
  * A person asked for a Build Analyzer run — *Run analysis now* (BV.1,
  * [#510](https://github.com/NobuData/ouroboros/issues/510), decision **A7**). Subject
  * `analysis_run`, the run that started; the detail carries the repository and the trigger. Only the
@@ -623,6 +635,7 @@ export const AUDIT_ACTIONS = [
   KNOWLEDGE_REPO_MAP_GENERATED_EVENT,
   KNOWLEDGE_ENV_RECIPE_SAVED_EVENT,
   POLICY_DRY_RUN_CHANGED_EVENT,
+  POLICY_PUBLISHED_EVENT,
   ANALYZER_RUN_REQUESTED_EVENT,
   RUNNER_POOL_WINDOW_ADDED_EVENT,
   RUNNER_POOL_WINDOW_REMOVED_EVENT,

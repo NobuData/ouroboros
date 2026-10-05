@@ -73,7 +73,25 @@ export interface MergePlanResource {
    * overridden. The same policy the read API (`GET /policies/dry-run`) answers.
    */
   readonly dryRun: DryRunState;
+  /**
+   * Whether the org policy document's `auto_merge` rule lets this PR merge unattended (BQ.2,
+   * #481), evaluated against its ticket — the rule, the version and the sentence, so a member's
+   * refused arm is traceable to one policy line. Absent where the caller read no policy.
+   */
+  readonly autoMergePolicy?: AutoMergePolicyResource;
   readonly updatedAt: string;
+}
+
+/** The `auto_merge` rule's verdict for one PR (#481). */
+export interface AutoMergePolicyResource {
+  /** Whether the PR may merge unattended. True when no policy is published. */
+  readonly eligible: boolean;
+  /** Always `auto_merge`. */
+  readonly ruleId: "auto_merge";
+  /** The published version that decided, or null when none is published. */
+  readonly version: number | null;
+  /** Why. */
+  readonly reason: string;
 }
 
 /** An action that was switched on and did not happen, and why. */
@@ -99,12 +117,14 @@ export interface MergeOutcomeResource {
  * @param armedBy - Who armed it, as read for `plan.armedBy` — null when nobody did, or when the
  *   person is gone. A person who is not the plan's `armedBy` is never named.
  * @param dryRun - The dry-run policy's state for this plan.
+ * @param autoMergePolicy - The `auto_merge` rule's verdict for this PR (#481), when it was read.
  * @returns The resource.
  */
 export function mergePlanResource(
   plan: StoredMergePlan,
   armedBy: MergePerson | null,
   dryRun: DryRunState,
+  autoMergePolicy?: AutoMergePolicyResource,
 ): MergePlanResource {
   return {
     prId: plan.prId,
@@ -134,6 +154,7 @@ export function mergePlanResource(
             mergedAt: plan.mergedResult.merged_at,
           },
     dryRun,
+    ...(autoMergePolicy === undefined ? {} : { autoMergePolicy }),
     updatedAt: plan.updatedAt.toISOString(),
   };
 }

@@ -90,12 +90,22 @@ export function mergePlanMerged(prId: string): ConflictError {
  * @param prId - The PR.
  * @returns The `403` for a member whose PR's policy does not let a member merge.
  */
-export function mergeNotPolicyEligible(prId: string): ForbiddenError {
+export function mergeNotPolicyEligible(prId: string, policy?: AutoMergeStanding): ForbiddenError {
   return new ForbiddenError(
     MERGE_ERRORS.forbidden,
-    "Only an owner or admin may merge this PR — its pinned workflow does not auto-merge.",
-    { prId },
+    policy === undefined
+      ? "Only an owner or admin may merge this PR — its pinned workflow does not auto-merge."
+      : autoMergeIneligibleMessage(policy.reason),
+    policy === undefined ? { prId } : { prId, ruleId: "auto_merge", policyVersion: policy.version },
   );
+}
+
+/** What the org policy's `auto_merge` rule said about a PR it refused (#481). */
+export interface AutoMergeStanding {
+  /** The rule's sentence. */
+  readonly reason: string;
+  /** The policy version it was read from. */
+  readonly version: number | null;
 }
 
 /**
@@ -180,10 +190,41 @@ export const DRY_RUN_REFUSAL_MESSAGE =
  * @returns The `409` for arming or merging while the dry-run policy is active — machine-readable
  *   (`details.reason`, `details.policy`) so every surface renders the cause and the flip.
  */
-export function mergeDryRunActive(prId: string): ConflictError {
-  return new ConflictError(MERGE_ERRORS.dryRun, DRY_RUN_REFUSAL_MESSAGE, {
+export function mergeDryRunActive(prId: string, standing?: DryRunStanding): ConflictError {
+  return new ConflictError(MERGE_ERRORS.dryRun, dryRunRefusalMessage(standing), {
     prId,
     reason: DRY_RUN_CODE,
     policy: "dry_run",
+    source: standing?.source ?? "org_override",
+    policyVersion: standing?.version ?? null,
   });
+}
+
+/** Why one PR is in dry-run (#481) — the org-wide switch, or the policy document's rule. */
+export interface DryRunStanding {
+  readonly source: "org_override" | "dry_run_new_repos";
+  /** The policy version, when the document's rule is the source. */
+  readonly version: number | null;
+  /** The rule's sentence, when it is the source — *"Loop 3 of this repository is inside …"*. */
+  readonly reason?: string;
+}
+
+/**
+ * The sentence a dry-run refusal carries — naming the per-repository rule when that is the cause,
+ * since turning the org-wide switch off would not lift it.
+ *
+ * @param standing - Why the PR is in dry-run, or undefined for the org-wide switch.
+ * @returns The sentence.
+ */
+export function dryRunRefusalMessage(standing?: DryRunStanding): string {
+  if (standing?.source !== "dry_run_new_repos") {
+    return DRY_RUN_REFUSAL_MESSAGE;
+  }
+
+  return `${DRY_RUN_REASON} — ${standing.reason ?? "this repository is inside its first dry-run loops."} The PR stays a draft and is never merged by Ouroboros.`;
+}
+
+/** What an unattended merge the org policy's `auto_merge` rule refused says (#481). */
+export function autoMergeIneligibleMessage(reason: string): string {
+  return `${reason} Only an owner or admin may merge it, and nothing merges it unattended.`;
 }

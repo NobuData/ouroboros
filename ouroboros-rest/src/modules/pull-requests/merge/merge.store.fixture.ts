@@ -19,6 +19,7 @@ import type { RecheckGates, RecheckRevision } from "./merge.recheck";
 import type {
   LockedPr,
   MergePerson,
+  MergePolicyFacts,
   MergePr,
   MergeStore,
   MergeTransaction,
@@ -91,6 +92,12 @@ export class MemoryMergeStore implements MergeStore {
   /** Whether the PR's pinned workflow auto-merges. */
   autoMerge = false;
 
+  /** What the org policy's per-PR rules read (#481) — a small unlabelled ticket, loop 1, by default. */
+  facts: MergePolicyFacts = { ticket: { labels: [], effort: "s" }, loop: 1 };
+
+  /** Each person's roles, by id — someone not listed is no longer a member. */
+  memberRoles = new Map<string, readonly OrganizationRole[]>();
+
   /** How many transactions ran. */
   transactions = 0;
 
@@ -149,6 +156,16 @@ export class MemoryMergeStore implements MergeStore {
   /** @inheritdoc */
   autoMerges(): Promise<boolean> {
     return Promise.resolve(this.autoMerge);
+  }
+
+  /** @inheritdoc */
+  policyFacts(): Promise<MergePolicyFacts> {
+    return Promise.resolve(this.facts);
+  }
+
+  /** @inheritdoc */
+  roles(_organizationId: string, userId: string): Promise<readonly OrganizationRole[]> {
+    return Promise.resolve(this.memberRoles.get(userId) ?? []);
   }
 
   /** @inheritdoc */

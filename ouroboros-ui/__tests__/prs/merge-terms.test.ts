@@ -189,6 +189,7 @@ describe("the re-check, stated", () => {
 describe("refusalView — a failed re-check says why", () => {
   const CODES: readonly PrMergeRefusalCode[] = [
     "dry_run_policy_active",
+    "auto_merge_policy_ineligible",
     "head_moved",
     "gate_red",
     "gates_pending",
@@ -225,6 +226,17 @@ describe("refusalView — a failed re-check says why", () => {
 
     expect(view.headline).toBe("Dry-run is on");
     expect(view.next).toContain("Settings → Policies");
+  });
+
+  it("names the org policy's auto-merge rule, and who can still merge (#481)", () => {
+    const view = refusalView(
+      "auto_merge_policy_ineligible",
+      "The PR's ticket does not meet the auto_merge conditions in policy v7.",
+    );
+
+    expect(view.headline).toBe("The org policy keeps this PR from merging unattended");
+    expect(view.message).toContain("policy v7");
+    expect(view.next).toContain("owner or admin");
   });
 
   it("points a refusal for pending gates at arming instead", () => {

@@ -1,4 +1,6 @@
 import { Logger } from "@nestjs/common";
+import { resolveRule } from "../policies/policy-resolution";
+import type { PolicyResolutionService } from "../policies/policy-resolution.service";
 
 import { recordingDatabase } from "../db/database.fixture";
 import type { GuardrailRequest } from "../ingest/ingest.guardrails";
@@ -207,6 +209,78 @@ describe("GuardrailService", () => {
       path: "keys/signing.pem",
       glob: "keys/**",
       detail: "1 path inside a protected path.",
+    });
+  });
+
+  describe("the org policy's protected_paths (BQ.2, #481)", () => {
+    /** A resolver answering policy v7's org-wide globs. */
+    function orgPolicy(globs: string[], enabled = true): PolicyResolutionService {
+      return {
+        resolve: jest.fn((_organizationId: string, ruleId: string) =>
+          Promise.resolve(
+            resolveRule(
+              {
+                version: 7,
+                publishedAt: new Date("2026-10-04T13:48:00Z"),
+                rules: { protected_paths: { enabled, conditions: { path_globs: globs } } },
+              },
+              ruleId as "protected_paths",
+            ),
+          ),
+        ),
+      } as unknown as PolicyResolutionService;
+    }
+
+    it("gates a path the document protects, with no row of the repository's — and names the policy", async () => {
+      const { repository, appended } = stubRepository({
+        ticket: { labels: [], planFiles: ["ota/manifest.json"], effort: "s" },
+        protectedPaths: ["boot/**"],
+      });
+
+      const outcome = await new GuardrailService(repository, orgPolicy(["ota/**"])).evaluate(
+        writer,
+        request([{ path: "ota/manifest.json" }]),
+      );
+
+      expect(outcome.failures).toEqual(["allowed_paths"]);
+      expect(appended[0].verdicts[0].evidence).toEqual({
+        path: "ota/manifest.json",
+        glob: "ota/**",
+        detail: "1 path inside a protected path. Protected by org policy v7 · protected_paths.",
+      });
+    });
+
+    it("keeps gating the repository's own rows — the union never un-protects a path", async () => {
+      const { repository, appended } = stubRepository({
+        ticket: { labels: [], planFiles: ["keys/signing.pem"], effort: "s" },
+        protectedPaths: ["keys/**"],
+      });
+
+      await new GuardrailService(repository, orgPolicy(["ota/**"])).evaluate(
+        writer,
+        request([{ path: "keys/signing.pem" }]),
+      );
+
+      // The repository's own row: no policy named.
+      expect(appended[0].verdicts[0].evidence).toEqual({
+        path: "keys/signing.pem",
+        glob: "keys/**",
+        detail: "1 path inside a protected path.",
+      });
+    });
+
+    it("protects nothing more while the rule is off", async () => {
+      const { repository } = stubRepository({
+        ticket: { labels: [], planFiles: ["ota/manifest.json"], effort: "s" },
+        protectedPaths: [],
+      });
+
+      const outcome = await new GuardrailService(repository, orgPolicy(["ota/**"], false)).evaluate(
+        writer,
+        request([{ path: "ota/manifest.json" }]),
+      );
+
+      expect(outcome.failures).not.toContain("allowed_paths");
     });
   });
 

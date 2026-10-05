@@ -8,6 +8,7 @@
  * version 2  audit.decision.answered · audit.decision.answer_failed · decision.answered · decision.answer_failed (#462)
  * version 3  audit.decision.snoozed · …snoozed_all · …unsnoozed, and their decision.* types (#464)
  * version 4  audit.workspace.retention_changed (#482)
+ * version 5  audit.policy.published (#481)
  * ```
  *
  * **Versioned so a subscription never widens by itself.** An endpoint records the registry
@@ -215,6 +216,11 @@ export const WEBHOOK_REGISTRY: readonly WebhookRegistryVersion[] = [
     version: 4,
     // BQ.3 (#482): a data-retention tier changed from the Settings page.
     adds: ["audit.workspace.retention_changed"],
+  },
+  {
+    version: 5,
+    // BQ.2 (#481): a new version of the org policy document was published.
+    adds: ["audit.policy.published"],
   },
 ];
 

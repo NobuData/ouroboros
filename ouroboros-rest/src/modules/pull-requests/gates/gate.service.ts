@@ -194,10 +194,13 @@ export class GateEngineService implements GateEvidenceSink {
       const org = await this.org.forOrganization(pr.organizationId);
       const derived = derivePolicy(sources);
       const approval = await tx.approval(pr);
-      const humanReview = matchHumanReview(org.humanReview, {
-        labels: sources.ticket.labels,
-        effort: asQueueEffort(sources.ticket.effort),
-      });
+      const humanReview = {
+        ...matchHumanReview(org.humanReview, {
+          labels: sources.ticket.labels,
+          effort: asQueueEffort(sources.ticket.effort),
+        }),
+        version: org.policyVersion ?? null,
+      };
       const specs = materializeDefinitions({
         pin: derived.pin,
         policy: derived.policy,

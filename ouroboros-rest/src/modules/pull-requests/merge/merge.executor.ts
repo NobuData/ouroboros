@@ -45,14 +45,24 @@
  * terminal is overridden at evaluation (`plan.dryRun.autoMerge`), never rewritten, so turning
  * dry-run off restores it exactly.
  *
- * **Not wired yet, deliberately:** the org policy document's `auto_merge` rule (#481) — it amends
- * this executor, and its storage does not exist yet.
+ * **The org policy document** (BQ.2, #481) amends both, read through `PolicyResolutionService`
+ * with one version per decision:
+ *
+ * - **`auto_merge`** is a precondition on eligibility, evaluated against the PR's own ticket. A
+ *   member may arm or merge only a PR whose pinned workflow auto-merges **and** which the rule lets
+ *   merge unattended (*effort ≤ M · non-refactor*); and an armed plan is re-checked at execution,
+ *   so a `refactor` label added after a member armed it refuses the merge with
+ *   `auto_merge_policy_ineligible` — the rule and its version in the reason. An owner or admin who
+ *   armed it decided for themselves. A workspace that has published nothing is as before.
+ * - **`dry_run_new_repos`** makes dry-run a per-PR question: the PR's repository's first N loops
+ *   are in dry-run, and the org-wide switch stays the stricter override. The refusal names which.
  */
 
 import {
   Inject,
   Injectable,
   Logger,
+  Optional,
   type OnModuleDestroy,
   type OnModuleInit,
 } from "@nestjs/common";
@@ -66,6 +76,17 @@ import {
 } from "../../tenancy/constraints";
 import { OrgPolicyService, type DryRunPolicyReader } from "../../policies/org-policy.service";
 import { dryRunStateOf } from "../../policies/org-policy.rules";
+import {
+  type AutoMergeValue,
+  type EffectiveDryRun,
+  type PolicyVerdict,
+  effectiveDryRun,
+} from "../../policies/policy-resolution";
+import {
+  PolicyResolutionService,
+  type PolicySnapshotSource,
+  snapshotOf,
+} from "../../policies/policy-resolution.service";
 import { TicketSourceError, statusReasonFor } from "../../ticket-sources/ticket-source.errors";
 import type { MergePrResult, PullRequestSnapshot } from "../../ticket-sources/ticket-source.pr";
 import { pullRequestNotFound } from "../criteria/criteria.errors";
@@ -93,7 +114,9 @@ import {
   type MergePlanEdit,
 } from "./merge.edit";
 import {
-  DRY_RUN_REFUSAL_MESSAGE,
+  type DryRunStanding,
+  autoMergeIneligibleMessage,
+  dryRunRefusalMessage,
   mergeDryRunActive,
   mergeNotPolicyEligible,
   mergePlanArmed,
@@ -223,6 +246,8 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
    * @param criteria - The criteria matrix, for the evidence summary.
    * @param listeners - Where the gate engine announces each evaluation.
    * @param policy - The workspace's dry-run policy (BA.3, #382).
+   * @param resolver - The org policy document (BQ.2, #481). Absent in the suites that predate it,
+   *   which then decide as a workspace that has published nothing.
    */
   constructor(
     @Inject(MergeRepository) private readonly store: MergeStore,
@@ -230,6 +255,7 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
     @Inject(CriteriaService) private readonly criteria: MergeCriteria,
     private readonly listeners: GateListeners,
     @Inject(OrgPolicyService) private readonly policy: DryRunPolicyReader,
+    @Optional() @Inject(PolicyResolutionService) private readonly resolver?: PolicySnapshotSource,
   ) {}
 
   /** Listen to the gate engine. */
@@ -498,7 +524,7 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
       case "refused":
         // The policy turned on between the check above and the run — the same designed refusal.
         if (outcome.refusal.code === "dry_run_policy_active") {
-          throw mergeDryRunActive(prId);
+          throw mergeDryRunActive(prId, await this.dryRunStandingFor(organizationId, prId));
         }
 
         throw mergeRecheckFailed(prId, {
@@ -570,9 +596,36 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
     const { pr, latest } = locked;
 
     // Dry-run first, read uncached: the policy is re-checked at execution, not only at arming,
-    // so a plan armed before it turned on cannot slip through.
-    if (await this.policy.dryRunNow(pr.organizationId)) {
-      return this.refuse(tx, pr, plan, refusal("dry_run_policy_active", DRY_RUN_REFUSAL_MESSAGE));
+    // so a plan armed before it turned on cannot slip through. One version of the org policy
+    // document decides both questions (#481).
+    const standing = await this.standing(pr, true);
+
+    if (standing.dryRun.active) {
+      return this.refuse(
+        tx,
+        pr,
+        plan,
+        refusal("dry_run_policy_active", dryRunRefusalMessage(dryRunStandingOf(standing))),
+      );
+    }
+
+    // An armed plan merges unattended: the published auto_merge rule must still allow it, unless
+    // an owner or admin armed it (#481).
+    if (
+      trigger.kind === "armed" &&
+      standing.autoMerge.version !== null &&
+      !standing.autoMerge.value.eligible &&
+      !(await this.armedByAdministrator(pr.organizationId, plan.armedBy))
+    ) {
+      return this.refuse(
+        tx,
+        pr,
+        plan,
+        refusal(
+          "auto_merge_policy_ineligible",
+          autoMergeIneligibleMessage(standing.autoMerge.reason),
+        ),
+      );
     }
 
     const gates =
@@ -854,27 +907,117 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
     organizationId: string,
     plan: StoredMergePlan,
   ): Promise<MergePlanResource> {
-    const [armedBy, dryRun, pr] = await Promise.all([
+    const [armedBy, pr] = await Promise.all([
       plan.armedBy === null ? undefined : this.store.person(plan.armedBy),
-      this.policy.dryRun(organizationId),
       this.store.pr(organizationId, plan.prId),
     ]);
-    const autoMerges = pr === undefined ? false : await this.store.autoMerges(pr);
 
-    return mergePlanResource(plan, armedBy ?? null, dryRunStateOf(dryRun, autoMerges));
+    if (pr === undefined) {
+      return mergePlanResource(
+        plan,
+        armedBy ?? null,
+        dryRunStateOf(await this.policy.dryRun(organizationId), false),
+      );
+    }
+
+    const standing = await this.standing(pr, false);
+
+    return mergePlanResource(
+      plan,
+      armedBy ?? null,
+      dryRunStateOf(standing.dryRun.active, standing.workflowAutoMerges, {
+        source: standing.dryRun.source,
+        version: standing.dryRun.version,
+        autoMergeEligible: standing.autoMerge.value.eligible,
+      }),
+      {
+        eligible: standing.autoMerge.value.eligible,
+        ruleId: "auto_merge",
+        version: standing.autoMerge.version,
+        reason: standing.autoMerge.reason,
+      },
+    );
   }
 
   /**
-   * Refuse an arm or a direct merge while the dry-run policy is active — read uncached, since
-   * this is a write.
+   * What the org policy says about one PR, read for one decision (#481): its dry-run — the
+   * org-wide switch, then the document's per-repository rule — and its `auto_merge` eligibility,
+   * both from one version of the document.
+   *
+   * @param pr - The PR.
+   * @param fresh - Read uncached — for a write or an execution.
+   * @returns The standing.
+   */
+  private async standing(pr: MergePr, fresh: boolean): Promise<PrPolicyStanding> {
+    const [snapshot, facts, override, workflowAutoMerges] = await Promise.all([
+      this.resolver === undefined
+        ? Promise.resolve(snapshotOf(null))
+        : this.resolver.snapshot(pr.organizationId, fresh),
+      this.store.policyFacts(pr),
+      fresh ? this.policy.dryRunNow(pr.organizationId) : this.policy.dryRun(pr.organizationId),
+      this.store.autoMerges(pr),
+    ]);
+
+    return {
+      dryRun: effectiveDryRun(
+        override,
+        snapshot.resolve("dry_run_new_repos", { loop: facts.loop }),
+      ),
+      dryRunReason: snapshot.resolve("dry_run_new_repos", { loop: facts.loop }).reason,
+      autoMerge: snapshot.resolve("auto_merge", { ticket: facts.ticket }),
+      workflowAutoMerges,
+    };
+  }
+
+  /**
+   * Why a PR is in dry-run, as the refusal names it — read uncached.
    *
    * @param organizationId - The workspace.
    * @param prId - The PR.
-   * @throws {ConflictError} `dry_run_policy_active`.
+   * @returns The standing, or undefined when the PR is gone or not in dry-run.
+   */
+  private async dryRunStandingFor(
+    organizationId: string,
+    prId: string,
+  ): Promise<DryRunStanding | undefined> {
+    const pr = await this.store.pr(organizationId, prId);
+
+    if (pr === undefined) {
+      return undefined;
+    }
+
+    const standing = await this.standing(pr, true);
+
+    return standing.dryRun.active ? dryRunStandingOf(standing) : undefined;
+  }
+
+  /**
+   * Whether the person who armed a plan is an owner or admin of the workspace now.
+   *
+   * @param organizationId - The workspace.
+   * @param armedBy - `user.id`, or null.
+   * @returns True for an administrator.
+   */
+  private async armedByAdministrator(
+    organizationId: string,
+    armedBy: string | null,
+  ): Promise<boolean> {
+    return armedBy !== null && mayMerge(await this.store.roles(organizationId, armedBy), false);
+  }
+
+  /**
+   * Refuse an arm or a direct merge while the PR is in dry-run — the org-wide switch or its
+   * repository's first loops — read uncached, since this is a write.
+   *
+   * @param organizationId - The workspace.
+   * @param prId - The PR.
+   * @throws {ConflictError} `dry_run_policy_active`, naming which.
    */
   private async assertNotDryRun(organizationId: string, prId: string): Promise<void> {
-    if (await this.policy.dryRunNow(organizationId)) {
-      throw mergeDryRunActive(prId);
+    const standing = await this.dryRunStandingFor(organizationId, prId);
+
+    if (standing !== undefined) {
+      throw mergeDryRunActive(prId, standing);
     }
   }
 
@@ -903,8 +1046,16 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
       return;
     }
 
-    if (!mayMerge(actor.roles, await this.store.autoMerges(pr))) {
-      throw mergeNotPolicyEligible(prId);
+    const standing = await this.standing(pr, true);
+
+    if (!mayMerge(actor.roles, standing.workflowAutoMerges && standing.autoMerge.value.eligible)) {
+      // The workflow allows it and the published rule does not: say which rule, and which version.
+      throw standing.workflowAutoMerges
+        ? mergeNotPolicyEligible(prId, {
+            reason: standing.autoMerge.reason,
+            version: standing.autoMerge.version,
+          })
+        : mergeNotPolicyEligible(prId);
     }
   }
 }
@@ -1015,4 +1166,32 @@ export function hostFailure(step: "read" | "merge" | "comment", error: unknown):
  */
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** What the org policy says about one PR, for one decision (#481). */
+interface PrPolicyStanding {
+  /** Whether it is in dry-run, and which said so. */
+  readonly dryRun: EffectiveDryRun;
+  /** `dry_run_new_repos`' sentence — what a refusal quotes when the rule is the cause. */
+  readonly dryRunReason: string;
+  /** The `auto_merge` rule's verdict. */
+  readonly autoMerge: PolicyVerdict<AutoMergeValue>;
+  /** Whether the pinned workflow's terminal asks for auto-merge. */
+  readonly workflowAutoMerges: boolean;
+}
+
+/**
+ * A dry-run refusal's standing.
+ *
+ * @param standing - The PR's standing, in dry-run.
+ * @returns What the refusal names.
+ */
+function dryRunStandingOf(standing: PrPolicyStanding): DryRunStanding {
+  return standing.dryRun.source === "dry_run_new_repos"
+    ? {
+        source: "dry_run_new_repos",
+        version: standing.dryRun.version,
+        reason: standing.dryRunReason,
+      }
+    : { source: "org_override", version: null };
 }

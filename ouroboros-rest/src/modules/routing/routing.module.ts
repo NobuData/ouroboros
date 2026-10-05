@@ -76,6 +76,7 @@
 import { Module } from "@nestjs/common";
 
 import { DbModule } from "../db/db.module";
+import { PoliciesModule } from "../policies/policies.module";
 import { ProviderHealthModule } from "../provider-health/provider-health.module";
 import { RoutingManagementRepository } from "./management.repository";
 import { RoutingManagementService } from "./management.service";
@@ -88,7 +89,8 @@ import { RoutingStatsService } from "./stats.service";
 import { SimulateController } from "./simulate.controller";
 
 @Module({
-  imports: [DbModule, ProviderHealthModule],
+  // The org policy (BQ.2, #481): spend_guard's per-run cap joins the route's — the stricter wins.
+  imports: [DbModule, ProviderHealthModule, PoliciesModule],
   controllers: [RoutingController, SimulateController],
   providers: [
     ResolutionService,

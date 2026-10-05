@@ -48,7 +48,7 @@
  * rather than only in a benchmark. The spec asserts the same budget on a typical change-set.
  */
 
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import { performance } from "node:perf_hooks";
 
 import type {
@@ -72,6 +72,7 @@ import {
   reviewPolicy,
   type PinnedPolicy,
 } from "./guardrails.policy";
+import { PolicyResolutionService } from "../policies/policy-resolution.service";
 import { GuardrailsRepository, type RunPolicyRow } from "./guardrails.repository";
 import { SECRETS_RULESET_DISCLOSURE } from "./guardrails.ruleset";
 
@@ -93,8 +94,13 @@ export class GuardrailService implements GuardrailScheduler {
 
   /**
    * @param repository - Every statement the evaluation issues.
+   * @param policies - The org policy document (BQ.2, #481) — its `protected_paths` globs join each
+   *   repository's own. Absent in the suites that predate it, which then read the rows alone.
    */
-  constructor(private readonly repository: GuardrailsRepository) {}
+  constructor(
+    private readonly repository: GuardrailsRepository,
+    @Optional() private readonly policies?: PolicyResolutionService,
+  ) {}
 
   /**
    * What a `secrets` verdict can and cannot claim — for the Guardrails card's tooltip (#313).
@@ -231,7 +237,16 @@ export class GuardrailService implements GuardrailScheduler {
     const stages = await this.repository.reportedStages(writer, runId);
     const ticket = await this.repository.ticketFacts(writer, run);
     const rules = await this.repository.enabledRules(writer, run.organizationId);
-    const protectedPaths = await this.repository.protectedPaths(writer, run);
+    // The union (BQ.2, #481): the repository's own rows and the org policy's globs, so publishing
+    // a glob protects it on the next run without a write to the rows, and absorbing the rows into
+    // the document never un-protects a path.
+    const repositoryGlobs = await this.repository.protectedPaths(writer, run);
+    const orgGlobs =
+      this.policies === undefined
+        ? undefined
+        : await this.policies.resolve(run.organizationId, "protected_paths");
+    const policyGlobs = orgGlobs?.value.globs ?? [];
+    const protectedPaths = [...new Set([...repositoryGlobs, ...policyGlobs])].sort();
     const exceptions = await this.repository.liveExceptions(writer, run, runId);
 
     const effort = asQueueEffort(ticket.effort);
@@ -247,6 +262,9 @@ export class GuardrailService implements GuardrailScheduler {
       ...(ticket.planFiles === undefined ? {} : { planFiles: ticket.planFiles }),
       ...(permissions === undefined ? {} : { permissions }),
       protectedPaths,
+      ...(orgGlobs === undefined || policyGlobs.length === 0
+        ? {}
+        : { policyGlobs: { globs: policyGlobs, version: orgGlobs.version } }),
       exceptions,
       ...(review === undefined ? {} : { review }),
     };

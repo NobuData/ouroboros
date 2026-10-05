@@ -239,7 +239,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BQ.1 | #480 ✅ | 🟢 Done | ouroboros-db: [BQ.1] Versioned org-policy document schema | `org_policies` + immutable versions; the five rules as structured data | mvp, settings, db | N (after WF-P.2, BA-B.3) | Y | M | ouroboros-db |
-| BQ.2 | #481 | 🟡 Open | ouroboros-rest: [BQ.2] Policy resolution & enforcement wiring | One resolver; AX/AP.3/caps/dry-run consume it (amendments) | mvp, settings, rest, pr, runs | N (after BQ.1, AX.2, AP.3, BA.3) | Y | L | ouroboros-rest |
+| BQ.2 | #481 ✅ | 🟢 Done | ouroboros-rest: [BQ.2] Policy resolution & enforcement wiring | One resolver; AX/AP.3/caps/dry-run consume it (amendments) | mvp, settings, rest, pr, runs | N (after BQ.1, AX.2, AP.3, BA.3) | Y | L | ouroboros-rest |
 | BQ.3 | #482 ✅ | 🟢 Done | ouroboros-rest: [BQ.3] Retention policy service | Per-class tiers; the three sweeps + audit consume (S5) | mvp, settings, rest | N (after AO.2/AH.5/AT.5) | Y | M | ouroboros-rest, ouroboros-db |
 | BQ.4 | #483 ✅ | 🟢 Done | ouroboros-rest: [BQ.4] Workspace config & deployment truth | Name/domain edit, region/training truth rendering (S6) | mvp, settings, rest | N (after BA-B.3, AD.5) | Y | S | ouroboros-rest |
 | BQ.5 | #484 ✅ | 🟢 Done | ouroboros-db: [BQ.5] Settings seeds — mockup-17 parity + probes | Policy v7, members, audit rows, webhooks, tiers; ci checks | mvp, settings, db, ci | N (after BQ.1–BQ.4, #24) | Y | S | ouroboros-db, .github |
@@ -289,7 +289,9 @@ document.dry_run_new_repos = {enabled: true, first_n_loops: 10}
 
 ### Issue BQ.2 — ouroboros-rest: [BQ.2] Policy resolution & enforcement wiring
 
-> **GitHub issue:** #481 · **Status:** 🟡 Open · **Parent epic:** #476
+> **GitHub issue:** #481 ✅ · **Status:** 🟢 Done · **Parent epic:** #476
+>
+> **Delivered (#481, REST 0.39.15, UI 0.134.1):** `PolicyResolutionService` (`src/modules/policies/`, pure evaluators in `policy-resolution.ts`, the predicate evaluator moved to `org-policy.predicate.ts`) — cached 30 s per process, cleared on publish, uncached at execution, one version per decision, every verdict carrying its rule id and version. Wired: the gate engine's `human_review` (provenance `org policy v7: refactor → human review`; no rule in the engine, grep-asserted), the merge executor's `auto_merge` (member eligibility at arm/merge, re-checked at execution — `auto_merge_policy_ineligible` unless an owner/admin armed it; `plan.autoMergePolicy`), AP.3's `protected_paths` as the **union** of the document's globs and BA.1's per-repo rows (no write to the rows; the inbox card lists the same union), Z.1's `spend_guard` as the stricter per-run cap with `resolution.costCap` naming the limit, and `dry_run_new_repos` per PR — a loop is a run on the repository that opened a PR (recorded on the run or mirrored), the org-wide switch the stricter override (`details.source` on refusals). Publish: `GET /api/v1/policies`, `POST …/preview`, `POST /api/v1/policies` — validated against the embedded `schemas/org-policy/v1.json`, decided under the handle's lock against `baseVersion`, each rule classified by comparing what it lets through, a loosening owner-only, audited `policy.published` with the mockup's line (*"enabled auto-merge (policy v8)"*; webhook registry v5). Decided on the ticket: the run **pause**, the approval card and the monthly cap stay with AF.4 (#237); the union of globs per V092's header rather than document-only. The audit card that renders the line and BS.4's confirm dialog consume these from the UI side.
 
 - **Problem Statement:** A document nobody reads is decoration; every
   enforcement point must consume one resolver — the migration this

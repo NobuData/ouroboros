@@ -265,7 +265,7 @@ describe("the decision registry and its emitters, against a migrated database", 
 
     expect(human.rows[0]).toEqual({
       required: true,
-      source: "standard-fix@v1 pin + org policy: refactor → human review",
+      source: "standard-fix@v1 pin + org policy v1: refactor → human review",
     });
 
     const filed = await eventually(

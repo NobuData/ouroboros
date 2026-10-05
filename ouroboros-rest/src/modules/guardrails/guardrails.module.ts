@@ -26,6 +26,7 @@
 import { Module } from "@nestjs/common";
 
 import { GUARDRAIL_SCHEDULER } from "../ingest/ingest.guardrails";
+import { PoliciesModule } from "../policies/policies.module";
 import { GuardrailsRepository } from "./guardrails.repository";
 import { GuardrailService } from "./guardrails.service";
 
@@ -36,6 +37,8 @@ export const guardrailSchedulerProvider = {
 };
 
 @Module({
+  // The org policy document's resolver (BQ.2, #481): `protected_paths` joins each repository's globs.
+  imports: [PoliciesModule],
   providers: [GuardrailsRepository, GuardrailService, guardrailSchedulerProvider],
   exports: [GuardrailService, GUARDRAIL_SCHEDULER],
 })

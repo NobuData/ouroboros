@@ -2741,6 +2741,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The org policy document in force
+         * @description The workspace's published org policy document (BQ.2,
+         *     [#481](https://github.com/NobuData/ouroboros/issues/481)) — the version
+         *     `org_policies.current_version` points at, verbatim: the settings card's **Autonomy
+         *     Policies** and its `policy v7` tag. `version: null` (and a null `document`) is a
+         *     workspace that has published nothing, where no rule binds anything.
+         *
+         *     **Any member may read it**, viewers included — it governs their loops.
+         */
+        get: operations["readOrgPolicy"];
+        put?: never;
+        /**
+         * Publish the next version
+         * @description Publish a whole document as `vN+1` (BQ.2, #481). The document is validated against
+         *     `schemas/org-policy/v1.json`; then, **under the workspace's lock**, compared with the version
+         *     in force: `baseVersion` must be that version (`null` when nothing is published), or the
+         *     publish is a `409 policy_version_conflict` rather than a silent overwrite.
+         *
+         *     Each changed rule is **classified** — `tightening`, `loosening` or `neutral` — by comparing
+         *     what it lets through (auto-merged tickets, reviewed tickets, protected globs, caps, dry-run
+         *     loops). **`owner` or `admin`** may publish, but a **loosening** edit is the owner's alone:
+         *     an admin gets `403 policy_loosening_requires_owner` naming the loosening rules. Every
+         *     enforcement point sees the new version at once on this replica (others within 30 s).
+         *
+         *     Audited as `policy.published` (subject `org_policy`) with `version`, `previous_version`,
+         *     `changed_rules`, the classification of each and the audit card's line —
+         *     *"enabled auto-merge (policy v8)"*.
+         */
+        post: operations["publishOrgPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/policies/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Classify a draft before publishing it
+         * @description What publishing a draft would do — **writes nothing** (BQ.2, #481). Each changed rule
+         *     against the version in force, its class and its line, the draft's class, whether only the
+         *     owner may publish it, and whether **this caller** may: the settings card's confirm dialog
+         *     (BS.4) renders this rather than guessing.
+         *
+         *     **`owner` or `admin`.**
+         */
+        post: operations["previewOrgPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/policies/dry-run": {
         parameters: {
             query?: never;
@@ -12119,9 +12187,11 @@ export interface components {
          * @description Why the executor's re-check refused a merge. `gates_pending` never disarms; every other
          *     code disarms an armed plan. `dry_run_policy_active` (#382) is the workspace's dry-run
          *     policy, re-checked at execution — a plan armed before it turned on is disarmed, never merged.
+         *     `auto_merge_policy_ineligible` (#481) is the org policy's `auto_merge` rule: the PR no longer
+         *     meets it and nobody with the owner or admin role armed it.
          * @enum {string}
          */
-        PrMergeRefusalCode: "dry_run_policy_active" | "head_moved" | "gate_red" | "gates_pending" | "host_not_open" | "host_head_moved" | "host_conflict" | "host_refused";
+        PrMergeRefusalCode: "dry_run_policy_active" | "auto_merge_policy_ineligible" | "head_moved" | "gate_red" | "gates_pending" | "host_not_open" | "host_head_moved" | "host_conflict" | "host_refused";
         /** PrMergePlan */
         PrMergePlan: {
             /** Format: uuid */
@@ -12164,6 +12234,19 @@ export interface components {
                 mergedAt: string;
             } | null;
             dryRun: components["schemas"]["PrMergeDryRunState"];
+            /**
+             * @description The org policy's `auto_merge` rule for this PR (#481), evaluated against its ticket —
+             *     whether it may merge unattended, the version that decided and why. A member may arm a
+             *     PR whose pinned workflow auto-merges only while this is `eligible`.
+             */
+            autoMergePolicy?: {
+                /** @description True when no policy is published. */
+                eligible: boolean;
+                /** @enum {string} */
+                ruleId: "auto_merge";
+                version: number | null;
+                reason: string;
+            };
             /** Format: date-time */
             updatedAt: string;
         };
@@ -12184,11 +12267,19 @@ export interface components {
             autoMerge: {
                 /** @description Whether the pinned workflow's terminal asks for auto-merge — its stored config. */
                 requested: boolean;
-                /** @description What happens — `requested` unless dry-run overrides it. */
+                /** @description What happens — `requested` unless dry-run overrides it or the org policy's `auto_merge` rule refuses it (#481). */
                 effective: boolean;
                 /** @description Whether dry-run is what turned a requested auto-merge off. */
                 overridden: boolean;
             };
+            /**
+             * @description What made it active (#481): the workspace-wide switch, or the org policy's
+             *     `dry_run_new_repos` — this PR's repository is inside its first N loops. Null while inactive.
+             * @enum {string|null}
+             */
+            source?: "org_override" | "dry_run_new_repos" | null;
+            /** @description The policy version, when `dry_run_new_repos` is the source. */
+            policyVersion?: number | null;
         };
         /** PrMergeOutcome */
         PrMergeOutcome: {
@@ -15880,6 +15971,91 @@ export interface components {
             bias: ("over" | "under" | "even") | null;
         };
         /**
+         * OrgPolicyRule
+         * @description One rule of the org policy document — `{enabled, conditions}`, the grammar of
+         *     `schemas/org-policy/v1.json`. Conditions are the workflow DSL's predicates (`effort_lte`,
+         *     `effort_gte`, `label`, `not`, `any`, `all`), `path_globs`, or integer-cent caps.
+         */
+        OrgPolicyRule: {
+            enabled: boolean;
+            conditions: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * OrgPolicyDocument
+         * @description The whole document: the five core rules, always present, and any `custom:<slug>` rules.
+         *     Validated against `schemas/org-policy/v1.json` when published.
+         */
+        OrgPolicyDocument: {
+            [key: string]: components["schemas"]["OrgPolicyRule"];
+        };
+        /**
+         * OrgPolicy
+         * @description The version in force (#481) — all null while nothing is published.
+         */
+        OrgPolicy: {
+            /** @description The card's `policy v7`. */
+            version: number | null;
+            document: components["schemas"]["OrgPolicyDocument"] | null;
+            /** Format: date-time */
+            publishedAt: string | null;
+            /** @description Who published it — `user.id`, null for a person since deleted. */
+            publishedBy: string | null;
+            changeNote: string | null;
+        };
+        /**
+         * OrgPolicyChangeClass
+         * @description Which way a change moves autonomy (#481). `loosening` — something now runs without a
+         *     person that did not; `tightening` — the reverse; `neutral` — nothing moves either way. An
+         *     edit is loosening if any of its changes is; a loosening is the owner's alone to publish.
+         * @enum {string}
+         */
+        OrgPolicyChangeClass: "tightening" | "loosening" | "neutral";
+        /** OrgPolicyRuleChange */
+        OrgPolicyRuleChange: {
+            /** @example auto_merge */
+            ruleId: string;
+            classification: components["schemas"]["OrgPolicyChangeClass"];
+            /** @description The change as the audit line says it — `enabled auto-merge`. */
+            summary: string;
+        };
+        /** OrgPolicyPreviewRequest */
+        OrgPolicyPreviewRequest: {
+            document: components["schemas"]["OrgPolicyDocument"];
+        };
+        /** OrgPolicyPublish */
+        OrgPolicyPublish: {
+            document: components["schemas"]["OrgPolicyDocument"];
+            /** @description The version this edit began from — null when nothing was published. */
+            baseVersion: number | null;
+            /** @description Why — the history popover's line. Blank is none. */
+            changeNote?: string | null;
+        };
+        /** OrgPolicyPreview */
+        OrgPolicyPreview: {
+            /** @description The version the draft was compared with — the one in force. */
+            baseVersion: number | null;
+            classification: components["schemas"]["OrgPolicyChangeClass"];
+            changes: components["schemas"]["OrgPolicyRuleChange"][];
+            requiresOwner: boolean;
+            /** @description Whether this caller may publish it — false for an admin and a loosening. */
+            mayPublish: boolean;
+        };
+        /** OrgPolicyPublished */
+        OrgPolicyPublished: {
+            version: number;
+            document: components["schemas"]["OrgPolicyDocument"];
+            /** Format: date-time */
+            publishedAt: string;
+            publishedBy: string;
+            changeNote: string | null;
+            classification: components["schemas"]["OrgPolicyChangeClass"];
+            changes: components["schemas"]["OrgPolicyRuleChange"][];
+            /** @description The audit card's line — `enabled auto-merge (policy v8)`. */
+            summary: string;
+        };
+        /**
          * DryRunPolicy
          * @description The workspace's dry-run policy (#382). `explicit: false` with null stamps is a workspace
          *     that never answered — it reads off; completing the Get Started wizard turns it on.
@@ -18478,6 +18654,18 @@ export interface components {
              * @example 250
              */
             maxCostCents: number | null;
+            /**
+             * @description Which limit set `maxCostCents` (#481) — what a `cost_cap_exceeded` names. **The stricter
+             *     wins**: the route's own cap, or the org policy's `spend_guard.per_run_cap_cents` when it is
+             *     lower or the route has none. Absent where no org policy was consulted.
+             */
+            costCap?: {
+                /** @enum {string|null} */
+                limit: "route" | "spend_guard" | null;
+                /** @enum {string|null} */
+                ruleId: "spend_guard" | null;
+                policyVersion: number | null;
+            };
             /** @description Why there is no chain, or null when there is one. */
             failure: components["schemas"]["ResolutionFailure"] | null;
         };
@@ -37364,6 +37552,504 @@ export interface operations {
                 };
             };
             /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readOrgPolicy: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The version in force. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "version": 7,
+                     *       "document": {
+                     *         "auto_merge": {
+                     *           "enabled": true,
+                     *           "conditions": {
+                     *             "all": [
+                     *               {
+                     *                 "effort_lte": "m"
+                     *               },
+                     *               {
+                     *                 "not": {
+                     *                   "label": "refactor"
+                     *                 }
+                     *               }
+                     *             ]
+                     *           }
+                     *         },
+                     *         "human_review": {
+                     *           "enabled": true,
+                     *           "conditions": {
+                     *             "any": [
+                     *               {
+                     *                 "label": "refactor"
+                     *               },
+                     *               {
+                     *                 "effort_gte": "l"
+                     *               }
+                     *             ]
+                     *           }
+                     *         },
+                     *         "protected_paths": {
+                     *           "enabled": true,
+                     *           "conditions": {
+                     *             "path_globs": [
+                     *               "boot/**",
+                     *               "keys/**",
+                     *               ".github/**"
+                     *             ]
+                     *           }
+                     *         },
+                     *         "spend_guard": {
+                     *           "enabled": true,
+                     *           "conditions": {
+                     *             "per_run_cap_cents": 250,
+                     *             "monthly_cap_cents": 60000
+                     *           }
+                     *         },
+                     *         "dry_run_new_repos": {
+                     *           "enabled": true,
+                     *           "conditions": {
+                     *             "first_n_loops": 10
+                     *           }
+                     *         }
+                     *       },
+                     *       "publishedAt": "2026-10-04T13:48:00.000Z",
+                     *       "publishedBy": "aBcD1234eFgH5678iJkL9012mNoP3456",
+                     *       "changeNote": "Enable auto-merge"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["OrgPolicy"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    publishOrgPolicy: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "baseVersion": 7,
+                 *       "changeNote": "Pause unattended merges for the release.",
+                 *       "document": {
+                 *         "auto_merge": {
+                 *           "enabled": false,
+                 *           "conditions": {
+                 *             "effort_lte": "m"
+                 *           }
+                 *         },
+                 *         "human_review": {
+                 *           "enabled": true,
+                 *           "conditions": {
+                 *             "label": "refactor"
+                 *           }
+                 *         },
+                 *         "protected_paths": {
+                 *           "enabled": true,
+                 *           "conditions": {
+                 *             "path_globs": [
+                 *               "boot/**"
+                 *             ]
+                 *           }
+                 *         },
+                 *         "spend_guard": {
+                 *           "enabled": true,
+                 *           "conditions": {
+                 *             "per_run_cap_cents": 250
+                 *           }
+                 *         },
+                 *         "dry_run_new_repos": {
+                 *           "enabled": true,
+                 *           "conditions": {
+                 *             "first_n_loops": 10
+                 *           }
+                 *         }
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["OrgPolicyPublish"];
+            };
+        };
+        responses: {
+            /** @description The version published, and what it changed. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgPolicyPublished"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — a `member` or `viewer`; or `policy_loosening_requires_owner` — an admin
+             *     publishing an edit that lets more run without a person (`details.loosening` names the
+             *     rules). Nothing is written.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `policy_version_conflict` — `baseVersion` is not the version in force
+             *     (`details.currentVersion`): another publish landed since the edit began. Reload and edit again.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the body is malformed; `policy_document_invalid` — the document is
+             *     not one `schemas/org-policy/v1.json` accepts (`details.errors` lists the path and why);
+             *     `policy_unchanged` — the document is the version in force.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    previewOrgPolicy: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrgPolicyPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description What the draft changes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "baseVersion": 7,
+                     *       "classification": "loosening",
+                     *       "changes": [
+                     *         {
+                     *           "ruleId": "human_review",
+                     *           "classification": "loosening",
+                     *           "summary": "disabled human review"
+                     *         }
+                     *       ],
+                     *       "requiresOwner": true,
+                     *       "mayPublish": false
+                     *     }
+                     */
+                    "application/json": components["schemas"]["OrgPolicyPreview"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — a `member` or `viewer`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the body is malformed; `policy_document_invalid` — the document is
+             *     not one `schemas/org-policy/v1.json` accepts.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
             500: {
                 headers: {
                     [name: string]: unknown;
