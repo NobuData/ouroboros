@@ -43,6 +43,7 @@ import { WORKSPACE_AUTH_STORE, type WorkspaceAuthStore } from "./lifecycle.auth"
 import {
   confirmationRequired,
   nameMismatch,
+  purgeStarted,
   stateConflict,
   stepUpRequired,
 } from "./lifecycle.errors";
@@ -261,12 +262,18 @@ export class LifecycleService {
   }
 
   /**
-   * Restore a workspace pending deletion to `active`, at any point in its window.
+   * Restore a workspace pending deletion to `active`, at any point until its purge begins.
+   *
+   * Recoverable until the purge actually starts — a window that has closed but not yet been swept
+   * still restores. Once the purge has written its tombstone the keys may already be destroyed, so
+   * the workspace cannot come back half-shredded (#490); the check is made under the lifecycle
+   * lock the purge's start also takes.
    *
    * @param organizationId - The workspace.
    * @param actorId - The owner who restored it.
    * @returns The workspace's lifecycle afterwards.
-   * @throws {ConflictError} `409 workspace_state_conflict` unless `pending_delete`.
+   * @throws {ConflictError} `409 workspace_state_conflict` unless `pending_delete`, or once its
+   *   purge has begun (`details.purge: "started"`).
    */
   async restore(organizationId: string, actorId: string): Promise<LifecycleResource> {
     await this.transition({
@@ -275,6 +282,13 @@ export class LifecycleService {
       move: "restore",
       action: WORKSPACE_RESTORED_EVENT,
       at: new Date(),
+      within: async (trx) => {
+        if (await this.lifecycle.purgeBegun(trx, organizationId)) {
+          throw purgeStarted();
+        }
+
+        return {};
+      },
     });
 
     return this.read(organizationId);

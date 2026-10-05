@@ -1253,7 +1253,7 @@
 > mechanism. `workspace_lifecycle` is the organization state `active | paused | pending_delete`
 > (no row is `active`) that every dispatch point consults; `purge_after` is set exactly while
 > `pending_delete`. `audit_event_outbox` (V098's `webhook_outbox`) holds `audit.*` events awaiting BR.3's delivery, and
-> `workspace_tombstones` is a purge's completion record. Neither of those two has a foreign key to
+> `workspace_tombstones` is a purge's completion record (and, since V104, its progress record). Neither of those two has a foreign key to
 > `organization`, because both must outlive the workspace they describe.
 >
 > `V091` ([#485](https://github.com/NobuData/ouroboros/issues/485), BR.1) makes the Members card's
@@ -1403,6 +1403,14 @@
 > digest and weekly insights routes mail the route's `recipients` (or the owners and admins), and
 > an address need not belong to a member — so their claims are keyed on the address, one per
 > (workspace, kind, slot, recipient, attempt), separate from BN.3's and #440's per-person logs.
+>
+> `V104` ([#490](https://github.com/NobuData/ouroboros/issues/490), BR.6) makes a workspace purge
+> **resumable**. `workspace_tombstones` becomes the purge's progress record as well as its
+> completion record. It gains `started_at`, and `purged_at` turns nullable: null means the purge
+> is in progress, and the sweep resumes it even after the organization row has cascaded away. The
+> row is written before the DEK is destroyed, with that DEK's version count. A trigger
+> (`workspace_tombstones_completed_immutable`) refuses changes to a completed tombstone, and to
+> the identity, start or key count of an unfinished one; `ouroboros_app` gains `update` for that.
 >
 > [#484](https://github.com/NobuData/ouroboros/issues/484) (BQ.5) seeds mockup 17 from those rows:
 > [`R__dev_seed_workspace_settings.sql`](migrations/R__dev_seed_workspace_settings.sql) — see
@@ -3119,6 +3127,7 @@ ouroboros-db/
 │   ├── V101__retention_ceiling_transcript_sweep.sql   # retention tier ceilings, run_events_sweep() + runs.events_swept_at, the artifact sweep's created_at index — #482
 │   ├── V102__audit_plane.sql   # audit_events.actor_kind + plane, the audit query indexes, audit_events_purge() — #486
 │   ├── V103__notification_route_sends.sql   # notification_route_sends — the org notification routes' per-address send log — #488
+│   ├── V104__workspace_purge_resumable.sql  # workspace_tombstones as the purge's progress record (started_at, nullable purged_at) — #490
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -3327,7 +3336,7 @@ outside this module alters it.
 | `analysis_findings` | `V081` | One analyzer's output for one subject in one run ([#507](https://github.com/NobuData/ouroboros/issues/507), BU.2, decision **A1**) — `run_id`, `repo_ref`, `analyzer`, `analyzer_version`, `finding_type`, `subject_key`, `identity_key` (generated), `data`, `evidence_refs`, `confidence`, `confidence_basis` | `finding_type` is the seven families or `custom:*`; `data` held to its type (`analysis_finding_data_valid`); `evidence_refs` a non-empty list of distinct `{kind, id}` that resolve in the workspace when written, and every ref `data` cites is listed; `confidence` 0–100 with a `{method, sample_size, effect_size, stability}` basis; written only into a `running` run by an analyzer in its `analyzer_set`; unique on `(run_id, identity_key)`; never revised; cascades with the run; `ouroboros_app` may select and insert only |
 | `workspace_lifecycle` | `V090` | The organization state ([#489](https://github.com/NobuData/ouroboros/issues/489), BR.5) — `state`, `changed_by`, `changed_at`, `purge_after` | `state` is `active\|paused\|pending_delete`; no row is `active`; `purge_after` non-null exactly while `pending_delete` (`workspace_lifecycle_purge_after_iff_pending`); cascades with the workspace; `workspace_lifecycle_due_idx` is the purge sweep's read |
 | `webhook_outbox` | `V090`, `V098` | Events awaiting outbound webhook delivery ([#489](https://github.com/NobuData/ouroboros/issues/489) as `audit_event_outbox`; renamed and widened by BR.3, [#487](https://github.com/NobuData/ouroboros/issues/487)) — `event_type`, `payload`, `occurred_at`, `dispatched_at` | `event_type` is `audit.<family>.<event>` or `decision\|run\|pr.<event>`; `payload` an object; **no foreign key** to `organization`, so `audit.workspace.purged` survives the purge |
-| `workspace_tombstones` | `V090` | The completion record of a workspace purge ([#489](https://github.com/NobuData/ouroboros/issues/489)) — name, slug, who asked when, `purged_at`, `dek_versions_destroyed`, `artifacts_deleted`, `rows_remaining` | Keyed by the purged workspace's id with no foreign key; counts non-negative; `ouroboros_app` may select and insert only |
+| `workspace_tombstones` | `V090`, `V104` | The progress and completion record of a workspace purge ([#489](https://github.com/NobuData/ouroboros/issues/489), [#490](https://github.com/NobuData/ouroboros/issues/490)) — name, slug, who asked when, `started_at`, `purged_at` (null while in progress), `dek_versions_destroyed` (counted before the shred), `artifacts_deleted`, `rows_remaining` | Keyed by the purged workspace's id with no foreign key; counts non-negative; `purged_at ≥ started_at`; a completed tombstone is immutable (trigger); `ouroboros_app` may select, insert and update |
 | `member_capabilities` | `V091` | Explicit per-member capabilities ([#485](https://github.com/NobuData/ouroboros/issues/485), BR.1) — `member_id`, `can_approve_loops`, `updated_by`, `updated_at` | One row per member (primary key); no row means the role default; cascades with the membership and the workspace |
 | `service_accounts` | `V091` | Non-human principals ([#485](https://github.com/NobuData/ouroboros/issues/485)) — `name`, `scopes`, `created_by`, `disabled_at` | `name` unique per workspace and `^[a-z][a-z0-9-]{1,38}[a-z0-9]$`; `scopes` an array within `["api.read", "farm.submit"]` (`service_accounts_scopes_registered`) |
 | `retention_policies` | `V094` | How long each class of a workspace's data is kept ([#484](https://github.com/NobuData/ouroboros/issues/484), schema for BQ.3 [#482](https://github.com/NobuData/ouroboros/issues/482)) — `data_class`, `days`, `updated_by`, `updated_at` | `(organization_id, data_class)` primary key; class `transcripts\|build_logs\|artifacts\|audit` or `custom:<slug>`; `days` at least 90 for audit and 7 otherwise (`retention_policies_days_floor`); at most 365 for the loop classes and 3650 for audit and `custom:*` (`retention_policies_days_ceiling`, `V101`) |

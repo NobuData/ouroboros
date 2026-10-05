@@ -275,6 +275,21 @@ describe("restoring", () => {
     );
   });
 
+  it("refuses to restore a workspace whose purge has begun, and audits nothing (#490)", async () => {
+    const { store, audit, service } = harness();
+    store.seed(WORKSPACE, "pending_delete", new Date("2026-11-01T00:00:00Z"));
+    store.purgesBegun.add(WORKSPACE);
+
+    const refused = service.restore(WORKSPACE, "user-owner");
+
+    await expect(refused).rejects.toMatchObject({
+      code: LIFECYCLE_ERRORS.stateConflict,
+      details: { move: "restore", state: "pending_delete", purge: "started" },
+    });
+    expect(store.rows.get(WORKSPACE)?.state).toBe("pending_delete");
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
   it("refuses to restore a workspace that is not pending deletion", async () => {
     const { service } = harness();
 

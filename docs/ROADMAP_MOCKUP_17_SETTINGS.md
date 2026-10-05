@@ -423,7 +423,7 @@ seeds: policy v7(+v6) · 5 members (owner/admin/viewer/service/pending) ·
 | BR.3 | #487 ✅ | 🟢 Done | ouroboros-rest: [BR.3] Outbound webhooks & SIEM streaming | Endpoint CRUD, signed deliveries, retries+DLQ, audit fan-out | mvp, settings, rest | N (after AD.4, AD.1) | Y | L | ouroboros-rest, ouroboros-db |
 | BR.4 | #488 ✅ | 🟢 Done | ouroboros-rest: [BR.4] Integrations status hub & org notification routes | Composed connection truth; org-level routes (weekly report etc.) | mvp, settings, rest | N (after BN.3, BJ.4) | Y | M | ouroboros-rest |
 | BR.5 | #489 ✅ | 🟢 Done | ouroboros-rest: [BR.5] Workspace lifecycle — pause, disconnect, delete | Org states, dispatch gating, recovery window, DEK shred (S9) | mvp, settings, rest | N (after AD.1, AP/AH dispatch) | Y | L | ouroboros-rest |
-| BR.6 | #490 | 🟡 Open | ouroboros-rest: [BR.6] Settings integration tests | Policy enforcement, capabilities, audit/webhooks, lifecycle | mvp, settings, rest, ci | N (after BR.1–BR.5, BQ.2) | Y | M | ouroboros-rest |
+| BR.6 | #490 ✅ | 🟢 Done | ouroboros-rest: [BR.6] Settings integration tests | Policy enforcement, capabilities, audit/webhooks, lifecycle | mvp, settings, rest, ci | N (after BR.1–BR.5, BQ.2) | Y | M | ouroboros-rest |
 
 ### Issue BR.1 — ouroboros-rest: [BR.1] Members, capabilities & service accounts
 
@@ -708,7 +708,7 @@ delete "acme-robotics" + step-up ─▶ pending_delete (30d recovery) ─▶ pur
 
 ### Issue BR.6 — ouroboros-rest: [BR.6] Settings integration tests
 
-> **GitHub issue:** #490 · **Status:** 🟡 Open · **Parent epic:** #477
+> **GitHub issue:** #490 ✅ · **Status:** 🟢 Done · **Parent epic:** #477
 
 - **Problem Statement:** Policy enforcement, capability checks, webhook
   security, and lifecycle transitions are the platform's governance core.
@@ -726,6 +726,33 @@ delete "acme-robotics" + step-up ─▶ pending_delete (30d recovery) ─▶ pur
 ```
 suites: policy ✓ · capabilities ✓ · tokens ✓ · audit ✓ · webhooks ✓ · lifecycle ✓
 ```
+
+- **Delivered** (`ouroboros-rest` 0.40.3 `src/modules/settings/governance/`, 7 suites, 109 tests,
+  ~40 s of `ci/rest`; `ouroboros-db` V104). Three things were decided with the user where the
+  issue and the codebase disagreed.
+  - **The purge was not resumable — decided with the user: fix it here.** A failure after the
+    organization row was removed lost the tombstone and `audit.workspace.purged`, because
+    `workspace_lifecycle` cascades with the organization. A retried purge also recorded
+    `dek_versions_destroyed: 0`. V104 makes `workspace_tombstones` the purge's progress record:
+    it is written first (`purged_at` null, DEK versions counted before the shred), the sweep
+    resumes every unfinished one, and completion stamps it and queues the event in one
+    transaction. Restore is refused (`409 workspace_state_conflict`, `details.purge: "started"`)
+    once it exists, so no failure leaves a half-shredded tenant that can come back.
+  - **"Every dispatch point" — decided with the user: BR.5's three.** Run open, stage → active
+    and farm dispatch are asserted in `paused` and `pending_delete`. Webhook delivery,
+    notification routes, mail and sync schedulers do not read `org_state` and were left so.
+  - **Restore after the window closes but before the sweep — decided with the user: kept, and
+    pinned by a test.** A workspace stays recoverable until its purge begins.
+  - **Adversarial bar.** Each control was removed during development and its suite went red.
+    That covers the capability guard, the inbox press check, the service-scope refusal, the
+    revoked-token filter, HMAC signing, the SSRF guard at save and delivery, `admitNewWork` on
+    run open and stage start, the farm gate, owner-only loosening, the policy cache
+    invalidation, the route lock, the members workspace filter and the audit floor. The table
+    is in `ouroboros-rest/README.md`.
+  - **Found, not fixed.** `WebhooksService.create` writes the endpoint and its audit row in
+    separate transactions, so a failed audit write leaves the endpoint stored. Separately,
+    `redelivery ||` in the dispatcher's dead-letter rule is redundant, since a redelivered
+    attempt already exceeds the limit.
 
 ---
 

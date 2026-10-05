@@ -4395,11 +4395,20 @@ by `X-Ouro-Tenant` and the five-minute cookie cache. An owner may still reach th
 routes (`@LifecycleExempt()`).
 
 **The purge** runs every `OURO_LIFECYCLE_PURGE_SWEEP_SECONDS` (`LifecyclePurgeScheduler`). It
-destroys the DEK first (`VaultService.destroy`), then the artifact objects, then the organization
-(through the library; every tenant table cascades). It then counts every table naming the
-workspace (asserted zero) and writes `workspace_tombstones` plus `audit.workspace.purged`
-(actor `system`). See `docs/SECURITY_MODEL.md` §2.6 for exactly what the shred does and does not
+begins by writing its `workspace_tombstones` row (`purged_at` null, the DEK versions counted),
+then destroys the DEK (`VaultService.destroy`), the artifact objects and the organization
+(through the library; every tenant table cascades). It counts every table naming the workspace
+(asserted zero), then stamps `purged_at` and queues `audit.workspace.purged` (actor `system`) in
+one transaction. See `docs/SECURITY_MODEL.md` §2.6 for exactly what the shred does and does not
 reach in a backup.
+
+**The purge resumes** (V104, [#490](https://github.com/NobuData/ouroboros/issues/490)). The sweep
+picks up every tombstone whose `purged_at` is null, even after the organization row (and with it
+the lifecycle row) is gone. Every step is safe to repeat, the DEK count comes from the tombstone,
+and the event is queued once. A restore is refused (`409 workspace_state_conflict`,
+`details.purge: "started"`) once the tombstone exists, so no failure leaves a half-shredded
+workspace that can come back. Until then an owner may restore, even after `purge_after` has
+passed.
 
 **Every transition is audited and queued for webhooks.** `workspace.paused | resumed |
 disconnected | delete_requested | restored` are written to `audit_events` (subject `workspace`),
@@ -4410,7 +4419,9 @@ event it writes directly are its record.
 
 **The rehearsal.** `lifecycle.integration-spec.ts` runs pause → stage finishes → holds → resume,
 disconnect, delete → restore, and delete → day 30 → purge on a fixture tenant in `ci/rest`. It
-asserts that a value sealed before the purge no longer decrypts after it.
+asserts that a value sealed before the purge no longer decrypts after it. BR.6's
+`settings/governance/lifecycle.governance.integration-spec.ts` injects a failure at each purge step
+and asserts that the next sweep completes it.
 
 ## Needs-You reads, snooze and the policy card
 
@@ -4661,6 +4672,48 @@ Every `deepLink` is the owning surface (`/settings/sources`, `/build-farm`,
 - Every change writes one `notification_route.updated` audit event — `kind`, `fields`,
   `previousSource`, and `previousChannel`/`channel`, `previousEnabled`/`enabled`,
   `previousConfig`/`config` — webhook registry version 7. A save that changes nothing writes none.
+
+### Settings governance suites & adversarial checks
+
+BR.6 ([#490](https://github.com/NobuData/ouroboros/issues/490)) certifies the governance core:
+what the product may do without asking a person, and the record of what it did. These controls
+fail silently. A capability check that stops being called permits, it does not throw. So each
+suite asserts through the **real consumer**, written so that removing the control turns it red.
+They live in `src/modules/settings/governance/`, beside BR.1–BR.5's own suites, and add about 40s
+to `yarn test:integration`:
+
+| Suite | Holds |
+| ----- | ----- |
+| `policy.governance.integration-spec.ts` | every publish through `POST /policies`: version ↔ one `policy.published` row, `409` stale base, `422` no-op, loosening held to the owner (preview agrees); one edit → publish → enforce round-trip per rule — auto_merge (arm), dry_run_new_repos (arm), human_review (gate source), protected_paths (guardrail verdict), spend_guard (routing cap) — the last two through the 30 s policy cache |
+| `access.governance.integration-spec.ts` | `can_approve_loops`: role × default/ticked/unticked, set through the members route, at the PR approval route **and** inbox presses and their `allowed` flags (a ticked viewer: inbox yes, PR route no); service tokens: create → act (audited `service`) → scope denied → rotate → revoke, hash-only storage |
+| `webhooks.governance.integration-spec.ts` | the fixture receiver refuses a tampered body, a re-stamped timestamp, a wrong or rotated-out secret, a replay outside ±300 s and a duplicate; SSRF at save (seven internal targets, PATCH) and at delivery through the real guarded transport (DNS rebinding to `169.254.169.254`); exact family filtering; retry backoff → DLQ → one-try redeliver; a commit-time failure leaves neither audit nor outbox row; no `whsec_` anywhere but create/rotate |
+| `routes.governance.integration-spec.ts` | locked routes `409` with nothing stored, a locked route enabled by SQL never sends; the daily digest route sends at its time, once, to owners and admins; org routes and personal preferences each send without suppressing the other |
+| `audit.governance.integration-spec.ts` | filters (`ref=repo:`/`key:`, combinations, `from`/`to` bounds), keyset paging across tied instants under concurrent writes, CSV equal to the view across 1,200 rows with formula cells neutralised and a self-audit count, the purge's `held` count, floor refusals in the sweeper and the database; retention tiers moving only their own sweep, defaults deleting nothing, tombstone counts on the card |
+| `lifecycle.governance.integration-spec.ts` | `org_state` at every dispatch point (run open, stage → active, a real farm `DispatchService` tick) in `paused` and `pending_delete`, the stage in flight finishing, release exactly once; delete's owner + typed name + step-up; restore at day 29 and after the window but before the sweep; DEK destruction by failed decrypt with another tenant untouched; a failure injected at each purge step, then resumed to one tombstone and one `audit.workspace.purged` |
+| `settings.isolation.integration-spec.ts` | every route under `/settings/` and `/policies`, enumerated from the route table: another workspace's ids `404`, their slug in `X-Ouro-Tenant` `404`s, and every row naming their workspace is unchanged |
+
+**Adversarial checks.** Each control below was removed during development and the named suite
+went red:
+
+| Control removed | Red |
+| --------------- | --- |
+| `tenancy/capabilities.ts` — `CapabilityGuard`'s check | access (the matrix) |
+| `inbox-actions/inbox-actions.service.ts` — `assertMayPress` | access (matrix, unticked admin) |
+| `tenancy/tenant.guard.ts` — the service-scope refusal | access (token chain) |
+| `service-accounts/service-accounts.repository.ts` — the revoked/disabled filter | access (token chain) |
+| `webhooks/webhook.signing.ts` — the MAC over the timestamp | webhooks (signatures, replay) |
+| `webhooks/webhook.ssrf.ts` — `guardedAddresses`' per-address check | webhooks (save, rebinding) |
+| `webhooks/webhook.transport.ts` — the guarded `lookup` | webhooks (rebinding) |
+| `webhooks/webhooks.service.ts` — the save-time `checkWebhookTarget` | webhooks (eight save cases) |
+| `audit/audit.repository.ts` — the outbox inside the audit transaction | webhooks (outbox) |
+| `ingest/ingest.service.ts` — `admitNewWork` on run open, and on stage → active | lifecycle (dispatch points) |
+| `farm/dispatch/dispatcher.ts` — the `FARM_DISPATCH_GATE` check | lifecycle (farm hold) |
+| `lifecycle/lifecycle.repository.ts` — `due()`'s unfinished tombstones | lifecycle (purge resume) |
+| `lifecycle/lifecycle.service.ts` — restore's `purgeStarted` refusal | lifecycle (purge resume) |
+| `policies/policy-publish.service.ts` — owner-only loosening, cache invalidation | policy |
+| `notification-routes/routes.service.ts` — the lock check | routes |
+| `members/members.repository.ts` — the member query's workspace filter | isolation |
+| `audit-plane/audit-purge.sweeper.ts` — the floor refusal | audit |
 
 ## Build logs
 

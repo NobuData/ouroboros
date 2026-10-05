@@ -3,13 +3,13 @@
  * [#489](https://github.com/NobuData/ouroboros/issues/489)).
  *
  * The state itself (`workspace_lifecycle`), the `audit.*` outbox, the disconnect preview's live
- * counts, the purge's reads and its tombstone. `organization` and `member` are read here and never
+ * counts, the purge's reads and its tombstone — the purge's progress record since V104 (#490). `organization` and `member` are read here and never
  * written: they are BetterAuth's rows (`LIBRARY_OWNED_TABLES`), so removing the organization goes
  * through the library — see `lifecycle.auth.ts`.
  */
 
 import { Injectable } from "@nestjs/common";
-import { sql, type Transaction } from "kysely";
+import { sql, type Selectable, type Transaction } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
 import { enqueueWebhookEvents } from "../webhooks/webhook.outbox";
@@ -18,6 +18,7 @@ import {
   type Database,
   type WorkspaceLifecycle,
   type WorkspaceLifecycleState,
+  type WorkspaceTombstonesTable,
 } from "../db/schema";
 
 /** A connection or a transaction — whatever a statement should run on. */
@@ -61,11 +62,46 @@ export interface WorkspaceIdentity {
   readonly slug: string | null;
 }
 
-/** A workspace whose recovery window has closed. */
+/** A workspace whose recovery window has closed, or whose purge began and did not finish. */
 export interface DuePurge {
   readonly organizationId: string;
   readonly requestedBy: string | null;
   readonly requestedAt: Date;
+}
+
+/** A purge's tombstone — its progress record, and its completion record once `purgedAt` is set. */
+export interface PurgeRecord {
+  readonly organizationId: string;
+  readonly identity: WorkspaceIdentity;
+  readonly requestedBy: string | null;
+  readonly requestedAt: Date;
+  readonly startedAt: Date;
+  /** When the purge completed; null while it is in progress. */
+  readonly purgedAt: Date | null;
+  /** DEK versions destroyed — counted before the shred. */
+  readonly dekVersionsDestroyed: number;
+  readonly artifactsDeleted: number;
+  readonly rowsRemaining: number;
+}
+
+/**
+ * A tombstone row as a {@link PurgeRecord}.
+ *
+ * @param row - The row.
+ * @returns The record.
+ */
+function recordOf(row: Selectable<WorkspaceTombstonesTable>): PurgeRecord {
+  return {
+    organizationId: row.organization_id,
+    identity: { name: row.name, slug: row.slug },
+    requestedBy: row.requested_by,
+    requestedAt: row.requested_at,
+    startedAt: row.started_at,
+    purgedAt: row.purged_at,
+    dekVersionsDestroyed: row.dek_versions_destroyed,
+    artifactsDeleted: row.artifacts_deleted,
+    rowsRemaining: row.rows_remaining,
+  };
 }
 
 @Injectable()
@@ -132,8 +168,8 @@ export class LifecycleRepository {
    * Queue one event for outbound webhook delivery — the purge's `audit.workspace.purged`, which
    * has no audit row to ride (its trail is deleted with the workspace), so it is written here.
    *
-   * @param executor - Where to write it. The purge passes the pool: the workspace is gone, so
-   *   there is no change left to share a transaction with.
+   * @param executor - Where to write it. The purge passes the transaction that completes its
+   *   tombstone, so the event is queued exactly once.
    * @param organizationId - The workspace.
    * @param types - The registered types it is published as.
    * @param payload - The event's `data`.
@@ -258,25 +294,55 @@ export class LifecycleRepository {
   }
 
   /**
-   * Every workspace whose recovery window has closed.
+   * Every purge the sweep owes: workspaces whose recovery window has closed, and every purge that
+   * began and did not finish (V104, [#490](https://github.com/NobuData/ouroboros/issues/490)).
+   *
+   * The second half is what makes a purge resumable. Once the organization row is removed its
+   * `workspace_lifecycle` row cascades away, so a purge that failed after that step would never
+   * be seen again by the first half — the unfinished tombstone is how it is found.
    *
    * @param now - The instant to judge against.
-   * @returns The due purges, oldest window first.
+   * @returns The due purges, each workspace once — unfinished purges first, then the oldest window.
    */
   async due(now: Date): Promise<DuePurge[]> {
-    const rows = await this.database.db
-      .selectFrom("workspace_lifecycle")
-      .select(["organization_id", "changed_by", "changed_at"])
-      .where("state", "=", "pending_delete")
-      .where("purge_after", "<=", now)
-      .orderBy("purge_after", "asc")
-      .execute();
+    const db = this.database.db;
+    const [unfinished, closed] = await Promise.all([
+      db
+        .selectFrom("workspace_tombstones")
+        .select(["organization_id", "requested_by", "requested_at"])
+        .where("purged_at", "is", null)
+        .orderBy("started_at", "asc")
+        .execute(),
+      db
+        .selectFrom("workspace_lifecycle")
+        .select(["organization_id", "changed_by", "changed_at"])
+        .where("state", "=", "pending_delete")
+        .where("purge_after", "<=", now)
+        .orderBy("purge_after", "asc")
+        .execute(),
+    ]);
 
-    return rows.map((row) => ({
-      organizationId: row.organization_id,
-      requestedBy: row.changed_by,
-      requestedAt: row.changed_at,
-    }));
+    const due = new Map<string, DuePurge>();
+
+    for (const row of unfinished) {
+      due.set(row.organization_id, {
+        organizationId: row.organization_id,
+        requestedBy: row.requested_by,
+        requestedAt: row.requested_at,
+      });
+    }
+
+    for (const row of closed) {
+      if (!due.has(row.organization_id)) {
+        due.set(row.organization_id, {
+          organizationId: row.organization_id,
+          requestedBy: row.changed_by,
+          requestedAt: row.changed_at,
+        });
+      }
+    }
+
+    return [...due.values()];
   }
 
   /**
@@ -348,34 +414,163 @@ export class LifecycleRepository {
   }
 
   /**
-   * Write the tombstone — the completion record of a purge, kept deliberately.
+   * A workspace's purge record, if a purge of it has begun.
    *
-   * @param tombstone - What the purge did.
+   * @param organizationId - The workspace.
+   * @returns The tombstone — complete when `purgedAt` is set — or `undefined` when no purge began.
    */
-  async tombstone(tombstone: {
-    organizationId: string;
-    identity: WorkspaceIdentity;
-    requestedBy: string | null;
-    requestedAt: Date;
-    purgedAt: Date;
-    dekVersionsDestroyed: number;
-    artifactsDeleted: number;
-    rowsRemaining: number;
-  }): Promise<void> {
+  async purgeRecord(organizationId: string): Promise<PurgeRecord | undefined> {
+    const row = await this.database.db
+      .selectFrom("workspace_tombstones")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+
+    return row === undefined ? undefined : recordOf(row);
+  }
+
+  /**
+   * Whether a purge of the workspace has begun — read inside a transition's transaction, so a
+   * restore and a purge's start serialise on the lifecycle row.
+   *
+   * @param trx - The transaction holding the workspace's lifecycle lock.
+   * @param organizationId - The workspace.
+   * @returns True once a tombstone exists.
+   */
+  async purgeBegun(trx: Transaction<Database>, organizationId: string): Promise<boolean> {
+    const row = await trx
+      .selectFrom("workspace_tombstones")
+      .select("organization_id")
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+
+    return row !== undefined;
+  }
+
+  /**
+   * Begin a purge: write its tombstone **before anything is destroyed**.
+   *
+   * Under the lifecycle row's lock, and only while the workspace is still `pending_delete` with
+   * its window closed — a restore that won the lock first leaves nothing to purge. The DEK
+   * versions are counted here, before the shred, so a purge resumed after the keys are gone still
+   * records how many there were.
+   *
+   * @param due - The workspace and who asked for its deletion when.
+   * @param now - When the purge begins.
+   * @returns The record, or `undefined` when the workspace is no longer due (restored, or gone).
+   */
+  async beginPurge(due: DuePurge, now: Date): Promise<PurgeRecord | undefined> {
+    const { organizationId } = due;
+
+    return this.database.transaction(async (trx) => {
+      const lifecycle = await trx
+        .selectFrom("workspace_lifecycle")
+        .select(["state", "purge_after"])
+        .where("organization_id", "=", organizationId)
+        .forUpdate()
+        .executeTakeFirst();
+
+      if (
+        lifecycle?.state !== "pending_delete" ||
+        lifecycle.purge_after === null ||
+        lifecycle.purge_after > now
+      ) {
+        return undefined;
+      }
+
+      const identity = await trx
+        .selectFrom("organization")
+        .select(["name", "slug"])
+        .where("id", "=", organizationId)
+        .executeTakeFirst();
+
+      if (identity === undefined) return undefined;
+
+      const keys = await trx
+        .selectFrom("tenant_keys")
+        .select((eb) => eb.fn.countAll<string>().as("count"))
+        .where("organization_id", "=", organizationId)
+        .executeTakeFirstOrThrow();
+
+      const row = await trx
+        .insertInto("workspace_tombstones")
+        .values({
+          organization_id: organizationId,
+          name: identity.name,
+          slug: identity.slug,
+          requested_by: due.requestedBy,
+          requested_at: due.requestedAt,
+          started_at: now,
+          purged_at: null,
+          dek_versions_destroyed: Number(keys.count),
+          artifacts_deleted: 0,
+          rows_remaining: 0,
+        })
+        .returningAll()
+        .executeTakeFirstOrThrow();
+
+      return recordOf(row);
+    });
+  }
+
+  /**
+   * Record how many artifact objects a purge attempt removed.
+   *
+   * The larger of the stored and the new count: a resumed attempt deletes the same objects again
+   * (deletion is idempotent) or, once their rows are gone, none — neither may lower the record.
+   *
+   * @param organizationId - The workspace.
+   * @param deleted - What this attempt removed.
+   */
+  async recordArtifacts(organizationId: string, deleted: number): Promise<void> {
     await this.database.db
-      .insertInto("workspace_tombstones")
-      .values({
-        organization_id: tombstone.organizationId,
-        name: tombstone.identity.name,
-        slug: tombstone.identity.slug,
-        requested_by: tombstone.requestedBy,
-        requested_at: tombstone.requestedAt,
-        purged_at: tombstone.purgedAt,
-        dek_versions_destroyed: tombstone.dekVersionsDestroyed,
-        artifacts_deleted: tombstone.artifactsDeleted,
-        rows_remaining: tombstone.rowsRemaining,
-      })
-      .onConflict((conflict) => conflict.column("organization_id").doNothing())
+      .updateTable("workspace_tombstones")
+      .set({ artifacts_deleted: sql<number>`greatest(artifacts_deleted, ${deleted})` })
+      .where("organization_id", "=", organizationId)
+      .where("purged_at", "is", null)
       .execute();
+  }
+
+  /**
+   * Complete a purge: stamp the tombstone and queue `audit.workspace.purged`, in one transaction,
+   * so the event is queued exactly once — by whichever attempt completed the record.
+   *
+   * @param organizationId - The workspace.
+   * @param completion - When, what was left, and the event to queue.
+   * @returns The completed record, or `undefined` when another attempt completed it first.
+   */
+  async completePurge(
+    organizationId: string,
+    completion: {
+      readonly now: Date;
+      readonly rowsRemaining: number;
+      readonly event: (record: PurgeRecord) => {
+        readonly types: readonly string[];
+        readonly payload: Record<string, unknown>;
+      };
+    },
+  ): Promise<PurgeRecord | undefined> {
+    return this.database.transaction(async (trx) => {
+      const row = await trx
+        .updateTable("workspace_tombstones")
+        .set({
+          // Never before it started, whatever clock the sweep was handed.
+          purged_at: sql<Date>`greatest(${completion.now}::timestamptz, started_at)`,
+          rows_remaining: completion.rowsRemaining,
+        })
+        .where("organization_id", "=", organizationId)
+        .where("purged_at", "is", null)
+        .returningAll()
+        .executeTakeFirst();
+
+      if (row === undefined) return undefined;
+
+      const record = recordOf(row);
+      const { types, payload } = completion.event(record);
+
+      await this.enqueue(trx, organizationId, types, payload, completion.now);
+
+      return record;
+    });
   }
 }

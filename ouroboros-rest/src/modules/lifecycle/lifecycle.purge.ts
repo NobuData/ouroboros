@@ -3,24 +3,28 @@
  * [#489](https://github.com/NobuData/ouroboros/issues/489)).
  *
  * ```
+ * 0. begin the tombstone      `workspace_tombstones`, purged_at null, DEK versions counted
  * 1. destroy the DEK          every version, first — the crypto-shred
  * 2. delete artifact objects  the object store, the plane a row delete cannot reach
  * 3. drop queued outbox rows  their subscribers are about to be deleted
  * 4. remove the organization  through BetterAuth; every tenant table cascades
  * 5. count what is left       every table naming the workspace — asserted zero
- * 6. tombstone + event        `workspace_tombstones` and `audit.workspace.purged`, actor system
+ * 6. complete + event         stamp purged_at and queue `audit.workspace.purged`, actor system
  * ```
  *
  * **The DEK goes first** so a purge interrupted at any later step has already made the live
- * ciphertext unreadable; a re-run finds the workspace still `pending_delete` and finishes the job,
- * every step being safe to repeat. The workspace's own `audit_events` rows cascade with it (V022),
- * so the purge's lasting record is the tombstone and the outbox event, which outlive it on purpose.
+ * ciphertext unreadable. **The tombstone goes before it** (V104,
+ * [#490](https://github.com/NobuData/ouroboros/issues/490)): an unfinished tombstone is how the
+ * next sweep finds a purge to resume — even after step 4 has cascaded the workspace's lifecycle
+ * row away — and it is what makes a restore refuse a workspace whose keys may already be gone, so
+ * no failure leaves a half-shredded tenant. The workspace's own `audit_events` rows cascade with
+ * it (V022), so the purge's lasting record is the tombstone and the outbox event, which outlive it
+ * on purpose.
  */
 
 import { Inject, Injectable, Logger } from "@nestjs/common";
 
 import { WORKSPACE_PURGED_EVENT } from "../audit/audit.events";
-import { DatabaseService } from "../db/db.service";
 import { describeForLog } from "../errors/failure";
 import { ARTIFACT_STORE } from "../farm/artifacts/artifact.store.factory";
 import type { ArtifactStore } from "../farm/artifacts/artifact.store";
@@ -48,14 +52,12 @@ export class LifecyclePurge {
 
   /**
    * @param lifecycle - The statements.
-   * @param database - The connection, for the outbox write after the workspace is gone.
    * @param vault - Whose `destroy` is the shred.
    * @param store - The artifact object store.
    * @param auth - The library's rows: the organization itself.
    */
   constructor(
     private readonly lifecycle: LifecycleRepository,
-    private readonly database: DatabaseService,
     private readonly vault: VaultService,
     @Inject(ARTIFACT_STORE) private readonly store: ArtifactStore,
     @Inject(WORKSPACE_AUTH_STORE) private readonly auth: WorkspaceAuthStore,
@@ -66,7 +68,8 @@ export class LifecyclePurge {
    *
    * @param now - The instant to judge against; a test advances it past the window.
    * @returns One report per workspace purged. A workspace whose purge threw is logged and
-   *   retried on the next sweep — it is still `pending_delete`, so it is still due.
+   *   resumed on the next sweep — its unfinished tombstone (or, before that was written, its
+   *   `pending_delete` row) keeps it due.
    */
   async sweep(now: Date): Promise<PurgeReport[]> {
     const reports: PurgeReport[] = [];
@@ -88,29 +91,48 @@ export class LifecyclePurge {
   }
 
   /**
-   * Purge one workspace.
+   * Purge one workspace — or resume a purge of it that began and did not finish.
+   *
+   * The tombstone is written first ({@link LifecycleRepository.beginPurge}), so every step after
+   * it is found again by the next sweep however the attempt ends. Each step is safe to repeat:
+   * destroying keys that are gone removes nothing, deleting an object that is gone succeeds,
+   * and the organization is removed only while it exists. Completion stamps the tombstone and
+   * queues `audit.workspace.purged` in one transaction, so the event is queued once.
    *
    * @param due - The workspace, and who asked for its deletion when.
    * @param now - When the purge runs.
-   * @returns The report, or `undefined` when the workspace was already gone.
+   * @returns The report, or `undefined` when there is nothing to do — the workspace was restored,
+   *   is gone with its purge complete, or another attempt completed it first.
    */
   async purge(due: DuePurge, now: Date): Promise<PurgeReport | undefined> {
     const { organizationId } = due;
-    const identity = await this.lifecycle.identity(organizationId);
+    const found = await this.lifecycle.purgeRecord(organizationId);
 
-    if (identity === undefined) {
+    if (found?.purgedAt != null) {
       return undefined;
     }
 
-    // Logged before anything is removed: if the process dies between removing the organization and
-    // writing the tombstone, this line is the record of what was purged.
-    this.logger.warn(`Purging workspace ${organizationId} (${identity.name}); the DEK goes first.`);
+    const record = found ?? (await this.lifecycle.beginPurge(due, now));
 
-    const dekVersionsDestroyed = await this.vault.destroy(organizationId);
+    if (record === undefined) {
+      return undefined;
+    }
+
+    this.logger.warn(
+      `${found === undefined ? "Purging" : "Resuming the purge of"} workspace ${organizationId} ` +
+        `(${record.identity.name}); the DEK goes first.`,
+    );
+
+    await this.vault.destroy(organizationId);
+
     const { deleted, failed } = await this.deleteArtifacts(organizationId);
 
+    await this.lifecycle.recordArtifacts(organizationId, deleted);
     await this.lifecycle.clearOutbox(organizationId);
-    await this.auth.removeOrganization(organizationId);
+
+    if ((await this.lifecycle.identity(organizationId)) !== undefined) {
+      await this.auth.removeOrganization(organizationId);
+    }
 
     const rowsRemaining = await this.lifecycle.residualRows(organizationId);
 
@@ -120,38 +142,32 @@ export class LifecyclePurge {
       );
     }
 
-    await this.lifecycle.tombstone({
-      organizationId,
-      identity,
-      requestedBy: due.requestedBy,
-      requestedAt: due.requestedAt,
-      purgedAt: now,
-      dekVersionsDestroyed,
-      artifactsDeleted: deleted,
+    const completed = await this.lifecycle.completePurge(organizationId, {
+      now,
       rowsRemaining,
+      event: (done) => ({
+        types: auditEventTypes(WORKSPACE_PURGED_EVENT),
+        payload: {
+          action: WORKSPACE_PURGED_EVENT,
+          organizationId,
+          actorId: null,
+          actor: "system",
+          at: now.toISOString(),
+          dek_versions_destroyed: done.dekVersionsDestroyed,
+          artifacts_deleted: done.artifactsDeleted,
+          rows_remaining: done.rowsRemaining,
+        },
+      }),
     });
 
-    await this.lifecycle.enqueue(
-      this.database.db,
-      organizationId,
-      auditEventTypes(WORKSPACE_PURGED_EVENT),
-      {
-        action: WORKSPACE_PURGED_EVENT,
-        organizationId,
-        actorId: null,
-        actor: "system",
-        at: now.toISOString(),
-        dek_versions_destroyed: dekVersionsDestroyed,
-        artifacts_deleted: deleted,
-        rows_remaining: rowsRemaining,
-      },
-      now,
-    );
+    if (completed === undefined) {
+      return undefined;
+    }
 
     return {
       organizationId,
-      dekVersionsDestroyed,
-      artifactsDeleted: deleted,
+      dekVersionsDestroyed: completed.dekVersionsDestroyed,
+      artifactsDeleted: completed.artifactsDeleted,
       artifactsFailed: failed,
       rowsRemaining,
     };
