@@ -4483,6 +4483,11 @@ GET|PATCH /api/v1/inbox/notifications   the caller's digest on/time (UTC), insta
   the token's own signed-in person; anyone else's session refuses the link. Expired, used,
   answered, superseded, withdrawn and unknown links each render their own page.
 - **Defaults** (no stored preferences): digest off (09:00 UTC once on), instant `err` mails on.
+- **The channel rows are the card's text** (`channels.truth.ts`): the *Answer From Anywhere* card
+  (BO.4 [#469](https://github.com/NobuData/ouroboros/issues/469)) prints each row's `label`,
+  `summary` and `reason` verbatim and draws a ✓ for `connected` alone, so a sentence changed here
+  is a sentence changed on the page. GitHub's summary states the comment's whole life — posted
+  when a decision is asked, edited when it is answered.
   Org-level notification routes are #488's (BR.4).
 
 **The inbox suites** (BN.5 [#465](https://github.com/NobuData/ouroboros/issues/465)) — integration

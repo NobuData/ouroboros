@@ -1,12 +1,13 @@
 /*
  * The Needs-You inbox (BO.1, #466; decision cards BO.2, #467; resolved list and zero card BO.3,
- * #468 — mockup 16).
+ * #468; channels and policy cards BO.4, #469 — mockup 16).
  *
  * Mounted in the shell's content pane: no fixed or sticky chrome of its own, every length a token
  * or a rem (so the five-step font-size preference scales the page), every hue a token (so both
  * themes come from `app/tokens.css`). The head is the insights frame's shape; the queue is the
  * mockup's `.decision` cards, the snoozed items are plain rows until BO.5 (#470), and under them
- * are the zero card and the resolved list.
+ * are the zero card and the resolved list. Beside all of it, the mockup's side column: where a
+ * decision can be answered from, and which rules ask for a person.
  */
 
 .inbox {
@@ -51,6 +52,31 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-6);
+}
+
+/*
+ * The mockup's `.grid`: the queue and the resolved list take eight columns, the side cards four.
+ * `minmax(0, 1fr)` rather than `1fr`, so a long path in a card wraps inside its column instead of
+ * widening it and scrolling the pane sideways.
+ */
+.inbox__grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--sp-8);
+  align-items: start;
+}
+
+.inbox__main {
+  grid-column: span 8;
+  min-width: 0;
+}
+
+.inbox__side {
+  display: flex;
+  flex-direction: column;
+  grid-column: span 4;
+  gap: var(--sp-8);
+  min-width: 0;
 }
 
 /* ---------- the queue ---------- */
@@ -529,6 +555,16 @@
   border-bottom: 0;
 }
 
+/*
+ * The tick and what it ticks, as one item: a line too long for the row wraps inside itself, with
+ * its tick still in front of it, rather than dropping under a tick left alone on the row.
+ */
+.inbox-resolved__what {
+  display: flex;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+
 .inbox-resolved__tick {
   flex: none;
   color: var(--ok);
@@ -556,17 +592,20 @@
 }
 
 /*
- * The policy note sits in the row, after its control: hidden until the control is hovered, holds
- * focus, or was pressed. In the flow rather than floating, so nothing clips it and the link in it
- * is one Tab from the control.
+ * The inbox's tooltip (`InfoTip`): a note after its control, hidden until the control is hovered,
+ * holds focus, or was pressed. In the flow rather than floating, so nothing clips it.
+ *
+ * Beside its control — the resolved list's — the wrapper holds the two and nothing else, so the
+ * wrapper's own hover and focus are theirs: the gap between them is part of it, and focus moving
+ * from the control to a link in the note never leaves it.
  */
-.inbox-resolved__policy {
+.inbox-tip {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-3);
 }
 
-.inbox-resolved__policy-toggle {
+.inbox-tip__toggle {
   padding: 0 var(--sp-1);
   border: 0;
   background: transparent;
@@ -576,11 +615,12 @@
   cursor: pointer;
 }
 
-.inbox-resolved__policy-toggle:hover {
+.inbox-tip__toggle:hover,
+.inbox-tip--pinned .inbox-tip__toggle {
   color: var(--accent);
 }
 
-.inbox-resolved__policy-note {
+.inbox-tip__note {
   display: none;
   align-items: center;
   gap: var(--sp-3);
@@ -592,10 +632,27 @@
   font-size: var(--t-xs);
 }
 
-.inbox-resolved__policy:hover .inbox-resolved__policy-note,
-.inbox-resolved__policy:focus-within .inbox-resolved__policy-note,
-.inbox-resolved__policy--pinned .inbox-resolved__policy-note {
+.inbox-tip:not(.inbox-tip--framed):hover .inbox-tip__note,
+.inbox-tip:not(.inbox-tip--framed):focus-within .inbox-tip__note,
+.inbox-tip--pinned .inbox-tip__note {
   display: inline-flex;
+}
+
+/*
+ * Framing a row — the policy card's — the wrapper holds the row's whole line, and the note opens
+ * under it. Here the wrapper's hover would be the row's (a row that opened its note wherever it
+ * was touched would jump about under the pointer), so only the control and the note itself open
+ * it, and the two must touch: nothing between them may be a gap or a margin.
+ */
+.inbox-tip--framed {
+  display: block;
+}
+
+.inbox-tip--framed:has(.inbox-tip__toggle:hover) .inbox-tip__note,
+.inbox-tip--framed:has(.inbox-tip__toggle:focus-visible) .inbox-tip__note,
+.inbox-tip--framed .inbox-tip__note:hover,
+.inbox-tip--framed.inbox-tip--pinned .inbox-tip__note {
+  display: block;
 }
 
 .inbox-resolved__policy-link {
@@ -620,6 +677,255 @@
 .inbox-resolved__quiet {
   margin: 0;
   padding: var(--sp-4) var(--sp-2);
+  color: var(--ink-faint);
+  font-size: var(--t-sm);
+}
+
+/* ---------- the side column: Answer From Anywhere ---------- */
+
+/* A side card's head wraps: at four columns of a narrow pane its action drops under its title. */
+.inbox-side__head {
+  flex-wrap: wrap;
+  row-gap: var(--sp-3);
+}
+
+.inbox-channels {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * The mockup's `.chan-row`. The mark shares the name's line and nothing else: the mockup's lines
+ * are a few words, the service's are sentences, and a sentence squeezed beside the mark in a
+ * four-column card is a ribbon of two words a line.
+ */
+.inbox-channels__row {
+  padding: 0.5625rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.inbox-channels__row:last-child {
+  border-bottom: 0;
+}
+
+.inbox-channels__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-5);
+}
+
+.inbox-channels__name {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.inbox-channels__sub {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* Why a channel is not connected: the service's sentence, a step above the description's ink. */
+.inbox-channels__reason {
+  margin: var(--sp-1) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* How the channel stands. Only a connected one is set in the ok colour — the mockup's `.ok-mark`. */
+.inbox-channels__mark {
+  flex: none;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+
+.inbox-channels__mark--ok {
+  color: var(--ok);
+}
+
+/* The daily digest, on the email row: the switch, then its time, then when the next one leaves. */
+.inbox-channels__digest {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin-top: var(--sp-4);
+}
+
+.inbox-channels__digest-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.inbox-channels__digest-lead {
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+
+.inbox-channels__digest-state {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  /* The time is live: tabular digits keep `09:00` → `10:30` from nudging the row. */
+  font-variant-numeric: tabular-nums;
+}
+
+.inbox-channels__digest-time {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-4);
+}
+
+.inbox-channels__time-field {
+  max-width: 9rem;
+}
+
+.inbox-channels__next {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.inbox-channels__refusal {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+}
+
+.inbox-channels__quiet {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-sm);
+}
+
+.inbox-channels__foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--sp-5);
+}
+
+/* *Chat Ops* is not built: the mark says so beside the name, in the insights frame's manner. */
+.inbox-channels__soon {
+  margin-left: var(--sp-2);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+/* ---------- the side column: What Needs A Human ---------- */
+
+.inbox-rules {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inbox-rules__row {
+  padding: 0.4375rem 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.inbox-rules__row:last-child {
+  border-bottom: 0;
+}
+
+/*
+ * The mockup's `.rule-row`, allowed to wrap: at four columns of a narrow pane the trailing
+ * cluster drops to a second line, still at the far edge — whole, so the ⓘ is never left on a
+ * line of its own.
+ */
+.inbox-rules__line {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 0.5625rem;
+}
+
+.inbox-rules__tick {
+  flex: none;
+  color: var(--ok);
+}
+
+.inbox-rules__rule {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The outcome, the way to edit the rule, and the ⓘ: one cluster, at the row's far edge. */
+.inbox-rules__trail {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  column-gap: 0.5625rem;
+  margin-left: auto;
+}
+
+.inbox-rules__outcome {
+  color: var(--warn);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.inbox-rules__arrow {
+  color: var(--ink-faint);
+}
+
+.inbox-rules__edit {
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.inbox-rules__edit:hover {
+  color: var(--accent);
+}
+
+/*
+ * The source note opens under the line at the card's width — a card this narrow has no room for
+ * a note beside its control. The control ends the line's last row and fills that row's height
+ * (the items stretch, and nothing here has a row gap or a margin), so its bottom edge is the
+ * note's top edge and the pointer can cross from one to the other.
+ */
+.inbox-rules__row .inbox-tip__note {
+  font-family: var(--f-ui);
+  line-height: var(--lh-body);
+}
+
+/* What the rule covers — the protected globs — under its line. */
+.inbox-rules__detail {
+  margin: var(--sp-1) 0 0;
+  color: var(--ink-faint);
+  overflow-wrap: anywhere;
+}
+
+.inbox-rules__caption {
+  margin: var(--sp-5) 0 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.inbox-rules__quiet {
+  margin: 0;
   color: var(--ink-faint);
   font-size: var(--t-sm);
 }
@@ -730,6 +1036,14 @@
 .inbox-prefs__saved {
   color: var(--ok);
   font-size: var(--t-sm);
+}
+
+/* The mockup's own break: below it the side cards sit under the queue rather than beside it. */
+@media (max-width: 68.75rem) {
+  .inbox__main,
+  .inbox__side {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 48rem) {

@@ -57786,7 +57786,7 @@ export interface operations {
                      *         {
                      *           "id": "github",
                      *           "label": "GitHub",
-                     *           "summary": "Every decision is mirrored as a PR comment.",
+                     *           "summary": "Every decision is mirrored as a PR comment — posted when it is asked, edited when it is answered.",
                      *           "state": "connected",
                      *           "until": null,
                      *           "reason": null

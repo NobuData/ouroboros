@@ -27,6 +27,9 @@ export const PREFERENCES_FAILED = "Your notification settings could not be saved
 /** `HH:MM`, as REST holds the digest time. */
 export const DIGEST_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+/** What a digest time that is not one is told — in the sheet and on the email row alike. */
+export const DIGEST_TIME_INVALID = "Use a time like 09:00 (UTC).";
+
 /**
  * The decision kinds a person may mute, with the words the sheet uses — the shipped kinds that
  * can file a card today (`spend_approval` is dormant until AF.4, so muting it would promise
@@ -73,7 +76,7 @@ export function draftOf(preferences: NotificationPreferences): PreferencesDraft 
  * @returns The reason.
  */
 export function draftProblem(draft: PreferencesDraft): string | undefined {
-  return DIGEST_TIME_PATTERN.test(draft.digestTime) ? undefined : "Use a time like 09:00 (UTC).";
+  return DIGEST_TIME_PATTERN.test(draft.digestTime) ? undefined : DIGEST_TIME_INVALID;
 }
 
 /**

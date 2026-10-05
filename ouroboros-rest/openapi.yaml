@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.39.13"
+  version: "0.39.14"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -22728,7 +22728,7 @@ paths:
                     reason: Arrives later.
                   - id: github
                     label: GitHub
-                    summary: Every decision is mirrored as a PR comment.
+                    summary: Every decision is mirrored as a PR comment — posted when it is asked, edited when it is answered.
                     state: connected
                     until: null
                     reason: null

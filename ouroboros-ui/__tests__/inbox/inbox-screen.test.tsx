@@ -1,10 +1,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { InboxQueue, InboxResolved } from "@/app/api/inbox";
+import type { InboxQueue, InboxResolved, InboxSide, NotificationPreferences } from "@/app/api/inbox";
 import type { QueuePollOptions } from "@/app/inbox/queue-poll";
 import { resetResolvedCollapsed } from "@/app/inbox/resolved-collapse";
 import type { ResolvedPollOptions } from "@/app/inbox/resolved-poll";
+import type { SidePollOptions } from "@/app/inbox/side-poll";
 import { INBOX_BADGE_SOURCE } from "@/app/shell/nav-modules";
 import { navRegistry, setNavBadge } from "@/app/shell/nav-registry";
 import type { PollAnswer } from "@/app/poll";
@@ -15,13 +16,17 @@ import {
   MERGE_ITEM,
   WAIVE_ITEM,
   actionResult,
+  digestOn,
   emptyQueue,
   inboxItem,
   inboxQueue,
   inboxReadings,
+  inboxSide,
   preferences,
   resolvedDay,
   resolvedRow,
+  seededChannels,
+  seededPolicyCard,
   snoozedItem,
   utcClock,
 } from "../helpers/inbox";
@@ -32,7 +37,9 @@ import { settle } from "../helpers/settle";
  * The `/inbox` frame (BO.1, #466): the head the service composed, *Snooze all 1h* and its
  * confirmation, *Notification settings*, the queue as decision cards (BO.2, #467), the badge, the
  * poll that keeps them fresh, and under the queue the *Inbox zero* card and the resolved list
- * (BO.3, #468).
+ * (BO.3, #468). Beside them, the side column (BO.4, #469): the channels' truth and the policy
+ * card on a poll of their own, and the reader's preferences shared by the email row and the
+ * sheet's two entry points.
  */
 
 const snoozeAll = vi.fn();
@@ -85,20 +92,41 @@ const RESOLVED_POLL: ResolvedPollOptions = {
   visible: () => true,
 };
 
+/** What the side column's poll answers next; `null` never answers. */
+let sideAnswer: PollAnswer<InboxSide> | null = null;
+
+/** How many times the side column's poll read. */
+let sideReads = 0;
+
+const SIDE_POLL: SidePollOptions = {
+  read: () => {
+    sideReads += 1;
+
+    return sideAnswer === null ? new Promise(() => {}) : Promise.resolve(sideAnswer);
+  },
+  visible: () => true,
+};
+
 /** A fresh poll answer. */
-function fresh(queue: InboxQueue): PollAnswer<InboxQueue> {
-  return { state: "fresh", payload: queue, etag: null, pollAfterSeconds: null };
+function fresh<T>(payload: T): PollAnswer<T> {
+  return { state: "fresh", payload, etag: null, pollAfterSeconds: null };
 }
 
 /** The frame, over these readings, as Ken sees it. */
-function frame(queue: InboxQueue | null = inboxQueue(), resolved: InboxResolved | null = resolvedDay()) {
+function frame(
+  queue: InboxQueue | null = inboxQueue(),
+  resolved: InboxResolved | null = resolvedDay(),
+  side: InboxSide | null = inboxSide(),
+  notifications: NotificationPreferences | null = preferences(),
+) {
   return render(
     <InboxScreen
       clock={utcClock}
       poll={POLL}
       readerId="user-ken"
-      readings={inboxReadings(queue, resolved)}
+      readings={inboxReadings(queue, resolved, side, notifications)}
       resolvedPoll={RESOLVED_POLL}
+      sidePoll={SIDE_POLL}
     />,
   );
 }
@@ -109,6 +137,8 @@ const headline = () => screen.getByRole("heading", { level: 1 });
 beforeEach(() => {
   answer = null;
   reads = 0;
+  sideAnswer = null;
+  sideReads = 0;
   days.clear();
   dayReads = [];
   window.localStorage.clear();
@@ -731,6 +761,289 @@ describe("the resolved list", () => {
   });
 });
 
+describe("the side column", () => {
+  /** The column. */
+  const column = () => screen.getByRole("complementary", { name: "Channels and policies" });
+
+  /** The two cards. */
+  const channels = () => within(column()).getByRole("region", { name: "Answer from anywhere" });
+  const policies = () => within(column()).getByRole("region", { name: "What needs a human" });
+
+  /** A channel's row, by its name. */
+  function channelRow(name: string): HTMLElement {
+    return within(channels())
+      .getAllByRole("listitem")
+      .find((item) => item.querySelector(".inbox-channels__name")?.textContent === name)!;
+  }
+
+  /** The policy card's rules, in order. */
+  const rules = () =>
+    within(policies())
+      .queryAllByRole("listitem")
+      .map((item) => item.querySelector(".inbox-rules__rule")!.textContent);
+
+  it("sits beside the queue and the resolved list, drawn from the first read", () => {
+    frame();
+
+    expect(column()).toHaveClass("inbox__side");
+    expect(column().closest(".inbox__grid")).toContainElement(screen.getByRole("region", { name: "Decisions waiting" }));
+    expect(screen.getByRole("region", { name: "Resolved decisions" }).closest(".inbox__main")).not.toBeNull();
+    expect(column().closest(".inbox__main")).toBeNull();
+
+    expect(channelRow("GitHub").querySelector(".inbox-channels__mark")).toHaveTextContent("✓ connected");
+    expect(channelRow("Slack")).toHaveTextContent("Arrives with Chat Ops.");
+    expect(rules()).toEqual(["refactor label", "protected paths", "unverifiable claims"]);
+    expect(policies()).toHaveTextContent("Everything else merges itself when gates are green.");
+  });
+
+  it("reads both cards on one poll of their own", async () => {
+    frame();
+    await act(async () => {});
+
+    expect(sideReads).toBeGreaterThan(0);
+  });
+
+  it("flips a channel that landed, with no reload and no change to the page", async () => {
+    sideAnswer = fresh(
+      inboxSide({ channels: seededChannels({ slack: { state: "connected", until: null, reason: null } }) }),
+    );
+    frame();
+
+    // The first paint is the server's read, a moment before Chat Ops landed.
+    expect(channelRow("Slack").querySelector(".inbox-channels__mark")).toHaveTextContent("not yet");
+
+    await waitFor(() =>
+      expect(channelRow("Slack").querySelector(".inbox-channels__mark")).toHaveTextContent("✓ connected"),
+    );
+    expect(channelRow("Slack")).not.toHaveTextContent("Arrives with Chat Ops.");
+  });
+
+  it("takes a channel's ✓ away the same way — a mail server that went", async () => {
+    sideAnswer = fresh(
+      inboxSide({
+        channels: seededChannels({
+          email: { state: "available", reason: "This deployment has no mail server: set OURO_SMTP_URL." },
+        }),
+      }),
+    );
+    frame();
+
+    expect(within(channelRow("Email")).getByRole("switch", { name: "Daily digest" })).toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(channelRow("Email").querySelector(".inbox-channels__mark")).toHaveTextContent("not connected"),
+    );
+    // The digest's switch goes with it: a switch on a channel that cannot deliver does nothing.
+    expect(within(channelRow("Email")).queryByRole("switch")).toBeNull();
+  });
+
+  it("drops a removed policy's row and rephrases the caption under dry-run, live", async () => {
+    sideAnswer = fresh(
+      inboxSide({
+        policies: seededPolicyCard({
+          rows: seededPolicyCard().rows.filter((row) => row.id !== "human_review:label:refactor"),
+          dryRun: true,
+          caption: "Dry-run is on: nothing merges itself — every loop's PR opens as a draft for a person to review.",
+        }),
+      }),
+    );
+    frame();
+
+    expect(rules()).toContain("refactor label");
+
+    await waitFor(() => expect(rules()).toEqual(["protected paths", "unverifiable claims"]));
+    expect(policies()).toHaveTextContent("Dry-run is on: nothing merges itself");
+    expect(policies()).not.toHaveTextContent("merges itself when gates are green");
+  });
+
+  it("says each card could not be read when the first read failed, then fills them from the poll", async () => {
+    frame(inboxQueue(), resolvedDay(), null);
+
+    expect(channels()).toHaveTextContent("The inbox's channels and policies could not be read.");
+    expect(policies()).toHaveTextContent("The inbox's channels and policies could not be read.");
+    expect(column().textContent).not.toContain("✓");
+    expect(rules()).toEqual([]);
+
+    sideAnswer = fresh(inboxSide());
+    await act(async () => {
+      (await import("@/app/dashboard/summary-refresh")).requestSummaryRefresh();
+    });
+
+    await waitFor(() => expect(rules()).toHaveLength(3));
+    expect(channels()).not.toHaveTextContent("could not be read");
+  });
+
+  it("keeps the cards it has when a later read fails — the queue's banner is not theirs", async () => {
+    sideAnswer = { state: "failed", reason: "The inbox's channels and policies could not be reached.", pollAfterSeconds: null };
+    frame();
+    await act(async () => {});
+
+    expect(rules()).toHaveLength(3);
+    expect(channelRow("GitHub").querySelector(".inbox-channels__mark")).toHaveTextContent("✓ connected");
+    expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
+  });
+
+  it("leaves the queue's cards alone: an answer there does not wait on the side column", () => {
+    frame();
+
+    expect(within(screen.getByRole("region", { name: "Decisions waiting" })).getAllByRole("article")).toHaveLength(3);
+    expect(within(column()).queryByRole("article")).toBeNull();
+  });
+});
+
+describe("the preferences, from both entry points", () => {
+  /** The email row. */
+  const emailRow = () =>
+    within(screen.getByRole("region", { name: "Answer from anywhere" }))
+      .getAllByRole("listitem")
+      .find((item) => item.querySelector(".inbox-channels__name")?.textContent === "Email")!;
+
+  /** Open the sheet from one of its two buttons. */
+  async function openFrom(name: "Notification settings" | "All notification settings"): Promise<HTMLElement> {
+    fireEvent.click(screen.getByRole("button", { name }));
+    await settle();
+
+    return screen.findByRole("dialog", { name: "Notification settings" });
+  }
+
+  /** Close the open sheet. */
+  async function close(sheet: HTMLElement): Promise<void> {
+    fireEvent.keyDown(sheet, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Notification settings" })).toBeNull());
+  }
+
+  it("opens the same sheet from the head and from the card", async () => {
+    readNotificationSettings.mockResolvedValue({ ok: true, value: preferences() });
+    frame();
+
+    const fromHead = await openFrom("Notification settings");
+
+    expect(within(fromHead).getByRole("switch", { name: "Instant mail for blocking decisions" })).toBeInTheDocument();
+    expect(within(fromHead).getByRole("group", { name: "Never mail me about" })).toBeInTheDocument();
+    await close(fromHead);
+
+    const fromCard = await openFrom("All notification settings");
+
+    expect(within(fromCard).getByRole("switch", { name: "Instant mail for blocking decisions" })).toBeInTheDocument();
+    expect(within(fromCard).getByRole("group", { name: "Never mail me about" })).toBeInTheDocument();
+    expect(readNotificationSettings).toHaveBeenCalledTimes(2);
+  });
+
+  it("saves from the head, and shows the saved values on reopening from the card — mutes included", async () => {
+    const saved = {
+      ...digestOn("08:15"),
+      instant: { severity: "off" as const },
+      mutedKinds: ["fact_review", "resize_review"],
+    };
+
+    readNotificationSettings.mockResolvedValueOnce({ ok: true, value: preferences() });
+    updateNotificationSettings.mockResolvedValue({ ok: true, value: saved });
+    frame();
+
+    const sheet = await openFrom("Notification settings");
+
+    fireEvent.click(within(sheet).getByRole("switch", { name: "Daily digest" }));
+    fireEvent.change(within(sheet).getByLabelText("Send at (UTC)"), { target: { value: "08:15" } });
+    fireEvent.click(within(sheet).getByRole("switch", { name: "Instant mail for blocking decisions" }));
+    fireEvent.click(within(sheet).getByRole("checkbox", { name: "Fact reviews" }));
+    fireEvent.click(within(sheet).getByRole("checkbox", { name: "Re-sizes" }));
+    fireEvent.click(within(sheet).getByRole("button", { name: "Save" }));
+    await settle();
+
+    expect(updateNotificationSettings).toHaveBeenCalledExactlyOnceWith({
+      digestEnabled: true,
+      digestTime: "08:15",
+      instantSeverity: "off",
+      mutedKinds: ["fact_review", "resize_review"],
+    });
+    await waitFor(() => expect(within(sheet).getByText("Saved.")).toBeInTheDocument());
+
+    // The email row is the same preferences: it follows the save without a read of its own.
+    expect(emailRow()).toHaveTextContent("daily · 08:15 UTC");
+    expect(within(emailRow()).getByText("Next digest 2026-10-05 08:15 UTC")).toBeInTheDocument();
+    await close(sheet);
+
+    // Reopened from the other entry point, the sheet reads again — and the service has them.
+    readNotificationSettings.mockResolvedValueOnce({ ok: true, value: saved });
+
+    const again = await openFrom("All notification settings");
+
+    expect(within(again).getByRole("switch", { name: "Daily digest" })).toHaveAttribute("aria-checked", "true");
+    expect(within(again).getByLabelText("Send at (UTC)")).toHaveValue("08:15");
+    expect(within(again).getByRole("switch", { name: "Instant mail for blocking decisions" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    expect(within(again).getByRole("checkbox", { name: "Fact reviews" })).toBeChecked();
+    expect(within(again).getByRole("checkbox", { name: "Re-sizes" })).toBeChecked();
+    expect(within(again).getByRole("checkbox", { name: "Merge approvals" })).not.toBeChecked();
+  });
+
+  it("switches the digest on from the email row, and the sheet opens on it", async () => {
+    updateNotificationSettings.mockResolvedValue({ ok: true, value: digestOn("09:00") });
+    readNotificationSettings.mockResolvedValue({ ok: true, value: digestOn("09:00") });
+    frame();
+
+    fireEvent.click(within(emailRow()).getByRole("switch", { name: "Daily digest" }));
+    await settle();
+
+    expect(updateNotificationSettings).toHaveBeenCalledExactlyOnceWith({ digestEnabled: true });
+    expect(within(emailRow()).getByText("Next digest 2026-10-05 09:00 UTC")).toBeInTheDocument();
+
+    const sheet = await openFrom("Notification settings");
+
+    expect(within(sheet).getByRole("switch", { name: "Daily digest" })).toHaveAttribute("aria-checked", "true");
+    expect(within(sheet).getByText("Next digest 2026-10-05 09:00 UTC")).toBeInTheDocument();
+  });
+
+  it("drops the held preferences for a fresh server read — they are one workspace's, and it switched", async () => {
+    updateNotificationSettings.mockResolvedValue({ ok: true, value: digestOn("09:00") });
+
+    const first = inboxReadings();
+    const screenOver = (readings: typeof first) => (
+      <InboxScreen
+        clock={utcClock}
+        poll={POLL}
+        readerId="user-ken"
+        readings={readings}
+        resolvedPoll={RESOLVED_POLL}
+        sidePoll={SIDE_POLL}
+      />
+    );
+    const { rerender } = render(screenOver(first));
+
+    fireEvent.click(within(emailRow()).getByRole("switch", { name: "Daily digest" }));
+    await settle();
+    expect(emailRow()).toHaveTextContent("daily · 09:00 UTC");
+
+    // The same read again — any other re-render — keeps what was saved.
+    rerender(screenOver(first));
+    expect(emailRow()).toHaveTextContent("daily · 09:00 UTC");
+
+    // The route re-rendered for another workspace, where this person's digest is at 18:30.
+    rerender(screenOver(inboxReadings(inboxQueue(), resolvedDay(), inboxSide(), digestOn("18:30"))));
+    expect(emailRow()).toHaveTextContent("daily · 18:30 UTC");
+    expect(within(emailRow()).getByLabelText("Digest time (UTC)")).toHaveValue("18:30");
+
+    // …and one where it was never switched on.
+    rerender(screenOver(inboxReadings()));
+    expect(within(emailRow()).getByRole("switch", { name: "Daily digest" })).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("gives the email row its switch once the sheet has read what the first paint could not", async () => {
+    readNotificationSettings.mockResolvedValue({ ok: true, value: digestOn("09:00") });
+    frame(inboxQueue(), resolvedDay(), inboxSide(), null);
+
+    expect(within(emailRow()).queryByRole("switch")).toBeNull();
+    expect(emailRow()).toHaveTextContent("Your notification settings could not be read.");
+
+    const sheet = await openFrom("All notification settings");
+    await close(sheet);
+
+    expect(within(emailRow()).getByRole("switch", { name: "Daily digest" })).toHaveAttribute("aria-checked", "true");
+  });
+});
+
 describe("both themes", () => {
   it("renders the same markup in both palettes", () => {
     const [light, dark] = renderInBothPalettes(
@@ -738,13 +1051,17 @@ describe("both themes", () => {
         clock={utcClock}
         poll={POLL}
         readerId="user-ken"
-        readings={inboxReadings()}
+        readings={inboxReadings(inboxQueue(), resolvedDay(), inboxSide(), digestOn("09:00"))}
         resolvedPoll={RESOLVED_POLL}
+        sidePoll={SIDE_POLL}
       />,
     );
 
     expect(maskIds(light!)).toBe(maskIds(dark!));
     expect(light).toContain("inbox__title");
+    // The side column is in the comparison: both cards, the digest's controls included.
+    expect(light).toContain("inbox-channels__digest-time");
+    expect(light).toContain("inbox-rules__caption");
   });
 });
 

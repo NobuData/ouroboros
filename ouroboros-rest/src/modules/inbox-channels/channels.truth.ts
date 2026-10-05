@@ -87,7 +87,9 @@ export function channelTruth(facts: ChannelFacts): ChannelsResource {
       {
         id: "github",
         label: "GitHub",
-        summary: "Every decision is mirrored as a PR comment.",
+        // The card explains the comment's whole life (BO.4, #469): one comment, never a thread.
+        summary:
+          "Every decision is mirrored as a PR comment — posted when it is asked, edited when it is answered.",
         state: github ? "connected" : "available",
         until: null,
         reason: github ? null : "Connect a git host to mirror decisions on its pull requests.",
