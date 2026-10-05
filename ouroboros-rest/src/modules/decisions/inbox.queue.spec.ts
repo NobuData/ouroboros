@@ -35,6 +35,7 @@ function item(
     status: "open",
     payload: SEEDED_PAYLOADS[kindId],
     refs: [],
+    sourceRef: `test:${kindId}`,
     createdAt: new Date(NOW.getTime() - minutes * 60_000),
     snoozedUntil: null,
     snoozedBy: null,
@@ -130,6 +131,41 @@ describe("InboxQueueService.queue", () => {
 
     expect(page.items[0].mergeClass).toBe(true);
     expect(page.asOf).toBe(NOW.toISOString());
+  });
+
+  it("resolves every link: each tag's destination and each link action's (#467)", async () => {
+    const run = { type: "run" as const, id: "run-1844", label: "loop #1844" };
+    const path = {
+      type: "path" as const,
+      id: "boot/rollback_flag.c",
+      label: "boot/rollback_flag.c",
+    };
+    const { queue } = service({
+      open: [item("protected_path_allow_once", 21, { refs: [run, path] })],
+      snoozed: [
+        item("split_approval", 30, {
+          status: "snoozed",
+          snoozedUntil: new Date(NOW.getTime() + 3_600_000),
+          refs: [{ type: "ticket", id: "t-490", label: "issue #490" }],
+        }),
+      ],
+    });
+
+    const page = await queue.queue(ORG, { userId: "user-ken", roles: ["owner"] });
+
+    expect(page.items[0].refs).toEqual([
+      { ...run, href: "/runs/run-1844" },
+      { ...path, href: "/runs/run-1844#run-changes" },
+    ]);
+    expect(page.items[0].actions.map((action) => [action.id, action.href])).toEqual([
+      ["allow_once", null],
+      ["view_diff", "/runs/run-1844#run-changes"],
+      ["deny", null],
+      ["edit_protected_paths", "/knowledge#repo-profile"],
+    ]);
+    expect(page.snoozed[0].refs).toEqual([
+      { type: "ticket", id: "t-490", label: "issue #490", href: "/issues?q=%23490" },
+    ]);
   });
 
   it("resolves actions against the viewer: a member without the capability sees approve disabled with its reason", async () => {

@@ -561,7 +561,7 @@ dark-only).
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BO.1 | #466 ✅ | 🟢 Done | ouroboros-ui: [BO.1] Inbox route, head & pill wiring | `/inbox`, computed head, snooze-all, lit pill states | mvp, inbox, ui, design | N (after #41, BN.4, BA-D.5) | Y | S | ouroboros-ui |
-| BO.2 | #467 | 🟡 Open | ouroboros-ui: [BO.2] Decision cards | Kind-templated cards: severity, refs, why, action rows | mvp, inbox, ui, design | N (after BO.1, BN.2) | Y | L | ouroboros-ui |
+| BO.2 | #467 ✅ | 🟢 Done | ouroboros-ui: [BO.2] Decision cards | Kind-templated cards: severity, refs, why, action rows | mvp, inbox, ui, design | N (after BO.1, BN.2) | Y | L | ouroboros-ui |
 | BO.3 | #468 | 🟡 Open | ouroboros-ui: [BO.3] Resolved list & empty state | Collapsible resolved rows, auto-accept class, the zero card | mvp, inbox, ui, design | N (after BO.1) | Y | S | ouroboros-ui |
 | BO.4 | #469 | 🟡 Open | ouroboros-ui: [BO.4] Channels & policy cards | Truth-state channel rows + prefs; composed policy rows | mvp, inbox, ui, design | N (after BO.1, BN.3/BN.4) | Y | M | ouroboros-ui |
 | BO.5 | #470 | 🟡 Open | ouroboros-ui: [BO.5] Stat card, states & e2e leg | Computed weekly stat; snoozed/error states; full e2e | mvp, inbox, ui, ci | N (after BO.2–BO.4) | Y | M | ouroboros-ui, .github |
@@ -599,7 +599,9 @@ topbar: [● Needs you · 3] ← lit (warn glow) on this page · excludes snooze
 
 ### Issue BO.2 — ouroboros-ui: [BO.2] Decision cards
 
-> **GitHub issue:** #467 · **Status:** 🟡 Open · **Parent epic:** #455
+> **GitHub issue:** #467 ✅ · **Status:** 🟢 Done · **Parent epic:** #455
+>
+> **Delivered (#467, UI 0.132.0, REST 0.39.12):** `DecisionCard` (`app/inbox/decision-card.tsx`, `decision-actions.tsx`, `use-decision.ts`, rules in `card-view.ts`) — one kind-agnostic card with the answer lifecycle (in flight → receipt | *answered by … ago* | failure that leaves it open), per-item snooze (1 h / 4 h / 1 day), role gates from the service and the fixture-kind proof. Decided on the ticket: **REST serves the links and the receipt** — `InboxRef.href` and `InboxActionView.href` (`decisions/inbox.links.ts`, from the `navigate.<target>` binding and the item's refs) and `InboxActionResult.receipt {effects, links}` (`inbox-actions.receipt.ts`, worded by `handler_binding` and by what the plane answered — *resume sent to loop #1844* until the control is acked); **confirms only where they carry weight** — a note-taking action's inline panel shows its declared consequence and its button confirms, a `danger` action confirms in a dialog, everything else answers on one press; **the e2e round-trips stay with BO.5 (#470)**. The run console's *Changes so far* card gained the `#run-changes` anchor the diff links land on. For BO.5: on the dev seed the claim-waiver card is closed by `DecisionSourceSweeper` about a minute after REST starts (its claim is already waived in the seed), and *Allow once* on seeded loop #1844 answers `409 allow_once_still_blocked`.
 >
 > **Already shipped (#462):** the buttons post to `POST /api/v1/inbox/items/{id}/actions/{actionId}` with a client `idempotencyKey`. A `409 decision_already_answered` carries `details.resolution {actor, actionId, channel, resolvedAt}` for *"answered by Priya 10 s ago"*; `409 decision_action_in_progress` carries `details.attempt`; `501 decision_action_unbound` marks an action whose plane is not built. The `200` receipt is `resolution.outcome` (`merge`/`merge_sha`, `exception_id`, `draft_batch_id`, `control_id`).
 

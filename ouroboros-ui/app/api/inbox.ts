@@ -7,6 +7,9 @@
  * ([#466](https://github.com/NobuData/ouroboros/issues/466)) adds what the `/inbox` frame reads and
  * writes: the queue (`GET /api/v1/inbox`, BN.4 #464), *Snooze all* (`POST /api/v1/inbox/snooze-all`)
  * and the caller's notification preferences (`GET`/`PATCH /api/v1/inbox/notifications`, BN.3 #463).
+ * BO.2 ([#467](https://github.com/NobuData/ouroboros/issues/467)) adds what a decision card
+ * writes: an answer (`POST /api/v1/inbox/items/{id}/actions/{actionId}`, BN.2 #462) and a snooze of
+ * one item (`POST /api/v1/inbox/items/{id}/snooze`).
  *
  * ### `open` is the badge
  *
@@ -31,8 +34,20 @@ export type InboxItem = components["schemas"]["InboxItem"];
 /** One snoozed item of the queue. */
 export type InboxSnoozedItem = components["schemas"]["InboxSnoozedItem"];
 
-/** One ref of an item's tag row. */
+/** One ref of an item's tag row, with where its tag leads. */
 export type InboxRef = components["schemas"]["InboxRef"];
+
+/** One declared action of an item, resolved against the caller. */
+export type InboxAction = components["schemas"]["InboxActionView"];
+
+/** A press of an action: the note it carries and the caller's name for the press. */
+export type InboxActionRequest = components["schemas"]["InboxActionRequest"];
+
+/** An answered press: the resolution and the receipt the card prints. */
+export type InboxActionResult = components["schemas"]["InboxActionResult"];
+
+/** What an answer executed, in words, with where to see it. */
+export type InboxActionReceipt = components["schemas"]["InboxActionReceipt"];
 
 /** What *Snooze all* did. */
 export type InboxSnoozeResult = components["schemas"]["InboxSnoozeResult"];
@@ -79,6 +94,50 @@ export const inbox = {
    */
   async snoozeAll(minutes: number, client: ApiClient = api()): Promise<InboxSnoozeResult> {
     return unwrap(await client.POST("/api/v1/inbox/snooze-all", { body: { minutes } }));
+  },
+
+  /**
+   * Snooze one asking item for a while.
+   *
+   * @param itemId The item.
+   * @param minutes How long, 1–10080.
+   * @param client The client to write through.
+   * @returns What was snoozed, and until when.
+   * @throws {ApiError} When the service refuses — `403` for a viewer, `409` once it is answered.
+   */
+  async snoozeItem(itemId: string, minutes: number, client: ApiClient = api()): Promise<InboxSnoozeResult> {
+    return unwrap(
+      await client.POST("/api/v1/inbox/items/{id}/snooze", {
+        params: { path: { id: itemId } },
+        body: { minutes },
+      }),
+    );
+  },
+
+  /**
+   * Answer a decision — press one of its card's actions.
+   *
+   * @param itemId The item.
+   * @param actionId The declared action.
+   * @param request The note (when the action takes one) and the press's idempotency key.
+   * @param client The client to write through.
+   * @returns The resolution and its receipt.
+   * @throws {ApiError} When the service refuses — `409 decision_already_answered` carries the
+   *   winner in `details.resolution`; a failing handler answers with its plane's own error and
+   *   leaves the item open.
+   */
+  async answer(
+    itemId: string,
+    actionId: string,
+    request: InboxActionRequest,
+    client: ApiClient = api(),
+  ): Promise<InboxActionResult> {
+    return unwrap(
+      await client.POST("/api/v1/inbox/items/{id}/actions/{actionId}", {
+        params: { path: { id: itemId, actionId } },
+        body: request,
+      }),
+    );
   },
 
   /**

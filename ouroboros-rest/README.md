@@ -4396,6 +4396,15 @@ engine's reader, widened rather than duplicated), protected paths from BA.1's
 row is absent while `spend_approval` is dormant, and *effort XL+ → plan sign-off* is absent because
 no workflow human gate enforces it.
 
+**Every link is resolved here** (BO.2 [#467](https://github.com/NobuData/ouroboros/issues/467),
+`decisions/inbox.links.ts`), so the card holds no route and no kind. Each ref carries the `href`
+its tag opens — a run the run console, a PR its verification page, a ticket intake searched for its
+key, a path the diff on the item's run — and each link action (`navigates: true`) the `href` its
+`navigate.<target>` binding leads to, resolved from the item's refs and source ref. They are
+origin-relative UI paths, restated from `ouroboros-ui/app/paths.ts` in `UI_ROUTES`; a target the
+table does not know, or one whose ref the item lacks, is `null`, and the card shows the link as
+unavailable. `inbox.links.spec.ts` fails when a shipped kind declares a target with no destination.
+
 ## Needs-You action executor
 
 `POST /api/v1/inbox/items/{id}/actions/{actionId}` (`src/modules/inbox-actions/`, BN.2
@@ -4425,6 +4434,15 @@ minutes is taken over as abandoned). A handler that throws leaves the item **ope
 writes V095's resolution and finishes the attempt in one transaction, audits `decision.answered`
 with the receipt as `outcome_*` keys, and tells `DecisionLifecycle` (BN.3's channel echo; V096's
 trigger revokes outstanding action tokens). A service account cannot answer.
+
+**The answer carries its receipt** (BO.2 [#467](https://github.com/NobuData/ouroboros/issues/467),
+`inbox-actions.receipt.ts`): `receipt.effects` — what executed, in words — and `receipt.links`,
+composed from the plane's outcome and keyed by `handler_binding`, never by kind. It says what
+happened rather than what was hoped: *exception granted · resume sent to loop #1844* until the loop
+acknowledges the control (then *loop #1844 resumed*), *merge armed — it lands once its checks are
+green* until AX.4 merges, and a failed host annotation says so. A binding with no entry reads as the
+action in the past tense, linked to the item's run and PR; `inbox-actions.receipt.spec.ts` fails
+when a bound operation falls back to that line.
 
 **Allow once** is the one new mechanism: AP.3 gained `GuardrailService.reevaluatePaths`, which
 re-judges `allowed_paths` alone over the run's recorded change-set (the hunks the secrets scan needs

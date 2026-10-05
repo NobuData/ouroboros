@@ -6647,7 +6647,10 @@ export interface paths {
          *     age (counted through any snooze), and its **actions resolved against the caller**: every
          *     declared action comes back, a disallowed one with `allowed: false` and a `disabledReason`
          *     (`capability_required` for an `approver` action without `can_approve_loops`,
-         *     `role_required` otherwise). **Snoozed** items come back apart, soonest to wake first.
+         *     `role_required` otherwise). **Every link is resolved here** (#467): each ref carries the
+         *     `href` its tag opens, and each link action (`navigates: true`) the `href` it leads to, so
+         *     the card holds no route and no kind. **Snoozed** items come back apart, soonest to wake
+         *     first.
          *
          *     The **head** is computed (X8): `estimateSeconds` sums, over the queue, each item's kind
          *     median answer time this UTC week (`decision_metrics_weekly_by_kind`), a kind nobody
@@ -22785,14 +22788,31 @@ export interface components {
             takesNote: boolean;
             /** @description A link — it decides nothing. */
             navigates: boolean;
+            /**
+             * @description Where a link leads — an origin-relative path on the UI, resolved from the action's
+             *     `navigate.<target>` binding and the item's refs (#467). `null` for an action that
+             *     answers, and for a link whose destination this item cannot name; the card shows such
+             *     a link as unavailable.
+             * @example /prs/5eed003a-0000-4000-8000-000000000504
+             */
+            href: string | null;
             allowed: boolean;
             disabledReason: null | ("role_required" | "capability_required");
         };
+        /** @description One tag of a card's tag row, with where it leads (#467). */
         InboxRef: {
             /** @enum {string} */
             type: "run" | "pr" | "ticket" | "path";
             id: string;
             label: string;
+            /**
+             * @description The tag's destination — an origin-relative path on the UI: a `run` opens the run
+             *     console, a `pr` PR verification, a `ticket` issue intake searched for its key, and a
+             *     `path` the diff on the item's run. `null` for a tag with no page (a path on an item
+             *     that names no run).
+             * @example /runs/5eed0009-0000-4000-8000-000000000479
+             */
+            href: string | null;
         };
         /** @description One asking decision, rendered (#464). */
         InboxItem: {
@@ -23026,6 +23046,30 @@ export interface components {
                 idempotencyKey: string;
             };
             resolution: components["schemas"]["InboxActionResolution"];
+            receipt: components["schemas"]["InboxActionReceipt"];
+        };
+        /**
+         * @description What an answer executed, in words, with where to see it (#467) — composed from
+         *     `resolution.outcome` and worded by the operation that ran, so the card prints it verbatim.
+         *     It says what happened, not what was hoped: a control the loop has not acknowledged reads
+         *     *sent to*, a merge waiting on its gates reads *armed*.
+         */
+        InboxActionReceipt: {
+            /**
+             * @description Each thing that executed, in order. The card joins them with `·`.
+             * @example [
+             *       "exception granted",
+             *       "resume sent to loop #1844"
+             *     ]
+             */
+            effects: string[];
+            /** @description Where to see it — origin-relative paths on the UI. May be empty. */
+            links: {
+                /** @example Run console */
+                label: string;
+                /** @example /runs/5eed0009-0000-4000-8000-000000000479 */
+                href: string;
+            }[];
         };
         /**
          * InboxFeed
@@ -58758,6 +58802,18 @@ export interface operations {
                      *           "control_state": "pending"
                      *         },
                      *         "resolvedAt": "2026-10-04T19:46:00.000Z"
+                     *       },
+                     *       "receipt": {
+                     *         "effects": [
+                     *           "exception granted",
+                     *           "resume sent to loop #1844"
+                     *         ],
+                     *         "links": [
+                     *           {
+                     *             "label": "Run console",
+                     *             "href": "/runs/5eed0009-0000-4000-8000-000000000479"
+                     *           }
+                     *         ]
                      *       }
                      *     }
                      */

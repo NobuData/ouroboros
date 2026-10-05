@@ -8,7 +8,7 @@
  *             answered this week costs the week's median; no week at all → no estimate
  * durations   41 → "41s", 360 → "6m", 95 → "1m 35s"; null → "—" (never a zero)
  * actions     the kind's row, each marked allowed — or disabled with role_required /
- *             capability_required
+ *             capability_required — and a link action carrying where it leads (#467)
  * summary     "Split #490 into 6 tickets — approved", "Estimator re-size #486 L→M — auto-accepted
  *             by policy": a per-kind subject from the facts, and the outcome's words
  * ```
@@ -18,6 +18,7 @@
 
 import type { ResolvedDecisionAction } from "./decision.actions";
 import type { DecisionRef } from "./decision.types";
+import { navigationHref, type LinkContext } from "./inbox.links";
 
 /** What the page shows for a figure it does not have. */
 export const NO_FIGURE = "—";
@@ -164,6 +165,11 @@ export interface InboxAction {
   readonly takesNote: boolean;
   /** A link — it decides nothing. */
   readonly navigates: boolean;
+  /**
+   * Where a link leads — an origin-relative UI path (#467). Null for an action that answers, and
+   * for a link whose destination this item cannot name (the card shows it as unavailable).
+   */
+  readonly href: string | null;
   readonly allowed: boolean;
   /** Why it is disabled, or null when allowed. */
   readonly disabledReason: DisabledReason | null;
@@ -171,12 +177,16 @@ export interface InboxAction {
 
 /**
  * A resolved action row, with each disabled entry's reason (`capability_required` for an
- * `approver` action — #485 — and `role_required` otherwise).
+ * `approver` action — #485 — and `role_required` otherwise) and each link's destination.
  *
  * @param actions - The registry's resolved row.
+ * @param context - The item's refs and source ref, which a link's destination is resolved from.
  * @returns The page's action row.
  */
-export function inboxActions(actions: readonly ResolvedDecisionAction[]): InboxAction[] {
+export function inboxActions(
+  actions: readonly ResolvedDecisionAction[],
+  context: LinkContext,
+): InboxAction[] {
   return actions.map((action) => ({
     id: action.id,
     label: action.label,
@@ -185,6 +195,7 @@ export function inboxActions(actions: readonly ResolvedDecisionAction[]): InboxA
     consequenceText: action.consequence_text,
     takesNote: action.takes_note,
     navigates: action.navigates,
+    href: navigationHref(action.handler_binding, context),
     allowed: action.allowed,
     disabledReason: action.allowed
       ? null

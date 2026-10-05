@@ -51,13 +51,6 @@ export const SNOOZE_FAILED = "The decisions could not be snoozed. Try again.";
 export const QUEUE_LABEL = "Decisions waiting";
 export const SNOOZED_LABEL = "Snoozed";
 
-/**
- * What the rows say until the decision cards arrive — the queue is real, its buttons are BO.2's
- * ([#467](https://github.com/NobuData/ouroboros/issues/467)).
- */
-export const CARDS_NOTE =
-  "Answering from here arrives with the decision cards (#467); the links in your mail and on GitHub answer today.";
-
 /** The words for each severity, and the chip hue each draws in. */
 export const SEVERITY: Readonly<Record<InboxItem["severity"], { label: string; tone: ChipTone }>> = {
   err: { label: "Blocking", tone: "err" },
@@ -130,7 +123,7 @@ export function maySnoozeAll(items: readonly InboxItem[]): boolean {
 }
 
 /**
- * A row's age.
+ * A card's age, as a screen reader hears it — the card itself draws the bare `6m`.
  *
  * @param seconds Seconds since it was asked, through any snooze.
  * @returns `asked 6m ago`.

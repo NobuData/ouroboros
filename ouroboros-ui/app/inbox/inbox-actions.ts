@@ -2,11 +2,13 @@
 
 /**
  * The `/inbox` frame's writes and its sheet's read (BO.1, [#466](https://github.com/NobuData/ouroboros/issues/466)),
- * as Server Actions — the browser cannot call `ouroboros-rest`, so the button asks this module,
- * which asks the service with the request's session.
+ * and a decision card's two (BO.2, [#467](https://github.com/NobuData/ouroboros/issues/467)): an
+ * answer and a snooze of one item — as Server Actions. The browser cannot call `ouroboros-rest`,
+ * so the button asks this module, which asks the service with the request's session.
  *
  * Every refusal comes back as a sentence rather than a throw: a person pressed a button, and a
- * button's failure is something to read beside it.
+ * button's failure is something to read beside it. An answer has a third way to end — someone
+ * else answered first — and that comes back as who, not as a failure.
  */
 
 import { isApiError } from "@/app/api/errors";
@@ -18,6 +20,13 @@ import {
 } from "@/app/api/inbox";
 import { type Reading, attempt } from "@/app/api/reading";
 
+import {
+  ANSWER_FAILED,
+  ITEM_SNOOZE_FAILED,
+  NOTE_MAX_LENGTH,
+  type DecisionAnswer,
+  winnerOf,
+} from "./card-view";
 import { PREFERENCES_FAILED } from "./notifications-view";
 import { SNOOZE_ALL_MINUTES, SNOOZE_FAILED } from "./view";
 
@@ -38,6 +47,103 @@ export async function snoozeAll(): Promise<InboxWrite<InboxSnoozeResult>> {
     if (!isApiError(error)) throw error;
 
     return { ok: false, reason: error.status === 403 ? error.message : SNOOZE_FAILED };
+  }
+}
+
+/** The service's code for "someone answered first" (BN.2, #462). */
+const ALREADY_ANSWERED = "decision_already_answered";
+
+/** The service's status for an action whose plane is not built — its sentence says so. */
+const NOT_IMPLEMENTED = 501;
+
+/** The first status that is the service's own failure rather than a refusal with a reason. */
+const SERVER_ERROR = 500;
+
+/** The longest minutes a snooze may ask for — a week (`InboxSnoozeRequest.minutes`). */
+const SNOOZE_MAX_MINUTES = 10_080;
+
+/** The one refusal whose sentence is about the request's shape, not about the decision. */
+const VALIDATION_FAILED = "validation_failed";
+
+/**
+ * What a refused write says to the person who pressed.
+ *
+ * A refusal with a reason (`4xx`, and `501` for an action whose plane is not built) carries a
+ * sentence written for a reader — *This decision expired before it was answered.* — and is passed
+ * on. The service's own failure, and a malformed request this module should never have sent, get
+ * the plain fallback instead of a sentence about internals.
+ *
+ * @param error The refusal.
+ * @param fallback What to say when the refusal's own words are no use.
+ * @returns The sentence.
+ */
+function refusalWords(error: { status: number; code: string; message: string }, fallback: string): string {
+  const reasoned = error.status < SERVER_ERROR || error.status === NOT_IMPLEMENTED;
+
+  return reasoned && error.code !== VALIDATION_FAILED ? error.message : fallback;
+}
+
+/**
+ * Answer a decision — one press of one action of one card.
+ *
+ * Three ways to end. **Answered**: the resolution and the receipt the card prints. **Raced**:
+ * someone answered first (`409 decision_already_answered`), told as who, with what and when.
+ * **Failed**: anything else — a refusal's own sentence (it expired, a plane refused, the action's
+ * plane is not built), or a plain one for a failure with nothing a reader can use; the item is
+ * still open either way, which is BN.2's rule for a failing handler.
+ *
+ * @param itemId The item.
+ * @param actionId The declared action.
+ * @param press The note the action takes, and the press's idempotency key — minted by the card,
+ *   so a retried delivery of this one press can never execute twice.
+ * @returns How the press ended.
+ */
+export async function answerDecision(
+  itemId: string,
+  actionId: string,
+  press: Readonly<{ note?: string; idempotencyKey: string }>,
+): Promise<DecisionAnswer> {
+  const note = typeof press.note === "string" ? press.note.trim().slice(0, NOTE_MAX_LENGTH) : "";
+
+  try {
+    const result = await inbox.answer(String(itemId), String(actionId), {
+      idempotencyKey: String(press.idempotencyKey),
+      ...(note === "" ? {} : { note }),
+    });
+
+    return { outcome: "answered", result };
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+
+    if (error.code === ALREADY_ANSWERED) {
+      const winner = winnerOf(error.details);
+
+      if (winner !== null) return { outcome: "raced", winner };
+    }
+
+    return { outcome: "failed", reason: refusalWords(error, ANSWER_FAILED) };
+  }
+}
+
+/**
+ * Snooze one asking item.
+ *
+ * @param itemId The item.
+ * @param minutes How long — clamped to the service's one minute to one week.
+ * @returns What was snoozed and until when, or why not.
+ */
+export async function snoozeDecision(itemId: string, minutes: number): Promise<InboxWrite<InboxSnoozeResult>> {
+  const asked = Number.isFinite(minutes) ? Math.round(minutes) : SNOOZE_ALL_MINUTES;
+
+  try {
+    return {
+      ok: true,
+      value: await inbox.snoozeItem(String(itemId), Math.min(SNOOZE_MAX_MINUTES, Math.max(1, asked))),
+    };
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+
+    return { ok: false, reason: refusalWords(error, ITEM_SNOOZE_FAILED) };
   }
 }
 

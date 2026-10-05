@@ -36,7 +36,6 @@ import { ConflictError, NotFoundError } from "../errors/error.envelope";
 import { CapabilityRepository } from "../tenancy/capability.repository";
 import { effectiveCanApproveLoops } from "../tenancy/capabilities";
 import { DecisionKindRegistry } from "./decision-kind.registry";
-import type { DecisionRef } from "./decision.types";
 import {
   NO_FIGURE,
   estimateSeconds,
@@ -50,6 +49,7 @@ import {
   type InboxAction,
   type InboxHead,
 } from "./inbox.compose";
+import { linkedRefs, type LinkedRef } from "./inbox.links";
 import { InboxRepository, type InboxItemRow } from "./inbox.repository";
 
 /** The roles that may snooze for everyone (a snooze hides an item from the whole workspace). */
@@ -77,7 +77,8 @@ export interface InboxItemResource {
   readonly tags: readonly string[];
   /** The facts the prose was composed from. */
   readonly facts: Readonly<Record<string, unknown>>;
-  readonly refs: readonly DecisionRef[];
+  /** The tag row, each ref with where it leads (#467). */
+  readonly refs: readonly LinkedRef[];
   /** Merge-class: a channel deep link must land on session confirmation (X5). */
   readonly mergeClass: boolean;
   readonly actions: readonly InboxAction[];
@@ -93,7 +94,7 @@ export interface InboxSnoozedResource {
   readonly kindId: string;
   readonly severity: DecisionSeverity;
   readonly question: string;
-  readonly refs: readonly DecisionRef[];
+  readonly refs: readonly LinkedRef[];
   readonly createdAt: string;
   readonly ageSeconds: number;
   readonly snoozedUntil: string;
@@ -229,6 +230,7 @@ export class InboxQueueService {
     for (const row of open) {
       const kind = await this.registry.pinnedKind(row.kindId, row.kindVersion);
       const prose = this.registry.render(kind, row.payload);
+      const refs = refsOf(row.refs);
 
       items.push({
         id: row.id,
@@ -240,10 +242,11 @@ export class InboxQueueService {
         why: prose.why,
         tags: prose.tags,
         facts: row.payload,
-        refs: refsOf(row.refs),
+        refs: linkedRefs(refs),
         mergeClass: kind.mergeClass,
         actions: inboxActions(
           this.registry.actionsFor(kind, { roles: viewer.roles, canApproveLoops }),
+          { refs, sourceRef: row.sourceRef },
         ),
         createdAt: row.createdAt.toISOString(),
         ageSeconds: secondsBetween(row.createdAt, now),
@@ -506,7 +509,7 @@ export class InboxQueueService {
       kindId: row.kindId,
       severity: row.severity,
       question: this.registry.render(kind, row.payload).question,
-      refs: refsOf(row.refs),
+      refs: linkedRefs(refsOf(row.refs)),
       createdAt: row.createdAt.toISOString(),
       ageSeconds: secondsBetween(row.createdAt, now),
       snoozedUntil: (row.snoozedUntil ?? now).toISOString(),

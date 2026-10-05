@@ -66,6 +66,8 @@ export interface CardProps {
   readonly "aria-labelledby"?: string;
   /** Its accessible name, when there is no heading to point at. */
   readonly "aria-label"?: string;
+  /** The element's id, when another page links to this card — a `#fragment`'s target. */
+  readonly id?: string;
 }
 
 /** The modifier each surface adds, or nothing for the default one. */

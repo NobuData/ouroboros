@@ -1,5 +1,6 @@
 import { useId } from "react";
 
+import { RUN_CHANGES_HASH } from "@/app/paths";
 import { Card, CardHead, Tag } from "@/app/ui";
 
 import { CHANGES_TITLE, COMMITS_LABEL, type ChangesView, FILES_LABEL, NO_COMMITS, NO_FILES } from "./cards";
@@ -8,6 +9,11 @@ import { CHANGES_TITLE, COMMITS_LABEL, type ChangesView, FILES_LABEL, NO_COMMITS
  * Mockup 10's *Changes so far* ([#313](https://github.com/NobuData/ouroboros/issues/313)) — the
  * files the loop has touched with their `+`/`−` counts, its commits, and how the pull request
  * will land.
+ *
+ * **It is an address.** The card carries {@link RUN_CHANGES_HASH} as its id, so a link that means
+ * *the diff* — a decision card's path chip and its *View diff →*
+ * ([#467](https://github.com/NobuData/ouroboros/issues/467)) — lands on it rather than at the top
+ * of the console.
  *
  * **Long lists scroll inside the card, never the pane.** The files and the commits each sit in
  * their own keyboard-focusable region with a height cap, and a long path wraps rather than
@@ -20,7 +26,7 @@ export function ChangesCard({ view }: Readonly<{ view: ChangesView }>) {
   const titleId = useId();
 
   return (
-    <Card aria-labelledby={titleId} as="section" className="run-changes">
+    <Card aria-labelledby={titleId} as="section" className="run-changes" id={RUN_CHANGES_HASH}>
       <CardHead
         title={CHANGES_TITLE}
         titleId={titleId}

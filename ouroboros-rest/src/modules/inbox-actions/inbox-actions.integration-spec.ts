@@ -249,6 +249,14 @@ describe("the inbox action executor, against a migrated database and the real pl
     });
 
     const outcome = answer.resolution.outcome as Record<string, string>;
+
+    // The card's receipt (#467): what executed, in words, and where to see it.
+    expect(answer.receipt.effects[0]).toBe("exception granted");
+    expect(answer.receipt.effects[1]).toMatch(/^resume sent to loop #\d+$|^loop #\d+ resumed$/);
+    expect(answer.receipt.links).toEqual([
+      { label: "Run console", href: `/runs/${outcome.run_id}` },
+    ]);
+
     const grant = await api.sql.query<{
       path_glob: string;
       used_by_evaluation: string | null;
@@ -578,6 +586,10 @@ describe("the inbox action executor, against a migrated database and the real pl
       const comments = host.ledger().comments.map(([, , body]) => body);
 
       expect(answer.resolution.outcome).toMatchObject({ waived: true, annotation: "annotated" });
+      expect(answer.receipt).toEqual({
+        effects: ["claim waived", "PR annotated publicly"],
+        links: [{ label: "PR verification", href: `/prs/${at.prId}#criteria` }],
+      });
       expect(comments.some((body) => body.includes("thermal chamber not in bench"))).toBe(true);
       expect(
         (

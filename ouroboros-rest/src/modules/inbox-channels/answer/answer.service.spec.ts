@@ -43,6 +43,7 @@ describe("AnswerService (#463)", () => {
         status: "open",
         payload: SEEDED_PAYLOADS[kindId] ?? {},
         refs: [],
+        sourceRef: `test:${kindId}`,
         createdAt: new Date("2026-10-04T08:00:00Z"),
         snoozedUntil: null,
         snoozedBy: null,
@@ -95,6 +96,7 @@ describe("AnswerService (#463)", () => {
             outcome: { exception_id: "ex-1", control_id: "ctl-1", nested: { x: 1 } },
             resolvedAt: "2026-10-04T09:12:00.000Z",
           },
+          receipt: { effects: ["exception granted"], links: [] },
         });
       },
     } as unknown as InboxActionsService;

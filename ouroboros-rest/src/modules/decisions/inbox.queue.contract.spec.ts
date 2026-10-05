@@ -51,6 +51,7 @@ function row(kindId: string, overrides: Partial<InboxItemRow> = {}): InboxItemRo
     status: "open",
     payload: SEEDED_PAYLOADS[kindId],
     refs: [{ type: "run", id: "5eed0009-0000-4000-8000-000000000479", label: "loop #1844" }],
+    sourceRef: `test:${kindId}`,
     createdAt: new Date(NOW.getTime() - 480_000),
     snoozedUntil: null,
     snoozedBy: null,

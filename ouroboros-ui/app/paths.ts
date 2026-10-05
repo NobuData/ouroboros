@@ -354,6 +354,14 @@ export function runPath(id: string, from?: string): string {
 }
 
 /**
+ * The run console's *Changes so far* card, as an element id — where a link that means *the diff*
+ * goes ([#467](https://github.com/NobuData/ouroboros/issues/467)): a decision card's path chip and
+ * its *View diff →*. `ouroboros-rest` composes those links (`decisions/inbox.links.ts`,
+ * `UI_ROUTES.runChanges`) and restates this value; `app/runs/changes-card.tsx` wears it.
+ */
+export const RUN_CHANGES_HASH = "run-changes";
+
+/**
  * The query parameter naming the attempt the test-results page reads — its `attemptSeq`, the
  * `3` of *Build 3* (#335). Absent, the page reads the latest attempt.
  */

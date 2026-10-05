@@ -396,6 +396,7 @@ describe("InboxActionsService", () => {
       expect(answer).toMatchObject({
         replayed: true,
         attempt: { id: "attempt-0", idempotencyKey: "key-1" },
+        receipt: { effects: ["approval recorded", expect.stringMatching(/^merge armed/)] },
       });
       expect(handlers.execute).not.toHaveBeenCalled();
       expect(repository.insertAttempt).not.toHaveBeenCalled();
@@ -466,7 +467,11 @@ describe("InboxActionsService", () => {
     });
 
     it("writes the resolution and the receipt together, then audits and tells the lifecycle", async () => {
-      const { service, repository, audit, lifecycle, trx } = executor();
+      const { service, repository, audit, lifecycle, trx } = executor({
+        item: item("merge_approval", {
+          refs: [{ type: "pr", id: "pr-504", label: "PR #504" }],
+        }),
+      });
 
       const answer = await service.execute(ORG, "item-1", "approve_merge", KEN, {});
 
@@ -522,6 +527,11 @@ describe("InboxActionsService", () => {
           note: null,
           outcome: { merge: "armed" },
           resolvedAt: "2026-10-04T10:00:00.000Z",
+        },
+        // The card's receipt (#467), worded by the binding that ran and what the plane answered.
+        receipt: {
+          effects: ["approval recorded", "merge armed — it lands once its checks are green"],
+          links: [{ label: "PR verification", href: "/prs/pr-504" }],
         },
       });
     });
