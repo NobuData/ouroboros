@@ -237,15 +237,18 @@ Deleting a workspace is a lifecycle rather than a statement. The owner types the
 exactly and passes a step-up ([§6.2](#62-reveal-is-privileged-audited-and-rate-limited)'s). The
 workspace is then `pending_delete` for **30 days**: every non-owner session acting in it is
 revoked, every surface is frozen behind a recovery screen, and nothing new is dispatched. An owner
-may restore it until the window closes. Then a scheduled purge runs, as actor `system`:
+may restore it until the purge begins. Once the window has closed, a scheduled purge runs as actor
+`system`. It first writes its tombstone (`workspace_tombstones`, `purged_at` null, recording how
+many DEK versions are about to go). From then on restore is refused, and a failed purge is resumed
+by the next sweep ([#490](https://github.com/NobuData/ouroboros/issues/490)). The purge:
 
 1. **destroys every version of the workspace's DEK** (`tenant_keys`), first, so an interrupted
    purge has already made the live ciphertext unreadable;
 2. deletes the workspace's artifact objects from the object store;
 3. removes the organization, from which every tenant table cascades, and counts the rows that
    still name it (asserted zero);
-4. keeps a tombstone (`workspace_tombstones`) and queues `audit.workspace.purged`, both of which
-   outlive the workspace on purpose.
+4. completes the tombstone (`purged_at`) and queues `audit.workspace.purged` in one transaction,
+   both of which outlive the workspace on purpose.
 
 After step 1, every ciphertext that DEK sealed is unopenable by the live system. The purge
 rehearsal (`lifecycle.integration-spec.ts`) asserts that in CI: a value sealed before the purge

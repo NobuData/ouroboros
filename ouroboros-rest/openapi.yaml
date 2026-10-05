@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.40.2"
+  version: "0.40.3"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -9265,10 +9265,12 @@ paths:
       tags: [lifecycle]
       summary: Restore a workspace pending deletion
       description: |-
-        Return a `pending_delete` workspace to `active` at any point in its recovery window.
+        Return a `pending_delete` workspace to `active` at any point until its purge begins —
+        including after the recovery window has closed, while the purge has not yet started.
         **Owner only**, and reachable while every other surface is frozen. Audited as
         `workspace.restored`. Sessions revoked by the deletion stay revoked; their owners sign
-        in again.
+        in again. Once the purge has begun the keys may already be destroyed, so the workspace
+        cannot come back ([#490](https://github.com/NobuData/ouroboros/issues/490)).
       operationId: restoreWorkspace
       parameters:
         - $ref: "#/components/parameters/TenantHeader"
@@ -9331,7 +9333,8 @@ paths:
         "409":
           description: |-
             `workspace_state_conflict` — the state machine has no such move from where the
-            workspace stands (`details.move`, `details.state`).
+            workspace stands (`details.move`, `details.state`), or the workspace's purge has
+            begun (`details.purge: "started"`).
           content:
             application/json:
               schema:

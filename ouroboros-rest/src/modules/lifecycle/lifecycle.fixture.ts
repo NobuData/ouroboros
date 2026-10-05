@@ -70,6 +70,8 @@ export class FakeLifecycleStore {
   readonly outbox: RecordedOutboxEvent[] = [];
   /** GitHub sources paused by disconnects. */
   sourcesPaused = 0;
+  /** Workspaces whose purge has begun — their tombstone exists (#490). */
+  readonly purgesBegun = new Set<string>();
   /** What `disconnectCounts` answers. */
   counts: DisconnectCounts = {
     openPullRequests: 3,
@@ -140,6 +142,8 @@ export class FakeLifecycleStore {
             : undefined,
         ),
       ownerIds: () => Promise.resolve(["user-owner"]),
+      purgeBegun: (_trx: unknown, organizationId: string) =>
+        Promise.resolve(this.purgesBegun.has(organizationId)),
     } as unknown as LifecycleRepository;
   }
 

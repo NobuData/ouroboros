@@ -6479,8 +6479,10 @@ export interface WebhookOutboxTable {
 }
 
 /**
- * `ouroboros.workspace_tombstones` — the completion record a purge leaves behind (V090,
- * [#489](https://github.com/NobuData/ouroboros/issues/489)). No foreign key: the workspace is gone.
+ * `ouroboros.workspace_tombstones` — the progress and completion record of a purge (V090,
+ * [#489](https://github.com/NobuData/ouroboros/issues/489); resumable since V104,
+ * [#490](https://github.com/NobuData/ouroboros/issues/490)). Written before anything is destroyed;
+ * `purged_at` is null until the purge completes. No foreign key: the workspace is gone.
  */
 export interface WorkspaceTombstonesTable {
   organization_id: string;
@@ -6489,8 +6491,11 @@ export interface WorkspaceTombstonesTable {
   /** Who asked for the deletion. A copy of an id rather than a reference. */
   requested_by: string | null;
   requested_at: Date;
-  purged_at: Stamped;
-  /** How many versions of the tenant's DEK were destroyed. */
+  /** When the purge began — before the DEK was destroyed. */
+  started_at: Stamped;
+  /** When it completed; null while in progress. Set once (V104's trigger). */
+  purged_at: Date | null;
+  /** How many versions of the tenant's DEK were destroyed — counted before the shred. */
   dek_versions_destroyed: number;
   /** How many artifact-store objects were deleted. */
   artifacts_deleted: number;
@@ -8056,6 +8061,7 @@ export const TABLE_COLUMNS = {
     "slug",
     "requested_by",
     "requested_at",
+    "started_at",
     "purged_at",
     "dek_versions_destroyed",
     "artifacts_deleted",

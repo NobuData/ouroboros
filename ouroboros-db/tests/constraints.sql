@@ -34336,6 +34336,56 @@ select pg_temp.must_hold(
   'a workspace''s route sends go with it');
 
 -- ===========================================================================
+-- V104 — a workspace purge that can be resumed (#490, BR.6)
+-- ===========================================================================
+--
+-- The tombstone is written before the shred with `purged_at` null, and the sweep resumes every
+-- unfinished one. Completion sets `purged_at` once, never before the purge started; a completed
+-- tombstone is immutable, and an unfinished one keeps its identity, start and key count.
+insert into ouroboros.workspace_tombstones
+  (organization_id, name, slug, requested_at, started_at, purged_at, dek_versions_destroyed,
+   artifacts_deleted, rows_remaining)
+  values ('org-v104', 'V104 Workspace', 'v104-workspace', '2026-10-01T00:00:00Z',
+          '2026-10-31T00:00:00Z', null, 2, 0, 0);
+
+select pg_temp.must_hold(
+  exists (select 1 from ouroboros.workspace_tombstones
+           where organization_id = 'org-v104' and purged_at is null),
+  'a purge in progress is a tombstone without purged_at');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workspace_tombstones set purged_at = '2026-10-30T00:00:00Z'
+     where organization_id = 'org-v104'$$,
+  'a purge cannot complete before it started', 'workspace_tombstones_purged_after_started');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workspace_tombstones set dek_versions_destroyed = 0
+     where organization_id = 'org-v104'$$,
+  'a resumed purge cannot rewrite the key count taken before the shred',
+  'workspace_tombstones_completed_immutable');
+
+update ouroboros.workspace_tombstones set artifacts_deleted = 3
+ where organization_id = 'org-v104';
+
+update ouroboros.workspace_tombstones set purged_at = '2026-10-31T00:05:00Z', rows_remaining = 0
+ where organization_id = 'org-v104';
+
+select pg_temp.must_reject(
+  $$update ouroboros.workspace_tombstones set rows_remaining = 1
+     where organization_id = 'org-v104'$$,
+  'a completed tombstone is immutable', 'workspace_tombstones_completed_immutable');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workspace_tombstones set purged_at = null
+     where organization_id = 'org-v104'$$,
+  'a completed purge cannot be reopened', 'workspace_tombstones_completed_immutable');
+
+select pg_temp.must_hold(
+  (select artifacts_deleted = 3 and purged_at = '2026-10-31T00:05:00Z'
+     from ouroboros.workspace_tombstones where organization_id = 'org-v104'),
+  'an unfinished tombstone records progress, then completes once');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

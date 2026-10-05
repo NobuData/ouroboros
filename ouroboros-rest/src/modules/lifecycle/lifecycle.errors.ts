@@ -89,6 +89,21 @@ export function stateConflict(
 }
 
 /**
+ * `409` — a restore arrived after the purge began: the workspace's keys may already be destroyed,
+ * so it cannot come back (#490). The same code as any other impossible move; `details.purge` says
+ * why this one is.
+ *
+ * @returns The error to throw.
+ */
+export function purgeStarted(): ConflictError {
+  return new ConflictError(
+    LIFECYCLE_ERRORS.stateConflict,
+    "This workspace's purge has begun and it can no longer be restored.",
+    { move: "restore", state: "pending_delete", purge: "started" },
+  );
+}
+
+/**
  * `400` — the body did not carry `confirm: true`.
  *
  * @param operation - Which operation, for the message.
