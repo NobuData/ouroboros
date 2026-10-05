@@ -16,6 +16,7 @@ import {
   ARTIFACT_SWEEP_BATCH,
   ArtifactRetentionSweeper,
 } from "./artifact.retention";
+import { retentionHarness, type RetentionHarness } from "../retention/retention.fixture";
 import { attemptId, FakeResultsRepository, mockupUniverse, ORG } from "./results.fixture";
 import type { ArtifactRow, ResultsRepository } from "./results.repository";
 import { ResultsService, storedKey } from "./results.service";
@@ -33,6 +34,7 @@ let directory = 0;
 let store: ArtifactStore;
 let repository: FakeResultsRepository;
 let scheduler: SchedulerRegistry;
+let retention: RetentionHarness;
 let sweeper: ArtifactRetentionSweeper;
 
 beforeAll(async () => {
@@ -47,6 +49,7 @@ beforeEach(async () => {
   store = new LocalArtifactStore(join(root, String((directory += 1))));
   repository = new FakeResultsRepository(mockupUniverse());
   scheduler = new SchedulerRegistry();
+  retention = retentionHarness();
   sweeper = build(store);
   sweeper.now = () => LATER;
 
@@ -67,7 +70,13 @@ afterEach(() => {
 
 /** A sweeper over the fake repository and the given store. */
 function build(over: ArtifactStore): ArtifactRetentionSweeper {
-  return new ArtifactRetentionSweeper(repository as unknown as ResultsRepository, over, scheduler);
+  return new ArtifactRetentionSweeper(
+    repository as unknown as ResultsRepository,
+    over,
+    retention.service,
+    retention.schedule,
+    scheduler,
+  );
 }
 
 /** The key a row's bytes are under. */
@@ -112,14 +121,57 @@ describe("the artifact retention sweep", () => {
     expect(page.artifacts[1].sizeBytes).toBe(2_202_010);
   });
 
-  it("honours each row's own retained_until — a workspace's shorter policy expires first", async () => {
-    const short = repository.universe.artifacts[1];
-    Object.assign(short, { retained_until: new Date(short.created_at.getTime() + 86_400_000) });
-    sweeper.now = () => new Date(short.created_at.getTime() + 2 * 86_400_000);
+  it("cuts on the workspace's artifacts tier as it stands now — a shortened tier reaches stored rows (#482)", async () => {
+    const newest = Math.max(
+      ...repository.universe.artifacts.map((row) => row.created_at.getTime()),
+    );
+    // Eight days after the newest upload: inside the default thirty, past a seven-day tier.
+    sweeper.now = () => new Date(newest + 8 * 86_400_000);
+    expect((await sweeper.sweep()).expired).toBe(0);
 
-    expect((await sweeper.sweep()).expired).toBe(1);
-    expect(short.expired_at).not.toBeNull();
-    expect(repository.universe.artifacts.filter((row) => row.expired_at !== null)).toHaveLength(1);
+    await retention.service.update(
+      ORG,
+      { userId: "u-admin", roles: ["owner"] },
+      {
+        classes: { artifacts: 7 },
+      },
+    );
+
+    expect((await sweeper.sweep()).expired).toBe(repository.universe.artifacts.length);
+  });
+
+  it("keeps a row stored exactly at the old boundary — the default reproduces the old sweep", async () => {
+    const oldest = repository.universe.artifacts.reduce((a, b) =>
+      a.created_at <= b.created_at ? a : b,
+    );
+    // The old sweep expired `retained_until <= now` with retained_until = upload + 30 d.
+    sweeper.now = () => new Date(oldest.created_at.getTime() + 30 * 86_400_000 - 1);
+    expect((await sweeper.sweep()).expired).toBe(0);
+
+    sweeper.now = () => new Date(oldest.created_at.getTime() + 30 * 86_400_000);
+    expect((await sweeper.sweep()).expired).toBeGreaterThanOrEqual(1);
+    expect(oldest.expired_at).not.toBeNull();
+  });
+
+  it("leaves another workspace's artifacts to that workspace's tier", async () => {
+    sweeper.now = () => LATER;
+    await retention.service.update(
+      "org-elsewhere",
+      { userId: "u-admin", roles: ["owner"] },
+      {
+        classes: { artifacts: 365 },
+      },
+    );
+
+    // ORG still takes the default, so its rows expire on LATER as before.
+    expect((await sweeper.sweep()).expired).toBe(5);
+  });
+
+  it("reports its next run to the retention schedule, and clears it on shutdown", () => {
+    sweeper.onApplicationBootstrap();
+    expect(retention.schedule.status("artifacts").nextAt).not.toBeNull();
+    sweeper.onApplicationShutdown();
+    expect(retention.schedule.status("artifacts").nextAt).toBeNull();
   });
 
   it("keeps an artifact live when its bytes could not be removed, and retries it", async () => {
@@ -194,12 +246,15 @@ describe("the artifact retention sweep", () => {
         (sweeper as unknown as { logger: { log: (message: string) => void } }).logger,
         "log",
       );
+      const swept = jest.spyOn(retention.schedule, "swept");
       sweeper.onApplicationBootstrap();
 
       await jest.advanceTimersByTimeAsync(2 * 3_600_000);
 
       expect(log).toHaveBeenCalledWith(expect.stringMatching(/tombstoned 5 artifact\(s\)/));
       expect(scheduler.doesExist("timeout", ARTIFACT_RETENTION_SWEEP)).toBe(true);
+      // Jitter may fit a second, empty tick into the window; the first reported the five.
+      expect(swept).toHaveBeenCalledWith("artifacts", LATER, 5);
     } finally {
       sweeper.onApplicationShutdown();
       jest.useRealTimers();

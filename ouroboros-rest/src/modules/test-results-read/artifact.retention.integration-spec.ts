@@ -19,9 +19,9 @@ import type { TestRunPageResource } from "./results.resources";
  * AT.6, [#334](https://github.com/NobuData/ouroboros/issues/334)):
  *
  *   * the bytes are gone from the store, and the row stays as a tombstone the page renders;
- *   * each workspace's policy is honoured — the sweep reads the `retained_until` the upload wrote
- *     under that workspace's retention, so a seven-day workspace's file goes while a thirty-day
- *     workspace's file of the same age stays;
+ *   * each workspace's tier is honoured — the sweep compares `created_at` with the workspace's
+ *     `artifacts` cutoff from the retention policy service (#482), so a seven-day workspace's file
+ *     goes while a thirty-day workspace's file of the same age stays;
  *   * a row stored through another driver waits for that driver's process;
  *   * a second sweep finds nothing, and bytes already missing still leave a tombstone.
  *
@@ -111,12 +111,12 @@ describe.each([
   }
 
   /**
-   * An artifact uploaded eight days ago under a retention of `days`: its bytes in the store (or
-   * not), and its row as the upload writes it.
+   * An artifact uploaded eight days ago into a workspace whose `artifacts` tier is `days`: the tier
+   * stored, its bytes in the store (or not), and its row as the upload writes it.
    *
    * @param at - The shelf.
    * @param name - Its name.
-   * @param days - The workspace's retention when it was uploaded.
+   * @param days - The workspace's `artifacts` tier.
    * @param options - `through` another driver's name; `stored: false` to leave the bytes out.
    * @returns Its id and storage key.
    */
@@ -133,6 +133,13 @@ describe.each([
     if (options.stored !== false && options.through === undefined) {
       await store().put(key, Readable.from([bytes]), bytes.length);
     }
+
+    await api.sql.query(
+      `insert into ${SCHEMA_NAME}.retention_policies (organization_id, data_class, days)
+       values ($1, 'artifacts', $2)
+       on conflict (organization_id, data_class) do update set days = excluded.days`,
+      [at.workspace.id, days],
+    );
 
     const { rows } = await api.sql.query<{ id: string }>(
       `insert into ${SCHEMA_NAME}.test_artifacts

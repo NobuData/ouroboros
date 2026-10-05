@@ -928,7 +928,8 @@ export interface Configuration {
    */
   readonly artifactMaxJobBytes: number;
   /**
-   * Days an uploaded artifact is kept — its `retained_until`. From `OURO_ARTIFACT_RETENTION_DAYS`,
+   * Days an uploaded artifact is kept in a workspace that stored no `artifacts` retention tier —
+   * that class's default in `RetentionPolicyService` (#482). From `OURO_ARTIFACT_RETENTION_DAYS`,
    * {@link DEFAULT_ARTIFACT_RETENTION_DAYS} when unset.
    */
   readonly artifactRetentionDays: number;

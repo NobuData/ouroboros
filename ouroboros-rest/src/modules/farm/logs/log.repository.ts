@@ -33,6 +33,7 @@ import { sql } from "kysely";
 
 import { DatabaseService } from "../../db/db.service";
 import type { BuildJobStatus } from "../../db/schema";
+import { cutoffSql, type RetentionCutoffs } from "../../retention/retention.cutoffs";
 import { UNIQUE_VIOLATION, isDatabaseFailure } from "../../tenancy/constraints";
 import { LOG_CHUNK_MAX_BYTES } from "../gateway/gateway.policy";
 import type { StoredChunk } from "./log.slice";
@@ -337,28 +338,29 @@ export class LogRepository {
   }
 
   /**
-   * Finished jobs whose every chunk is past its `retain_until` — the age rule.
+   * Finished jobs whose every chunk was stored before its workspace's `build_logs` cutoff — the
+   * age rule.
    *
-   * A job with some chunks still inside their window waits: a log is removed whole or not at all.
+   * A job with some chunks still inside the window waits: a log is removed whole or not at all.
+   * The cutoff is `RetentionPolicyService`'s (#482), so a workspace's changed tier moves this
+   * sweep and no other; `received_at` is when each chunk was stored.
    *
-   * @param now - The cutoff.
+   * @param cutoffs - The `build_logs` cutoffs, per workspace.
    * @param limit - The most jobs.
-   * @returns The jobs.
+   * @returns The jobs, oldest finished first.
    */
-  async expired(now: Date, limit: number): Promise<SweepCandidate[]> {
+  async expired(cutoffs: RetentionCutoffs, limit: number): Promise<SweepCandidate[]> {
     const { rows } = await sql<SweepCandidate>`
       select job.id, job.organization_id
         from ouroboros.build_jobs job
-       where job.id in (select distinct chunk.job_id
-                          from ouroboros.build_log_chunks chunk
-                         where chunk.retain_until < ${now}
-                         limit ${limit})
-         and job.finished_at is not null
+       where job.finished_at is not null
          and job.log_swept_at is null
+         and exists (select 1 from ouroboros.build_log_chunks chunk where chunk.job_id = job.id)
          and not exists (select 1 from ouroboros.build_log_chunks kept
-                          where kept.job_id = job.id and kept.retain_until >= ${now})`.execute(
-      this.database.db,
-    );
+                          where kept.job_id = job.id
+                            and kept.received_at >= ${cutoffSql(cutoffs, "job.organization_id")})
+       order by job.finished_at, job.id
+       limit ${limit}`.execute(this.database.db);
 
     return rows;
   }

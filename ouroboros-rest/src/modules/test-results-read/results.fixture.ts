@@ -11,6 +11,7 @@
  * workspace exactly as the statements are, so the isolation cases mean something.
  */
 
+import { cutoffOf, type RetentionCutoffs } from "../retention/retention.cutoffs";
 import type { ClassificationRow } from "../triage/triage.repository";
 import type {
   ArtifactRow,
@@ -539,16 +540,16 @@ export class FakeResultsRepository {
     );
   }
 
-  expiring(now: Date, driver: string, limit: number): Promise<ExpiringArtifact[]> {
+  expiring(cutoffs: RetentionCutoffs, driver: string, limit: number): Promise<ExpiringArtifact[]> {
     return Promise.resolve(
       this.universe.artifacts
         .filter(
           (row) =>
             row.expired_at === null &&
-            row.retained_until <= now &&
+            row.created_at <= cutoffOf(cutoffs, row.organization_id) &&
             (row.storage_ref as { driver: string }).driver === driver,
         )
-        .sort((a, b) => a.retained_until.getTime() - b.retained_until.getTime())
+        .sort((a, b) => a.created_at.getTime() - b.created_at.getTime())
         .slice(0, limit),
     );
   }

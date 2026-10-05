@@ -17,6 +17,10 @@
  * mappers), `console.route.ts` (a stage's route, read from its pin), `console.policy.ts` (the
  * numbers) and `run.spend.ts` (the ledger sum AP.1 shares).
  *
+ * And the transcript's retention sweep (BQ.3, #482): `transcript.retention.ts` removes a finished
+ * run's whole transcript once it is past the workspace's `transcripts` tier, through V101's
+ * `run_events_sweep()` (`transcript.repository.ts`).
+ *
  * A module of its own rather than more controllers in `DashboardModule`, which is that
  * module's stated design: the dashboard exports nothing so its card-sized limits and window
  * choices stay its own, and the drill-ins publish their own statements over the same rows.
@@ -30,18 +34,31 @@
  */
 
 import { Module } from "@nestjs/common";
+import { ScheduleModule } from "@nestjs/schedule";
 
 import { DbModule } from "../db/db.module";
+import { RetentionModule } from "../retention/retention.module";
 import { ConsoleRepository } from "./console.repository";
 import { ConsoleService } from "./console.service";
 import { RunsController } from "./runs.controller";
 import { RunsRepository } from "./runs.repository";
 import { RunsService } from "./runs.service";
+import { TranscriptRetentionRepository } from "./transcript.repository";
+import { TranscriptRetentionSweeper } from "./transcript.retention";
 
 @Module({
-  imports: [DbModule],
+  // `RetentionModule` for the transcript sweep's `transcripts` cutoffs (#482), and
+  // `ScheduleModule.forRoot()` for its `SchedulerRegistry`, as `ControlsModule` does.
+  imports: [DbModule, RetentionModule, ScheduleModule.forRoot()],
   controllers: [RunsController],
-  providers: [RunsService, RunsRepository, ConsoleService, ConsoleRepository],
+  providers: [
+    RunsService,
+    RunsRepository,
+    ConsoleService,
+    ConsoleRepository,
+    TranscriptRetentionRepository,
+    TranscriptRetentionSweeper,
+  ],
   // Nothing is exported, for the dashboard module's own reason: the routes are the surface,
   // and the queue (#73) and settings (#74) drill-ins publish their own.
 })

@@ -19,6 +19,7 @@
 #   can_approve_loops defaults to true                  member_capabilities_explicit
 #   a new service account defaults to api.read          service_accounts_least_privilege
 #   the audit tier is cut to 30 days                    retention_policies_floor
+#   the artifacts tier is raised to ten years           retention_policies_ceiling
 #   the SIEM signing key is stored in the clear         webhook_keys_sealed
 #   a webhook table grows a plaintext key column        webhook_keys_sealed
 #   devops-bot's key is stored as itself                service_tokens_hash_only
@@ -253,6 +254,12 @@ expect_red 'the audit tier is cut to 30 days' \
   "alter table ouroboros.retention_policies drop constraint retention_policies_days_floor;
    update ouroboros.retention_policies set days = 30
     where organization_id = '$SEED_ORG' and data_class = 'audit';"
+
+expect_red 'the artifacts tier is raised to ten years' \
+  'retention_policies_ceiling: every stored' \
+  "alter table ouroboros.retention_policies drop constraint retention_policies_days_ceiling;
+   update ouroboros.retention_policies set days = 3650
+    where organization_id = '$SEED_ORG' and data_class = 'artifacts';"
 
 expect_red 'the SIEM signing key is stored in the clear' \
   'webhook_keys_sealed: every stored' \

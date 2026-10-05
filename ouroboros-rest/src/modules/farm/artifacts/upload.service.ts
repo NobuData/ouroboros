@@ -34,6 +34,7 @@ import { pipeline } from "node:stream/promises";
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 
 import { AppConfigService } from "../../config/config.service";
+import { RetentionPolicyService } from "../../retention/retention.service";
 import { DomainError } from "../../errors/error.envelope";
 import { describeForLog } from "../../errors/failure";
 import type { BuildJob } from "../../db/schema";
@@ -71,9 +72,6 @@ import {
 import { readUpload } from "./upload.receiver";
 import { UploadRepository, type ArtifactRow, type UploadLedger } from "./upload.repository";
 import { bearerToken, mintUploadToken, uploadTokenMatches } from "./upload.token";
-
-/** Milliseconds in a day, for retention. */
-const DAY_MS = 86_400_000;
 
 /** What dispatch needs from this service — the seam its unit suite stands in for. */
 export interface OfferUploads {
@@ -143,7 +141,8 @@ export class ArtifactUploadService implements OfferUploads {
    * @param store - Where the bytes go.
    * @param registry - AT.1's parsers, for detecting which files are results.
    * @param ingest - AT.1's parse orchestration.
-   * @param config - The caps, the quota and the retention.
+   * @param config - The caps and the quota.
+   * @param retention - The `artifacts` tier, for each artifact's `retained_until` (#482).
    * @param now - The clock tokens are minted and expired by.
    * @param gates - The gate engine's sink, told when an attempt's results are in; absent in a
    *   context without it.
@@ -154,6 +153,7 @@ export class ArtifactUploadService implements OfferUploads {
     private readonly registry: TestResultParserRegistry,
     private readonly ingest: TestResultIngestService,
     private readonly config: AppConfigService,
+    private readonly retention: RetentionPolicyService,
     @Inject(GATEWAY_CLOCK) private readonly now: GatewayClock,
     @Optional() @Inject(GATE_EVIDENCE) private readonly gates?: GateEvidenceSink,
   ) {}
@@ -392,7 +392,9 @@ export class ArtifactUploadService implements OfferUploads {
           });
     const coverage = new Map(report?.coverage?.files.map((counts) => [counts.file, counts]));
 
-    const retainedUntil = new Date(at.getTime() + this.config.artifacts.retentionDays * DAY_MS);
+    // The promise the card shows (`retained 30d`). The sweep itself cuts on the `artifacts` tier as
+    // it stands at each sweep (#482), so this records the tier at upload, not a deadline.
+    const retainedUntil = await this.retention.retainUntil(ledger.organizationId, "artifacts", at);
     const artifacts: ArtifactRow[] = kept.map((file) => {
       const counts = coverage.get(file.name);
       return {

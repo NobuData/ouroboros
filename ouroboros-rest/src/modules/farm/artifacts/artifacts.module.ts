@@ -13,6 +13,7 @@ import { Module } from "@nestjs/common";
 import { AppConfigService } from "../../config/config.service";
 import { DbModule } from "../../db/db.module";
 import { GatesModule } from "../../pull-requests/gates/gates.module";
+import { RetentionModule } from "../../retention/retention.module";
 import { TestResultsModule } from "../../test-results/test-results.module";
 import { FarmGatewayModule } from "../gateway/gateway.module";
 import { ARTIFACT_STORE, createArtifactStore } from "./artifact.store.factory";
@@ -21,7 +22,8 @@ import { UploadRepository } from "./upload.repository";
 import { ArtifactUploadService, FARM_OFFER_UPLOADS } from "./upload.service";
 
 @Module({
-  imports: [DbModule, TestResultsModule, FarmGatewayModule, GatesModule],
+  // `RetentionModule` for each artifact's `retained_until`, from the `artifacts` tier (#482).
+  imports: [DbModule, TestResultsModule, FarmGatewayModule, GatesModule, RetentionModule],
   controllers: [ArtifactUploadController],
   providers: [
     {

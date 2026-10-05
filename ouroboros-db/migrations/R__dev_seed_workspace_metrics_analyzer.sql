@@ -525,6 +525,11 @@ on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
 -- The log tails the pattern analyzers read.
+--
+-- Stored when the seed is applied (`received_at`), not when the build finished: the build-log
+-- sweep cuts on `received_at` against the workspace's `build_logs` tier (#482), so a tail stored
+-- "89 days ago" would be swept ten minutes into a dev session. Nothing reads `received_at` but the
+-- sweep, and the corpus is dated by its jobs.
 -- ---------------------------------------------------------------------------
 insert into ouroboros.build_log_chunks (id, job_id, seq, content, received_at, retain_until)
 with jobs as (
@@ -624,7 +629,7 @@ tails (job_id, number, finished_at, content) as (
     join kconfig k on u.rn = 60 * k.n
 )
 select ('5eed0063-0000-4000-8000-' || lpad(t.number::text, 12, '0'))::uuid,
-       t.job_id, 1, convert_to(t.content, 'UTF8'), t.finished_at,
+       t.job_id, 1, convert_to(t.content, 'UTF8'), greatest(t.finished_at, now()),
        greatest(t.finished_at, now()) + interval '30 days'
   from tails t
  where ${ouro_dev_seed}

@@ -2137,6 +2137,62 @@ export interface paths {
         patch: operations["patchWorkspaceSettings"];
         trace?: never;
     };
+    "/api/v1/settings/retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The data-retention tiers
+         * @description Mockup 17's **Workspace** card *Data retention* select and the advanced per-class editor
+         *     behind it ([#482](https://github.com/NobuData/ouroboros/issues/482)) — how long each class
+         *     of this workspace's data is kept, the bounds each class may be set within, and when each
+         *     class's next sweep will apply a change.
+         *
+         *     **Four core classes, and any `custom:<slug>` a plane has stored.** `transcripts`,
+         *     `build_logs` and `artifacts` are loop data — the select's *"transcripts, logs, artifacts"*
+         *     — kept 30 days by default, 7–365 allowed. `audit` is kept 400 days by default, 90–3650
+         *     allowed. A class the workspace never stored reads `source: default`. `loopDays` is the
+         *     select's value: the tier the three loop classes share, or `null` once they differ.
+         *
+         *     **Saving deletes nothing.** A change moves the *next* sweep's cutoff for that class only.
+         *     `nextSweepAt` says when that is (`null` for a class nothing sweeps yet — audit, until the
+         *     audit purge, BR.2), and `lastSweep.removed` how many rows or objects that class's last
+         *     sweep removed.
+         *
+         *     **Any member may read it**; it is `editable` for `owner` and `admin` and `reason: role`
+         *     for everyone else.
+         */
+        get: operations["readRetentionSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change data-retention tiers
+         * @description Save the simple select **or** the advanced editor; the answer is the tiers as they now
+         *     stand.
+         *
+         *     - `loopDays` sets `transcripts`, `build_logs` and `artifacts` to one value and leaves
+         *       `audit` and every custom class untouched.
+         *     - `classes` sets each named class individually — `{"audit": 730, "custom:chat-commands":
+         *       1095}`. A `custom:<slug>` class is stored without a schema change.
+         *
+         *     A body carrying neither writes nothing and answers the current tiers. **All or
+         *     nothing**: every value is checked against its class's bounds before any is stored.
+         *     Only classes whose value actually changes are written, and each is audited as
+         *     `workspace.retention_changed` with the class, the previous and new days, and the actor.
+         *
+         *     Saving deletes nothing at that moment: the class's next sweep applies the new tier.
+         *
+         *     **`owner` or `admin`, and nobody else.**
+         */
+        patch: operations["patchRetentionSettings"];
+        trace?: never;
+    };
     "/api/v1/settings/members": {
         parameters: {
             query?: never;
@@ -15947,6 +16003,86 @@ export interface components {
              *     `null` is a `422` naming the field, never a coercion.
              */
             enabled?: boolean;
+        };
+        /**
+         * RetentionSettings
+         * @description A workspace's data-retention tiers — what both operations on `/api/v1/settings/retention`
+         *     answer ([#482](https://github.com/NobuData/ouroboros/issues/482)).
+         */
+        RetentionSettings: {
+            /** @description Whether this caller may change the tiers — `owner` and `admin` only. */
+            editable: boolean;
+            /**
+             * @description Why the tiers cannot be changed — `role`; `null` exactly when `editable`.
+             * @enum {string|null}
+             */
+            reason: "role" | null;
+            /**
+             * @description The simple select's value: the days `transcripts`, `build_logs` and `artifacts`
+             *     share, or `null` when the advanced editor has set them apart.
+             */
+            loopDays: number | null;
+            /** @description The four core classes in a fixed order, then every stored `custom:*` class. */
+            classes: components["schemas"]["RetentionTier"][];
+            /**
+             * @description The card's effect note: saving deletes nothing, and each class's next sweep applies
+             *     the new tier.
+             */
+            effect: string;
+        };
+        /**
+         * RetentionTier
+         * @description One class's tier, its bounds, and its sweep's timing.
+         */
+        RetentionTier: {
+            /** @description `transcripts`, `build_logs`, `artifacts`, `audit`, or `custom:<slug>`. */
+            dataClass: string;
+            /** @description Days kept. */
+            days: number;
+            /**
+             * @description `policy` when the workspace stored this tier; `default` when it never has.
+             * @enum {string}
+             */
+            source: "policy" | "default";
+            /** @description `true` for the three classes the simple select governs. */
+            loopData: boolean;
+            /** @description The fewest days the class may be given — 90 for audit, 7 otherwise. */
+            floor: number;
+            /** @description The most days — 365 for loop data, 3650 for audit and custom classes. */
+            ceiling: number;
+            /**
+             * Format: date-time
+             * @description When the stored tier was last changed; `null` for a default.
+             */
+            updatedAt: string | null;
+            /** @description The user who last changed it; `null` for a default or a removed user. */
+            updatedBy: string | null;
+            /**
+             * Format: date-time
+             * @description When the class is next swept — when a change takes effect. `null` when nothing in
+             *     this deployment sweeps the class yet (audit until BR.2; a custom class until its
+             *     plane's sweep).
+             */
+            nextSweepAt: string | null;
+            /** @description The class's last sweep since this service started, or `null`. */
+            lastSweep: null | {
+                /** Format: date-time */
+                at: string;
+                /** @description Rows or objects the sweep removed — its tombstone count. */
+                removed: number;
+            };
+        };
+        /**
+         * RetentionPatch
+         * @description The simple select (`loopDays`) or the advanced editor (`classes`) — at most one per body.
+         */
+        RetentionPatch: {
+            /** @description Days for `transcripts`, `build_logs` and `artifacts` together (7–365). */
+            loopDays?: number;
+            /** @description Days per class, keyed by `transcripts | build_logs | artifacts | audit | custom:<slug>`. */
+            classes?: {
+                [key: string]: number;
+            };
         };
         /**
          * WorkspaceSettings
@@ -33457,6 +33593,380 @@ export interface operations {
              *     message attaches to its input. A name must be 1–100 characters with no leading or
              *     trailing whitespace and no control characters; a domain must be a lower-case domain
              *     name.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readRetentionSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tiers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "editable": true,
+                     *       "reason": null,
+                     *       "loopDays": 30,
+                     *       "effect": "Saving deletes nothing. Each class's next sweep applies the new tier; data past it is removed then.",
+                     *       "classes": [
+                     *         {
+                     *           "dataClass": "transcripts",
+                     *           "days": 30,
+                     *           "source": "policy",
+                     *           "loopData": true,
+                     *           "floor": 7,
+                     *           "ceiling": 365,
+                     *           "updatedAt": "2026-08-04T09:12:00.000Z",
+                     *           "updatedBy": "5eed0001-0000-4000-8000-000000000001",
+                     *           "nextSweepAt": "2026-10-04T13:02:41.000Z",
+                     *           "lastSweep": {
+                     *             "at": "2026-10-04T12:01:58.000Z",
+                     *             "removed": 3
+                     *           }
+                     *         },
+                     *         {
+                     *           "dataClass": "build_logs",
+                     *           "days": 30,
+                     *           "source": "policy",
+                     *           "loopData": true,
+                     *           "floor": 7,
+                     *           "ceiling": 365,
+                     *           "updatedAt": "2026-08-04T09:12:00.000Z",
+                     *           "updatedBy": "5eed0001-0000-4000-8000-000000000001",
+                     *           "nextSweepAt": "2026-10-04T12:11:20.000Z",
+                     *           "lastSweep": null
+                     *         },
+                     *         {
+                     *           "dataClass": "artifacts",
+                     *           "days": 30,
+                     *           "source": "policy",
+                     *           "loopData": true,
+                     *           "floor": 7,
+                     *           "ceiling": 365,
+                     *           "updatedAt": "2026-08-04T09:12:00.000Z",
+                     *           "updatedBy": "5eed0001-0000-4000-8000-000000000001",
+                     *           "nextSweepAt": "2026-10-04T12:47:09.000Z",
+                     *           "lastSweep": null
+                     *         },
+                     *         {
+                     *           "dataClass": "audit",
+                     *           "days": 400,
+                     *           "source": "policy",
+                     *           "loopData": false,
+                     *           "floor": 90,
+                     *           "ceiling": 3650,
+                     *           "updatedAt": "2026-08-04T09:12:00.000Z",
+                     *           "updatedBy": "5eed0001-0000-4000-8000-000000000001",
+                     *           "nextSweepAt": null,
+                     *           "lastSweep": null
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["RetentionSettings"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchRetentionSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "loopDays": 30
+                 *     }
+                 */
+                "application/json": components["schemas"]["RetentionPatch"];
+            };
+        };
+        responses: {
+            /** @description The tiers after the save. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "editable": true,
+                     *       "reason": null,
+                     *       "loopDays": 30,
+                     *       "effect": "Saving deletes nothing. Each class's next sweep applies the new tier; data past it is removed then.",
+                     *       "classes": [
+                     *         {
+                     *           "dataClass": "transcripts",
+                     *           "days": 30,
+                     *           "source": "policy",
+                     *           "loopData": true,
+                     *           "floor": 7,
+                     *           "ceiling": 365,
+                     *           "updatedAt": "2026-08-04T09:12:00.000Z",
+                     *           "updatedBy": "5eed0001-0000-4000-8000-000000000001",
+                     *           "nextSweepAt": "2026-10-04T13:02:41.000Z",
+                     *           "lastSweep": {
+                     *             "at": "2026-10-04T12:01:58.000Z",
+                     *             "removed": 3
+                     *           }
+                     *         },
+                     *         {
+                     *           "dataClass": "build_logs",
+                     *           "days": 30,
+                     *           "source": "policy",
+                     *           "loopData": true,
+                     *           "floor": 7,
+                     *           "ceiling": 365,
+                     *           "updatedAt": "2026-08-04T09:12:00.000Z",
+                     *           "updatedBy": "5eed0001-0000-4000-8000-000000000001",
+                     *           "nextSweepAt": "2026-10-04T12:11:20.000Z",
+                     *           "lastSweep": null
+                     *         },
+                     *         {
+                     *           "dataClass": "artifacts",
+                     *           "days": 30,
+                     *           "source": "policy",
+                     *           "loopData": true,
+                     *           "floor": 7,
+                     *           "ceiling": 365,
+                     *           "updatedAt": "2026-08-04T09:12:00.000Z",
+                     *           "updatedBy": "5eed0001-0000-4000-8000-000000000001",
+                     *           "nextSweepAt": "2026-10-04T12:47:09.000Z",
+                     *           "lastSweep": null
+                     *         },
+                     *         {
+                     *           "dataClass": "audit",
+                     *           "days": 400,
+                     *           "source": "policy",
+                     *           "loopData": false,
+                     *           "floor": 90,
+                     *           "ceiling": 3650,
+                     *           "updatedAt": "2026-08-04T09:12:00.000Z",
+                     *           "updatedBy": "5eed0001-0000-4000-8000-000000000001",
+                     *           "nextSweepAt": null,
+                     *           "lastSweep": null
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["RetentionSettings"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Changing how long the workspace's data is kept is `owner` or `admin`;
+             *     `member` and `viewer` may read the tiers, which tell them so with `reason: role`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `retention_out_of_bounds` — a tier is below its class's floor (audit 90 days, every
+             *     other class 7), above its ceiling (loop data 365, audit and custom classes 3650), or
+             *     not whole days. Nothing was stored. `details.refusals` lists each refusal — its
+             *     `dataClass`, `days`, `reason` (`below_floor | above_ceiling | not_whole_days`),
+             *     `floor`, `ceiling` and `message` — and `details.fields` binds each message to the
+             *     input that sent it (`loopDays`, or `classes.<class>`).
+             *
+             *     `validation_failed` — the body is not one the card sends: both `loopDays` and
+             *     `classes`, an unknown class, a value that is not a number, or a field this
+             *     operation does not take. `details.fields` is keyed by the field.
              */
             422: {
                 headers: {

@@ -7,6 +7,7 @@ import { Logger } from "@nestjs/common";
 
 import type { AppConfigService, ArtifactSettings } from "../../config/config.service";
 import { DomainError } from "../../errors/error.envelope";
+import { retentionHarness, type RetentionHarness } from "../../retention/retention.fixture";
 import { CoverageParser } from "../../test-results/coverage.parser";
 import { HilParser } from "../../test-results/hil.parser";
 import { JunitParser } from "../../test-results/junit.parser";
@@ -83,6 +84,7 @@ let closes: UploadClose[];
 let closeAnswer: "closed" | "raced";
 let parse: jest.Mock;
 let gates: { notify: jest.Mock };
+let retention: RetentionHarness;
 let repository: jest.Mocked<
   Pick<UploadRepository, "mint" | "ledger" | "usage" | "attempt" | "close">
 >;
@@ -126,6 +128,7 @@ beforeEach(async () => {
     }),
   };
 
+  retention = retentionHarness();
   service = new ArtifactUploadService(
     repository as unknown as UploadRepository,
     store,
@@ -136,6 +139,7 @@ beforeEach(async () => {
         return settings;
       },
     } as unknown as AppConfigService,
+    retention.service,
     () => NOW,
     gates,
   );
@@ -260,6 +264,22 @@ describe("accepting an upload", () => {
       },
     });
     expect(await storedObjects()).toHaveLength(4);
+  });
+
+  it("stamps retained_until from the workspace's artifacts tier, not a constant (#482)", async () => {
+    await retention.service.update(
+      ORG,
+      { userId: "u-admin", roles: ["owner"] },
+      {
+        classes: { artifacts: 90 },
+      },
+    );
+
+    await send(uploadBody(mockupFiles()));
+
+    expect(closes[0].artifacts.map((row) => row.retainedUntil)).toEqual(
+      closes[0].artifacts.map(() => new Date(NOW.getTime() + 90 * 86_400_000)),
+    );
   });
 
   it("tells the gate engine the attempt is in, once, after the upload has closed", async () => {
@@ -513,6 +533,7 @@ describe("accepting an upload", () => {
           return settings;
         },
       } as unknown as AppConfigService,
+      retention.service,
       () => NOW,
     );
 

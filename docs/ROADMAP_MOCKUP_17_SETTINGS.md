@@ -240,7 +240,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BQ.1 | #480 ✅ | 🟢 Done | ouroboros-db: [BQ.1] Versioned org-policy document schema | `org_policies` + immutable versions; the five rules as structured data | mvp, settings, db | N (after WF-P.2, BA-B.3) | Y | M | ouroboros-db |
 | BQ.2 | #481 | 🟡 Open | ouroboros-rest: [BQ.2] Policy resolution & enforcement wiring | One resolver; AX/AP.3/caps/dry-run consume it (amendments) | mvp, settings, rest, pr, runs | N (after BQ.1, AX.2, AP.3, BA.3) | Y | L | ouroboros-rest |
-| BQ.3 | #482 | 🟡 Open | ouroboros-rest: [BQ.3] Retention policy service | Per-class tiers; the three sweeps + audit consume (S5) | mvp, settings, rest | N (after AO.2/AH.5/AT.5) | Y | M | ouroboros-rest, ouroboros-db |
+| BQ.3 | #482 ✅ | 🟢 Done | ouroboros-rest: [BQ.3] Retention policy service | Per-class tiers; the three sweeps + audit consume (S5) | mvp, settings, rest | N (after AO.2/AH.5/AT.5) | Y | M | ouroboros-rest, ouroboros-db |
 | BQ.4 | #483 ✅ | 🟢 Done | ouroboros-rest: [BQ.4] Workspace config & deployment truth | Name/domain edit, region/training truth rendering (S6) | mvp, settings, rest | N (after BA-B.3, AD.5) | Y | S | ouroboros-rest |
 | BQ.5 | #484 ✅ | 🟢 Done | ouroboros-db: [BQ.5] Settings seeds — mockup-17 parity + probes | Policy v7, members, audit rows, webhooks, tiers; ci checks | mvp, settings, db, ci | N (after BQ.1–BQ.4, #24) | Y | S | ouroboros-db, .github |
 
@@ -324,9 +324,11 @@ publish v8 (owner, loosening) ─▶ audit "enabled auto-merge (policy v8)" · e
 
 ### Issue BQ.3 — ouroboros-rest: [BQ.3] Retention policy service
 
-> **GitHub issue:** #482 · **Status:** 🟡 Open · **Parent epic:** #476
+> **GitHub issue:** #482 ✅ · **Status:** 🟢 Done · **Parent epic:** #476
 >
 > **Schema already shipped (#484):** V094 created `retention_policies` (class CHECK, audit ≥ 90 / others ≥ 7 days) and BQ.5 seeds 30/30/30/400 — build the service over it rather than re-creating it.
+>
+> **Delivered (#482, V101, REST 0.39.11):** `RetentionPolicyService` + `GET/PATCH /api/v1/settings/retention` (`loopDays` or `classes`). Decided with the user: no transcript sweep existed, so V101 adds one (`run_events_sweep()` definer + `runs.events_swept_at`); the audit purge stays with BR.2, which reads `cutoffs("audit")`; sweeps now cut on the stored time against the tier as it stands at each sweep, so a change reaches existing data on the next sweep; ceilings are 365 days for loop data, 3650 for audit and `custom:*`. BS.2 reads `loopDays`, `classes[].nextSweepAt` and `effect`.
 
 - **Problem Statement:** Four retention knobs exist in four sweeps; the
   workspace card's selector must govern them all (decision S5).

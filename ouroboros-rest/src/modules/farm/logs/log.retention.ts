@@ -7,7 +7,7 @@
  *
  * | Rule | What is kept | Where it comes from |
  * |---|---|---|
- * | **Age** | a chunk until its `retain_until` — thirty days after it was stored | written onto each chunk at ingest, so a policy that changes later never reaches back into what was written under the old one (V040) |
+ * | **Age** | a job's log until every chunk was stored before the workspace's cutoff — `now − build_logs tier`, thirty days by default | `RetentionPolicyService.cutoffs("build_logs")` (#482): the tier as it stands at each sweep, so changing it moves the *next* sweep and nothing else |
  * | **Budget** | at most `OURO_FARM_LOG_BUDGET_BYTES` of finished builds' logs per workspace (2 GiB by default) | the oldest finished jobs' logs go first |
  *
  * Three rules hold for both:
@@ -21,11 +21,12 @@
  *     minutes, so a backlog is worked down a batch at a time and the sweep never becomes the load
  *     problem it exists to prevent. Every run that removed something logs its tombstone counts.
  *
- * **#482's seam.** The retention policy service (BQ.3) will govern per-class tiers from the
- * settings page, and build logs will read its `build_logs` tier. Until it exists the policy is the
- * {@link FARM_LOG_RETENTION} provider bound below — thirty days and the configured budget — which
- * #482 replaces with its own; its defaults reproduce these, so the switch deletes nothing
- * unexpected.
+ * **The age rule's window is not this file's.** It reads the `build_logs` tier from BQ.3's
+ * retention policy service, which computes each workspace's cutoff centrally; the default tier is
+ * the thirty days this sweep used to hold as a constant, so the switch deleted nothing unexpected.
+ * The {@link FARM_LOG_RETENTION} provider is left holding the byte budget, which is a deployment
+ * fact rather than a retention tier. Each run's next time and tombstone counts are reported to
+ * `RetentionSchedule`, which is how the Settings card says when a change takes effect.
  */
 
 import {
@@ -38,21 +39,21 @@ import {
 import { SchedulerRegistry } from "@nestjs/schedule";
 
 import { describeForLog } from "../../errors/failure";
+import { RetentionSchedule } from "../../retention/retention.schedule";
+import { RetentionPolicyService } from "../../retention/retention.service";
 import { jittered } from "../../scheduling/cadence";
 import { GATEWAY_CLOCK, type GatewayClock } from "../gateway/gateway.clock";
 import { LOG_SWEEP_BATCH, LOG_SWEEP_INTERVAL_MS } from "./log.policy";
 import { LogRepository, type SweepCandidate } from "./log.repository";
 
-/** The injection token for the retention policy — #482 binds its own. */
+/** The injection token for the byte budget. The age rule's tier is `RetentionPolicyService`'s. */
 export const FARM_LOG_RETENTION = Symbol("FARM_LOG_RETENTION");
 
 /** How the timer names itself in `SchedulerRegistry`. */
 export const LOG_RETENTION_SWEEP = "farm-log-retention";
 
-/** How long, and how much, build logs are kept. */
+/** How much build log one workspace keeps — the budget rule. */
 export interface LogRetentionPolicy {
-  /** Days a chunk is kept after it is stored — its `retain_until`. */
-  readonly days: number;
   /** Bytes of finished builds' logs one workspace keeps. */
   readonly budgetBytesPerOrg: number;
 }
@@ -67,20 +68,6 @@ export interface SweepReport {
   readonly bytes: number;
 }
 
-/** One day, in milliseconds. */
-const DAY_MS = 86_400_000;
-
-/**
- * When a chunk stored now may be swept.
- *
- * @param policy - The retention policy.
- * @param now - When it is stored.
- * @returns Its `retain_until`.
- */
-export function retainUntil(policy: LogRetentionPolicy, now: Date): Date {
-  return new Date(now.getTime() + policy.days * DAY_MS);
-}
-
 @Injectable()
 export class LogRetentionSweeper implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly logger = new Logger(LogRetentionSweeper.name);
@@ -88,13 +75,17 @@ export class LogRetentionSweeper implements OnApplicationBootstrap, OnApplicatio
 
   /**
    * @param repository - The sweep's statements.
-   * @param policy - How long, and how much.
+   * @param policy - The byte budget.
+   * @param retention - The `build_logs` tier's cutoffs (#482).
+   * @param retentionSchedule - Where the next sweep and the tombstone counts are reported.
    * @param scheduler - Nest's registry, so the timer has a name.
    * @param now - The clock.
    */
   constructor(
     private readonly repository: LogRepository,
     @Inject(FARM_LOG_RETENTION) private readonly policy: LogRetentionPolicy,
+    private readonly retention: RetentionPolicyService,
+    private readonly retentionSchedule: RetentionSchedule,
     private readonly scheduler: SchedulerRegistry,
     @Inject(GATEWAY_CLOCK) private readonly now: GatewayClock,
   ) {}
@@ -107,6 +98,7 @@ export class LogRetentionSweeper implements OnApplicationBootstrap, OnApplicatio
   /** Stop the loop, and clear a pending timer. */
   onApplicationShutdown(): void {
     this.stopped = true;
+    this.retentionSchedule.stopped("build_logs");
 
     if (this.scheduler.doesExist("timeout", LOG_RETENTION_SWEEP)) {
       this.scheduler.deleteTimeout(LOG_RETENTION_SWEEP);
@@ -136,7 +128,8 @@ export class LogRetentionSweeper implements OnApplicationBootstrap, OnApplicatio
       return jobs;
     };
 
-    const byAge = await removeAll(await this.repository.expired(at, LOG_SWEEP_BATCH));
+    const cutoffs = await this.retention.cutoffs("build_logs", at);
+    const byAge = await removeAll(await this.repository.expired(cutoffs, LOG_SWEEP_BATCH));
 
     let byBudget = 0;
     for (const workspace of await this.repository.overBudget(this.policy.budgetBytesPerOrg)) {
@@ -168,6 +161,7 @@ export class LogRetentionSweeper implements OnApplicationBootstrap, OnApplicatio
 
     try {
       const report = await this.sweep();
+      this.retentionSchedule.swept("build_logs", this.now(), report.byAge + report.byBudget);
 
       if (report.byAge > 0 || report.byBudget > 0) {
         this.logger.log(
@@ -189,9 +183,11 @@ export class LogRetentionSweeper implements OnApplicationBootstrap, OnApplicatio
   private schedule(): void {
     if (this.stopped) return;
 
+    const delay = jittered(LOG_SWEEP_INTERVAL_MS);
     const timer = setTimeout(() => {
       void this.tick();
-    }, jittered(LOG_SWEEP_INTERVAL_MS));
+    }, delay);
+    this.retentionSchedule.booked("build_logs", new Date(Date.now() + delay));
 
     // The loop must not be the reason a process stays alive.
     timer.unref();
