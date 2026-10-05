@@ -769,7 +769,7 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 | BS.2 | #492 ✅ | 🟢 Done | ouroboros-ui: [BS.2] Workspace card | Name/domain/region/retention/training — deployment-truth variants | mvp, settings, ui, design | N (after BS.1, BQ.3/BQ.4) | Y | S | ouroboros-ui |
 | BS.3 | #493 ✅ | 🟢 Done | ouroboros-ui: [BS.3] Members & roles card | Table with all row classes, invites, capabilities, service accounts | mvp, settings, ui, design | N (after BS.1, BR.1) | Y | M | ouroboros-ui |
 | BS.4 | #494 ✅ | 🟢 Done | ouroboros-ui: [BS.4] Autonomy policies card | Rule rows with terms chips, editing, version tag, publish flow | mvp, settings, ui, design | N (after BS.1, BQ.2) | Y | L | ouroboros-ui |
-| BS.5 | #495 | 🟡 Open | ouroboros-ui: [BS.5] Audit, integrations & notifications cards | Viewer + export + SIEM row; truth-state grid; org routes | mvp, settings, ui, design | N (after BS.1, BR.2–BR.4) | Y | M | ouroboros-ui |
+| BS.5 | #495 ✅ | 🟢 Done | ouroboros-ui: [BS.5] Audit, integrations & notifications cards | Viewer + export + SIEM row; truth-state grid; org routes | mvp, settings, ui, design | N (after BS.1, BR.2–BR.4) | Y | M | ouroboros-ui |
 | BS.6 | #496 | 🟡 Open | ouroboros-ui: [BS.6] Danger zone, states & e2e leg | Lifecycle flows with safety UX; banners; full e2e | mvp, settings, ui, ci | N (after BS.2–BS.5, BR.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue BS.1 — ouroboros-ui: [BS.1] Settings frame, section nav & save model
@@ -983,7 +983,7 @@ policy v7 ⓘ history · [Save] ─▶ "loosens human-review — owner confirm" 
 
 ### Issue BS.5 — ouroboros-ui: [BS.5] Audit, integrations & notifications cards
 
-> **GitHub issue:** #495 · **Status:** 🟡 Open · **Parent epic:** #478
+> **GitHub issue:** #495 ✅ · **Status:** 🟢 Done · **Parent epic:** #478
 
 - **Problem Statement:** The record surfaces: the audit viewer with
   export + SIEM status, the truth-state integrations grid, and org
@@ -1012,6 +1012,34 @@ policy v7 ⓘ history · [Save] ─▶ "loosens human-review — owner confirm" 
 [GH ✓][Slack — with Chat Ops][Jira ✓][Webhooks ✓2 → manage] [PagerDuty — v2]
 Loop failures → PagerDuty 🔒 "connect PagerDuty first"
 ```
+
+- **Delivered** (`ouroboros-ui` 0.137.0: `app/audit-log/`, `app/webhooks/`, `app/integrations/`;
+  no service change — BR.2–BR.4 already serve every read and write).
+  - **Audit card.** Today's rows from `GET /settings/audit/today` (UTC, tagged so), the actor
+    styled per kind with the kind also in words; `filters ▾` drives `GET /settings/audit` with
+    keyset paging — **Load more** or *End of log · N events*, never a silent stop; `retained Nd`
+    from the read's tier. **Export CSV** is a range dialog (366-day bound explained and checked,
+    applied filters listed, *this export is itself recorded*) whose **Download** is a link to the
+    UI's `GET /api/settings/audit/export.csv`, which streams the service's body through.
+  - **Stream to SIEM.** ✓ only when the service calls the SIEM endpoint `streaming`; a warning
+    with the dead-lettered count when it is not; every other state in words. It opens the
+    endpoint's delivery log (attempts, codes, latencies, the dead-letter queue with
+    **Redeliver**).
+  - **Integrations grid.** Tiles as the status hub composes them: `connected` / `not connected`
+    / `v2` / `not built yet`, the ok mark only for connected-and-ok, Connect / Manage as links to
+    the owning surface. The Webhooks tile opens the management sheet for an owner or admin:
+    create / edit, pause, **Test ping** with its row shown, rotate and delete behind a stated
+    consequence, the signing secret shown once.
+  - **Notifications card.** The org routes join the S7 batch (one `PATCH` per changed route, in
+    card order). A locked route has a lock, its reason and a link to `#integrations`, and no
+    control that could arm it; the service's `409 notification_route_locked` stays the
+    enforcement. Digest time (UTC) and weekly recipients (an email list) are editable.
+  - **Slack (the #535/#541 amendment).** #535 is not built, so the hub still reports Slack
+    `unavailable_unbuilt` and the tile says *not built yet*; the tile draws whatever the hub
+    reports, so it becomes live when #535 changes that read. The card keeps no copy of the
+    routes — #543 edits the same #488 resource.
+  - **Not done here.** The e2e leg against the fixture receiver is BS.6's (#496); this ticket is
+    covered by unit and UI integration tests.
 
 ### Issue BS.6 — ouroboros-ui: [BS.6] Danger zone, states & e2e leg
 
@@ -1209,7 +1237,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 3. **Phase 2 — Admin services:** { BR.1 (#485) ⊕ BR.2 (#486) ⊕ BR.3 (#487) ⊕
    BR.4 (#488) ⊕ BR.5 (#489) } → BR.6 (#490)
 4. **Phase 3 — UI:** BS.1 (#491) → { BS.2 (#492) ⊕ BS.3 (#493) ⊕ BS.4 (#494) ⊕
-   BS.5 (#495) } → **BS.6 (#496) ✅** *(MVP gate, amending #56)*
+   BS.5 (#495) ✅ } → **BS.6 (#496) ✅** *(MVP gate, amending #56)*
 5. **v2:** BT.1 (#497) ⊕ BT.2 (#498) ⊕ BT.3 (#499) ⊕ BT.4 (#500) ⊕ BT.5 (#501)
    after their dependencies.
 

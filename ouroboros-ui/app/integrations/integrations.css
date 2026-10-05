@@ -1,0 +1,127 @@
+/*
+ * The Integrations card (BS.5, #495) — mockup 17's `.integ-grid` on the #16 tokens.
+ *
+ * Tokens and rem only. The mockup's four columns falling to two is `auto-fill` over a minimum
+ * tile width, so the grid answers to the card's own width rather than the window's. A tile that
+ * is not connected is quietened by colour, never opacity: its words — which of three kinds of
+ * "not" it is, and why — are the point of it and stay readable.
+ */
+
+.integrations {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  gap: var(--sp-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.integrations__tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+  padding: var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+.integrations__mark {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.875rem;
+  height: 1.875rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  color: var(--ink-dim);
+  font-family: var(--f-disp);
+  font-size: var(--t-xs);
+  font-weight: 700;
+}
+
+.integrations__name {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.integrations__status {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.integrations__line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The dot: hollow until a standing fills it. */
+.integrations__dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border: 1px solid var(--ink-faint);
+  border-radius: var(--r-round);
+  background: transparent;
+}
+
+.integrations__reason {
+  color: var(--ink-mut);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+.integrations__action {
+  align-self: flex-start;
+}
+
+/* ---------- the standings ---------- */
+
+/* The only filled green on the card. */
+.integrations__tile--ok .integrations__dot {
+  border-color: var(--ok);
+  background: var(--ok);
+}
+
+.integrations__tile--attention {
+  border-color: var(--warn-line);
+}
+
+.integrations__tile--attention .integrations__dot {
+  border-color: var(--warn);
+  background: var(--warn);
+}
+
+.integrations__tile--attention .integrations__reason {
+  color: var(--warn);
+}
+
+.integrations__tile--disconnected .integrations__name {
+  color: var(--ink-dim);
+}
+
+.integrations__tile--v2,
+.integrations__tile--unbuilt {
+  border-style: dashed;
+  background: transparent;
+}
+
+.integrations__tile--v2 .integrations__name,
+.integrations__tile--unbuilt .integrations__name {
+  color: var(--ink-mut);
+}
+
+.integrations__tile--v2 .integrations__dot,
+.integrations__tile--unbuilt .integrations__dot {
+  border-style: dashed;
+}

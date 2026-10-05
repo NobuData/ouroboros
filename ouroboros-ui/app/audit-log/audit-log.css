@@ -1,0 +1,212 @@
+/*
+ * The Audit Log card (BS.5, #495) — mockup 17's `c-5` audit card on the #16 tokens.
+ *
+ * Tokens and rem only, so both palettes and the font-size preference carry it. The rows are the
+ * mockup's `.audit-row`: mono, a faint time, the actor, the event. The actor's hue is its kind —
+ * a person in the accent (the mockup's), the bot in the model hue, a service account in the
+ * warning hue, the system in plain ink — and every row says the kind in text as well.
+ */
+
+.audit-log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+
+.audit-log__bar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ---------- the filter expansion ---------- */
+
+.audit-log__filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  padding: var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+.audit-log__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--sp-5);
+}
+
+.audit-log__filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-4);
+}
+
+/* ---------- the rows ---------- */
+
+.audit-log__rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.audit-log__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2) var(--sp-5);
+  padding: var(--sp-4) 0;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.audit-log__row:last-child {
+  border-bottom: 0;
+}
+
+.audit-log__time {
+  flex: none;
+  color: var(--ink-faint);
+}
+
+.audit-log__actor {
+  flex: none;
+}
+
+.audit-log__actor--human {
+  color: var(--accent);
+}
+
+.audit-log__actor--bot {
+  color: var(--model);
+}
+
+.audit-log__actor--service {
+  color: var(--warn);
+}
+
+.audit-log__actor--system {
+  color: var(--ink-mut);
+}
+
+.audit-log__event {
+  min-width: 0;
+  color: var(--ink-dim);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- how a list ends, and what it says meanwhile ---------- */
+
+.audit-log__state {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.audit-log__state--error {
+  color: var(--err);
+}
+
+.audit-log__more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.audit-log__end {
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  text-align: center;
+}
+
+/* ---------- the footer ---------- */
+
+.audit-log__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--line);
+}
+
+.audit-log__spacer {
+  flex: 1;
+}
+
+/* ---------- the export dialog ---------- */
+
+.audit-log-export {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  padding: var(--sp-8);
+}
+
+.audit-log-export__title {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-lg);
+}
+
+.audit-log-export__range {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--sp-5);
+}
+
+.audit-log-export__note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.audit-log-export__error {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.audit-log-export__applied {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.audit-log-export__heading {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.audit-log-export__list {
+  margin: 0;
+  padding-inline-start: var(--sp-7);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.audit-log-export__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-4);
+}

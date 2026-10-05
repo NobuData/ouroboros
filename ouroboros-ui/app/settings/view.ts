@@ -162,7 +162,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     tab: "Audit",
     span: 5,
     saves: "batch",
-    arrives: "The audit log, its CSV export and SIEM streaming arrive with #495.",
+    // Built: `app/audit-log/audit-card.tsx` (#495). Nothing on it is a field.
+    arrives: null,
   },
   {
     id: "integrations",
@@ -170,7 +171,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     tab: "Integrations",
     span: 7,
     saves: "batch",
-    arrives: "Connection status for GitHub, Slack, Jira and the rest arrives with #495.",
+    // Built: `app/integrations/integrations-card.tsx` (#495). Nothing on it is a field.
+    arrives: null,
   },
   {
     id: "notifications",
@@ -178,7 +180,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     tab: null,
     span: 5,
     saves: "batch",
-    arrives: "Workspace-wide notification routes arrive with #495.",
+    // Built: `app/integrations/notifications-card.tsx` (#495).
+    arrives: null,
   },
   {
     id: "danger",

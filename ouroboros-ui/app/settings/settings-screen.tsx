@@ -3,14 +3,24 @@
 import type { OrgPolicy } from "@/app/api/org-policy";
 import type { DryRunPolicy } from "@/app/api/policies";
 import type { Reading } from "@/app/api/reading";
+import type { AuditToday } from "@/app/api/settings-audit";
+import type { Integrations, NotificationRoutes } from "@/app/api/settings-integrations";
 import type { MembersPage, ServiceAccountList } from "@/app/api/settings-members";
+import type { WebhookList } from "@/app/api/settings-webhooks";
 import type { RetentionSettings, WorkspaceSettings } from "@/app/api/settings-workspace";
+import { AuditCard } from "@/app/audit-log/audit-card";
+import { AUDIT_ADMINS_ONLY, actorOptions, auditUnread } from "@/app/audit-log/view";
+import { IntegrationsCard } from "@/app/integrations/integrations-card";
+import { NotificationsCard } from "@/app/integrations/notifications-card";
+import { routesUnread } from "@/app/integrations/routes";
+import { integrationsUnread } from "@/app/integrations/view";
 import { MembersCard } from "@/app/members/members-card";
 import { membersUnread } from "@/app/members/view";
 import { ownerNames, policyUnread } from "@/app/policies/card-view";
 import { DryRunRow } from "@/app/policies/dry-run-row";
 import { PolicyCard } from "@/app/policies/policy-card";
 import { dryRunUnread } from "@/app/policies/view";
+import { SiemRow } from "@/app/webhooks/siem-row";
 
 import { type SettingsAccess, readOnlyNote } from "./access";
 import { AppearanceCard } from "./appearance-card";
@@ -59,7 +69,12 @@ import "./settings.css";
  * not be read. The **Policies** seat holds the Autonomy policies card
  * (`app/policies/policy-card.tsx`, #494) — the five rules, their history and their publish flow,
  * with the dry-run policy's switch under them — or its placeholder saying why the document could
- * not be read. Every other seat is its placeholder.
+ * not be read. The **Audit** seat holds the Audit log card (`app/audit-log/audit-card.tsx`, #495)
+ * with the SIEM row (`app/webhooks/siem-row.tsx`) in its footer — for an owner or an admin, who
+ * are the readers the service answers; anybody else is told whose log it is to read. The
+ * **Integrations** seat holds the truth-state grid (`app/integrations/integrations-card.tsx`) and
+ * the **Notifications** seat the org routes (`app/integrations/notifications-card.tsx`), each or
+ * its placeholder saying why it could not be read. The Danger zone is its placeholder.
  *
  * @param props.workspaceName The active workspace's display name, for the eyebrow.
  * @param props.access Who the reader is — `app/settings/access.ts`'s answer, from the route.
@@ -69,6 +84,11 @@ import "./settings.css";
  * @param props.retention The retention tiers as read, or why they could not be.
  * @param props.members The Members & Roles page as read, or why it could not be.
  * @param props.serviceAccounts The administrator's service-account list, or `null`.
+ * @param props.audit The Audit card's today view as read, why it could not be, or `null` for a
+ *   reader it is never requested for.
+ * @param props.webhooks The administrator's webhook endpoints, or `null`.
+ * @param props.integrations The integrations grid as read, or why it could not be.
+ * @param props.routes The org notification routes as read, or why they could not be.
  * @param props.readAt When the page was read.
  * @returns The hub.
  */
@@ -81,6 +101,10 @@ export function SettingsScreen({
   retention,
   members,
   serviceAccounts = null,
+  audit,
+  webhooks = null,
+  integrations,
+  routes,
   readAt,
 }: Readonly<{
   workspaceName: string;
@@ -91,6 +115,10 @@ export function SettingsScreen({
   retention?: Reading<RetentionSettings>;
   members?: Reading<MembersPage>;
   serviceAccounts?: ServiceAccountList | null;
+  audit?: Reading<AuditToday> | null;
+  webhooks?: WebhookList | null;
+  integrations?: Reading<Integrations>;
+  routes?: Reading<NotificationRoutes>;
   readAt?: string;
 }>) {
   return (
@@ -168,6 +196,47 @@ export function SettingsScreen({
                     </p>
                   )}
                 </SeatPlaceholder>
+              ) : section.id === "audit" && audit !== undefined ? (
+                audit?.ok === true ? (
+                  <AuditCard
+                    actors={actorOptions(members?.ok === true ? members.value : null, serviceAccounts)}
+                    // A change of tier (the reader re-roled themselves) remounts it fresh.
+                    key={access.tier}
+                    siem={<SiemRow webhooks={webhooks} />}
+                    today={audit.value}
+                  />
+                ) : (
+                  <SeatPlaceholder>
+                    <p className="settings__unread" role="note">
+                      {audit === null ? AUDIT_ADMINS_ONLY : auditUnread(audit.reason)}
+                    </p>
+                  </SeatPlaceholder>
+                )
+              ) : section.id === "integrations" && integrations !== undefined ? (
+                integrations.ok ? (
+                  <IntegrationsCard
+                    integrations={integrations.value}
+                    key={access.tier}
+                    mayManage={access.mayEdit}
+                    webhooks={webhooks}
+                  />
+                ) : (
+                  <SeatPlaceholder>
+                    <p className="settings__unread" role="note">
+                      {integrationsUnread(integrations.reason)}
+                    </p>
+                  </SeatPlaceholder>
+                )
+              ) : section.id === "notifications" && routes !== undefined ? (
+                routes.ok ? (
+                  <NotificationsCard key={access.tier} routes={routes.value} />
+                ) : (
+                  <SeatPlaceholder>
+                    <p className="settings__unread" role="note">
+                      {routesUnread(routes.reason)}
+                    </p>
+                  </SeatPlaceholder>
+                )
               ) : undefined}
             </SettingsSeat>
           ))}

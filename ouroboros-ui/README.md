@@ -246,6 +246,11 @@ ouroboros-ui/
 │   │   ├── reading.ts       #   Reading<T> + attempt() — a read allowed to fail
 │   │   ├── routing.ts       #   routing.providers() — the model page's health strip
 │   │   ├── audit.ts         #   audit.events() — the credential trail, org-scoped
+│   │   ├── settings-audit.ts #  settingsAudit.today() / list() — the workspace audit log, keyset-paged · #495
+│   │   ├── settings-audit-export.ts # readAuditExport() — the CSV, streamed through; only its own parameters travel
+│   │   ├── settings/audit/export.csv/route.ts # …on this origin, for the Export CSV dialog's link
+│   │   ├── settings-webhooks.ts # settingsWebhooks.* — endpoints, secret rotation, ping, delivery log, redeliver · #495
+│   │   ├── settings-integrations.ts # settingsIntegrations.* — the status hub and the org notification routes · #495
 │   │   ├── sources.ts       #   sources.* — /api/v1/sources, the catalog, test, sync, status
 │   │   ├── workflows.ts     #   workflows.list() / read() / create() / saveDraft() / publish() / dryRun()
 │   │   ├── planning.ts      #   planning.roadmap() / createEpic() — mockup 09's roadmap head and New roadmap
@@ -447,6 +452,31 @@ ouroboros-ui/
 │   │   ├── policy-history.tsx # policy vN → the history dialog, with each version's before → after
 │   │   ├── dry-run-row.tsx  #   the workspace-wide dry-run switch and its confirmation · #382
 │   │   └── view.ts          #   the dry-run policy's sentences, shared with the PR page
+│   ├── audit-log/           # the Audit Log card in the settings hub — mockup 17 c-5 · #495
+│   │   ├── view.ts          #   the rules, pure: the filter form → BR.2's query (UTC days, last day inclusive),
+│   │   │                    #   plane/reference normalising, the export's 366-day bound and its address, every sentence
+│   │   ├── audit-actions.ts #   the server hop for the filtered log: one keyset page, a refusal as a sentence
+│   │   ├── audit-card.tsx   #   today's rows (actor styled per kind), filters ▾, Load more / "End of log · N events";
+│   │   │                    #   footer: retained Nd from the tier · the SIEM slot · Export CSV
+│   │   ├── audit-filters.tsx #  time range · actor kind · actor · plane · reference
+│   │   └── export-dialog.tsx #  the bounded-range dialog, and a real download link that streams to disk
+│   ├── webhooks/            # outbound webhook endpoints — the Webhooks tile's sheet and the SIEM row · #495
+│   │   ├── view.ts          #   copy and rules, pure: the SIEM row's status claim (✓ only when the service says
+│   │   │                    #   `streaming`), health and status words, the form's checks and bodies
+│   │   ├── webhook-actions.ts # the Server Actions: refusals as values; a landed write re-reads the page
+│   │   ├── webhook-sheet.tsx #  endpoints, pause/enable, Test ping with its row shown, rotate / delete confirmed
+│   │   ├── webhook-form.tsx #   create/edit: name, https URL, event families from the registry, description, SIEM stream
+│   │   ├── secret-once.tsx  #   the one showing of a signing secret (create and rotate), forgotten on close
+│   │   ├── delivery-log.tsx #   attempts, codes, latencies; the dead-letter queue with Redeliver; `1–25 of 132` paging
+│   │   └── siem-row.tsx     #   the Audit card's Stream to SIEM row, and the delivery-log sheet behind it
+│   ├── integrations/        # the Integrations and Notifications cards in the settings hub — mockup 17 · #495
+│   │   ├── view.ts          #   the grid's rules: four availabilities in words, the monograms, and earnsCheck
+│   │   ├── integrations-card.tsx # the c-7 grid: `N connected` as counted by the service, Connect/Manage as links
+│   │   │                    #   to the owning surface; Webhooks opens app/webhooks' sheet for an owner or admin
+│   │   ├── routes.ts        #   the org routes' rules: fields, the locked-row rule (mayToggle), validation, patches
+│   │   ├── routes-actions.ts #  saveRoutes — one PATCH per changed route in card order, stopping at the first refusal
+│   │   └── notifications-card.tsx # the c-5 card: switches in the dirty batch, locked rows with their reason and
+│   │                        #   a link to #integrations, digest time (UTC) and weekly email-list editors
 │   ├── globs/               # the shared glob editor — grammar check + match preview · #494
 │   │   ├── glob.ts          #   the path_glob grammar, its problems as sentences, the preview's lines
 │   │   └── glob-editor.tsx  #   the list, add / edit / remove, and the match preview
@@ -2821,9 +2851,10 @@ Who can do what, what merges on its own, and where the record lives.
 
 **The cards are other issues'.** BS.2–BS.6 (#492–#496) each mount a card in its **seat**
 ([`settings-seat.tsx`](app/settings/settings-seat.tsx)); until then a seat draws the section's
-heading and one line naming what fills it. Three are filled today: **Appearance**, [**Members &
-roles**](#members--roles-493), and **Policies**, which holds
-[the dry-run policy's row](#the-dry-run-policy-382). A seat owns three facts so a card
+heading and one line naming what fills it. Every seat but the Danger zone (#496) is filled today:
+**Workspace**, **Appearance**, [**Members & roles**](#members--roles-493),
+[**Policies**](#autonomy-policies-494), and the three record surfaces —
+[**Audit**, **Integrations** and **Notifications**](#audit-integrations--notifications-495). A seat owns three facts so a card
 owns none of them — where it sits (the mockup's `c-5`/`c-7`/`c-12`), the id the nav's anchor lands
 on, and which section it is to the save model.
 
@@ -2920,6 +2951,9 @@ holds no field until BS.2 lands.
 | **Can approve loops**, **+ Invite member**, **Resend** / **Revoke**, role changes, removals, service-account create / rotate / revoke | immediate — the Members section is `saves: "immediate"`; each destructive one confirms |
 | a rule's switch or terms on the Autonomy policies card | the dirty batch — committed by **Save changes** as preview → confirm → publish |
 | **policy vN** | opens the policy history — reads only |
+| a notification route's switch, the digest's time, the weekly recipients | the dirty batch — one `PATCH` per changed route |
+| **filters ▾**, **Load more**, **Export CSV**, **Stream to SIEM**, a tile's **Connect** / **Manage** | reads and navigation — nothing is written |
+| in the webhook sheet: add / edit, pause, **Test ping**, **Rotate secret**, **Delete**, **Redeliver** | immediate — rotate and delete confirm first |
 | a field in a card's seat (BS.2, BS.4, BS.5) | the dirty batch, through `useSettingsSection` |
 | a control in the Danger zone (BS.6) | immediate by construction — the seat refuses fields |
 
@@ -3055,6 +3089,70 @@ edit rules ─▶ Save changes ─▶ validate ─▶ preview (classify) ─▶ 
   an immediate action behind its own confirmation.
 
 The e2e edit → publish → enforcement round-trip is BS.6's (#496).
+
+### Audit, integrations & notifications (#495)
+
+Three cards with one discipline: **show what is true, and make the reason visible when something
+is not available.** All three draw reads the service already had (BR.2 #486, BR.3 #487, BR.4 #488).
+
+```
+ AUDIT LOG                       today · UTC      INTEGRATIONS                         4 connected
+ [filters ▾]                                      [GH] GitHub   ● acme · GitHub App    [Manage]
+ 14:31 ouroboros-app[bot] pushed PR #514 rev 2    [SL] Slack    not built yet
+ 14:12 Ken rotated Anthropic API key              [LN] Linear   not connected          [Connect]
+ …                                                [WH] Webhooks ● 2 active             [Manage] → sheet
+ retained 400d   [Stream to SIEM ✓ (webhook)] [Export CSV]      [PD] PagerDuty  v2
+
+ NOTIFICATIONS
+ 🔒 Needs-you decisions → Slack DM      locked — connect Slack first · See Slack in Integrations
+ [on] Daily digest 09:00 UTC → email    [ 09:00 ]
+ 🔒 Loop failures → PagerDuty           locked — connect PagerDuty first · See PagerDuty in Integrations
+ [on] Weekly insights report → email    [ eng-leads@acme.dev ]
+```
+
+- **The audit card is a window onto a log that gets large**
+  ([`audit-card.tsx`](app/audit-log/audit-card.tsx)). Today's rows are
+  `GET /api/v1/settings/audit/today`, in UTC and tagged so, with the actor styled per kind (person,
+  bot, service account, system) and the kind also said in words. **filters ▾** — time range, actor
+  kind, actor, plane, reference — drive `GET /api/v1/settings/audit`, and the list always ends with
+  **Load more** (the keyset cursor, so events arriving mid-scroll never duplicate or skip a row) or
+  *End of log · N events*. When today holds more than the card's rows it says so and offers all of
+  today. `retained 400d` is the read's `retainedDays`.
+- **The export is bounded** ([`export-dialog.tsx`](app/audit-log/export-dialog.tsx)): a from and a
+  to at most 366 days apart, the rule explained, the applied filters listed, and a note that the
+  export is itself recorded in the log. **Download** is a link to
+  `/api/settings/audit/export.csv`
+  ([`settings-audit-export.ts`](app/api/settings-audit-export.ts)), which passes the service's CSV
+  through as a stream — the browser writes it to disk as it arrives.
+- **Stream to SIEM is a status claim** ([`siem-row.tsx`](app/webhooks/siem-row.tsx)). The ✓ is drawn
+  only when the service calls the SIEM endpoint `streaming`; dead-lettered events make it a warning
+  with their count; paused, retrying, nothing delivered yet, not set up and unreadable are each
+  said in words. A press opens the endpoint's delivery log
+  ([`delivery-log.tsx`](app/webhooks/delivery-log.tsx)): attempts, codes, latencies, and the
+  dead-letter queue with **Redeliver**.
+- **The grid cannot display an unearned ✓** ([`integrations-card.tsx`](app/integrations/integrations-card.tsx)).
+  Each tile is what `GET /api/v1/settings/integrations` composed from the plane that owns the
+  connection: `connected`, `not connected`, `v2` or `not built yet`, and the ok mark only for
+  connected-and-ok (`earnsCheck`). **Connect** and **Manage** are links to the owning surface — this
+  page has no connection form — and a v2 or unbuilt tile has no control at all. Slack reads
+  *not built yet* until the Slack app (#535) changes what the hub reports.
+- **The Webhooks tile opens the management sheet** for an owner or admin
+  ([`webhook-sheet.tsx`](app/webhooks/webhook-sheet.tsx)): add or edit an endpoint (name, https URL,
+  event families from the registry, description, SIEM stream), pause it, **Test ping** with the
+  resulting delivery row shown, **Rotate secret** and **Delete** behind a stated consequence, and
+  each endpoint's delivery log. A signing secret is shown once
+  ([`secret-once.tsx`](app/webhooks/secret-once.tsx)), on create and on rotate, and dropped on close.
+- **A locked route cannot be armed** ([`notifications-card.tsx`](app/integrations/notifications-card.tsx)).
+  A route whose channel has no connection draws a lock, the service's reason and a link to
+  `#integrations`, and no switch; the service refuses the same save with
+  `409 notification_route_locked`. The other routes' switches, the digest's time (UTC) and the
+  weekly report's recipients — an email list — join the [save model](#the-save-model-s7) and are
+  written one `PATCH /api/v1/settings/notifications/{kind}` per changed route. The card keeps no
+  copy of the routes; the ChatOps routing card (#543) edits the same resource.
+- **A viewer** is told the audit log is read by owners and admins, sees every tile's state with
+  Connect / Manage links and no webhook sheet, and reads the routes as text.
+
+The e2e leg — the delivery sheet against the fixture receiver, filter + CSV — is BS.6's (#496).
 
 ## Ticket sources
 
