@@ -429,6 +429,9 @@ ouroboros-ui/
 │   │   ├── settings-seat.tsx #  a section's seat: its span, its anchor id, its place in the save model
 │   │   ├── appearance.ts    #   the Appearance card's copy and choices
 │   │   ├── appearance-card.tsx # theme, the five-step font size, the preview — per user, instant
+│   │   ├── workspace.ts     #   the Workspace card's rules: deployment-truth sentences, tiers, checks, bodies · #492
+│   │   ├── workspace-card.tsx # name, domain, region, retention (+ per-class editor), training — c-5
+│   │   ├── workspace-actions.ts # the Server Action — workspace PATCH, then retention PATCH
 │   │   ├── data.ts          #   readSettings() — what the hub reads, each part read or explained
 │   │   ├── settings-screen.tsx # the hub: head, nav, the grid of seats
 │   │   └── settings-frame.tsx #  the head, the tab row, and the page beneath — the hub's and the mounted pages'
@@ -2920,6 +2923,26 @@ full font-size control — five steps, 87.5 to 150%, with a preview — beside t
 holds no state of its own: the font size is [the font scale](#the-font-scale)'s store, which the
 profile menu's stepper reads and writes too, so a step taken in either is the other's next render,
 with no reload. A step is live on the press and persisted quietly behind it.
+
+### Workspace (#492)
+
+[`workspace-card.tsx`](app/settings/workspace-card.tsx) is mockup 17's `c-5` over
+`GET /api/v1/settings/workspace` (BQ.4, #483) and `GET /api/v1/settings/retention` (BQ.3, #482),
+read through [`app/api/settings-workspace.ts`](app/api/settings-workspace.ts). Its one rule (S6):
+**a control the reader cannot operate is text with its reason.** On a self-hosted deployment the
+region is its label, *Self-hosted — single region*, and a link to the security model's residency
+section; training data is *"Off — this deployment never trains on your data."* — no switch, no
+lock, no plan. `SSO enforced` appears only when `domain.tags` says so, and a domain edit shows its
+sign-in consequence before anything is sent.
+
+The retention select is a view over the three loop classes and sends `{loopDays}`; the advanced
+editor sets each of the four classes and sends `{classes}`. Bounds come from the payload and are
+checked before sending (the audit floor explains itself). Under the select: saving deletes
+nothing, and when the next sweep applies the change.
+
+All fields batch as one section. [`workspace-actions.ts`](app/settings/workspace-actions.ts) sends
+the workspace write first (another workspace can refuse a domain), then the tiers; if only the
+tiers are refused, the refusal says what landed and the page is re-read so only they stay unsaved.
 
 ### Members & roles (#493)
 

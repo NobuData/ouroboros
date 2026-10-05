@@ -3,6 +3,7 @@
 import type { DryRunPolicy } from "@/app/api/policies";
 import type { Reading } from "@/app/api/reading";
 import type { MembersPage, ServiceAccountList } from "@/app/api/settings-members";
+import type { RetentionSettings, WorkspaceSettings } from "@/app/api/settings-workspace";
 import { MembersCard } from "@/app/members/members-card";
 import { membersUnread } from "@/app/members/view";
 import { DryRunRow } from "@/app/policies/dry-run-row";
@@ -16,6 +17,8 @@ import { SettingsSaveProvider } from "./save-provider";
 import { SettingsFrame } from "./settings-frame";
 import { SeatPlaceholder, SettingsSeat } from "./settings-seat";
 import { SETTINGS_SECTIONS, SETTINGS_SUBLINE, SETTINGS_TITLE } from "./view";
+import { WorkspaceCard } from "./workspace-card";
+import { workspaceUnread } from "./workspace";
 
 import "./settings.css";
 
@@ -45,7 +48,9 @@ import "./settings.css";
  *
  * ### What is mounted today
  *
- * The **Appearance** seat holds its card (`app/settings/appearance-card.tsx`) — the reader's own
+ * The **Workspace** seat holds its card (`app/settings/workspace-card.tsx`, #492) when both of its
+ * reads succeeded, or its placeholder saying why it could not be drawn. The **Appearance** seat
+ * holds its card (`app/settings/appearance-card.tsx`) — the reader's own
  * theme and font size, the same for every role. The **Members** seat holds the Members & Roles
  * card (`app/members/members-card.tsx`, #493), or its placeholder saying why the members could
  * not be read. The **Policies** seat holds the dry-run policy's row — the one policy control
@@ -54,6 +59,8 @@ import "./settings.css";
  * @param props.workspaceName The active workspace's display name, for the eyebrow.
  * @param props.access Who the reader is — `app/settings/access.ts`'s answer, from the route.
  * @param props.dryRun The dry-run policy as read, or why it could not be.
+ * @param props.workspace The Workspace card's payload as read, or why it could not be.
+ * @param props.retention The retention tiers as read, or why they could not be.
  * @param props.members The Members & Roles page as read, or why it could not be.
  * @param props.serviceAccounts The administrator's service-account list, or `null`.
  * @param props.readAt When the page was read.
@@ -63,6 +70,8 @@ export function SettingsScreen({
   workspaceName,
   access,
   dryRun,
+  workspace,
+  retention,
   members,
   serviceAccounts = null,
   readAt,
@@ -70,6 +79,8 @@ export function SettingsScreen({
   workspaceName: string;
   access: SettingsAccess;
   dryRun: Reading<DryRunPolicy>;
+  workspace?: Reading<WorkspaceSettings>;
+  retention?: Reading<RetentionSettings>;
   members?: Reading<MembersPage>;
   serviceAccounts?: ServiceAccountList | null;
   readAt?: string;
@@ -93,6 +104,22 @@ export function SettingsScreen({
             <SettingsSeat key={section.id} section={section.id}>
               {section.id === "appearance" ? (
                 <AppearanceCard />
+              ) : section.id === "workspace" && workspace !== undefined && retention !== undefined ? (
+                workspace.ok && retention.ok ? (
+                  <WorkspaceCard
+                    // A change of tier (the reader re-roled themselves) remounts it fresh.
+                    key={access.tier}
+                    readAt={readAt ?? new Date(0).toISOString()}
+                    retention={retention.value}
+                    settings={workspace.value}
+                  />
+                ) : (
+                  <SeatPlaceholder>
+                    <p className="settings__unread" role="note">
+                      {workspaceUnread(workspace.ok ? null : workspace.reason, retention.ok ? null : retention.reason)}
+                    </p>
+                  </SeatPlaceholder>
+                )
               ) : section.id === "members" && members !== undefined ? (
                 members.ok ? (
                   <MembersCard

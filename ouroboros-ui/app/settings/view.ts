@@ -125,8 +125,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     tab: "Workspace",
     span: 5,
     saves: "batch",
-    arrives:
-      "The workspace's name, tenant domain, data region, retention and training-data row arrive with #492.",
+    // Built: `app/settings/workspace-card.tsx` (#492).
+    arrives: null,
   },
   {
     id: "members",

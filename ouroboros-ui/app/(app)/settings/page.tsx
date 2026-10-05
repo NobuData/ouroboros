@@ -36,6 +36,8 @@ export default async function Page() {
     <SettingsScreen
       access={settingsAccess(access.membership.roles)}
       dryRun={readings.dryRun}
+      retention={readings.retention}
+      workspace={readings.workspace}
       members={readings.members}
       readAt={readings.readAt}
       serviceAccounts={readings.serviceAccounts}
