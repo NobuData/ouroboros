@@ -1,0 +1,142 @@
+/*
+ * The shared glob editor (BS.4, #494) — a list of path patterns, an add row and the match
+ * preview. Mounted by the policy card's protected-paths rule, and by the onboarding wizard's
+ * protected-paths row when that surface is built.
+ *
+ * Held to the rules every sheet under app/ is (__tests__/styles.test.ts): colours are tokens,
+ * type is the rem scale, other lengths are tokens or rem. The glob-editor prefix keeps it out of
+ * the primitives' ou- namespace.
+ */
+
+.glob-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+/* ---------- the list ---------- */
+
+.glob-editor__list,
+.glob-editor__matches,
+.glob-editor__samples {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.glob-editor__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.glob-editor__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+
+/* A row being edited aligns its buttons with the input, not with the label above it. */
+.glob-editor__item--editing {
+  align-items: flex-end;
+}
+
+.glob-editor__glob {
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+  overflow-wrap: anywhere;
+}
+
+.glob-editor__actions {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+/* ---------- the add row ---------- */
+
+.glob-editor__add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-4);
+}
+
+.glob-editor__field {
+  flex: 1;
+  min-width: 14rem;
+}
+
+/* ---------- the preview ---------- */
+
+.glob-editor__preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.glob-editor__note,
+.glob-editor__repo-line {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.glob-editor__repo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.glob-editor__matches {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.glob-editor__match {
+  min-width: 0;
+}
+
+.glob-editor__match-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.glob-editor__count {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.glob-editor__samples {
+  margin-top: var(--sp-1);
+  padding-left: var(--sp-5);
+}
+
+.glob-editor__sample {
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* A pattern that covers nothing: said in words, and marked in the warning hue as well. */
+.glob-editor__flag {
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-sm);
+  background: var(--warn-tint);
+  color: var(--ink);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}

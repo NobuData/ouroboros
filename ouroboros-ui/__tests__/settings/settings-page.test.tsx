@@ -27,6 +27,12 @@ const redirect = vi.fn((path: string) => {
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
 vi.mock("@/app/settings/data", () => ({ readSettings: (access: unknown) => readSettings(access) }));
 vi.mock("@/app/policies/policy-actions", () => ({ setDryRun: vi.fn() }));
+vi.mock("@/app/policies/card-actions", () => ({
+  previewPolicy: vi.fn(),
+  publishPolicy: vi.fn(),
+  loadPolicyHistory: vi.fn(),
+  previewPolicyPaths: vi.fn(),
+}));
 // The Members card's Server Actions are never reached here: its own suites drive them.
 // The Workspace card's Server Action is never reached here: its own suites drive it.
 vi.mock("@/app/settings/workspace-actions", () => ({ saveWorkspaceCard: vi.fn() }));

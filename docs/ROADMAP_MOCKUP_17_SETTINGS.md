@@ -768,7 +768,7 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 | BS.1 | #491 ✅ | 🟢 Done | ouroboros-ui: [BS.1] Settings frame, section nav & save model | Route, tabs (+mounted existing surfaces), dirty-state Save (S7) | mvp, settings, ui, design | N (after #41, BA-D.5) | Y | M | ouroboros-ui |
 | BS.2 | #492 ✅ | 🟢 Done | ouroboros-ui: [BS.2] Workspace card | Name/domain/region/retention/training — deployment-truth variants | mvp, settings, ui, design | N (after BS.1, BQ.3/BQ.4) | Y | S | ouroboros-ui |
 | BS.3 | #493 ✅ | 🟢 Done | ouroboros-ui: [BS.3] Members & roles card | Table with all row classes, invites, capabilities, service accounts | mvp, settings, ui, design | N (after BS.1, BR.1) | Y | M | ouroboros-ui |
-| BS.4 | #494 | 🟡 Open | ouroboros-ui: [BS.4] Autonomy policies card | Rule rows with terms chips, editing, version tag, publish flow | mvp, settings, ui, design | N (after BS.1, BQ.2) | Y | L | ouroboros-ui |
+| BS.4 | #494 ✅ | 🟢 Done | ouroboros-ui: [BS.4] Autonomy policies card | Rule rows with terms chips, editing, version tag, publish flow | mvp, settings, ui, design | N (after BS.1, BQ.2) | Y | L | ouroboros-ui |
 | BS.5 | #495 | 🟡 Open | ouroboros-ui: [BS.5] Audit, integrations & notifications cards | Viewer + export + SIEM row; truth-state grid; org routes | mvp, settings, ui, design | N (after BS.1, BR.2–BR.4) | Y | M | ouroboros-ui |
 | BS.6 | #496 | 🟡 Open | ouroboros-ui: [BS.6] Danger zone, states & e2e leg | Lifecycle flows with safety UX; banners; full e2e | mvp, settings, ui, ci | N (after BS.2–BS.5, BR.5) | Y | M | ouroboros-ui, .github |
 
@@ -928,7 +928,7 @@ Training: "off — this deployment never trains on your data"
 
 ### Issue BS.4 — ouroboros-ui: [BS.4] Autonomy policies card
 
-> **GitHub issue:** #494 · **Status:** 🟡 Open · **Parent epic:** #478
+> **GitHub issue:** #494 ✅ · **Status:** 🟢 Done · **Parent epic:** #478
 
 - **Problem Statement:** The governance centerpiece: five rule rows with
   structured terms chips, editable conditions, and the versioned publish
@@ -956,6 +956,30 @@ Training: "off — this deployment never trains on your data"
 [on] Spend guard                        (pause at $2.50 ▾)($600/provider ▾)
 policy v7 ⓘ history · [Save] ─▶ "loosens human-review — owner confirm" ─▶ v8 ✓ audited
 ```
+
+- **Delivered** (`ouroboros-ui` 0.136.0 `app/policies/` and `app/globs/`; `ouroboros-rest`
+  0.40.4). Four things were decided with the user where the issue and the codebase disagreed.
+  - **History needed a read — decided with the user: add one.** `GET /api/v1/policies/versions`
+    (any member) returns each version with its note, publisher, document and BQ.2's own diff, so
+    the popover draws a before → after per changed rule and cannot disagree with the audit line.
+  - **The match preview needed a repo tree — decided with the user: a REST preview.**
+    `POST /api/v1/policies/path-preview` (owner/admin) lists each enabled repository's tree through
+    the provider probe and matches with the guardrails' matcher; a repository that cannot be listed
+    is `unavailable` with a reason. Trees are cached 60 s per process.
+  - **Shared glob editor.** BA.1's UI surface (the wizard) is not built, so the editor is a module
+    of its own, `app/globs/`, that the wizard will mount.
+  - **"A path to request it" — decided with the user: name the owners.** An admin whose edit
+    loosens a rule gets no publish button; the dialog names the loosened rules and the owners, and
+    the edits stay unsaved.
+  - **The e2e enforcement round-trip — decided with the user: BS.6's (#496).** This ticket covers
+    the card with unit and UI integration tests.
+  - **The card.** Chips are drawn from the document's conditions; each rule has a structured
+    editor that cannot emit an invalid rule; untouched, `custom:*` and deeper-nested rules are
+    published verbatim. A save is preview → confirm (tightens / loosens per rule) → publish, under
+    the S7 save model. The toast links to `/settings#audit` and shows the audit line.
+  - **Not done here.** The spend guard's monthly cap is stored and stated, and its enforcement
+    stays with AF.4 (#237). The Knowledge card's protected-paths row still draws BA.1's per-repo
+    rows and its inert edit note still names #494.
 
 ### Issue BS.5 — ouroboros-ui: [BS.5] Audit, integrations & notifications cards
 

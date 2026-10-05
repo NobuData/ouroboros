@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DryRunPolicy } from "@/app/api/policies";
 import type { Reading } from "@/app/api/reading";
+import { FOOTER_LINE, historyTrigger, policyUnread } from "@/app/policies/card-view";
+import { RULE_NAMES } from "@/app/policies/document";
 import { DRY_RUN_TITLE, POLICY_READ_ONLY, dryRunUnread } from "@/app/policies/view";
 import { FONT_SCALE_ATTRIBUTE, setFontScale } from "@/app/font-scale";
 import { READ_ONLY_BODY, settingsAccess } from "@/app/settings/access";
@@ -21,6 +23,7 @@ import { ThemeProvider } from "@/app/theme-provider";
 
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 import { renderThemed } from "../helpers/theme";
+import { orgPolicyV7 } from "../helpers/org-policy";
 import { READ_AT, retentionSettings, workspaceSettings } from "../helpers/workspace";
 
 /**
@@ -31,6 +34,13 @@ import { READ_AT, retentionSettings, workspaceSettings } from "../helpers/worksp
 
 // The dry-run flip's Server Action is never reached: no case confirms one.
 vi.mock("@/app/policies/policy-actions", () => ({ setDryRun: vi.fn() }));
+// The Autonomy policies card's Server Actions are never reached here: its own suite drives them.
+vi.mock("@/app/policies/card-actions", () => ({
+  previewPolicy: vi.fn(),
+  publishPolicy: vi.fn(),
+  loadPolicyHistory: vi.fn(),
+  previewPolicyPaths: vi.fn(),
+}));
 // The Members card's Server Actions are never reached here: its own suites drive them.
 // The Workspace card's Server Action is never reached here: its own suites drive it.
 vi.mock("@/app/settings/workspace-actions", () => ({ saveWorkspaceCard: vi.fn() }));
@@ -327,7 +337,46 @@ describe("the Policies section", () => {
 
     expect(within(row).getByRole("heading", { level: 3 })).toHaveTextContent(DRY_RUN_TITLE);
     expect(within(row).getAllByRole("status")[0]).toHaveTextContent(/^On — /);
-    expect(within(seat("policies")).getByText(/arrive here with #494/)).toBeInTheDocument();
+    // The card is built (#494): the seat no longer says what is coming.
+    expect(within(seat("policies")).queryByText(/arrive here/)).toBeNull();
+  });
+
+  it("mounts the Autonomy policies card when the document was read, with the dry-run row under its rules", () => {
+    renderThemed(
+      <SettingsScreen
+        access={settingsAccess(["owner"])}
+        dryRun={READ}
+        policy={{ ok: true, value: orgPolicyV7() }}
+        workspaceName="acme-robotics"
+      />,
+    );
+
+    const policies = within(seat("policies"));
+
+    expect(policies.getByRole("heading", { level: 2 })).toHaveTextContent("Autonomy policies");
+    expect(policies.getByRole("button", { name: historyTrigger(7) })).toBeInTheDocument();
+    for (const name of Object.values(RULE_NAMES)) {
+      expect(policies.getByText(name)).toBeInTheDocument();
+    }
+    expect(policies.getByText(FOOTER_LINE)).toBeInTheDocument();
+    expect(policies.getByRole("group", { name: DRY_RUN_TITLE })).toBeInTheDocument();
+  });
+
+  it("says the document could not be read, and still offers the dry-run row", () => {
+    renderThemed(
+      <SettingsScreen
+        access={settingsAccess(["owner"])}
+        dryRun={READ}
+        policy={{ ok: false, reason: "The service is restarting." }}
+        workspaceName="acme-robotics"
+      />,
+    );
+
+    const policies = within(seat("policies"));
+
+    expect(policies.getByRole("note")).toHaveTextContent(policyUnread("The service is restarting."));
+    expect(policies.getByRole("group", { name: DRY_RUN_TITLE })).toBeInTheDocument();
+    expect(document.querySelectorAll(".settings__seat")).toHaveLength(8);
   });
 
   it("flips the policy as an immediate action behind a confirmation — never a saved field", async () => {

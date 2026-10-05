@@ -147,4 +147,56 @@ describe("the org policy repository — the document (#481)", () => {
       /wrote no version/,
     );
   });
+
+  it("reads the history newest first, scoped to the workspace, with each publisher's name", async () => {
+    const at = new Date("2026-10-04T13:48:00.000Z");
+
+    database.answers({
+      rows: [
+        {
+          version: 7,
+          document: { a: 1 },
+          published_at: at,
+          published_by: "user-ken",
+          change_note: "Enable auto-merge",
+          publisher_name: "Ken",
+        },
+        {
+          version: 6,
+          document: { a: 0 },
+          published_at: at,
+          published_by: null,
+          change_note: null,
+          publisher_name: null,
+        },
+      ],
+    });
+
+    await expect(policies.versions(ORG, 8, 3)).resolves.toEqual([
+      {
+        version: 7,
+        document: { a: 1 },
+        publishedAt: at,
+        publishedBy: "user-ken",
+        changeNote: "Enable auto-merge",
+        publisherName: "Ken",
+      },
+      {
+        version: 6,
+        document: { a: 0 },
+        publishedAt: at,
+        publishedBy: null,
+        changeNote: null,
+        publisherName: null,
+      },
+    ]);
+
+    const [statement] = database.statements;
+
+    expect(statement.sql).toContain("from ouroboros.org_policy_versions v");
+    expect(statement.sql).toContain('left join ouroboros."user" u');
+    expect(statement.sql).toContain("where v.organization_id = $1");
+    expect(statement.sql).toContain("order by v.version desc");
+    expect(statement.parameters).toEqual([ORG, 8, 8, 3]);
+  });
 });

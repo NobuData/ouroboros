@@ -38,6 +38,8 @@ import { SCHEMA_NAME } from "../../db/schema";
 import { FIXTURE_ROTATED_TOKEN, FIXTURE_TOKEN, FIXTURE_MASK } from "../../github/github.fixture";
 import type { LifecycleResource } from "../../lifecycle/lifecycle.resources";
 import type { MembersPageResource } from "../../members/members.resources";
+import type { PathPreviewResource } from "../../policies/path-preview.service";
+import type { PolicyVersionListResource } from "../../policies/policy-history.service";
 import type { PolicyPreviewResource, PolicyResource } from "../../policies/policy-publish.service";
 import type { RetentionSettingsResource } from "../../retention/retention.resources";
 import type { ServiceAccountSecretResource } from "../../service-accounts/service-accounts.resources";
@@ -255,6 +257,15 @@ describe("tenant isolation, on every settings route", () => {
     await asThem("post", POLICIES)
       .send({ document: policyDocument(250), baseVersion: null, changeNote: "Theirs v1" })
       .expect(201);
+    // An enabled repository of theirs — what a path preview of mine must never list (#494).
+    await api.sql.query(
+      `with org as (
+         insert into ${SCHEMA_NAME}.github_orgs (organization_id, login, enabled)
+         values ($1, 'theirs-robotics', true) returning id)
+       insert into ${SCHEMA_NAME}.github_repos (org_id, name, enabled)
+       select id, 'theirs-firmware', true from org`,
+      [theirs.id],
+    );
     await asThem("post", `${SETTINGS}/lifecycle/pause`).send({ confirm: true }).expect(200);
 
     // Every audited seed above fanned out to their SIEM; the receiver is down, and one attempt is
@@ -819,6 +830,31 @@ describe("tenant isolation, on every settings route", () => {
             changeNote: "Mine",
           })
           .expect(201);
+      },
+    },
+    [`GET ${POLICIES}/versions`]: {
+      about: "lists my versions, not their v1 or its note",
+      path: () => `${POLICIES}/versions`,
+      check: async () => {
+        const history = (await readsNothingOfTheirs(
+          `${POLICIES}/versions`,
+        )) as PolicyVersionListResource;
+
+        expect(history.items.map((item) => item.publishedBy)).not.toContain(them.id);
+      },
+    },
+    [`POST ${POLICIES}/path-preview`]: {
+      about: "previews against my repositories, never listing theirs",
+      path: () => `${POLICIES}/path-preview`,
+      body: () => ({ globs: ["boot/**"] }),
+      check: async () => {
+        const response = await asMe("post", `${POLICIES}/path-preview`)
+          .send({ globs: ["boot/**"] })
+          .expect(200);
+
+        expect(response.text).not.toMatch(THEIRS);
+        // Mine has no enabled repository; theirs has one.
+        expect(bodyOf<PathPreviewResource>(response)).toEqual({ repositories: [] });
       },
     },
     [`GET ${POLICIES}/dry-run`]: {

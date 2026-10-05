@@ -114,9 +114,37 @@ export interface PolicyPublishStore {
   ): Promise<{ readonly version: number; readonly publishedAt: Date }>;
 }
 
+/** One published version with its publisher's name — a history row (BS.4, #494). */
+export interface StoredPolicyHistoryVersion extends StoredPolicyVersion {
+  /** `user.name` of whoever published it, or null when the person is gone. */
+  readonly publisherName: string | null;
+}
+
+/** What the version history asks of the store (BS.4, #494). */
+export interface PolicyHistoryStore {
+  /**
+   * A workspace's published versions, newest first.
+   *
+   * @param organizationId - The workspace.
+   * @param before - Only versions strictly below this one; null for the newest.
+   * @param take - The most rows to return.
+   * @returns The versions, descending. Empty when nothing is published (below `before`).
+   */
+  versions(
+    organizationId: string,
+    before: number | null,
+    take: number,
+  ): Promise<StoredPolicyHistoryVersion[]>;
+}
+
 @Injectable()
 export class OrgPolicyRepository
-  implements OrgPolicyStore, PolicyDocumentStore, PolicyPublishStore, RepositoryLoopStore
+  implements
+    OrgPolicyStore,
+    PolicyDocumentStore,
+    PolicyPublishStore,
+    PolicyHistoryStore,
+    RepositoryLoopStore
 {
   /** @param database - The connection. */
   constructor(private readonly database: DatabaseService) {}
@@ -222,6 +250,40 @@ export class OrgPolicyRepository
   /** @inheritdoc */
   async version(organizationId: string): Promise<StoredPolicyVersion | null> {
     return versionIn(this.database.db, organizationId);
+  }
+
+  /** @inheritdoc */
+  async versions(
+    organizationId: string,
+    before: number | null,
+    take: number,
+  ): Promise<StoredPolicyHistoryVersion[]> {
+    const result = await sql<{
+      version: number;
+      document: Record<string, unknown>;
+      published_at: Date;
+      published_by: string | null;
+      change_note: string | null;
+      publisher_name: string | null;
+    }>`
+      select v.version, v.document, v.published_at, v.published_by, v.change_note,
+             u."name" as publisher_name
+        from ouroboros.org_policy_versions v
+        left join ouroboros."user" u on u."id" = v.published_by
+       where v.organization_id = ${organizationId}
+         and (${before}::int is null or v.version < ${before}::int)
+       order by v.version desc
+       limit ${take}
+    `.execute(this.database.db);
+
+    return result.rows.map((row) => ({
+      version: row.version,
+      document: row.document,
+      publishedAt: row.published_at,
+      publishedBy: row.published_by,
+      changeNote: row.change_note,
+      publisherName: row.publisher_name,
+    }));
   }
 
   /** @inheritdoc */

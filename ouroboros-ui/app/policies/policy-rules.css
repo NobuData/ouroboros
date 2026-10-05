@@ -1,0 +1,257 @@
+/*
+ * The Autonomy policies card's rule rows and their condition editors (BS.4, #494) — mockup 17's
+ * `.policy-row`: switch, what, why, terms chips; and under the terms, while a chip is open, the
+ * rule's structured editor.
+ *
+ * Tokens and rem only. A term a reader may edit is a button drawn as the mockup's tag, so the
+ * seeded card reads as the mockup does; what tells it from a static term is its boundary and its
+ * pointer, and what tells an open one from a closed one is `aria-expanded` and the editor under it.
+ */
+
+/* ---------- the row ---------- */
+
+.policy-rule {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-6);
+  padding: var(--sp-6) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.policy-rule:last-of-type {
+  border-bottom: none;
+}
+
+/* An edited rule is marked in words (the tag beside its name); the rail only repeats it. */
+.policy-rule--dirty {
+  box-shadow: inset 2px 0 0 var(--accent-line);
+  padding-left: var(--sp-5);
+}
+
+.policy-rule__switch {
+  display: inline-flex;
+  flex: none;
+  margin-top: var(--sp-1);
+}
+
+.policy-rule__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.policy-rule__what {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.policy-rule__edited {
+  color: var(--accent-ink);
+  border-color: var(--accent-line);
+}
+
+.policy-rule__why {
+  margin: var(--sp-1) 0 var(--sp-3);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.policy-rule__terms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+/* The tag's box (`.ou-tag`), as a control. */
+.policy-rule__term {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--sp-1) var(--sp-4);
+  border: 1px solid var(--line-control);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.policy-rule__term:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.policy-rule__term--open {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+}
+
+.policy-rule__term--add {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.policy-rule__note {
+  max-width: 72ch;
+  margin: var(--sp-3) 0 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.policy-rule__error {
+  margin: var(--sp-3) 0 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the editor ---------- */
+
+.policy-rule__editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  max-width: 34rem;
+  margin-top: var(--sp-5);
+  padding: var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--ground);
+}
+
+.policy-rule__editor-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.policy-rule__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.policy-rule__semantics {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The OR between human review's two groups: a word on its own line, never adjacency. */
+.policy-rule__or {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: var(--tr-wide);
+}
+
+.policy-rule__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.policy-rule__legend {
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+
+.policy-rule__none {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+}
+
+.policy-rule__labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.policy-rule__label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3) var(--sp-1) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+.policy-rule__label-text {
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.policy-rule__remove {
+  padding: 0 var(--sp-2);
+  border: none;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-tight);
+  cursor: pointer;
+}
+
+.policy-rule__remove:hover {
+  color: var(--err);
+}
+
+.policy-rule__remove:disabled {
+  cursor: not-allowed;
+}
+
+.policy-rule__add {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-4);
+}
+
+.policy-rule__add-field {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The amount, with its currency beside it. */
+.policy-rule__money {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  max-width: 14rem;
+}
+
+.policy-rule__currency {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+}
+
+.policy-rule__stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.policy-rule__count {
+  width: 7rem;
+  text-align: center;
+}

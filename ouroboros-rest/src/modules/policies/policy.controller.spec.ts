@@ -9,6 +9,7 @@ import {
   type ActiveMembership,
 } from "../tenancy/tenant.context";
 import { PolicyController } from "./policy.controller";
+import type { PolicyHistoryService } from "./policy-history.service";
 import type { PolicyPublishService } from "./policy-publish.service";
 
 /**
@@ -21,6 +22,7 @@ const ADMIN: ActiveMembership = { tenant: { id: "org-481" } as Organization, rol
 
 describe("the policy controller", () => {
   let service: jest.Mocked<PolicyPublishService>;
+  let history: jest.Mocked<PolicyHistoryService>;
   let controller: PolicyController;
 
   beforeEach(() => {
@@ -29,12 +31,23 @@ describe("the policy controller", () => {
       preview: jest.fn().mockResolvedValue({ classification: "tightening" }),
       publish: jest.fn().mockResolvedValue({ version: 8 }),
     } as unknown as jest.Mocked<PolicyPublishService>;
-    controller = new PolicyController(service);
+    history = {
+      list: jest.fn().mockResolvedValue({ items: [], nextBefore: null }),
+    } as unknown as jest.Mocked<PolicyHistoryService>;
+    controller = new PolicyController(service, history);
   });
 
   it("scopes the read to the session's workspace", async () => {
     await expect(controller.read(ADMIN)).resolves.toEqual({ version: 7 });
     expect(service.read).toHaveBeenCalledWith("org-481");
+  });
+
+  it("scopes the history to the session's workspace, with the page asked for", async () => {
+    await expect(controller.versions(ADMIN, {})).resolves.toEqual({ items: [], nextBefore: null });
+    await controller.versions(ADMIN, { limit: 5, before: 7 });
+
+    expect(history.list).toHaveBeenNthCalledWith(1, "org-481", undefined, null);
+    expect(history.list).toHaveBeenNthCalledWith(2, "org-481", 5, 7);
   });
 
   it("previews and publishes as the signed-in person, with their roles", async () => {
@@ -77,5 +90,6 @@ describe("the policy controller", () => {
       ...ADMINISTRATORS,
     ]);
     expect(reflector.get<string[]>(REQUIRED_ROLES, controller.read)).toBeUndefined();
+    expect(reflector.get<string[]>(REQUIRED_ROLES, controller.versions)).toBeUndefined();
   });
 });

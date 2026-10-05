@@ -117,11 +117,11 @@ position is not forced by dependencies, one of these decided it.
 | **P11** | Evidence — tests & PR verification | 🟡 36/38 | 38 | 119 | Mockups 11, 12 |
 | **P12** | Knowledge & onboarding mechanism | ✅ 28/28 | 28 | 83 | Mockups 14, 13 |
 | **P13** | Analytics — insights & build analyzer | ✅ 32/32 | 32 | 109 | Mockups 15, 18 |
-| **P14** | Decisions & governance — inbox, settings | 🟡 28/31 | 31 | 102 | Mockups 16, 17 |
+| **P14** | Decisions & governance — inbox, settings | 🟡 29/31 | 31 | 102 | Mockups 16, 17 |
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
 | **P16** | Intelligence — research & copilot | — 0/42 | 42 | 147 | Mockups 22, 20 |
 | **P17** | ChatOps — Slack integration | — 0/15 | 15 | 50 | Mockup 19 |
-| | **Total** | **386/454** | **454** | **1,404** | |
+| | **Total** | **387/454** | **454** | **1,404** | |
 
 ```mermaid
 flowchart TD
@@ -1635,7 +1635,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **31 issues** · 102 complexity points · order **#361–#391** · 10 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_16_NEEDS_YOU_INBOX.md`, `ROADMAP_MOCKUP_17_SETTINGS.md`
-> **Status:** 🟡 **In progress** — 28 of 31 issues closed
+> **Status:** 🟡 **In progress** — 29 of 31 issues closed
 
 **Goal.** Deliver the typed decision-kind registry with items emitted by every live plane and actions that resume loops through the real machinery, and the one versioned policy document that drives every enforcement point — auto-merge conditions, review-required, protected paths, spend guard, dry-run-for-new-repos — plus members, audit and lifecycle.
 
@@ -1675,7 +1675,7 @@ the blockquote above that records what it did and what it did differently.
 | 386 | **BS.2** | ✅ [#492](https://github.com/NobuData/ouroboros/issues/492) | Workspace card | ouroboros-ui | S | BQ.3, BQ.4, BS.1 |
 | 387 | **BO.5** | ✅ [#470](https://github.com/NobuData/ouroboros/issues/470) | Stat card, states & e2e leg | ouroboros-ui, .github | M | BO.2, BO.4 |
 | 388 | **BR.6** | ✅ [#490](https://github.com/NobuData/ouroboros/issues/490) | Settings integration tests | ouroboros-rest | M | BQ.2, BR.1, BR.5 |
-| 389 | **BS.4** | [#494](https://github.com/NobuData/ouroboros/issues/494) | Autonomy policies card | ouroboros-ui | L | BQ.2, BS.1 |
+| 389 | **BS.4** | ✅ [#494](https://github.com/NobuData/ouroboros/issues/494) | Autonomy policies card | ouroboros-ui | L | BQ.2, BS.1 |
 | 390 | **BS.5** | [#495](https://github.com/NobuData/ouroboros/issues/495) | Audit, integrations & notifications cards | ouroboros-ui | M | BR.2, BR.4, BS.1 |
 | 391 | **BS.6** | [#496](https://github.com/NobuData/ouroboros/issues/496) | Danger zone, states & e2e leg | ouroboros-ui, .github | M | BR.5, BS.2, BS.5 |
 

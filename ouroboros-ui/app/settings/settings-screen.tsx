@@ -1,12 +1,15 @@
 "use client";
 
+import type { OrgPolicy } from "@/app/api/org-policy";
 import type { DryRunPolicy } from "@/app/api/policies";
 import type { Reading } from "@/app/api/reading";
 import type { MembersPage, ServiceAccountList } from "@/app/api/settings-members";
 import type { RetentionSettings, WorkspaceSettings } from "@/app/api/settings-workspace";
 import { MembersCard } from "@/app/members/members-card";
 import { membersUnread } from "@/app/members/view";
+import { ownerNames, policyUnread } from "@/app/policies/card-view";
 import { DryRunRow } from "@/app/policies/dry-run-row";
+import { PolicyCard } from "@/app/policies/policy-card";
 import { dryRunUnread } from "@/app/policies/view";
 
 import { type SettingsAccess, readOnlyNote } from "./access";
@@ -53,12 +56,15 @@ import "./settings.css";
  * holds its card (`app/settings/appearance-card.tsx`) — the reader's own
  * theme and font size, the same for every role. The **Members** seat holds the Members & Roles
  * card (`app/members/members-card.tsx`, #493), or its placeholder saying why the members could
- * not be read. The **Policies** seat holds the dry-run policy's row — the one policy control
- * that exists — above the note for the rest of that card. Every other seat is its placeholder.
+ * not be read. The **Policies** seat holds the Autonomy policies card
+ * (`app/policies/policy-card.tsx`, #494) — the five rules, their history and their publish flow,
+ * with the dry-run policy's switch under them — or its placeholder saying why the document could
+ * not be read. Every other seat is its placeholder.
  *
  * @param props.workspaceName The active workspace's display name, for the eyebrow.
  * @param props.access Who the reader is — `app/settings/access.ts`'s answer, from the route.
  * @param props.dryRun The dry-run policy as read, or why it could not be.
+ * @param props.policy The org policy document in force as read, or why it could not be.
  * @param props.workspace The Workspace card's payload as read, or why it could not be.
  * @param props.retention The retention tiers as read, or why they could not be.
  * @param props.members The Members & Roles page as read, or why it could not be.
@@ -70,6 +76,7 @@ export function SettingsScreen({
   workspaceName,
   access,
   dryRun,
+  policy,
   workspace,
   retention,
   members,
@@ -79,6 +86,7 @@ export function SettingsScreen({
   workspaceName: string;
   access: SettingsAccess;
   dryRun: Reading<DryRunPolicy>;
+  policy?: Reading<OrgPolicy>;
   workspace?: Reading<WorkspaceSettings>;
   retention?: Reading<RetentionSettings>;
   members?: Reading<MembersPage>;
@@ -137,8 +145,21 @@ export function SettingsScreen({
                     </p>
                   </SeatPlaceholder>
                 )
+              ) : section.id === "policies" && policy?.ok === true ? (
+                <PolicyCard
+                  dryRun={dryRun}
+                  // A change of tier (the reader re-roled themselves) remounts it fresh.
+                  key={access.tier}
+                  owners={members?.ok === true ? ownerNames(members.value.members) : []}
+                  policy={policy.value}
+                />
               ) : section.id === "policies" ? (
                 <SeatPlaceholder>
+                  {policy !== undefined && !policy.ok && (
+                    <p className="settings__unread" role="note">
+                      {policyUnread(policy.reason)}
+                    </p>
+                  )}
                   {dryRun.ok ? (
                     <DryRunRow mayAdminister={access.mayEdit} policy={dryRun.value} />
                   ) : (

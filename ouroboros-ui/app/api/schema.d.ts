@@ -2912,10 +2912,12 @@ export interface paths {
         put?: never;
         /**
          * Restore a workspace pending deletion
-         * @description Return a `pending_delete` workspace to `active` at any point in its recovery window.
+         * @description Return a `pending_delete` workspace to `active` at any point until its purge begins —
+         *     including after the recovery window has closed, while the purge has not yet started.
          *     **Owner only**, and reachable while every other surface is frozen. Audited as
          *     `workspace.restored`. Sessions revoked by the deletion stay revoked; their owners sign
-         *     in again.
+         *     in again. Once the purge has begun the keys may already be destroyed, so the workspace
+         *     cannot come back ([#490](https://github.com/NobuData/ouroboros/issues/490)).
          */
         post: operations["restoreWorkspace"];
         delete?: never;
@@ -2986,6 +2988,76 @@ export interface paths {
          *     **`owner` or `admin`.**
          */
         post: operations["previewOrgPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/policies/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The org policy's version history
+         * @description Every published version of the workspace's org policy, **newest first** (BS.4,
+         *     [#494](https://github.com/NobuData/ouroboros/issues/494)) — the settings card's
+         *     `policy v7` tag opens this: each version's change note, publisher and time, its document
+         *     verbatim, and the rules it changed against the version before it (`v6 → v7`).
+         *
+         *     `changes`, `classification` and `summary` are **recomputed from the two documents by the
+         *     functions the publish used**, so the history and the audit card's line —
+         *     *"enabled auto-merge (policy v7)"* — cannot disagree. Version 1 is compared with "no
+         *     policy", exactly as its publish was.
+         *
+         *     Paged by version: `nextBefore` is the `before` that reads the next page, `null` once the
+         *     page reaches version 1. A workspace that has published nothing answers an empty list.
+         *
+         *     **Any member may read it**, viewers included — like the version in force.
+         */
+        get: operations["listOrgPolicyVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/policies/path-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview what protected-path globs cover
+         * @description What each glob covers in each **enabled repository's** file tree — **writes nothing and
+         *     audits nothing** (BS.4, [#494](https://github.com/NobuData/ouroboros/issues/494)). The
+         *     settings card's glob editor shows it beside a `protected_paths` pattern, so `boot/**` is
+         *     seen to cover 14 files before it is published rather than discovered afterwards.
+         *
+         *     **The preview and the enforcement cannot disagree.** A glob is accepted exactly when the
+         *     policy document's `path_glob` grammar accepts it (`schemas/org-policy/v1.json`), and a
+         *     path matches by the matcher AP.3's `allowed_paths` check runs: `**` any number of whole
+         *     segments, `*` within one segment, `?` one character, case-sensitive.
+         *
+         *     Each repository's default branch is listed through the source that covers it — one host
+         *     request, never a clone — and **cached for a minute** per process, so asking again while
+         *     typing does not spend the host's rate limit. A repository whose tree cannot be listed (no
+         *     connected source, a host refusal, a rate limit) is `unavailable` with a `reason`; the
+         *     others are still previewed. Only files are matched and counted; `truncated` says the host
+         *     cut the listing short, so the counts are of some of the files.
+         *
+         *     **`owner` or `admin`.**
+         */
+        post: operations["previewOrgPolicyPaths"];
         delete?: never;
         options?: never;
         head?: never;
@@ -16244,6 +16316,79 @@ export interface components {
             changes: components["schemas"]["OrgPolicyRuleChange"][];
             /** @description The audit card's line — `enabled auto-merge (policy v8)`. */
             summary: string;
+        };
+        /**
+         * OrgPolicyVersion
+         * @description One published version, as the history popover lists it (#494) — its attribution, its
+         *     document, and what it changed against the version before it.
+         */
+        OrgPolicyVersion: {
+            version: number;
+            /** Format: date-time */
+            publishedAt: string;
+            /** @description Who published it — `user.id`, null for a person since deleted. */
+            publishedBy: string | null;
+            /** @description Their name, null for a person since deleted. */
+            publisherName: string | null;
+            changeNote: string | null;
+            document: components["schemas"]["OrgPolicyDocument"];
+            classification: components["schemas"]["OrgPolicyChangeClass"];
+            /**
+             * @description The rules this version changed against the one before it — against "no policy" for
+             *     version 1. Empty for a republish that changed nothing.
+             */
+            changes: components["schemas"]["OrgPolicyRuleChange"][];
+            /** @description The audit card's line for it — `enabled auto-merge (policy v7)`. */
+            summary: string;
+        };
+        /** OrgPolicyVersionList */
+        OrgPolicyVersionList: {
+            /** @description Newest first. */
+            items: components["schemas"]["OrgPolicyVersion"][];
+            /** @description The `before` that reads the next page; null when this page reaches version 1. */
+            nextBefore: number | null;
+        };
+        /** OrgPolicyPathPreviewRequest */
+        OrgPolicyPathPreviewRequest: {
+            /** @description The globs, as the `protected_paths` rule would store them — `boot/**`. */
+            globs: string[];
+        };
+        /** OrgPolicyGlobMatch */
+        OrgPolicyGlobMatch: {
+            glob: string;
+            /** @description How many files of the listed tree the glob matches. */
+            matchCount: number;
+            /** @description Up to five matching paths, sorted. */
+            samples: string[];
+        };
+        /** OrgPolicyRepositoryPreview */
+        OrgPolicyRepositoryPreview: {
+            /**
+             * @description `owner/name`, lower-case.
+             * @example acme-robotics/helios-firmware
+             */
+            repository: string;
+            /**
+             * @description Whether the repository's tree could be listed.
+             * @enum {string}
+             */
+            status: "listed" | "unavailable";
+            /** @description Why not, for an `unavailable` repository; null otherwise. */
+            reason: string | null;
+            /** @description How many files the listing holds; null when it could not be listed. */
+            fileCount: number | null;
+            /** @description Whether the host cut the listing short — the counts are of some of the files. */
+            truncated: boolean;
+            /** @description One answer per requested glob, in the request's order. */
+            globs: components["schemas"]["OrgPolicyGlobMatch"][];
+        };
+        /**
+         * OrgPolicyPathPreview
+         * @description What a set of globs covers in each enabled repository (#494). Writes nothing.
+         */
+        OrgPolicyPathPreview: {
+            /** @description Every enabled repository of the workspace, by name. Empty when none is. */
+            repositories: components["schemas"]["OrgPolicyRepositoryPreview"][];
         };
         /**
          * DryRunPolicy
@@ -38925,7 +39070,8 @@ export interface operations {
             };
             /**
              * @description `workspace_state_conflict` — the state machine has no such move from where the
-             *     workspace stands (`details.move`, `details.state`).
+             *     workspace stands (`details.move`, `details.state`), or the workspace's purge has
+             *     begun (`details.purge: "started"`).
              */
             409: {
                 headers: {
@@ -39422,6 +39568,391 @@ export interface operations {
             /**
              * @description `validation_failed` — the body is malformed; `policy_document_invalid` — the document is
              *     not one `schemas/org-policy/v1.json` accepts.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listOrgPolicyVersions: {
+        parameters: {
+            query?: {
+                /** @description The most versions to return. */
+                limit?: number;
+                /** @description Only versions strictly below this one — the previous page's `nextBefore`. */
+                before?: number;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the history, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": [
+                     *         {
+                     *           "version": 7,
+                     *           "publishedAt": "2026-10-04T13:48:00.000Z",
+                     *           "publishedBy": "aBcD1234eFgH5678iJkL9012mNoP3456",
+                     *           "publisherName": "Ken",
+                     *           "changeNote": "Enable auto-merge",
+                     *           "document": {
+                     *             "auto_merge": {
+                     *               "enabled": true,
+                     *               "conditions": {
+                     *                 "all": [
+                     *                   {
+                     *                     "effort_lte": "m"
+                     *                   },
+                     *                   {
+                     *                     "not": {
+                     *                       "label": "refactor"
+                     *                     }
+                     *                   }
+                     *                 ]
+                     *               }
+                     *             },
+                     *             "human_review": {
+                     *               "enabled": true,
+                     *               "conditions": {
+                     *                 "any": [
+                     *                   {
+                     *                     "label": "refactor"
+                     *                   },
+                     *                   {
+                     *                     "effort_gte": "l"
+                     *                   }
+                     *                 ]
+                     *               }
+                     *             },
+                     *             "protected_paths": {
+                     *               "enabled": true,
+                     *               "conditions": {
+                     *                 "path_globs": [
+                     *                   "boot/**",
+                     *                   "keys/**",
+                     *                   ".github/**"
+                     *                 ]
+                     *               }
+                     *             },
+                     *             "spend_guard": {
+                     *               "enabled": true,
+                     *               "conditions": {
+                     *                 "per_run_cap_cents": 250,
+                     *                 "monthly_cap_cents": 60000
+                     *               }
+                     *             },
+                     *             "dry_run_new_repos": {
+                     *               "enabled": true,
+                     *               "conditions": {
+                     *                 "first_n_loops": 10
+                     *               }
+                     *             }
+                     *           },
+                     *           "classification": "loosening",
+                     *           "changes": [
+                     *             {
+                     *               "ruleId": "auto_merge",
+                     *               "classification": "loosening",
+                     *               "verb": "enabled",
+                     *               "summary": "enabled auto-merge"
+                     *             }
+                     *           ],
+                     *           "summary": "enabled auto-merge (policy v7)"
+                     *         }
+                     *       ],
+                     *       "nextBefore": 7
+                     *     }
+                     */
+                    "application/json": components["schemas"]["OrgPolicyVersionList"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `limit` is not a whole number from 1 to 100, or `before` is not a
+             *     version number.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    previewOrgPolicyPaths: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "globs": [
+                 *         "boot/**",
+                 *         "keys/**"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["OrgPolicyPathPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Per enabled repository, what each glob covers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "repositories": [
+                     *         {
+                     *           "repository": "acme-robotics/helios-firmware",
+                     *           "status": "listed",
+                     *           "reason": null,
+                     *           "fileCount": 412,
+                     *           "truncated": false,
+                     *           "globs": [
+                     *             {
+                     *               "glob": "boot/**",
+                     *               "matchCount": 14,
+                     *               "samples": [
+                     *                 "boot/loader/main.c",
+                     *                 "boot/stage1.S"
+                     *               ]
+                     *             },
+                     *             {
+                     *               "glob": "keys/**",
+                     *               "matchCount": 0,
+                     *               "samples": []
+                     *             }
+                     *           ]
+                     *         },
+                     *         {
+                     *           "repository": "acme-robotics/docs",
+                     *           "status": "unavailable",
+                     *           "reason": "No connected source covers this repository, so its files cannot be listed.",
+                     *           "fileCount": null,
+                     *           "truncated": false,
+                     *           "globs": [
+                     *             {
+                     *               "glob": "boot/**",
+                     *               "matchCount": 0,
+                     *               "samples": []
+                     *             },
+                     *             {
+                     *               "glob": "keys/**",
+                     *               "matchCount": 0,
+                     *               "samples": []
+                     *             }
+                     *           ]
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["OrgPolicyPathPreview"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — a `member` or `viewer`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `globs` is not a list of 1 to 64 distinct strings;
+             *     `policy_path_glob_invalid` — a glob is not one the policy document accepts
+             *     (`details.invalid` names each one and its index). No repository is read.
              */
             422: {
                 headers: {

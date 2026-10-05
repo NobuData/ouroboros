@@ -7,6 +7,7 @@ import { OrgPolicyRepository } from "./org-policy.repository";
 import { OrgPolicyService } from "./org-policy.service";
 import { PoliciesModule } from "./policies.module";
 import { PolicyController } from "./policy.controller";
+import { PolicyHistoryService } from "./policy-history.service";
 import { PolicyPublishService } from "./policy-publish.service";
 import { PolicyResolutionService } from "./policy-resolution.service";
 
@@ -23,6 +24,7 @@ describe("the policies module", () => {
     expect(moduleRef.get(OrgPolicyRepository)).toBeInstanceOf(OrgPolicyRepository);
     expect(moduleRef.get(PolicyController)).toBeInstanceOf(PolicyController);
     expect(moduleRef.get(PolicyPublishService)).toBeInstanceOf(PolicyPublishService);
+    expect(moduleRef.get(PolicyHistoryService)).toBeInstanceOf(PolicyHistoryService);
     expect(moduleRef.get(PolicyResolutionService)).toBeInstanceOf(PolicyResolutionService);
 
     await moduleRef.close();

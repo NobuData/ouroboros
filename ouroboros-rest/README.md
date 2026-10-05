@@ -6377,6 +6377,7 @@ nothing is bound by no rule.
 | route | what | who |
 | ----- | ---- | --- |
 | `GET /api/v1/policies` | `{version, document, publishedAt, publishedBy, changeNote}` — the version in force, verbatim; all null when nothing is published | every member |
+| `GET /api/v1/policies/versions` `?limit&before` | the history, newest first — each version's note, publisher (`publishedBy`, `publisherName`), time, document and the rules it changed against the one before it; `nextBefore` pages | every member |
 | `POST /api/v1/policies/preview` `{document}` | each changed rule's class (`tightening`/`loosening`/`neutral`) and line, the draft's class, `requiresOwner`, `mayPublish` — writes nothing | owner, admin |
 | `POST /api/v1/policies` `{document, baseVersion, changeNote?}` | publish `vN+1`; `422 policy_document_invalid` (against `schemas/org-policy/v1.json`) or `policy_unchanged`, `409 policy_version_conflict`, `403 policy_loosening_requires_owner`; audited `policy.published` with the version, changed rules, classes and the audit card's line — *"enabled auto-merge (policy v8)"* | owner, admin — a loosening owner only |
 
@@ -6385,6 +6386,25 @@ things it lets through — tickets eligible to auto-merge, tickets needing revie
 caps, dry-run loops — and compared before and after. A predicate reads only the ticket's effort and
 the labels it names, so the comparison enumerates every case that could tell two versions apart
 (up to 10 distinct labels; beyond that, and for any `custom:*` rule, a change is classed as loosening).
+
+**The version history and the glob preview** (BS.4,
+[#494](https://github.com/NobuData/ouroboros/issues/494)) are the settings card's two reads beside
+the document.
+
+- **`GET /api/v1/policies/versions`** (`policy-history.service.ts`) stores nothing of its own: each
+  version's `changes`, `classification` and `summary` are recomputed from its document and the one
+  before it by `diffPolicies` and `publishSummary` — the functions the publish audited with — so the
+  popover's `v6 → v7` and the audit card's line cannot disagree. Version 1 is compared with "no
+  policy". The page reads one row more than it returns: the last item's predecessor, and whether
+  another page exists.
+- **`POST /api/v1/policies/path-preview`** `{globs}` (owner, admin; `path-preview.service.ts`)
+  answers, per enabled repository, each glob's `matchCount` and up to five `samples`. A glob is
+  accepted when the document's `path_glob` grammar accepts it (`422 policy_path_glob_invalid`
+  names the others) and matched by `guardrails.glob.ts`, the matcher AP.3 enforces with. Trees are
+  listed through `DetectionService.readTree` — one host request, cached 60 s per process — and a
+  repository that cannot be listed is `status: "unavailable"` with a `reason`, never a `5xx`. It
+  writes and audits nothing. It is `PathPreviewModule`, separate from `PoliciesModule`, which
+  imports no plane so that every plane may import it.
 
 ### Estimator calibration
 
