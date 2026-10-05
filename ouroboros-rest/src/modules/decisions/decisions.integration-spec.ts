@@ -30,8 +30,15 @@ import {
   IN_MEMORY_TOKEN,
 } from "../ticket-sources/providers/in-memory.provider.fixture";
 import { DecisionKindRegistry } from "./decision-kind.registry";
-import { FIXTURE_KIND, MOCKUP_PROSE, SEEDED_PAYLOADS, SHIPPED_KINDS } from "./decision.kinds.fixture";
+import {
+  FIXTURE_KIND,
+  MOCKUP_PROSE,
+  SEEDED_PAYLOADS,
+  SHIPPED_KINDS,
+} from "./decision.kinds.fixture";
 import type { DecisionRef } from "./decision.types";
+import { DecisionSourceWatcher } from "./decision.watchers";
+import type { InboxQueueResource, InboxResolvedResource } from "./inbox.queue";
 import type { InboxFeedResource } from "./inbox.feed";
 
 /** The fixture kind this suite registers — `decision_kinds` persists across suites, so its own id. */
@@ -39,9 +46,18 @@ const SUITE_KIND = "custom:bn1-suite-oven";
 
 /** Policy v7's document, as the dev seed publishes it — `human_review` is *refactor, or effort ≥ L*. */
 const POLICY_V7 = {
-  auto_merge: { enabled: true, conditions: { all: [{ effort_lte: "m" }, { not: { label: "refactor" } }] } },
-  human_review: { enabled: true, conditions: { any: [{ label: "refactor" }, { effort_gte: "l" }] } },
-  protected_paths: { enabled: true, conditions: { path_globs: ["boot/**", "keys/**", ".github/**"] } },
+  auto_merge: {
+    enabled: true,
+    conditions: { all: [{ effort_lte: "m" }, { not: { label: "refactor" } }] },
+  },
+  human_review: {
+    enabled: true,
+    conditions: { any: [{ label: "refactor" }, { effort_gte: "l" }] },
+  },
+  protected_paths: {
+    enabled: true,
+    conditions: { path_globs: ["boot/**", "keys/**", ".github/**"] },
+  },
   spend_guard: { enabled: true, conditions: { per_run_cap_cents: 250, monthly_cap_cents: 60000 } },
   dry_run_new_repos: { enabled: true, conditions: { first_n_loops: 10 } },
 };
@@ -52,7 +68,10 @@ describe("the decision registry and its emitters, against a migrated database", 
   let host: InMemoryPrHost;
 
   beforeAll(async () => {
-    api = await ApiHarness.start({ OURO_BACKLOG_SYNC_INTERVAL_SECONDS: "86400" }, hosts.overrides());
+    api = await ApiHarness.start(
+      { OURO_BACKLOG_SYNC_INTERVAL_SECONDS: "86400" },
+      hosts.overrides(),
+    );
   });
 
   afterAll(() => api.close());
@@ -99,12 +118,22 @@ describe("the decision registry and its emitters, against a migrated database", 
   /** A workspace's decision audit trail, oldest first. */
   async function trail(org: string) {
     return (
-      await api.sql.query<{ action: string; subject_id: string; actor_id: string | null; detail: Record<string, unknown> }>(
+      await api.sql.query<{
+        action: string;
+        subject_id: string;
+        actor_id: string | null;
+        detail: Record<string, unknown>;
+      }>(
         `select action, subject_id, actor_id, detail from ${SCHEMA_NAME}.audit_events
           where organization_id = $1 and action like 'decision.%' order by occurred_at, id`,
         [org],
       )
     ).rows;
+  }
+
+  /** @returns The application's out-of-band watcher. */
+  function watcher(): DecisionSourceWatcher {
+    return api.nest.get(DecisionSourceWatcher, { strict: false });
   }
 
   /** Wait for a condition a listener reaches asynchronously. */
@@ -172,9 +201,9 @@ describe("the decision registry and its emitters, against a migrated database", 
       },
     });
     expect(filed[0].refs.map((ref) => ref.type)).toEqual(["run", "path"]);
-    expect((await trail(bench.workspace.id)).map((row) => [row.action, row.subject_id, row.actor_id])).toEqual([
-      ["decision.filed", filed[0].id, null],
-    ]);
+    expect(
+      (await trail(bench.workspace.id)).map((row) => [row.action, row.subject_id, row.actor_id]),
+    ).toEqual([["decision.filed", filed[0].id, null]]);
   });
 
   it("counts the feed as the queue would, snooze-aware, for every member", async () => {
@@ -193,13 +222,17 @@ describe("the decision registry and its emitters, against a migrated database", 
           .expect(200),
       );
 
-    expect(await feed()).toMatchObject({ open: 1, bySeverity: { err: 0, warn: 1, info: 0 }, snoozed: 0 });
+    expect(await feed()).toMatchObject({
+      open: 1,
+      bySeverity: { err: 0, warn: 1, info: 0 },
+      snoozed: 0,
+    });
 
     const [item] = await items(bench.workspace.id);
-    await api.sql.query(`select ${SCHEMA_NAME}.decision_item_snooze($1, now() + interval '1 hour', $2, null)`, [
-      item.id,
-      owner.id,
-    ]);
+    await api.sql.query(
+      `select ${SCHEMA_NAME}.decision_item_snooze($1, now() + interval '1 hour', $2, null)`,
+      [item.id, owner.id],
+    );
 
     expect(await feed()).toMatchObject({ open: 0, snoozed: 1, nextWakeAt: expect.any(String) });
     await api.anonymous("get", "/api/v1/inbox/feed").expect(401);
@@ -302,7 +335,9 @@ describe("the decision registry and its emitters, against a migrated database", 
     const { version: _version, ...declaration } = FIXTURE_KIND;
     const published = await registry().register({ ...declaration, kindId: SUITE_KIND });
 
-    expect((await registry().register({ ...declaration, kindId: SUITE_KIND })).version).toBe(published.version);
+    expect((await registry().register({ ...declaration, kindId: SUITE_KIND })).version).toBe(
+      published.version,
+    );
 
     const payload = { rig: "helios-rig-02", minutes: 20, drift_c: 1.5 };
     const { itemId, status } = await registry().emit({
@@ -328,7 +363,10 @@ describe("the decision registry and its emitters, against a migrated database", 
     const ticket: DecisionRef = { type: "ticket", id: at.ticketId, label: "issue #1" };
     const refsFor: Record<string, DecisionRef[]> = {
       merge_approval: [run, pr],
-      protected_path_allow_once: [run, { type: "path", id: "boot/rollback_flag.c", label: "boot/rollback_flag.c" }],
+      protected_path_allow_once: [
+        run,
+        { type: "path", id: "boot/rollback_flag.c", label: "boot/rollback_flag.c" },
+      ],
       claim_waiver: [pr],
       plan_sign_off: [run],
       fact_review: [],
@@ -347,7 +385,12 @@ describe("the decision registry and its emitters, against a migrated database", 
       });
     }
 
-    const view = await api.sql.query<{ kind_id: string; question: string; why: string; tags: string[] }>(
+    const view = await api.sql.query<{
+      kind_id: string;
+      question: string;
+      why: string;
+      tags: string[];
+    }>(
       `select kind_id, question, why, tags from ${SCHEMA_NAME}.decision_items_rendered
         where organization_id = $1`,
       [at.org],
@@ -355,7 +398,9 @@ describe("the decision registry and its emitters, against a migrated database", 
 
     expect(view.rows).toHaveLength(Object.keys(refsFor).length);
     for (const row of view.rows) {
-      expect({ question: row.question, why: row.why, tags: row.tags }).toEqual(MOCKUP_PROSE[row.kind_id]);
+      expect({ question: row.question, why: row.why, tags: row.tags }).toEqual(
+        MOCKUP_PROSE[row.kind_id],
+      );
       expect(registry().render(SHIPPED_KINDS[row.kind_id], SEEDED_PAYLOADS[row.kind_id])).toEqual(
         MOCKUP_PROSE[row.kind_id],
       );
@@ -398,6 +443,231 @@ describe("the decision registry and its emitters, against a migrated database", 
 
     expect(outcome).toEqual({ status: "dormant", itemId: null });
     expect(await items(bench.workspace.id)).toEqual([]);
-    expect((await registry().kinds()).find((kind) => kind.kind.kindId === "spend_approval")?.dormant).toBe(true);
+    expect(
+      (await registry().kinds()).find((kind) => kind.kind.kindId === "spend_approval")?.dormant,
+    ).toBe(true);
+  });
+
+  describe("generality and out-of-band closure (#465)", () => {
+    /** A kind id of its own per test — `decision_kinds` outlives `truncate()`. */
+    const freshKind = (stem: string) => `custom:bn5-${stem}-${Date.now().toString(36)}`;
+
+    it("queues, answers the actions of, and closes a fixture kind through a plane's own detector — no inbox-core change", async () => {
+      const owner = await api.signUp();
+      const bench = await seedIngestBench(api, owner);
+      const run = bodyOf<RunOpenedResource>(
+        await post("post", "/internal/runs", { idempotencyKey: "open", ...bench.open }).expect(201),
+      );
+      const kindId = freshKind("oven");
+      const { version: _version, ...declaration } = FIXTURE_KIND;
+
+      await registry().register({ ...declaration, kindId });
+      const payload = { rig: "helios-rig-02", minutes: 20, drift_c: 1.5 };
+      const { itemId } = await registry().emit({
+        organizationId: bench.workspace.id,
+        kindId,
+        payload,
+        refs: [{ type: "run", id: run.id, label: "loop #1" }],
+        key: { plane: "farm", sourceRef: `soak:${run.id}` },
+      });
+      const queue = bodyOf<InboxQueueResource>(
+        await api
+          .as(owner)("get", "/api/v1/inbox")
+          .set(TENANT_HEADER, bench.workspace.slug)
+          .expect(200),
+      );
+      const card = queue.items.find((item) => item.id === itemId);
+
+      expect(card).toMatchObject({
+        kindId,
+        question: "Let the oven at helios-rig-02 run 20 minutes over?",
+        tags: ["helios-rig-02", "farm"],
+      });
+      expect(card?.actions.map((action) => [action.id, action.allowed])).toEqual([
+        ["extend", true],
+        ["open_rig", true],
+        ["abort", true],
+      ]);
+
+      // The farm plane's detector — registered at runtime, as an amendment would ship one.
+      const unregister = watcher().register({
+        name: "fixture-oven-soak-ended",
+        kinds: [kindId],
+        settled: (asking) =>
+          Promise.resolve(
+            asking.map((item) => ({
+              itemId: item.id,
+              organizationId: item.organizationId,
+              settlement: "run_terminated" as const,
+              channel: "web" as const,
+            })),
+          ),
+      });
+
+      try {
+        expect(await watcher().sweep(bench.workspace.id)).toBe(1);
+      } finally {
+        unregister();
+      }
+
+      const resolved = bodyOf<InboxResolvedResource>(
+        await api
+          .as(owner)("get", "/api/v1/inbox/resolved")
+          .set(TENANT_HEADER, bench.workspace.slug)
+          .expect(200),
+      );
+
+      expect(resolved.rows.find((row) => row.itemId === itemId)).toMatchObject({
+        resolver: "policy",
+        policy: "source_resolved",
+        summary: "Let the oven at helios-rig-02 run 20 minutes over? — closed — settled elsewhere",
+      });
+    });
+
+    it("keeps an open item rendering at its pinned version after the kind is bumped", async () => {
+      const owner = await api.signUp();
+      const bench = await seedIngestBench(api, owner);
+      const run = bodyOf<RunOpenedResource>(
+        await post("post", "/internal/runs", { idempotencyKey: "open", ...bench.open }).expect(201),
+      );
+      const kindId = freshKind("pin");
+      const { version: _version, ...declaration } = FIXTURE_KIND;
+      const v1 = await registry().register({ ...declaration, kindId });
+      const payload = { rig: "helios-rig-02", minutes: 20, drift_c: 1.5 };
+      const first = await registry().emit({
+        organizationId: bench.workspace.id,
+        kindId,
+        payload,
+        refs: [{ type: "run", id: run.id, label: "loop #1" }],
+        key: { plane: "farm", sourceRef: "soak:first" },
+      });
+      const v2 = await registry().register({
+        ...declaration,
+        kindId,
+        questionTemplate: "Extend the soak at {rig} by {minutes} minutes?",
+      });
+      const second = await registry().emit({
+        organizationId: bench.workspace.id,
+        kindId,
+        payload,
+        refs: [{ type: "run", id: run.id, label: "loop #1" }],
+        key: { plane: "farm", sourceRef: "soak:second" },
+      });
+      const queue = bodyOf<InboxQueueResource>(
+        await api
+          .as(owner)("get", "/api/v1/inbox")
+          .set(TENANT_HEADER, bench.workspace.slug)
+          .expect(200),
+      );
+      const byId = new Map(queue.items.map((item) => [item.id, item]));
+      const view = await api.sql.query<{ id: string; question: string }>(
+        `select id, question from ${SCHEMA_NAME}.decision_items_rendered where id = any($1::uuid[])`,
+        [[first.itemId, second.itemId]],
+      );
+
+      expect([v1.version, v2.version]).toEqual([1, 2]);
+      expect(byId.get(first.itemId ?? "")).toMatchObject({
+        kindVersion: 1,
+        question: "Let the oven at helios-rig-02 run 20 minutes over?",
+      });
+      expect(byId.get(second.itemId ?? "")).toMatchObject({
+        kindVersion: 2,
+        question: "Extend the soak at helios-rig-02 by 20 minutes?",
+      });
+      expect(Object.fromEntries(view.rows.map((row) => [row.id, row.question]))).toEqual({
+        [first.itemId ?? ""]: "Let the oven at helios-rig-02 run 20 minutes over?",
+        [second.itemId ?? ""]: "Extend the soak at helios-rig-02 by 20 minutes?",
+      });
+    });
+
+    it("closes a run's needs-human card as policy(source_resolved) when the run is cancelled from the console", async () => {
+      const { bench, owner, run } = await protectedRun();
+      const loop = await api.sql.query<{ loop_seq: number }>(
+        `select loop_seq from ${SCHEMA_NAME}.runs where id = $1`,
+        [run],
+      );
+      const { itemId } = await registry().emit({
+        organizationId: bench.workspace.id,
+        kindId: "run_needs_human",
+        payload: SEEDED_PAYLOADS.run_needs_human,
+        refs: [{ type: "run", id: run, label: "loop #1" }],
+        key: { plane: "runs", sourceRef: `run:${run}` },
+      });
+
+      // The console's abort — not the card's button — then the driver honours it.
+      const control = bodyOf<{ id: string }>(
+        await api
+          .as(owner)("post", `/api/v1/runs/${run}/controls`)
+          .set(TENANT_HEADER, bench.workspace.slug)
+          .send({ kind: "abort", confirmation: String(loop.rows[0]?.loop_seq) })
+          .expect(202),
+      );
+
+      await post("post", `/internal/runs/${run}/controls/fetch`, {}).expect(200);
+      await post("post", `/internal/runs/${run}/controls/${control.id}/ack`, {}).expect(200);
+      await watcher().sweep(bench.workspace.id);
+
+      const [item] = (await items(bench.workspace.id)).filter((row) => row.id === itemId);
+      const resolution = await api.sql.query<{
+        resolver: string;
+        resolved_by_policy: string;
+        outcome: Record<string, unknown>;
+      }>(
+        `select resolver, resolved_by_policy, outcome from ${SCHEMA_NAME}.decision_resolutions where item_id = $1`,
+        [itemId],
+      );
+
+      expect(item?.status).toBe("resolved");
+      expect(resolution.rows[0]).toMatchObject({
+        resolver: "policy",
+        resolved_by_policy: "source_resolved",
+        outcome: { source: "run_moved_on" },
+      });
+    });
+
+    it("closes a fact's review card when the fact is confirmed on the knowledge page", async () => {
+      const owner = await api.signUp();
+      const bench = await seedIngestBench(api, owner);
+      const repo = await api.sql.query<{ ref: string }>(
+        `select o.login || '/' || r.name as ref from ${SCHEMA_NAME}.github_repos r
+           join ${SCHEMA_NAME}.github_orgs o on o.id = r.org_id where r.id = $1`,
+        [bench.workspace.repoId],
+      );
+      const fact = bodyOf<{ id: string }>(
+        await api
+          .as(owner)("post", "/api/v1/facts")
+          .set(TENANT_HEADER, bench.workspace.slug)
+          .send({ text: "CAN frames are DMA-backed", repoRef: repo.rows[0]?.ref })
+          .expect(201),
+      );
+      const filed = await eventually(
+        () => items(bench.workspace.id),
+        (rows) => rows.some((row) => row.kind_id === "fact_review"),
+      );
+      const card = filed.find((row) => row.kind_id === "fact_review");
+
+      expect(card).toMatchObject({ status: "open", source_ref: `fact:${fact.id}:proposed` });
+
+      await api
+        .as(owner)("post", `/api/v1/facts/${fact.id}/confirm`)
+        .set(TENANT_HEADER, bench.workspace.slug)
+        .send({})
+        .expect(200);
+      await watcher().sweep(bench.workspace.id);
+
+      const after = (await items(bench.workspace.id)).find((row) => row.id === card?.id);
+      const resolution = await api.sql.query<{
+        resolver: string;
+        outcome: Record<string, unknown>;
+      }>(`select resolver, outcome from ${SCHEMA_NAME}.decision_resolutions where item_id = $1`, [
+        card?.id,
+      ]);
+
+      expect(after?.status).toBe("resolved");
+      expect(resolution.rows[0]).toMatchObject({
+        resolver: "policy",
+        outcome: { source: "fact_resolved" },
+      });
+    });
   });
 });
