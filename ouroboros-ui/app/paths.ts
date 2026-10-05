@@ -23,6 +23,18 @@
 export const LOGIN_PATH = "/login";
 
 /**
+ * The recovery screen (BS.6, [#496](https://github.com/NobuData/ouroboros/issues/496)) — where
+ * every request acting in a workspace that is **pending deletion** is sent.
+ *
+ * While a workspace is in its recovery window `ouroboros-rest` answers every other route with
+ * `403 workspace_pending_delete`, so no screen of the product has anything to draw. This is the
+ * one that does: the countdown, what is frozen, and — for an owner — **Restore**. It lives
+ * outside the app shell (in the `(auth)` group), because the shell's own polls are among the
+ * things that are frozen.
+ */
+export const RECOVERY_PATH = "/workspace-recovery";
+
+/**
  * The dashboard (#45) — where a signed-in request with a chosen workspace belongs.
  *
  * A segment of its own rather than `/`, which is what it was while the placeholder stood

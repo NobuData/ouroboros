@@ -128,6 +128,17 @@
 }
 
 /* The mockup's `c-5`, `c-7` and `c-12`. */
+/*
+ * A card's head may wrap. At the top of the font-size range the Members card's title, its
+ * *applies instantly* mark and **+ Invite member** no longer fit one line of a seven-column seat,
+ * and a head that cannot wrap pushes the button — and the pane — sideways (#496's readability
+ * leg). The action drops to a second line instead.
+ */
+.settings__seat .ou-card__head {
+  flex-wrap: wrap;
+  row-gap: var(--sp-3);
+}
+
 .settings__seat--5 {
   grid-column: span 5;
 }
@@ -170,6 +181,63 @@
   color: var(--warn);
   font-size: var(--t-xs);
   line-height: var(--lh-body);
+}
+
+/* ---------- the page's error state ---------- */
+
+/* The retry box's placement above the grid, and only its placement — the box is the primitive's. */
+.settings__retry {
+  margin-bottom: var(--sp-9);
+}
+
+/* ---------- the loading skeleton ---------- */
+
+/* One card's placeholder: a heading bar, then its rows. */
+.settings-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.settings-skeleton__bar {
+  display: block;
+  width: 100%;
+  height: var(--sp-6);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+.settings-skeleton__bar--head {
+  width: 9rem;
+  height: var(--sp-5);
+  margin-bottom: var(--sp-3);
+}
+
+/* Where the head's actions will be. */
+.settings-skeleton__action {
+  display: block;
+  width: 9rem;
+  height: 2.25rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .settings-skeleton__bar,
+  .settings-skeleton__action {
+    animation: settings-skeleton-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes settings-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.55;
+  }
 }
 
 /* ---------- the Appearance card ---------- */

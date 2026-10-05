@@ -5,6 +5,7 @@ import type { DryRunPolicy } from "@/app/api/policies";
 
 import { auditToday } from "../helpers/audit-log";
 import { integrations, notificationRoutes } from "../helpers/integrations";
+import { pausedLifecycle } from "../helpers/lifecycle";
 import { SERVICE_LIST, membersPage } from "../helpers/members";
 import { orgPolicyV7 } from "../helpers/org-policy";
 import { webhookList } from "../helpers/webhooks";
@@ -31,6 +32,7 @@ const readAuditToday = vi.fn();
 const readWebhooks = vi.fn();
 const readIntegrations = vi.fn();
 const readRoutes = vi.fn();
+const readLifecycle = vi.fn();
 
 vi.mock("@/app/api/policies", () => ({ dryRunPolicy: { read: () => read() } }));
 vi.mock("@/app/api/org-policy", () => ({ orgPolicy: { read: () => readPolicy() } }));
@@ -44,6 +46,9 @@ vi.mock("@/app/api/settings-audit", () => ({ settingsAudit: { today: () => readA
 vi.mock("@/app/api/settings-webhooks", () => ({ settingsWebhooks: { list: () => readWebhooks() } }));
 vi.mock("@/app/api/settings-integrations", () => ({
   settingsIntegrations: { read: () => readIntegrations(), routes: () => readRoutes() },
+}));
+vi.mock("@/app/api/settings-lifecycle", () => ({
+  settingsLifecycle: { read: () => readLifecycle() },
 }));
 
 const { readSettings } = await import("@/app/settings/data");
@@ -77,6 +82,7 @@ beforeEach(() => {
   readWebhooks.mockReset().mockResolvedValue(webhookList());
   readIntegrations.mockReset().mockResolvedValue(integrations());
   readRoutes.mockReset().mockResolvedValue(notificationRoutes());
+  readLifecycle.mockReset().mockResolvedValue(pausedLifecycle());
 });
 
 describe("the hub's reader", () => {
@@ -162,6 +168,26 @@ describe("the hub's reader", () => {
     expect(readings.integrations).toEqual({ ok: false, reason: "The service is restarting." });
     expect(readings.routes).toEqual({ ok: false, reason: "The service is restarting." });
     expect(readings.workspace.ok).toBe(true);
+  });
+
+  it("reads where the workspace stands for every member — the Danger zone's switch is drawn from it", async () => {
+    for (const role of ["owner", "admin", "viewer"]) {
+      expect((await readSettings(access([role]))).lifecycle, role).toEqual({
+        ok: true,
+        value: pausedLifecycle(),
+      });
+    }
+    expect(readLifecycle).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps a lifecycle that could not be read to the Danger zone's seat", async () => {
+    readLifecycle.mockRejectedValue(new ApiError(503, "unavailable", "The service is restarting."));
+
+    const readings = await readSettings(access(["owner"]));
+
+    expect(readings.lifecycle).toEqual({ ok: false, reason: "The service is restarting." });
+    expect(readings.workspace.ok).toBe(true);
+    expect(readings.routes.ok).toBe(true);
   });
 
   it("lets anything that is not the service's answer keep travelling — a redirect to sign in above all", async () => {

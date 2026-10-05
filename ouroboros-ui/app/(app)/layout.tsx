@@ -1,4 +1,5 @@
 import { DashboardSummaryProvider } from "@/app/dashboard/summary-store";
+import { LifecycleProvider } from "@/app/lifecycle/lifecycle-store";
 import { AppShell } from "@/app/shell/app-shell";
 import { InboxBadgePublisher } from "@/app/shell/inbox-badge";
 
@@ -30,6 +31,12 @@ import { InboxBadgePublisher } from "@/app/shell/inbox-badge";
  * its count through the nav registry. It renders nothing, so its place in the tree is about its
  * lifetime — every signed-in screen — and nothing else.
  *
+ * **The workspace's lifecycle is provided here too**
+ * ([#496](https://github.com/NobuData/ouroboros/issues/496)): `LifecycleProvider` runs one poll
+ * of where the workspace stands per signed-in shell. The shell's paused banner reads it on every
+ * screen, the Danger zone card writes through it, and a workspace found pending deletion sends
+ * the browser to the recovery screen.
+ *
  * **There is no session check here, deliberately.** A layout does not re-render on a
  * client-side navigation between sibling routes and does not control whether the rest of the
  * route renders anyway, so a check in one is a check that can be true when the page beneath
@@ -48,7 +55,9 @@ export default function AppLayout({
   return (
     <DashboardSummaryProvider>
       <InboxBadgePublisher />
-      <AppShell>{children}</AppShell>
+      <LifecycleProvider>
+        <AppShell>{children}</AppShell>
+      </LifecycleProvider>
     </DashboardSummaryProvider>
   );
 }

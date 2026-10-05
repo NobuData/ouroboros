@@ -40,7 +40,8 @@ name: ouroboros · e2e
 # ten-minute budget the suite enforces on itself. Since #647 it also carries the shell
 # leg's containment spot-verify — the same question, can this green go red?, asked of the
 # CSS containment assertions by planting each offence — and since #650 the readability
-# audit's, which plants four more.
+# audit's, which plants four more. Since #496 it ends with the settings leg's own: nine layers,
+# each broken once beneath the service, each required to turn its test red by name.
 
 on:
   schedule:
@@ -218,6 +219,14 @@ jobs:
       - name: Verify a broken readability turns the 150% audit red
         working-directory: tests/e2e
         run: scripts/verify-readability.sh
+
+      # #496's spot-verify — the Settings MVP gate's own acceptance criterion: break each of
+      # the settings leg's nine layers once (seven beneath the service, two with the plants
+      # above) and require the matching test to go red naming it. Last, because it is the
+      # longest: a clean run of the leg and nine single-test reruns.
+      - name: Verify each broken layer turns its settings test red
+        working-directory: tests/e2e
+        run: scripts/verify-settings.sh
 
       - name: Tear the stack down
         if: always()

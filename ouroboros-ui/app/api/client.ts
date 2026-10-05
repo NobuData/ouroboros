@@ -94,6 +94,17 @@ export type SessionResolver = () =>
  */
 export type UnauthenticatedHandler = (error: ApiError) => void | Promise<void>;
 
+/**
+ * What to do about a refusal that is not a `401`, before it is thrown.
+ *
+ * Runs first for the same reason {@link UnauthenticatedHandler} does: a handler that navigates
+ * away wins over the throw. The server-side client uses it for the one refusal that is about
+ * the whole workspace rather than the request — `403 workspace_pending_delete`
+ * ([#496](https://github.com/NobuData/ouroboros/issues/496)) — and a handler that returns
+ * leaves the caller its {@link ApiError} exactly as before.
+ */
+export type RefusalHandler = (error: ApiError) => void | Promise<void>;
+
 /** How to build a client. Only `baseUrl` is required; the rest is wiring. */
 export interface ApiClientOptions {
   /** Base URL of `ouroboros-rest`, without a trailing slash — `app/env.ts` supplies it. */
@@ -104,6 +115,8 @@ export interface ApiClientOptions {
   session?: SessionResolver;
   /** Called with the {@link ApiError} of every `401`, before it is thrown. */
   onUnauthenticated?: UnauthenticatedHandler;
+  /** Called with the {@link ApiError} of every other refusal, before it is thrown. */
+  onRefused?: RefusalHandler;
   /** Replaces `globalThis.fetch`. Tests pass a stub; production passes nothing. */
   fetch?: (input: Request) => Promise<Response>;
 }
@@ -212,6 +225,8 @@ function credentialsAndErrors(options: ApiClientOptions): Middleware {
       // has.
       if (error.isUnauthenticated) {
         await options.onUnauthenticated?.(error);
+      } else {
+        await options.onRefused?.(error);
       }
 
       throw error;

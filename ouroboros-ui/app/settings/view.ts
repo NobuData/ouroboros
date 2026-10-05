@@ -189,7 +189,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     tab: "Danger zone",
     span: 12,
     saves: "immediate",
-    arrives: "Pause all loops, disconnect GitHub and delete workspace arrive with #496.",
+    // Built: `app/lifecycle/danger-card.tsx` (#496).
+    arrives: null,
   },
 ];
 

@@ -124,7 +124,12 @@ describe("the shell frame", () => {
 
     // § 1.3's grid, and the lock it depends on: `html`/`body` are held at 100% with overflow
     // hidden in app/globals.css, and this is the element that fills them.
-    expect(shell).toMatch(/grid-template-rows:\s*auto 1fr/);
+    // Three rows since #496: the header, the lifecycle banner's (no height unless the workspace
+    // is paused), and the one that fills the rest — which the sidebar and the pane are placed
+    // on by name, so an empty banner row cannot become where they are auto-placed.
+    expect(shell).toMatch(/grid-template-rows:\s*auto auto 1fr/);
+    expect(rule(".app-shell__pane")).toMatch(/grid-row:\s*3/);
+    expect(rule(".shell-nav")).toMatch(/grid-row:\s*3/);
     expect(shell).toMatch(/grid-template-columns:\s*auto 1fr/);
     expect(shell).toMatch(/height:\s*100%/);
     expect(shell).toMatch(/overflow:\s*hidden/);

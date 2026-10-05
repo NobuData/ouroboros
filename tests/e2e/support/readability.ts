@@ -15,12 +15,14 @@
  * pair of eyes. So the bar is four functions here, driven per page and per theme by
  * `specs/readability.spec.ts`.
  *
- * ## The roster, and the four pages that are not built yet
+ * ## The roster, and the pages that are not in it yet
  *
  * The issue names five representative dense pages: the routing matrix, the model registry
- * table, the research brief, the dashboard and settings. **One of the five exists.** The
- * other four arrive with their own mockup roadmaps, each behind its own issue, and
- * building them here would be four roadmaps' work done under a QA ticket.
+ * table, the research brief, the dashboard and settings. **Two of the five are in the matrix**
+ * — the dashboard, and since [#496](https://github.com/NobuData/ouroboros/issues/496) the
+ * settings hub, which BS.1 (#491) mounted and BS.6 moved across with its baselines. The
+ * others arrive with their own mockup roadmaps, each behind its own issue, and
+ * building them here would be those roadmaps' work done under a QA ticket.
  *
  * What this module does instead is what the suite already does for the sidebar's eleven
  * entries and for `verify-failure-modes.sh`'s parked pairs: **register the whole list, run
@@ -84,7 +86,7 @@ export interface MatrixPage {
 /**
  * The dense pages the matrix runs over today.
  *
- * Two, and the roster is written so a third joins by adding a line — the same shape as
+ * Three, and the roster is written so a fourth joins by adding a line — the same shape as
  * `IN_SHELL_ROUTES` in `specs/shell-nav.spec.ts`, and for the same reason.
  */
 export const MATRIX_PAGES: readonly MatrixPage[] = [
@@ -107,6 +109,19 @@ export const MATRIX_PAGES: readonly MatrixPage[] = [
       "Standing in for the routing matrix (#201) until it is built: forty-eight dense " +
       "rows under a subnav, a sticky bar and a sticky table header.",
   },
+  {
+    key: "settings",
+    label: "the settings hub",
+    route: "/settings",
+    heading: /^Workspace settings$/,
+    // A `PageSubnav` — the section nav — and, only while something is unsaved, a `StickyBar`;
+    // no sticky table header. The stack probe needs all three layers to have anything to
+    // compare, and a clean hub has one, so it is declared as a page without the stack.
+    stickyStack: false,
+    note:
+      "Mockup 17's eight cards (#491–#496): the densest page of forms and tables in the " +
+      "product, and the one the font-size preference itself is set on.",
+  },
 ];
 
 /** A page the roster is waiting for, and the issue that will build it. */
@@ -120,7 +135,7 @@ export interface AwaitedPage {
 }
 
 /**
- * The four pages of the issue's five that do not exist yet.
+ * The pages of the issue's five the matrix is still waiting for.
  *
  * Each is asserted *absent* rather than skipped, so this roster cannot rot: the run goes
  * red on the day the route starts answering, naming the page to move into
@@ -141,11 +156,6 @@ export const AWAITED_PAGES: readonly AwaitedPage[] = [
     label: "the research brief",
     route: "/research",
     awaits: "#627 mounts the route (mockup 22, CN.1)",
-  },
-  {
-    label: "settings",
-    route: "/settings",
-    awaits: "#491 mounts the route and its section nav (mockup 17, BS.1)",
   },
 ];
 

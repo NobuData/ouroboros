@@ -101,6 +101,26 @@ export const SEED_MEMBER = {
 } as const;
 
 /**
+ * The seeded **admin** of {@link SEED_TENANT}: Maya Chen — the Members card's *Maintainer*.
+ *
+ * The settings leg ([#496](https://github.com/NobuData/ouroboros/issues/496)) is the first to
+ * sign in as her, for the one thing neither other person can show: **a capability taken away**.
+ * Ken is the owner the leg administers as, and Jorge never held *can approve loops* to lose.
+ * Maya holds it twice over — her role's default, and the explicit row
+ * `R__dev_seed_workspace_settings.sql` writes — so unticking her box is a change with an effect
+ * to observe, and ticking it again puts back exactly what the seed wrote.
+ */
+export const SEED_ADMIN = {
+  /** `"user"."id"`. */
+  id: "5eed0003-0000-4000-8000-000000000002",
+  email: "maya@acme-robotics.dev",
+  /** What the Members card's row is named by. */
+  displayName: "Maya Chen",
+  /** The role she holds in {@link SEED_TENANT}. */
+  role: "admin",
+} as const;
+
+/**
  * The password every seeded person signs in with.
  *
  * One value for all of them, because this is demo data on a development machine and a
@@ -119,7 +139,7 @@ export const SEED_MEMBER = {
 export const SEED_PASSWORD = "ouroboros-dev-password";
 
 /** Every person the seed creates, by id — what {@link seededUser} looks up. */
-const SEEDED_USERS = [SEED_OWNER, SEED_MEMBER] as const;
+const SEEDED_USERS = [SEED_OWNER, SEED_ADMIN, SEED_MEMBER] as const;
 
 /**
  * Find a seeded person by id.

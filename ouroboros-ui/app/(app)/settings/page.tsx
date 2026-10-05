@@ -37,6 +37,7 @@ export default async function Page() {
       access={settingsAccess(access.membership.roles)}
       audit={readings.audit}
       integrations={readings.integrations}
+      lifecycle={readings.lifecycle}
       routes={readings.routes}
       webhooks={readings.webhooks}
       dryRun={readings.dryRun}

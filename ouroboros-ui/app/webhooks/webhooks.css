@@ -9,8 +9,17 @@
 
 /* ---------- the Stream to SIEM row ---------- */
 
+/*
+ * The row's state is a sentence, and the warning's is a long one (*deliveries failing (9 events
+ * dead-lettered)*). A button does not wrap by default, so it would push the card — and with it
+ * the pane — sideways; this one may take a second line and never be wider than its footer.
+ */
 .webhooks-siem {
+  flex-wrap: wrap;
   gap: var(--sp-2);
+  max-width: 100%;
+  white-space: normal;
+  text-align: start;
 }
 
 .webhooks-siem--warn {

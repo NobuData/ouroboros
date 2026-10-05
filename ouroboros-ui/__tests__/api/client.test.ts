@@ -347,6 +347,47 @@ describe("what a call rejects with", () => {
   });
 });
 
+describe("any other refusal", () => {
+  it("is handed to the refusal handler before it is thrown (#496)", async () => {
+    const onRefused = vi.fn();
+    const onUnauthenticated = vi.fn();
+    const { client } = clientOver(
+      [errorResponse(403, "workspace_pending_delete", "Pending deletion.", { restorable: false })],
+      { onRefused, onUnauthenticated },
+    );
+
+    await expect(client.GET("/api/v1/orgs")).rejects.toBeInstanceOf(ApiError);
+
+    expect(onRefused).toHaveBeenCalledTimes(1);
+    const [error] = onRefused.mock.calls[0] as [ApiError];
+    expect(error).toMatchObject({ status: 403, code: "workspace_pending_delete" });
+    expect(onUnauthenticated).not.toHaveBeenCalled();
+  });
+
+  it("lets a handler that navigates away win over the throw", async () => {
+    const { client } = clientOver([errorResponse(403, "workspace_pending_delete", "Frozen.")], {
+      onRefused: () => {
+        throw new Error("NEXT_REDIRECT /workspace-recovery");
+      },
+    });
+
+    await expect(client.GET("/api/v1/orgs")).rejects.toThrow("NEXT_REDIRECT /workspace-recovery");
+  });
+
+  it("is not handed a 401 that means sign in again, nor a success", async () => {
+    const onRefused = vi.fn();
+    const { client } = clientOver(
+      [errorResponse(401, "unauthenticated", "Sign in to continue."), jsonResponse(200, TENANT_PAGE)],
+      { onRefused },
+    );
+
+    await expect(client.GET("/api/v1/orgs")).rejects.toBeInstanceOf(ApiError);
+    await client.GET("/api/v1/orgs");
+
+    expect(onRefused).not.toHaveBeenCalled();
+  });
+});
+
 describe("a 401", () => {
   it("is handed to the handler before it is thrown", async () => {
     const onUnauthenticated = vi.fn();

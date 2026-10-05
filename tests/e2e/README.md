@@ -14,7 +14,7 @@ to the product — and that question is what this directory exists to ask.
 
 It is deliberately a **smoke** suite. It does not re-test what a module already covers; it
 walks one path through each boundary and asserts the things that are only true of a running
-deployment. Five legs from the issue, and twenty amended in since:
+deployment. Five legs from the issue, and twenty-one amended in since:
 
 | Leg | Spec | What only this can see |
 |---|---|---|
@@ -43,6 +43,7 @@ deployment. Five legs from the issue, and twenty amended in since:
 | 23 | [`specs/analyzer.spec.ts`](specs/analyzer.spec.ts) | **The Build Analyzer's suggestion cards (#518)** against the #509 seed: mockup 18's two cards as the seed composes them — titles, evidence lines, impact pills, confidences, `4 open` and the spike row offering **Draft spike ticket**; **an Apply whose effect is its preview** — the pool move's dialog names the runner, pool, UTC window and days, and after the confirm *the farm's own route* holds exactly that window; **a workflow draft that is real** — *Draft as vN →* previews the stage delta, says publishing remains human, opens the studio, and the draft the workflow route answers cites the suggestion in its change note; **a dismissal that outlives a real re-analysis**, on the page and in the database; and a member reading the same preview with the confirm inert while the service refuses their direct apply. Since #519, **the drafted-tickets card as the seed composes it** too: mockup 18's four rows with their keys, titles, estimator chips and evidence lines, `est. total ~1.5 days of loop time`, an evidence line opening references that land on a loop's test results, a tick that moves the push button's count at once and the total when the service answers (and is put back), and a member who may tick and may not push. Since #520, **the predicted-vs-measured and how-it-works cards**: mockup 18's pair with the miss drawn as plainly as the delivery (the same face and weight, three distinct hues in both palettes), *retrains* opening the service's formula and the calibration cells the two closes moved, and the three steps with the tenant-locality link; then, through the writers, **the apply's own measurement as a third row** (`day 0 of 14`, naming its metric) that the applied row's link lands on, and **an ingest line that stops claiming rig telemetry** once a real analysis has read a corpus without it. Since #521 — **the Build Analyzer's MVP gate** — the page as a whole and the states mockup 18 does not draw: the seven regions photographed in both themes on the mockup's own calendar; provenance that claims no model and no `$`; the three chips on the shifts the seed plants; fixed chrome, **Build Farm** lit and the 125% step; a member's page; **insufficient corpus for real** on the two seeded repositories that are that thin (the count and the floor from the service, and no chart or suggestion drawn); and — by answering the page's poll with the service's answer, changed — **never run**, **running**, **failed** and **stopped at its budget**, each over the results that were already there. Its writers then prove the chain: **a real analysis reproduces the seeded findings** (the chart redrawn from the new run carries the same three chips), and the dismissal now spans **two real runs**, asserting that the one suggestion a live run re-finds keeps its identity. Cold-only: a resolution is final |
 | 24 | [`specs/tickets.spec.ts`](specs/tickets.spec.ts) | **The Build Analyzer's drafted tickets, pushed (#519)** — the chain behind mockup 18's **Push 4 tickets to backlog →**, in one traversal: **Edit drafts** opens the planning editor on the analyzer's batch, whose **Regenerate** is inert, and a title edited there is the title the card shows on return; `BA-3` unticked and the batch pushed to the **sandbox tracker** with one creation refused mid-batch — the failed row says why and offers **Retry**, the others link to their tracker issues; after the retry the tracker holds **exactly the three ticked drafts, each once**, read back through its own API with the evidence line, the references and the suggestion in each body; a further push is refused rather than filed again; the toast links to Issues, where the backlog's own sync shows them; and the card is left a summary, not an empty box. Named to sort last: it files canonical tickets the planning, intake and dashboard legs' parity counts. Cold-only: a pushed batch is closed |
 | 25 | [`specs/inbox.spec.ts`](specs/inbox.spec.ts) | **The Needs-You inbox's MVP gate (#470)** against the #460 seed: mockup 16 photographed whole in both palettes; the **This week** card reading `11 decisions` and *median answer time 41s · loops never waited longer than 6m* as `GET /api/v1/inbox/stats` does — and reading four more after the chain; **all three answers asserted on their effect** — *Approve & merge* merging PR `#504` **on the sandbox host**, at the sha the receipt names; *Allow once* resuming a simulated loop past its protected-path stop until its `implement` stage succeeds and the driver reports `completed`; *Waive & annotate* leaving the claim, the note and the waiver's author **in the host PR's conversation**; **the daily digest, sent by the scheduler's real tick, read out of mailpit** — its *Deny* link answering loop `#1844` with one signed-out `POST` (and refusing a second), its merge-class *Approve & merge* link showing *Sign in to confirm*, answering a signed-out `POST` `401` and merging nothing; a one-minute snooze that dims the card and leaves the badge's count, and **expires back into the queue with its age intact**, and *Wake now*; **two concurrent answers making exactly one resolution and one guardrail exception**, the stale card saying *Answered by …*; a member whose approver-only answers are inert on the page and `403` past it; a queue that cannot be refreshed naming its last refresh to the second, and *Retry*; inbox zero with every answer a resolved row in its resolver's class, the email answer tagged `email`, and the **Needs You** badge gone; and the shell at 125%. Cold-only: an answer is final |
+| 26 | [`specs/settings.spec.ts`](specs/settings.spec.ts) | **The Settings MVP gate (#496)** against the #484 seed: mockup 17's hub photographed whole in both palettes, for an owner and for a member who is served the same page read-only and refused past it; and **each card asserted on the plane it governs** — the protected-paths rule published off while a simulated loop is *already held* at `boot/can_bringup.c`, so that a plain resume (no allow-once) makes the driver report the same change-set to a gate that now passes it, with zero exceptions granted, the publish in the audit log and the version tag one higher; *Can approve loops* unticked for an admin, whose approver-class answer the service then refuses `403` where it had asked for its note; the retention select saved, and the new tier in the service's read, in the rows a sweep computes its cutoff from, and in the audit trail; **a webhook endpoint made in the sheet, its secret read off the one-time dialog, and the test ping found at a fixture receiver signed with that secret**; the audit log filtered and exported, the downloaded CSV equal to the filtered view row for row and the export itself the newest `audit.exported`; **pause-all pressed mid-stage — that stage reported `succeeded` afterwards, the next refused `409 workspace_paused`, no new loop able to open, the banner on the dashboard for a member too, and one press of *Resume* there clearing it everywhere** before a fresh loop runs through; a delete rehearsal on a workspace of the leg's own — the exact name, a step-up demanded of an aged session and answered with the password, the recovery screen's countdown, every other surface `403 workspace_pending_delete`, a member told who can act, and **Restore**; and the shell at 125% |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
 route-migration gate. Its containment assertions come with their own falsifier:
@@ -578,6 +579,71 @@ sign-in; `tracker-stub`, which takes it down where it resets the sandbox, before
 `mailpit`, against the email test alone, which must say the digest never arrived rather than time
 out on a link.
 
+Leg 26 is [#496](https://github.com/NobuData/ouroboros/issues/496)'s — BS.6, the Workspace Settings
+roadmap's MVP gate — and #491–#495's before it: ten tests in one file, budgeted at the issue's three
+added minutes and expected at about two minutes forty. Every card on mockup 17's hub draws state
+some **other** plane owns, so the leg's rule is the inbox leg's: press the page, then ask the plane
+that owns the effect.
+
+**The nine legs the issue names, and what each is asserted on.** *Policy* on the simulated driver's
+own exit and `GET /api/v1/runs/{id}`'s `implement` stage, with `guardrail_exceptions` read beneath
+the service to show nobody allowed the edit; *capability* on the service's refusal of the member's
+answer; *retention* on `GET /api/v1/settings/retention`, the `retention_policies` rows and the audit
+trail; *webhook* on the fixture receiver's own record and an HMAC the leg computes; *audit* on the
+downloaded file; *pause-all* on the run's stages after the driver stopped, and on a second driver
+refused and a third let through; *delete* on the lifecycle, a frozen route, and two people's recovery
+screens. The shell and the both-theme pictures are the eighth and ninth.
+
+**The policy test's order is its argument.** A loop is started first and reaches its hold under the
+version in force — the gate is red — *then* the rule is published off, and the loop is resumed with
+no grant. The same change-set, reported twice, refused once and passed once, with one publish
+between: that is a gate flipping, where a loop simply started after the publish would only show a
+gate that was green.
+
+**It needs one more fixture**, and the compose override supplies it:
+[`fixtures/webhook-receiver`](fixtures/webhook-receiver/server.mjs), an **https** endpoint on the
+compose network that keeps what it is sent. `ouroboros-rest` delivers webhooks over https and
+nothing else, and refuses internal addresses, so `docker-compose.e2e.yml` gives `rest` the two
+things an operator with an internal collector gives it — the host in
+`OURO_WEBHOOK_INTERNAL_ALLOWLIST` and the receiver's CA in `NODE_EXTRA_CA_CERTS` — and nothing
+that relaxes either rule. The receiver does not hold the endpoint's secret; the leg verifies
+`X-Ouro-Signature` itself, with the value it read off the browser's one-time dialog.
+
+**What it leaves behind** is in the spec's header, test by test. In short: `acme-robotics` is put
+back — the policy document (as a newer version), the capability, the tiers, the endpoint count, the
+lifecycle — and what stays is audit events, two extra policy versions, three simulated runs and one
+answered card. It is **re-runnable**, unlike leg 25: nothing in it assumes a version number or a
+cold stack, which is what lets its falsifier run its tests one at a time.
+
+**What it does not do, and says so.** No retention sweep is *watched running* with the new cutoff:
+the sweeps are hourly, with no trigger and no cadence setting, so the leg asserts everything a sweep
+reads and leaves the sweep's arithmetic to `ouroboros-rest`'s own specs. The purge is the BR.6
+harness's (#490). The hub's skeleton and read-failure banner are painted from server reads and are
+`ouroboros-ui`'s. **Disconnect is not pressed** — it deletes the stored GitHub token, which no route
+puts back; the pause dialog's in-flight count is read from the same preview, so that read is
+exercised.
+
+**The nine breakages #496 asks for** are a script rather than a table of things done by hand:
+[`scripts/verify-settings.sh`](scripts/verify-settings.sh) breaks each layer once — seven beneath
+the service (`support/settings-hub.ts` § *BREAKS*), two with `support/plants.ts`'s CSS plants —
+runs the one test that should notice, and requires it to go red by name:
+
+| Broken | Test | With |
+|---|---|---|
+| the repository's own rows keep `boot/**` protected whatever the org policy publishes | *policy* | *the gate must flip* |
+| the capability is granted again beneath the unticked box | *capability* | *approval must be refused* |
+| the stored tiers are put back after the card saved them | *retention* | *the tier the next sweep reads* |
+| the receiver answers `503` | *webhook* | *Ping succeeded* |
+| an event the filtered view never showed is written into the log before the export | *audit* | *matches the filtered view* |
+| the lifecycle row is set back to `active` after the pause | *pause* | *the next stage must hold* |
+| the session is left fresh, so the delete needs no step-up | *delete* | *must demand a step-up* |
+| a 3000px box in the pane | *shell* | *pane-level horizontal scroll* |
+| the pane pulled up under the header | *parity* | the screenshot diff |
+
+The registered pairs (`scripts/verify-failure-modes.sh`) are `db`, which takes the leg down at the
+owner's sign-in, and `webhook-receiver`, against the webhook test alone, which must name the fixture
+before it creates anything.
+
 ## Stack
 
 [Playwright](https://playwright.dev) on Node 24, Chromium only, over the stack
@@ -618,7 +684,7 @@ yarn e2e specs/engine.spec.ts          # one leg
 
 From the repository root, `yarn e2e` is the same thing.
 
-**Legs 17 and 18 need [uv](https://docs.astral.sh/uv/) on the machine running the suite.** Their runs are
+**Legs 17, 18, 25 and 26 need [uv](https://docs.astral.sh/uv/) on the machine running the suite.** Their runs are
 opened by the simulated-run driver, which is development-only — not in the engine image — so
 `support/simulator.ts` runs it on the host as `uv run python -m ouroboros_simulator`, against
 REST on `localhost:4000`, presenting the simulator secret `docker-compose.e2e.yml` gives
@@ -651,6 +717,13 @@ scripts/verify-containment.sh          # #647: a viewport-fixed bar, a pane-leve
 scripts/verify-readability.sh          # #650: overflow, a clipped label, two chrome collisions
 ```
 
+And one asks it of the settings leg's nine layers — state broken beneath the service rather than a
+service stopped (§ leg 26):
+
+```bash
+scripts/verify-settings.sh             # #496: nine layers, each broken once, each named
+```
+
 Each plants an offence, runs the leg that should catch it, and requires the run to go red
 with the matching assertion *by name*. The plants live in
 [`support/plants.ts`](support/plants.ts), in one table beside the list of which assertion
@@ -674,6 +747,7 @@ works as-is. Override only when the stack is somewhere else.
 | `OURO_E2E_REST_URL` | `http://localhost:4000` | Where `ouroboros-rest` answers |
 | `OURO_E2E_TRACKER_URL` | `http://localhost:4100` | Where the suite's own sandbox tracker answers (legs 15, 21 and 24) |
 | `OURO_E2E_TAP_URL` | `http://localhost:4200` | Where the engine tap's **controls** answer — the estimate requests it has seen (leg 21) |
+| `OURO_E2E_RECEIVER_URL` | `http://localhost:4300` | Where the webhook receiver's **controls** answer — the deliveries it was sent (leg 26) |
 
 There is no address for `ouroboros-engine`, and there cannot be: it publishes no host port
 (`docs/ARCHITECTURE.md` § 10). Leg 4 reaches it the only way anything outside the compose
@@ -729,7 +803,7 @@ tests/e2e/
 ├── playwright.email.config.ts  # the digest email's four client profiles: no stack, its own spec directory (#440)
 ├── email/                      # the digest email rendered from ouroboros-rest's golden HTML, and its baselines
 ├── specs/                      # one file per leg
-│   └── __screenshots__/        # legs 6, 9, 10, 11, 12, 15, 16, 17, 18, 19, 20, 21 and 23's baselines, and leg 8's matrix under readability/
+│   └── __screenshots__/        # legs 6, 9, 10, 11, 12, 15, 16, 17, 18, 19, 20, 21, 23 and 26's baselines, and leg 8's matrix under readability/
 ├── support/
 │   ├── stack.ts                # addresses, timeouts, and the two budgets
 │   ├── seed.ts                 # the values R__dev_seed.sql writes, copied on purpose
@@ -743,7 +817,7 @@ tests/e2e/
 │   ├── compose.ts              # stopping and starting the one service a spec may stop (leg 10)
 │   ├── farm.ts                 # what mockup 08 renders, the fresh workspace the real chain runs in, and what leg 16 leaves
 │   ├── farm-runner.ts          # the build machine's three verbs: a fresh one, a pasted line, a pulled plug (leg 16)
-│   ├── simulator.ts            # the simulated-run driver, started on the host, and the run it opened (legs 17, 18, 25)
+│   ├── simulator.ts            # the simulated-run driver, started on the host, and the run it opened (legs 17, 18, 25, 26)
 │   ├── pull-requests.ts        # what mockup 12 renders for the seeded PR, and the page's poll rewritten into the states the seed does not hold (leg 20)
 │   ├── knowledge.ts            # the cold workspace and the seeded one, the fixture import's figures, the sandbox issue, and the two reads beneath the browser (leg 21)
 │   ├── inbox.ts                # the inbox's REST surface as a person, the digest's links, the card leg 25 files, and the source credential it puts back
@@ -758,12 +832,15 @@ tests/e2e/
 │   ├── session.ts              # signing in — one HTTP call; read the header
 │   ├── workspace.ts            # putting a context into a workspace without re-clicking
 │   ├── settings.ts             # the font scale and the auto-merge switch, set and put back
+│   ├── settings-hub.ts         # mockup 17's hub: what it says, the planes beneath each card, the rows no route gives, and the nine breakages (leg 26)
+│   ├── receiver.ts             # the webhook receiver as a client: what it was sent, and the signature a delivery must carry (leg 26)
 │   ├── rest.ts                 # a write on a context's behalf, and a restore that never throws
 │   └── api.ts                  # scripted requests and their failure messages
 ├── fixtures/
 │   ├── provider-stub/          # the provider leg 10 connects to, and really stops
 │   ├── tracker-stub/           # the sandbox tracker legs 15 and 24 push to, and read back — the host leg 21 imports rules files from (repos/), and the PR `#504` leg 25 merges and annotates
 │   ├── engine-tap/             # the wire between rest and the engine: forwards everything, remembers each estimate request (leg 21)
+│   ├── webhook-receiver/       # an https endpoint that keeps what rest delivers to it, with a certificate made on first start (leg 26)
 │   ├── farm-gateway/           # TLS in front of rest, forwarding the runner's client certificate (leg 16)
 │   ├── runner-release/         # this checkout's agent release, for rest to serve (leg 16)
 │   └── runner-machine/         # the bare machine the copied enroll command is pasted into (leg 16)
@@ -771,7 +848,8 @@ tests/e2e/
     ├── run.sh                  # stack up (with the e2e compose override) → suite → down
     ├── verify-failure-modes.sh # #56 acceptance criterion 2
     ├── verify-containment.sh   # #647's spot-verify: planted offences must go red
-    └── verify-readability.sh   # #650's, at 150%: four offences, four probes
+    ├── verify-readability.sh   # #650's, at 150%: four offences, four probes
+    └── verify-settings.sh      # #496's: nine layers of the settings leg, each broken once
 ```
 
 ### The two budgets
@@ -828,7 +906,8 @@ one. Both palettes live in `specs/__screenshots__/`, masked where the seeded gro
 explains.
 
 Leg 8 adds twelve more under `specs/__screenshots__/readability/`, named
-`<page>-<scale>-<theme>-chromium-linux.png`. Same rules, one more axis.
+`<page>-<scale>-<theme>-chromium-linux.png`. Same rules, one more axis. Since #496 the settings hub
+is the matrix's third page — six more, `settings-<scale>-<theme>`, masked where leg 26's own pair is.
 
 Legs 9, 10 and 11 add pairs, taken through a **larger window** than the suite's Desktop
 Chrome: `PARITY_WINDOW` in [`specs/routing.spec.ts`](specs/routing.spec.ts) is 1920 × 2200,
@@ -903,6 +982,22 @@ recorded yet**, as leg 22's are not: it needs a cold stack, which is the next re
 It has leg 6's kind of calendar precondition too: on a **Monday** the seed's clamp puts the week's
 eleven answers on today (its header says so), and *Resolved today* draws more rows than the pair —
 record and verify on any other day.
+
+Leg 26 records five pairs. `settings-{light,dark}` and `settings-member-{light,dark}` are the whole
+hub through a 1440 × 3600 window the leg asserts does not scroll — an owner's and a member's — and
+they share one stylesheet, argued region by region in
+[`support/settings-hub.ts`](support/settings-hub.ts)'s `steadyHub`: the hub draws every other
+plane's *present* state, so its ages, its policy version tag, its audit rows, the SIEM row's health
+and the two tiles composed from moving planes are facts about when the picture was taken. They are
+taken out of sight rather than masked, because several of them change **size** as well as content
+— a tile gains a reason line, the SIEM sentence wraps — and a mask is only as wide as what it
+covers. Recorded on a used stack and verified on a cold one, the pairs are the same.
+`settings-paused-banner-{light,dark}` and `settings-paused-danger-{light,dark}` are the shell's
+banner and the Danger zone card while the workspace is paused (the card masks *Paused since …*), and
+`settings-pending-delete-{light,dark}` is the recovery screen, full page, masking the countdown and
+the date its lead names, with the owner's list of other workspaces taken out of the layout (every
+run of the leg adds a row to it). The recovery screen has no account menu, so its palette is
+written where the UI stores the reader's choice and the screen reloaded.
 
 Leg 12's pair is of the **canvas region alone** rather than the page —
 `studio-canvas-{light,dark}` in [`specs/studio.spec.ts`](specs/studio.spec.ts), through a
@@ -1143,5 +1238,11 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
 - [#470](https://github.com/NobuData/ouroboros/issues/470) — leg 25, the Needs-You inbox's states, its answer chains and the inbox MVP gate
 - [#466](https://github.com/NobuData/ouroboros/issues/466), [#467](https://github.com/NobuData/ouroboros/issues/467), [#468](https://github.com/NobuData/ouroboros/issues/468), [#469](https://github.com/NobuData/ouroboros/issues/469) — the frame, the decision cards, inbox zero and the side column leg 25 drives
 - [#460](https://github.com/NobuData/ouroboros/issues/460) — the inbox seed leg 25's parity and stat card assert against
+- [#496](https://github.com/NobuData/ouroboros/issues/496) — leg 26, the settings hub's cards on the planes they govern, and the Settings MVP gate
+- [#491](https://github.com/NobuData/ouroboros/issues/491), [#492](https://github.com/NobuData/ouroboros/issues/492), [#493](https://github.com/NobuData/ouroboros/issues/493), [#494](https://github.com/NobuData/ouroboros/issues/494), [#495](https://github.com/NobuData/ouroboros/issues/495) — the frame and the cards leg 26 drives
+- [#484](https://github.com/NobuData/ouroboros/issues/484) — the settings seed leg 26 starts from
+- [#487](https://github.com/NobuData/ouroboros/issues/487) — outbound webhooks, whose URL policy is why leg 26's receiver speaks TLS
+- [#489](https://github.com/NobuData/ouroboros/issues/489) — the workspace lifecycle leg 26 pauses, deletes and restores through
+- [#490](https://github.com/NobuData/ouroboros/issues/490) — the governance harness, where the purge leg 26 does not wait for is asserted
 - [#306](https://github.com/NobuData/ouroboros/issues/306) — the control queue leg 17's presses travel through
 - [#307](https://github.com/NobuData/ouroboros/issues/307) — the simulated-run driver that acknowledges them

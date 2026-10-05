@@ -32,6 +32,9 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/app/shell/actions", () => ({ signOutOfSession: vi.fn() }));
+// The paused banner's resume is a Server Action over the server-only client (#496). What the
+// banner does with it is `__tests__/lifecycle/lifecycle-banner.test.tsx`'s.
+vi.mock("@/app/lifecycle/lifecycle-actions", () => ({ resumeWorkspace: vi.fn() }));
 
 // The font-scale reconciler (#649) is mounted by the shell and its actions module sits on
 // the server-only client, exactly as `actions.ts` does — same mock, same reason. What the

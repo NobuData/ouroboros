@@ -71,6 +71,7 @@ import {
   settleLayout,
 } from "../support/readability";
 import { SEED_OWNER, SEED_TENANT } from "../support/seed";
+import { steadyHub } from "../support/settings-hub";
 import { signIn } from "../support/session";
 import {
   expectFontScale,
@@ -156,6 +157,8 @@ for (const target of MATRIX_PAGES) {
 
         for (const theme of THEMES) {
           await pinTheme(page, theme);
+          // The hub's live regions change size as well as content, which a mask cannot absorb.
+          if (target.key === "settings") await steadyHub(page);
 
           // Two name segments rather than one: the matrix is a dozen files and growing,
           // and `__screenshots__/readability/` keeps them out of the two the dashboard leg
@@ -316,7 +319,7 @@ test.describe("the contrast arithmetic agrees with the token sheet", () => {
   });
 });
 
-test.describe("the roster is still waiting for the same four pages", () => {
+test.describe("the roster is still waiting for the same pages", () => {
   /**
    * The issue names five dense pages and one of them is built. This is the assertion that
    * keeps that sentence true rather than letting it become a stale comment: each awaited

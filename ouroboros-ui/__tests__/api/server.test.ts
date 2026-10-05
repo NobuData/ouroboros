@@ -6,7 +6,7 @@ import { SESSION_CACHE_COOKIE, SESSION_COOKIE } from "@/app/api/client";
 import { ApiError } from "@/app/api/errors";
 import { REQUEST_PATH_HEADER } from "@/app/api/request";
 import { ACTIVE_TENANT_COOKIE } from "@/app/api/tenant";
-import { RETURN_TO_PARAM } from "@/app/paths";
+import { RECOVERY_PATH, RETURN_TO_PARAM } from "@/app/paths";
 
 // `app/api/server.ts` is server-only three times over, and each has to be answered before
 // it can be imported here at all:
@@ -309,6 +309,34 @@ describe("api", () => {
     expect(redirect).toHaveBeenCalledWith(LOGIN_PATH);
   });
 
+  it("routes a frozen workspace's 403 to the recovery screen (#496)", async () => {
+    respondWith(
+      new Response(
+        JSON.stringify({
+          code: "workspace_pending_delete",
+          message: "This workspace is pending deletion.",
+          details: { purgeAfter: "2026-11-04T10:00:00.000Z", restorable: false },
+        }),
+        { status: 403, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await expect(api().GET("/api/v1/orgs")).rejects.toBeInstanceOf(RedirectSignal);
+    expect(redirect).toHaveBeenCalledExactlyOnceWith(RECOVERY_PATH);
+  });
+
+  it("does not mistake the dispatch points' 409 of the same code for a frozen surface", async () => {
+    respondWith(
+      new Response(
+        JSON.stringify({ code: "workspace_pending_delete", message: "Nothing new starts.", details: {} }),
+        { status: 409, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await expect(api().GET("/api/v1/orgs")).rejects.toBeInstanceOf(ApiError);
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
   it("leaves every other failure to the caller, as an ApiError", async () => {
     respondWith(
       new Response(
@@ -343,6 +371,18 @@ describe("anonymousApi", () => {
 
     expect(requests[0]?.headers.get("Cookie")).toBe(`${SESSION_COOKIE}=signed.value`);
     expect(requests[0]?.headers.has("X-Ouro-Tenant")).toBe(false);
+  });
+
+  it("lets a frozen workspace's 403 reject too, so the recovery screen can read through it (#496)", async () => {
+    respondWith(
+      new Response(
+        JSON.stringify({ code: "workspace_pending_delete", message: "Frozen.", details: {} }),
+        { status: 403, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await expect(anonymousApi().GET("/api/v1/orgs")).rejects.toBeInstanceOf(ApiError);
+    expect(redirect).not.toHaveBeenCalled();
   });
 
   it("lets a 401 reject as an ApiError instead of redirecting to the login screen", async () => {

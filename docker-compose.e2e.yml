@@ -283,6 +283,40 @@
 # arithmetic, the run claim and the send exactly as a deployment does. mailpit itself is the base
 # file's (`full` profile), and so is `rest`'s `OURO_SMTP_URL` pointing at it.
 #
+# ---------------------------------------------------------------------------
+# The ninth and tenth lines, and the receiver they let `rest` deliver to (issue #496, the
+# settings leg).
+# ---------------------------------------------------------------------------
+#
+#   * `OURO_WEBHOOK_INTERNAL_ALLOWLIST: "webhook-receiver"` — the operator's override for a
+#     genuine internal collector (`webhook.ssrf.ts`). The URL policy refuses every address on
+#     the compose network, as it should: it is RFC1918 space, where a deployment's metadata
+#     endpoint and admin services live. The allowlist names one host and relaxes nothing else —
+#     the seeded endpoints, and any other internal address, are still refused.
+#   * `NODE_EXTRA_CA_CERTS: /webhook-ca/ca.pem` — the receiver's CA, read by Node at start. The
+#     allowlist **never relaxes https** and there is no insecure flag to set, so the receiver
+#     speaks TLS with a certificate it makes on first start
+#     (`tests/e2e/fixtures/webhook-receiver/10-receiver-certs.sh`) and `rest` is told to trust
+#     the CA that signed it. That is the documented way to reach an internal collector, and it
+#     is why `rest` waits for the receiver to be healthy: the file has to exist before the
+#     process that reads it once.
+#
+# **What it is for.** The settings leg (specs/settings.spec.ts) is the Settings roadmap's gate,
+# and its fourth leg is *webhook create → test ping → the delivery log shows the attempt at the
+# fixture receiver*. The delivery log is `rest`'s own account of what it sent; what makes it a
+# delivery is that something else received it. So `webhook-receiver` —
+# `tests/e2e/fixtures/webhook-receiver/server.mjs` — keeps every `POST` it is sent, with its
+# headers and raw body, and the leg verifies `X-Ouro-Signature` over that body with the secret
+# it read off the browser's one-time dialog.
+#
+# **Two listeners, and only one of them published** — `engine-tap`'s shape. `:8443` receives
+# over TLS and has no host port; `:8081` serves `/__receiver/deliveries`, `/__receiver/reset`
+# and `/__receiver/fault`, receives nothing, and is published on 127.0.0.1:4300.
+#
+# **What it changes for every other leg, which is nothing.** No seeded endpoint points at it,
+# and the seed's two (`siem.acme-robotics.dev`, `hooks.acme-robotics.dev`) are still refused or
+# unresolvable exactly as they were.
+#
 # Everything else — images, healthchecks, the shared ui/rest network namespace, the
 # loopback-only port publishing — is the base file's, unrepeated here so it cannot drift.
 services:
@@ -296,6 +330,11 @@ services:
       OURO_RUN_SIMULATOR_SECRET: "e2e-run-simulator-secret"
       OURO_ENGINE_URL: "http://engine-tap:8000"
       OURO_INSIGHTS_DIGEST_INTERVAL_SECONDS: "5"
+      OURO_WEBHOOK_INTERNAL_ALLOWLIST: "webhook-receiver"
+      NODE_EXTRA_CA_CERTS: /webhook-ca/ca.pem
+    volumes:
+      # Appended to the base file's two. The receiver's CA certificate, and nothing else of its.
+      - ouroboros-webhook-ca:/webhook-ca:ro
     depends_on:
       # Appended to the base file's three. See the header: healthy must include *there is a
       # release to install*.
@@ -303,6 +342,9 @@ services:
         condition: service_completed_successfully
       # And *the estimator can be reached*, which since #422 is by way of the tap.
       engine-tap:
+        condition: service_healthy
+      # And *the receiver's CA has been written*, which `rest` reads once, at start (#496).
+      webhook-receiver:
         condition: service_healthy
 
   # The `runner` profile's three, moved into `full` too. Nothing else about them is restated.
@@ -379,3 +421,36 @@ services:
       - ouroboros
     profiles:
       - full
+
+  webhook-receiver:
+    build:
+      context: ./tests/e2e/fixtures/webhook-receiver
+    healthcheck:
+      # busybox's wget, for `provider-stub`'s reason. The controls' port, which comes up after
+      # the TLS listener: healthy means the certificate was made and deliveries can arrive.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+      start_interval: 1s
+    volumes:
+      # Its own keys, kept across a recreate so `rest` goes on trusting what it presents…
+      - ouroboros-webhook-receiver-keys:/etc/webhook-receiver
+      # …and the CA certificate alone, where `rest` reads it.
+      - ouroboros-webhook-ca:/webhook-ca
+    ports:
+      # The controls only — what the settings leg reads back. The receiving port (8443) is
+      # deliberately not published: only `rest` delivers to it. Loopback only, as every port is.
+      - "127.0.0.1:4300:8081"
+    networks:
+      - ouroboros
+    profiles:
+      - full
+
+volumes:
+  # The webhook receiver's CA certificate (#496), shared read-only with `rest`. Named so
+  # `down -v` reclaims it.
+  ouroboros-webhook-ca:
+  # The receiver's own keys. Never mounted anywhere else.
+  ouroboros-webhook-receiver-keys:

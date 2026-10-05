@@ -5,6 +5,7 @@ import type { DryRunPolicy } from "@/app/api/policies";
 import type { Reading } from "@/app/api/reading";
 import type { AuditToday } from "@/app/api/settings-audit";
 import type { Integrations, NotificationRoutes } from "@/app/api/settings-integrations";
+import type { WorkspaceLifecycle } from "@/app/api/settings-lifecycle";
 import type { MembersPage, ServiceAccountList } from "@/app/api/settings-members";
 import type { WebhookList } from "@/app/api/settings-webhooks";
 import type { RetentionSettings, WorkspaceSettings } from "@/app/api/settings-workspace";
@@ -14,6 +15,8 @@ import { IntegrationsCard } from "@/app/integrations/integrations-card";
 import { NotificationsCard } from "@/app/integrations/notifications-card";
 import { routesUnread } from "@/app/integrations/routes";
 import { integrationsUnread } from "@/app/integrations/view";
+import { DangerCard } from "@/app/lifecycle/danger-card";
+import { lifecycleUnread } from "@/app/lifecycle/danger";
 import { MembersCard } from "@/app/members/members-card";
 import { membersUnread } from "@/app/members/view";
 import { ownerNames, policyUnread } from "@/app/policies/card-view";
@@ -25,6 +28,7 @@ import { SiemRow } from "@/app/webhooks/siem-row";
 import { type SettingsAccess, readOnlyNote } from "./access";
 import { AppearanceCard } from "./appearance-card";
 import { SettingsLeaveGuard } from "./leave-guard";
+import { SettingsReadBanner } from "./read-banner";
 import { SettingsDirtyBar, SettingsHeadActions } from "./save-controls";
 import { SettingsSaveProvider } from "./save-provider";
 import { SettingsFrame } from "./settings-frame";
@@ -74,7 +78,15 @@ import "./settings.css";
  * are the readers the service answers; anybody else is told whose log it is to read. The
  * **Integrations** seat holds the truth-state grid (`app/integrations/integrations-card.tsx`) and
  * the **Notifications** seat the org routes (`app/integrations/notifications-card.tsx`), each or
- * its placeholder saying why it could not be read. The Danger zone is its placeholder.
+ * its placeholder saying why it could not be read. The **Danger zone** seat holds its card
+ * (`app/lifecycle/danger-card.tsx`, #496) — pause, disconnect, delete — or its placeholder
+ * saying the workspace's state could not be read, and so that no control is drawn.
+ *
+ * ### When a read fails
+ *
+ * The seat it fills says why, and the page says it once above the grid with **Retry**
+ * (`app/settings/read-banner.tsx`) — the DASH-I.7 pattern. The loading state is
+ * `app/settings/settings-skeleton.tsx`.
  *
  * @param props.workspaceName The active workspace's display name, for the eyebrow.
  * @param props.access Who the reader is — `app/settings/access.ts`'s answer, from the route.
@@ -89,6 +101,7 @@ import "./settings.css";
  * @param props.webhooks The administrator's webhook endpoints, or `null`.
  * @param props.integrations The integrations grid as read, or why it could not be.
  * @param props.routes The org notification routes as read, or why they could not be.
+ * @param props.lifecycle Where the workspace stands as read, or why it could not be.
  * @param props.readAt When the page was read.
  * @returns The hub.
  */
@@ -105,6 +118,7 @@ export function SettingsScreen({
   webhooks = null,
   integrations,
   routes,
+  lifecycle,
   readAt,
 }: Readonly<{
   workspaceName: string;
@@ -119,6 +133,7 @@ export function SettingsScreen({
   webhooks?: WebhookList | null;
   integrations?: Reading<Integrations>;
   routes?: Reading<NotificationRoutes>;
+  lifecycle?: Reading<WorkspaceLifecycle>;
   readAt?: string;
 }>) {
   return (
@@ -134,6 +149,20 @@ export function SettingsScreen({
         <SettingsLeaveGuard />
 
         {!access.mayEdit && <ReadOnlyNote access={access} />}
+
+        <SettingsReadBanner
+          reads={{
+            dryRun,
+            policy,
+            workspace,
+            retention,
+            members,
+            audit,
+            integrations,
+            routes,
+            lifecycle,
+          }}
+        />
 
         <div className="settings__grid">
           {SETTINGS_SECTIONS.map((section) => (
@@ -234,6 +263,21 @@ export function SettingsScreen({
                   <SeatPlaceholder>
                     <p className="settings__unread" role="note">
                       {routesUnread(routes.reason)}
+                    </p>
+                  </SeatPlaceholder>
+                )
+              ) : section.id === "danger" && lifecycle !== undefined ? (
+                lifecycle.ok ? (
+                  <DangerCard
+                    // A change of tier (the reader re-roled themselves) remounts it fresh.
+                    key={access.tier}
+                    lifecycle={lifecycle.value}
+                    workspaceName={workspaceName}
+                  />
+                ) : (
+                  <SeatPlaceholder>
+                    <p className="settings__unread" role="note">
+                      {lifecycleUnread(lifecycle.reason)}
                     </p>
                   </SeatPlaceholder>
                 )

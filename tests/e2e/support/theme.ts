@@ -94,3 +94,27 @@ export async function pinTheme(page: Page, theme: Theme): Promise<void> {
   // rather than the sleep that assumes it.
   await expect(html).not.toHaveAttribute(THEME_FADE_ATTRIBUTE, /.*/);
 }
+
+/** The `localStorage` key the UI keeps the reader's palette under (`ouroboros-ui/app/theme.ts`). */
+const THEME_STORAGE_KEY = "ouro-theme";
+
+/**
+ * Choose a palette on a page that has no shell — and so no account menu to choose it in.
+ *
+ * The recovery screen ([#496](https://github.com/NobuData/ouroboros/issues/496)) is drawn outside
+ * the shell, for a workspace whose every other surface is frozen. The choice the account menu
+ * would have stored is written where the UI reads it, and the page is loaded again so its boot
+ * script paints from it — the path a returning reader's browser takes.
+ *
+ * @param page - The page, on the UI's origin.
+ * @param theme - The palette to store.
+ * @returns When the reloaded page is stamped with the palette.
+ */
+export async function storeTheme(page: Page, theme: Theme): Promise<void> {
+  await page.evaluate(([key, value]) => window.localStorage.setItem(key, value), [
+    THEME_STORAGE_KEY,
+    theme,
+  ] as const);
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+}

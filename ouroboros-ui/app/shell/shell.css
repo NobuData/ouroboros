@@ -63,7 +63,9 @@
   --shell-sidebar-slide: 160ms;
 
   display: grid;
-  grid-template-rows: auto 1fr;
+  /* The header, the lifecycle banner's row (empty, and so no height, unless the workspace is
+     paused — `app/lifecycle/lifecycle.css`, #496), and the row that fills the rest. */
+  grid-template-rows: auto auto 1fr;
   grid-template-columns: auto 1fr;
   height: 100%;
   overflow: hidden;
@@ -96,6 +98,7 @@
  * its own overflow-x wrapper, which is the contract CP.4 turns into a primitive.
  */
 .app-shell__pane {
+  grid-row: 3;
   grid-column: 2;
   overflow-y: auto;
   overflow-x: hidden;
@@ -903,6 +906,7 @@
  * sidebar rather than the page.
  */
 .shell-nav {
+  grid-row: 3;
   grid-column: 1;
   container: shell-sidebar / inline-size;
   display: flex;

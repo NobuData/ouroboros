@@ -97,6 +97,15 @@ describe("the seeded grid", () => {
     expect(tileOf("Webhooks")).toHaveTextContent("2 active");
   });
 
+  it("offers the whole status line as a tooltip, since a narrow tile cuts it with an ellipsis", () => {
+    render(card());
+
+    for (const line of document.querySelectorAll(".integrations__line")) {
+      expect(line.textContent).not.toBe("");
+      expect(line).toHaveAttribute("title", line.textContent);
+    }
+  });
+
   it("renders Slack's honest absence — not built yet, with why, and nothing to press", () => {
     render(card());
     const slack = tileOf("Slack");
