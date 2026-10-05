@@ -1,0 +1,215 @@
+/*
+ * The Autonomy policies card's version tag and its history dialog (BS.4, #494) — mockup 17's
+ * `policy v7`, opened. Tokens and rem only, so both palettes and the font-size preference
+ * carry it; the dialog's frame is the shell overlay's.
+ */
+
+/* ---------- the tag, as a control ---------- */
+
+/* The `.ou-tag` shape with a button's affordances: the tag is what opens the history. */
+.policy-history__trigger {
+  cursor: pointer;
+  font-family: var(--f-mono);
+}
+
+.policy-history__trigger:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.policy-history__trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- the dialog ---------- */
+
+.policy-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-7);
+  min-width: 0;
+}
+
+.policy-history__state {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.policy-history__failed {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-4);
+}
+
+.policy-history__error {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.policy-history__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-7);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---------- one version ---------- */
+
+.policy-history__entry {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-7);
+  border-bottom: 1px solid var(--line);
+}
+
+.policy-history__entry:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.policy-history__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-4);
+}
+
+.policy-history__version {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+.policy-history__byline {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.policy-history__note {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.policy-history__note--none {
+  color: var(--ink-dim);
+}
+
+/* The audit log's line for the version, in the log's own face. */
+.policy-history__line {
+  margin: 0;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* ---------- its diff ---------- */
+
+.policy-history__diff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+
+.policy-history__diff-title {
+  margin: 0;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 600;
+}
+
+.policy-history__rules {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.policy-history__rule {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.policy-history__rule-head {
+  margin: 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.policy-history__rule-name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* The direction is said in words; the hue only repeats it for the dangerous one. */
+.policy-history__class {
+  color: var(--ink);
+}
+
+.policy-history__class--loosening {
+  color: var(--warn);
+}
+
+.policy-history__summary {
+  color: var(--ink-mut);
+}
+
+.policy-history__sides {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+}
+
+.policy-history__side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-4);
+}
+
+.policy-history__side-label {
+  flex: none;
+  width: 3.5rem;
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+}
+
+.policy-history__side-value {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+  margin: 0;
+}
+
+.policy-history__side-state {
+  color: var(--ink);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+
+.policy-history__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-5);
+}

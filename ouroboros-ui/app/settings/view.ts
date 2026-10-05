@@ -153,8 +153,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     tab: "Policies",
     span: 7,
     saves: "batch",
-    arrives:
-      "Auto-merge, human review, protected paths and the spend guard arrive here with #494.",
+    // Built: `app/policies/policy-card.tsx` (#494).
+    arrives: null,
   },
   {
     id: "audit",

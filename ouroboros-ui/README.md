@@ -435,6 +435,21 @@ ouroboros-ui/
 │   │   ├── data.ts          #   readSettings() — what the hub reads, each part read or explained
 │   │   ├── settings-screen.tsx # the hub: head, nav, the grid of seats
 │   │   └── settings-frame.tsx #  the head, the tab row, and the page beneath — the hub's and the mounted pages'
+│   ├── policies/            # the Autonomy policies card in the settings hub — mockup 17 c-7 · #494
+│   │   ├── document.ts      #   the org policy document: parse → typed terms → compose, chips, invariants
+│   │   ├── money.ts         #   cents from typed amounts, as text — no floating point
+│   │   ├── card-view.ts     #   every sentence and decision about a publish: confirm, owner gate, toast, history
+│   │   ├── card-actions.ts  #   the Server Actions — preview, publish, history, path preview
+│   │   ├── policy-card.tsx  #   the card: rows, version tag, toast, footer, the dry-run switch under the rules
+│   │   ├── rule-row.tsx     #   one rule: switch, what/why, terms chips that open its editor
+│   │   ├── rule-editors.tsx #   the five structured condition editors
+│   │   ├── publish-dialog.tsx # the confirmation (tightens / loosens per rule) and the owner gate
+│   │   ├── policy-history.tsx # policy vN → the history dialog, with each version's before → after
+│   │   ├── dry-run-row.tsx  #   the workspace-wide dry-run switch and its confirmation · #382
+│   │   └── view.ts          #   the dry-run policy's sentences, shared with the PR page
+│   ├── globs/               # the shared glob editor — grammar check + match preview · #494
+│   │   ├── glob.ts          #   the path_glob grammar, its problems as sentences, the preview's lines
+│   │   └── glob-editor.tsx  #   the list, add / edit / remove, and the match preview
 │   ├── members/             # the Members & Roles card in the settings hub — mockup 17 c-7 · #493
 │   │   ├── view.ts          #   every sentence and decision: roles, relative ages, rows, the gated sync line
 │   │   ├── members-actions.ts # the Server Actions — a refusal becomes a sentence, never a thrown page
@@ -2903,6 +2918,8 @@ holds no field until BS.2 lands.
 | **Theme**, **Font size** | immediate, no confirmation: the reader's own display preference, tagged *per user · applies instantly* |
 | *Leave without saving?* — **Stay** / **Discard changes and leave** | the leave guard's answer |
 | **Can approve loops**, **+ Invite member**, **Resend** / **Revoke**, role changes, removals, service-account create / rotate / revoke | immediate — the Members section is `saves: "immediate"`; each destructive one confirms |
+| a rule's switch or terms on the Autonomy policies card | the dirty batch — committed by **Save changes** as preview → confirm → publish |
+| **policy vN** | opens the policy history — reads only |
 | a field in a card's seat (BS.2, BS.4, BS.5) | the dirty batch, through `useSettingsSection` |
 | a control in the Danger zone (BS.6) | immediate by construction — the seat refuses fields |
 
@@ -2992,6 +3009,52 @@ service's in one place.
   someone from an IdP group removes them here.
 - **A viewer** reads the same table: marks instead of boxes, roles as text, no buttons, no token
   hints (only an administrator's read carries them).
+
+### Autonomy policies (#494)
+
+[`policy-card.tsx`](app/policies/policy-card.tsx) is mockup 17's `c-7` card over the org policy
+document (BQ.1 #480, BQ.2 #481), read and written through
+[`app/api/org-policy.ts`](app/api/org-policy.ts). It is where a workspace changes what the product
+may do without asking a person.
+
+```
+edit rules ─▶ Save changes ─▶ validate ─▶ preview (classify) ─▶ confirm ─┬─▶ publish vN+1 ─▶ toast → audit log
+                                                                         └─▶ keep editing (edits stay unsaved)
+```
+
+- **The chips are the document.** [`document.ts`](app/policies/document.ts) parses each rule's
+  `conditions` into typed terms, composes them back, and draws every chip from the conditions
+  (`effort ≤ M`, `non-refactor`, `OR effort ≥ L`, `boot/`, `pause loop at $2.50/run`). A rule nobody
+  touched, a `custom:*` rule, and a rule nested deeper than the editor can show are published
+  **verbatim**.
+- **The editors cannot produce an invalid rule.** [`rule-editors.tsx`](app/policies/rule-editors.tsx)
+  gives each rule a structured control: an effort select and label lists (the last remaining
+  condition has no remove control), the shared glob editor, cents fields
+  ([`money.ts`](app/policies/money.ts) reads amounts as text, so nothing is multiplied in floating
+  point), and a first-N stepper.
+- **The glob editor is shared.** [`app/globs/`](app/globs) checks the `path_glob` grammar and shows
+  a match preview from `POST /api/v1/policies/path-preview`, which runs the guardrails' own matcher
+  over each enabled repository's tree. The onboarding wizard's protected-paths row will mount the
+  same component.
+- **A save is preview → confirm → publish.** The five rules are the Policies section's fields under
+  the [save model](#the-save-model-s7), so **Save changes** counts edited rules. The card's commit
+  asks `POST /api/v1/policies/preview` for each changed rule's class, and
+  [`publish-dialog.tsx`](app/policies/publish-dialog.tsx) names tightening and loosening per rule
+  before `POST /api/v1/policies` is sent with the version the edit began from. **Keep editing**
+  publishes nothing and leaves the edits unsaved.
+- **A loosening is the owner's.** An admin whose edit loosens a rule gets no publish button: the
+  dialog says which rules loosen, that an owner must publish, and names the owners.
+- **The version tag opens the history.** [`policy-history.tsx`](app/policies/policy-history.tsx)
+  reads `GET /api/v1/policies/versions` and draws each version's note, publisher, audit line and a
+  before → after of every rule it changed.
+- **After a publish** the card shows *Policy v8 published.* with the audit log's own line and a link
+  to `/settings#audit`.
+- **Edit as code** is text marked *soon* with where it comes from (#498), not a link.
+- **A viewer** sees every switch in its real state (read-only, with the reason) and every chip as
+  text. The workspace-wide [dry-run switch](#the-dry-run-policy-382) sits under the rules and stays
+  an immediate action behind its own confirmation.
+
+The e2e edit → publish → enforcement round-trip is BS.6's (#496).
 
 ## Ticket sources
 

@@ -1,0 +1,251 @@
+/*
+ * The Autonomy policies card (BS.4, #494) — mockup 17's `c-7` card: the frame around the rule
+ * rows, the publish toast, the footer and the publish confirmation. The rows are
+ * `policy-rules.css`'s and the history is `policy-history.css`'s. Tokens and rem only.
+ */
+
+/* The mockup's `.col` at gap 0: the rows separate themselves with their own rule. */
+.policy-card__rules {
+  display: flex;
+  flex-direction: column;
+}
+
+/* A sentence about the card: nothing published yet, the override's lead-in, a custom rule's note. */
+.policy-card__note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* What the last save could not do, on the card it was about. */
+.policy-card__refusal {
+  margin: var(--sp-5) 0 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- a custom rule, read-only ---------- */
+
+.policy-card__custom {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-6) 0;
+  border-top: 1px solid var(--line);
+}
+
+.policy-card__custom-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  margin: 0;
+}
+
+.policy-card__custom-name {
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.policy-card__custom-off {
+  color: var(--ink-mut);
+}
+
+.policy-card__terms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin: 0;
+}
+
+/* ---------- the workspace-wide dry-run switch, under the rules ---------- */
+
+.policy-card__override {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  margin-top: var(--sp-6);
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--line);
+}
+
+/* ---------- the publish toast ---------- */
+
+/* Always mounted, so the live region exists before it has something to say. */
+.policy-card__toast-seat:empty {
+  display: none;
+}
+
+.policy-card__toast {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-6);
+  margin-bottom: var(--sp-6);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+  background: var(--accent-tint);
+  color: var(--ink);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.policy-card__toast-text {
+  font-weight: 600;
+}
+
+/* The audit log's own line for the version. */
+.policy-card__toast-line {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+}
+
+.policy-card__toast-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  margin-left: auto;
+}
+
+.policy-card__toast-link {
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ---------- the footer ---------- */
+
+/* The mockup's `.row.between` under a rule: the versioning line, and Edit as code. */
+.policy-card__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-4) var(--sp-8);
+  margin-top: var(--sp-6);
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--line);
+}
+
+.policy-card__versioned {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* Not a link: the name of what is coming, marked soon, with where it comes from. */
+.policy-card__code {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-3) var(--sp-4);
+  margin: 0;
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.policy-card__code-name {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+.policy-card__code-note {
+  flex-basis: 100%;
+  color: var(--ink-mut);
+}
+
+/* ---------- the publish confirmation ---------- */
+
+.policy-publish {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.policy-publish__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.policy-publish__changes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.policy-publish__change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-3) var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* A loosening is the dangerous direction — said in the row's word, and drawn as it. */
+.policy-publish__change--loosens {
+  border-color: var(--err-line);
+  background: var(--err-tint);
+}
+
+.policy-publish__class {
+  font-weight: 600;
+}
+
+.policy-publish__rule {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.policy-publish__summary {
+  color: var(--ink-mut);
+}
+
+.policy-publish__meaning {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The owner gate: why this reader cannot publish, and what to do about it. */
+.policy-publish__gate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.policy-publish__gate-head {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  line-height: var(--lh-body);
+}
+
+.policy-publish__gate-line {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.policy-publish__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}

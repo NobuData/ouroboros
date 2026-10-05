@@ -49,6 +49,7 @@ import { NotificationRoutesModule } from "../notification-routes/notification-ro
 import { RetentionModule } from "../retention/retention.module";
 import { AuditPlaneModule } from "../audit-plane/audit-plane.module";
 import { SettingsModule } from "../settings/settings.module";
+import { PathPreviewModule } from "../policies/path-preview.module";
 import { PoliciesModule } from "../policies/policies.module";
 import { InsightsModule } from "../insights/insights.module";
 import { AnalyzerModule } from "../analyzer/analyzer.module";
@@ -435,6 +436,11 @@ export class AppModule {
         // under `/api/v1/policies/dry-run`. `PullRequestsModule` and `OnboardingModule` import it
         // for enforcement and the onboarding default; nothing else claims the prefix.
         PoliciesModule,
+        // BS.4 ([#494](https://github.com/NobuData/ouroboros/issues/494)) — the glob editor's match
+        // preview, `POST /api/v1/policies/path-preview`. Its own module because it reads
+        // repositories through `DetectionModule`, which `PoliciesModule` must not import; the one
+        // path it adds under the prefix is claimed by nothing else.
+        PathPreviewModule,
         // BI.4 ([#435](https://github.com/NobuData/ouroboros/issues/435)) — estimator calibration
         // under `/api/v1/insights/calibration`. `PullRequestsModule` imports it for the merge
         // observer that grades each merged loop; nothing else claims the prefix.

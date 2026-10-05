@@ -4,6 +4,7 @@ import { ApiError } from "@/app/api/errors";
 import type { DryRunPolicy } from "@/app/api/policies";
 
 import { SERVICE_LIST, membersPage } from "../helpers/members";
+import { orgPolicyV7 } from "../helpers/org-policy";
 import { retentionSettings, workspaceSettings } from "../helpers/workspace";
 
 /**
@@ -16,12 +17,14 @@ import { retentionSettings, workspaceSettings } from "../helpers/workspace";
 vi.mock("server-only", () => ({}));
 
 const read = vi.fn();
+const readPolicy = vi.fn();
 const readMembers = vi.fn();
 const readServiceAccounts = vi.fn();
 const readWorkspace = vi.fn();
 const readRetention = vi.fn();
 
 vi.mock("@/app/api/policies", () => ({ dryRunPolicy: { read: () => read() } }));
+vi.mock("@/app/api/org-policy", () => ({ orgPolicy: { read: () => readPolicy() } }));
 vi.mock("@/app/api/settings-workspace", () => ({
   settingsWorkspace: { read: () => readWorkspace(), retention: () => readRetention() },
 }));
@@ -51,6 +54,7 @@ const POLICY: DryRunPolicy = {
 
 beforeEach(() => {
   read.mockReset().mockResolvedValue(POLICY);
+  readPolicy.mockReset().mockResolvedValue(orgPolicyV7());
   readMembers.mockReset().mockResolvedValue(membersPage());
   readServiceAccounts.mockReset().mockResolvedValue(SERVICE_LIST);
   readWorkspace.mockReset().mockResolvedValue(workspaceSettings());
@@ -62,6 +66,7 @@ describe("the hub's reader", () => {
     const readings = await readSettings(access(["owner"]));
 
     expect(readings.dryRun).toEqual({ ok: true, value: POLICY });
+    expect(readings.policy).toEqual({ ok: true, value: orgPolicyV7() });
     expect(readings.members).toEqual({ ok: true, value: membersPage() });
     expect(readings.workspace).toEqual({ ok: true, value: workspaceSettings() });
     expect(readings.retention).toEqual({ ok: true, value: retentionSettings() });
@@ -86,8 +91,12 @@ describe("the hub's reader", () => {
     readMembers.mockRejectedValue(new ApiError(503, "unavailable", "The service is restarting."));
     readServiceAccounts.mockRejectedValue(new ApiError(403, "forbidden", "Not yours."));
     readRetention.mockRejectedValue(new ApiError(503, "unavailable", "The service is restarting."));
+    readPolicy.mockRejectedValue(new ApiError(503, "unavailable", "The service is restarting."));
 
     const readings = await readSettings(access(["owner"]));
+
+    // The policy document and the dry-run switch are two reads: either can fail alone.
+    expect(readings.policy).toEqual({ ok: false, reason: "The service is restarting." });
 
     // The workspace card's two reads fail apart: one refusal is one reason.
     expect(readings.workspace.ok).toBe(true);

@@ -1,21 +1,30 @@
 /**
- * The policy plane's request bodies — the dry-run flip (BA.3, [#382](https://github.com/NobuData/ouroboros/issues/382))
- * and the org policy document's preview and publish (BQ.2, #481).
+ * The policy plane's request bodies — the dry-run flip (BA.3, [#382](https://github.com/NobuData/ouroboros/issues/382)),
+ * the org policy document's preview and publish (BQ.2, #481), and the history's query string and
+ * the glob editor's match preview (BS.4, [#494](https://github.com/NobuData/ouroboros/issues/494)).
  *
  * `dryRun` is required and must be a real boolean: a `"false"`, a `0` or a `null` is a `422`
  * naming the field, never a truthy accident that lets the loop merge without a person.
  */
 
+import { Type } from "class-transformer";
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  ArrayUnique,
+  IsArray,
   IsBoolean,
   IsInt,
   IsObject,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
   Min,
   ValidateIf,
 } from "class-validator";
+
+import { POLICY_HISTORY_PAGE_MAX } from "./policy-history.service";
 
 /** `PATCH /api/v1/policies/dry-run`. */
 export class PatchDryRunPolicyDto {
@@ -56,4 +65,40 @@ export class PublishPolicyDto extends PreviewPolicyDto {
   @IsString()
   @MaxLength(CHANGE_NOTE_MAX_LENGTH)
   changeNote?: string | null;
+}
+
+/** `GET /api/v1/policies/versions` (BS.4, #494) — the history's page. */
+export class PolicyVersionsQuery {
+  /** The most versions to return — 1 to 100, 20 when absent. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: "limit must be a whole number" })
+  @Min(1)
+  @Max(POLICY_HISTORY_PAGE_MAX)
+  limit?: number;
+
+  /** Only versions strictly below this one — the previous page's `nextBefore`. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: "before must be a version number" })
+  @Min(1)
+  before?: number;
+}
+
+/** The most globs one preview takes — the grammar's own bound on `path_globs`. */
+export const PATH_PREVIEW_MAX_GLOBS = 64;
+
+/**
+ * `POST /api/v1/policies/path-preview` (BS.4, #494) — the globs to match against each enabled
+ * repository's tree. The glob grammar itself is the service's to check, against the committed
+ * `path_glob` definition; here the body only has to be a non-empty list of distinct strings.
+ */
+export class PathPreviewDto {
+  /** The globs, as the `protected_paths` rule would store them. */
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(PATH_PREVIEW_MAX_GLOBS)
+  @ArrayUnique()
+  @IsString({ each: true })
+  globs!: string[];
 }

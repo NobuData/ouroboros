@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.40.3"
+  version: "0.40.4"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -9589,6 +9589,238 @@ paths:
           description: |-
             `validation_failed` — the body is malformed; `policy_document_invalid` — the document is
             not one `schemas/org-policy/v1.json` accepts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/policies/versions:
+    get:
+      tags: [policies]
+      summary: The org policy's version history
+      description: |-
+        Every published version of the workspace's org policy, **newest first** (BS.4,
+        [#494](https://github.com/NobuData/ouroboros/issues/494)) — the settings card's
+        `policy v7` tag opens this: each version's change note, publisher and time, its document
+        verbatim, and the rules it changed against the version before it (`v6 → v7`).
+
+        `changes`, `classification` and `summary` are **recomputed from the two documents by the
+        functions the publish used**, so the history and the audit card's line —
+        *"enabled auto-merge (policy v7)"* — cannot disagree. Version 1 is compared with "no
+        policy", exactly as its publish was.
+
+        Paged by version: `nextBefore` is the `before` that reads the next page, `null` once the
+        page reaches version 1. A workspace that has published nothing answers an empty list.
+
+        **Any member may read it**, viewers included — like the version in force.
+      operationId: listOrgPolicyVersions
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: limit
+          in: query
+          required: false
+          description: The most versions to return.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: before
+          in: query
+          required: false
+          description: Only versions strictly below this one — the previous page's `nextBefore`.
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: A page of the history, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgPolicyVersionList"
+              example:
+                items:
+                  - version: 7
+                    publishedAt: "2026-10-04T13:48:00.000Z"
+                    publishedBy: aBcD1234eFgH5678iJkL9012mNoP3456
+                    publisherName: Ken
+                    changeNote: Enable auto-merge
+                    document:
+                      auto_merge:
+                        enabled: true
+                        conditions: { all: [{ effort_lte: m }, { not: { label: refactor } }] }
+                      human_review:
+                        enabled: true
+                        conditions: { any: [{ label: refactor }, { effort_gte: l }] }
+                      protected_paths:
+                        enabled: true
+                        conditions: { path_globs: ["boot/**", "keys/**", ".github/**"] }
+                      spend_guard:
+                        enabled: true
+                        conditions: { per_run_cap_cents: 250, monthly_cap_cents: 60000 }
+                      dry_run_new_repos:
+                        enabled: true
+                        conditions: { first_n_loops: 10 }
+                    classification: loosening
+                    changes:
+                      - ruleId: auto_merge
+                        classification: loosening
+                        verb: enabled
+                        summary: enabled auto-merge
+                    summary: enabled auto-merge (policy v7)
+                nextBefore: 7
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `limit` is not a whole number from 1 to 100, or `before` is not a
+            version number.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/policies/path-preview:
+    post:
+      tags: [policies]
+      summary: Preview what protected-path globs cover
+      description: |-
+        What each glob covers in each **enabled repository's** file tree — **writes nothing and
+        audits nothing** (BS.4, [#494](https://github.com/NobuData/ouroboros/issues/494)). The
+        settings card's glob editor shows it beside a `protected_paths` pattern, so `boot/**` is
+        seen to cover 14 files before it is published rather than discovered afterwards.
+
+        **The preview and the enforcement cannot disagree.** A glob is accepted exactly when the
+        policy document's `path_glob` grammar accepts it (`schemas/org-policy/v1.json`), and a
+        path matches by the matcher AP.3's `allowed_paths` check runs: `**` any number of whole
+        segments, `*` within one segment, `?` one character, case-sensitive.
+
+        Each repository's default branch is listed through the source that covers it — one host
+        request, never a clone — and **cached for a minute** per process, so asking again while
+        typing does not spend the host's rate limit. A repository whose tree cannot be listed (no
+        connected source, a host refusal, a rate limit) is `unavailable` with a `reason`; the
+        others are still previewed. Only files are matched and counted; `truncated` says the host
+        cut the listing short, so the counts are of some of the files.
+
+        **`owner` or `admin`.**
+      operationId: previewOrgPolicyPaths
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrgPolicyPathPreviewRequest"
+            example:
+              globs: ["boot/**", "keys/**"]
+      responses:
+        "200":
+          description: Per enabled repository, what each glob covers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgPolicyPathPreview"
+              example:
+                repositories:
+                  - repository: acme-robotics/helios-firmware
+                    status: listed
+                    reason: null
+                    fileCount: 412
+                    truncated: false
+                    globs:
+                      - glob: "boot/**"
+                        matchCount: 14
+                        samples: [boot/loader/main.c, boot/stage1.S]
+                      - glob: "keys/**"
+                        matchCount: 0
+                        samples: []
+                  - repository: acme-robotics/docs
+                    status: unavailable
+                    reason: No connected source covers this repository, so its files cannot be listed.
+                    fileCount: null
+                    truncated: false
+                    globs:
+                      - glob: "boot/**"
+                        matchCount: 0
+                        samples: []
+                      - glob: "keys/**"
+                        matchCount: 0
+                        samples: []
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`forbidden` — a `member` or `viewer`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `globs` is not a list of 1 to 64 distinct strings;
+            `policy_path_glob_invalid` — a glob is not one the policy document accepts
+            (`details.invalid` names each one and its index). No repository is read.
           content:
             application/json:
               schema:
@@ -43524,6 +43756,148 @@ components:
         summary:
           type: string
           description: The audit card's line — `enabled auto-merge (policy v8)`.
+
+    OrgPolicyVersion:
+      type: object
+      title: OrgPolicyVersion
+      additionalProperties: false
+      description: |-
+        One published version, as the history popover lists it (#494) — its attribution, its
+        document, and what it changed against the version before it.
+      required:
+        - version
+        - publishedAt
+        - publishedBy
+        - publisherName
+        - changeNote
+        - document
+        - classification
+        - changes
+        - summary
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        publishedAt:
+          type: string
+          format: date-time
+        publishedBy:
+          type: [string, "null"]
+          description: Who published it — `user.id`, null for a person since deleted.
+        publisherName:
+          type: [string, "null"]
+          description: Their name, null for a person since deleted.
+        changeNote:
+          type: [string, "null"]
+        document:
+          $ref: "#/components/schemas/OrgPolicyDocument"
+        classification:
+          $ref: "#/components/schemas/OrgPolicyChangeClass"
+        changes:
+          type: array
+          description: |-
+            The rules this version changed against the one before it — against "no policy" for
+            version 1. Empty for a republish that changed nothing.
+          items:
+            $ref: "#/components/schemas/OrgPolicyRuleChange"
+        summary:
+          type: string
+          description: The audit card's line for it — `enabled auto-merge (policy v7)`.
+
+    OrgPolicyVersionList:
+      type: object
+      title: OrgPolicyVersionList
+      additionalProperties: false
+      required: [items, nextBefore]
+      properties:
+        items:
+          type: array
+          description: Newest first.
+          items:
+            $ref: "#/components/schemas/OrgPolicyVersion"
+        nextBefore:
+          type: [integer, "null"]
+          minimum: 1
+          description: The `before` that reads the next page; null when this page reaches version 1.
+
+    OrgPolicyPathPreviewRequest:
+      type: object
+      title: OrgPolicyPathPreviewRequest
+      additionalProperties: false
+      required: [globs]
+      properties:
+        globs:
+          type: array
+          minItems: 1
+          maxItems: 64
+          uniqueItems: true
+          description: The globs, as the `protected_paths` rule would store them — `boot/**`.
+          items:
+            type: string
+            minLength: 1
+            maxLength: 256
+
+    OrgPolicyGlobMatch:
+      type: object
+      title: OrgPolicyGlobMatch
+      additionalProperties: false
+      required: [glob, matchCount, samples]
+      properties:
+        glob:
+          type: string
+        matchCount:
+          type: integer
+          minimum: 0
+          description: How many files of the listed tree the glob matches.
+        samples:
+          type: array
+          maxItems: 5
+          description: Up to five matching paths, sorted.
+          items:
+            type: string
+
+    OrgPolicyRepositoryPreview:
+      type: object
+      title: OrgPolicyRepositoryPreview
+      additionalProperties: false
+      required: [repository, status, reason, fileCount, truncated, globs]
+      properties:
+        repository:
+          type: string
+          description: "`owner/name`, lower-case."
+          examples: [acme-robotics/helios-firmware]
+        status:
+          type: string
+          enum: [listed, unavailable]
+          description: Whether the repository's tree could be listed.
+        reason:
+          type: [string, "null"]
+          description: Why not, for an `unavailable` repository; null otherwise.
+        fileCount:
+          type: [integer, "null"]
+          minimum: 0
+          description: How many files the listing holds; null when it could not be listed.
+        truncated:
+          type: boolean
+          description: Whether the host cut the listing short — the counts are of some of the files.
+        globs:
+          type: array
+          description: One answer per requested glob, in the request's order.
+          items:
+            $ref: "#/components/schemas/OrgPolicyGlobMatch"
+
+    OrgPolicyPathPreview:
+      type: object
+      title: OrgPolicyPathPreview
+      additionalProperties: false
+      description: What a set of globs covers in each enabled repository (#494). Writes nothing.
+      required: [repositories]
+      properties:
+        repositories:
+          type: array
+          description: Every enabled repository of the workspace, by name. Empty when none is.
+          items:
+            $ref: "#/components/schemas/OrgPolicyRepositoryPreview"
 
     DryRunPolicy:
       type: object

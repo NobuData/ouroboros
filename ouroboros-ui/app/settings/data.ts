@@ -5,7 +5,8 @@ import "server-only";
  * (BS.1, [#491](https://github.com/NobuData/ouroboros/issues/491)).
  *
  * The hub is a page of cards owned by BS.2–BS.6, and each of those brings its own read. Today
- * that is the dry-run policy (BA.3, #382), whose row is mounted in the Policies section, and the
+ * that is the Autonomy policies card (BS.4, #494) — the org policy document in force, and the
+ * dry-run policy (BA.3, #382) whose switch sits under its rules — the
  * Members & Roles card (BS.3, #493) — the members page, and for an administrator the
  * service-account list that carries the token hints and the scope registry — and the Workspace
  * card (BS.2, #492): the workspace card's payload and the retention tiers. Each is read
@@ -20,6 +21,7 @@ import "server-only";
 
 import type { Workspace } from "@/app/api/access";
 import { mayAdminister } from "@/app/api/membership";
+import { type OrgPolicy, orgPolicy } from "@/app/api/org-policy";
 import { type DryRunPolicy, dryRunPolicy } from "@/app/api/policies";
 import { type Reading, attempt } from "@/app/api/reading";
 import {
@@ -35,8 +37,10 @@ import {
 
 /** Everything the hub draws from the service, each part either read or explained. */
 export interface SettingsReadings {
-  /** The workspace's dry-run policy — the Policies section's one built row. */
+  /** The workspace-wide dry-run policy — the switch under the Autonomy policies card's rules. */
   readonly dryRun: Reading<DryRunPolicy>;
+  /** The org policy document in force — the Autonomy policies card. */
+  readonly policy: Reading<OrgPolicy>;
   /** The Workspace card's payload — name, domain, region, training data. */
   readonly workspace: Reading<WorkspaceSettings>;
   /** The Workspace card's retention tiers. */
@@ -64,8 +68,9 @@ export interface SettingsReadings {
 export async function readSettings(access: Workspace): Promise<SettingsReadings> {
   const administers = mayAdminister(access.membership.roles);
 
-  const [dryRun, workspace, retention, members, serviceAccounts] = await Promise.all([
+  const [dryRun, policy, workspace, retention, members, serviceAccounts] = await Promise.all([
     attempt(() => dryRunPolicy.read()),
+    attempt(() => orgPolicy.read()),
     attempt(() => settingsWorkspace.read()),
     attempt(() => settingsWorkspace.retention()),
     attempt(() => settingsMembers.read()),
@@ -74,6 +79,7 @@ export async function readSettings(access: Workspace): Promise<SettingsReadings>
 
   return {
     dryRun,
+    policy,
     workspace,
     retention,
     members,
