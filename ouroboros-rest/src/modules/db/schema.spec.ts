@@ -479,7 +479,11 @@ describe("TABLE_COLUMNS", () => {
     //
     // The hundred-and-thirty-sixth is V094's `retention_policies` (ceiling V101), mirrored by BQ.3
     // (#482) — the tiers every retention sweep's cutoffs are computed from.
-    expect(TABLE_NAMES).toHaveLength(136);
+    //
+    // The hundred-and-thirty-seventh to ninth are BR.4's (#488): V094's `notification_routes` and
+    // its `notification_routes_effective` view (the derived lock), and V103's
+    // `notification_route_sends`, the org routes' per-address send log.
+    expect(TABLE_NAMES).toHaveLength(139);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
@@ -666,7 +670,7 @@ describe("TABLE_COLUMNS", () => {
     for (const view of READ_ONLY_VIEWS) {
       expect(TABLE_NAMES).toContain(view);
     }
-    expect(READ_ONLY_VIEWS).toHaveLength(12);
+    expect(READ_ONLY_VIEWS).toHaveLength(13);
   });
 
   it("makes runs_with_stage the same shape as runs, so the stage read moves by one word", () => {

@@ -21,6 +21,12 @@ export interface DigestContext {
    * nothing to unsubscribe from.
    */
   readonly unsubscribeUrl: string | null;
+  /**
+   * Why this recipient got the mail, when it is not a subscription — an org notification route
+   * (#488) sends to an address that subscribed to nothing, so the subscription sentence would be
+   * untrue. Absent for a subscriber's mail and a preview.
+   */
+  readonly reason?: string;
 }
 
 /** The mail's kicker. */
@@ -139,6 +145,10 @@ export function windowNote(assembly: DigestAssembly): string {
  * @returns The sentence.
  */
 export function reasonNote(context: DigestContext): string {
+  if (context.reason !== undefined) {
+    return context.reason;
+  }
+
   return context.unsubscribeUrl === null
     ? `This is a preview of the weekly Insights digest for ${context.workspaceName}. It was not sent to anyone.`
     : `You receive this because you subscribed to the weekly Insights digest for ${context.workspaceName}.`;

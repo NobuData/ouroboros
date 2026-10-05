@@ -44,6 +44,8 @@ import { LifecycleModule } from "../lifecycle/lifecycle.module";
 import { MembersModule } from "../members/members.module";
 import { ServiceAccountsModule } from "../service-accounts/service-accounts.module";
 import { WebhooksModule } from "../webhooks/webhooks.module";
+import { IntegrationsModule } from "../integrations/integrations.module";
+import { NotificationRoutesModule } from "../notification-routes/notification-routes.module";
 import { RetentionModule } from "../retention/retention.module";
 import { AuditPlaneModule } from "../audit-plane/audit-plane.module";
 import { SettingsModule } from "../settings/settings.module";
@@ -365,6 +367,14 @@ export class AppModule {
         // under `/api/v1/settings/webhooks`, a distinct literal segment beside the other settings
         // routes, and the dispatcher that drains `webhook_outbox` on a timer.
         WebhooksModule,
+        // BR.4 ([#488](https://github.com/NobuData/ouroboros/issues/488)) — the integrations status
+        // hub under `/api/v1/settings/integrations` (composed from the planes that own each
+        // connection, never a second store) and the org notification routes under
+        // `/api/v1/settings/notifications`, whose sender mails the daily digest and weekly report.
+        // Distinct literal segments beside the other settings routes; the route sender imports
+        // `InboxChannelsModule` and `InsightsModule` for their digests' composers.
+        IntegrationsModule,
+        NotificationRoutesModule,
         // K.4 ([#102](https://github.com/NobuData/ouroboros/issues/102)) — the poller that
         // fills `github_issues`. After `GithubModule`, which it imports for the client and
         // for the *which workspaces have a token* question; it declares no route at all, so

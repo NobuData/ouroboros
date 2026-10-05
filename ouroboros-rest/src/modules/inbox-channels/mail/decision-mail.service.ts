@@ -57,6 +57,7 @@ import {
   composeDigestMail,
   composeInstantMail,
   digestOrder,
+  ORG_DIGEST_FOOTER,
   type ComposedMail,
   type MailActionLink,
   type MailCard,
@@ -398,6 +399,55 @@ export class DecisionMailService
       cards.push(await this.card(organizationId, item, kind, recipient, now));
     }
 
+    return composeDigestMail({
+      workspace: await this.repository.workspaceName(organizationId),
+      day: utcDay(slot),
+      open: cards,
+      resolved: await this.resolvedLines(organizationId, slot),
+      inboxUrl: inboxUrl(this.config.uiUrl),
+    });
+  }
+
+  /**
+   * The daily digest as an org notification route sends it (BR.4,
+   * [#488](https://github.com/NobuData/ouroboros/issues/488)): every open decision of the
+   * workspace and the last day's resolved summary, **read-only**. The route mails addresses rather
+   * than people, so no card carries an action link (no token is minted — a token is a person's),
+   * no person's muted kinds apply, and the footer says where the routing is changed. Composes
+   * only; the route sender claims, sends and settles.
+   *
+   * @param organizationId - The workspace.
+   * @param slot - The route's scheduled instant.
+   * @returns The mail — the same for every routed address.
+   */
+  async orgDigestMail(organizationId: string, slot: Date): Promise<ComposedMail> {
+    const now = this.now();
+    const cards: MailCard[] = [];
+
+    for (const item of digestOrder(await this.inbox.open(organizationId, now))) {
+      const kind = await this.registry.pinnedKind(item.kindId, item.kindVersion);
+
+      cards.push(await this.card(organizationId, item, kind, null, now));
+    }
+
+    return composeDigestMail({
+      workspace: await this.repository.workspaceName(organizationId),
+      day: utcDay(slot),
+      open: cards,
+      resolved: await this.resolvedLines(organizationId, slot),
+      inboxUrl: inboxUrl(this.config.uiUrl),
+      footer: ORG_DIGEST_FOOTER,
+    });
+  }
+
+  /**
+   * The last day's resolved lines a digest closes with.
+   *
+   * @param organizationId - The workspace.
+   * @param slot - The digest's slot; the day before it is summarised.
+   * @returns One line per resolved item — `Split #490 into 6 tickets — approved`.
+   */
+  private async resolvedLines(organizationId: string, slot: Date): Promise<string[]> {
     const resolved: string[] = [];
 
     for (const row of await this.repository.resolvedBefore(organizationId, slot)) {
@@ -414,13 +464,7 @@ export class DecisionMailService
       );
     }
 
-    return composeDigestMail({
-      workspace: await this.repository.workspaceName(organizationId),
-      day: utcDay(slot),
-      open: cards,
-      resolved,
-      inboxUrl: inboxUrl(this.config.uiUrl),
-    });
+    return resolved;
   }
 
   /**
@@ -429,7 +473,8 @@ export class DecisionMailService
    * @param organizationId - The workspace.
    * @param item - The item.
    * @param kind - Its pinned kind.
-   * @param recipient - The person.
+   * @param recipient - The person, or `null` for an org route's read-only card: no person, so no
+   *   action may be pressed from it and no token is minted.
    * @param now - For how long it has waited.
    * @returns The card.
    */
@@ -437,28 +482,30 @@ export class DecisionMailService
     organizationId: string,
     item: InboxItemRow,
     kind: PublishedDecisionKind,
-    recipient: MailRecipient,
+    recipient: MailRecipient | null,
     now: Date,
   ): Promise<MailCard> {
     const prose = this.registry.render(kind, item.payload);
     const actions: MailActionLink[] = [];
+    // A read-only card (an org route's) has nobody to mint for, so it carries no action.
+    if (recipient !== null) {
+      for (const action of answerable(kind, recipient)) {
+        const token = await this.tokens.mint(
+          organizationId,
+          item.id,
+          action.id,
+          recipient.userId,
+          "email",
+        );
 
-    for (const action of answerable(kind, recipient)) {
-      const token = await this.tokens.mint(
-        organizationId,
-        item.id,
-        action.id,
-        recipient.userId,
-        "email",
-      );
-
-      actions.push({
-        label: action.label,
-        consequence: action.consequence_text,
-        url: answerUrl(this.config.uiUrl, token),
-        primary: action.style === "primary",
-        requiresConfirm: kind.mergeClass,
-      });
+        actions.push({
+          label: action.label,
+          consequence: action.consequence_text,
+          url: answerUrl(this.config.uiUrl, token),
+          primary: action.style === "primary",
+          requiresConfirm: kind.mergeClass,
+        });
+      }
     }
 
     return {

@@ -421,7 +421,7 @@ seeds: policy v7(+v6) · 5 members (owner/admin/viewer/service/pending) ·
 | BR.1 | #485 ✅ | 🟢 Done | ouroboros-rest: [BR.1] Members, capabilities & service accounts | Role mapping, invites, `can_approve_loops`, sealed service tokens | mvp, settings, rest | N (after BA-A.5, AD.1) | Y | L | ouroboros-rest, ouroboros-db |
 | BR.2 | #486 ✅ | 🟢 Done | ouroboros-rest: [BR.2] Audit plane — viewer, export & retention | Filterable queries, streamed CSV, 400d tier (delivers #26) | mvp, settings, rest | N (after AD.4 shape, BQ.3) | Y | M | ouroboros-rest |
 | BR.3 | #487 ✅ | 🟢 Done | ouroboros-rest: [BR.3] Outbound webhooks & SIEM streaming | Endpoint CRUD, signed deliveries, retries+DLQ, audit fan-out | mvp, settings, rest | N (after AD.4, AD.1) | Y | L | ouroboros-rest, ouroboros-db |
-| BR.4 | #488 | 🟡 Open | ouroboros-rest: [BR.4] Integrations status hub & org notification routes | Composed connection truth; org-level routes (weekly report etc.) | mvp, settings, rest | N (after BN.3, BJ.4) | Y | M | ouroboros-rest |
+| BR.4 | #488 ✅ | 🟢 Done | ouroboros-rest: [BR.4] Integrations status hub & org notification routes | Composed connection truth; org-level routes (weekly report etc.) | mvp, settings, rest | N (after BN.3, BJ.4) | Y | M | ouroboros-rest |
 | BR.5 | #489 ✅ | 🟢 Done | ouroboros-rest: [BR.5] Workspace lifecycle — pause, disconnect, delete | Org states, dispatch gating, recovery window, DEK shred (S9) | mvp, settings, rest | N (after AD.1, AP/AH dispatch) | Y | L | ouroboros-rest |
 | BR.6 | #490 | 🟡 Open | ouroboros-rest: [BR.6] Settings integration tests | Policy enforcement, capabilities, audit/webhooks, lifecycle | mvp, settings, rest, ci | N (after BR.1–BR.5, BQ.2) | Y | M | ouroboros-rest |
 
@@ -578,7 +578,7 @@ event(audit.provider.rotated) ─▶ outbox ─▶ POST https://siem.acme.dev/ho
 
 ### Issue BR.4 — ouroboros-rest: [BR.4] Integrations status hub & org notification routes
 
-> **GitHub issue:** #488 · **Status:** 🟡 Open · **Parent epic:** #477
+> **GitHub issue:** #488 ✅ · **Status:** 🟢 Done · **Parent epic:** #477
 >
 > **Schema already shipped (#484):** V094 created `notification_routes` and `notification_routes_effective` (lock derived: only email delivers until Slack/PagerDuty connections exist) — wire the senders and the status hub over them.
 
@@ -610,6 +610,32 @@ event(audit.provider.rotated) ─▶ outbox ─▶ POST https://siem.acme.dev/ho
 tiles: [GH ✓ app-or-token truth][Jira ✓ ACME][Linear — connect →][Webhooks ✓ 2][PagerDuty — v2]
 routes: daily_digest{09:00, email} ✓ · loop_failures{pagerduty} 🔒 "connect PagerDuty first"
 ```
+
+- **Delivered** (`ouroboros-rest` 0.40.1 `src/modules/integrations/` and
+  `src/modules/notification-routes/`; `ouroboros-db` V103). Two things were decided with the user
+  where the issue and the codebase disagreed.
+  - **Daily digest route — decided with the user: a separate org send.** BN.3's daily digest is
+    per person, so the route does not touch it: at `config.time` it mails the workspace's open
+    Needs-You decisions, **read-only** (no action tokens — a token is a person's; no person's
+    mutes), to `config.recipients`, else the owners and admins. A member with both gets both.
+  - **Weekly insights route — decided with the user: a separate org send.** #440's subscriber
+    opt-in and `insights_digest_schedules` are untouched; the route mails the same Insights
+    digest at its own `weekday`/`time` to its recipients, without an unsubscribe link.
+  - **Send log.** Both routes claim each attempt in V103's `notification_route_sends`, keyed on the
+    address (the per-person logs key on `user_id`), settle once, retry up to three times; a slot is
+    due through a grace (6 h / 24 h) and not again within a gap (20 h / 6 d).
+  - **Status hub** — `GET /settings/integrations` (any member): GitHub (token, App
+    `installed_at`, sources), Jira/Linear (unpaused credentialed sources), webhooks (active
+    endpoints), build farm (runners by the farm's online rule); Slack `unavailable_unbuilt`,
+    Teams/Datadog/PagerDuty `unavailable_v2`; deep links to `/settings/sources`, `/build-farm`
+    and `/settings#integrations` (the webhook sheet, BS.5); nothing stored.
+  - **Routes** — `GET /settings/notifications[/{kind}]` (any member), `PATCH
+    /settings/notifications/{kind}` (owner/admin). Enabling a route on a channel that cannot
+    deliver is `409 notification_route_locked` with the card's reason; a locked route may be
+    stored disabled. Audited `notification_route.updated` with before/after (webhook registry
+    version 7).
+  - **Not done here.** `loop_failures` has no producer (nothing moves a run to `failed` yet) and
+    stays locked for BT.3; #531's `chat_channel_id`/`dm_on_call` amendment lands with #531.
 
 ### Issue BR.5 — ouroboros-rest: [BR.5] Workspace lifecycle — pause, disconnect, delete
 

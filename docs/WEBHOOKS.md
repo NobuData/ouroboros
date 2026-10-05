@@ -63,6 +63,9 @@ plane refused: `audit.decision.answered`, `audit.decision.answer_failed`, `decis
 **Registry version 6** (#486) adds the audit plane's own events: `audit.audit.exported` (a CSV
 export of the log — its range, filters, row count and actor) and `audit.audit.purged` (the retention
 purge's per-workspace record — cutoff, tier, `removed` and `held`).
+**Registry version 7** (#488) adds an org notification route change:
+`audit.notification_route.updated` (the route's kind, the changed fields, and each field's value
+before and after).
 
 The full list is `GET /api/v1/settings/webhooks` → `registry.eventTypes`.
 

@@ -34285,6 +34285,57 @@ select pg_temp.must_hold(
   'a workspace''s events go with it');
 
 -- ===========================================================================
+-- V103 — the org notification routes' send log (#488, BR.4)
+-- ===========================================================================
+--
+-- One row per (workspace, kind, slot, recipient, attempt), claimed before the mail leaves and
+-- settled sent or failed once. Only the two mailing kinds, a present address, a positive attempt.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt", "metadata")
+  values ('org-v103', 'V103 Workspace', 'v103-workspace', now(), null);
+
+insert into ouroboros.notification_route_sends (organization_id, kind, slot_at, recipient, attempt, message_id)
+  values ('org-v103', 'daily_digest', '2026-10-05T09:00:00Z', 'leads@example.invalid', 1, '<a@ouro>');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.notification_route_sends (organization_id, kind, slot_at, recipient, attempt, message_id)
+    values ('org-v103', 'daily_digest', '2026-10-05T09:00:00Z', 'leads@example.invalid', 1, '<b@ouro>')$$,
+  'one claim per (workspace, kind, slot, recipient, attempt) — two replicas never mail twice',
+  'notification_route_sends_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.notification_route_sends (organization_id, kind, slot_at, recipient, attempt, message_id)
+    values ('org-v103', 'loop_failures', '2026-10-05T09:00:00Z', 'leads@example.invalid', 1, '<c@ouro>')$$,
+  'only the mailing kinds log sends', 'notification_route_sends_kind');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.notification_route_sends (organization_id, kind, slot_at, recipient, attempt, message_id)
+    values ('org-v103', 'weekly_insights', '2026-10-05T09:00:00Z', '  ', 1, '<d@ouro>')$$,
+  'a send names its address', 'notification_route_sends_recipient_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.notification_route_sends (organization_id, kind, slot_at, recipient, attempt, message_id)
+    values ('org-v103', 'weekly_insights', '2026-10-05T09:00:00Z', 'leads@example.invalid', 0, '<e@ouro>')$$,
+  'attempts count from one', 'notification_route_sends_attempt_positive');
+
+select pg_temp.must_reject(
+  $$update ouroboros.notification_route_sends set status = 'sent' where organization_id = 'org-v103'$$,
+  'a sent claim is settled', 'notification_route_sends_settled_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.notification_route_sends set status = 'failed', settled_at = now()
+     where organization_id = 'org-v103'$$,
+  'a failed claim says why', 'notification_route_sends_settled_shape');
+
+update ouroboros.notification_route_sends set status = 'sent', settled_at = now()
+ where organization_id = 'org-v103';
+
+delete from ouroboros.organization where "id" = 'org-v103';
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.notification_route_sends where organization_id = 'org-v103'),
+  'a workspace''s route sends go with it');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

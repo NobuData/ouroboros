@@ -12,6 +12,7 @@ import { CalibrationService } from "./calibration.service";
 import { DigestController } from "./digest/digest.controller";
 import { DigestRepository } from "./digest/digest.repository";
 import { DigestRunner } from "./digest/digest.runner";
+import { DigestRouteComposer } from "./digest/digest.route";
 import { DIGEST_TIMEOUT, DigestScheduler } from "./digest/digest.scheduler";
 import { DigestService } from "./digest/digest.service";
 import { DigestUnsubscribeController } from "./digest/digest.unsubscribe.controller";
@@ -98,13 +99,15 @@ describe("the insights module", () => {
     await moduleRef.close();
   });
 
-  it("exports the merge observer and the metrics, scoreboard and page services", () => {
+  it("exports the merge observer, the metrics, scoreboard and page services, and the routed digest", () => {
     expect(Reflect.getMetadata("exports", InsightsModule)).toEqual([
       CALIBRATION_MERGE_OBSERVER,
       MetricsService,
       ScoreboardService,
       // The email digest (#440) is assembled from the page's own payload.
       InsightsPageService,
+      // The weekly digest as the org `weekly_insights` route sends it (#488).
+      DigestRouteComposer,
     ]);
   });
 

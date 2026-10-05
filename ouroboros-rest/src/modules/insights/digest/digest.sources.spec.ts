@@ -52,6 +52,7 @@ describe("the digest's sources (no bespoke metric queries)", () => {
       "digest.render.ts",
       "digest.repository.ts",
       "digest.resources.ts",
+      "digest.route.ts",
       "digest.runner.ts",
       "digest.scheduler.ts",
       "digest.service.ts",

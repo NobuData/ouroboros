@@ -4527,6 +4527,7 @@ export const READ_ONLY_VIEWS = [
   "test_run_coverage",
   "pr_gate_results_latest",
   "org_policies_effective",
+  "notification_routes_effective",
 ] as const;
 
 /**
@@ -6301,6 +6302,82 @@ export interface WebhookEndpointsTable {
   registry_version: Generated<number>;
 }
 
+/** `notification_routes.channel` (V094) — where a route delivers. Only `email` can in this build. */
+export type NotificationRouteChannel = "email" | "slack" | "pagerduty";
+
+/**
+ * `notification_routes.config` (V094) — each key optional, nothing else permitted
+ * (`notification_route_config_valid`).
+ */
+export interface NotificationRouteConfig {
+  /** `HH:MM`, UTC. */
+  time?: string;
+  /** `monday` … `sunday`. */
+  weekday?: string;
+  /** A non-empty list of email addresses. */
+  recipients?: string[];
+}
+
+/**
+ * `ouroboros.notification_routes` — org-level notification routes (V094,
+ * [#484](https://github.com/NobuData/ouroboros/issues/484); API and senders BR.4,
+ * [#488](https://github.com/NobuData/ouroboros/issues/488)). One per (workspace, kind). **Read
+ * through {@link NotificationRoutesEffectiveView}**, which derives whether the route can deliver.
+ */
+export interface NotificationRoutesTable {
+  organization_id: string;
+  /** `needs_you_dm | daily_digest | loop_failures | weekly_insights`, or `custom:<slug>`. */
+  kind: string;
+  channel: NotificationRouteChannel;
+  config: ColumnType<NotificationRouteConfig, string | undefined, string>;
+  enabled: Generated<boolean>;
+  updated_by: string | null;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.notification_routes_effective` — the routes with the lock derived (V094): a route
+ * whose channel has no connection in this build is `locked` with the reason the card prints, and
+ * `delivering` is `enabled ∧ ¬locked`. **Read here, write the table.**
+ */
+export interface NotificationRoutesEffectiveView {
+  organization_id: string;
+  kind: string;
+  channel: NotificationRouteChannel;
+  config: NotificationRouteConfig;
+  enabled: boolean;
+  locked_reason: string | null;
+  locked: boolean;
+  delivering: boolean;
+  updated_by: string | null;
+  updated_at: Date;
+}
+
+/** `notification_route_sends.kind` (V103) — the route kinds that mail. */
+export type NotificationRouteSendKind = "daily_digest" | "weekly_insights";
+
+/** `notification_route_sends.status` (V103). */
+export type NotificationRouteSendStatus = "claimed" | "sent" | "failed";
+
+/**
+ * `ouroboros.notification_route_sends` — every mail an org route sent (V103,
+ * [#488](https://github.com/NobuData/ouroboros/issues/488)): one row per (workspace, kind, slot,
+ * recipient, attempt), claimed before the mail leaves, settled once.
+ */
+export interface NotificationRouteSendsTable {
+  id: Generated<string>;
+  organization_id: string;
+  kind: NotificationRouteSendKind;
+  slot_at: Date;
+  recipient: string;
+  attempt: number;
+  message_id: string;
+  status: Generated<NotificationRouteSendStatus>;
+  error: string | null;
+  claimed_at: Stamped;
+  settled_at: Date | null;
+}
+
 /**
  * `ouroboros.webhook_deliveries` — the delivery log, one row per attempt (V094,
  * [#484](https://github.com/NobuData/ouroboros/issues/484); retry columns V098,
@@ -6653,6 +6730,8 @@ export interface Database {
   webhook_deliveries: WebhookDeliveriesTable;
   guardrail_exceptions: GuardrailExceptionsTable;
   decision_action_attempts: DecisionActionAttemptsTable;
+  notification_routes: NotificationRoutesTable;
+  notification_route_sends: NotificationRouteSendsTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -6666,6 +6745,7 @@ export interface Database {
   test_run_coverage: TestRunCoverageView;
   pr_gate_results_latest: PrGateResultsLatestView;
   org_policies_effective: OrgPoliciesEffectiveView;
+  notification_routes_effective: NotificationRoutesEffectiveView;
   env_recipes_current: EnvRecipesCurrentView;
 }
 
@@ -8077,6 +8157,28 @@ export const TABLE_COLUMNS = {
     "created_at",
   ],
   retention_policies: ["organization_id", "data_class", "days", "updated_by", "updated_at"],
+  notification_routes: [
+    "organization_id",
+    "kind",
+    "channel",
+    "config",
+    "enabled",
+    "updated_by",
+    "updated_at",
+  ],
+  notification_route_sends: [
+    "id",
+    "organization_id",
+    "kind",
+    "slot_at",
+    "recipient",
+    "attempt",
+    "message_id",
+    "status",
+    "error",
+    "claimed_at",
+    "settled_at",
+  ],
   webhook_endpoints: [
     "id",
     "organization_id",
@@ -8139,6 +8241,18 @@ export const TABLE_COLUMNS = {
     "finished_at",
   ],
   org_policies_effective: ["organization_id", "dry_run", "is_explicit", "updated_at", "updated_by"],
+  notification_routes_effective: [
+    "organization_id",
+    "kind",
+    "channel",
+    "config",
+    "enabled",
+    "locked_reason",
+    "locked",
+    "delivering",
+    "updated_by",
+    "updated_at",
+  ],
   env_recipes_current: [
     "id",
     "organization_id",
