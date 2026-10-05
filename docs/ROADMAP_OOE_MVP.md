@@ -1673,7 +1673,7 @@ the blockquote above that records what it did and what it did differently.
 | 384 | **BR.2** | ✅ [#486](https://github.com/NobuData/ouroboros/issues/486) | Audit plane — viewer, export & retention | ouroboros-rest | M | AD.4, BQ.3 |
 | 385 | **BR.4** | ✅ [#488](https://github.com/NobuData/ouroboros/issues/488) | Integrations status hub & org notification routes | ouroboros-rest | M | BJ.4, BN.3 |
 | 386 | **BS.2** | ✅ [#492](https://github.com/NobuData/ouroboros/issues/492) | Workspace card | ouroboros-ui | S | BQ.3, BQ.4, BS.1 |
-| 387 | **BO.5** | [#470](https://github.com/NobuData/ouroboros/issues/470) | Stat card, states & e2e leg | ouroboros-ui, .github | M | BO.2, BO.4 |
+| 387 | **BO.5** | ✅ [#470](https://github.com/NobuData/ouroboros/issues/470) | Stat card, states & e2e leg | ouroboros-ui, .github | M | BO.2, BO.4 |
 | 388 | **BR.6** | [#490](https://github.com/NobuData/ouroboros/issues/490) | Settings integration tests | ouroboros-rest | M | BQ.2, BR.1, BR.5 |
 | 389 | **BS.4** | [#494](https://github.com/NobuData/ouroboros/issues/494) | Autonomy policies card | ouroboros-ui | L | BQ.2, BS.1 |
 | 390 | **BS.5** | [#495](https://github.com/NobuData/ouroboros/issues/495) | Audit, integrations & notifications cards | ouroboros-ui | M | BR.2, BR.4, BS.1 |

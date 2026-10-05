@@ -8,12 +8,15 @@ import "server-only";
  * reader's notification preferences come with them (BO.4,
  * [#469](https://github.com/NobuData/ouroboros/issues/469)): a channel's ✓ and a rule's row are
  * claims, and a claim that pops in a second later reads as one that was not true a second ago.
+ * The week's stat card is read with them (BO.5, [#470](https://github.com/NobuData/ouroboros/issues/470))
+ * for the same reason: its three figures are claims too.
  */
 
 import {
   type InboxQueue,
   type InboxResolved,
   type InboxSide,
+  type InboxStats,
   type NotificationPreferences,
   inbox,
 } from "@/app/api/inbox";
@@ -27,6 +30,8 @@ export interface InboxReadings {
   readonly resolved: Reading<InboxResolved>;
   /** The channels' truth and the policy card, or why they could not be read. */
   readonly side: Reading<InboxSide>;
+  /** This week's stat card, or why it could not be read. */
+  readonly stats: Reading<InboxStats>;
   /** The reader's notification preferences, or why they could not be read. */
   readonly notifications: Reading<NotificationPreferences>;
   /** When the read was made, epoch milliseconds — the same instant on the hydration pass. */
@@ -40,12 +45,13 @@ export interface InboxReadings {
  * @returns The readings.
  */
 export async function readInbox(now: () => number = Date.now): Promise<InboxReadings> {
-  const [queue, resolved, side, notifications] = await Promise.all([
+  const [queue, resolved, side, stats, notifications] = await Promise.all([
     attempt(() => inbox.queue()),
     attempt(() => inbox.resolved()),
     attempt(() => inbox.side()),
+    attempt(() => inbox.stats()),
     attempt(() => inbox.notifications()),
   ]);
 
-  return { queue, resolved, side, notifications, readAt: now() };
+  return { queue, resolved, side, stats, notifications, readAt: now() };
 }

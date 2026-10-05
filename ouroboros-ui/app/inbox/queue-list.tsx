@@ -1,32 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 
-import type { InboxItem, InboxRef, InboxSnoozedItem } from "@/app/api/inbox";
-import { Chip } from "@/app/ui";
+import type { InboxItem, InboxSnoozedItem } from "@/app/api/inbox";
 
-import { sitePath } from "./card-view";
+import { InboxCardBoundary } from "./card-boundary";
 import { DecisionCard } from "./decision-card";
-import { QUEUE_LABEL, SEVERITY, SNOOZED_LABEL, snoozedUntil } from "./view";
-
-/**
- * A ref as a snoozed row shows it: a link to the destination the service resolved, or text.
- *
- * @param props.refItem The ref.
- * @returns The tag.
- */
-function RefTag({ refItem }: Readonly<{ refItem: InboxRef }>) {
-  const href = sitePath(refItem.href);
-
-  return href === null ? (
-    <span className="inbox-row__ref">{refItem.label}</span>
-  ) : (
-    <Link className="inbox-row__ref inbox-row__ref--link" href={href}>
-      {refItem.label}
-    </Link>
-  );
-}
+import { SnoozedList } from "./snoozed-list";
+import { QUEUE_LABEL } from "./view";
 
 /**
  * The cards on screen: what the service says is asking, plus the cards this reader pressed here.
@@ -54,24 +35,26 @@ export function cardsOnScreen(items: readonly InboxItem[], kept: ReadonlyMap<str
 /**
  * The queue (BO.2, [#467](https://github.com/NobuData/ouroboros/issues/467)): one
  * {@link DecisionCard} per asking item, newest first as the service ordered them, then the snoozed
- * ones as plain rows with when each wakes (their section is BO.5's,
+ * ones as dimmed cards with a countdown and *Wake now* ({@link SnoozedList}, BO.5,
  * [#470](https://github.com/NobuData/ouroboros/issues/470)). No empty state: at zero the head's
- * own sentence already says so.
+ * own sentence already says so. Each card stands under its own boundary, so one that cannot be
+ * drawn degrades itself and not the queue.
  *
  * A card the reader pressed here stays on screen with its receipt after the queue stops listing
  * the item ({@link cardsOnScreen}); a card snoozed here is dimmed in place rather than repeated in
- * the snoozed rows.
+ * the snoozed section.
  *
  * @param props.items The asking items.
  * @param props.snoozed The snoozed items.
  * @param props.asOf When the queue was read — the service's clock, ISO-8601.
  * @param props.clock How an instant is printed.
  * @param props.onSettled Hears each card that settles here, so the page can recount and re-read.
+ * @param props.onWoken Hears each snoozed item woken here, so the page can re-read the queue.
  * @param props.newKey Mints a press's idempotency key — a test seam.
- * @param props.afterCards What the page draws between the cards and the snoozed rows — the
+ * @param props.afterCards What the page draws between the cards and the snoozed section — the
  *   *Inbox zero* card (#468), which belongs under the receipts of the cards just answered rather
  *   than above them, where it would push the card the reader is looking at down the page.
- * @returns The cards, the slot and the snoozed rows, or nothing when all three are empty.
+ * @returns The cards, the slot and the snoozed section, or nothing when all three are empty.
  */
 export function QueueList({
   items,
@@ -79,6 +62,7 @@ export function QueueList({
   asOf,
   clock,
   onSettled,
+  onWoken,
   newKey,
   afterCards = null,
 }: Readonly<{
@@ -87,6 +71,7 @@ export function QueueList({
   asOf: string;
   clock: (atMs: number) => string;
   onSettled?: (itemId: string) => void;
+  onWoken?: (itemId: string) => void;
   newKey?: () => string;
   afterCards?: ReactNode;
 }>) {
@@ -113,43 +98,23 @@ export function QueueList({
           <ul className="inbox-queue__cards">
             {cards.map((item) => (
               <li key={item.id}>
-                <DecisionCard
-                  asOfSeconds={asOfSeconds}
-                  clock={clock}
-                  item={item}
-                  newKey={newKey}
-                  onPressed={keep}
-                  onSettled={onSettled}
-                />
+                <InboxCardBoundary label={item.question}>
+                  <DecisionCard
+                    asOfSeconds={asOfSeconds}
+                    clock={clock}
+                    item={item}
+                    newKey={newKey}
+                    onPressed={keep}
+                    onSettled={onSettled}
+                  />
+                </InboxCardBoundary>
               </li>
             ))}
           </ul>
         </section>
       )}
       {afterCards}
-      {hidden.length > 0 && (
-        <section aria-label={SNOOZED_LABEL} className="inbox-queue__section inbox-queue__section--snoozed">
-          <h2 className="inbox-queue__heading">
-            {SNOOZED_LABEL} ({hidden.length})
-          </h2>
-          <ul className="inbox-queue__list">
-            {hidden.map((item) => (
-              <li className="inbox-row inbox-row--snoozed" key={item.id}>
-                <Chip tone={SEVERITY[item.severity].tone}>{SEVERITY[item.severity].label}</Chip>
-                <div className="inbox-row__body">
-                  <p className="inbox-row__question">{item.question}</p>
-                  <div className="inbox-row__meta">
-                    {item.refs.map((ref) => (
-                      <RefTag key={`${ref.type}:${ref.id}`} refItem={ref} />
-                    ))}
-                    <span className="inbox-row__age">{snoozedUntil(item, clock)}</span>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <SnoozedList asOfSeconds={asOfSeconds} clock={clock} items={hidden} onWoken={onWoken} />
     </div>
   );
 }

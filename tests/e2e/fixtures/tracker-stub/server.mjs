@@ -17,6 +17,12 @@
  * GET    /repos/{o}/{r}/issues/{n}/sub_issues · POST                the epic parent link
  * GET    /repos/{o}/{r}/contents/{path}                    one file — a rules-file import's read
  * GET    /repos/{o}/{r}/git/trees/{sha}?recursive=1        the tree — the repo-map generator's read
+ * GET    /repos/{o}/{r}/pulls/{n}                          the merge executor's re-check; a PR sync
+ * GET    /repos/{o}/{r}/pulls/{n}/files                    a PR sync whose head moved
+ * PUT    /repos/{o}/{r}/pulls/{n}/merge                    the merge itself
+ * DELETE /repos/{o}/{r}/git/refs/heads/{branch}            the merged head branch
+ * GET    /repos/{o}/{r}/issues/{n}/comments · POST         a keyed PR comment: look, then post
+ * PATCH  /repos/{o}/{r}/issues/comments/{id}               … or edit the one already there
  * ```
  *
  * ---------------------------------------------------------------------------
@@ -44,8 +50,9 @@
  * fixture with a lockfile is a fixture that can fail to install on the morning of a release.
  *
  * ---------------------------------------------------------------------------
- * **The two things it does that GitHub does not**, both under `/__sandbox/`, both refused on
- * every other path so nothing product-side can reach them:
+ * **The things it does that GitHub does not**, all under `/__sandbox/`, all refused on every
+ * other path so nothing product-side can reach them — two levers, and two inspections (#470,
+ * below):
  *
  *   * `POST /__sandbox/reset` — empty every repository back to {@link SEEDED_REPOS}. The leg
  *     runs it before it pushes, so a second run against a `--keep` stack starts where the
@@ -59,6 +66,10 @@
  *     those stop the walk, and this one does not (`push.service.ts` § *Why a throttle stops
  *     the walk and a refusal does not*). A `422` on a payload is the refusal the idempotency
  *     contract is written for, so it is the one the leg induces.
+ *
+ *   * `GET /__sandbox/pulls/{o}/{r}/{n}` — the stored PR, with how it was merged
+ *     (`merge_method`, `commit_title`, `commit_message`) and `head_branch_deleted`.
+ *   * `GET /__sandbox/comments/{o}/{r}/{n}` — an issue's or a PR's conversation, oldest first.
  *
  * ---------------------------------------------------------------------------
  * **Issue numbers start at {@link FIRST_ISSUE_NUMBER}**, which is past every number any seed
@@ -88,8 +99,29 @@
  *
  * The files are the fixture's and not the leg's: `/__sandbox/reset` empties the issues and
  * leaves them, exactly as resetting a tracker would not delete a repository's source.
+ *
+ * ---------------------------------------------------------------------------
+ * **It holds pull requests too** ([#470](https://github.com/NobuData/ouroboros/issues/470),
+ * BO.5), so the inbox's action chains can finish against a host rather than stop at one. Approving
+ * a merge card ends in `github.pr.ts`'s `mergePR` — read the PR, `PUT …/merge`, delete the head
+ * branch, post the evidence comment — and waiving a claim ends in `commentPR`, which looks for its
+ * keyed marker among the PR's conversation comments and edits or posts. Those are the routes
+ * above, in GitHub's documented shapes, applying GitHub's rules: a merged PR is `closed` with a
+ * `merged_at` and a `merge_commit_sha`, and merging it again is GitHub's `405`.
+ *
+ * The store holds one PR, {@link SEEDED_PULLS}' `#504` — the PR
+ * `R__dev_seed_workspace_triage_inbox.sql` mirrors as `verifying`, at the head sha its revision 1 records — in the push target, because the
+ * PR plane of a source is its push target (`github.pr.ts` § *The repository is the source's push
+ * target*). Comments live beside it, keyed by `owner/repo#number`, and a comment may be filed on an
+ * issue or a PR alike, as on GitHub, where a PR's conversation *is* an issue's.
+ *
+ * `/__sandbox/reset` puts `#504` back open and drops every comment. Two more read-only controls let
+ * a leg ask what the host now holds — `GET /__sandbox/pulls/{o}/{r}/{n}` and
+ * `GET /__sandbox/comments/{o}/{r}/{n}` — without presenting a credential, since they are the
+ * suite's questions and not the product's.
  */
 
+import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname, join, relative, sep } from "node:path";
@@ -149,6 +181,72 @@ const RATE_LIMIT = 5000;
 
 /** The whole world: `owner/repo` to its contents. */
 const repos = new Map();
+
+/**
+ * The pull requests the store starts with — see the module note.
+ *
+ * `#504` as `R__dev_seed_workspace_triage_inbox.sql` writes it: the title, the head branch
+ * (`coalesce(run.branch_name, 'loop/465-telemetry-buffer-pool')`, and run #465 has no branch name),
+ * base `main`, and revision 1's head sha `c4d81e7` — the **seven-character** sha exactly as the
+ * seed stores it, so a sync after the merge finds the head unmoved (`syncPR` compares the two as
+ * strings) and the re-check's `sameCommit` matches it. The files are run #1830's six `run_files`,
+ * which is what the revision's snapshot is.
+ */
+const SEEDED_PULLS = [
+  {
+    slug: "acme-robotics/helios-firmware",
+    number: 504,
+    title: "telemetry: allocate frame buffers from a fixed pool",
+    body: null,
+    headRef: "loop/465-telemetry-buffer-pool",
+    headSha: "c4d81e7",
+    baseRef: "main",
+    files: [
+      { filename: "drivers/telemetry/tlm_buf.c", additions: 41, deletions: 52, status: "modified" },
+      {
+        filename: "drivers/telemetry/tlm_pool.c",
+        additions: 88,
+        deletions: 71,
+        status: "modified",
+      },
+      {
+        filename: "drivers/telemetry/tlm_pool.h",
+        additions: 19,
+        deletions: 23,
+        status: "modified",
+      },
+      { filename: "subsys/telemetry/Kconfig", additions: 6, deletions: 15, status: "modified" },
+      { filename: "subsys/telemetry/encoder.c", additions: 22, deletions: 19, status: "modified" },
+      { filename: "tests/telemetry/test_tlm_pool.c", additions: 38, deletions: 0, status: "added" },
+    ],
+  },
+];
+
+/** The login a merge and a comment are attributed to — the token's owner, as GitHub would say. */
+const SANDBOX_LOGIN = "ouroboros-sandbox";
+
+/** The pull requests: `owner/repo#number` to the stored PR. */
+const pulls = new Map();
+
+/** Conversation comments: `owner/repo#number` (an issue's or a PR's) to its comments, oldest first. */
+const comments = new Map();
+
+/** The next comment id. GitHub numbers comments across the whole host, and so does this. */
+let nextCommentId = 1;
+
+/** Branches a merge deleted: `owner/repo` to the set of deleted head refs. */
+const deletedRefs = new Map();
+
+/**
+ * The store's key for one PR or one conversation.
+ *
+ * @param {string} slug `owner/repo`.
+ * @param {number | string} number The issue or PR number, as a number or as the path spelled it.
+ * @returns {string} `owner/repo#number`.
+ */
+function keyOf(slug, number) {
+  return `${slug}#${Number(number).toString()}`;
+}
 
 /**
  * Every file under a directory, as paths relative to it with `/` separators.
@@ -226,6 +324,31 @@ function reset() {
 
   nextIssueId = 1;
   creationsBeforeRefusal = null;
+
+  pulls.clear();
+  comments.clear();
+  deletedRefs.clear();
+  nextCommentId = 1;
+
+  const opened = new Date().toISOString();
+
+  for (const seeded of SEEDED_PULLS) {
+    pulls.set(keyOf(seeded.slug, seeded.number), {
+      ...seeded,
+      files: seeded.files.map((file) => ({ ...file })),
+      state: "open",
+      mergeable: true,
+      merged: false,
+      mergedAt: null,
+      mergedBy: null,
+      mergeCommitSha: null,
+      mergeMethod: null,
+      commitTitle: null,
+      commitMessage: null,
+      createdAt: opened,
+      updatedAt: opened,
+    });
+  }
 }
 
 reset();
@@ -460,6 +583,124 @@ function treePayload(held) {
 }
 
 /**
+ * One PR, in the shape GitHub's pulls route documents it.
+ *
+ * The fields `github.pr.ts`'s `pullPayload` reads, and the merge fields GitHub answers beside
+ * them (`merged`, `merge_commit_sha`), which a leg asserting *the PR was merged* reads back.
+ * `head.repo.full_name` is the repository itself, which is what lets `deleteHead` delete the
+ * branch: a head in a fork is not this token's to delete.
+ *
+ * @param {object} pull The stored PR.
+ * @returns {object} The payload.
+ */
+function pullPayload(pull) {
+  return {
+    number: pull.number,
+    html_url: `${WEB_HOST}/${pull.slug}/pull/${pull.number.toString()}`,
+    title: pull.title,
+    body: pull.body,
+    state: pull.state,
+    draft: false,
+    merged: pull.merged,
+    merged_at: pull.mergedAt,
+    merged_by: pull.mergedBy === null ? null : { login: pull.mergedBy },
+    merge_commit_sha: pull.mergeCommitSha,
+    // GitHub reports mergeability only while a PR is open.
+    mergeable: pull.state === "open" ? pull.mergeable : null,
+    head: { ref: pull.headRef, sha: pull.headSha, repo: { full_name: pull.slug } },
+    base: { ref: pull.baseRef, repo: { full_name: pull.slug } },
+    additions: pull.files.reduce((sum, file) => sum + file.additions, 0),
+    deletions: pull.files.reduce((sum, file) => sum + file.deletions, 0),
+    changed_files: pull.files.length,
+    created_at: pull.createdAt,
+    updated_at: pull.updatedAt,
+  };
+}
+
+/**
+ * One changed file, in the shape GitHub's pull files route documents it — `filePayload`'s fields.
+ *
+ * `patch` is null, which GitHub also answers for a file too large to diff: the store holds the
+ * seed's counts, not its source, and a made-up patch would be text nobody wrote.
+ *
+ * @param {object} file The stored file.
+ * @returns {object} The payload.
+ */
+function pullFilePayload(file) {
+  return {
+    filename: file.filename,
+    status: file.status,
+    additions: file.additions,
+    deletions: file.deletions,
+    changes: file.additions + file.deletions,
+    patch: null,
+  };
+}
+
+/**
+ * One conversation comment, in the shape GitHub's issue comments route documents it.
+ *
+ * `html_url` is `https`, because `github.pr.ts`'s `commentUrl` keeps only an https link and the
+ * evidence comment's link is something the product shows.
+ *
+ * @param {string} slug `owner/repo`.
+ * @param {number} number The issue or PR the comment is on.
+ * @param {object} comment The stored comment.
+ * @returns {object} The payload.
+ */
+function commentPayload(slug, number, comment) {
+  const page = pulls.has(keyOf(slug, number)) ? "pull" : "issues";
+
+  return {
+    id: comment.id,
+    body: comment.body,
+    user: { login: SANDBOX_LOGIN },
+    html_url: `${WEB_HOST}/${slug}/${page}/${number.toString()}#issuecomment-${comment.id.toString()}`,
+    created_at: comment.createdAt,
+    updated_at: comment.updatedAt,
+  };
+}
+
+/**
+ * A merge commit's sha — forty hex characters, derived from what was merged and when, so two
+ * merges of two PRs never share one and a leg can tell the sha it was answered from a constant.
+ *
+ * @param {object} pull The stored PR being merged.
+ * @param {string} at The instant of the merge.
+ * @returns {string} The sha.
+ */
+function mergeShaOf(pull, at) {
+  return createHash("sha1")
+    .update(`${keyOf(pull.slug, pull.number)}@${pull.headSha}@${at}`)
+    .digest("hex");
+}
+
+/**
+ * Whether a number names a conversation in a repository — an issue it holds, or a PR in
+ * {@link pulls}. GitHub files a PR's comments under the issues route, so both are accepted there.
+ *
+ * @param {string} slug `owner/repo`.
+ * @param {object} repo The repository.
+ * @param {string} number The number, as the path spelled it.
+ * @returns {boolean} True when comments may be read or filed on it.
+ */
+function hasConversation(slug, repo, number) {
+  return issueOf(repo, number) !== undefined || pulls.has(keyOf(slug, number));
+}
+
+/**
+ * The repository and number a `/__sandbox/{pulls|comments}/{o}/{r}/{n}` inspection names.
+ *
+ * @param {string[]} parts The path's segments, `__sandbox` first.
+ * @returns {{ slug: string, number: number } | null} What was asked, or null for a malformed path.
+ */
+function inspected(parts) {
+  if (parts.length !== 5 || !/^[1-9][0-9]*$/.test(parts[4])) return null;
+
+  return { slug: `${parts[2]}/${parts[3]}`, number: Number(parts[4]) };
+}
+
+/**
  * Handle one request.
  *
  * @param {import("node:http").IncomingMessage} request The request.
@@ -477,9 +718,47 @@ async function handle(request, response) {
     return;
   }
 
-  // ------------------------------------------------------------------ the sandbox's own two
+  // ------------------------------------------------------------------ the sandbox's own controls
   if (path.startsWith("/__sandbox/")) {
     const control = await readBody(request);
+    const segments = path.split("/").filter((part) => part !== "");
+
+    // The two inspections — what the host now holds, for a leg's assertions. Read-only.
+    if (method === "GET" && (segments[1] === "pulls" || segments[1] === "comments")) {
+      const asked = inspected(segments);
+
+      if (asked === null) {
+        json(response, 404, { message: "no such sandbox control" });
+        return;
+      }
+
+      if (segments[1] === "pulls") {
+        const pull = pulls.get(keyOf(asked.slug, asked.number));
+
+        if (pull === undefined) {
+          json(response, 404, { message: "no such pull request in the sandbox" });
+          return;
+        }
+
+        json(response, 200, {
+          ...pullPayload(pull),
+          merge_method: pull.mergeMethod,
+          commit_title: pull.commitTitle,
+          commit_message: pull.commitMessage,
+          head_branch_deleted: deletedRefs.get(asked.slug)?.has(pull.headRef) ?? false,
+        });
+        return;
+      }
+
+      json(
+        response,
+        200,
+        (comments.get(keyOf(asked.slug, asked.number)) ?? []).map((comment) =>
+          commentPayload(asked.slug, asked.number, comment),
+        ),
+      );
+      return;
+    }
 
     if (path === "/__sandbox/reset" && method === "POST") {
       reset();
@@ -616,6 +895,88 @@ async function handle(request, response) {
     }
   }
 
+  // ------------------------------------------------------------------ pull requests
+  if (rest[0] === "pulls" && rest.length >= 2) {
+    const pull = pulls.get(keyOf(slug, rest[1]));
+
+    if (pull === undefined) {
+      json(response, 404, { message: "Not Found" });
+      return;
+    }
+
+    // GET /repos/{o}/{r}/pulls/{n} — the PR as it stands.
+    if (rest.length === 2 && method === "GET") {
+      json(response, 200, pullPayload(pull));
+      return;
+    }
+
+    // GET /repos/{o}/{r}/pulls/{n}/files — the changed files, one page: six fit in any page.
+    if (rest.length === 3 && rest[2] === "files" && method === "GET") {
+      json(response, 200, pull.files.map(pullFilePayload));
+      return;
+    }
+
+    // PUT /repos/{o}/{r}/pulls/{n}/merge — GitHub's `405` for a PR that cannot be merged, which
+    // is one already merged or closed, and otherwise the merge: closed, merged, with a commit.
+    if (rest.length === 3 && rest[2] === "merge" && method === "PUT") {
+      if (pull.merged || pull.state !== "open" || pull.mergeable === false) {
+        json(response, 405, { message: "Pull Request is not mergeable" });
+        return;
+      }
+
+      const mergeMethod =
+        body.merge_method === "squash" || body.merge_method === "rebase"
+          ? body.merge_method
+          : "merge";
+
+      pull.state = "closed";
+      pull.merged = true;
+      pull.mergedAt = now;
+      pull.mergedBy = SANDBOX_LOGIN;
+      pull.mergeCommitSha = mergeShaOf(pull, now);
+      pull.mergeMethod = mergeMethod;
+      pull.commitTitle = typeof body.commit_title === "string" ? body.commit_title : null;
+      pull.commitMessage = typeof body.commit_message === "string" ? body.commit_message : null;
+      pull.updatedAt = now;
+      json(response, 200, {
+        sha: pull.mergeCommitSha,
+        merged: true,
+        message: "Pull Request successfully merged",
+      });
+      return;
+    }
+
+    json(response, 404, { message: "Not Found" });
+    return;
+  }
+
+  // DELETE /repos/{o}/{r}/git/refs/heads/{branch} — a branch may hold slashes, so the rest of the
+  // path is the name. Deleting one twice is GitHub's `422 Reference does not exist`.
+  if (rest[0] === "git" && rest[1] === "refs" && rest[2] === "heads" && rest.length > 3) {
+    if (method !== "DELETE") {
+      json(response, 404, { message: "Not Found" });
+      return;
+    }
+
+    const branch = rest.slice(3).map(decodeURIComponent).join("/");
+    const deleted = deletedRefs.get(slug) ?? new Set();
+
+    if (deleted.has(branch)) {
+      json(response, 422, { message: "Reference does not exist" });
+      return;
+    }
+
+    deleted.add(branch);
+    deletedRefs.set(slug, deleted);
+    response.writeHead(204, {
+      "x-ratelimit-limit": RATE_LIMIT.toString(),
+      "x-ratelimit-remaining": (RATE_LIMIT - 1).toString(),
+      "x-ratelimit-reset": Math.floor(Date.now() / 1000 + 3600).toString(),
+    });
+    response.end();
+    return;
+  }
+
   // ------------------------------------------------------------------ issues
   if (rest[0] !== "issues") {
     json(response, 404, { message: "Not Found" });
@@ -670,6 +1031,73 @@ async function handle(request, response) {
     repo.nextNumber += 1;
     repo.issues.push(issue);
     json(response, 201, issuePayload(slug, issue));
+    return;
+  }
+
+  // PATCH /repos/{o}/{r}/issues/comments/{id} — edit a comment, wherever in the repository it is.
+  if (rest[1] === "comments" && rest.length === 3) {
+    const id = Number(rest[2]);
+    const found = [...comments.entries()]
+      .filter(([key]) => key.startsWith(`${slug}#`))
+      .flatMap(([key, held]) => held.map((comment) => ({ key, comment })))
+      .find(({ comment }) => comment.id === id);
+
+    if (found === undefined || method !== "PATCH") {
+      json(response, 404, { message: "Not Found" });
+      return;
+    }
+
+    if (typeof body.body !== "string") {
+      json(response, 422, {
+        message: "Validation Failed",
+        errors: [{ field: "body", code: "missing_field" }],
+      });
+      return;
+    }
+
+    found.comment.body = body.body;
+    found.comment.updatedAt = now;
+    json(response, 200, commentPayload(slug, Number(found.key.split("#")[1]), found.comment));
+    return;
+  }
+
+  // GET · POST /repos/{o}/{r}/issues/{n}/comments — an issue's conversation, or a PR's.
+  if (rest.length === 3 && rest[2] === "comments") {
+    if (!hasConversation(slug, repo, rest[1])) {
+      json(response, 404, { message: "Not Found" });
+      return;
+    }
+
+    const key = keyOf(slug, rest[1]);
+    const number = Number(rest[1]);
+
+    if (method === "GET") {
+      json(
+        response,
+        200,
+        (comments.get(key) ?? []).map((comment) => commentPayload(slug, number, comment)),
+      );
+      return;
+    }
+
+    if (method === "POST") {
+      if (typeof body.body !== "string" || body.body.trim() === "") {
+        json(response, 422, {
+          message: "Validation Failed",
+          errors: [{ field: "body", code: "missing_field" }],
+        });
+        return;
+      }
+
+      const comment = { id: nextCommentId, body: body.body, createdAt: now, updatedAt: now };
+
+      nextCommentId += 1;
+      comments.set(key, [...(comments.get(key) ?? []), comment]);
+      json(response, 201, commentPayload(slug, number, comment));
+      return;
+    }
+
+    json(response, 404, { message: "Not Found" });
     return;
   }
 

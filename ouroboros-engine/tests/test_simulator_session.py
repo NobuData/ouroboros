@@ -569,6 +569,130 @@ def test_an_expired_pause_does_not_stop_the_loop(
     assert session.acks == []
 
 
+# --- holding for a person (await_resume, #470) ----------------------------------------------
+
+
+def test_a_hold_ends_at_a_resume_acked_where_it_held(
+    fake: FakeControlPlane, clock: FakeClock, session: RunSession
+) -> None:
+    session.stage("implement", "active")
+    polls: list[int] = []
+
+    def release_after_two_polls() -> None:
+        polls.append(1)
+        if len(polls) == 2:
+            fake.queue(QueuedControl("resume"))
+
+    clock.on_sleep.append(release_after_two_polls)
+
+    assert session.await_resume() is True
+
+    assert fake.acks == [("resume", {"effect": "resumed at implement attempt 1"})]
+    assert len(clock.sleeps) == 2
+    assert fake.events[-1]["body"] == "Resumed at implement attempt 1."
+
+
+def test_a_hold_names_the_boundary_it_was_given(
+    fake: FakeControlPlane, clock: FakeClock, session: RunSession
+) -> None:
+    clock.on_sleep.append(lambda: fake.queue(QueuedControl("resume")))
+
+    assert session.await_resume("the protected-path check") is True
+
+    assert fake.acks == [("resume", {"effect": "resumed at the protected-path check"})]
+
+
+def test_a_resume_already_pending_is_claimed_by_the_hold_not_lost(
+    fake: FakeControlPlane, session: RunSession
+) -> None:
+    # The inbox's Allow once can land before the driver looks again. The hold's first fetch
+    # claims it; nothing in between acknowledged it as having nothing to resume.
+    session.stage("implement", "active")
+    fake.queue(QueuedControl("resume"))
+
+    assert session.await_resume() is True
+
+    assert fake.acks == [("resume", {"effect": "resumed at implement attempt 1"})]
+
+
+def test_a_hold_applies_other_controls_and_keeps_holding(
+    fake: FakeControlPlane, clock: FakeClock, session: RunSession
+) -> None:
+    session.stage("implement", "active")
+    script = [
+        lambda: fake.queue(QueuedControl("steer", "keep the boot edit to one line")),
+        lambda: fake.queue(QueuedControl("pause")),
+        lambda: fake.queue(QueuedControl("resume")),
+    ]
+    clock.on_sleep.append(lambda: script.pop(0)() if script else None)
+
+    assert session.await_resume() is True
+
+    assert [kind for kind, _ in fake.acks] == ["steer", "pause", "resume"]
+    assert fake.acks[1][1] == {
+        "effect": "already stopped at implement attempt 1, waiting for a person"
+    }
+    steer = session.steer_for("implement", 1)
+    assert steer is not None and steer.text == "keep the boot edit to one line"
+
+
+def test_controls_after_the_resume_in_the_same_fetch_are_applied_after_it(
+    fake: FakeControlPlane, clock: FakeClock, session: RunSession
+) -> None:
+    session.stage("implement", "active")
+
+    def resume_then_steer() -> None:
+        fake.queue(QueuedControl("resume"))
+        fake.queue(QueuedControl("steer", "after"))
+
+    clock.on_sleep.append(resume_then_steer)
+
+    assert session.await_resume() is True
+
+    assert [kind for kind, _ in fake.acks] == ["resume", "steer"]
+
+
+def test_an_abort_while_holding_unwinds_the_script(
+    fake: FakeControlPlane, clock: FakeClock, session: RunSession
+) -> None:
+    session.stage("implement", "active")
+    clock.on_sleep.append(lambda: fake.queue(QueuedControl("abort")))
+
+    with pytest.raises(ScenarioAborted) as aborted:
+        session.await_resume()
+
+    assert aborted.value.where == "implement attempt 1"
+    assert fake.status == "canceled"
+    assert [kind for kind, _ in fake.acks] == ["abort"]
+
+
+def test_a_hold_nobody_resumes_answers_false_at_the_limit(
+    fake: FakeControlPlane, clock: FakeClock
+) -> None:
+    session = make_session(fake, clock, max_pause=5.0)
+    session.open(Target(), "loop/x")
+    session.stage("implement", "active")
+
+    assert session.await_resume() is False
+
+    assert len(clock.sleeps) == 5
+    assert fake.acks == []
+
+
+def test_a_hold_flushes_what_was_said_before_it_waits(
+    fake: FakeControlPlane, clock: FakeClock, session: RunSession
+) -> None:
+    session.stage("implement", "active")
+    session.system("Holding for a person.")
+    said: list[int] = []
+    clock.on_sleep.append(lambda: said.append(len(fake.events)))
+    clock.on_sleep.append(lambda: fake.queue(QueuedControl("resume")))
+
+    session.await_resume()
+
+    assert said == [1]
+
+
 # --- abort ----------------------------------------------------------------------------------
 
 

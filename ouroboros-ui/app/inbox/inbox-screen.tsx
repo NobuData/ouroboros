@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import type { InboxQueue, InboxResolved, InboxSide, NotificationPreferences } from "@/app/api/inbox";
+import type { InboxQueue, InboxResolved, InboxSide, InboxStats, NotificationPreferences } from "@/app/api/inbox";
 import { clockTime } from "@/app/dashboard/view";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
 import { INBOX_BADGE_SOURCE } from "@/app/shell/nav-modules";
@@ -10,6 +10,7 @@ import { setNavBadge } from "@/app/shell/nav-registry";
 import { RetryBanner } from "@/app/ui";
 import type { PollSnapshot } from "@/app/poll";
 
+import { InboxCardBoundary } from "./card-boundary";
 import { ChannelsCard } from "./channels-card";
 import type { InboxReadings } from "./data";
 import { InboxHead } from "./inbox-head";
@@ -20,7 +21,11 @@ import { setResolvedCollapsed, useResolvedCollapsed } from "./resolved-collapse"
 import { ResolvedList } from "./resolved-list";
 import { type ResolvedPollOptions, createResolvedPoll, resolvedEndpoint } from "./resolved-poll";
 import { INBOX_SIDE_ENDPOINT, type SidePollOptions, createSidePoll } from "./side-poll";
-import { SIDE_LABEL } from "./side-view";
+import { CHANNELS_TITLE, POLICY_TITLE, SIDE_LABEL } from "./side-view";
+import { StatsCard } from "./stats-card";
+import { INBOX_STATS_ENDPOINT, type StatsPollOptions, createStatsPoll } from "./stats-poll";
+import { STATS_TITLE } from "./stats-view";
+import { lastRefreshedAt, refreshedTime, staleHeadline } from "./view";
 import { ZeroCard } from "./zero-card";
 
 import "./inbox.css";
@@ -28,8 +33,8 @@ import "./inbox.css";
 /** Whose fold of the resolved list it is when the page was handed no reader. */
 const ANONYMOUS_READER = "anonymous";
 
-/** What the banner says over a stale queue. */
-export const STALE_HEADLINE = "The inbox could not be refreshed.";
+/** What the banner says over a stale queue — the words are `view.ts`'s; kept here for its callers. */
+export { STALE_HEADLINE } from "./view";
 
 /**
  * The queue on screen: the poll's latest, else the server's first read.
@@ -92,6 +97,24 @@ export function sideReading(
 }
 
 /**
+ * The week's stat card on screen: the poll's latest, else the server's first read.
+ *
+ * @param initial The first paint's reading.
+ * @param snapshot The poll's state.
+ * @returns The week (or `null`) and why the latest attempt failed (or `null`).
+ */
+export function statsReading(
+  initial: InboxReadings["stats"],
+  snapshot: PollSnapshot<InboxStats>,
+): { stats: InboxStats | null; failure: string | null } {
+  if (snapshot.data !== null) return { stats: snapshot.data, failure: snapshot.error };
+
+  return initial.ok
+    ? { stats: initial.value, failure: snapshot.error }
+    : { stats: null, failure: snapshot.error ?? initial.reason };
+}
+
+/**
  * How many items are asking, once the cards this reader just settled are taken out.
  *
  * An answer or a snooze made on a card is true the moment the service says so, but the queue on
@@ -133,6 +156,12 @@ export function askingCount(queue: InboxQueue | null, settled: ReadonlyMap<strin
  * must be what the others say. They are one person's in one workspace, so a fresh server read
  * (the workspace switch) replaces them.
  *
+ * The states (BO.5, [#470](https://github.com/NobuData/ouroboros/issues/470)): **This week**
+ * closes the side column on a poll of its own; the snoozed section is dimmed cards that count down
+ * and can be woken early, which re-reads the queue; a queue that could not be refreshed says when
+ * it last was, to the second, in the reader's own clock; and every decision card and side card
+ * stands under its own boundary, so one that cannot be drawn degrades itself and not the page.
+ *
  * @param props.readings What the route read for the first paint.
  * @param props.readerId The reader's `user.id` — whose fold of the resolved list this is. A
  *   page that cannot name its reader shares one anonymous fold rather than a heading that will
@@ -140,7 +169,10 @@ export function askingCount(queue: InboxQueue | null, settled: ReadonlyMap<strin
  * @param props.poll Test seams for the queue's poll.
  * @param props.resolvedPoll Test seams for the resolved list's poll.
  * @param props.sidePoll Test seams for the side column's poll.
+ * @param props.statsPoll Test seams for the stat card's poll.
  * @param props.clock How an instant is printed — the reader's own clock by default.
+ * @param props.stamp How the lag banner prints the last refresh — the reader's own clock, to the
+ *   second, by default.
  * @param props.newKey Mints a press's idempotency key — a test seam.
  * @returns The screen.
  */
@@ -150,7 +182,9 @@ export function InboxScreen({
   poll,
   resolvedPoll,
   sidePoll,
+  statsPoll,
   clock = clockTime,
+  stamp = refreshedTime,
   newKey,
 }: Readonly<{
   readings: InboxReadings;
@@ -158,7 +192,9 @@ export function InboxScreen({
   poll?: QueuePollOptions;
   resolvedPoll?: ResolvedPollOptions;
   sidePoll?: SidePollOptions;
+  statsPoll?: StatsPollOptions;
   clock?: (atMs: number) => string;
+  stamp?: (atMs: number) => string;
   newKey?: () => string;
 }>) {
   const { snapshot, refresh } = useKeyedPoll(INBOX_QUEUE_ENDPOINT, () => createQueuePoll(poll));
@@ -169,6 +205,8 @@ export function InboxScreen({
   const collapsed = useResolvedCollapsed(readerId);
   const beside = useKeyedPoll(INBOX_SIDE_ENDPOINT, () => createSidePoll(sidePoll));
   const side = sideReading(readings.side, beside.snapshot);
+  const week = useKeyedPoll(INBOX_STATS_ENDPOINT, () => createStatsPoll(statsPoll));
+  const stats = statsReading(readings.stats, week.snapshot);
   const [held, setHeld] = useState({ readFrom: readings.notifications, preferences: readings.notifications });
 
   // What is held was learned on top of one server read. A new read is another answer to *whose
@@ -214,7 +252,7 @@ export function InboxScreen({
       {failure !== null && (
         <RetryBanner
           className="inbox__stale"
-          headline={STALE_HEADLINE}
+          headline={staleHeadline(lastRefreshedAt(queue, snapshot.updatedAt), stamp)}
           onRetry={retry}
           reason={failure}
           retrying={retrying === snapshot}
@@ -230,6 +268,7 @@ export function InboxScreen({
               items={queue.items}
               newKey={newKey}
               onSettled={onSettled}
+              onWoken={() => refresh()}
               afterCards={count === 0 ? <ZeroCard /> : null}
               snoozed={queue.snoozed}
             />
@@ -245,13 +284,20 @@ export function InboxScreen({
           />
         </div>
         <aside aria-label={SIDE_LABEL} className="inbox__side">
-          <ChannelsCard
-            channels={side.side?.channels ?? null}
-            failure={side.failure}
-            onPreferences={onPreferences}
-            preferences={preferences}
-          />
-          <PolicyCard card={side.side?.policies ?? null} failure={side.failure} />
+          <InboxCardBoundary label={CHANNELS_TITLE}>
+            <ChannelsCard
+              channels={side.side?.channels ?? null}
+              failure={side.failure}
+              onPreferences={onPreferences}
+              preferences={preferences}
+            />
+          </InboxCardBoundary>
+          <InboxCardBoundary label={POLICY_TITLE}>
+            <PolicyCard card={side.side?.policies ?? null} failure={side.failure} />
+          </InboxCardBoundary>
+          <InboxCardBoundary label={STATS_TITLE}>
+            <StatsCard failure={stats.failure} stats={stats.stats} />
+          </InboxCardBoundary>
         </aside>
       </div>
     </main>

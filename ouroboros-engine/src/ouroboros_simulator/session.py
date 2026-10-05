@@ -26,6 +26,13 @@ them, following the four meanings AP.4 publishes (`#306
     and acknowledge with that attempt's number (*"correction round queued: implement
     attempt 2"*). The script reads :meth:`RunSession.correction_for` while it waits for a
     person to Mark & Route a failure, and starts that attempt when one arrives.
+
+A ``resume`` is also what a person's **decision** sends when the loop stopped itself rather
+than being paused (`#470 <https://github.com/NobuData/ouroboros/issues/470>`_): the inbox's
+*Allow once* grants the exception and then submits a ``resume``. A script that stops for a
+person calls :meth:`RunSession.await_resume` **directly** after the verdict that stopped it,
+with no boundary in between, because a boundary claims pending controls and a ``resume`` it
+found outside a hold would be acknowledged as having nothing to resume, and lost.
 """
 
 import itertools
@@ -73,6 +80,10 @@ MAX_BATCH = 100
 
 #: How much of a steer's text a transcript entry quotes back.
 STEER_QUOTE_LIMIT = 200
+
+#: The acknowledgment of a ``resume`` that arrived while the loop was neither paused nor
+#: holding for a person. It has no effect, which is why a hold must claim its own resume.
+NOTHING_TO_RESUME = "the loop was not paused, so there is nothing to resume"
 
 
 class SimulationError(RuntimeError):
@@ -196,8 +207,9 @@ class RunSession:
             clock: Real time, and scripted waits compressed.
             key_prefix: Starts every idempotency key this session sends, so two runs never
                 share one. At most 96 characters, leaving room for the suffixes.
-            poll_interval: Real seconds between fetches while paused.
-            max_pause: Real seconds a pause may last before the driver gives up.
+            poll_interval: Real seconds between fetches while paused or holding.
+            max_pause: Real seconds a pause, or a hold in :meth:`await_resume`, may last
+                before the driver gives up.
 
         Raises:
             ValueError: If the prefix is empty or too long, or either interval is not
@@ -580,9 +592,7 @@ class RunSession:
         elif control.kind == "abort":
             self._abort(control)
         else:
-            self._ack(
-                control, effect="the loop was not paused, so there is nothing to resume"
-            )
+            self._ack(control, effect=NOTHING_TO_RESUME)
 
     def _steer(self, control: PendingControl) -> None:
         """Record a steer on the current attempt and acknowledge it, without pausing.
@@ -652,6 +662,66 @@ class RunSession:
         if not self._ack(control, effect=f"paused at a safe boundary: {where}"):
             return
 
+        resumed, waited = self._hold(where, repeated_pause=f"already paused at {where}")
+        if not resumed:
+            raise SimulationError(
+                f"paused at {where} for {waited:.0f}s with no resume or abort"
+            )
+
+    def await_resume(self, where: str | None = None) -> bool:
+        """Hold at this boundary until a person resumes the loop, or aborts it.
+
+        For a loop that stopped **itself** for a person, where :meth:`_pause` serves one a
+        person stopped: a protected path refused, a card filed, and the inbox's *Allow once*
+        grants the exception and then submits a ``resume`` (#470). The wait is the pause's —
+        a fetch every ``poll_interval`` real seconds, steers recorded and acknowledged as they
+        arrive — and it is bounded by the same ``max_pause``.
+
+        **Call it directly after the verdict that stopped the loop**, with no
+        :meth:`checkpoint`, :meth:`work` or starting :meth:`stage` in between: those fetch
+        controls, and a ``resume`` they claim outside a hold is acknowledged as having nothing
+        to resume. Transcript entries and :meth:`flush` are safe — neither fetches.
+
+        Args:
+            where: The boundary, for the acknowledgment and the transcript. Defaults to the
+                current stage and attempt, ``implement attempt 1``.
+
+        Returns:
+            ``True`` once a resume is acknowledged — *"resumed at …"* — and any controls that
+            arrived after it in the same fetch are applied. ``False`` when none arrived within
+            ``max_pause``, so the script can stop for a person as it would have without one.
+
+        Raises:
+            ScenarioAborted: If an abort arrives while holding, once it is acknowledged.
+        """
+        here = where if where is not None else self._position.describe()
+        self.flush()
+        resumed, _ = self._hold(
+            here, repeated_pause=f"already stopped at {here}, waiting for a person"
+        )
+        return resumed
+
+    def _hold(self, where: str, *, repeated_pause: str) -> tuple[bool, float]:
+        """Wait at a boundary for a resume, applying every other control as it arrives.
+
+        The loop :meth:`_pause` and :meth:`await_resume` share. A ``resume`` ends it: the
+        transcript says *"Resumed at …"*, the resume is acknowledged *"resumed at …"*, and the
+        controls fetched after it are applied in order. A second ``pause`` is acknowledged with
+        ``repeated_pause`` and changes nothing. An ``abort`` or a ``steer`` is applied as at
+        any boundary, so an abort unwinds the script from here.
+
+        Args:
+            where: The boundary, for the acknowledgment and the transcript.
+            repeated_pause: The effect a ``pause`` that arrives while holding is acked with.
+
+        Returns:
+            ``(True, waited)`` once a resume was acknowledged, or ``(False, waited)`` once
+            ``max_pause`` real seconds passed without one. ``waited`` is the real seconds
+            spent polling.
+
+        Raises:
+            ScenarioAborted: If an abort arrives, once it is acknowledged.
+        """
         waited = 0.0
         while True:
             self._clock.sleep(self._poll_interval)
@@ -664,16 +734,14 @@ class RunSession:
                     self.flush()
                     self._ack(other, effect=f"resumed at {where}")
                     self._apply_all(pending[index + 1 :])
-                    return
+                    return True, waited
                 if other.kind == "pause":
-                    self._ack(other, effect=f"already paused at {where}")
+                    self._ack(other, effect=repeated_pause)
                 else:
                     self._apply(other)
 
             if waited >= self._max_pause:
-                raise SimulationError(
-                    f"paused at {where} for {waited:.0f}s with no resume or abort"
-                )
+                return False, waited
 
     def _abort(self, control: PendingControl) -> None:
         """Stop for good, keeping the branch, and acknowledge.

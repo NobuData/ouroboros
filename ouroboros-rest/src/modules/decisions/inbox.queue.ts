@@ -101,6 +101,8 @@ export interface InboxSnoozedResource {
   readonly snoozedUntil: string;
   readonly snoozedBy: string | null;
   readonly reason: string | null;
+  /** Whether the reader may wake it early — the same roles that may snooze (#470). */
+  readonly snooze: { readonly allowed: boolean };
 }
 
 /** `GET /api/v1/inbox`. */
@@ -264,7 +266,7 @@ export class InboxQueueService {
     const hidden: InboxSnoozedResource[] = [];
 
     for (const row of snoozed) {
-      hidden.push(await this.snoozedResource(row, now));
+      hidden.push(await this.snoozedResource(row, now, maySnooze));
     }
 
     const estimate = estimateSeconds(
@@ -510,9 +512,14 @@ export class InboxQueueService {
    *
    * @param row - The item.
    * @param now - The instant.
+   * @param maySnooze - Whether the reader may snooze, and so un-snooze.
    * @returns The resource.
    */
-  private async snoozedResource(row: InboxItemRow, now: Date): Promise<InboxSnoozedResource> {
+  private async snoozedResource(
+    row: InboxItemRow,
+    now: Date,
+    maySnooze: boolean,
+  ): Promise<InboxSnoozedResource> {
     const kind = await this.registry.pinnedKind(row.kindId, row.kindVersion);
 
     return {
@@ -526,6 +533,7 @@ export class InboxQueueService {
       snoozedUntil: (row.snoozedUntil ?? now).toISOString(),
       snoozedBy: row.snoozedBy,
       reason: row.snoozeReason,
+      snooze: { allowed: maySnooze },
     };
   }
 }

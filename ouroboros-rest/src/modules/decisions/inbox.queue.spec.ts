@@ -214,8 +214,25 @@ describe("InboxQueueService.queue", () => {
         snoozedUntil: "2026-10-05T09:00:00.000Z",
         snoozedBy: "user-ken",
         reason: "after the ISR review",
+        snooze: { allowed: true },
       }),
     ]);
+  });
+
+  it("lets only the roles that may snooze wake a snoozed item early", async () => {
+    const snoozed = item("fact_review", 120, {
+      status: "snoozed",
+      snoozedUntil: new Date("2026-10-05T09:00:00Z"),
+      snoozedBy: "user-ken",
+      snoozeReason: null,
+    });
+    const { queue } = service({ snoozed: [snoozed] });
+
+    const member = await queue.queue(ORG, { userId: "user-jorge", roles: ["member"] });
+    const watcher = await queue.queue(ORG, { userId: "user-vic", roles: ["viewer"] });
+
+    expect(member.snoozed[0].snooze.allowed).toBe(true);
+    expect(watcher.snoozed[0].snooze.allowed).toBe(false);
   });
 
   it("reads 'No decisions waiting.' for an empty queue, and no estimate on a cold week", async () => {

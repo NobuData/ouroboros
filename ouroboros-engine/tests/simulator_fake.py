@@ -9,9 +9,10 @@ refusals, and it enforces the rules that make the driver's behaviour worth testi
   ``active`` ends; attempt *N* needs attempt *N-1* ended; ``returnedFrom`` is only for a
   retry;
 * **transcript order**: hints strictly increase within a batch and across batches;
-* **guardrails**: a ``.github/workflows/`` path fails ``ci_config`` and an ``AKIA`` key in an
-  ``add`` line fails ``secrets``, which is enough of AP.3 to see the driver read a verdict
-  rather than write one;
+* **guardrails**: a ``.github/workflows/`` path fails ``ci_config``, an ``AKIA`` key in an
+  ``add`` line fails ``secrets``, and a ``boot/`` path fails ``allowed_paths`` unless a test
+  granted it an allow-once (spent by the report it passes), which is enough of AP.3 to see the
+  driver read a verdict rather than write one;
 * **controls**: a test queues a control, optionally to be released when a given stage
   attempt starts, and the fake delivers it on the next fetch and records the ack. An
   acknowledged abort cancels the run.
@@ -123,6 +124,10 @@ class FakeControlPlane:
         fail_on: ``(method, path fragment) → (status, code)``: refuse a matching request.
         flag_violations: Whether change-sets are judged at all. ``False`` plays a control
             plane whose guardrails pass everything.
+        protected: Path prefixes the org policy protects — ``boot/``, as the seed's
+            ``boot/**``. A reported path under one fails ``allowed_paths``.
+        allowances: Protected paths a person allowed once (#470). A report that touches one
+            passes it and spends the allowance, as REST consumes a grant.
     """
 
     def __init__(self, *, simulated: bool = True) -> None:
@@ -144,6 +149,8 @@ class FakeControlPlane:
         self.status = "coding"
         self.fail_on: dict[tuple[str, str], tuple[int, str]] = {}
         self.flag_violations = True
+        self.protected: tuple[str, ...] = ("boot/",)
+        self.allowances: set[str] = set()
         self._hint = 0
         self._change_set_seq = 0
         self._receipts: dict[str, tuple[str, Response]] = {}
@@ -353,6 +360,15 @@ class FakeControlPlane:
         ]
         if any(_AWS_KEY.search(text) for text in added):
             failures.append("secrets")
+        guarded = [
+            f["path"]
+            for f in self.files
+            if f["path"].startswith(self.protected) and f["path"] not in self.allowances
+        ]
+        if guarded:
+            failures.append("allowed_paths")
+        else:
+            self.allowances -= {f["path"] for f in self.files}
         return Response(200, _change_set(self._change_set_seq, self.files, 4, failures))
 
     def _commits(self, body: dict[str, Any]) -> Response:

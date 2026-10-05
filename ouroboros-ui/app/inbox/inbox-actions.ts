@@ -3,7 +3,8 @@
 /**
  * The `/inbox` frame's writes and its sheet's read (BO.1, [#466](https://github.com/NobuData/ouroboros/issues/466)),
  * and a decision card's two (BO.2, [#467](https://github.com/NobuData/ouroboros/issues/467)): an
- * answer and a snooze of one item — as Server Actions. The browser cannot call `ouroboros-rest`,
+ * answer and a snooze of one item — and a snoozed card's one (BO.5,
+ * [#470](https://github.com/NobuData/ouroboros/issues/470)): waking it early — as Server Actions. The browser cannot call `ouroboros-rest`,
  * so the button asks this module, which asks the service with the request's session.
  *
  * Every refusal comes back as a sentence rather than a throw: a person pressed a button, and a
@@ -14,6 +15,7 @@
 import { isApiError } from "@/app/api/errors";
 import {
   type InboxSnoozeResult,
+  type InboxUnsnoozeResult,
   type NotificationPreferences,
   type NotificationPreferencesPatch,
   inbox,
@@ -28,6 +30,7 @@ import {
   winnerOf,
 } from "./card-view";
 import { PREFERENCES_FAILED } from "./notifications-view";
+import { WAKE_FAILED } from "./snoozed-view";
 import { SNOOZE_ALL_MINUTES, SNOOZE_FAILED } from "./view";
 
 /** A write's outcome: what the service answered, or why not as a sentence. */
@@ -144,6 +147,24 @@ export async function snoozeDecision(itemId: string, minutes: number): Promise<I
     if (!isApiError(error)) throw error;
 
     return { ok: false, reason: refusalWords(error, ITEM_SNOOZE_FAILED) };
+  }
+}
+
+/**
+ * Wake one snoozed item now, before its time — it goes back into the queue and the badge.
+ *
+ * @param itemId The item.
+ * @returns The items back in the queue (none when it was no longer snoozed — it is back either
+ *   way), or why not: the service's own sentence for a refusal (`403` for a viewer), a plain one
+ *   for its own failure.
+ */
+export async function unsnoozeDecision(itemId: string): Promise<InboxWrite<InboxUnsnoozeResult>> {
+  try {
+    return { ok: true, value: await inbox.unsnooze(String(itemId)) };
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+
+    return { ok: false, reason: refusalWords(error, WAKE_FAILED) };
   }
 }
 

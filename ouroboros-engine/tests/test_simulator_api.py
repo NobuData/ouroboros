@@ -165,6 +165,7 @@ def test_the_scenarios_are_listed(dev: TestClient) -> None:
         "control-responsive",
         "correction-round",
         "failing-hil",
+        "protected-path-allow-once",
     ]
 
 

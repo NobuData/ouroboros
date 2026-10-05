@@ -207,6 +207,7 @@ def test_list_prints_every_scenario(capsys: pytest.CaptureFixture[str]) -> None:
         "control-responsive",
         "correction-round",
         "failing-hil",
+        "protected-path-allow-once",
     ):
         assert name in out
 

@@ -564,7 +564,7 @@ dark-only).
 | BO.2 | #467 ✅ | 🟢 Done | ouroboros-ui: [BO.2] Decision cards | Kind-templated cards: severity, refs, why, action rows | mvp, inbox, ui, design | N (after BO.1, BN.2) | Y | L | ouroboros-ui |
 | BO.3 | #468 ✅ | 🟢 Done | ouroboros-ui: [BO.3] Resolved list & empty state | Collapsible resolved rows, auto-accept class, the zero card | mvp, inbox, ui, design | N (after BO.1) | Y | S | ouroboros-ui |
 | BO.4 | #469 ✅ | 🟢 Done | ouroboros-ui: [BO.4] Channels & policy cards | Truth-state channel rows + prefs; composed policy rows | mvp, inbox, ui, design | N (after BO.1, BN.3/BN.4) | Y | M | ouroboros-ui |
-| BO.5 | #470 | 🟡 Open | ouroboros-ui: [BO.5] Stat card, states & e2e leg | Computed weekly stat; snoozed/error states; full e2e | mvp, inbox, ui, ci | N (after BO.2–BO.4) | Y | M | ouroboros-ui, .github |
+| BO.5 | #470 ✅ | 🟢 Done | ouroboros-ui: [BO.5] Stat card, states & e2e leg | Computed weekly stat; snoozed/error states; full e2e | mvp, inbox, ui, ci | N (after BO.2–BO.4) | Y | M | ouroboros-ui, .github |
 
 ### Issue BO.1 — ouroboros-ui: [BO.1] Inbox route, head & pill wiring
 
@@ -702,7 +702,9 @@ WHAT NEEDS A HUMAN   refactor label → human review ⓘ [edit →] … (5 rows,
 
 ### Issue BO.5 — ouroboros-ui: [BO.5] Stat card, states & e2e leg
 
-> **GitHub issue:** #470 · **Status:** 🟡 Open · **Parent epic:** #455
+> **GitHub issue:** #470 ✅ · **Status:** 🟢 Done · **Parent epic:** #455
+>
+> **Delivered (#470, UI 0.135.0, REST 0.40.2, engine 0.7.15, e2e 0.31.0):** `StatsCard` (`app/inbox/stats-card.tsx`, words in `stats-view.ts`) on its own poll (`GET /api/inbox/stats`) prints the service's `display` strings verbatim — `11 decisions · median answer time 41s · loops never waited longer than 6m` from the seeds, em dashes on a cold org — with an ⓘ that names answer latency and loop wait as different measures. Snoozed items are dimmed cards (`snoozed-list.tsx`) with original age, a *wakes in* countdown and **Wake now** (`POST …/items/{id}/unsnooze`), gated by REST's new additive `InboxSnoozedItem.snooze.allowed`. The queue's retry banner prints the last refresh; `InboxCardBoundary` degrades one card, not the page; `app/(app)/inbox/loading.tsx` draws the skeleton. e2e leg 25 (`tests/e2e/specs/inbox.spec.ts`) needed new infrastructure: the tracker-stub now serves a PR sandbox (`pulls/{n}`, `…/merge`, issue/PR comments, `/__sandbox/pulls|comments` inspection), and the simulator gained `protected-path-allow-once` (an edit under `boot/**` that holds for a resume via `RunSession.await_resume`). Screenshot baselines for the parity test are to be recorded on a cold stack (not on a Monday).
 
 - **Problem Statement:** The computed weekly stat, snoozed/error states,
   and the full answer-everything e2e.

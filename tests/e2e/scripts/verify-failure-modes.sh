@@ -106,6 +106,15 @@
 #             (the run)           start is refused before a run exists, and the leg says the
 #                                 analysis could not be started — the page's own words — rather
 #                                 than waiting out a run that never begins (#521)
+#   db        inbox.spec.ts       the inbox's cards, its week and its badge are read out of the
+#                                 decision tables: with the database stopped nobody can sign in
+#                                 to read them, and nothing is answered (#470)
+#   tracker-  inbox.spec.ts       the merge and the annotation really land on a host: with the
+#   stub                          sandbox stopped the leg stops where it resets it, before a
+#                                 single answer, naming the tracker (#470)
+#   mailpit   inbox.spec.ts       the email answers really travel through a mail: with mailpit
+#             (the email test)    stopped there is no digest to read a link from, and the test
+#                                 says so before it writes anything (#470)
 #
 # ## The issues pairs, and the service each one takes down (#121)
 #
@@ -738,6 +747,18 @@ expect_red db tickets.spec.ts "sign-in for .* answered 5[0-9][0-9]"
 # its analyzers before a run exists, so the start is refused, nothing is written, and the leg says
 # so in the page's own words.
 expect_red engine analyzer.spec.ts "the analysis could not be started" "run analysis: a real run reproduces"
+
+# The inbox leg (#470). `db` takes it down at sign-in, before any write. `tracker-stub` takes it
+# down in its first hook, where it resets the sandbox the merge and the annotation are read back
+# from — the planning pair's claim about the leg rather than the deployment: a chain that asserted
+# a receipt instead of the host would pass with the host gone. `mailpit` is aimed at the email
+# test alone, whose first act is to empty mailpit, so it stops there by name with nothing written —
+# the daily digest is the only way its links exist. The leg's layer breakages — the merge handler,
+# the waiver's annotation, the snooze wake, the race guard — are code paths inside `rest`, for the
+# routing pair's reason not automated here.
+expect_red db inbox.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+expect_red tracker-stub inbox.spec.ts "sandbox tracker is not answering"
+expect_red mailpit inbox.spec.ts "mailpit is not answering" "email: the digest's links"
 
 # The knowledge leg (#422) — see the header. `db` takes the whole leg down at sign-in, before a
 # single write, so it leaves the stack cold.
