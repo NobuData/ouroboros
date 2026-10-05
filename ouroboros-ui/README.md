@@ -6961,21 +6961,27 @@ follows and [`../README.md`](../README.md) for the module map.
 
 `/inbox` ([#466](https://github.com/NobuData/ouroboros/issues/466), BO.1; decision cards
 [#467](https://github.com/NobuData/ouroboros/issues/467), BO.2; resolved list and zero card
-[#468](https://github.com/NobuData/ouroboros/issues/468), BO.3 — mockup 16) mounts in the shell
+[#468](https://github.com/NobuData/ouroboros/issues/468), BO.3; channels and policy cards
+[#469](https://github.com/NobuData/ouroboros/issues/469), BO.4 — mockup 16) mounts in the shell
 content pane; the sidebar's **Needs You** entry is live, lit on this route, and badged with the
 snooze-aware count. Module: [`app/inbox/`](app/inbox/).
 
 - **The head is the service's.** `GET /api/v1/inbox` (BN.4) sends `head.sentence` — count,
   pluralization, the per-kind estimate, the cold-org omission and the zero state's
   *No decisions waiting.* — and the page prints it verbatim ([`inbox-head.tsx`](app/inbox/inbox-head.tsx)).
-- **One poll.** Read once on the server ([`data.ts`](app/inbox/data.ts)), then kept fresh through
-  `GET /api/inbox` ([`queue-poll.ts`](app/inbox/queue-poll.ts)); every answer is also published to
-  the sidebar badge, so a snooze moves it at once.
+- **One poll for the queue.** Everything is read once on the server ([`data.ts`](app/inbox/data.ts)
+  — the queue, today's resolved list, the side column and the reader's preferences, each failing
+  on its own), then the queue is kept fresh through `GET /api/inbox`
+  ([`queue-poll.ts`](app/inbox/queue-poll.ts)); every answer is also published to the sidebar
+  badge, so a snooze moves it at once.
 - **Snooze all 1h** asks first, naming how many and until when, then `POST /api/v1/inbox/snooze-all`
   ([`snooze-all.tsx`](app/inbox/snooze-all.tsx)); inert at zero and for a viewer.
-- **Notification settings** opens a minimal sheet over `GET`/`PATCH /api/v1/inbox/notifications`
-  (BN.3): digest on/off and its UTC time, instant mail for blocking decisions, per-kind mutes
-  ([`notifications-sheet.tsx`](app/inbox/notifications-sheet.tsx)) — BO.4 (#469) extends it.
+- **Notification settings** opens a sheet over `GET`/`PATCH /api/v1/inbox/notifications` (BN.3):
+  digest on/off and its UTC time, instant mail for blocking decisions, per-kind mutes
+  ([`notifications-sheet.tsx`](app/inbox/notifications-sheet.tsx)). It has two entry points — the
+  head's button and the channels card's *All notification settings* — and reads when it opens, so
+  either opens on what was last saved. The screen holds the preferences, so a save in the sheet is
+  what the email row says, and the reverse.
 - **One card, no kinds.** Each asking item is a [`DecisionCard`](app/inbox/decision-card.tsx)
   drawn from what BN.4 sends for *any* kind: severity (left border, dot, and a word for screen
   readers), the rendered question, an age that ticks on the page's shared clock, ref tags linked to
@@ -7008,10 +7014,31 @@ snooze-aware count. Module: [`app/inbox/`](app/inbox/).
   on a poll of its own (`GET /api/inbox/resolved?day=`), which a settling card also refreshes.
   Each row is the service's composed `subject — verdict`, with keys and paths in mono and the
   time at the far edge. A policy's verdict is set apart from a person's, and a rule that fired
-  carries a note — shown on hover, on focus, or pinned by a press — naming it and linking to where
-  it is configured (`policyHref`). An answer that did not come from this page shows its channel.
+  carries a note ([`info-tip.tsx`](app/inbox/info-tip.tsx)) — shown on hover, on focus, or pinned
+  by a press — naming it and linking to where it is configured (`policyHref`). An answer that did not come from this page shows its channel.
   The heading folds the list, per reader ([`resolved-collapse.ts`](app/inbox/resolved-collapse.ts),
   `localStorage` keyed by `user.id`); *Earlier*, *Later* and *Today* walk history; a day with
   nothing resolved is one quiet line.
+- **The side column** is the mockup's four of twelve columns, beside the queue and the resolved
+  list and under them below 1100 px. Both cards ride one poll, `GET /api/inbox/side`
+  ([`side-poll.ts`](app/inbox/side-poll.ts)), which forwards BN.3's channel truth and BN.4's
+  policy card together — so neither card decides anything, and both follow the deployment
+  without a reload. Their words and pure rules are in [`side-view.ts`](app/inbox/side-view.ts).
+- **Answer From Anywhere** ([`channels-card.tsx`](app/inbox/channels-card.tsx)) prints each
+  channel's label, summary, state and reason **verbatim**. A ✓ is drawn for `connected` and for
+  nothing else: `available` reads *not connected* with what is missing, `unavailable-until` reads
+  *not yet* with what it arrives with (*Arrives with Chat Ops.*, *Arrives later.*), and a state
+  this client has never heard of is never a ✓. A channel that lands flips its row because the
+  payload changed. The daily digest's switch and UTC time editor sit on the email row, **only
+  while email is connected**, each writing one field straight to the preferences; the line under
+  them is the service's own next send. Push and Slack carry no control. *Chat Ops* is an inert
+  *soon* until [#541](https://github.com/NobuData/ouroboros/issues/541).
+- **What Needs A Human** ([`policy-card.tsx`](app/inbox/policy-card.tsx)) holds no list of rules.
+  Each served row is drawn as mono `rule → outcome`, with what enforces it behind an ⓘ a keyboard
+  reaches, the rule's detail (the protected globs) under it, and an **edit →** link to the surface
+  the service names — followed only when it is a path on this site. A rule nothing enforces is
+  absent, not greyed: no `spend > $2.50/run` row while AF.4 (#237) does not exist. The caption is
+  the service's sentence, so it changes when dry-run is flipped. *Edit policies →* leads to
+  `/settings#policies`.
 - The learned-facts card's *Review all →*, the topbar's needs-you pill and the dashboard's
   `needs human` rows all link here.

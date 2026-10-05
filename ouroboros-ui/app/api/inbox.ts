@@ -11,7 +11,10 @@
  * writes: an answer (`POST /api/v1/inbox/items/{id}/actions/{actionId}`, BN.2 #462) and a snooze of
  * one item (`POST /api/v1/inbox/items/{id}/snooze`). BO.3
  * ([#468](https://github.com/NobuData/ouroboros/issues/468)) adds the resolved list's read: one UTC
- * day's answered decisions (`GET /api/v1/inbox/resolved`, BN.4 #464).
+ * day's answered decisions (`GET /api/v1/inbox/resolved`, BN.4 #464). BO.4
+ * ([#469](https://github.com/NobuData/ouroboros/issues/469)) adds the side column's two: the
+ * channels' truth (`GET /api/v1/inbox/channels`, BN.3 #463) and the policy card
+ * (`GET /api/v1/inbox/policies`, BN.4 #464).
  *
  * ### `open` is the badge
  *
@@ -56,6 +59,24 @@ export type InboxResolved = components["schemas"]["InboxResolved"];
 
 /** One answered decision of a day: its composed line, who or what answered, and from where. */
 export type InboxResolvedRow = components["schemas"]["InboxResolvedRow"];
+
+/** The *Answer From Anywhere* card: each channel's real state, as BN.3 knows it. */
+export type InboxChannels = components["schemas"]["InboxChannels"];
+
+/** One channel's row: what it does, whether it is connected, and why not when it is not. */
+export type InboxChannel = components["schemas"]["InboxChannel"];
+
+/** The *What Needs A Human* card, composed from the configs that enforce each rule. */
+export type InboxPolicyCard = components["schemas"]["InboxPolicyCard"];
+
+/** One rule of the policy card: `rule → outcome`, what enforces it, and where it is edited. */
+export type InboxPolicyRow = components["schemas"]["InboxPolicyRow"];
+
+/** The inbox's side column, read together: the channels and the policy card. */
+export interface InboxSide {
+  readonly channels: InboxChannels;
+  readonly policies: InboxPolicyCard;
+}
 
 /** What *Snooze all* did. */
 export type InboxSnoozeResult = components["schemas"]["InboxSnoozeResult"];
@@ -108,6 +129,44 @@ export const inbox = {
         signal,
       }),
     );
+  },
+
+  /**
+   * Read each answer channel's real state — connected, available, or not here yet and why.
+   *
+   * @param client The client to read through. A poll passes `anonymousApi()`.
+   * @param signal A way to give up on the read — a poll's deadline.
+   * @returns The channels, as served.
+   * @throws {ApiError} When the service refuses.
+   */
+  async channels(client: ApiClient = api(), signal?: AbortSignal): Promise<InboxChannels> {
+    return unwrap(await client.GET("/api/v1/inbox/channels", { signal }));
+  },
+
+  /**
+   * Read the *What Needs A Human* card: one row per rule something enforces, and the caption.
+   *
+   * @param client The client to read through. A poll passes `anonymousApi()`.
+   * @param signal A way to give up on the read — a poll's deadline.
+   * @returns The card, as served.
+   * @throws {ApiError} When the service refuses.
+   */
+  async policies(client: ApiClient = api(), signal?: AbortSignal): Promise<InboxPolicyCard> {
+    return unwrap(await client.GET("/api/v1/inbox/policies", { signal }));
+  },
+
+  /**
+   * Read the side column in one go — the channels and the policy card.
+   *
+   * @param client The client to read through. A poll passes `anonymousApi()`.
+   * @param signal A way to give up on the read — a poll's deadline.
+   * @returns Both cards' payloads.
+   * @throws {ApiError} When the service refuses either.
+   */
+  async side(client: ApiClient = api(), signal?: AbortSignal): Promise<InboxSide> {
+    const [channels, policies] = await Promise.all([inbox.channels(client, signal), inbox.policies(client, signal)]);
+
+    return { channels, policies };
   },
 
   /**

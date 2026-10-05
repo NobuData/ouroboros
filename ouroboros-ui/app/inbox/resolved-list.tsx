@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useState } from "react";
+import { useId } from "react";
 
 import type { InboxResolved, InboxResolvedRow } from "@/app/api/inbox";
 import { Button, Tag } from "@/app/ui";
 import { cx } from "@/app/ui/class-names";
 
+import { InfoTip } from "./info-tip";
 import {
   DAY_NOT_READ,
   EARLIER_LABEL,
@@ -50,47 +51,23 @@ export interface ResolvedListProps {
 }
 
 /**
- * The note beside an auto-accepted row: the rule that fired, and where it is configured.
- *
- * A tooltip cannot hold a link, so this is a small disclosure that behaves like one: it shows on
- * hover and while focus is anywhere inside it (so the link can be tabbed to), and a press pins it
- * open for a reader with neither a pointer that hovers nor a keyboard. The control is described
- * by the note, so a screen reader hears the rule on focus without opening anything.
+ * The note beside an auto-accepted row: the rule that fired, and where it is configured — the
+ * inbox's tooltip ({@link InfoTip}), so the link in it can be tabbed to.
  *
  * @param props.note What to name.
  * @returns The control and its note.
  */
 function PolicyNoteTip({ note }: Readonly<{ note: PolicyNote }>) {
-  const id = useId();
-  const [pinned, setPinned] = useState(false);
-
   return (
-    <span
-      className={cx("inbox-resolved__policy", pinned && "inbox-resolved__policy--pinned")}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") setPinned(false);
-      }}
-    >
-      <button
-        aria-describedby={id}
-        aria-expanded={pinned}
-        aria-label={POLICY_NOTE_LABEL}
-        className="inbox-resolved__policy-toggle"
-        onClick={() => setPinned(!pinned)}
-        type="button"
-      >
-        <span aria-hidden>ⓘ</span>
-      </button>
-      <span className="inbox-resolved__policy-note" id={id} role="note">
-        <span>
-          {POLICY_RULE_LEAD} <span className="inbox-resolved__mono">{note.rule}</span>
-          {note.version !== null && ` · org policy v${String(note.version)}`}
-        </span>{" "}
-        <Link className="inbox-resolved__policy-link" href={note.href}>
-          {POLICY_CONFIGURE} →
-        </Link>
-      </span>
-    </span>
+    <InfoTip label={POLICY_NOTE_LABEL}>
+      <span>
+        {POLICY_RULE_LEAD} <span className="inbox-resolved__mono">{note.rule}</span>
+        {note.version !== null && ` · org policy v${String(note.version)}`}
+      </span>{" "}
+      <Link className="inbox-resolved__policy-link" href={note.href}>
+        {POLICY_CONFIGURE} →
+      </Link>
+    </InfoTip>
   );
 }
 
@@ -109,15 +86,17 @@ function ResolvedRow({ row, clock }: Readonly<{ row: InboxResolvedRow; clock: (a
 
   return (
     <li className="inbox-resolved__row">
-      <span aria-hidden className="inbox-resolved__tick">
-        {RESOLVED_MARK}
-      </span>
-      <span className="sr-only">{RESOLVED_MARK_LABEL}: </span>
-      <span className="inbox-resolved__line">
-        <Segments monoClassName="inbox-resolved__mono" segments={summarySegments(row.subject)} />
-        {" — "}
-        <span className={cx("inbox-resolved__verdict", byPolicy && "inbox-resolved__verdict--policy")}>
-          {row.verdict}
+      <span className="inbox-resolved__what">
+        <span aria-hidden className="inbox-resolved__tick">
+          {RESOLVED_MARK}
+        </span>
+        <span className="sr-only">{RESOLVED_MARK_LABEL}: </span>
+        <span className="inbox-resolved__line">
+          <Segments monoClassName="inbox-resolved__mono" segments={summarySegments(row.subject)} />
+          {" — "}
+          <span className={cx("inbox-resolved__verdict", byPolicy && "inbox-resolved__verdict--policy")}>
+            {row.verdict}
+          </span>
         </span>
       </span>
       {note !== null && <PolicyNoteTip note={note} />}

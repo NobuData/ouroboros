@@ -9,10 +9,15 @@
 import type {
   InboxAction,
   InboxActionResult,
+  InboxChannel,
+  InboxChannels,
   InboxItem,
+  InboxPolicyCard,
+  InboxPolicyRow,
   InboxQueue,
   InboxResolved,
   InboxResolvedRow,
+  InboxSide,
   InboxSnoozedItem,
   NotificationPreferences,
 } from "@/app/api/inbox";
@@ -383,10 +388,106 @@ export function resolvedDay(overrides: Partial<InboxResolved> = {}): InboxResolv
   };
 }
 
-/** What the route reads for the first paint. */
+/**
+ * The channels' truth as BN.3 states it (#463) on a deployment with a git host and a mail server
+ * — the card's order: Slack and push not built yet, email and GitHub connected. Each row can be
+ * overridden by id, which is how a test "lands" a capability without touching the UI.
+ */
+export function seededChannels(
+  overrides: Partial<Record<InboxChannel["id"], Partial<InboxChannel>>> = {},
+): InboxChannels {
+  const rows: InboxChannel[] = [
+    {
+      id: "slack",
+      label: "Slack",
+      summary: "Approve with a button, right in the thread.",
+      state: "unavailable-until",
+      until: "Chat Ops",
+      reason: "Arrives with Chat Ops.",
+    },
+    {
+      id: "email",
+      label: "Email",
+      summary: "A daily digest, and an instant mail for each blocking (err) decision.",
+      state: "connected",
+      until: null,
+      reason: null,
+    },
+    {
+      id: "push",
+      label: "Mobile push",
+      summary: "Critical decisions only.",
+      state: "unavailable-until",
+      until: "BP.2",
+      reason: "Arrives later.",
+    },
+    {
+      id: "github",
+      label: "GitHub",
+      summary: "Every decision is mirrored as a PR comment — posted when it is asked, edited when it is answered.",
+      state: "connected",
+      until: null,
+      reason: null,
+    },
+  ];
+
+  return { channels: rows.map((row) => ({ ...row, ...overrides[row.id] })) };
+}
+
+/** One policy row as BN.4 composes it (#464), with overrides — the refactor-label rule by default. */
+export function policyRow(overrides: Partial<InboxPolicyRow> = {}): InboxPolicyRow {
+  return {
+    id: "human_review:label:refactor",
+    rule: "refactor label",
+    outcome: "human review",
+    source: "Org policy v7 · human_review — the gate engine requires a person",
+    detail: null,
+    editHref: "/settings#policies",
+    ...overrides,
+  };
+}
+
+/**
+ * The seeded policy card (#460): the refactor-label rule, the protected paths and the claim
+ * waiver — and no spend row, because nothing enforces one until AF.4 (#237).
+ */
+export function seededPolicyCard(overrides: Partial<InboxPolicyCard> = {}): InboxPolicyCard {
+  return {
+    rows: [
+      policyRow(),
+      policyRow({
+        id: "protected_paths",
+        rule: "protected paths",
+        outcome: "allow-once",
+        source: "Protected paths (BA.1) — AP.3 stops an edit, a person may allow it once · up to 2 repositories",
+        detail: "boot/** · keys/**",
+        editHref: "/knowledge#repo-profile",
+      }),
+      policyRow({
+        id: "claim_waiver",
+        rule: "unverifiable claims",
+        outcome: "explicit waiver",
+        source: "PR verification (AX.3) — a criterion is verified or waived by a person, never silently",
+      }),
+    ],
+    caption: "Everything else merges itself when gates are green.",
+    dryRun: false,
+    policyVersion: 7,
+    ...overrides,
+  };
+}
+
+/** The side column's two payloads together, with overrides. */
+export function inboxSide(overrides: Partial<InboxSide> = {}): InboxSide {
+  return { channels: seededChannels(), policies: seededPolicyCard(), ...overrides };
+}
+
+/** What the route reads for the first paint. `null` is a read that failed. */
 export function inboxReadings(
   queue: InboxQueue | null = inboxQueue(),
   resolved: InboxResolved | null = resolvedDay(),
+  side: InboxSide | null = inboxSide(),
+  notifications: NotificationPreferences | null = preferences(),
 ): InboxReadings {
   return {
     queue: queue === null ? { ok: false, reason: "The inbox could not be read." } : { ok: true, value: queue },
@@ -394,8 +495,25 @@ export function inboxReadings(
       resolved === null
         ? { ok: false, reason: "The resolved list could not be read." }
         : { ok: true, value: resolved },
+    side:
+      side === null
+        ? { ok: false, reason: "The inbox's channels and policies could not be read." }
+        : { ok: true, value: side },
+    notifications:
+      notifications === null
+        ? { ok: false, reason: "Your notification settings could not be read." }
+        : { ok: true, value: notifications },
     readAt: INBOX_READ_AT,
   };
+}
+
+/** The digest switched on at a time, as the service answers it — next send the following morning. */
+export function digestOn(time = "09:00"): NotificationPreferences {
+  return preferences({
+    digest: { enabled: true, time, timeZone: "UTC", nextSendAt: `2026-10-05T${time}:00.000Z` },
+    isExplicit: true,
+    updatedAt: "2026-10-04T13:20:00.000Z",
+  });
 }
 
 /** A person's notification preferences — the defaults, with overrides. */

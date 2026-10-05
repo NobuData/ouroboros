@@ -38,6 +38,23 @@ describe("the channel truth payload (#463)", () => {
     expect(github?.reason).toMatch(/git host/);
   });
 
+  it("explains the GitHub comment's whole life — posted when asked, edited when answered (#469)", () => {
+    const github = channelTruth({ commentingSources: 1, mailTransport: "smtp" }).channels.find(
+      (row) => row.id === "github",
+    );
+
+    expect(github?.summary).toBe(
+      "Every decision is mirrored as a PR comment — posted when it is asked, edited when it is answered.",
+    );
+  });
+
+  it("says what each channel does in the card's own words, connected or not", () => {
+    for (const row of channelTruth({ commentingSources: 0, mailTransport: "none" }).channels) {
+      expect(row.label).not.toBe("");
+      expect(row.summary).toMatch(/\.$/);
+    }
+  });
+
   it("never connects Slack or Push, whatever else is configured", () => {
     const rows = channelTruth({ commentingSources: 5, mailTransport: "smtp" }).channels;
 

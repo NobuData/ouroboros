@@ -563,7 +563,7 @@ dark-only).
 | BO.1 | #466 ✅ | 🟢 Done | ouroboros-ui: [BO.1] Inbox route, head & pill wiring | `/inbox`, computed head, snooze-all, lit pill states | mvp, inbox, ui, design | N (after #41, BN.4, BA-D.5) | Y | S | ouroboros-ui |
 | BO.2 | #467 ✅ | 🟢 Done | ouroboros-ui: [BO.2] Decision cards | Kind-templated cards: severity, refs, why, action rows | mvp, inbox, ui, design | N (after BO.1, BN.2) | Y | L | ouroboros-ui |
 | BO.3 | #468 ✅ | 🟢 Done | ouroboros-ui: [BO.3] Resolved list & empty state | Collapsible resolved rows, auto-accept class, the zero card | mvp, inbox, ui, design | N (after BO.1) | Y | S | ouroboros-ui |
-| BO.4 | #469 | 🟡 Open | ouroboros-ui: [BO.4] Channels & policy cards | Truth-state channel rows + prefs; composed policy rows | mvp, inbox, ui, design | N (after BO.1, BN.3/BN.4) | Y | M | ouroboros-ui |
+| BO.4 | #469 ✅ | 🟢 Done | ouroboros-ui: [BO.4] Channels & policy cards | Truth-state channel rows + prefs; composed policy rows | mvp, inbox, ui, design | N (after BO.1, BN.3/BN.4) | Y | M | ouroboros-ui |
 | BO.5 | #470 | 🟡 Open | ouroboros-ui: [BO.5] Stat card, states & e2e leg | Computed weekly stat; snoozed/error states; full e2e | mvp, inbox, ui, ci | N (after BO.2–BO.4) | Y | M | ouroboros-ui, .github |
 
 ### Issue BO.1 — ouroboros-ui: [BO.1] Inbox route, head & pill wiring
@@ -669,7 +669,9 @@ topbar: [● Needs you · 3] ← lit (warn glow) on this page · excludes snooze
 
 ### Issue BO.4 — ouroboros-ui: [BO.4] Channels & policy cards
 
-> **GitHub issue:** #469 · **Status:** 🟡 Open · **Parent epic:** #455
+> **GitHub issue:** #469 ✅ · **Status:** 🟢 Done · **Parent epic:** #455
+>
+> **Delivered (#469, UI 0.134.0, REST 0.39.14):** the side column beside the queue (the mockup's 8 / 4 grid, stacked below 1100 px) on one poll of its own, `GET /api/inbox/side`, which forwards BN.3's channel truth and BN.4's policy card together. `ChannelsCard` (`app/inbox/channels-card.tsx`, rules in `side-view.ts`) prints each row's label, summary, state and reason verbatim — `✓ connected` for `connected` and nothing else, *not connected* with the reason for `available`, *not yet* with *Arrives with Chat Ops.* / *Arrives later.* for `unavailable-until` — so a row flips when the payload does. The daily digest's switch and UTC time editor sit on the email row **only while email is connected** and write single fields to `PATCH /inbox/notifications`; the row prints the service's `nextSendAt`. Push and Slack carry no control. *Chat Ops* is an inert *soon* until #541. *All notification settings* is the sheet's second entry point; the head's and the card's share one preferences state with the email row. `PolicyCard` (`policy-card.tsx`) draws only the rows served — `rule → outcome`, the `source` behind a keyboard-reachable ⓘ (`info-tip.tsx`, shared with BO.3's policy note), `detail`, a per-row **edit →** to the served `editHref`, the served caption, and `Edit policies →`. REST's one change: the GitHub row's summary now says the comment is posted when a decision is asked and edited when it is answered. On the standing decisions: REST serves the text, and the e2e leg stays with BO.5 (#470). Not rendered: `until` (its sentence is the row's `reason`). With no mail server the email row reads *not connected* and offers no digest switch — the acceptance line's *Email ✓* holds once `OURO_SMTP_URL` is set.
 >
 > **Already shipped (#464):** `GET /api/v1/inbox/policies` — `rows[]` `{rule, outcome, source, detail, editHref}` each derived from its live config (render `source` as the ⓘ, `detail` beside protected paths), `caption` from dry-run. Absent rows (spend, plan sign-off) are simply not in `rows` — draw nothing for them.
 

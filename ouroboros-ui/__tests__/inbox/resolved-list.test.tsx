@@ -117,6 +117,20 @@ describe("the row is composed, not stored", () => {
 });
 
 describe("what the system decided without anybody", () => {
+  it("keeps each row's tick and its line together, so a long line wraps behind its tick", () => {
+    list();
+
+    for (const row of rows()) {
+      const what = row.querySelector(".inbox-resolved__what")!;
+
+      expect(what).toContainElement(row.querySelector(".inbox-resolved__tick"));
+      expect(what).toContainElement(row.querySelector(".inbox-resolved__line"));
+      // What follows the line — the note, the channel, the time — is not part of the unit.
+      expect(what).not.toContainElement(row.querySelector(".inbox-resolved__when"));
+      expect(row.firstElementChild).toBe(what);
+    }
+  });
+
   it("sets the policy's verdict apart from a person's", () => {
     list();
 
@@ -144,17 +158,17 @@ describe("what the system decided without anybody", () => {
 
     const auto = rows()[3]!;
     const why = within(auto).getByRole("button", { name: "Why nobody was asked" });
-    const tip = auto.querySelector(".inbox-resolved__policy")!;
+    const tip = auto.querySelector(".inbox-tip")!;
 
     expect(why).toHaveAttribute("aria-expanded", "false");
-    expect(tip).not.toHaveClass("inbox-resolved__policy--pinned");
+    expect(tip).not.toHaveClass("inbox-tip--pinned");
 
     fireEvent.click(why);
     expect(why).toHaveAttribute("aria-expanded", "true");
-    expect(tip).toHaveClass("inbox-resolved__policy--pinned");
+    expect(tip).toHaveClass("inbox-tip--pinned");
 
     fireEvent.keyDown(why, { key: "Escape" });
-    expect(tip).not.toHaveClass("inbox-resolved__policy--pinned");
+    expect(tip).not.toHaveClass("inbox-tip--pinned");
 
     fireEvent.click(why);
     fireEvent.click(why);

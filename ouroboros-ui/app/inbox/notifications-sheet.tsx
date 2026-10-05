@@ -5,7 +5,7 @@ import { useState } from "react";
 import type { NotificationPreferences } from "@/app/api/inbox";
 import type { Reading } from "@/app/api/reading";
 import { ShellOverlay } from "@/app/shell/overlay";
-import { Button, TextField, Toggle } from "@/app/ui";
+import { Button, type ButtonSize, TextField, Toggle } from "@/app/ui";
 
 import { readNotificationSettings, updateNotificationSettings } from "./inbox-actions";
 import {
@@ -33,14 +33,34 @@ type SheetState =
   | { readonly phase: "loading" }
   | { readonly phase: "open"; readonly reading: Reading<NotificationPreferences> };
 
+/** What {@link NotificationsAction} takes. Every field is optional; the page head supplies none. */
+export interface NotificationsActionProps {
+  /** What the button says. Defaults to *Notification settings*. */
+  readonly label?: string;
+  /** How large the button is — the side card's is small. */
+  readonly size?: ButtonSize;
+  /**
+   * Hears the preferences whenever the sheet learns them — read on open, answered after a save —
+   * so whatever else shows them (the email row's digest) can follow.
+   */
+  readonly onPreferences?: (preferences: NotificationPreferences) => void;
+}
+
 /**
- * *Notification settings* — the head's button and the sheet it opens (BO.1,
+ * *Notification settings* — a button and the sheet it opens (BO.1,
  * [#466](https://github.com/NobuData/ouroboros/issues/466)). The preferences are read when the
- * sheet opens, not with the page: they are the reader's own and change nowhere else.
+ * sheet opens, not with the page, so it always opens on what was last saved — from here, from
+ * the email row's own switch, or from the other entry point: the page head and the channels card
+ * (BO.4, [#469](https://github.com/NobuData/ouroboros/issues/469)) each mount one.
  *
+ * @param props See {@link NotificationsActionProps}.
  * @returns The button and its sheet.
  */
-export function NotificationsAction() {
+export function NotificationsAction({
+  label = NOTIFICATIONS_LABEL,
+  size,
+  onPreferences,
+}: NotificationsActionProps = {}) {
   const [state, setState] = useState<SheetState>({ phase: "closed" });
 
   /** Read, then open on what was read. A second press while reading does nothing. */
@@ -48,7 +68,11 @@ export function NotificationsAction() {
     if (state.phase !== "closed") return;
 
     setState({ phase: "loading" });
-    void readNotificationSettings().then((reading) => setState({ phase: "open", reading }));
+    void readNotificationSettings().then((reading) => {
+      setState({ phase: "open", reading });
+
+      if (reading.ok) onPreferences?.(reading.value);
+    });
   }
 
   return (
@@ -57,9 +81,10 @@ export function NotificationsAction() {
         aria-haspopup="dialog"
         onClick={open}
         reason={state.phase === "loading" ? "Opening…" : undefined}
+        size={size}
         tone="ghost"
       >
-        {NOTIFICATIONS_LABEL}
+        {label}
       </Button>
       <ShellOverlay
         label={PREFERENCES_TITLE}
@@ -72,7 +97,10 @@ export function NotificationsAction() {
             <p className="inbox-prefs__lead">{PREFERENCES_LEAD}</p>
             {state.reading.ok ? (
               <PreferencesForm
-                onSaved={(saved) => setState({ phase: "open", reading: { ok: true, value: saved } })}
+                onSaved={(saved) => {
+                  setState({ phase: "open", reading: { ok: true, value: saved } });
+                  onPreferences?.(saved);
+                }}
                 preferences={state.reading.value}
               />
             ) : (
