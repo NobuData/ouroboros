@@ -31,6 +31,7 @@ describe("the onboarding controller", () => {
       update: jest.fn().mockResolvedValue(RESOURCE),
       completeStep: jest.fn().mockResolvedValue(RESOURCE),
       skip: jest.fn().mockResolvedValue(RESOURCE),
+      surfacing: jest.fn().mockResolvedValue({ offer: true, reason: "fresh_organization" }),
     } as unknown as jest.Mocked<OnboardingService>;
 
     templates = {
@@ -64,6 +65,14 @@ describe("the onboarding controller", () => {
     expect(service.update).toHaveBeenCalledWith("org-1", QUERY.repo, { dismissed: true });
     expect(service.completeStep).toHaveBeenCalledWith("org-1", QUERY.repo, 3);
     expect(service.skip).toHaveBeenCalledWith("org-1", QUERY.repo);
+  });
+
+  it("answers the fresh-org rule for the workspace, with no repository (#390)", async () => {
+    await expect(controller.surfacing(WORKSPACE)).resolves.toEqual({
+      offer: true,
+      reason: "fresh_organization",
+    });
+    expect(service.surfacing).toHaveBeenCalledWith("org-1");
   });
 
   it("routes the tiles and the selection to the instantiation service (#386)", async () => {

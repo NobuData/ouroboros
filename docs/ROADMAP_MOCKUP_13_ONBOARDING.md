@@ -674,7 +674,7 @@ source — steprail/detect/tile/safety/timeline/action-bar treatments — via th
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BC.1 | #390 | 🟡 Open | ouroboros-ui: [BC.1] Wizard route, step rail & action bar | `/get-started` frame, derived rail, glow bar, nav surfacing | mvp, onboarding, ui, design | N (after #41, BB.2, BA-D.5) | Y | M | ouroboros-ui |
+| BC.1 | #390 ✅ | 🟢 Done | ouroboros-ui: [BC.1] Wizard route, step rail & action bar | `/get-started` frame, derived rail, glow bar, nav surfacing | mvp, onboarding, ui, design | N (after #41, BB.2, BA-D.5) | Y | M | ouroboros-ui |
 | BC.2 | #391 | 🟡 Open | ouroboros-ui: [BC.2] Detection card | Six evidence rows, warn variant, re-scan, protected-path edit | mvp, onboarding, ui, design | N (after BC.1, BB.1) | Y | M | ouroboros-ui |
 | BC.3 | #392 | 🟡 Open | ouroboros-ui: [BC.3] Template tiles | Selection/locked treatments, stage dots, instantiation flow | mvp, onboarding, ui, design | N (after BC.1, BB.3) | Y | M | ouroboros-ui |
 | BC.4 | #393 | 🟡 Open | ouroboros-ui: [BC.4] First-issue & safety card | Scored pick with reasoning, own-pick flow, safety truth rows | mvp, onboarding, ui, design | N (after BC.1, BB.4, BA.3) | Y | M | ouroboros-ui |
@@ -683,7 +683,9 @@ source — steprail/detect/tile/safety/timeline/action-bar treatments — via th
 
 ### Issue BC.1 — ouroboros-ui: [BC.1] Wizard route, step rail & action bar
 
-> **GitHub issue:** #390 · **Status:** 🟡 Open · **Parent epic:** #378
+> **GitHub issue:** #390 ✅ · **Status:** 🟢 Done · **Parent epic:** #378
+>
+> **Delivered (#390, UI 0.139.0, REST 0.40.5):** `/get-started` in a route group of its own, `app/(wizard)/` — standalone, no shell — over the new module `app/get-started/` (pure rules in `view.ts`). The head prints the mockup's eyebrow and headline and the promise from an approved claim set (`PROMISE`, each claim naming its mechanism), and the corner link is labelled for what it does — *"I've done this before — set it up in Settings ↗"*, marking the wizard bypassed through BB.2's skip hook and saying nothing is imported (BD.3, #398). The rail draws BB.2's derived steps verbatim (step 1 reads `acme-robotics · token` until INTAKE-O.1) with done/active/todo/regressed treatments; each step is a keyboard-reachable button that puts it on screen; a regressed step is explained in a banner in the service's words, live on the I.8 poll (`GET /api/onboarding?repo=`). Only the step content scrolls — head, rail and the glow action bar stay put. The bar's primary action is per step: *Connect GitHub →* (Settings → Sources), *Enable {repo} →* (repository and its account, owner/admin), *Continue →* through `complete-step`, *Run my first loop →* (BB.5's launch, receipt with its dry-run note) — disabled with the reason whenever a guard would refuse it. Decided with the user: `?repo=owner/name`, else the first mirrored repository (enabled first, then by name), and a workspace with nothing mirrored says so instead of drawing a rail of its own; fresh-org surfacing is a **dismissible dashboard banner**, not a redirect — read through a new REST route, `GET /api/v1/onboarding/surfacing` (the rule with no repository named). #49's `/get-started` stub never existed in the UI, so there was nothing to retire. Steps 1–2's embedded flows, the completion state and the e2e leg stay with BC.6 (#395).
 
 
 - **Problem Statement:** The wizard frame: the four-step rail with derived
@@ -1090,7 +1092,7 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| BC.1 | #390 | 🟡 Open | `/get-started` renders standalone outside the shell (pre-workspace, like login; the shell appears once a workspace exists); any in-page tabs/sticky chrome via the CP.4 primitives (sticky within its scroll container) |
+| BC.1 | #390 ✅ | 🟢 Done | `/get-started` renders standalone outside the shell (pre-workspace, like login; the shell appears once a workspace exists); any in-page tabs/sticky chrome via the CP.4 primitives (sticky within its scroll container) |
 | BC.2–BC.5, BD.1 | rem-based type (CQ.1 tokens); sticky elements stick within the scroll container (CP.4); component/state/a11y standards per spec §3 |
 | BC.6 | #395 | 🟡 Open | Gains shell assertions: chrome fixed while content scrolls, a standalone chrome check (no shell header/sidebar pre-workspace), and a font-scale (125%) render check |
 

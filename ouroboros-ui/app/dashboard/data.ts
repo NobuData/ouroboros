@@ -73,6 +73,7 @@ import { dashboard } from "@/app/api/dashboard";
 import { engine } from "@/app/api/engine";
 import { readReadiness } from "@/app/api/health";
 import { attempt } from "@/app/api/reading";
+import { readGetStartedOffer } from "@/app/get-started/data";
 import { runPullRequests } from "@/app/prs/data";
 
 import { type DashboardReadings, NO_PULL_REQUESTS, completionRunIds } from "./view";
@@ -89,10 +90,11 @@ import { type DashboardReadings, NO_PULL_REQUESTS, completionRunIds } from "./vi
  *   a session that expired between the gate and these calls still reaches the login screen.
  */
 export async function readDashboard(access: Workspace): Promise<DashboardReadings> {
-  const [aggregate, readiness, engineStatus] = await Promise.all([
+  const [aggregate, readiness, engineStatus, getStarted] = await Promise.all([
     attempt(() => dashboard.read()),
     readReadiness(),
     attempt(() => engine.status()),
+    readGetStartedOffer(access.membership.id),
   ]);
 
   // The one read that depends on another: which of the completions card's rows name a pull
@@ -111,6 +113,7 @@ export async function readDashboard(access: Workspace): Promise<DashboardReading
     aggregate,
     readiness,
     engine: engineStatus,
+    getStarted,
     pullRequests,
   };
 }

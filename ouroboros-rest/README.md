@@ -139,6 +139,7 @@ $ curl http://localhost:4000/api/v1
 | `GET PATCH /api/v1/onboarding`                      | [The Get Started wizard](#the-onboarding-wizard-api) (#385) — `?repo=owner/name`; steps derived from subsystem truth, choices stored; any member may dismiss |
 | `POST /api/v1/onboarding/complete-step`             | Complete a step, guarded — `409 onboarding_step_incomplete` with the stated reason unless it is done in reality |
 | `POST /api/v1/onboarding/skip`                      | *I've done this before* — marks the wizard bypassed, answers `/settings`; imports nothing (BD.3, #398) |
+| `GET /api/v1/onboarding/surfacing`                  | The fresh-org rule with no repository named (#390) — `{offer, reason}`, what the dashboard's *Get started* banner reads; any member |
 | `GET /api/v1/onboarding/detection`                  | [The detection card](#repository-detection) (#384) — the newest scan's rows, evidence, `detected \| measured` label and progress |
 | `GET /api/v1/onboarding/detection/scans/{scanSeq}`  | One earlier scan, as stored — re-scans version by `scan_seq` |
 | `POST /api/v1/onboarding/detection/scan`            | `202` — scan (or join the running scan); debounced 30 s, `409 detection_rescan_too_soon` |
@@ -2714,6 +2715,7 @@ GET   /api/v1/onboarding                  any member — the rail, choices, card
 PATCH /api/v1/onboarding                  template/ticket/issue picks: owner, admin, member · dismiss: any member
 POST  /api/v1/onboarding/complete-step    owner, admin, member — guarded by the derived rail
 POST  /api/v1/onboarding/skip             owner, admin, member — the import-skip
+GET   /api/v1/onboarding/surfacing        any member — the fresh-org rule alone, no repository (#390)
 ```
 
 **Every step is derived on read, never stored** (decision **O1**). `onboarding.derivation.ts`

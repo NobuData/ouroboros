@@ -50,7 +50,7 @@ import {
   type RepositoryRow,
   type TicketRow,
 } from "./onboarding.repository";
-import { surfacing } from "./onboarding.surfacing";
+import { type SurfacingDecision, surfacing } from "./onboarding.surfacing";
 import {
   onboardingResource,
   SETTINGS_PATH,
@@ -98,6 +98,21 @@ export class OnboardingService {
     private readonly onboarding: OnboardingRepository,
     @Inject(OrgPolicyService) private readonly policies: OnboardingPolicies,
   ) {}
+
+  /**
+   * The fresh-org rule alone — whether the app should offer `/get-started` to this workspace
+   * (#390, the dashboard's banner). It is the workspace's, not a repository's, so it is answered
+   * without one: a workspace with no repository mirrored yet is the freshest of all.
+   *
+   * @param organizationId - The workspace.
+   * @returns The decision and the rule that made it — the same one every per-repository read carries.
+   */
+  async surfacing(organizationId: string): Promise<SurfacingDecision> {
+    return surfacing({
+      anyWizardFinished: await this.onboarding.anyWizardFinished(organizationId),
+      hasRuns: await this.onboarding.hasRuns(organizationId),
+    });
+  }
 
   /**
    * The wizard for one repository — derived steps, stored choices, card references and the

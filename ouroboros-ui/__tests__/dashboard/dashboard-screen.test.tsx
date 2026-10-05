@@ -41,6 +41,7 @@ import { membership, sessionUser } from "../helpers/login";
 // and `useRouter()` wants the App Router mounted. Replacing both is what lets the whole screen
 // be rendered here at all — the same reason `__tests__/ui/screens.test.tsx` replaces the login
 // screen's actions. What the switch does with them is `auto-merge-switch.test.tsx`.
+vi.mock("@/app/get-started/actions", () => ({ dismissWizard: vi.fn() }));
 vi.mock("@/app/dashboard/pulse-actions", () => ({ setAutoMerge: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
@@ -176,6 +177,23 @@ describe("the page head", () => {
     render(<DashboardScreen readings={readings()} />);
 
     expect(screen.getByRole("main")).toBeInTheDocument();
+  });
+});
+
+describe("the Get Started banner (#390)", () => {
+  it("offers the wizard under the head while the fresh-org rule does", () => {
+    render(<DashboardScreen readings={readings({ getStarted: { repo: "acme-robotics/helios-firmware" } })} />);
+
+    expect(screen.getByRole("link", { name: "Get started →" })).toHaveAttribute(
+      "href",
+      "/get-started?repo=acme-robotics%2Fhelios-firmware",
+    );
+  });
+
+  it("draws nothing once the rule stops offering it", () => {
+    render(<DashboardScreen readings={readings({ getStarted: null })} />);
+
+    expect(screen.queryByRole("region", { name: "Get started" })).toBeNull();
   });
 });
 

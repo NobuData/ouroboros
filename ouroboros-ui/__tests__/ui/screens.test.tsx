@@ -23,6 +23,7 @@ vi.mock("@/app/login/actions", () => ({
 // action module sits on the server-only client and whose `useRouter()` wants the App Router
 // mounted. What the switch does with either is `__tests__/dashboard/auto-merge-switch.test.tsx`.
 vi.mock("@/app/dashboard/pulse-actions", () => ({ setAutoMerge: vi.fn() }));
+vi.mock("@/app/get-started/actions", () => ({ dismissWizard: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const { LoginScreen } = await import("@/app/login/login-screen");

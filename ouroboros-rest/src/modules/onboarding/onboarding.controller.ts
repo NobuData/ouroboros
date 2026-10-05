@@ -46,6 +46,7 @@ import { SmartDefaultsService } from "./defaults.service";
 import type { LaunchReceiptResource } from "./launch.resources";
 import { FirstRunLauncherService } from "./launch.service";
 import { OnboardingService } from "./onboarding.service";
+import type { SurfacingDecision } from "./onboarding.surfacing";
 import type { OnboardingResource, OnboardingSkipResource } from "./resources";
 import type { TemplateSelectionResource, TemplateTilesResource } from "./templates.resources";
 import { TemplateInstantiationService } from "./templates.service";
@@ -73,6 +74,18 @@ export class OnboardingController {
     @Query() query: OnboardingRepoQuery,
   ): Promise<OnboardingResource> {
     return this.onboarding.read(tenant.id, query.repo);
+  }
+
+  /**
+   * Whether the app should offer `/get-started` to this workspace — the fresh-org rule, with no
+   * repository named (#390). Any member, viewers included.
+   *
+   * @param tenant - The workspace.
+   * @returns The decision and its reason.
+   */
+  @Get("surfacing")
+  surfacing(@CurrentTenant() tenant: Organization): Promise<SurfacingDecision> {
+    return this.onboarding.surfacing(tenant.id);
   }
 
   /**
