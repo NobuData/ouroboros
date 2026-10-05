@@ -131,6 +131,9 @@ $ curl http://localhost:4000/api/v1
 | `POST DELETE /api/v1/settings/members/invitations…` | Invite, resend (`…/{id}/resend`) and revoke through the organization plugin; `owner`/`admin`; audited `member.invited \| invitation_resent \| invitation_revoked` |
 | `PATCH DELETE /api/v1/settings/members/{memberId}`  | Role and/or `canApproveLoops`; remove. The last owner is `409 owner_protected` (audited); `owner`/`admin` |
 | `GET POST /api/v1/settings/service-accounts`       | List (tokens masked) and create (token shown once); `/{id}/rotate` and `/{id}/revoke`; `owner`/`admin`; audited `service_account.*` |
+| `GET /api/v1/settings/audit`                       | [The audit log](#the-audit-log) (#486) — keyset-paged events filtered by time, actor kind, person, service, plane/action and reference; each with its composed `actor` and `event`; `owner`/`admin` |
+| `GET /api/v1/settings/audit/today`                 | The Audit Log card's `time · actor · event` lines for today in `?tz=`, and `retainedDays`; `owner`/`admin` |
+| `GET /api/v1/settings/audit/export.csv`            | The filtered view as a streamed CSV over a required range of at most 366 days; audited `audit.exported` before the first byte; `owner`/`admin` |
 | `GET POST /api/v1/settings/webhooks`               | [Outbound webhooks](#outbound-webhooks) (#487) — endpoints with health, counted `activeCount`, derived `siem` row and the event registry; create answers with the signing secret once; `owner`/`admin` |
 | `GET PATCH DELETE /api/v1/settings/webhooks/{id}…` | Read, edit/enable/disable, delete; `/rotate-secret` (secret once), `/ping` (a logged test delivery), `/deliveries?status=` (the log; `dead_lettered` is the DLQ), `/deliveries/{deliveryId}/redeliver`; `owner`/`admin`; audited `webhook.*` |
 | `GET PATCH /api/v1/onboarding`                      | [The Get Started wizard](#the-onboarding-wizard-api) (#385) — `?repo=owner/name`; steps derived from subsystem truth, choices stored; any member may dismiss |
@@ -4296,7 +4299,7 @@ PATCH /api/v1/settings/retention   owner/admin · { loopDays } or { classes } ·
 | `transcripts` | 30 d | 7–365 | `runs/transcript.retention.ts` — a finished run's whole transcript, via V101's `run_events_sweep()`; the run keeps `events_swept_at` |
 | `build_logs` | 30 d | 7–365 | `farm/logs/log.retention.ts` — a finished job's whole log ([build logs](#build-logs)) |
 | `artifacts` | `OURO_ARTIFACT_RETENTION_DAYS` (30) | 7–365 | `test-results-read/artifact.retention.ts` — bytes deleted, row tombstoned |
-| `audit` | 400 d | 90–3650 | the audit purge, BR.2 ([#486](https://github.com/NobuData/ouroboros/issues/486)) — `cutoffs("audit")` is ready for it |
+| `audit` | 400 d | 90–3650 | `audit-plane/audit-purge.sweeper.ts` — [the audit purge](#the-audit-log) ([#486](https://github.com/NobuData/ouroboros/issues/486)), via V102's `audit_events_purge()`; referenced events held and counted, `audit.purged` per workspace |
 | `custom:<slug>` | 30 d | 7–3650 | whichever plane adds the class; stored without a schema change |
 
 - **The defaults reproduce the old sweeps**, so a workspace with no stored tier is swept exactly as
@@ -4315,6 +4318,44 @@ PATCH /api/v1/settings/retention   owner/admin · { loopDays } or { classes } ·
   `nextSweepAt` and `lastSweep` (this process's view).
 - Every changed class writes one `workspace.retention_changed` audit event (`dataClass`,
   `previousDays`, `previousSource`, `days`, actor) — webhook registry version 4.
+
+## The audit log
+
+**The log every plane writes, made readable** ([#486](https://github.com/NobuData/ouroboros/issues/486),
+BR.2 — the surface [#26](https://github.com/NobuData/ouroboros/issues/26) deferred).
+`src/modules/audit-plane/`; the trail's writer stays `src/modules/audit/`.
+
+```
+GET /api/v1/settings/audit             owner/admin · filters · ?cursor= keyset pages · limit ≤ 200
+GET /api/v1/settings/audit/today       owner/admin · ?tz= · the card's lines + retainedDays
+GET /api/v1/settings/audit/export.csv  owner/admin · from & to required (≤ 366 d) · streamed · audited
+```
+
+- **Filters hit indexed columns, never rendered text.** `from`/`to`, `actorKind`
+  (`human | bot | service | system`), `actorId`, `actorService`, `action` (`policy.*` or
+  `policy.published`) and `ref` (`pr:509`, `run:<id>`, `repo:<ref>`, `key:<id>`, `subject:<id>`).
+  Each has a V102 index that leads with the workspace and ends in the page order, and
+  `audit-plane.integration-spec.ts` asserts the plans with `EXPLAIN` over a 20,000-row-per-workspace
+  history.
+- **Keyset, not offset.** `nextCursor` is the last row's `(occurred_at, id)` with
+  `occurred_at` as PostgreSQL's microsecond text, so events that arrive mid-scroll neither duplicate
+  nor skip a row.
+- **Typed events, composed sentences.** `actor_kind` is stored on every row (an erased person stays
+  `human`); `audit-plane.sentences.ts` composes `rotated Anthropic API key` from
+  `provider.rotated {kind}`, and any action without a template reads from its name. No writer
+  stores a line — `policy.published` records `changes: "auto_merge:enabled"`, not a sentence.
+- **The export is audited before its first byte** — `audit.exported` with the range (its end clamped
+  to the request), the filters, the row count and the actor — then streams one keyset batch at a
+  time (`AUDIT_EXPORT_BATCH`, 500) with backpressure. A failure to record refuses the export. The
+  CSV's columns are append-only and its cells are formula-neutralised; content equals the list's.
+- **The purge** runs hourly (jittered): `RetentionPolicyService.cutoffs("audit")` per workspace,
+  refused below the 90-day floor here and again in the database, batches of 1,000 (at most 20 per
+  workspace a tick), and an `audit.purged` row per workspace with `cutoff`, `days`, `removed` and
+  `held` — events `analysis_suggestions`/`analysis_suggestion_applications` still reference are
+  kept and counted, never silently.
+- **Fan-out is BR.3's.** Every row — `audit.exported` and `audit.purged` included — is published as
+  `audit.<action>` in its own insert's transaction (webhook registry version 6), so *Stream to SIEM*
+  is an `audit.*` endpoint.
 
 ## Workspace lifecycle
 

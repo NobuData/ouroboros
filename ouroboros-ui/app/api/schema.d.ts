@@ -2158,9 +2158,10 @@ export interface paths {
          *     select's value: the tier the three loop classes share, or `null` once they differ.
          *
          *     **Saving deletes nothing.** A change moves the *next* sweep's cutoff for that class only.
-         *     `nextSweepAt` says when that is (`null` for a class nothing sweeps yet — audit, until the
-         *     audit purge, BR.2), and `lastSweep.removed` how many rows or objects that class's last
-         *     sweep removed.
+         *     `nextSweepAt` says when that is (`null` for a class nothing sweeps in this process — a
+         *     `custom:*` class), and `lastSweep.removed` how many rows or objects that class's last sweep
+         *     removed — for `audit`, the events the audit purge
+         *     ([#486](https://github.com/NobuData/ouroboros/issues/486)) removed.
          *
          *     **Any member may read it**; it is `editable` for `owner` and `admin` and `reason: role`
          *     for everyone else.
@@ -2191,6 +2192,100 @@ export interface paths {
          *     **`owner` or `admin`, and nobody else.**
          */
         patch: operations["patchRetentionSettings"];
+        trace?: never;
+    };
+    "/api/v1/settings/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Query the audit log
+         * @description The workspace's audit log, newest first, keyset-paged and filtered
+         *     ([#486](https://github.com/NobuData/ouroboros/issues/486), BR.2 — the surface #26 deferred).
+         *     Every plane writes the AD.4 event shape; this is the reading half.
+         *
+         *     **Filters run on indexed columns, never on rendered text**: a time range (`from` inclusive,
+         *     `to` exclusive), `actorKind`, one person (`actorId`), one service account or the bot
+         *     (`actorService`), a plane (`action=policy.*`) or one action (`action=policy.published`),
+         *     and a reference (`ref=pr:509`, `run:<id>`, `repo:<ref>`, `key:<id>`, `subject:<id>`). They
+         *     combine with *and*.
+         *
+         *     **Keyset pagination.** Follow `nextCursor` until it is `null`. A cursor is the last row's
+         *     exact position, so events that arrive mid-scroll appear before page one and never
+         *     duplicate or skip a row on the pages after it.
+         *
+         *     Each event carries the trail's own fields plus `plane`, and `actor` and `event` —
+         *     the line composed from the event's typed facts (`rotated Anthropic API key`). No writer
+         *     stores a sentence. Owners and admins only.
+         */
+        get: operations["listAuditLog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/audit/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The audit card's today view
+         * @description Mockup 17's **Audit Log** card: today's newest events as `time · actor · event` lines,
+         *     composed from typed events, and the footer's `retained 400d` (the workspace's `audit`
+         *     retention tier). *Today* starts at local midnight in `tz` (UTC by default), and each
+         *     `time` is `HH:MM` in that zone. `actorKind` lets the card style bots and the system.
+         *     Owners and admins only.
+         */
+        get: operations["readAuditToday"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/audit/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export the audit log as CSV
+         * @description The filtered view over a **bounded range**, streamed as CSV. `from` and `to` are required
+         *     and at most **366 days** apart; a longer history is several exports. `to` is clamped to
+         *     the moment of the request. The content equals the filtered view of `GET
+         *     /api/v1/settings/audit` row for row, newest first.
+         *
+         *     **Exporting is itself audited, before the first byte.** The export counts its rows and
+         *     writes `audit.exported` — the range, the filters, the row count, and you as the actor —
+         *     and only then streams. If that record cannot be written, nothing is exported. The row
+         *     also fans out to `audit.*` webhook endpoints (`audit.audit.exported`).
+         *
+         *     **Columns, in order, append only:** `occurred_at, actor_kind, actor, actor_id,
+         *     actor_service, event, action, plane, subject_type, subject_id, ip, detail, id` — RFC 4180,
+         *     CRLF line ends, `detail` as JSON. A cell a spreadsheet would read as a formula (`=`, `+`,
+         *     `-`, `@`) is prefixed with `'`. `X-Ouro-Export-Rows` carries the row count. Owners and
+         *     admins only.
+         */
+        get: operations["exportAuditLog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/settings/members": {
@@ -16017,7 +16112,14 @@ export interface components {
             /** @example auto_merge */
             ruleId: string;
             classification: components["schemas"]["OrgPolicyChangeClass"];
-            /** @description The change as the audit line says it — `enabled auto-merge`. */
+            /**
+             * @description What happened to the rule — the typed fact the audit log's line is composed from
+             *     ([#486](https://github.com/NobuData/ouroboros/issues/486)).
+             * @example enabled
+             * @enum {string}
+             */
+            verb: "enabled" | "disabled" | "changed" | "removed";
+            /** @description The change as the dialog and the audit line say it — `enabled auto-merge`. */
             summary: string;
         };
         /** OrgPolicyPreviewRequest */
@@ -19348,14 +19450,7 @@ export interface components {
              * @example Ken Suenobu
              */
             actorName: string | null;
-            /**
-             * @description Who it is attributed to ([#485](https://github.com/NobuData/ouroboros/issues/485)):
-             *     `user` when a person is named, `service` when a service account's token authenticated
-             *     the request, `system` when neither — so the audit plane can style and filter bot rows.
-             * @example user
-             * @enum {string}
-             */
-            actorKind: "user" | "service" | "system";
+            actorKind: components["schemas"]["AuditActorKind"];
             /**
              * @description The service account's name when `actorKind` is `service` — rendered `service:<name>`.
              * @example devops-bot
@@ -19383,6 +19478,116 @@ export interface components {
              */
             ip: string | null;
             detail: components["schemas"]["AuditEventDetail"];
+        };
+        /**
+         * AuditActorKind
+         * @description What kind of actor an event is attributed to — stored on every row (V102,
+         *     [#486](https://github.com/NobuData/ouroboros/issues/486)): `human` for a person (still
+         *     `human` after the person is deleted and the attribution erased), `bot` for the GitHub App
+         *     (`ouroboros-app`), `service` for a service account
+         *     ([#485](https://github.com/NobuData/ouroboros/issues/485)), `system` for nobody.
+         * @example human
+         * @enum {string}
+         */
+        AuditActorKind: "human" | "bot" | "service" | "system";
+        /**
+         * AuditPlaneEvent
+         * @description One event of the audit log — the trail's fields, its plane, and the line composed from its
+         *     typed facts ([#486](https://github.com/NobuData/ouroboros/issues/486)).
+         */
+        AuditPlaneEvent: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            occurredAt: string;
+            /** @description The person, or `null` — nobody, or a person since deleted. */
+            actorId: string | null;
+            /** @description Their name — never an address — or `null`. */
+            actorName: string | null;
+            actorKind: components["schemas"]["AuditActorKind"];
+            /** @description The service account or bot name, when one is the actor. */
+            actorService: string | null;
+            /**
+             * @description What happened, `family.event`. Any action a plane writes — including ones written by
+             *     database triggers — so this is a grammar, not a closed list.
+             * @example provider.rotated
+             */
+            action: string;
+            /**
+             * @description The action's family — `provider`.
+             * @example provider
+             */
+            plane: string;
+            /** @example provider_connection */
+            subjectType: string;
+            subjectId: string | null;
+            ip: string | null;
+            detail: components["schemas"]["AuditEventDetail"];
+            /**
+             * @description Who, as the card prints it — a person's first name, `ouroboros-app[bot]`,
+             *     `service:<name>`, `system`, or `former member` for an erased person.
+             * @example Ken
+             */
+            actor: string;
+            /**
+             * @description What happened, composed from the event's typed facts — never stored.
+             * @example rotated Anthropic API key
+             */
+            event: string;
+        };
+        /**
+         * AuditPlanePage
+         * @description One keyset page of the audit log, newest first.
+         */
+        AuditPlanePage: {
+            items: components["schemas"]["AuditPlaneEvent"][];
+            /** @description The next page's cursor, or `null` on the last page. */
+            nextCursor: string | null;
+            limit: number;
+        };
+        /**
+         * AuditTodayRow
+         * @description One line of the audit card — `14:31 · ouroboros-app[bot] · pushed PR
+         */
+        AuditTodayRow: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            occurredAt: string;
+            /**
+             * @description `HH:MM`, 24-hour, in the view's zone.
+             * @example 14:31
+             */
+            time: string;
+            actorKind: components["schemas"]["AuditActorKind"];
+            /** @example ouroboros-app[bot] */
+            actor: string;
+            /** @example pushed PR #514 rev 2 */
+            event: string;
+        };
+        /**
+         * AuditToday
+         * @description The audit card's today view, and its retention footer.
+         */
+        AuditToday: {
+            /**
+             * @description The IANA zone today and each line's time were taken in.
+             * @example UTC
+             */
+            timeZone: string;
+            /**
+             * Format: date-time
+             * @description Local midnight in that zone — where today starts.
+             */
+            since: string;
+            rows: components["schemas"]["AuditTodayRow"][];
+            /** @description Whether today has more events than `rows` holds. */
+            more: boolean;
+            /**
+             * @description The workspace's `audit` retention tier — the footer's `retained 400d`.
+             * @example 400
+             */
+            retainedDays: number;
         };
         /**
          * AuditEventPage
@@ -25851,6 +26056,24 @@ export interface components {
     };
     responses: never;
     parameters: {
+        /** @description Events at or after this instant — ISO-8601 with a zone. */
+        AuditFrom: string;
+        /** @description Events strictly before this instant — ISO-8601 with a zone. */
+        AuditTo: string;
+        /** @description One kind of actor. */
+        AuditActorKind: components["schemas"]["AuditActorKind"];
+        /** @description One person — their user id. */
+        AuditActorId: string;
+        /** @description One service account (`devops-bot`) or the bot (`ouroboros-app`). */
+        AuditActorService: string;
+        /** @description A plane (`policy.*`) or one action (`policy.published`). */
+        AuditActionFilter: string;
+        /**
+         * @description A reference: `pr:<number>` (events whose detail names the PR), `run:<id>` (the run as
+         *     subject, or `detail.run_id`), `repo:<ref>` (the repository as subject, or `detail.repo`),
+         *     `key:<id>` (a provider key — its connection is the subject), or `subject:<id>`.
+         */
+        AuditReference: string;
         /**
          * @description The workspace's id — an `organization` row, and what `GET /api/v1/orgs` returns as
          *     `id`.
@@ -33977,7 +34200,7 @@ export interface operations {
                      *           "ceiling": 3650,
                      *           "updatedAt": "2026-08-04T09:12:00.000Z",
                      *           "updatedBy": "5eed0001-0000-4000-8000-000000000001",
-                     *           "nextSweepAt": null,
+                     *           "nextSweepAt": "2026-10-04T12:58:30.000Z",
                      *           "lastSweep": null
                      *         }
                      *       ]
@@ -34152,7 +34375,7 @@ export interface operations {
                      *           "ceiling": 3650,
                      *           "updatedAt": "2026-08-04T09:12:00.000Z",
                      *           "updatedBy": "5eed0001-0000-4000-8000-000000000001",
-                     *           "nextSweepAt": null,
+                     *           "nextSweepAt": "2026-10-04T12:58:30.000Z",
                      *           "lastSweep": null
                      *         }
                      *       ]
@@ -34235,6 +34458,517 @@ export interface operations {
              * @description `internal_error` — the service itself failed. The message is a constant and
              *     `details` is empty, deliberately.
              */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listAuditLog: {
+        parameters: {
+            query?: {
+                /** @description Events at or after this instant — ISO-8601 with a zone. */
+                from?: components["parameters"]["AuditFrom"];
+                /** @description Events strictly before this instant — ISO-8601 with a zone. */
+                to?: components["parameters"]["AuditTo"];
+                /** @description One kind of actor. */
+                actorKind?: components["parameters"]["AuditActorKind"];
+                /** @description One person — their user id. */
+                actorId?: components["parameters"]["AuditActorId"];
+                /** @description One service account (`devops-bot`) or the bot (`ouroboros-app`). */
+                actorService?: components["parameters"]["AuditActorService"];
+                /** @description A plane (`policy.*`) or one action (`policy.published`). */
+                action?: components["parameters"]["AuditActionFilter"];
+                /**
+                 * @description A reference: `pr:<number>` (events whose detail names the PR), `run:<id>` (the run as
+                 *     subject, or `detail.run_id`), `repo:<ref>` (the repository as subject, or `detail.repo`),
+                 *     `key:<id>` (a provider key — its connection is the subject), or `subject:<id>`.
+                 */
+                ref?: components["parameters"]["AuditReference"];
+                /** @description The previous page's `nextCursor`. Opaque. */
+                cursor?: string;
+                /** @description Page size. */
+                limit?: number;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": [
+                     *         {
+                     *           "id": "5eed0074-0000-4000-8000-000000000002",
+                     *           "occurredAt": "2026-10-05T14:12:00.000Z",
+                     *           "actorId": "5eed0003-0000-4000-8000-000000000001",
+                     *           "actorName": "Ken Suenobu",
+                     *           "actorKind": "human",
+                     *           "actorService": null,
+                     *           "action": "provider.rotated",
+                     *           "plane": "provider",
+                     *           "subjectType": "provider_connection",
+                     *           "subjectId": "5eed000c-0000-4000-8000-000000000001",
+                     *           "ip": "198.51.100.24",
+                     *           "detail": {
+                     *             "kind": "anthropic",
+                     *             "outcome": "success"
+                     *           },
+                     *           "actor": "Ken",
+                     *           "event": "rotated Anthropic API key"
+                     *         }
+                     *       ],
+                     *       "nextCursor": "eyJhdCI6IjIwMjYtMTAtMDVUMTQ6MTI6MDAuMDAwMDAwWiIsImlkIjoiNWVlZDAwNzQtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAyIn0",
+                     *       "limit": 1
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AuditPlanePage"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+             *     the audit log is read by people.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — a malformed filter, cursor or limit. `audit_range_invalid` — `to`
+             *     is not after `from`. `audit_cursor_invalid` — a cursor this service did not issue.
+             *     `audit_reference_invalid` — a `pr:` that names no positive number. `details.fields` is
+             *     keyed by the parameter.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readAuditToday: {
+        parameters: {
+            query?: {
+                /** @description An IANA time zone — `Europe/Berlin`. */
+                tz?: string;
+                /** @description Lines. */
+                limit?: number;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Today's lines. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "timeZone": "UTC",
+                     *       "since": "2026-10-05T00:00:00.000Z",
+                     *       "rows": [
+                     *         {
+                     *           "id": "5eed0074-0000-4000-8000-000000000001",
+                     *           "occurredAt": "2026-10-05T14:31:00.000Z",
+                     *           "time": "14:31",
+                     *           "actorKind": "bot",
+                     *           "actor": "ouroboros-app[bot]",
+                     *           "event": "pushed PR #514 rev 2"
+                     *         },
+                     *         {
+                     *           "id": "5eed0074-0000-4000-8000-000000000002",
+                     *           "occurredAt": "2026-10-05T14:12:00.000Z",
+                     *           "time": "14:12",
+                     *           "actorKind": "human",
+                     *           "actor": "Ken",
+                     *           "event": "rotated Anthropic API key"
+                     *         },
+                     *         {
+                     *           "id": "5eed0074-0000-4000-8000-000000000003",
+                     *           "occurredAt": "2026-10-05T13:48:00.000Z",
+                     *           "time": "13:48",
+                     *           "actorKind": "human",
+                     *           "actor": "Ken",
+                     *           "event": "enabled auto-merge (policy v7)"
+                     *         },
+                     *         {
+                     *           "id": "5eed0074-0000-4000-8000-000000000004",
+                     *           "occurredAt": "2026-10-05T13:22:00.000Z",
+                     *           "time": "13:22",
+                     *           "actorKind": "human",
+                     *           "actor": "Maya",
+                     *           "event": "approved waiver on PR #509"
+                     *         },
+                     *         {
+                     *           "id": "5eed0074-0000-4000-8000-000000000005",
+                     *           "occurredAt": "2026-10-05T12:04:00.000Z",
+                     *           "time": "12:04",
+                     *           "actorKind": "system",
+                     *           "actor": "system",
+                     *           "event": "runner forge-03 marked offline"
+                     *         }
+                     *       ],
+                     *       "more": false,
+                     *       "retainedDays": 400
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AuditToday"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+             *     the audit log is read by people.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `tz` is not an IANA zone, or `limit` is out of range. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    exportAuditLog: {
+        parameters: {
+            query: {
+                /** @description The range's start, inclusive — an ISO-8601 instant. */
+                from: string;
+                /** @description The range's end, exclusive — at most 366 days after `from`. */
+                to: string;
+                /** @description One kind of actor. */
+                actorKind?: components["parameters"]["AuditActorKind"];
+                /** @description One person — their user id. */
+                actorId?: components["parameters"]["AuditActorId"];
+                /** @description One service account (`devops-bot`) or the bot (`ouroboros-app`). */
+                actorService?: components["parameters"]["AuditActorService"];
+                /** @description A plane (`policy.*`) or one action (`policy.published`). */
+                action?: components["parameters"]["AuditActionFilter"];
+                /**
+                 * @description A reference: `pr:<number>` (events whose detail names the PR), `run:<id>` (the run as
+                 *     subject, or `detail.run_id`), `repo:<ref>` (the repository as subject, or `detail.repo`),
+                 *     `key:<id>` (a provider key — its connection is the subject), or `subject:<id>`.
+                 */
+                ref?: components["parameters"]["AuditReference"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The CSV, streamed. */
+            200: {
+                headers: {
+                    /** @description The rows the export carries — the count `audit.exported` recorded. */
+                    "X-Ouro-Export-Rows"?: number;
+                    /** @description `attachment; filename="audit-<from>-<to>.csv"`. */
+                    "Content-Disposition"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example occurred_at,actor_kind,actor,actor_id,actor_service,event,action,plane,subject_type,subject_id,ip,detail,id
+                     *     2026-10-05T14:12:00.000Z,human,Ken,5eed0003-0000-4000-8000-000000000001,,rotated Anthropic API key,provider.rotated,provider,provider_connection,5eed000c-0000-4000-8000-000000000001,198.51.100.24,"{""kind"":""anthropic"",""outcome"":""success""}",5eed0074-0000-4000-8000-000000000002
+                     */
+                    "text/csv": string;
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+             *     the audit log is read by people.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `audit_export_range_required` — `from` or `to` is missing.
+             *     `audit_export_range_too_long` — the range is longer than 366 days. `audit_range_invalid`
+             *     — `to` is not after `from`. `audit_reference_invalid`, or `validation_failed` for a
+             *     malformed filter. `details.fields` is keyed by the parameter.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -37978,6 +38712,7 @@ export interface operations {
                      *         {
                      *           "ruleId": "human_review",
                      *           "classification": "loosening",
+                     *           "verb": "disabled",
                      *           "summary": "disabled human review"
                      *         }
                      *       ],
@@ -48145,7 +48880,7 @@ export interface operations {
                      *           "occurredAt": "2026-08-24T16:13:00.000Z",
                      *           "actorId": "5eed0003-0000-4000-8000-000000000001",
                      *           "actorName": "Ken Suenobu",
-                     *           "actorKind": "user",
+                     *           "actorKind": "human",
                      *           "actorService": null,
                      *           "action": "provider.revealed",
                      *           "subjectType": "provider_connection",

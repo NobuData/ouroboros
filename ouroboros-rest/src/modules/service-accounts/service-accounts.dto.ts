@@ -10,8 +10,10 @@ import {
   IsIn,
   IsString,
   Matches,
+  NotEquals,
 } from "class-validator";
 
+import { BOT_ACTOR_SERVICE } from "../audit/audit.resources";
 import { SERVICE_SCOPES, type ServiceScopeName } from "../auth/service.scopes";
 
 /** V091's `service_accounts_name_grammar`: lower-case, digits and hyphens, 3–40 characters. */
@@ -24,6 +26,10 @@ export class CreateServiceAccountDto {
   @Matches(SERVICE_ACCOUNT_NAME_PATTERN, {
     message:
       "name must be 3–40 lower-case letters, digits or hyphens, starting with a letter and not ending with a hyphen",
+  })
+  // The GitHub App's audit name (#486): an account called this would be read as the bot.
+  @NotEquals(BOT_ACTOR_SERVICE, {
+    message: `name ${BOT_ACTOR_SERVICE} is reserved for the GitHub App`,
   })
   name!: string;
 

@@ -194,12 +194,12 @@ describe("retention tiers", () => {
         ["artifacts", 30],
         ["audit", 400],
       ]);
-      // The three loop sweeps are booked in this process; nothing purges audit until BR.2.
+      // All four sweeps are booked in this process — the audit purge since BR.2 (#486).
       expect(card.classes.map((tier) => tier.nextSweepAt !== null)).toEqual([
         true,
         true,
         true,
-        false,
+        true,
       ]);
 
       await patch(viewer, at, { loopDays: 14 }).expect(403);

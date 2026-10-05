@@ -73,12 +73,15 @@ export class AuditService {
    * @throws Whatever the insert threw. See this file's header on why that is not swallowed.
    */
   async record(event: AuditRecord): Promise<string> {
+    // A service-authenticated request has no person, so its events carry the account instead
+    // (#485). The two are exclusive in the schema; a named person always wins.
+    const actorService = event.actorId === null ? (currentServiceActor() ?? null) : null;
     const row: NewAuditEvent = {
       organization_id: event.organizationId,
       actor_id: event.actorId,
-      // A service-authenticated request has no person, so its events carry the account instead
-      // (#485). The two are exclusive in the schema; a named person always wins.
-      actor_service: event.actorId === null ? (currentServiceActor() ?? null) : null,
+      actor_service: actorService,
+      // Stored (V102, #486), so erasing the person later does not turn this into a system event.
+      actor_kind: actorKindOf({ actor_id: event.actorId, actor_service: actorService }),
       action: event.action,
       subject_type: event.subjectType,
       subject_id: event.subjectId,
@@ -134,7 +137,8 @@ export function auditOutboxEvent(id: string, row: NewAuditEvent, event: AuditRec
     data: {
       id,
       action: event.action,
-      actorKind: actorKindOf({ actor_id: event.actorId, actor_service: actorService }),
+      actorKind:
+        row.actor_kind ?? actorKindOf({ actor_id: event.actorId, actor_service: actorService }),
       actorId: event.actorId,
       actorService,
       subjectType: event.subjectType,

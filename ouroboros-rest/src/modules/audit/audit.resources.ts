@@ -13,7 +13,17 @@
  * so echoing it into every row of every page would be telling a client something it supplied.
  */
 
+import type { AuditActorKind } from "../db/schema";
 import type { AuditEventRow } from "./audit.repository";
+
+export type { AuditActorKind } from "../db/schema";
+
+/**
+ * The bot's `actor_service` — the GitHub App the loop pushes through (V102,
+ * [#486](https://github.com/NobuData/ouroboros/issues/486)). It has no service-account row, and
+ * `service-accounts` refuses the name so no account can be mistaken for it.
+ */
+export const BOT_ACTOR_SERVICE = "ouroboros-app";
 
 /** One event of a workspace's trail. */
 export interface AuditEventResource {
@@ -38,9 +48,10 @@ export interface AuditEventResource {
    */
   actorName: string | null;
   /**
-   * What kind of actor it was (#485), so the audit plane can style and filter bot rows:
-   * `user` when a person is named, `service` when a service account's token authenticated the
-   * request, `system` when neither (a lease grant, a scheduled purge, an erased person).
+   * What kind of actor it was (#485, stored since V102 — #486), so the audit plane can style and
+   * filter bot rows: `human` when a person did it (still `human` after the person is erased),
+   * `bot` for the GitHub App, `service` when a service account's token authenticated the
+   * request, `system` when nobody did (a lease grant, a scheduled purge).
    */
   actorKind: AuditActorKind;
   /** The service account's name when `actorKind` is `service` — rendered `service:<name>`. */
@@ -76,19 +87,19 @@ export interface AuditEventResource {
  *   timestamp in this API uses, because a client that has to know which endpoints send epoch
  *   milliseconds is a client with a date bug waiting in it.
  */
-/** Who an event is attributed to — see {@link AuditEventResource.actorKind}. */
-export type AuditActorKind = "user" | "service" | "system";
-
 /**
- * Classify an event's actor.
+ * Classify an event's actor at write time — the rule V102's `audit_events_derive_actor_kind()`
+ * applies to the SQL writers, kept identical.
  *
- * @param row - The stored event.
- * @returns `user` when a person is named, `service` when a service account is, else `system`.
+ * @param row - The event's attribution.
+ * @returns `human` when a person is named, `bot` for {@link BOT_ACTOR_SERVICE}, `service` for any
+ *   other service account, else `system`.
  */
 export function actorKindOf(
   row: Pick<AuditEventRow, "actor_id" | "actor_service">,
 ): AuditActorKind {
-  if (row.actor_id !== null) return "user";
+  if (row.actor_id !== null) return "human";
+  if (row.actor_service === BOT_ACTOR_SERVICE) return "bot";
   return row.actor_service !== null ? "service" : "system";
 }
 
@@ -98,7 +109,7 @@ export function auditEventResource(row: AuditEventRow): AuditEventResource {
     occurredAt: row.occurred_at.toISOString(),
     actorId: row.actor_id,
     actorName: row.actor_name,
-    actorKind: actorKindOf(row),
+    actorKind: row.actor_kind,
     actorService: row.actor_service,
     action: row.action,
     subjectType: row.subject_type,

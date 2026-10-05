@@ -580,7 +580,7 @@ per-tenant GitHub org/repo enablement.
 | 3.5 | #23 | 🟢 Done | ouroboros-db: [3.5] Dev seed data (repeatable migration) | Deterministic demo tenant/users/orgs for local dev & e2e | mvp, db | N (after 3.3, 3.4) | Y | XS | ouroboros-db |
 | 3.6 | #24 | 🟢 Done | ouroboros-db: [3.6] Migration CI check | PR job: flyway migrate + validate against throwaway PostgreSQL | mvp, db, ci | N (after 3.1, 1.4) | Y | S | ouroboros-db, .github |
 | 3.7 | #25 | 🟡 Open | ouroboros-db: [3.7] Row-level security & least-privilege roles | RLS policies keyed on tenant; separate migration/app DB roles | v2, db | N (after 3.4) | N | L | ouroboros-db, ouroboros-rest |
-| 3.8 | #26 | 🟡 Open | ouroboros-db: [3.8] Audit log table & write path | Append-only `audit_events` per tenant (settings mockup: audit log) | v2, db | N (after 3.3) | N | M | ouroboros-db |
+| 3.8 | #26 ✅ | 🟢 Done | ouroboros-db: [3.8] Audit log table & write path | Append-only `audit_events` per tenant (settings mockup: audit log) | v2, db | N (after 3.3) | N | M | ouroboros-db |
 
 ### Issue 3.1 — ouroboros-db: [3.1] Flyway project scaffold & migration conventions
 
@@ -1033,7 +1033,9 @@ request ─▶ REST resolves tenant ─▶ SET ouro.tenant_id = '…'
 
 ### Issue 3.8 — ouroboros-db: [3.8] Audit log table & write path
 
-> **GitHub issue:** #26 · **Status:** 🟡 Open · **Parent epic:** #3
+> **GitHub issue:** #26 ✅ · **Status:** 🟢 Done · **Parent epic:** #3
+>
+> **Delivered by #486 (BR.2):** the table is V022's (#225) plus `ip`, `actor_service` (V091) and `actor_kind`/`plane` (V102); the surface is `GET /api/v1/settings/audit`, its today view and CSV export; the BRIN is superseded by the per-workspace audit purge.
 
 - **Problem Statement:** Workspace settings (mockup 17) promise an audit log; the
   append-only store should exist before features start emitting events.

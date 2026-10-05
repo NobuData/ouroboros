@@ -419,7 +419,7 @@ seeds: policy v7(+v6) · 5 members (owner/admin/viewer/service/pending) ·
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BR.1 | #485 ✅ | 🟢 Done | ouroboros-rest: [BR.1] Members, capabilities & service accounts | Role mapping, invites, `can_approve_loops`, sealed service tokens | mvp, settings, rest | N (after BA-A.5, AD.1) | Y | L | ouroboros-rest, ouroboros-db |
-| BR.2 | #486 | 🟡 Open | ouroboros-rest: [BR.2] Audit plane — viewer, export & retention | Filterable queries, streamed CSV, 400d tier (delivers #26) | mvp, settings, rest | N (after AD.4 shape, BQ.3) | Y | M | ouroboros-rest |
+| BR.2 | #486 ✅ | 🟢 Done | ouroboros-rest: [BR.2] Audit plane — viewer, export & retention | Filterable queries, streamed CSV, 400d tier (delivers #26) | mvp, settings, rest | N (after AD.4 shape, BQ.3) | Y | M | ouroboros-rest |
 | BR.3 | #487 ✅ | 🟢 Done | ouroboros-rest: [BR.3] Outbound webhooks & SIEM streaming | Endpoint CRUD, signed deliveries, retries+DLQ, audit fan-out | mvp, settings, rest | N (after AD.4, AD.1) | Y | L | ouroboros-rest, ouroboros-db |
 | BR.4 | #488 | 🟡 Open | ouroboros-rest: [BR.4] Integrations status hub & org notification routes | Composed connection truth; org-level routes (weekly report etc.) | mvp, settings, rest | N (after BN.3, BJ.4) | Y | M | ouroboros-rest |
 | BR.5 | #489 ✅ | 🟢 Done | ouroboros-rest: [BR.5] Workspace lifecycle — pause, disconnect, delete | Org states, dispatch gating, recovery window, DEK shred (S9) | mvp, settings, rest | N (after AD.1, AP/AH dispatch) | Y | L | ouroboros-rest |
@@ -459,7 +459,7 @@ service_account devops-bot {scopes: [farm.submit, api.read]} · token orb_svc_�
 
 ### Issue BR.2 — ouroboros-rest: [BR.2] Audit plane — viewer, export & retention
 
-> **GitHub issue:** #486 · **Status:** 🟡 Open · **Parent epic:** #477
+> **GitHub issue:** #486 ✅ · **Status:** 🟢 Done · **Parent epic:** #477
 
 - **Problem Statement:** Every plane writes AD.4-shaped events; #26's
   deferred scope — the queryable, exportable, retained log — lands here
@@ -484,6 +484,39 @@ service_account devops-bot {scopes: [farm.submit, api.read]} · token orb_svc_�
 GET /audit?from&actor=human&q=policy ─▶ rows · GET /audit/export.csv (streamed, audited)
 purge: audit > 400d ─▶ tombstone counts (never silent)
 ```
+
+- **Delivered** (`ouroboros-rest` 0.40.0 `src/modules/audit-plane/`; `ouroboros-db` V102). Four
+  things were decided with the user where the issue and the codebase disagreed.
+  - **Actor kind — decided with the user: stored, and renamed.** `audit_events.actor_kind`
+    (`human | bot | service | system`) is a stored column, backfilled and derived by an insert
+    trigger for the SQL writers, so a person erased by V022's set-null stays `human`. The bot is
+    `actor_service = 'ouroboros-app'` (the GitHub App; service accounts may not take that name).
+    The old `user` value is renamed `human` on every surface — `GET /providers/audit`, the
+    `audit.*` webhook payload and the UI types — a breaking change, hence REST 0.40.0.
+  - **Referenced events — decided with the user: held and reported.** `analysis_suggestions`
+    references `audit_events` with no cascade, so `audit_events_purge()` keeps any event another
+    table references and counts it as `held` beside `removed`.
+  - **The purge is audited — decided with the user.** Each workspace whose purge removed events
+    gets an `audit.purged` row (`cutoff`, `days`, `removed`, `held`, actor `system`), which fans
+    out on `audit.*` like every row; the tick also reports to the log and `RetentionSchedule`.
+  - **#26 — decided with the user: reconciled and closed by this delivery.** Its table is V022's
+    plus `ip`, `actor_service`, `actor_kind` and `plane`; its BRIN is superseded by the
+    per-workspace purge through `audit_events_organization_occurred_at_idx`.
+  - **Routes** (owner/admin): `GET /settings/audit` (filters `from`/`to`, `actorKind`, `actorId`,
+    `actorService`, `action=plane.*|plane.event`, `ref=pr:|run:|repo:|key:|subject:`; keyset
+    `cursor` on microsecond-exact `(occurred_at, id)`), `GET /settings/audit/today` (`?tz=`, the
+    card's `time · actor · event` lines and `retainedDays`), `GET /settings/audit/export.csv`
+    (required range ≤ 366 days, `audit.exported` written before the first byte with range, filters,
+    row count and actor; streamed in 500-row keyset batches; append-only columns; formula cells
+    neutralised).
+  - **Typed events.** Sentences are composed in `audit-plane.sentences.ts`; `policy.published` now
+    records `changes: "auto_merge:enabled"` instead of a pre-written `summary`, and the publish
+    resources gain `verb`. Marketplace events (#792's amendment) arrive with their writer and read
+    from their action name until they get a template.
+  - **Evidence.** EXPLAIN assertions over 20,000 rows per workspace in
+    `audit-plane.integration-spec.ts`; V102's probes in `constraints.sql`, each proven red by
+    `verify-constraint-probes.sh`. Webhook registry version 6 adds `audit.audit.exported` and
+    `audit.audit.purged`.
 
 ### Issue BR.3 — ouroboros-rest: [BR.3] Outbound webhooks & SIEM streaming
 

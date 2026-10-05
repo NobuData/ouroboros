@@ -20,6 +20,10 @@ const SWEEPS = [
     files: ["runs/transcript.retention.ts", "runs/transcript.repository.ts"],
     dataClass: "transcripts",
   },
+  {
+    files: ["audit-plane/audit-purge.sweeper.ts", "audit-plane/audit-purge.repository.ts"],
+    dataClass: "audit",
+  },
 ] as const;
 
 /** What a sweep that derived its own cutoff would contain. */

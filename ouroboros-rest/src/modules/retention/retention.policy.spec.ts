@@ -8,6 +8,7 @@ import {
   isDataClass,
   isLoopDataClass,
   retainedUntil,
+  tierDaysOf,
 } from "./retention.policy";
 
 /**
@@ -78,5 +79,12 @@ describe("the retention policy", () => {
 
     expect(cutoffAt(now, 30)).toEqual(new Date("2026-09-04T12:00:00.000Z"));
     expect(retainedUntil(now, 30)).toEqual(new Date("2026-11-03T12:00:00.000Z"));
+  });
+
+  it("reads a cutoff back as the tier it came from (#486)", () => {
+    const now = new Date("2026-10-04T12:00:00.000Z");
+
+    expect(tierDaysOf(now, cutoffAt(now, 400))).toBe(400);
+    expect(tierDaysOf(now, cutoffAt(now, 89))).toBe(89);
   });
 });

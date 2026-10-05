@@ -9,6 +9,7 @@
  * version 3  audit.decision.snoozed · …snoozed_all · …unsnoozed, and their decision.* types (#464)
  * version 4  audit.workspace.retention_changed (#482)
  * version 5  audit.policy.published (#481)
+ * version 6  audit.audit.exported · audit.audit.purged (#486)
  * ```
  *
  * **Versioned so a subscription never widens by itself.** An endpoint records the registry
@@ -221,6 +222,11 @@ export const WEBHOOK_REGISTRY: readonly WebhookRegistryVersion[] = [
     version: 5,
     // BQ.2 (#481): a new version of the org policy document was published.
     adds: ["audit.policy.published"],
+  },
+  {
+    version: 6,
+    // BR.2 (#486): an audit-log CSV export, and the audit retention purge's per-workspace record.
+    adds: ["audit.audit.exported", "audit.audit.purged"],
   },
 ];
 

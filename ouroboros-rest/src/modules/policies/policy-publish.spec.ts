@@ -6,6 +6,9 @@ import {
   diffPolicies,
   publishSummary,
   ruleName,
+  parseRuleChanges,
+  ruleChangePhrase,
+  ruleChangesFact,
 } from "./policy-publish";
 
 /**
@@ -265,13 +268,24 @@ describe("diffPolicies", () => {
 
     expect(diffPolicies(V7, after)).toEqual({
       changes: [
-        { ruleId: "auto_merge", classification: "tightening", summary: "disabled auto-merge" },
+        {
+          ruleId: "auto_merge",
+          classification: "tightening",
+          verb: "disabled",
+          summary: "disabled auto-merge",
+        },
         {
           ruleId: "dry_run_new_repos",
           classification: "loosening",
+          verb: "changed",
           summary: "changed dry-run for new repos",
         },
-        { ruleId: "custom:freeze", classification: "loosening", summary: "enabled custom:freeze" },
+        {
+          ruleId: "custom:freeze",
+          classification: "loosening",
+          verb: "enabled",
+          summary: "enabled custom:freeze",
+        },
       ],
       classification: "loosening",
     });
@@ -302,7 +316,12 @@ describe("diffPolicies", () => {
     const before = { ...V7, "custom:freeze": { enabled: true, conditions: { label: "freeze" } } };
 
     expect(diffPolicies(before, V7).changes).toEqual([
-      { ruleId: "custom:freeze", classification: "loosening", summary: "removed custom:freeze" },
+      {
+        ruleId: "custom:freeze",
+        classification: "loosening",
+        verb: "removed",
+        summary: "removed custom:freeze",
+      },
     ]);
   });
 
@@ -342,6 +361,32 @@ describe("the audit line", () => {
   it("names rules as the card does", () => {
     expect(ruleName("human_review")).toBe("human review");
     expect(ruleName("custom:freeze")).toBe("custom:freeze");
+  });
+});
+
+describe("the typed changes fact (#486)", () => {
+  it("writes rule:verb pairs the audit plane composes the line from", () => {
+    const before = { ...V7, "custom:freeze": { enabled: true, conditions: { label: "freeze" } } };
+    const diff = diffPolicies(before, edit("auto_merge", { ...V7.auto_merge, enabled: false }));
+
+    expect(ruleChangesFact(diff)).toBe("auto_merge:disabled,custom:freeze:removed");
+  });
+
+  it("reads it back, splitting a custom rule id at its last colon", () => {
+    expect(parseRuleChanges("auto_merge:enabled,custom:freeze:removed")).toEqual([
+      { ruleId: "auto_merge", verb: "enabled" },
+      { ruleId: "custom:freeze", verb: "removed" },
+    ]);
+  });
+
+  it("drops malformed entries and anything that is not text", () => {
+    expect(parseRuleChanges("auto_merge:exploded,:enabled,nocolon")).toEqual([]);
+    expect(parseRuleChanges(7)).toEqual([]);
+    expect(parseRuleChanges("")).toEqual([]);
+  });
+
+  it("phrases a change as the dialog does", () => {
+    expect(ruleChangePhrase("auto_merge", "enabled")).toBe("enabled auto-merge");
   });
 });
 

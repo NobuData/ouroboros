@@ -26,6 +26,12 @@ describe("creating a service account", () => {
     },
   );
 
+  it("refuses the GitHub App's reserved audit name, so no account reads as the bot (#486)", () => {
+    expect(errors({ name: "ouroboros-app", scopes: ["api.read"] })).toEqual([
+      "name ouroboros-app is reserved for the GitHub App",
+    ]);
+  });
+
   it("refuses a scope nobody registered", () => {
     expect(errors({ name: "devops-bot", scopes: ["admin"] })).toEqual([
       "each scope must be one of api.read, farm.submit",

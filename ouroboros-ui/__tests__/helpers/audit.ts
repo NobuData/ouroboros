@@ -48,7 +48,7 @@ export function auditEvent(overrides: Partial<AuditEvent> = {}): AuditEvent {
     occurredAt: "2026-08-21T16:53:00.000Z",
     actorId: FIXTURE_ACTOR,
     actorName: FIXTURE_ACTOR_NAME,
-    actorKind: "user",
+    actorKind: "human",
     actorService: null,
     action: "provider.rotated",
     subjectType: "provider_connection",

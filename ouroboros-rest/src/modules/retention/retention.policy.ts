@@ -179,6 +179,18 @@ export function cutoffAt(now: Date, days: number): Date {
 }
 
 /**
+ * The tier a cutoff was computed from — {@link cutoffAt}'s inverse, in whole days. What a sweep
+ * reports and checks against its class's floor without doing date arithmetic of its own.
+ *
+ * @param now - When the sweep runs — the instant the cutoff was computed at.
+ * @param cutoff - The cutoff.
+ * @returns The days between them, rounded to the nearest whole day.
+ */
+export function tierDaysOf(now: Date, cutoff: Date): number {
+  return Math.round((now.getTime() - cutoff.getTime()) / DAY_MS);
+}
+
+/**
  * When data stored now is promised until — `at + days`, for the columns that record the promise
  * at write time (`build_log_chunks.retain_until`, `test_artifacts.retained_until`).
  *

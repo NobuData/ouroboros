@@ -213,7 +213,7 @@ describe("publishing", () => {
           changed_rules: "auto_merge",
           loosening_rules: "",
           tightening_rules: "auto_merge",
-          summary: "disabled auto-merge (policy v8)",
+          changes: "auto_merge:disabled",
           change_note: "Pausing unattended merges for the release.",
         },
       },
@@ -226,7 +226,7 @@ describe("publishing", () => {
     await service.publish("org", OWNER, { document: V7_DOCUMENT, baseVersion: 7 });
 
     expect(audit.records[0].detail).toMatchObject({
-      summary: "enabled auto-merge (policy v8)",
+      changes: "auto_merge:enabled",
       classification: "loosening",
       loosening_rules: "auto_merge",
     });
@@ -331,7 +331,12 @@ describe("previewing", () => {
       baseVersion: 7,
       classification: "loosening",
       changes: [
-        { ruleId: "human_review", classification: "loosening", summary: "disabled human review" },
+        {
+          ruleId: "human_review",
+          classification: "loosening",
+          verb: "disabled",
+          summary: "disabled human review",
+        },
       ],
       requiresOwner: true,
       mayPublish: false,
