@@ -213,13 +213,13 @@ describe("an outcome the mockup never drew", () => {
       expect(outcome(0)).not.toHaveClass(`ou-chip--${hue}`);
     }
     expect(cells(0)[4]).toBe("canceled");
-    expect(within(region()).queryByRole("button", { name: "Review →" })).toBeNull();
+    expect(within(region()).queryByRole("link", { name: "Review →" })).toBeNull();
   });
 
   it("offers no inbox control on a failed row, which is not waiting for anybody", () => {
     card({ recentRuns: [closedRun({ status: "failed" })] });
 
-    expect(within(region()).queryByRole("button", { name: "Review →" })).toBeNull();
+    expect(within(region()).queryByRole("link", { name: "Review →" })).toBeNull();
   });
 
   it("draws a run that somehow arrived still running in a hue that suits it", () => {
@@ -233,23 +233,18 @@ describe("an outcome the mockup never drew", () => {
 });
 
 describe("the rows that need a person", () => {
-  it("points them at the inbox, labelled rather than linked", () => {
-    // The criterion is that a `needs human` row links toward the inbox placeholder. The
-    // inbox is mockup 16 and #49 holds its route; neither exists, so the control says what is
-    // missing instead of pointing at a 404 — #49's own first criterion is *no dead nav
-    // links*, and the sidebar answers the same destination the same way.
+  it("links them to the inbox, where the decision is answered (#466)", () => {
     card();
 
-    const review = within(rows()[3]!).getByRole("button", { name: "Review →" });
+    const review = within(rows()[3]!).getByRole("link", { name: "Review →" });
 
-    expect(review).toHaveAttribute("aria-disabled", "true");
-    expect(review.getAttribute("title")).toMatch(/needs-you inbox is not built yet/);
+    expect(review).toHaveAttribute("href", "/inbox");
   });
 
   it("puts the control on no other row", () => {
     card();
 
-    expect(within(region()).getAllByRole("button", { name: "Review →" })).toHaveLength(1);
+    expect(within(region()).getAllByRole("link", { name: "Review →" })).toHaveLength(1);
   });
 });
 
@@ -402,11 +397,13 @@ describe("the row's pull request (#363)", () => {
   }
 
   it("links no row while no pull request is known — the seed's were never mirrored", () => {
-    // A row would otherwise open a page that answers *not found*. The `needs human` row's inbox
-    // is still unbuilt, and the card head's *All issues →* is the head's rather than a row's.
+    // A row would otherwise open a page that answers *not found*. The `needs human` row's
+    // *Review →* goes to the inbox (#466), and the head's *All issues →* is the head's.
     card();
 
-    expect(within(table()).queryAllByRole("link")).toHaveLength(0);
+    expect(within(table()).queryAllByRole("link").map((link) => link.getAttribute("href"))).toEqual([
+      "/inbox",
+    ]);
     expect(rows()[0]!.querySelector(".dash-closed__pair")?.textContent).toBe(
       `#474 → PR${NBSP}#512`,
     );
@@ -423,7 +420,9 @@ describe("the row's pull request (#363)", () => {
       <RecentlyClosedCard aggregate={read(dashboardPayload())} pullRequests={mirrored} />,
     );
 
-    const links = within(table()).getAllByRole("link");
+    const links = within(table())
+      .getAllByRole("link")
+      .filter((link) => link.textContent !== "Review →");
 
     expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
       [`PR${NBSP}#512`, prPath("5eed003a-0000-4000-8000-000000000512", "dashboard")],

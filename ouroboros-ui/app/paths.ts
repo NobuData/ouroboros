@@ -202,6 +202,16 @@ export const ANALYZER_PATH = "/analyzer";
 export const INSIGHTS_PATH = "/insights";
 
 /**
+ * The Needs-You inbox ([#466](https://github.com/NobuData/ouroboros/issues/466)) — mockup 16.
+ *
+ * The sidebar's **Needs You** entry (`app/shell/nav-modules.ts`) names it, so `isActiveRoute`
+ * lights the entry here; the inbound links — the learned-facts card's *Review all →*, the topbar's
+ * needs-you pill and the dashboard's `needs human` rows — point at it too. This retires the
+ * `/inbox` placeholder #49 held for it.
+ */
+export const INBOX_PATH = "/inbox";
+
+/**
  * Knowledge ([#417](https://github.com/NobuData/ouroboros/issues/417)) — mockup 14.
  *
  * Written down here for the reason every route in this file is: the sidebar's registry entry

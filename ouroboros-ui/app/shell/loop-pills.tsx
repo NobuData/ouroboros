@@ -1,6 +1,9 @@
 "use client";
 
+import Link from "next/link";
+
 import { useDashboardSummary } from "@/app/dashboard/summary-store";
+import { INBOX_PATH } from "@/app/paths";
 
 /**
  * The two pills that say what the loop is doing, from real counts
@@ -51,13 +54,12 @@ import { useDashboardSummary } from "@/app/dashboard/summary-store";
  * neither. **What the number counts** — the endpoint's `interventions7d`, which is runs that
  * stopped for a human in the trailing seven days, not a live queue — because *Needs you · 2*
  * beside a two-day-old workspace would otherwise read as two things waiting right now.
- * **Why it does not go anywhere**: the inbox is mockup 16's screen and its placeholder route
- * is [#49](https://github.com/NobuData/ouroboros/issues/49), so linking now would be a link
- * to a `404` — which is precisely what the sidebar's own *Needs You* entry declines to be.
+ * **Where it goes**: the inbox ([#466](https://github.com/NobuData/ouroboros/issues/466)), where
+ * the decisions those runs stopped on are answered — the same destination as the sidebar's own
+ * *Needs You* entry.
  */
 export const NEEDS_YOU_NOTE =
-  "Runs that stopped for a human in the last seven days. The needs-you inbox itself " +
-  "arrives with its own roadmap (mockup 16); its placeholder route is #49.";
+  "Runs that stopped for a human in the last seven days. Open the inbox to answer what is waiting.";
 
 /**
  * The pills.
@@ -82,11 +84,11 @@ export function LoopPills() {
       )}
 
       {needsYou > 0 && (
-        <span className="shell-pill shell-pill--warn" title={NEEDS_YOU_NOTE}>
+        <Link className="shell-pill shell-pill--warn" href={INBOX_PATH} title={NEEDS_YOU_NOTE}>
           <span className="shell-pill__dot shell-pill__dot--warn" aria-hidden />
           Needs you <span aria-hidden>·</span>{" "}
           <span className="shell-pill__count">{needsYou}</span>
-        </span>
+        </Link>
       )}
     </div>
   );

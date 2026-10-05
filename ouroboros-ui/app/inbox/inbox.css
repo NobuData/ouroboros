@@ -1,0 +1,263 @@
+/*
+ * The Needs-You inbox frame (BO.1, #466 — mockup 16).
+ *
+ * Mounted in the shell's content pane: no fixed or sticky chrome of its own, every length a token
+ * or a rem (so the five-step font-size preference scales the page), every hue a token (so both
+ * themes come from `app/tokens.css`). The head is the insights frame's shape; the rows are plain
+ * until BO.2's decision cards replace them.
+ */
+
+.inbox {
+  padding: var(--sp-11) var(--sp-10) var(--sp-12);
+}
+
+.inbox__stale {
+  margin-bottom: var(--sp-8);
+}
+
+.inbox__head {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-8);
+  margin-bottom: var(--sp-10);
+}
+
+/* The floor keeps the composed headline from being squeezed beside the actions. */
+.inbox__headings {
+  flex: 1;
+  min-width: 20rem;
+}
+
+.inbox__title {
+  font-size: var(--t-2xl);
+  letter-spacing: var(--tr-tight);
+  text-wrap: balance;
+  /* The count is live: tabular digits keep `9 decisions` → `10 decisions` from jittering. */
+  font-variant-numeric: tabular-nums;
+}
+
+.inbox__sub {
+  max-width: 64ch;
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-mut);
+  line-height: var(--lh-body);
+}
+
+.inbox__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-6);
+}
+
+/* ---------- the queue, as plain rows ---------- */
+
+.inbox-queue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-10);
+}
+
+.inbox-queue__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.inbox-queue__section--snoozed {
+  color: var(--ink-mut);
+}
+
+.inbox-queue__heading {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.inbox-queue__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inbox-queue__note {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.inbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-5);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+.inbox-row--snoozed {
+  background: var(--surface);
+}
+
+.inbox-row__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.inbox-row__question {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.inbox-row__why {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.inbox-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+}
+
+.inbox-row__ref {
+  font-family: var(--f-mono);
+}
+
+.inbox-row__ref--link {
+  color: var(--accent);
+}
+
+.inbox-row__age {
+  margin-left: auto;
+}
+
+/* ---------- Snooze all's confirmation ---------- */
+
+.inbox-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  padding: var(--sp-8);
+}
+
+.inbox-dialog__warning {
+  margin: 0;
+  color: var(--ink-mut);
+  line-height: var(--lh-body);
+}
+
+.inbox-dialog__refusal {
+  margin: 0;
+  color: var(--err);
+}
+
+.inbox-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-4);
+}
+
+/* ---------- the notification preferences sheet ---------- */
+
+.inbox-prefs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  padding: var(--sp-8);
+}
+
+.inbox-prefs__lead {
+  margin: 0;
+  color: var(--ink-mut);
+  line-height: var(--lh-body);
+}
+
+.inbox-prefs__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.inbox-prefs__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.inbox-prefs__label {
+  color: var(--ink);
+}
+
+.inbox-prefs__note {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+}
+
+.inbox-prefs__time {
+  max-width: 12rem;
+}
+
+.inbox-prefs__mutes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.inbox-prefs__legend {
+  margin-bottom: var(--sp-3);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.inbox-prefs__mute {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+}
+
+.inbox-prefs__error {
+  margin: 0;
+  color: var(--err);
+}
+
+.inbox-prefs__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-4);
+}
+
+.inbox-prefs__saved {
+  color: var(--ok);
+  font-size: var(--t-sm);
+}
+
+@media (max-width: 48rem) {
+  .inbox {
+    padding-inline: var(--sp-6);
+  }
+}

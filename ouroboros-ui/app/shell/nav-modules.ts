@@ -15,6 +15,7 @@ import {
 import {
   BUILD_FARM_PATH,
   DASHBOARD_PATH,
+  INBOX_PATH,
   INSIGHTS_PATH,
   ISSUES_PATH,
   KNOWLEDGE_PATH,
@@ -43,7 +44,7 @@ import { registerNavEntry } from "./nav-registry";
  * the decision.
  *
  * Every destination except the dashboard, Issues, Workflows, Models, Build Farm, Knowledge,
- * Planning, Insights and Settings is a screen that does not exist yet: the placeholder routes are #49 and
+ * Planning, Insights, Needs You and Settings is a screen that does not exist yet: the placeholder routes are #49 and
  * each real screen arrives with its own roadmap issue. Rather than link to a 404, those entries are `"soon"` and render as labelled,
  * non-interactive rows — the design system's honesty rule (§ 3.5): a surface that is not
  * ready is *labelled*, never dead. Each note names the issue that turns the row into a link,
@@ -169,15 +170,16 @@ export const SEEDED_NAV_ENTRIES: readonly NavEntry[] = [
     group: "primary",
     sort: 90,
   },
+  // Live since #466: the inbox frame is built (`app/(app)/inbox/page.tsx`), so the row is a link,
+  // lit on `/inbox` and badged with the snooze-aware count — the amendment the inbox roadmap
+  // recorded on #49 and #78, acted on.
   {
     id: "needs-you",
     label: "Needs You",
-    route: "/inbox",
+    route: INBOX_PATH,
     icon: Inbox,
     group: "secondary",
     sort: 10,
-    status: "soon",
-    soonNote: "The needs-you inbox arrives with its own roadmap (mockup 16).",
     badgeSource: INBOX_BADGE_SOURCE,
   },
   // Live since #141, when the settings section had one built tab and `/settings` redirected to

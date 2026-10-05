@@ -6,6 +6,7 @@ import { useId, useState, useTransition } from "react";
 import type { EnabledRepo } from "@/app/api/enablement";
 import type { Fact, FactList } from "@/app/api/facts";
 import type { Reading } from "@/app/api/reading";
+import { INBOX_PATH } from "@/app/paths";
 import { Button, Card, CardHead, Chip, EmptyState, TextField, cx } from "@/app/ui";
 
 import { AddFact } from "./add-fact";
@@ -25,7 +26,6 @@ import {
   NO_FACTS_TITLE,
   RELEARNED_NOTE,
   REVIEW_ALL,
-  REVIEW_ALL_REASON,
   USED_NOTE,
   VERB_LABEL,
   VIEWER_REASON,
@@ -214,7 +214,7 @@ export function FactsCard({ facts, tickets, repos, readAt, mayDecide, onToast, f
         trailing={
           <span className="knowledge-facts__head-actions">
             {!empty && <AddFact mayDecide={mayDecide} onProposed={proposed} repos={repos} />}
-            <Button reason={REVIEW_ALL_REASON} size="sm" tone="ghost">
+            <Button href={INBOX_PATH} size="sm" tone="ghost">
               {REVIEW_ALL}
             </Button>
           </span>

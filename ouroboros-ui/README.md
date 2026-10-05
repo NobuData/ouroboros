@@ -6956,3 +6956,26 @@ full epic [#5](https://github.com/NobuData/ouroboros/issues/5).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module
 follows and [`../README.md`](../README.md) for the module map.
+
+## Needs-You inbox
+
+`/inbox` ([#466](https://github.com/NobuData/ouroboros/issues/466), BO.1 — mockup 16) mounts in
+the shell content pane; the sidebar's **Needs You** entry is live, lit on this route, and badged
+with the snooze-aware count. Module: [`app/inbox/`](app/inbox/).
+
+- **The head is the service's.** `GET /api/v1/inbox` (BN.4) sends `head.sentence` — count,
+  pluralization, the per-kind estimate, the cold-org omission and the zero state's
+  *No decisions waiting.* — and the page prints it verbatim ([`inbox-head.tsx`](app/inbox/inbox-head.tsx)).
+- **One poll.** Read once on the server ([`data.ts`](app/inbox/data.ts)), then kept fresh through
+  `GET /api/inbox` ([`queue-poll.ts`](app/inbox/queue-poll.ts)); every answer is also published to
+  the sidebar badge, so a snooze moves it at once.
+- **Snooze all 1h** asks first, naming how many and until when, then `POST /api/v1/inbox/snooze-all`
+  ([`snooze-all.tsx`](app/inbox/snooze-all.tsx)); inert at zero and for a viewer.
+- **Notification settings** opens a minimal sheet over `GET`/`PATCH /api/v1/inbox/notifications`
+  (BN.3): digest on/off and its UTC time, instant mail for blocking decisions, per-kind mutes
+  ([`notifications-sheet.tsx`](app/inbox/notifications-sheet.tsx)) — BO.4 (#469) extends it.
+- **Rows until cards.** Below the head, plain read-only rows (severity, question, refs, age) and a
+  snoozed group ([`queue-list.tsx`](app/inbox/queue-list.tsx)); BO.2 (#467) replaces them with the
+  decision cards and BO.5 (#470) owns the snoozed section.
+- The learned-facts card's *Review all →*, the topbar's needs-you pill and the dashboard's
+  `needs human` rows all link here.
