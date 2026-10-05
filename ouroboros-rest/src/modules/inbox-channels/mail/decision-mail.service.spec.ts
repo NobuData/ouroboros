@@ -189,6 +189,7 @@ function item(
     status: "open",
     payload: SEEDED_PAYLOADS[kindId] ?? {},
     refs: [],
+    sourceRef: `test:${kindId}`,
     createdAt: new Date(NOW.getTime() - ageMs),
     snoozedUntil: null,
     snoozedBy: null,

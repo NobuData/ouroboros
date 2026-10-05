@@ -1,9 +1,12 @@
 /**
  * What the action executor answers with (BN.2, [#462](https://github.com/NobuData/ouroboros/issues/462)):
- * the item, the attempt that answered it and the resolution — the card's receipt.
+ * the item, the attempt that answered it, the resolution, and the receipt the card prints (BO.2,
+ * [#467](https://github.com/NobuData/ouroboros/issues/467)).
  */
 
 import type { DecisionChannel } from "../db/schema";
+import { refsOf } from "../decisions/inbox.compose";
+import { actionReceipt, type ActionReceipt } from "./inbox-actions.receipt";
 import type { ActionItem, ActionPerson, ActionResolution } from "./inbox-actions.repository";
 
 /** How an item was answered. */
@@ -31,6 +34,8 @@ export interface ActionResultResource {
   readonly replayed: boolean;
   readonly attempt: { readonly id: string; readonly idempotencyKey: string };
   readonly resolution: ActionResolutionResource;
+  /** What executed, in words, with where to see it — composed from `resolution.outcome`. */
+  readonly receipt: ActionReceipt;
 }
 
 /**
@@ -41,6 +46,8 @@ export interface ActionResultResource {
  * @param idempotencyKey - That attempt's key.
  * @param resolution - The stored resolution.
  * @param replayed - Whether this repeats an earlier answer.
+ * @param binding - The answering action's `handler_binding` — what the receipt is worded by — or
+ *   `undefined` when the pinned kind does not name the action.
  * @returns The resource.
  */
 export function actionResultResource(
@@ -49,6 +56,7 @@ export function actionResultResource(
   idempotencyKey: string,
   resolution: ActionResolution,
   replayed: boolean,
+  binding: string | undefined,
 ): ActionResultResource {
   return {
     itemId: item.id,
@@ -66,5 +74,10 @@ export function actionResultResource(
       outcome: resolution.outcome,
       resolvedAt: resolution.resolvedAt.toISOString(),
     },
+    receipt: actionReceipt(binding, resolution.outcome, {
+      refs: refsOf(item.refs),
+      sourceRef: item.sourceRef,
+      actionId: resolution.actionId,
+    }),
   };
 }

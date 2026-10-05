@@ -6959,9 +6959,10 @@ follows and [`../README.md`](../README.md) for the module map.
 
 ## Needs-You inbox
 
-`/inbox` ([#466](https://github.com/NobuData/ouroboros/issues/466), BO.1 — mockup 16) mounts in
-the shell content pane; the sidebar's **Needs You** entry is live, lit on this route, and badged
-with the snooze-aware count. Module: [`app/inbox/`](app/inbox/).
+`/inbox` ([#466](https://github.com/NobuData/ouroboros/issues/466), BO.1; decision cards
+[#467](https://github.com/NobuData/ouroboros/issues/467), BO.2 — mockup 16) mounts in the shell
+content pane; the sidebar's **Needs You** entry is live, lit on this route, and badged with the
+snooze-aware count. Module: [`app/inbox/`](app/inbox/).
 
 - **The head is the service's.** `GET /api/v1/inbox` (BN.4) sends `head.sentence` — count,
   pluralization, the per-kind estimate, the cold-org omission and the zero state's
@@ -6974,8 +6975,27 @@ with the snooze-aware count. Module: [`app/inbox/`](app/inbox/).
 - **Notification settings** opens a minimal sheet over `GET`/`PATCH /api/v1/inbox/notifications`
   (BN.3): digest on/off and its UTC time, instant mail for blocking decisions, per-kind mutes
   ([`notifications-sheet.tsx`](app/inbox/notifications-sheet.tsx)) — BO.4 (#469) extends it.
-- **Rows until cards.** Below the head, plain read-only rows (severity, question, refs, age) and a
-  snoozed group ([`queue-list.tsx`](app/inbox/queue-list.tsx)); BO.2 (#467) replaces them with the
-  decision cards and BO.5 (#470) owns the snoozed section.
+- **One card, no kinds.** Each asking item is a [`DecisionCard`](app/inbox/decision-card.tsx)
+  drawn from what BN.4 sends for *any* kind: severity (left border, dot, and a word for screen
+  readers), the rendered question, an age that ticks on the page's shared clock, ref tags linked to
+  the `href` the service resolved, the why with its one-token facts in mono, and the declared
+  action row ([`decision-actions.tsx`](app/inbox/decision-actions.tsx)). The few rules about those
+  shapes are pure, in [`card-view.ts`](app/inbox/card-view.ts); none names a kind, an action or a
+  route, and `decision-card.fixture-kind.test.tsx` holds that with a kind the card has never seen.
+- **The action row is the declaration.** Order and style are declared; a link action is an anchor
+  (the first as a button, any later one quiet); an action the reader may not use stays on the card,
+  inert, with the service's reason; every action is described by its declared consequence. A
+  note-taking action opens an inline panel showing that consequence, and its button confirms; a
+  `danger` action confirms in a dialog with the same sentence; everything else answers on one
+  press.
+- **Answering has three ends** ([`use-decision.ts`](app/inbox/use-decision.ts)): the receipt the
+  service composed (`exception granted · resume sent to loop #1844 · Run console →`); *Answered by
+  Priya 10s ago — Approve & merge.* when BN.2's `409` says someone was first (a state, not an
+  alert); and a failure that leaves the card asking with the reason beside its buttons. Each press
+  carries a fresh idempotency key.
+- **Per-item snooze** offers 1 hour, 4 hours or 1 day, then dims the card in place and says when it
+  returns. A card pressed here stays on screen with its receipt after the queue stops listing the
+  item ([`queue-list.tsx`](app/inbox/queue-list.tsx)), and the badge drops with the press
+  (`askingCount`). Items snoozed elsewhere are plain rows until BO.5 (#470).
 - The learned-facts card's *Review all →*, the topbar's needs-you pill and the dashboard's
   `needs human` rows all link here.

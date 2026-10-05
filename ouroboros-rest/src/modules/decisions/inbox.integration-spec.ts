@@ -159,6 +159,14 @@ describe("the Needs-You reads, snooze and policy card, against a migrated databa
       facts: SEEDED_PAYLOADS.resize_review,
       refs: [{ type: "ticket", id: ticket, label: "issue #482" }],
     });
+    // Every link is resolved by the service (#467): the tag's, and the link action's.
+    expect(cold.items[0].refs[0].href).toBe("/issues?q=%23482");
+    expect(
+      cold.items[0].actions.filter((action) => action.navigates).map((action) => action.href),
+    ).toEqual(["/issues?q=%23482"]);
+    expect(
+      cold.items[1].actions.filter((action) => action.navigates).map((action) => action.href),
+    ).toEqual([`/runs/${run}`]);
     // No answers this week: the head claims no time.
     expect(cold.head.sentence).toBe("3 decisions.");
 

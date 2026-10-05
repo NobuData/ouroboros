@@ -29,6 +29,8 @@ export interface InboxItemRow {
   readonly status: DecisionItemStatus;
   readonly payload: Readonly<Record<string, unknown>>;
   readonly refs: unknown;
+  /** Where the item came from — `planning:batch:<uuid>`; a link action may lead there (#467). */
+  readonly sourceRef: string;
   readonly createdAt: Date;
   readonly snoozedUntil: Date | null;
   readonly snoozedBy: string | null;
@@ -76,6 +78,7 @@ const ITEM_COLUMNS = [
   "status",
   "payload",
   "refs",
+  "source_ref",
   "created_at",
   "snoozed_until",
   "snoozed_by",
@@ -96,6 +99,7 @@ function itemOf(row: {
   status: DecisionItemStatus;
   payload: Record<string, unknown>;
   refs: unknown;
+  source_ref: string;
   created_at: Date;
   snoozed_until: Date | null;
   snoozed_by: string | null;
@@ -109,6 +113,7 @@ function itemOf(row: {
     status: row.status,
     payload: row.payload,
     refs: row.refs,
+    sourceRef: row.source_ref,
     createdAt: row.created_at,
     snoozedUntil: row.snoozed_until,
     snoozedBy: row.snoozed_by,

@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { RUN_CHANGES_HASH } from "@/app/paths";
 import type { RunConsole } from "@/app/api/runs";
 import {
   CHANGES_TITLE,
@@ -85,6 +86,9 @@ describe("changes so far", () => {
     const card = drawChanges();
 
     expect(within(card).getByText("3 files")).toBeInTheDocument();
+    // The card is an address: a decision card's path chip and *View diff →* land here (#467).
+    expect(card).toHaveAttribute("id", RUN_CHANGES_HASH);
+    expect(RUN_CHANGES_HASH).toBe("run-changes");
 
     const files = within(within(card).getByRole("region", { name: FILES_LABEL })).getAllByRole("listitem");
     expect(files.map((file) => file.textContent)).toEqual([

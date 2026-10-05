@@ -205,7 +205,7 @@ export class InboxActionsService {
     const claim = await this.claim(item, action, actor, channel, request.idempotencyKey);
 
     if (claim.kind === "replay") {
-      return this.replay(item, claim.attempt);
+      return this.replay(item, kind, claim.attempt);
     }
 
     const context = {
@@ -394,12 +394,17 @@ export class InboxActionsService {
    * Answer a repeated key with what its first attempt did.
    *
    * @param item - The item.
+   * @param kind - Its pinned kind, for the receipt's wording.
    * @param attempt - The earlier attempt.
    * @returns The stored answer.
    * @throws {ConflictError} While the earlier attempt is still running.
    * @throws {DomainError} The earlier attempt's failure, as it was answered.
    */
-  private async replay(item: ActionItem, attempt: ActionAttempt): Promise<ActionResultResource> {
+  private async replay(
+    item: ActionItem,
+    kind: PublishedDecisionKind,
+    attempt: ActionAttempt,
+  ): Promise<ActionResultResource> {
     if (attempt.status === "running") {
       throw decisionActionInProgress(item.id, {
         actionId: attempt.actionId,
@@ -423,7 +428,16 @@ export class InboxActionsService {
       throw new Error(`attempt ${attempt.id} succeeded but item ${item.id} has no resolution`);
     }
 
-    return actionResultResource(item, attempt.id, attempt.idempotencyKey, resolution, true);
+    return actionResultResource(
+      item,
+      attempt.id,
+      attempt.idempotencyKey,
+      resolution,
+      true,
+      // The item may have been answered by a different action than this key's (a policy, another
+      // person): the receipt is worded by the action that actually answered.
+      kind.actions.find((declared) => declared.id === resolution.actionId)?.handler_binding,
+    );
   }
 
   /**
@@ -551,6 +565,13 @@ export class InboxActionsService {
       channel,
     });
 
-    return actionResultResource(item, claim.attemptId, claim.key, resolution, false);
+    return actionResultResource(
+      item,
+      claim.attemptId,
+      claim.key,
+      resolution,
+      false,
+      action.handler_binding,
+    );
   }
 }

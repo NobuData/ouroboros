@@ -93,12 +93,48 @@ describe("formatDuration", () => {
 describe("inboxActions", () => {
   const kind = SHIPPED_KINDS.merge_approval;
 
+  /** The merge card's refs (#460): loop #1830 and PR #504. */
+  const LINKS = {
+    refs: [
+      { type: "run", id: "run-1830", label: "loop #1830" },
+      { type: "pr", id: "pr-504", label: "PR #504" },
+    ] satisfies DecisionRef[],
+    sourceRef: "pr:pr-504:merge_approval",
+  };
+
+  it("gives a link action where it leads, and an answering action nothing (#467)", () => {
+    const actions = inboxActions(
+      resolveActions(kind.actions, { roles: ["owner"], canApproveLoops: true }),
+      LINKS,
+    );
+
+    expect(actions.map((action) => [action.id, action.navigates, action.href])).toEqual([
+      ["approve_merge", false, null],
+      ["open_verification", true, "/prs/pr-504"],
+      ["return_to_loop", false, null],
+    ]);
+  });
+
+  it("leaves a link whose ref the item does not carry without a destination", () => {
+    const actions = inboxActions(
+      resolveActions(kind.actions, { roles: ["owner"], canApproveLoops: true }),
+      { refs: [], sourceRef: "" },
+    );
+
+    expect(actions.find((action) => action.id === "open_verification")).toMatchObject({
+      navigates: true,
+      href: null,
+    });
+  });
+
   it("marks a member's approver action disabled with capability_required, and a viewer's member action role_required", () => {
     const member = inboxActions(
       resolveActions(kind.actions, { roles: ["member"], canApproveLoops: false }),
+      LINKS,
     );
     const viewer = inboxActions(
       resolveActions(kind.actions, { roles: ["viewer"], canApproveLoops: false }),
+      LINKS,
     );
 
     expect(member.find((action) => action.id === "approve_merge")).toMatchObject({
@@ -122,6 +158,7 @@ describe("inboxActions", () => {
   it("keeps the declared order and every field the card renders", () => {
     const actions = inboxActions(
       resolveActions(kind.actions, { roles: ["owner"], canApproveLoops: true }),
+      LINKS,
     );
 
     expect(actions.map((action) => action.id)).toEqual([
