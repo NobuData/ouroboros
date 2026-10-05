@@ -247,6 +247,97 @@
   font-size: var(--t-xs);
 }
 
+/* ---------- the Workspace card (BS.2, #492) ---------- */
+
+/* The mockup's `.col` at its 14px gap: one field under another. */
+.settings-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-7);
+}
+
+/* The domain field and, while it holds an unsaved change, what saving it does. */
+.settings-workspace__domain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/*
+ * The domain's consequence, stated before commit — in the warning hue, because it is the one
+ * change on the card that reaches everybody else's sign-in.
+ */
+.settings-workspace__consequence {
+  margin: 0;
+  color: var(--warn);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* A value the reader cannot change: text where an input would be, the reason under it. */
+.settings-workspace__value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.settings-workspace__mono {
+  font-family: var(--f-mono);
+}
+
+.settings-workspace__link {
+  color: var(--accent);
+}
+
+.settings-workspace__retention {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* Saving deletes nothing; the next sweep applies the tier — said under the select. */
+.settings-workspace__note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.settings-workspace__summary {
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.settings-workspace__classes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  margin-top: var(--sp-5);
+  padding-left: var(--sp-6);
+  border-left: 1px solid var(--line);
+}
+
+/* The mockup's training row sits under a rule: `border-top` and its 13px padding, in tokens. */
+.settings-workspace__training {
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--line);
+}
+
+/* What the last save could not do, on the card it was about. */
+.settings-workspace__refusal {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
 /* ---------- the dirty-state bar ---------- */
 
 /*

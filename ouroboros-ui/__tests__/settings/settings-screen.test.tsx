@@ -21,6 +21,7 @@ import { ThemeProvider } from "@/app/theme-provider";
 
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 import { renderThemed } from "../helpers/theme";
+import { READ_AT, retentionSettings, workspaceSettings } from "../helpers/workspace";
 
 /**
  * The settings hub, rendered (BS.1, [#491](https://github.com/NobuData/ouroboros/issues/491)):
@@ -31,6 +32,8 @@ import { renderThemed } from "../helpers/theme";
 // The dry-run flip's Server Action is never reached: no case confirms one.
 vi.mock("@/app/policies/policy-actions", () => ({ setDryRun: vi.fn() }));
 // The Members card's Server Actions are never reached here: its own suites drive them.
+// The Workspace card's Server Action is never reached here: its own suites drive it.
+vi.mock("@/app/settings/workspace-actions", () => ({ saveWorkspaceCard: vi.fn() }));
 vi.mock("@/app/members/members-actions", () => ({
   inviteMember: vi.fn(),
   resendInvitation: vi.fn(),
@@ -278,6 +281,41 @@ describe("the Appearance section", () => {
     fireEvent.click(step);
 
     expect(document.documentElement).toHaveAttribute(FONT_SCALE_ATTRIBUTE, "150");
+  });
+});
+
+describe("the Workspace section", () => {
+  it("holds the Workspace card when both of its reads succeeded", () => {
+    renderThemed(
+      <SettingsScreen
+        access={settingsAccess(["owner"])}
+        dryRun={READ}
+        readAt={READ_AT}
+        retention={{ ok: true, value: retentionSettings() }}
+        workspace={{ ok: true, value: workspaceSettings() }}
+        workspaceName="acme-robotics"
+      />,
+    );
+
+    expect(within(seat("workspace")).getByLabelText("Workspace name")).toHaveValue("acme-robotics");
+    expect(within(seat("workspace")).queryByText(/arrive/)).toBeNull();
+  });
+
+  it("says which read failed rather than drawing half a card", () => {
+    renderThemed(
+      <SettingsScreen
+        access={settingsAccess(["owner"])}
+        dryRun={READ}
+        retention={{ ok: false, reason: "The service is restarting." }}
+        workspace={{ ok: true, value: workspaceSettings() }}
+        workspaceName="acme-robotics"
+      />,
+    );
+
+    expect(within(seat("workspace")).getByRole("note")).toHaveTextContent(
+      "The retention tiers could not be read, so this card is not drawn. The service is restarting.",
+    );
+    expect(within(seat("workspace")).queryByRole("textbox")).toBeNull();
   });
 });
 

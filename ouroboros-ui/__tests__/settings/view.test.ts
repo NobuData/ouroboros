@@ -76,12 +76,14 @@ describe("the sections", () => {
   it("each say what their card will hold and the issue that builds it — until the card is built", () => {
     for (const section of SETTINGS_SECTIONS) {
       expect(section.title.length, section.id).toBeGreaterThan(0);
-      if (section.id === "appearance" || section.id === "members") continue;
+      if (["appearance", "members", "workspace"].includes(section.id)) continue;
 
       expect(section.arrives, section.id).toMatch(/arrives? (here )?with #49[2-6]\./);
     }
-    // The Appearance and Members cards are built (#491, #493), so their seats announce nothing.
+    // The Appearance, Members and Workspace cards are built (#491, #493, #492), so their seats
+    // announce nothing.
     expect(settingsSection("appearance").arrives).toBeNull();
+    expect(settingsSection("workspace").arrives).toBeNull();
     expect(settingsSection("members").arrives).toBeNull();
   });
 

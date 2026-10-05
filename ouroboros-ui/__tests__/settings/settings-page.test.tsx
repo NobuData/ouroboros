@@ -28,6 +28,8 @@ vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() 
 vi.mock("@/app/settings/data", () => ({ readSettings: (access: unknown) => readSettings(access) }));
 vi.mock("@/app/policies/policy-actions", () => ({ setDryRun: vi.fn() }));
 // The Members card's Server Actions are never reached here: its own suites drive them.
+// The Workspace card's Server Action is never reached here: its own suites drive it.
+vi.mock("@/app/settings/workspace-actions", () => ({ saveWorkspaceCard: vi.fn() }));
 vi.mock("@/app/members/members-actions", () => ({
   inviteMember: vi.fn(),
   resendInvitation: vi.fn(),
