@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BUILD_FARM_PATH,
   DASHBOARD_PATH,
+  INBOX_PATH,
   INSIGHTS_PATH,
   ISSUES_PATH,
   KNOWLEDGE_PATH,
@@ -194,12 +195,11 @@ describe("what the sidebar links to", () => {
   it("links only to routes that exist", () => {
     render(<SidebarNav />);
 
-    // The nine screens that are built: the dashboard (#45), Issues (#115), Workflows (#147),
-    // Models (#200), Build Farm (#256), Knowledge (#417), Planning (#283), Insights (#443) and
-    // Settings (#141, whose `/settings` redirects to its one built tab until #491). Every other
-    // entry is a screen nobody has built, and a link to one would be a 404 in the product's primary
-    // navigation. The count is asserted too, so a tenth link cannot appear without somebody
-    // deciding it should.
+    // The ten screens that are built: the dashboard (#45), Issues (#115), Workflows (#147),
+    // Models (#200), Build Farm (#256), Knowledge (#417), Planning (#283), Insights (#443), Needs
+    // You (#466) and Settings (#141). Every other entry is a screen nobody has built, and a link
+    // to one would be a 404 in the product's primary navigation. The count is asserted too, so an
+    // eleventh link cannot appear without somebody deciding it should.
     const links = screen.getAllByRole("link");
 
     expect(links.map((link) => link.getAttribute("href"))).toEqual([
@@ -211,6 +211,7 @@ describe("what the sidebar links to", () => {
       KNOWLEDGE_PATH,
       PLANNING_PATH,
       INSIGHTS_PATH,
+      INBOX_PATH,
       SETTINGS_PATH,
     ]);
   });

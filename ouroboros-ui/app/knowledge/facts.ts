@@ -24,8 +24,8 @@
  * - **The expired row is the card's best argument**: struck through, with its reason, the use
  *   count snapshotted at expiry, and Re-learn — which makes a **new, linked proposal** and says
  *   so ({@link RELEARNED_NOTE}); the original is never resurrected.
- * - **Review all →** points at the needs-you inbox, which is mockup 16 and not built; the link
- *   is inert with that reason rather than a dead end ({@link REVIEW_ALL_REASON}).
+ * - **Review all →** opens the needs-you inbox ([#466](https://github.com/NobuData/ouroboros/issues/466)),
+ *   where every fact waiting on review is a card beside the rest of the queue.
  *
  * ### Who decides
  *
@@ -49,9 +49,6 @@ import type { TicketLink } from "./view";
 /** The head's link — the mockup's `Review all →`. */
 export const REVIEW_ALL = "Review all →";
 
-/** Why the link is inert: the inbox it leads to is mockup 16, and not built. */
-export const REVIEW_ALL_REASON =
-  "The needs-you inbox arrives with mockup 16; until then, facts are reviewed here, row by row.";
 
 /** The head's add affordance. */
 export const ADD_FACT_LABEL = "+ Add fact";

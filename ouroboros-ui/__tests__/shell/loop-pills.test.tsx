@@ -108,14 +108,11 @@ describe("the needs-you pill", () => {
     expect(NEEDS_YOU_NOTE).toMatch(/seven days/);
   });
 
-  it("is not a link, because the inbox it would link to does not exist", async () => {
+  it("links to the inbox, the sidebar entry's own destination (#466)", async () => {
     await pills(summary());
 
-    // `/inbox` is #49's placeholder and mockup 16's screen. Linking now would be a link to a
-    // 404 — exactly what the sidebar's own *Needs You* entry declines to be — so the note
-    // stands in for the destination until then.
-    expect(screen.queryByRole("link", { name: /Needs you/ })).toBeNull();
-    expect(NEEDS_YOU_NOTE).toContain("#49");
+    expect(screen.getByRole("link", { name: /Needs you/ })).toHaveAttribute("href", "/inbox");
+    expect(NEEDS_YOU_NOTE).not.toContain("#49");
   });
 
   it("wears the warn treatment rather than the live one", async () => {

@@ -16,7 +16,6 @@ import {
   NO_FACTS_TITLE,
   RELEARNED_NOTE,
   REVIEW_ALL,
-  REVIEW_ALL_REASON,
   TICKET_UNRESOLVED,
   USED_NOTE,
   VIEWER_REASON,
@@ -179,14 +178,11 @@ describe("the five rows", () => {
     expect(light).toContain("was used 31×");
   });
 
-  it("keeps Review all → honest: inert, with the inbox named as where it will lead", () => {
+  it("links Review all → to the needs-you inbox (#466)", () => {
     draw();
 
-    const link = screen.getByRole("button", { name: REVIEW_ALL });
-
-    expect(link).toHaveAttribute("aria-disabled", "true");
-    expect(link).toHaveAttribute("title", REVIEW_ALL_REASON);
-    expect(screen.queryByRole("link", { name: REVIEW_ALL })).toBeNull();
+    expect(screen.getByRole("link", { name: REVIEW_ALL })).toHaveAttribute("href", "/inbox");
+    expect(screen.queryByRole("button", { name: REVIEW_ALL })).toBeNull();
   });
 });
 

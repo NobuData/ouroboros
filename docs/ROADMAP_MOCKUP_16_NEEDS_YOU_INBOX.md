@@ -560,7 +560,7 @@ dark-only).
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BO.1 | #466 | 🟡 Open | ouroboros-ui: [BO.1] Inbox route, head & pill wiring | `/inbox`, computed head, snooze-all, lit pill states | mvp, inbox, ui, design | N (after #41, BN.4, BA-D.5) | Y | S | ouroboros-ui |
+| BO.1 | #466 ✅ | 🟢 Done | ouroboros-ui: [BO.1] Inbox route, head & pill wiring | `/inbox`, computed head, snooze-all, lit pill states | mvp, inbox, ui, design | N (after #41, BN.4, BA-D.5) | Y | S | ouroboros-ui |
 | BO.2 | #467 | 🟡 Open | ouroboros-ui: [BO.2] Decision cards | Kind-templated cards: severity, refs, why, action rows | mvp, inbox, ui, design | N (after BO.1, BN.2) | Y | L | ouroboros-ui |
 | BO.3 | #468 | 🟡 Open | ouroboros-ui: [BO.3] Resolved list & empty state | Collapsible resolved rows, auto-accept class, the zero card | mvp, inbox, ui, design | N (after BO.1) | Y | S | ouroboros-ui |
 | BO.4 | #469 | 🟡 Open | ouroboros-ui: [BO.4] Channels & policy cards | Truth-state channel rows + prefs; composed policy rows | mvp, inbox, ui, design | N (after BO.1, BN.3/BN.4) | Y | M | ouroboros-ui |
@@ -568,7 +568,9 @@ dark-only).
 
 ### Issue BO.1 — ouroboros-ui: [BO.1] Inbox route, head & pill wiring
 
-> **GitHub issue:** #466 · **Status:** 🟡 Open · **Parent epic:** #455
+> **GitHub issue:** #466 ✅ · **Status:** 🟢 Done · **Parent epic:** #455
+>
+> **Delivered (#466):** `ouroboros-ui/app/inbox/` and `app/(app)/inbox/page.tsx` (UI 0.131.0): the head prints BN.4's `head.sentence` verbatim (pluralization, cold-org omission and *No decisions waiting.* are REST's), **Snooze all 1h** confirms with the count and wake time then `POST /inbox/snooze-all`, the I.8 poll (`GET /api/inbox`) refreshes head and rows and publishes the count to the sidebar badge, and the **Needs You** entry is a live link. Decided on the ticket: **Notification settings** opens a minimal preferences sheet built here on BN.3's `/inbox/notifications` (digest on/UTC time, instant err/off, mutes) — BO.4 extends it; below the head, **plain read-only queue rows** plus a snoozed group (BO.2's cards and BO.5's snoozed section replace them); **every inert inbox reference went live** — the learned-facts *Review all →* (#419), the topbar needs-you pill, the dashboard's `needs human` rows. #393 is unbuilt and #366 has no inbox link.
 >
 > **Already shipped (#464):** `GET /api/v1/inbox` returns `head.sentence` (render it as given — never recompute the estimate), `items[]` with rendered `question`/`why`/`tags`, `facts`, `refs`, `ageSeconds` and `actions[]` (`allowed`, `disabledReason`), and `snoozed[]`; Snooze all is `POST /api/v1/inbox/snooze-all {minutes: 60}`.
 >

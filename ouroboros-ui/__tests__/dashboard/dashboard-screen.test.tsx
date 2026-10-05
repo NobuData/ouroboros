@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { DashboardScreen } from "@/app/dashboard/dashboard-screen";
-import { ISSUES_PATH, PRS_PATH, RUNS_PATH, WORKFLOWS_PATH, prPath } from "@/app/paths";
+import { INBOX_PATH, ISSUES_PATH, PRS_PATH, RUNS_PATH, WORKFLOWS_PATH, prPath } from "@/app/paths";
 import {
   ACTIVITY_NOT_READ,
   NOT_READ,
@@ -228,9 +228,11 @@ describe("the page head's actions", () => {
     const consoles = hrefs.filter((href) => href?.startsWith(`${RUNS_PATH}/`));
 
     expect(consoles).toHaveLength(SEEDED_RUNS.length);
+    // …and a `needs human` row's *Review →*, since #466 built the inbox it opens.
     expect(hrefs.filter((href) => !consoles.includes(href))).toEqual([
       WORKFLOWS_PATH,
       ISSUES_PATH,
+      INBOX_PATH,
       ISSUES_PATH,
       ISSUES_PATH,
     ]);
