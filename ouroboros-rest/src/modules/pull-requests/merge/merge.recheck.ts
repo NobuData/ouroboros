@@ -32,6 +32,9 @@
  * **Dry-run is asked first, and by the executor** (BA.3, #382): the policy is read uncached at
  * execution, so a plan armed before dry-run turned on is disarmed rather than merged. It is not an
  * input of these pure functions — the executor refuses with {@link refusal} before asking them.
+ * So is the org policy's `auto_merge` rule (BQ.2, #481): an armed plan whose PR the published rule
+ * no longer lets merge unattended — and whose armer is not an owner or admin — is refused
+ * `auto_merge_policy_ineligible` before either half runs.
  *
  * A merge is never attempted on anything but a passing re-check — the executor's only path to the
  * SPI's `mergePR` runs through {@link recheck} returning `ok`.
@@ -45,6 +48,7 @@ import { sameCommit } from "../gates/gate.providers";
 /** Why a re-check refused a merge — the machine-readable half of `disarm_reason`. */
 export type MergeRefusalCode =
   | "dry_run_policy_active"
+  | "auto_merge_policy_ineligible"
   | "head_moved"
   | "gate_red"
   | "gates_pending"
@@ -56,6 +60,7 @@ export type MergeRefusalCode =
 /** Every code, in the order the re-check asks. */
 export const MERGE_REFUSAL_CODES = [
   "dry_run_policy_active",
+  "auto_merge_policy_ineligible",
   "head_moved",
   "gate_red",
   "gates_pending",

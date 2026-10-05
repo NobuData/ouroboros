@@ -162,6 +162,10 @@ const REFUSALS: Readonly<Record<PrMergeRefusalCode, readonly [string, string]>> 
     "Nothing merges while the dry-run policy is active. An owner or admin can turn it off in " +
       "Settings → Policies, then arm again.",
   ],
+  auto_merge_policy_ineligible: [
+    "The org policy keeps this PR from merging unattended",
+    "It no longer meets the auto-merge rule. An owner or admin can merge it, or arm it themselves.",
+  ],
   gate_red: ["A gate went red", "Fix it, or return the PR to the loop, then arm again."],
   head_moved: [
     "The head moved",

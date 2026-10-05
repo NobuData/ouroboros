@@ -26,6 +26,8 @@ import {
 import { TOKEN_IDENTITY } from "./merge.identity";
 import { parseDisarmReason, type RecheckGates } from "./merge.recheck";
 import { ADMIN, MEMBER, MemoryConstraintFailure, MemoryMergeStore } from "./merge.store.fixture";
+import type { PublishedOrgPolicy } from "../../policies/org-policy.document";
+import { snapshotOf } from "../../policies/policy-resolution.service";
 
 /**
  * The merge executor (AX.4, [#360](https://github.com/NobuData/ouroboros/issues/360)) against the
@@ -81,7 +83,15 @@ async function ticks(): Promise<void> {
  * @param options - The host's merger, the ticket's key and whether the PR has a run.
  * @returns Everything a case needs.
  */
-function build(options: { merger?: string; ticketKey?: string | null; dryRun?: boolean } = {}) {
+function build(
+  options: {
+    merger?: string;
+    ticketKey?: string | null;
+    dryRun?: boolean;
+    /** The published org policy (#481) — none unless a case publishes one. */
+    orgPolicy?: PublishedOrgPolicy | null;
+  } = {},
+) {
   const host = new InMemoryPrHost(options.merger === undefined ? {} : { merger: options.merger });
   const issue = host.openIssue();
 
@@ -138,17 +148,37 @@ function build(options: { merger?: string; ticketKey?: string | null; dryRun?: b
       return Promise.resolve(this.active);
     },
   };
+  // The org policy document (#481), through the resolver's snapshot port; a case may publish anew.
+  const orgPolicy = {
+    current: options.orgPolicy ?? null,
+    snapshot(): Promise<ReturnType<typeof snapshotOf>> {
+      return Promise.resolve(snapshotOf(this.current));
+    },
+  };
   const executor = new MergeExecutorService(
     store,
     adapter,
     { matrix: () => Promise.resolve(MATRIX) },
     listeners,
     policy,
+    orgPolicy,
   );
 
   executor.onModuleInit();
 
-  return { host, provider, store, adapter, executor, listeners, pull, issue, synced, policy };
+  return {
+    host,
+    provider,
+    store,
+    adapter,
+    executor,
+    listeners,
+    pull,
+    issue,
+    synced,
+    policy,
+    orgPolicy,
+  };
 }
 
 /**
@@ -1154,5 +1184,258 @@ describe("MergeExecutorService — the dry-run policy (BA.3, #382)", () => {
       dryRun: { active: true },
     });
     expect(store.state.plan?.armed).toBe(false);
+  });
+});
+
+/** Mockup 17's policy v7: auto-merge `effort ≤ M · non-refactor`, a new repo's first 10 loops in dry-run. */
+const POLICY_V7: PublishedOrgPolicy = {
+  version: 7,
+  publishedAt: new Date("2026-10-04T13:48:00Z"),
+  rules: {
+    auto_merge: {
+      enabled: true,
+      conditions: { all: [{ effort_lte: "m" }, { not: { label: "refactor" } }] },
+    },
+    human_review: {
+      enabled: true,
+      conditions: { any: [{ label: "refactor" }, { effort_gte: "l" }] },
+    },
+    dry_run_new_repos: { enabled: true, conditions: { first_n_loops: 10 } },
+  },
+};
+
+describe("MergeExecutorService — the org policy's auto_merge rule (BQ.2, #481)", () => {
+  /** A PR whose workflow auto-merges, past its repository's dry-run loops, under policy v7. */
+  function eligible() {
+    const built = build({ orgPolicy: POLICY_V7 });
+
+    built.store.autoMerge = true;
+    built.store.facts = { ticket: { labels: ["bug"], effort: "s" }, loop: 11 };
+
+    return built;
+  }
+
+  const member = { id: "user-sam", roles: MEMBER };
+
+  it("makes a small non-refactor PR with green gates eligible — a member may arm it and it merges", async () => {
+    const built = eligible();
+    const { store, executor, host, pull } = built;
+
+    built.store.memberRoles.set("user-sam", MEMBER);
+    await expect(executor.arm(ORG, "pr-514", member, "rev-1")).resolves.toMatchObject({
+      armed: true,
+      autoMergePolicy: { eligible: true, ruleId: "auto_merge", version: 7 },
+      dryRun: { active: false, autoMerge: { requested: true, effective: true } },
+    });
+
+    await store.gateEvaluation((state) => {
+      state.gates = GREEN;
+    });
+    await evaluated(built);
+
+    expect(host.ledger().merged).toEqual([pull.number]);
+  });
+
+  it.each([
+    ["the refactor label", { labels: ["bug", "refactor"], effort: "s" as const }],
+    ["effort above M", { labels: ["bug"], effort: "l" as const }],
+  ])(
+    "makes it ineligible with %s — a member's arm is refused, naming the rule and version",
+    async (_why, ticket) => {
+      const built = eligible();
+
+      built.store.facts = { ticket, loop: 11 };
+
+      await expect(built.executor.arm(ORG, "pr-514", member, "rev-1")).rejects.toMatchObject({
+        status: 403,
+        response: {
+          code: "merge_not_policy_eligible",
+          message: expect.stringContaining(
+            "does not meet the auto_merge conditions in policy v7",
+          ) as string,
+          details: { prId: "pr-514", ruleId: "auto_merge", policyVersion: 7 },
+        },
+      });
+      expect(built.store.state.plan?.armed ?? false).toBe(false);
+      expect(await built.executor.plan(ORG, "pr-514")).toMatchObject({
+        autoMergePolicy: { eligible: false, version: 7 },
+        dryRun: { autoMerge: { requested: true, effective: false, overridden: false } },
+      });
+    },
+  );
+
+  it("re-checks at execution: a refactor label added after a member armed it refuses the merge", async () => {
+    const built = eligible();
+    const { store, executor, host } = built;
+
+    store.memberRoles.set("user-sam", MEMBER);
+    await executor.arm(ORG, "pr-514", member, "rev-1");
+
+    store.facts = { ticket: { labels: ["refactor"], effort: "s" }, loop: 11 };
+    await store.gateEvaluation((state) => {
+      state.gates = GREEN;
+    });
+    await evaluated(built);
+
+    expect(host.ledger().merged).toEqual([]);
+    expect(store.state.plan?.armed).toBe(false);
+    expect(parseDisarmReason(store.state.plan?.disarmReason ?? null)).toEqual({
+      code: "auto_merge_policy_ineligible",
+      message: expect.stringContaining("auto_merge conditions in policy v7") as string,
+    });
+  });
+
+  it("re-checks with the version in force at execution — a publish switching auto-merge off stops it", async () => {
+    const built = eligible();
+    const { store, executor, host, orgPolicy } = built;
+
+    store.memberRoles.set("user-sam", MEMBER);
+    await executor.arm(ORG, "pr-514", member, "rev-1");
+
+    orgPolicy.current = {
+      ...POLICY_V7,
+      version: 8,
+      rules: { ...POLICY_V7.rules, auto_merge: { ...POLICY_V7.rules.auto_merge, enabled: false } },
+    };
+    await store.gateEvaluation((state) => {
+      state.gates = GREEN;
+    });
+    await evaluated(built);
+
+    expect(host.ledger().merged).toEqual([]);
+    expect(parseDisarmReason(store.state.plan?.disarmReason ?? null)?.message).toContain(
+      "Auto-merge is off in policy v8.",
+    );
+  });
+
+  it("lets a plan an owner or admin armed merge — they decided for themselves", async () => {
+    const built = eligible();
+    const { store, executor, host, pull } = built;
+
+    store.facts = { ticket: { labels: ["refactor"], effort: "s" }, loop: 11 };
+    store.memberRoles.set("user-ken", ADMIN);
+    await executor.arm(ORG, "pr-514", KEN, "rev-1");
+    await store.gateEvaluation((state) => {
+      state.gates = GREEN;
+    });
+    await evaluated(built);
+
+    expect(host.ledger().merged).toEqual([pull.number]);
+  });
+
+  it("refuses an armed plan whose armer has since left the workspace", async () => {
+    const built = eligible();
+    const { store, executor, host } = built;
+
+    store.memberRoles.set("user-ken", ADMIN);
+    await executor.arm(ORG, "pr-514", KEN, "rev-1");
+    store.memberRoles.delete("user-ken");
+    store.facts = { ticket: { labels: ["refactor"], effort: "s" }, loop: 11 };
+    await store.gateEvaluation((state) => {
+      state.gates = GREEN;
+    });
+    await evaluated(built);
+
+    expect(host.ledger().merged).toEqual([]);
+    expect(parseDisarmReason(store.state.plan?.disarmReason ?? null)?.code).toBe(
+      "auto_merge_policy_ineligible",
+    );
+  });
+
+  it("changes nothing for a workspace that has published no policy", async () => {
+    const built = build();
+
+    built.store.autoMerge = true;
+    built.store.facts = { ticket: { labels: ["refactor"], effort: "xl" }, loop: 1 };
+
+    await expect(built.executor.arm(ORG, "pr-514", member, "rev-1")).resolves.toMatchObject({
+      armed: true,
+      autoMergePolicy: { eligible: true, version: null },
+      dryRun: { active: false, source: null },
+    });
+  });
+
+  it("does not let the rule widen anything — a workflow that does not auto-merge still needs an admin", async () => {
+    const built = eligible();
+
+    built.store.autoMerge = false;
+
+    await expect(built.executor.arm(ORG, "pr-514", member, "rev-1")).rejects.toMatchObject({
+      response: { code: "merge_not_policy_eligible", details: { prId: "pr-514" } },
+    });
+  });
+});
+
+describe("MergeExecutorService — dry-run for a new repository's first loops (BQ.2, #481)", () => {
+  it("refuses arming a PR inside its repository's first 10 loops, naming the rule — the switch is off", async () => {
+    const built = build({ orgPolicy: POLICY_V7 });
+
+    built.store.facts = { ticket: { labels: [], effort: "s" }, loop: 3 };
+
+    await expect(built.executor.arm(ORG, "pr-514", KEN, "rev-1")).rejects.toMatchObject({
+      status: 409,
+      response: {
+        code: "dry_run_policy_active",
+        message: expect.stringContaining(
+          "Loop 3 of this repository is inside the first 10",
+        ) as string,
+        details: { source: "dry_run_new_repos", policyVersion: 7 },
+      },
+    });
+    expect(await built.executor.plan(ORG, "pr-514")).toMatchObject({
+      dryRun: { active: true, source: "dry_run_new_repos", policyVersion: 7 },
+    });
+  });
+
+  it("lets the 11th loop merge", async () => {
+    const built = build({ orgPolicy: POLICY_V7 });
+
+    built.store.facts = { ticket: { labels: [], effort: "s" }, loop: 11 };
+    built.store.state.gates = GREEN;
+
+    await expect(built.executor.merge(ORG, "pr-514", KEN)).resolves.toMatchObject({
+      plan: { dryRun: { active: false, source: null } },
+    });
+    expect(built.host.ledger().merged).toEqual([built.pull.number]);
+  });
+
+  it("keeps the org-wide switch the stricter override — the 11th loop is refused while it is on", async () => {
+    const built = build({ orgPolicy: POLICY_V7, dryRun: true });
+
+    built.store.facts = { ticket: { labels: [], effort: "s" }, loop: 11 };
+
+    await expect(built.executor.arm(ORG, "pr-514", KEN, "rev-1")).rejects.toMatchObject({
+      response: {
+        code: "dry_run_policy_active",
+        details: { source: "org_override", policyVersion: null },
+      },
+    });
+  });
+
+  it("disarms at execution a plan whose repository count says dry-run — read with the uncached policy", async () => {
+    const built = build({ orgPolicy: POLICY_V7 });
+    const { store, executor, host } = built;
+
+    store.facts = { ticket: { labels: [], effort: "s" }, loop: 11 };
+    await executor.arm(ORG, "pr-514", KEN, "rev-1");
+
+    built.orgPolicy.current = {
+      ...POLICY_V7,
+      version: 8,
+      rules: {
+        ...POLICY_V7.rules,
+        dry_run_new_repos: { enabled: true, conditions: { first_n_loops: 20 } },
+      },
+    };
+    await store.gateEvaluation((state) => {
+      state.gates = GREEN;
+    });
+    await evaluated(built);
+
+    expect(host.ledger().merged).toEqual([]);
+    expect(parseDisarmReason(store.state.plan?.disarmReason ?? null)).toEqual({
+      code: "dry_run_policy_active",
+      message: expect.stringContaining("policy v8") as string,
+    });
   });
 });

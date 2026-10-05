@@ -51,6 +51,11 @@ import {
 } from "../insights/calibration.observer";
 import { OrgPolicyService, type DryRunPolicyReader } from "../policies/org-policy.service";
 import { draftFor } from "../policies/org-policy.rules";
+import { effectiveDryRun } from "../policies/policy-resolution";
+import {
+  PolicyResolutionService,
+  type PolicySnapshotSource,
+} from "../policies/policy-resolution.service";
 import type {
   CreatePrInput,
   MergePrInput,
@@ -120,15 +125,22 @@ export class PrSyncService {
     private readonly calibration?: CalibrationMergeObserver,
     @Optional() @Inject(FARM_MERGE_OBSERVER) private readonly farm?: FarmMergeObserver,
     @Optional() private readonly decisions?: DecisionSourceWatcher,
+    @Optional() @Inject(PolicyResolutionService) private readonly resolver?: PolicyLoopSource,
   ) {}
 
   /**
    * Open a PR on the source's host — a **draft** while the dry-run policy is active, regardless of
    * what the caller asked (BA.3, #382).
    *
+   * **Since BQ.2** (#481) dry-run is asked for the PR's repository: the org-wide switch is the
+   * stricter override, and otherwise the org policy's `dry_run_new_repos` keeps a repository's
+   * first N loops drafts — this PR being loop *(PRs already opened there) + 1*. A caller that does
+   * not name the repository gets the stricter answer while the rule is on.
+   *
    * @param organizationId - The workspace asking.
    * @param sourceId - The git-host source to open it on.
    * @param input - The branches, title, description and the caller's draft wish.
+   * @param githubRepoId - The repository the PR is opened on (`github_repos.id`), when known.
    * @returns The PR — the open one already proposing this branch into this base when there is one
    *   (which keeps its own draft state) — or null when the provider does not open PRs.
    * @throws {NotFoundError} `pr_source_not_found` for a source the workspace does not have.
@@ -139,13 +151,40 @@ export class PrSyncService {
     organizationId: string,
     sourceId: string,
     input: CreatePrInput,
+    githubRepoId: string | null = null,
   ): Promise<PrRef | null> {
-    const dryRun = this.policy === undefined ? true : await this.policy.dryRunNow(organizationId);
-    const draft = draftFor(input.draft, dryRun);
+    const draft = draftFor(input.draft, await this.dryRunFor(organizationId, githubRepoId));
 
     return this.withHost(organizationId, sourceId, (provider, context) =>
       provider.createPR(context, { ...input, draft }),
     );
+  }
+
+  /**
+   * Whether a PR about to be opened on a repository is in dry-run — read uncached, since it is
+   * decided once and the PR keeps it.
+   *
+   * @param organizationId - The workspace.
+   * @param githubRepoId - The repository, or null when not known.
+   * @returns True while the org-wide switch is on, or the repository is inside its first N loops.
+   */
+  private async dryRunFor(organizationId: string, githubRepoId: string | null): Promise<boolean> {
+    if (this.policy === undefined) {
+      return true;
+    }
+
+    const override = await this.policy.dryRunNow(organizationId);
+
+    if (override || this.resolver === undefined) {
+      return override;
+    }
+
+    const [snapshot, loop] = await Promise.all([
+      this.resolver.snapshot(organizationId, true),
+      this.resolver.nextLoop(organizationId, githubRepoId),
+    ]);
+
+    return effectiveDryRun(override, snapshot.resolve("dry_run_new_repos", { loop })).active;
   }
 
   /**
@@ -369,3 +408,6 @@ export class PrSyncService {
     return provider;
   }
 }
+
+/** What the PR opener needs of the policy resolver (#481). */
+export type PolicyLoopSource = PolicySnapshotSource & Pick<PolicyResolutionService, "nextLoop">;

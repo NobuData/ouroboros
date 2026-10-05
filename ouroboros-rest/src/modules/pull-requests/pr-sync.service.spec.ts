@@ -16,6 +16,9 @@ import type { TicketSyncContext } from "../ticket-sources/ticket-source.provider
 import { TicketSourceRegistry } from "../ticket-sources/ticket-source.registry";
 import type { SyncSource } from "../ticket-sources/ticket-sources.repository";
 import { Logger } from "@nestjs/common";
+import type { PublishedOrgPolicy } from "../policies/org-policy.document";
+import { snapshotOf } from "../policies/policy-resolution.service";
+import type { PolicyLoopSource } from "./pr-sync.service";
 
 import { DecisionSourceWatcher } from "../decisions/decision.watchers";
 
@@ -453,7 +456,7 @@ describe("PrSyncService.create — the dry-run policy's first enforcement point 
    * @param reader - The policy reader, or undefined for a context without one.
    * @returns The service and host.
    */
-  function opening(reader?: ReturnType<typeof policy>) {
+  function opening(reader?: ReturnType<typeof policy>, resolver?: PolicyLoopSource) {
     const built = build();
 
     built.host.push("loop/483-dry-run", FIRST_PUSH);
@@ -469,6 +472,10 @@ describe("PrSyncService.create — the dry-run policy's first enforcement point 
         undefined,
         undefined,
         reader,
+        undefined,
+        undefined,
+        undefined,
+        resolver,
       ),
     };
   }
@@ -498,6 +505,80 @@ describe("PrSyncService.create — the dry-run policy's first enforcement point 
     await expect(
       opening(policy(false)).service.create(ORG, SOURCE.sourceId, { ...INPUT, draft: true }),
     ).resolves.toMatchObject({ draft: true });
+  });
+
+  describe("a new repository's first loops (BQ.2, #481)", () => {
+    /** Policy v7's `dry_run_new_repos` — first 10 loops — with `opened` PRs already on the repository. */
+    function resolver(
+      opened: number,
+      firstN = 10,
+    ): PolicyLoopSource & { asked: (string | null)[] } {
+      const asked: (string | null)[] = [];
+      const policy: PublishedOrgPolicy = {
+        version: 7,
+        publishedAt: new Date("2026-10-04T13:48:00Z"),
+        rules: { dry_run_new_repos: { enabled: true, conditions: { first_n_loops: firstN } } },
+      };
+
+      return {
+        asked,
+        snapshot: () => Promise.resolve(snapshotOf(policy)),
+        nextLoop: (_organizationId: string, githubRepoId: string | null) => {
+          asked.push(githubRepoId);
+          return Promise.resolve(githubRepoId === null ? null : opened + 1);
+        },
+      };
+    }
+
+    it("opens the first 10 loops' PRs as drafts, and the 11th as asked", async () => {
+      const tenth = resolver(9);
+
+      await expect(
+        opening(policy(false), tenth).service.create(
+          ORG,
+          SOURCE.sourceId,
+          { ...INPUT, draft: false },
+          "repo-helios",
+        ),
+      ).resolves.toMatchObject({ draft: true });
+      expect(tenth.asked).toEqual(["repo-helios"]);
+      await expect(
+        opening(policy(false), resolver(10)).service.create(
+          ORG,
+          SOURCE.sourceId,
+          INPUT,
+          "repo-helios",
+        ),
+      ).resolves.toMatchObject({ draft: false });
+    });
+
+    it("still forces a draft for the 11th while the org-wide switch is on — the stricter override", async () => {
+      await expect(
+        opening(policy(true), resolver(40)).service.create(
+          ORG,
+          SOURCE.sourceId,
+          INPUT,
+          "repo-helios",
+        ),
+      ).resolves.toMatchObject({ draft: true });
+    });
+
+    it("opens a draft when the caller does not say which repository — the stricter answer", async () => {
+      await expect(
+        opening(policy(false), resolver(40)).service.create(ORG, SOURCE.sourceId, INPUT),
+      ).resolves.toMatchObject({ draft: true });
+    });
+
+    it("opens as asked when the rule puts no loop in dry-run", async () => {
+      await expect(
+        opening(policy(false), resolver(0, 0)).service.create(
+          ORG,
+          SOURCE.sourceId,
+          INPUT,
+          "repo-helios",
+        ),
+      ).resolves.toMatchObject({ draft: false });
+    });
   });
 
   it("opens a draft in a context that wired no policy — the safe direction", async () => {

@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.39.14"
+  version: "0.39.15"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -704,11 +704,20 @@ tags:
   - name: policies
     description: |-
       **Org-level policies the PR plane enforces** (mockup 13, issue
-      [#382](https://github.com/NobuData/ouroboros/issues/382), decision **O3**) — today the
-      dry-run policy: while active, PRs open as drafts, arming and merging are refused with the
-      designed reason `dry-run policy active`, and a workflow's auto-merge terminal is overridden
-      at evaluation without its stored document being touched. One read every surface uses; an
+      [#382](https://github.com/NobuData/ouroboros/issues/382), decision **O3**) — the dry-run
+      switch: while active, PRs open as drafts, arming and merging are refused with the designed
+      reason `dry-run policy active`, and a workflow's auto-merge terminal is overridden at
+      evaluation without its stored document being touched. One read every surface uses; an
       owner/admin flip, audited as `policy.dry_run_changed`.
+
+      **The versioned org policy document** (mockup 17's Autonomy Policies, issue
+      [#481](https://github.com/NobuData/ouroboros/issues/481)) — five rules every enforcement
+      point reads through one resolver: `auto_merge` (the merge executor's eligibility),
+      `human_review` (the gate engine), `protected_paths` (AP.3, joined with each repository's
+      own globs), `spend_guard` (the per-run cap a resolution carries — the stricter of it and the
+      route's) and `dry_run_new_repos` (a repository's first N loops in dry-run; the switch above
+      stays the stricter override). A change is a **publish** of `vN+1`, classified per rule —
+      a loosening is the owner's alone — and audited as `policy.published`.
   - name: insights
     description: |-
       **The Insights metrics domain** (mockup 15, epic
@@ -8700,6 +8709,267 @@ paths:
           description: |-
             `workspace_state_conflict` — the state machine has no such move from where the
             workspace stands (`details.move`, `details.state`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/policies:
+    get:
+      tags: [policies]
+      summary: The org policy document in force
+      description: |-
+        The workspace's published org policy document (BQ.2,
+        [#481](https://github.com/NobuData/ouroboros/issues/481)) — the version
+        `org_policies.current_version` points at, verbatim: the settings card's **Autonomy
+        Policies** and its `policy v7` tag. `version: null` (and a null `document`) is a
+        workspace that has published nothing, where no rule binds anything.
+
+        **Any member may read it**, viewers included — it governs their loops.
+      operationId: readOrgPolicy
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The version in force.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgPolicy"
+              example:
+                version: 7
+                document:
+                  auto_merge:
+                    enabled: true
+                    conditions: { all: [{ effort_lte: m }, { not: { label: refactor } }] }
+                  human_review:
+                    enabled: true
+                    conditions: { any: [{ label: refactor }, { effort_gte: l }] }
+                  protected_paths:
+                    enabled: true
+                    conditions: { path_globs: ["boot/**", "keys/**", ".github/**"] }
+                  spend_guard:
+                    enabled: true
+                    conditions: { per_run_cap_cents: 250, monthly_cap_cents: 60000 }
+                  dry_run_new_repos:
+                    enabled: true
+                    conditions: { first_n_loops: 10 }
+                publishedAt: "2026-10-04T13:48:00.000Z"
+                publishedBy: aBcD1234eFgH5678iJkL9012mNoP3456
+                changeNote: Enable auto-merge
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [policies]
+      summary: Publish the next version
+      description: |-
+        Publish a whole document as `vN+1` (BQ.2, #481). The document is validated against
+        `schemas/org-policy/v1.json`; then, **under the workspace's lock**, compared with the version
+        in force: `baseVersion` must be that version (`null` when nothing is published), or the
+        publish is a `409 policy_version_conflict` rather than a silent overwrite.
+
+        Each changed rule is **classified** — `tightening`, `loosening` or `neutral` — by comparing
+        what it lets through (auto-merged tickets, reviewed tickets, protected globs, caps, dry-run
+        loops). **`owner` or `admin`** may publish, but a **loosening** edit is the owner's alone:
+        an admin gets `403 policy_loosening_requires_owner` naming the loosening rules. Every
+        enforcement point sees the new version at once on this replica (others within 30 s).
+
+        Audited as `policy.published` (subject `org_policy`) with `version`, `previous_version`,
+        `changed_rules`, the classification of each and the audit card's line —
+        *"enabled auto-merge (policy v8)"*.
+      operationId: publishOrgPolicy
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrgPolicyPublish"
+            example:
+              baseVersion: 7
+              changeNote: Pause unattended merges for the release.
+              document:
+                auto_merge: { enabled: false, conditions: { effort_lte: m } }
+                human_review: { enabled: true, conditions: { label: refactor } }
+                protected_paths: { enabled: true, conditions: { path_globs: ["boot/**"] } }
+                spend_guard: { enabled: true, conditions: { per_run_cap_cents: 250 } }
+                dry_run_new_repos: { enabled: true, conditions: { first_n_loops: 10 } }
+      responses:
+        "201":
+          description: The version published, and what it changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgPolicyPublished"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — a `member` or `viewer`; or `policy_loosening_requires_owner` — an admin
+            publishing an edit that lets more run without a person (`details.loosening` names the
+            rules). Nothing is written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `policy_version_conflict` — `baseVersion` is not the version in force
+            (`details.currentVersion`): another publish landed since the edit began. Reload and edit again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the body is malformed; `policy_document_invalid` — the document is
+            not one `schemas/org-policy/v1.json` accepts (`details.errors` lists the path and why);
+            `policy_unchanged` — the document is the version in force.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/policies/preview:
+    post:
+      tags: [policies]
+      summary: Classify a draft before publishing it
+      description: |-
+        What publishing a draft would do — **writes nothing** (BQ.2, #481). Each changed rule
+        against the version in force, its class and its line, the draft's class, whether only the
+        owner may publish it, and whether **this caller** may: the settings card's confirm dialog
+        (BS.4) renders this rather than guessing.
+
+        **`owner` or `admin`.**
+      operationId: previewOrgPolicy
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrgPolicyPreviewRequest"
+      responses:
+        "200":
+          description: What the draft changes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgPolicyPreview"
+              example:
+                baseVersion: 7
+                classification: loosening
+                changes:
+                  - ruleId: human_review
+                    classification: loosening
+                    summary: disabled human review
+                requiresOwner: true
+                mayPublish: false
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`forbidden` — a `member` or `viewer`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the body is malformed; `policy_document_invalid` — the document is
+            not one `schemas/org-policy/v1.json` accepts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
           content:
             application/json:
               schema:
@@ -36507,9 +36777,12 @@ components:
         Why the executor's re-check refused a merge. `gates_pending` never disarms; every other
         code disarms an armed plan. `dry_run_policy_active` (#382) is the workspace's dry-run
         policy, re-checked at execution — a plan armed before it turned on is disarmed, never merged.
+        `auto_merge_policy_ineligible` (#481) is the org policy's `auto_merge` rule: the PR no longer
+        meets it and nobody with the owner or admin role armed it.
       enum:
         [
           dry_run_policy_active,
+          auto_merge_policy_ineligible,
           head_moved,
           gate_red,
           gates_pending,
@@ -36617,6 +36890,25 @@ components:
             - type: "null"
         dryRun:
           $ref: "#/components/schemas/PrMergeDryRunState"
+        autoMergePolicy:
+          type: object
+          additionalProperties: false
+          description: |-
+            The org policy's `auto_merge` rule for this PR (#481), evaluated against its ticket —
+            whether it may merge unattended, the version that decided and why. A member may arm a
+            PR whose pinned workflow auto-merges only while this is `eligible`.
+          required: [eligible, ruleId, version, reason]
+          properties:
+            eligible:
+              type: boolean
+              description: True when no policy is published.
+            ruleId:
+              type: string
+              enum: [auto_merge]
+            version:
+              type: [integer, "null"]
+            reason:
+              type: string
         updatedAt:
           type: string
           format: date-time
@@ -36649,10 +36941,19 @@ components:
               description: Whether the pinned workflow's terminal asks for auto-merge — its stored config.
             effective:
               type: boolean
-              description: What happens — `requested` unless dry-run overrides it.
+              description: What happens — `requested` unless dry-run overrides it or the org policy's `auto_merge` rule refuses it (#481).
             overridden:
               type: boolean
               description: Whether dry-run is what turned a requested auto-merge off.
+        source:
+          type: [string, "null"]
+          enum: [org_override, dry_run_new_repos, null]
+          description: |-
+            What made it active (#481): the workspace-wide switch, or the org policy's
+            `dry_run_new_repos` — this PR's repository is inside its first N loops. Null while inactive.
+        policyVersion:
+          type: [integer, "null"]
+          description: The policy version, when `dry_run_new_repos` is the source.
 
     PrMergeOutcome:
       type: object
@@ -42383,6 +42684,154 @@ components:
             - type: "null"
           description: The direction of `biasPct`; null when nothing was estimated at this effort.
 
+    OrgPolicyRule:
+      type: object
+      title: OrgPolicyRule
+      description: |-
+        One rule of the org policy document — `{enabled, conditions}`, the grammar of
+        `schemas/org-policy/v1.json`. Conditions are the workflow DSL's predicates (`effort_lte`,
+        `effort_gte`, `label`, `not`, `any`, `all`), `path_globs`, or integer-cent caps.
+      required: [enabled, conditions]
+      properties:
+        enabled:
+          type: boolean
+        conditions:
+          type: object
+          additionalProperties: true
+
+    OrgPolicyDocument:
+      type: object
+      title: OrgPolicyDocument
+      description: |-
+        The whole document: the five core rules, always present, and any `custom:<slug>` rules.
+        Validated against `schemas/org-policy/v1.json` when published.
+      additionalProperties:
+        $ref: "#/components/schemas/OrgPolicyRule"
+
+    OrgPolicy:
+      type: object
+      title: OrgPolicy
+      additionalProperties: false
+      description: The version in force (#481) — all null while nothing is published.
+      required: [version, document, publishedAt, publishedBy, changeNote]
+      properties:
+        version:
+          type: [integer, "null"]
+          minimum: 1
+          description: The card's `policy v7`.
+        document:
+          oneOf:
+            - $ref: "#/components/schemas/OrgPolicyDocument"
+            - type: "null"
+        publishedAt:
+          type: [string, "null"]
+          format: date-time
+        publishedBy:
+          type: [string, "null"]
+          description: Who published it — `user.id`, null for a person since deleted.
+        changeNote:
+          type: [string, "null"]
+
+    OrgPolicyChangeClass:
+      type: string
+      title: OrgPolicyChangeClass
+      description: |-
+        Which way a change moves autonomy (#481). `loosening` — something now runs without a
+        person that did not; `tightening` — the reverse; `neutral` — nothing moves either way. An
+        edit is loosening if any of its changes is; a loosening is the owner's alone to publish.
+      enum: [tightening, loosening, neutral]
+
+    OrgPolicyRuleChange:
+      type: object
+      title: OrgPolicyRuleChange
+      additionalProperties: false
+      required: [ruleId, classification, summary]
+      properties:
+        ruleId:
+          type: string
+          examples: [auto_merge]
+        classification:
+          $ref: "#/components/schemas/OrgPolicyChangeClass"
+        summary:
+          type: string
+          description: The change as the audit line says it — `enabled auto-merge`.
+
+    OrgPolicyPreviewRequest:
+      type: object
+      title: OrgPolicyPreviewRequest
+      additionalProperties: false
+      required: [document]
+      properties:
+        document:
+          $ref: "#/components/schemas/OrgPolicyDocument"
+
+    OrgPolicyPublish:
+      type: object
+      title: OrgPolicyPublish
+      additionalProperties: false
+      required: [document, baseVersion]
+      properties:
+        document:
+          $ref: "#/components/schemas/OrgPolicyDocument"
+        baseVersion:
+          type: [integer, "null"]
+          minimum: 1
+          description: The version this edit began from — null when nothing was published.
+        changeNote:
+          type: [string, "null"]
+          maxLength: 500
+          description: Why — the history popover's line. Blank is none.
+
+    OrgPolicyPreview:
+      type: object
+      title: OrgPolicyPreview
+      additionalProperties: false
+      required: [baseVersion, classification, changes, requiresOwner, mayPublish]
+      properties:
+        baseVersion:
+          type: [integer, "null"]
+          description: The version the draft was compared with — the one in force.
+        classification:
+          $ref: "#/components/schemas/OrgPolicyChangeClass"
+        changes:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrgPolicyRuleChange"
+        requiresOwner:
+          type: boolean
+        mayPublish:
+          type: boolean
+          description: Whether this caller may publish it — false for an admin and a loosening.
+
+    OrgPolicyPublished:
+      type: object
+      title: OrgPolicyPublished
+      additionalProperties: false
+      required:
+        [version, document, publishedAt, publishedBy, changeNote, classification, changes, summary]
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        document:
+          $ref: "#/components/schemas/OrgPolicyDocument"
+        publishedAt:
+          type: string
+          format: date-time
+        publishedBy:
+          type: string
+        changeNote:
+          type: [string, "null"]
+        classification:
+          $ref: "#/components/schemas/OrgPolicyChangeClass"
+        changes:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrgPolicyRuleChange"
+        summary:
+          type: string
+          description: The audit card's line — `enabled auto-merge (policy v8)`.
+
     DryRunPolicy:
       type: object
       title: DryRunPolicy
@@ -45591,6 +46040,23 @@ components:
             null for a route with none. Attached to **every** resolution including a `fail_run`,
             because it is a property of the route rather than of the outcome.
           examples: [250]
+        costCap:
+          type: object
+          additionalProperties: false
+          description: |-
+            Which limit set `maxCostCents` (#481) — what a `cost_cap_exceeded` names. **The stricter
+            wins**: the route's own cap, or the org policy's `spend_guard.per_run_cap_cents` when it is
+            lower or the route has none. Absent where no org policy was consulted.
+          required: [limit, ruleId, policyVersion]
+          properties:
+            limit:
+              type: [string, "null"]
+              enum: [route, spend_guard, null]
+            ruleId:
+              type: [string, "null"]
+              enum: [spend_guard, null]
+            policyVersion:
+              type: [integer, "null"]
         failure:
           oneOf:
             - $ref: "#/components/schemas/ResolutionFailure"

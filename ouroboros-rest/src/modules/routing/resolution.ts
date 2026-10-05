@@ -309,6 +309,23 @@ export interface Resolution {
    * way the resolution went.
    */
   readonly maxCostCents: number | null;
+  /**
+   * Which limit set {@link maxCostCents} (BQ.2, #481) — what a `cost_cap_exceeded` names, so a
+   * stopped run is traceable to the route's own cap or to the org policy's `spend_guard`, and to
+   * its version. **The stricter of the two wins**: the route's cap unless the guard's per-run cap
+   * is lower (or the route has none). Absent where no org policy was consulted.
+   */
+  readonly costCap?: CostCapSource;
   /** Why there is no chain, or null when there is one. */
   readonly failure: ResolutionFailure | null;
+}
+
+/** Which limit set a resolution's per-run cap (#481). */
+export interface CostCapSource {
+  /** `route` — `routes.max_cost_cents_per_run`; `spend_guard` — the org policy's; null for no cap. */
+  readonly limit: "route" | "spend_guard" | null;
+  /** The rule, when the org policy set it. */
+  readonly ruleId: "spend_guard" | null;
+  /** The org policy version, when it set it. */
+  readonly policyVersion: number | null;
 }

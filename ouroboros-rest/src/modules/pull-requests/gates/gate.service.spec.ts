@@ -377,6 +377,7 @@ describe("GateEngineService", () => {
         ...DEFAULT_ORG_GATE_CONFIG,
         overrides: { human_approval: { disabled: true } },
         humanReview: { enabled: true, conditions: { any: [{ label: "refactor" }, { effort_gte: "l" }] } },
+        policyVersion: 7,
       }),
       listeners,
     );
@@ -384,12 +385,39 @@ describe("GateEngineService", () => {
     const evaluation = await service.evaluate("pr-514");
     await service.notify("org-358", { kind: "revision_pushed", prId: "pr-514" });
 
-    expect(evaluation?.humanReview).toEqual({ required: true, label: "refactor" });
+    expect(evaluation?.humanReview).toEqual({ required: true, label: "refactor", version: 7 });
     expect(store.definitions.find((row) => row.gateKey === "human_approval")).toMatchObject({
       required: true,
-      source: "standard-fix@v14 pin + org policy: refactor → human review",
+      source: "standard-fix@v14 pin + org policy v7: refactor → human review",
     });
-    expect(heard.at(-1)?.humanReview).toEqual({ required: true, label: "refactor" });
+    expect(heard.at(-1)?.humanReview).toEqual({ required: true, label: "refactor", version: 7 });
+  });
+
+  it("lets a refactor-labelled PR through once the published rule is switched off (#481)", async () => {
+    store.push(REV_2);
+    store.sources = { ...store.sources, ticket: { ...store.sources.ticket, labels: ["refactor"] } };
+    service = new GateEngineService(
+      store,
+      org({
+        ...DEFAULT_ORG_GATE_CONFIG,
+        overrides: { human_approval: { disabled: true } },
+        humanReview: {
+          enabled: false,
+          conditions: { any: [{ label: "refactor" }, { effort_gte: "l" }] },
+        },
+        policyVersion: 8,
+      }),
+    );
+
+    expect((await service.evaluate("pr-514"))?.humanReview).toEqual({
+      required: false,
+      label: null,
+      version: 8,
+    });
+    expect(store.definitions.find((row) => row.gateKey === "human_approval")).toMatchObject({
+      required: false,
+      source: "org config",
+    });
   });
 
   it("requires nothing new of a PR the policy does not match", async () => {
@@ -399,7 +427,11 @@ describe("GateEngineService", () => {
       org({ ...DEFAULT_ORG_GATE_CONFIG, humanReview: { enabled: true, conditions: { label: "refactor" } } }),
     );
 
-    expect((await service.evaluate("pr-514"))?.humanReview).toEqual({ required: false, label: null });
+    expect((await service.evaluate("pr-514"))?.humanReview).toEqual({
+      required: false,
+      label: null,
+      version: null,
+    });
     expect(store.definitions.find((row) => row.gateKey === "human_approval")?.source).toBe(
       "standard-fix@v14 pin",
     );
@@ -474,7 +506,7 @@ describe("GateEngineService", () => {
         state: "verifying",
         mergeReady: false,
         redCount: 0,
-        humanReview: { required: false, label: null },
+        humanReview: { required: false, label: null, version: null },
       },
     ]);
   });

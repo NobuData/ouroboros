@@ -30,8 +30,14 @@
  * itself cannot join them, because whether it exists is what decides the `404`.
  */
 
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 
+import {
+  type PolicyVerdict,
+  type SpendGuardValue,
+  effectivePerRunCap,
+} from "../policies/policy-resolution";
+import { PolicyResolutionService } from "../policies/policy-resolution.service";
 import { ProviderHealthService } from "../provider-health/provider-health.service";
 import type { ResolutionContext } from "./context";
 import type { Resolution } from "./resolution";
@@ -51,6 +57,7 @@ export class ResolutionService {
   constructor(
     private readonly routes: RoutingRepository,
     private readonly health: ProviderHealthService,
+    @Optional() private readonly policies?: PolicyResolutionService,
   ) {}
 
   /**
@@ -86,7 +93,7 @@ export class ResolutionService {
       this.health.snapshots(organizationId),
     ]);
 
-    return resolve({
+    const resolution = resolve({
       route: toRouteSpec(route, taskKind),
       hops: hops.map(toChainHop),
       aliases: aliases.map(toAliasSpec),
@@ -94,5 +101,36 @@ export class ResolutionService {
       health,
       context,
     });
+
+    return this.policies === undefined
+      ? resolution
+      : withSpendGuard(resolution, await this.policies.resolve(organizationId, "spend_guard"));
   }
+}
+
+/**
+ * A resolution under the org policy's `spend_guard` (BQ.2, #481): the cap that travels to the
+ * executor becomes the **stricter** of the route's and the guard's per-run cap, and the resolution
+ * says which one it is — so the executor's `cost_cap_exceeded` names the limit that stopped the run.
+ * Neither layer can loosen the other; a guard that is off leaves the route's cap alone.
+ *
+ * @param resolution - The resolution, with the route's own cap.
+ * @param guard - `spend_guard`'s verdict.
+ * @returns The resolution with the effective cap and its source.
+ */
+export function withSpendGuard(
+  resolution: Resolution,
+  guard: PolicyVerdict<SpendGuardValue>,
+): Resolution {
+  const cap = effectivePerRunCap(resolution.maxCostCents, guard);
+
+  return {
+    ...resolution,
+    maxCostCents: cap.capCents,
+    costCap: {
+      limit: cap.limit,
+      ruleId: cap.limit === "spend_guard" ? "spend_guard" : null,
+      policyVersion: cap.version,
+    },
+  };
 }

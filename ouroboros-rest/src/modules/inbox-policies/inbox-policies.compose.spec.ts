@@ -1,4 +1,4 @@
-import type { PublishedOrgPolicy } from "../pull-requests/gates/gate.org-policy";
+import type { PublishedOrgPolicy } from "../policies/org-policy.document";
 import {
   CLAIM_WAIVER_ROW,
   DRY_RUN_CAPTION,
@@ -160,6 +160,74 @@ describe("humanReviewRows", () => {
 
   it("has no rows for a missing or disabled rule", () => {
     expect(humanReviewRows(undefined, 7)).toEqual([]);
+  });
+});
+
+describe("the protected-paths row, from the same resolver as AP.3 (BQ.2, #481)", () => {
+  /** V7 protecting OTA manifests in every repository. */
+  const WITH_ORG_GLOBS: PublishedOrgPolicy = {
+    ...V7,
+    rules: {
+      ...V7.rules,
+      protected_paths: { enabled: true, conditions: { path_globs: ["ota/**", "boot/**"] } },
+    },
+  };
+
+  it("lists the union AP.3 gates on — the document's globs and each repository's rows — once each", () => {
+    const row = policyCard({ ...SEEDED, policy: WITH_ORG_GLOBS }).rows.find(
+      (each) => each.id === "protected_paths",
+    );
+
+    expect(row).toMatchObject({
+      detail: "boot/** · keys/** · ota/**",
+      source:
+        "Org policy v7 · protected_paths in every repository, and BA.1's rows · up to 2 repositories — AP.3 stops an edit, a person may allow it once",
+      editHref: POLICIES_HREF,
+    });
+  });
+
+  it("shows the row for a workspace whose only protection is the document's", () => {
+    const row = policyCard({ ...SEEDED, policy: WITH_ORG_GLOBS, protectedPaths: [] }).rows.find(
+      (each) => each.id === "protected_paths",
+    );
+
+    expect(row).toMatchObject({
+      detail: "boot/** · ota/**",
+      source:
+        "Org policy v7 · protected_paths in every repository — AP.3 stops an edit, a person may allow it once",
+    });
+  });
+
+  it("changes its text when the document's globs are edited, and drops them while the rule is off", () => {
+    const edited: PublishedOrgPolicy = {
+      ...V7,
+      version: 8,
+      rules: {
+        ...V7.rules,
+        protected_paths: { enabled: true, conditions: { path_globs: ["ota/manifest.json"] } },
+      },
+    };
+    const off: PublishedOrgPolicy = {
+      ...V7,
+      version: 8,
+      rules: {
+        ...V7.rules,
+        protected_paths: { enabled: false, conditions: { path_globs: ["ota/**"] } },
+      },
+    };
+
+    expect(
+      policyCard({ ...SEEDED, policy: edited, protectedPaths: [] }).rows.find(
+        (each) => each.id === "protected_paths",
+      )?.detail,
+    ).toBe("ota/manifest.json");
+    expect(
+      policyCard({ ...SEEDED, policy: off, protectedPaths: [] }).rows.map((each) => each.id),
+    ).not.toContain("protected_paths");
+    expect(
+      policyCard({ ...SEEDED, policy: off }).rows.find((each) => each.id === "protected_paths")
+        ?.editHref,
+    ).toBe(PROTECTED_PATHS_HREF);
   });
 });
 

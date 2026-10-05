@@ -1,4 +1,5 @@
 import { DbModule } from "../../db/db.module";
+import { PoliciesModule } from "../../policies/policies.module";
 import { GATE_EVIDENCE } from "./gate.evidence";
 import { GateListeners } from "./gate.listeners";
 import { OrgPolicyGateResolver } from "./gate.org-policy";
@@ -8,8 +9,9 @@ import { GatesModule, gateEvidenceProvider, orgGatePolicyProvider } from "./gate
 
 /**
  * The wiring (AX.2, [#358](https://github.com/NobuData/ouroboros/issues/358)): the evidence token
- * is the engine itself, the org policy is the defaults until #481, and the module imports nothing
- * but the database — which is what lets four emitter modules import it without a cycle.
+ * is the engine itself, the org policy is read through #481's shared resolver, and the module imports
+ * nothing but the database and the policy plane — which is what lets four emitter modules import it
+ * without a cycle.
  */
 
 describe("the gates module", () => {
@@ -38,8 +40,8 @@ describe("the gates module", () => {
     expect(Reflect.getMetadata("exports", GatesModule)).toContain(OrgPolicyGateResolver);
   });
 
-  it("imports only the database module", () => {
-    expect(Reflect.getMetadata("imports", GatesModule)).toEqual([DbModule]);
+  it("imports the database and the policy plane — the resolver every enforcement point shares (#481)", () => {
+    expect(Reflect.getMetadata("imports", GatesModule)).toEqual([DbModule, PoliciesModule]);
   });
 
   it("answers every workspace with no overrides and a permissive allow-list", async () => {

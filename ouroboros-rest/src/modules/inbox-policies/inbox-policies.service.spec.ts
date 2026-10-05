@@ -1,6 +1,6 @@
 import type { DecisionKindRegistry } from "../decisions/decision-kind.registry";
 import type { OrgPolicyService } from "../policies/org-policy.service";
-import type { OrgPolicyGateResolver } from "../pull-requests/gates/gate.org-policy";
+import type { PolicyResolutionService } from "../policies/policy-resolution.service";
 import { recordingDatabase } from "../db/database.fixture";
 import { InboxPoliciesRepository } from "./inbox-policies.repository";
 import { InboxPoliciesService } from "./inbox-policies.service";
@@ -10,7 +10,7 @@ import { InboxPoliciesService } from "./inbox-policies.service";
 describe("InboxPoliciesService", () => {
   it("reads the document, BA.1's paths, the dormant spend kind and dry-run — then composes", async () => {
     const policies = {
-      document: jest.fn(() =>
+      current: jest.fn(() =>
         Promise.resolve({
           version: 7,
           publishedAt: new Date(),
@@ -25,13 +25,13 @@ describe("InboxPoliciesService", () => {
     };
 
     const card = await new InboxPoliciesService(
-      policies as unknown as OrgPolicyGateResolver,
+      policies as unknown as PolicyResolutionService,
       dryRun as unknown as OrgPolicyService,
       registry as unknown as DecisionKindRegistry,
       repository as unknown as InboxPoliciesRepository,
     ).card("org-acme");
 
-    expect(policies.document).toHaveBeenCalledWith("org-acme");
+    expect(policies.current).toHaveBeenCalledWith("org-acme");
     expect(dryRun.dryRunNow).toHaveBeenCalledWith("org-acme");
     expect(registry.isDormant).toHaveBeenCalledWith("spend_approval");
     expect(card.rows.map((row) => row.id)).toEqual([

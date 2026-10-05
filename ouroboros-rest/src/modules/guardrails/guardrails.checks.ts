@@ -89,10 +89,17 @@ export interface GuardrailInput {
   /** The pinned stage's permissions, or `undefined` when none can be resolved. */
   readonly permissions?: StagePermissions;
   /**
-   * The repository's protected-path globs (`protected_path_policies`, V067), or `undefined` /
-   * empty when it protects nothing. A change-set path matching one fails `allowed_paths`.
+   * The protected-path globs — since BQ.2 (#481) the **union** of the repository's own rows
+   * (`protected_path_policies`, V067) and the org policy document's `protected_paths` globs — or
+   * `undefined` / empty when nothing is protected. A change-set path matching one fails
+   * `allowed_paths`.
    */
   readonly protectedPaths?: readonly string[];
+  /**
+   * Which of {@link protectedPaths} the org policy document contributed, and its version (#481) —
+   * so a failure on one of them names the policy that protects it.
+   */
+  readonly policyGlobs?: { readonly globs: readonly string[]; readonly version: number | null };
   /**
    * The run's live allow-once grants, oldest first, or `undefined` / empty when it has none. A
    * protected path a grant's glob matches does not fail `allowed_paths`; a passing verdict then
@@ -123,6 +130,25 @@ export interface GuardrailVerdictRow {
  */
 function counted(count: number, noun: string): string {
   return `${String(count)} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+/**
+ * Who protects a glob, when it is the org policy document (#481) — appended to a failure's detail.
+ *
+ * @param input - The check's input.
+ * @param glob - The protected glob a path matched.
+ * @returns ` Protected by org policy v7 · protected_paths.`, or nothing for a repository's own row.
+ */
+function policyAttribution(input: GuardrailInput, glob: string | undefined): string {
+  const policy = input.policyGlobs;
+
+  if (policy === undefined || glob === undefined || !policy.globs.includes(glob)) {
+    return "";
+  }
+
+  return policy.version === null
+    ? " Protected by the org policy · protected_paths."
+    : ` Protected by org policy v${String(policy.version)} · protected_paths.`;
 }
 
 /**
@@ -162,7 +188,7 @@ export function checkAllowedPaths(input: GuardrailInput): GuardrailVerdictRow {
       evidence: safeEvidence({
         path: guarded[0].path,
         glob: guarded[0].glob,
-        detail: `${counted(guarded.length, "path")} inside a protected path.`,
+        detail: `${counted(guarded.length, "path")} inside a protected path.${policyAttribution(input, guarded[0].glob)}`,
       }),
     };
   }

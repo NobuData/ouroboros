@@ -108,6 +108,7 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1/runs/{id}/transcript.jsonl`            | *Raw JSONL ↗* (#304): the `run_events_jsonl` projection, streamed, opening with `# simulated run` on a simulated run |
 | `GET /api/v1/queue`                                 | The ordered queue (#73) — `position` ascending, optional `repo` filter, `totalEstMinutes` equal to the stat row's own sum |
 | `GET PATCH /api/v1/policies/dry-run`                | [The dry-run policy](#the-dry-run-policy) (#382) — read by any member, flipped by `owner`/`admin`, audited `policy.dry_run_changed` |
+| `GET POST /api/v1/policies` · `POST …/preview`      | [The org policy document](#the-org-policy-document) (#481) — read by any member; preview and publish `owner`/`admin`, a loosening `owner` only; audited `policy.published` |
 | `GET /api/v1/insights`                             | [The Insights page](#insights-page) (#438) — `?range=7d\|30d\|90d` (`30d` when absent), optional `?repo=owner/name`; head, KPIs, series, bar cards with computed lines, performance, flaky, scoreboard, DORA and the rollups' freshness (#447) in one payload; any member |
 | `GET /api/v1/insights/digest`                      | [The weekly email digest](#email-digest) (#440) — the caller's subscription, the workspace's weekly slot (UTC) with `nextRunAt`, and `mail.transport` (`smtp`, or `none` when no mail server is configured); any member |
 | `PUT /api/v1/insights/digest/subscription`         | Opt yourself in or out of this workspace's digest (#440) — `{subscribed}`; `409 insights_digest_mail_unconfigured` when subscribing on a deployment that sends no mail; any member |
@@ -6204,6 +6205,40 @@ PR plane enforces **below** every surface that could merge.
 **A workspace that never answered reads off**; completing the Get Started wizard (step 4) writes
 `dry_run = true` when unset and never overwrites an explicit `false`. Reads are cached per process
 for 30 s and every write busts the cache; the merge path never trusts the cache.
+
+Since #481 this switch is the **stricter override** of the org policy document's
+`dry_run_new_repos` rule — see below: "is dry-run active" is asked per PR.
+
+### The org policy document
+
+BQ.2 ([#481](https://github.com/NobuData/ouroboros/issues/481)) over V092's `org_policy_versions`
+(BQ.1, #480), in [`src/modules/policies/`](src/modules/policies). One
+`PolicyResolutionService` reads the version `org_policies.current_version` points at — cached per
+process for 30 s, cleared by a publish, uncached where a decision is taken at execution — and every
+enforcement point asks its rule there (`policy-resolution.ts`, one pure evaluator per rule). Every
+verdict carries its **rule id and version**, and one decision reads one version (`snapshot`), so a
+publish mid-flight cannot produce a half-old, half-new answer. A workspace that has published
+nothing is bound by no rule.
+
+| rule | enforced by | what it decides |
+| ---- | ----------- | --------------- |
+| `auto_merge` | AX.4 merge executor (#360) | A `member` may arm/merge only a PR whose pinned workflow auto-merges **and** whose ticket meets the rule (*effort ≤ M · non-refactor*); an armed plan is re-checked at execution and refused `auto_merge_policy_ineligible` unless an owner/admin armed it. `plan.autoMergePolicy` says why |
+| `human_review` | AX.2 gate engine (#358) | `human_approval` is required for a matching ticket, with the provenance `… + org policy v7: refactor → human review`. Switching it off lets a refactor-labelled PR through; the engine holds no rule of its own (`gate.no-hardcoded-policy.spec.ts`) |
+| `protected_paths` | AP.3 guardrails (#305) · BN.4 inbox card (#464) | The **union** of the document's org-wide globs and each repository's `protected_path_policies` rows — publishing a glob protects it on the next run with no write to BA.1's rows, and absorbing never un-protects one. A failure on an org glob names the policy version |
+| `spend_guard` | Z.1 resolution (#194) | The resolution's `maxCostCents` is the **stricter** of the route's cap and `per_run_cap_cents`; `costCap` names which (`route` or `spend_guard`, with the version), so the executor's `cost_cap_exceeded` reports the limit that fired. Pausing a run and the monthly cap are AF.4's (#237) |
+| `dry_run_new_repos` | BA.3 dry-run plane (#382) | A repository's first N loops are in dry-run: draft PRs, arming and merging refused. A loop is a run on the repository that opened a PR (recorded on the run or mirrored); the PR is loop *k* when *k − 1* came before it. The org-wide switch above stays the stricter override; refusals say which (`details.source`) |
+
+| route | what | who |
+| ----- | ---- | --- |
+| `GET /api/v1/policies` | `{version, document, publishedAt, publishedBy, changeNote}` — the version in force, verbatim; all null when nothing is published | every member |
+| `POST /api/v1/policies/preview` `{document}` | each changed rule's class (`tightening`/`loosening`/`neutral`) and line, the draft's class, `requiresOwner`, `mayPublish` — writes nothing | owner, admin |
+| `POST /api/v1/policies` `{document, baseVersion, changeNote?}` | publish `vN+1`; `422 policy_document_invalid` (against `schemas/org-policy/v1.json`) or `policy_unchanged`, `409 policy_version_conflict`, `403 policy_loosening_requires_owner`; audited `policy.published` with the version, changed rules, classes and the audit card's line — *"enabled auto-merge (policy v8)"* | owner, admin — a loosening owner only |
+
+**The classification is computed, not guessed** (`policy-publish.ts`): each rule is read as the set of
+things it lets through — tickets eligible to auto-merge, tickets needing review, protected globs,
+caps, dry-run loops — and compared before and after. A predicate reads only the ticket's effort and
+the labels it names, so the comparison enumerates every case that could tell two versions apart
+(up to 10 distinct labels; beyond that, and for any `custom:*` rule, a change is classed as loosening).
 
 ### Estimator calibration
 

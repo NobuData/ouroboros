@@ -4,6 +4,9 @@ import { ROUTING_ERRORS } from "./routing.errors";
 import type { RoutingRepository } from "./routing.repository";
 import { CONNECTIONS, HEALTH } from "./routing.fixture";
 import type { ChainHopRow, EscalationRuleRow, ResolutionAliasRow, RouteRow } from "./routing.rows";
+import type { PublishedOrgPolicy } from "../policies/org-policy.document";
+import { resolveRule } from "../policies/policy-resolution";
+import type { PolicyResolutionService } from "../policies/policy-resolution.service";
 
 /**
  * The load, and only the load.
@@ -183,5 +186,78 @@ describe("resolving through the service", () => {
     expect(resolution.outcome).toBe("fail_run");
     expect(resolution.failure?.code).toBe("no_eligible_hop");
     expect(resolution.maxCostCents).toBe(250);
+  });
+});
+
+describe("the org policy's spend guard (BQ.2, #481)", () => {
+  /**
+   * A resolver answering a spend guard.
+   *
+   * @param perRun - The guard's per-run cap, or undefined for none.
+   * @param enabled - Whether the rule is on.
+   * @returns The resolver.
+   */
+  function guard(perRun: number | undefined, enabled = true): PolicyResolutionService {
+    const policy: PublishedOrgPolicy = {
+      version: 7,
+      publishedAt: new Date("2026-10-04T13:48:00Z"),
+      rules: {
+        spend_guard: {
+          enabled,
+          conditions:
+            perRun === undefined ? { monthly_cap_cents: 60000 } : { per_run_cap_cents: perRun },
+        },
+      },
+    };
+
+    return {
+      resolve: (_org: string, ruleId: "spend_guard") =>
+        Promise.resolve(resolveRule(policy, ruleId)),
+    } as unknown as PolicyResolutionService;
+  }
+
+  it("caps with the guard when it is the stricter, and says so", async () => {
+    const resolution = await new ResolutionService(repository(), health(), guard(200)).resolve(
+      WORKSPACE,
+      "implement",
+    );
+
+    expect(resolution.maxCostCents).toBe(200);
+    expect(resolution.costCap).toEqual({
+      limit: "spend_guard",
+      ruleId: "spend_guard",
+      policyVersion: 7,
+    });
+  });
+
+  it("keeps the route's cap when it is the stricter — the other direction", async () => {
+    const resolution = await new ResolutionService(repository(), health(), guard(400)).resolve(
+      WORKSPACE,
+      "implement",
+    );
+
+    expect(resolution.maxCostCents).toBe(250);
+    expect(resolution.costCap).toEqual({ limit: "route", ruleId: null, policyVersion: null });
+  });
+
+  it("leaves the route alone while the guard is off or sets no per-run cap", async () => {
+    for (const resolver of [guard(100, false), guard(undefined)]) {
+      const resolution = await new ResolutionService(repository(), health(), resolver).resolve(
+        WORKSPACE,
+        "implement",
+      );
+
+      expect(resolution.maxCostCents).toBe(250);
+      expect(resolution.costCap?.limit).toBe("route");
+    }
+  });
+
+  it("is the resolution the pure function computed when no policy reader is wired", async () => {
+    const resolution = await new ResolutionService(repository(), health()).resolve(
+      WORKSPACE,
+      "implement",
+    );
+
+    expect(resolution).not.toHaveProperty("costCap");
   });
 });

@@ -1,11 +1,25 @@
+import type { DatabaseService } from "../../db/db.service";
 import { recordingDatabase } from "../../db/database.fixture";
+import { OrgPolicyRepository } from "../../policies/org-policy.repository";
+import { PolicyResolutionService } from "../../policies/policy-resolution.service";
 import { OrgPolicyGateResolver, humanReviewRuleOf, rulesOf } from "./gate.org-policy";
 import { DEFAULT_ORG_GATE_CONFIG } from "./gate.policy";
 
 /**
  * The gate engine's org configuration (#461, the #358 amendment): the published policy's
- * `human_review` rule, the defaults for everything else.
+ * `human_review` rule, the defaults for everything else — read since #481 through the one
+ * `PolicyResolutionService` every enforcement point shares.
  */
+
+/**
+ * The resolver over a recording database, as the module wires it.
+ *
+ * @param service - The database.
+ * @returns The resolver.
+ */
+function resolverOver(service: DatabaseService): OrgPolicyGateResolver {
+  return new OrgPolicyGateResolver(new PolicyResolutionService(new OrgPolicyRepository(service)));
+}
 
 describe("humanReviewRuleOf", () => {
   it("reads the envelope V092 holds", () => {
@@ -36,22 +50,23 @@ describe("OrgPolicyGateResolver", () => {
       ],
     });
 
-    const config = await new OrgPolicyGateResolver(database.service).forOrganization("acme");
+    const config = await resolverOver(database.service).forOrganization("acme");
 
     expect(config).toEqual({
       ...DEFAULT_ORG_GATE_CONFIG,
       humanReview: { enabled: true, conditions: { label: "refactor" } },
+      policyVersion: 7,
     });
     expect(database.statements[0].sql).toContain("v.version = p.current_version");
     expect(database.statements[0].parameters).toEqual(["acme"]);
   });
 
-  it("answers no rule for a workspace that has published no policy", async () => {
+  it("answers no rule, and no version, for a workspace that has published no policy", async () => {
     const database = recordingDatabase();
+    const config = await resolverOver(database.service).forOrganization("acme");
 
-    expect(
-      (await new OrgPolicyGateResolver(database.service).forOrganization("acme")).humanReview,
-    ).toBeNull();
+    expect(config.humanReview).toBeNull();
+    expect(config.policyVersion).toBeNull();
   });
 });
 
@@ -74,7 +89,7 @@ describe("OrgPolicyGateResolver.document (#464)", () => {
       ],
     });
 
-    expect(await new OrgPolicyGateResolver(database.service).document("acme")).toEqual({
+    expect(await resolverOver(database.service).document("acme")).toEqual({
       version: 7,
       publishedAt,
       rules: {
@@ -85,9 +100,7 @@ describe("OrgPolicyGateResolver.document (#464)", () => {
   });
 
   it("answers null when nothing is published", async () => {
-    expect(
-      await new OrgPolicyGateResolver(recordingDatabase().service).document("acme"),
-    ).toBeNull();
+    expect(await resolverOver(recordingDatabase().service).document("acme")).toBeNull();
   });
 });
 

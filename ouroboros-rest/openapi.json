@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.39.14",
+    "version": "0.39.15",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -167,7 +167,7 @@
     },
     {
       "name": "policies",
-      "description": "**Org-level policies the PR plane enforces** (mockup 13, issue\n[#382](https://github.com/NobuData/ouroboros/issues/382), decision **O3**) — today the\ndry-run policy: while active, PRs open as drafts, arming and merging are refused with the\ndesigned reason `dry-run policy active`, and a workflow's auto-merge terminal is overridden\nat evaluation without its stored document being touched. One read every surface uses; an\nowner/admin flip, audited as `policy.dry_run_changed`."
+      "description": "**Org-level policies the PR plane enforces** (mockup 13, issue\n[#382](https://github.com/NobuData/ouroboros/issues/382), decision **O3**) — the dry-run\nswitch: while active, PRs open as drafts, arming and merging are refused with the designed\nreason `dry-run policy active`, and a workflow's auto-merge terminal is overridden at\nevaluation without its stored document being touched. One read every surface uses; an\nowner/admin flip, audited as `policy.dry_run_changed`.\n\n**The versioned org policy document** (mockup 17's Autonomy Policies, issue\n[#481](https://github.com/NobuData/ouroboros/issues/481)) — five rules every enforcement\npoint reads through one resolver: `auto_merge` (the merge executor's eligibility),\n`human_review` (the gate engine), `protected_paths` (AP.3, joined with each repository's\nown globs), `spend_guard` (the per-run cap a resolution carries — the stricter of it and the\nroute's) and `dry_run_new_repos` (a repository's first N loops in dry-run; the switch above\nstays the stricter override). A change is a **publish** of `vN+1`, classified per rule —\na loosening is the owner's alone — and audited as `policy.published`."
     },
     {
       "name": "insights",
@@ -9188,6 +9188,385 @@
           },
           "500": {
             "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/policies": {
+      "get": {
+        "tags": [
+          "policies"
+        ],
+        "summary": "The org policy document in force",
+        "description": "The workspace's published org policy document (BQ.2,\n[#481](https://github.com/NobuData/ouroboros/issues/481)) — the version\n`org_policies.current_version` points at, verbatim: the settings card's **Autonomy\nPolicies** and its `policy v7` tag. `version: null` (and a null `document`) is a\nworkspace that has published nothing, where no rule binds anything.\n\n**Any member may read it**, viewers included — it governs their loops.",
+        "operationId": "readOrgPolicy",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The version in force.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgPolicy"
+                },
+                "example": {
+                  "version": 7,
+                  "document": {
+                    "auto_merge": {
+                      "enabled": true,
+                      "conditions": {
+                        "all": [
+                          {
+                            "effort_lte": "m"
+                          },
+                          {
+                            "not": {
+                              "label": "refactor"
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "human_review": {
+                      "enabled": true,
+                      "conditions": {
+                        "any": [
+                          {
+                            "label": "refactor"
+                          },
+                          {
+                            "effort_gte": "l"
+                          }
+                        ]
+                      }
+                    },
+                    "protected_paths": {
+                      "enabled": true,
+                      "conditions": {
+                        "path_globs": [
+                          "boot/**",
+                          "keys/**",
+                          ".github/**"
+                        ]
+                      }
+                    },
+                    "spend_guard": {
+                      "enabled": true,
+                      "conditions": {
+                        "per_run_cap_cents": 250,
+                        "monthly_cap_cents": 60000
+                      }
+                    },
+                    "dry_run_new_repos": {
+                      "enabled": true,
+                      "conditions": {
+                        "first_n_loops": 10
+                      }
+                    }
+                  },
+                  "publishedAt": "2026-10-04T13:48:00.000Z",
+                  "publishedBy": "aBcD1234eFgH5678iJkL9012mNoP3456",
+                  "changeNote": "Enable auto-merge"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "policies"
+        ],
+        "summary": "Publish the next version",
+        "description": "Publish a whole document as `vN+1` (BQ.2, #481). The document is validated against\n`schemas/org-policy/v1.json`; then, **under the workspace's lock**, compared with the version\nin force: `baseVersion` must be that version (`null` when nothing is published), or the\npublish is a `409 policy_version_conflict` rather than a silent overwrite.\n\nEach changed rule is **classified** — `tightening`, `loosening` or `neutral` — by comparing\nwhat it lets through (auto-merged tickets, reviewed tickets, protected globs, caps, dry-run\nloops). **`owner` or `admin`** may publish, but a **loosening** edit is the owner's alone:\nan admin gets `403 policy_loosening_requires_owner` naming the loosening rules. Every\nenforcement point sees the new version at once on this replica (others within 30 s).\n\nAudited as `policy.published` (subject `org_policy`) with `version`, `previous_version`,\n`changed_rules`, the classification of each and the audit card's line —\n*\"enabled auto-merge (policy v8)\"*.",
+        "operationId": "publishOrgPolicy",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrgPolicyPublish"
+              },
+              "example": {
+                "baseVersion": 7,
+                "changeNote": "Pause unattended merges for the release.",
+                "document": {
+                  "auto_merge": {
+                    "enabled": false,
+                    "conditions": {
+                      "effort_lte": "m"
+                    }
+                  },
+                  "human_review": {
+                    "enabled": true,
+                    "conditions": {
+                      "label": "refactor"
+                    }
+                  },
+                  "protected_paths": {
+                    "enabled": true,
+                    "conditions": {
+                      "path_globs": [
+                        "boot/**"
+                      ]
+                    }
+                  },
+                  "spend_guard": {
+                    "enabled": true,
+                    "conditions": {
+                      "per_run_cap_cents": 250
+                    }
+                  },
+                  "dry_run_new_repos": {
+                    "enabled": true,
+                    "conditions": {
+                      "first_n_loops": 10
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The version published, and what it changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgPolicyPublished"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — a `member` or `viewer`; or `policy_loosening_requires_owner` — an admin\npublishing an edit that lets more run without a person (`details.loosening` names the\nrules). Nothing is written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`policy_version_conflict` — `baseVersion` is not the version in force\n(`details.currentVersion`): another publish landed since the edit began. Reload and edit again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the body is malformed; `policy_document_invalid` — the document is\nnot one `schemas/org-policy/v1.json` accepts (`details.errors` lists the path and why);\n`policy_unchanged` — the document is the version in force.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/policies/preview": {
+      "post": {
+        "tags": [
+          "policies"
+        ],
+        "summary": "Classify a draft before publishing it",
+        "description": "What publishing a draft would do — **writes nothing** (BQ.2, #481). Each changed rule\nagainst the version in force, its class and its line, the draft's class, whether only the\nowner may publish it, and whether **this caller** may: the settings card's confirm dialog\n(BS.4) renders this rather than guessing.\n\n**`owner` or `admin`.**",
+        "operationId": "previewOrgPolicy",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrgPolicyPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "What the draft changes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgPolicyPreview"
+                },
+                "example": {
+                  "baseVersion": 7,
+                  "classification": "loosening",
+                  "changes": [
+                    {
+                      "ruleId": "human_review",
+                      "classification": "loosening",
+                      "summary": "disabled human review"
+                    }
+                  ],
+                  "requiresOwner": true,
+                  "mayPublish": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — a `member` or `viewer`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the body is malformed; `policy_document_invalid` — the document is\nnot one `schemas/org-policy/v1.json` accepts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
             "content": {
               "application/json": {
                 "schema": {
@@ -42081,9 +42460,10 @@
       "PrMergeRefusalCode": {
         "type": "string",
         "title": "PrMergeRefusalCode",
-        "description": "Why the executor's re-check refused a merge. `gates_pending` never disarms; every other\ncode disarms an armed plan. `dry_run_policy_active` (#382) is the workspace's dry-run\npolicy, re-checked at execution — a plan armed before it turned on is disarmed, never merged.",
+        "description": "Why the executor's re-check refused a merge. `gates_pending` never disarms; every other\ncode disarms an armed plan. `dry_run_policy_active` (#382) is the workspace's dry-run\npolicy, re-checked at execution — a plan armed before it turned on is disarmed, never merged.\n`auto_merge_policy_ineligible` (#481) is the org policy's `auto_merge` rule: the PR no longer\nmeets it and nobody with the owner or admin role armed it.",
         "enum": [
           "dry_run_policy_active",
+          "auto_merge_policy_ineligible",
           "head_moved",
           "gate_red",
           "gates_pending",
@@ -42254,6 +42634,38 @@
           "dryRun": {
             "$ref": "#/components/schemas/PrMergeDryRunState"
           },
+          "autoMergePolicy": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "The org policy's `auto_merge` rule for this PR (#481), evaluated against its ticket —\nwhether it may merge unattended, the version that decided and why. A member may arm a\nPR whose pinned workflow auto-merges only while this is `eligible`.",
+            "required": [
+              "eligible",
+              "ruleId",
+              "version",
+              "reason"
+            ],
+            "properties": {
+              "eligible": {
+                "type": "boolean",
+                "description": "True when no policy is published."
+              },
+              "ruleId": {
+                "type": "string",
+                "enum": [
+                  "auto_merge"
+                ]
+              },
+              "version": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          },
           "updatedAt": {
             "type": "string",
             "format": "date-time"
@@ -42297,13 +42709,32 @@
               },
               "effective": {
                 "type": "boolean",
-                "description": "What happens — `requested` unless dry-run overrides it."
+                "description": "What happens — `requested` unless dry-run overrides it or the org policy's `auto_merge` rule refuses it (#481)."
               },
               "overridden": {
                 "type": "boolean",
                 "description": "Whether dry-run is what turned a requested auto-merge off."
               }
             }
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "org_override",
+              "dry_run_new_repos",
+              null
+            ],
+            "description": "What made it active (#481): the workspace-wide switch, or the org policy's\n`dry_run_new_repos` — this PR's repository is inside its first N loops. Null while inactive."
+          },
+          "policyVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The policy version, when `dry_run_new_repos` is the source."
           }
         }
       },
@@ -52018,6 +52449,250 @@
           }
         }
       },
+      "OrgPolicyRule": {
+        "type": "object",
+        "title": "OrgPolicyRule",
+        "description": "One rule of the org policy document — `{enabled, conditions}`, the grammar of\n`schemas/org-policy/v1.json`. Conditions are the workflow DSL's predicates (`effort_lte`,\n`effort_gte`, `label`, `not`, `any`, `all`), `path_globs`, or integer-cent caps.",
+        "required": [
+          "enabled",
+          "conditions"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "conditions": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "OrgPolicyDocument": {
+        "type": "object",
+        "title": "OrgPolicyDocument",
+        "description": "The whole document: the five core rules, always present, and any `custom:<slug>` rules.\nValidated against `schemas/org-policy/v1.json` when published.",
+        "additionalProperties": {
+          "$ref": "#/components/schemas/OrgPolicyRule"
+        }
+      },
+      "OrgPolicy": {
+        "type": "object",
+        "title": "OrgPolicy",
+        "additionalProperties": false,
+        "description": "The version in force (#481) — all null while nothing is published.",
+        "required": [
+          "version",
+          "document",
+          "publishedAt",
+          "publishedBy",
+          "changeNote"
+        ],
+        "properties": {
+          "version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The card's `policy v7`."
+          },
+          "document": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OrgPolicyDocument"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "publishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "publishedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who published it — `user.id`, null for a person since deleted."
+          },
+          "changeNote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "OrgPolicyChangeClass": {
+        "type": "string",
+        "title": "OrgPolicyChangeClass",
+        "description": "Which way a change moves autonomy (#481). `loosening` — something now runs without a\nperson that did not; `tightening` — the reverse; `neutral` — nothing moves either way. An\nedit is loosening if any of its changes is; a loosening is the owner's alone to publish.",
+        "enum": [
+          "tightening",
+          "loosening",
+          "neutral"
+        ]
+      },
+      "OrgPolicyRuleChange": {
+        "type": "object",
+        "title": "OrgPolicyRuleChange",
+        "additionalProperties": false,
+        "required": [
+          "ruleId",
+          "classification",
+          "summary"
+        ],
+        "properties": {
+          "ruleId": {
+            "type": "string",
+            "examples": [
+              "auto_merge"
+            ]
+          },
+          "classification": {
+            "$ref": "#/components/schemas/OrgPolicyChangeClass"
+          },
+          "summary": {
+            "type": "string",
+            "description": "The change as the audit line says it — `enabled auto-merge`."
+          }
+        }
+      },
+      "OrgPolicyPreviewRequest": {
+        "type": "object",
+        "title": "OrgPolicyPreviewRequest",
+        "additionalProperties": false,
+        "required": [
+          "document"
+        ],
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/OrgPolicyDocument"
+          }
+        }
+      },
+      "OrgPolicyPublish": {
+        "type": "object",
+        "title": "OrgPolicyPublish",
+        "additionalProperties": false,
+        "required": [
+          "document",
+          "baseVersion"
+        ],
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/OrgPolicyDocument"
+          },
+          "baseVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The version this edit began from — null when nothing was published."
+          },
+          "changeNote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500,
+            "description": "Why — the history popover's line. Blank is none."
+          }
+        }
+      },
+      "OrgPolicyPreview": {
+        "type": "object",
+        "title": "OrgPolicyPreview",
+        "additionalProperties": false,
+        "required": [
+          "baseVersion",
+          "classification",
+          "changes",
+          "requiresOwner",
+          "mayPublish"
+        ],
+        "properties": {
+          "baseVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The version the draft was compared with — the one in force."
+          },
+          "classification": {
+            "$ref": "#/components/schemas/OrgPolicyChangeClass"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgPolicyRuleChange"
+            }
+          },
+          "requiresOwner": {
+            "type": "boolean"
+          },
+          "mayPublish": {
+            "type": "boolean",
+            "description": "Whether this caller may publish it — false for an admin and a loosening."
+          }
+        }
+      },
+      "OrgPolicyPublished": {
+        "type": "object",
+        "title": "OrgPolicyPublished",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "document",
+          "publishedAt",
+          "publishedBy",
+          "changeNote",
+          "classification",
+          "changes",
+          "summary"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "document": {
+            "$ref": "#/components/schemas/OrgPolicyDocument"
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "publishedBy": {
+            "type": "string"
+          },
+          "changeNote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "classification": {
+            "$ref": "#/components/schemas/OrgPolicyChangeClass"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgPolicyRuleChange"
+            }
+          },
+          "summary": {
+            "type": "string",
+            "description": "The audit card's line — `enabled auto-merge (policy v8)`."
+          }
+        }
+      },
       "DryRunPolicy": {
         "type": "object",
         "title": "DryRunPolicy",
@@ -56286,6 +56961,45 @@
             "examples": [
               250
             ]
+          },
+          "costCap": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Which limit set `maxCostCents` (#481) — what a `cost_cap_exceeded` names. **The stricter\nwins**: the route's own cap, or the org policy's `spend_guard.per_run_cap_cents` when it is\nlower or the route has none. Absent where no org policy was consulted.",
+            "required": [
+              "limit",
+              "ruleId",
+              "policyVersion"
+            ],
+            "properties": {
+              "limit": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "route",
+                  "spend_guard",
+                  null
+                ]
+              },
+              "ruleId": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "spend_guard",
+                  null
+                ]
+              },
+              "policyVersion": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
           },
           "failure": {
             "oneOf": [

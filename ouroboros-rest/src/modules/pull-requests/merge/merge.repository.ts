@@ -36,13 +36,16 @@ import { sql, type Transaction } from "kysely";
 import { DatabaseService } from "../../db/db.service";
 import type {
   Database,
+  OrganizationRole,
   PrMergePlan,
   PrMergedResult,
   PrMergeStrategy,
   PullRequestState,
 } from "../../db/schema";
 import { GuardrailsRepository } from "../../guardrails/guardrails.repository";
-import { readPinnedPolicy } from "../../guardrails/guardrails.policy";
+import { asQueueEffort, readPinnedPolicy } from "../../guardrails/guardrails.policy";
+import type { PredicateFacts } from "../../policies/org-policy.predicate";
+import { rolesFrom } from "../../tenancy/organization.repository";
 import { readSpendTotals, type SpendTotals } from "../../runs/run.spend";
 import type { MergePlanChanges } from "./merge.edit";
 import type { SummaryGate } from "./merge.evidence";
@@ -222,6 +225,18 @@ export interface MergeTransaction {
 }
 
 /** The executor's store — what its unit suite stands in for. */
+/** What the org policy's per-PR rules read (BQ.2, #481). */
+export interface MergePolicyFacts {
+  /** The PR's ticket — its labels and the effort of the estimate in force. */
+  readonly ticket: PredicateFacts;
+  /**
+   * Which of its repository's loops this PR is, counting from 1: the runs of the workspace on the
+   * same repository that opened a PR, up to and including this PR's run, oldest first. Null for a
+   * PR no run opened — its repository is not known.
+   */
+  readonly loop: number | null;
+}
+
 export interface MergeStore {
   /**
    * One PR of the workspace.
@@ -244,6 +259,20 @@ export interface MergeStore {
    * @returns `false` for a PR without a run, or whose pin cannot be read.
    */
   autoMerges(pr: MergePr): Promise<boolean>;
+  /**
+   * What the org policy's per-PR rules read (BQ.2, #481): the PR's ticket, for `auto_merge`, and
+   * which of its repository's loops it is, for `dry_run_new_repos`.
+   *
+   * @param pr - The PR.
+   * @returns The facts — an empty ticket and an unknown loop for a PR without a run.
+   */
+  policyFacts(pr: MergePr): Promise<MergePolicyFacts>;
+  /**
+   * @param organizationId - The workspace.
+   * @param userId - `user.id` — who armed a plan.
+   * @returns Their roles there — empty when they are no longer a member.
+   */
+  roles(organizationId: string, userId: string): Promise<readonly OrganizationRole[]>;
   /**
    * @param userId - `user.id` — who armed a plan.
    * @returns The person, or undefined when they are gone.
@@ -356,6 +385,60 @@ export class MergeRepository implements MergeStore {
     return pinned === undefined
       ? false
       : (readPinnedPolicy(pinned.definition)?.autoMerges ?? false);
+  }
+  /** @inheritdoc */
+  async policyFacts(pr: MergePr): Promise<MergePolicyFacts> {
+    if (pr.runId === null) {
+      return { ticket: { labels: [], effort: undefined }, loop: null };
+    }
+
+    const db = this.database.db;
+    const run = await this.guardrails.runPolicy(db, pr.runId);
+
+    if (run?.organizationId !== pr.organizationId) {
+      return { ticket: { labels: [], effort: undefined }, loop: null };
+    }
+
+    const ticket = await this.guardrails.ticketFacts(db, run);
+    // The loops of this repository that opened a PR, up to and including this PR's — a loop's PR
+    // is on the run (`pr_number`, written at merge) or mirrored (`pull_requests.run_id`), and the
+    // seed's merged history has only the first. Ordered by the run's created_at, then id, so two
+    // loops started in one instant still have an order.
+    const counted = await sql<{ loop: number }>`
+      with me as (
+        select r.id, r.created_at
+          from ouroboros.runs r
+         where r.id = ${pr.runId} and r.organization_id = ${pr.organizationId}
+      )
+      select count(*)::int as loop
+        from ouroboros.runs r
+        cross join me
+       where r.organization_id = ${pr.organizationId}
+         and r.github_repo_id = ${run.githubRepoId}
+         and (r.pr_number is not null
+              or r.id = me.id
+              or exists (select 1 from ouroboros.pull_requests p
+                          where p.run_id = r.id and p.organization_id = r.organization_id))
+         and (r.created_at, r.id) <= (me.created_at, me.id)
+    `.execute(db);
+    const loop = counted.rows[0]?.loop ?? 0;
+
+    return {
+      ticket: { labels: ticket.labels, effort: asQueueEffort(ticket.effort) },
+      loop: loop > 0 ? loop : null,
+    };
+  }
+
+  /** @inheritdoc */
+  async roles(organizationId: string, userId: string): Promise<readonly OrganizationRole[]> {
+    const membership = await this.database.db
+      .selectFrom("member")
+      .select("role")
+      .where("organizationId", "=", organizationId)
+      .where("userId", "=", userId)
+      .executeTakeFirst();
+
+    return membership === undefined ? [] : rolesFrom(membership.role);
   }
 
   /** @inheritdoc */
