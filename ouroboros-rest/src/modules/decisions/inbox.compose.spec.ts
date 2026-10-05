@@ -11,6 +11,7 @@ import {
   inboxHead,
   outcomeWords,
   refsOf,
+  resolvedSubject,
   resolvedSummary,
   utcDay,
   utcWeek,
@@ -176,6 +177,19 @@ describe("inboxActions", () => {
 
 describe("resolved summaries", () => {
   const ticket = (label: string): DecisionRef => ({ type: "ticket", id: "t-1", label });
+
+  it("composes the subject on its own — the half of the line that is not the verdict (#468)", () => {
+    expect(
+      resolvedSubject(
+        "split_approval",
+        { subject: "Migrate", draft_count: 6 },
+        [ticket("issue #490")],
+        "?",
+      ),
+    ).toBe("Split #490 into 6 tickets");
+    // A kind with no subject here reads as its rendered question.
+    expect(resolvedSubject("custom:oven", {}, [], "Is the oven hot?")).toBe("Is the oven hot?");
+  });
 
   it("reads the mockup's two rows", () => {
     expect(

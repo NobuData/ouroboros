@@ -9,7 +9,9 @@
  * and the caller's notification preferences (`GET`/`PATCH /api/v1/inbox/notifications`, BN.3 #463).
  * BO.2 ([#467](https://github.com/NobuData/ouroboros/issues/467)) adds what a decision card
  * writes: an answer (`POST /api/v1/inbox/items/{id}/actions/{actionId}`, BN.2 #462) and a snooze of
- * one item (`POST /api/v1/inbox/items/{id}/snooze`).
+ * one item (`POST /api/v1/inbox/items/{id}/snooze`). BO.3
+ * ([#468](https://github.com/NobuData/ouroboros/issues/468)) adds the resolved list's read: one UTC
+ * day's answered decisions (`GET /api/v1/inbox/resolved`, BN.4 #464).
  *
  * ### `open` is the badge
  *
@@ -49,6 +51,12 @@ export type InboxActionResult = components["schemas"]["InboxActionResult"];
 /** What an answer executed, in words, with where to see it. */
 export type InboxActionReceipt = components["schemas"]["InboxActionReceipt"];
 
+/** One UTC day's answered decisions, with the days either side of it. */
+export type InboxResolved = components["schemas"]["InboxResolved"];
+
+/** One answered decision of a day: its composed line, who or what answered, and from where. */
+export type InboxResolvedRow = components["schemas"]["InboxResolvedRow"];
+
 /** What *Snooze all* did. */
 export type InboxSnoozeResult = components["schemas"]["InboxSnoozeResult"];
 
@@ -82,6 +90,24 @@ export const inbox = {
    */
   async queue(client: ApiClient = api(), signal?: AbortSignal): Promise<InboxQueue> {
     return unwrap(await client.GET("/api/v1/inbox", { signal }));
+  },
+
+  /**
+   * Read one day's answered decisions, newest first.
+   *
+   * @param day A UTC day, `YYYY-MM-DD`; the service's today when absent.
+   * @param client The client to read through. A poll passes `anonymousApi()`.
+   * @param signal A way to give up on the read — a poll's deadline.
+   * @returns The day, its rows, and the days to page to.
+   * @throws {ApiError} When the service refuses — `422` for a day that is not a date.
+   */
+  async resolved(day?: string, client: ApiClient = api(), signal?: AbortSignal): Promise<InboxResolved> {
+    return unwrap(
+      await client.GET("/api/v1/inbox/resolved", {
+        params: { query: day === undefined ? {} : { day } },
+        signal,
+      }),
+    );
   },
 
   /**

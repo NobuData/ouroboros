@@ -7,10 +7,13 @@ import { InboxScreen } from "@/app/inbox/inbox-screen";
  * mounted in the shell's content pane. Every member reads it, a viewer included; what they may do
  * is the service's to decide per action.
  *
- * @returns The screen, drawn from one server read of the queue.
+ * The reader's id goes with it: whether the resolved list is folded is each person's own choice
+ * (BO.3, [#468](https://github.com/NobuData/ouroboros/issues/468)).
+ *
+ * @returns The screen, drawn from one server read of the queue and of today's resolved list.
  */
 export default async function Page() {
-  await requireWorkspace();
+  const { session } = await requireWorkspace();
 
-  return <InboxScreen readings={await readInbox()} />;
+  return <InboxScreen readerId={session.user.id} readings={await readInbox()} />;
 }

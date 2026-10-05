@@ -6960,7 +6960,8 @@ follows and [`../README.md`](../README.md) for the module map.
 ## Needs-You inbox
 
 `/inbox` ([#466](https://github.com/NobuData/ouroboros/issues/466), BO.1; decision cards
-[#467](https://github.com/NobuData/ouroboros/issues/467), BO.2 — mockup 16) mounts in the shell
+[#467](https://github.com/NobuData/ouroboros/issues/467), BO.2; resolved list and zero card
+[#468](https://github.com/NobuData/ouroboros/issues/468), BO.3 — mockup 16) mounts in the shell
 content pane; the sidebar's **Needs You** entry is live, lit on this route, and badged with the
 snooze-aware count. Module: [`app/inbox/`](app/inbox/).
 
@@ -6997,5 +6998,20 @@ snooze-aware count. Module: [`app/inbox/`](app/inbox/).
   returns. A card pressed here stays on screen with its receipt after the queue stops listing the
   item ([`queue-list.tsx`](app/inbox/queue-list.tsx)), and the badge drops with the press
   (`askingCount`). Items snoozed elsewhere are plain rows until BO.5 (#470).
+- **Inbox zero is a real state.** The dashed [`ZeroCard`](app/inbox/zero-card.tsx) — the #14 glyph
+  with its own alpha, one drawing per palette, dimmed by opacity — and the mockup's two lines
+  verbatim are drawn **only** when nothing is asking, under the receipts of any cards just
+  answered and never beside a live item. The mockup shows it under live cards to demonstrate the
+  design; the page deliberately does not.
+- **Resolved today** ([`resolved-list.tsx`](app/inbox/resolved-list.tsx), rules in
+  [`resolved-view.ts`](app/inbox/resolved-view.ts)) lists a UTC day of `GET /api/v1/inbox/resolved`
+  on a poll of its own (`GET /api/inbox/resolved?day=`), which a settling card also refreshes.
+  Each row is the service's composed `subject — verdict`, with keys and paths in mono and the
+  time at the far edge. A policy's verdict is set apart from a person's, and a rule that fired
+  carries a note — shown on hover, on focus, or pinned by a press — naming it and linking to where
+  it is configured (`policyHref`). An answer that did not come from this page shows its channel.
+  The heading folds the list, per reader ([`resolved-collapse.ts`](app/inbox/resolved-collapse.ts),
+  `localStorage` keyed by `user.id`); *Earlier*, *Later* and *Today* walk history; a day with
+  nothing resolved is one quiet line.
 - The learned-facts card's *Review all →*, the topbar's needs-you pill and the dashboard's
   `needs human` rows all link here.

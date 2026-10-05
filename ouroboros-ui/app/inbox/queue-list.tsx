@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 
 import type { InboxItem, InboxRef, InboxSnoozedItem } from "@/app/api/inbox";
 import { Chip } from "@/app/ui";
@@ -68,7 +68,10 @@ export function cardsOnScreen(items: readonly InboxItem[], kept: ReadonlyMap<str
  * @param props.clock How an instant is printed.
  * @param props.onSettled Hears each card that settles here, so the page can recount and re-read.
  * @param props.newKey Mints a press's idempotency key — a test seam.
- * @returns The cards and the snoozed rows, or nothing for an empty queue.
+ * @param props.afterCards What the page draws between the cards and the snoozed rows — the
+ *   *Inbox zero* card (#468), which belongs under the receipts of the cards just answered rather
+ *   than above them, where it would push the card the reader is looking at down the page.
+ * @returns The cards, the slot and the snoozed rows, or nothing when all three are empty.
  */
 export function QueueList({
   items,
@@ -77,6 +80,7 @@ export function QueueList({
   clock,
   onSettled,
   newKey,
+  afterCards = null,
 }: Readonly<{
   items: readonly InboxItem[];
   snoozed: readonly InboxSnoozedItem[];
@@ -84,6 +88,7 @@ export function QueueList({
   clock: (atMs: number) => string;
   onSettled?: (itemId: string) => void;
   newKey?: () => string;
+  afterCards?: ReactNode;
 }>) {
   const [kept, setKept] = useState<ReadonlyMap<string, InboxItem>>(new Map());
   const cards = useMemo(() => cardsOnScreen(items, kept), [items, kept]);
@@ -99,7 +104,7 @@ export function QueueList({
     [cards],
   );
 
-  if (cards.length === 0 && hidden.length === 0) return null;
+  if (cards.length === 0 && hidden.length === 0 && afterCards === null) return null;
 
   return (
     <div className="inbox-queue">
@@ -121,6 +126,7 @@ export function QueueList({
           </ul>
         </section>
       )}
+      {afterCards}
       {hidden.length > 0 && (
         <section aria-label={SNOOZED_LABEL} className="inbox-queue__section inbox-queue__section--snoozed">
           <h2 className="inbox-queue__heading">

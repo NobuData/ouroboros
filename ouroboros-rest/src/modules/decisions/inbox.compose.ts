@@ -18,7 +18,7 @@
 
 import type { ResolvedDecisionAction } from "./decision.actions";
 import type { DecisionRef } from "./decision.types";
-import { navigationHref, type LinkContext } from "./inbox.links";
+import { SOURCE_RESOLVED, navigationHref, type LinkContext } from "./inbox.links";
 
 /** What the page shows for a figure it does not have. */
 export const NO_FIGURE = "—";
@@ -288,8 +288,8 @@ const ANSWERED: Readonly<Record<string, string>> = {
   stop_loop: "stopped",
 };
 
-/** The reserved out-of-band closure (V097). */
-export const SOURCE_RESOLVED = "source_resolved";
+/** The reserved out-of-band closure (V097) — defined once, beside the links that also read it. */
+export { SOURCE_RESOLVED };
 
 /**
  * How a resolution ended, in words.
@@ -315,7 +315,27 @@ export function outcomeWords(resolution: {
 }
 
 /**
- * A resolved row's line — `Split #490 into 6 tickets — approved`.
+ * What a resolved row is about — `Split #490 into 6 tickets` — composed from the kind, its facts
+ * and its refs, never stored (X2).
+ *
+ * @param kindId - The item's kind.
+ * @param payload - Its facts.
+ * @param refs - Its refs.
+ * @param fallback - The rendered question, for a kind with no subject here.
+ * @returns The subject.
+ */
+export function resolvedSubject(
+  kindId: string,
+  payload: Readonly<Record<string, unknown>>,
+  refs: readonly DecisionRef[],
+  fallback: string,
+): string {
+  return SUBJECTS[kindId]?.(payload, refs) ?? fallback;
+}
+
+/**
+ * A resolved row's line — `Split #490 into 6 tickets — approved`: its subject
+ * ({@link resolvedSubject}) and how it ended ({@link outcomeWords}).
  *
  * @param kindId - The item's kind.
  * @param payload - Its facts.
@@ -338,9 +358,7 @@ export function resolvedSummary(
     readonly actionId: string;
   },
 ): string {
-  const subject = SUBJECTS[kindId]?.(payload, refs) ?? fallback;
-
-  return `${subject} — ${outcomeWords(resolution)}`;
+  return `${resolvedSubject(kindId, payload, refs, fallback)} — ${outcomeWords(resolution)}`;
 }
 
 /**

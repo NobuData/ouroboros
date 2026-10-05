@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.39.12"
+  version: "0.39.13"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -51562,7 +51562,7 @@ components:
     InboxResolvedRow:
       type: object
       additionalProperties: false
-      required: [itemId, kindId, summary, actionId, resolver, policy, actor, channel, note, outcome, resolvedAt, answerLatencySeconds, loopWaitSeconds]
+      required: [itemId, kindId, summary, subject, verdict, actionId, resolver, policy, policyHref, actor, channel, note, outcome, resolvedAt, answerLatencySeconds, loopWaitSeconds]
       properties:
         itemId:
           type: string
@@ -51571,7 +51571,21 @@ components:
           type: string
         summary:
           type: string
+          description: The whole line — `subject`, a dash, `verdict`.
           example: Split #490 into 6 tickets — approved
+        subject:
+          type: string
+          description: |-
+            What the decision was about (#468), composed from the kind, its facts and its refs —
+            never stored.
+          example: "Split #490 into 6 tickets"
+        verdict:
+          type: string
+          description: |-
+            How it ended, in words (#468) — the row's resolver affix: `approved`, `waived`,
+            `allowed once`, or `auto-accepted by policy` / `closed — settled elsewhere` for a
+            `policy` resolution.
+          example: auto-accepted by policy
         actionId:
           type: string
         resolver:
@@ -51579,6 +51593,13 @@ components:
           enum: [human, policy]
         policy:
           type: [string, "null"]
+        policyHref:
+          type: [string, "null"]
+          description: |-
+            Where the policy that answered is configured (#468) — an origin-relative path on the
+            UI, so the row can answer *why did nobody ask me?* with a link. `null` for a person's
+            answer, and for `source_resolved`, which is not a rule anybody configured.
+          example: /settings#policies
         actor:
           oneOf:
             - type: "null"

@@ -11,6 +11,8 @@ import type {
   InboxActionResult,
   InboxItem,
   InboxQueue,
+  InboxResolved,
+  InboxResolvedRow,
   InboxSnoozedItem,
   NotificationPreferences,
 } from "@/app/api/inbox";
@@ -290,10 +292,108 @@ export function emptyQueue(): InboxQueue {
   });
 }
 
+/** One resolved decision — the mockup's *Split #490 into 6 tickets — approved · 09:12* — with overrides. */
+export function resolvedRow(overrides: Partial<InboxResolvedRow> = {}): InboxResolvedRow {
+  const subject = overrides.subject ?? "Split #490 into 6 tickets";
+  const verdict = overrides.verdict ?? "approved";
+
+  return {
+    itemId: "5eed0082-0000-4000-8000-000000000102",
+    kindId: "split_approval",
+    summary: `${subject} — ${verdict}`,
+    subject,
+    verdict,
+    actionId: "approve_split",
+    resolver: "human",
+    policy: null,
+    policyHref: null,
+    actor: { id: "5eed0003-0000-4000-8000-000000000001", name: "Ken Suenobu" },
+    channel: "web",
+    note: null,
+    outcome: {},
+    resolvedAt: "2026-10-04T09:12:00.000Z",
+    answerLatencySeconds: 41,
+    loopWaitSeconds: null,
+    ...overrides,
+  };
+}
+
+/** The seed's five answers of today (#460), newest first — one of them a policy's. */
+export function seededResolvedRows(): InboxResolvedRow[] {
+  return [
+    resolvedRow({
+      itemId: "5eed0082-0000-4000-8000-000000000105",
+      kindId: "run_needs_human",
+      subject: "Add watchdog reset on I²C lockup needed a human",
+      verdict: "retried with a note",
+      actionId: "retry_with_note",
+      channel: "push",
+      note: "Retry with the bus recovery sequence.",
+      resolvedAt: "2026-10-04T09:41:00.000Z",
+    }),
+    resolvedRow(),
+    resolvedRow({
+      itemId: "5eed0082-0000-4000-8000-000000000104",
+      kindId: "resize_review",
+      subject: "Estimator re-size #479 M→L",
+      verdict: "kept the old size",
+      actionId: "keep_size",
+      actor: { id: "5eed0003-0000-4000-8000-000000000002", name: "Maya Chen" },
+      channel: "slack",
+      resolvedAt: "2026-10-04T08:58:00.000Z",
+    }),
+    resolvedRow({
+      itemId: "5eed0082-0000-4000-8000-000000000101",
+      kindId: "resize_review",
+      subject: "Estimator re-size #486 L→M",
+      verdict: "auto-accepted by policy",
+      actionId: "accept_resize",
+      resolver: "policy",
+      policy: "auto_accept_resize",
+      policyHref: "/settings#policies",
+      actor: null,
+      channel: "api",
+      outcome: { org_policy_version: 7 },
+      resolvedAt: "2026-10-04T08:47:00.000Z",
+    }),
+    resolvedRow({
+      itemId: "5eed0082-0000-4000-8000-000000000103",
+      kindId: "plan_sign_off",
+      subject: "Plan sign-off for Rework the OTA bootloader handoff",
+      verdict: "signed off",
+      actionId: "sign_off",
+      actor: { id: "5eed0003-0000-4000-8000-000000000002", name: "Maya Chen" },
+      channel: "github",
+      resolvedAt: "2026-10-04T08:31:00.000Z",
+    }),
+  ];
+}
+
+/** One resolved day, with overrides — today's seeded five by default, the day before behind it. */
+export function resolvedDay(overrides: Partial<InboxResolved> = {}): InboxResolved {
+  const rows = overrides.rows ?? seededResolvedRows();
+
+  return {
+    day: "2026-10-04",
+    count: rows.length,
+    rows,
+    previousDay: "2026-10-02",
+    nextDay: null,
+    ...overrides,
+  };
+}
+
 /** What the route reads for the first paint. */
-export function inboxReadings(queue: InboxQueue | null = inboxQueue()): InboxReadings {
+export function inboxReadings(
+  queue: InboxQueue | null = inboxQueue(),
+  resolved: InboxResolved | null = resolvedDay(),
+): InboxReadings {
   return {
     queue: queue === null ? { ok: false, reason: "The inbox could not be read." } : { ok: true, value: queue },
+    resolved:
+      resolved === null
+        ? { ok: false, reason: "The resolved list could not be read." }
+        : { ok: true, value: resolved },
     readAt: INBOX_READ_AT,
   };
 }

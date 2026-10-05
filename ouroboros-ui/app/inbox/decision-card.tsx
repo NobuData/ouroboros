@@ -23,6 +23,7 @@ import {
   whySegments,
 } from "./card-view";
 import { DecisionActions } from "./decision-actions";
+import { Segments } from "./segments";
 import { type DecisionOptions, useDecision } from "./use-decision";
 import { SEVERITY, askedAgo } from "./view";
 
@@ -134,16 +135,7 @@ export function DecisionCard({ item, clock, asOfSeconds, onPressed, onSettled, n
           </div>
         )}
         <p className="inbox-card__why">
-          {whySegments(item.why, item.facts).map((segment, index) =>
-            segment.mono ? (
-              // The paragraph never reorders, so a stretch's place in it is its identity.
-              <span className="inbox-card__mono" key={`${String(index)}:${segment.text}`}>
-                {segment.text}
-              </span>
-            ) : (
-              segment.text
-            ),
-          )}
+          <Segments monoClassName="inbox-card__mono" segments={whySegments(item.why, item.facts)} />
         </p>
         {asking && <DecisionActions controls={{ ...controls, phase }} item={item} />}
         {phase.kind === "failed" && (
