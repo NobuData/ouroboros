@@ -1,3 +1,4 @@
+import { GetStartedBanner } from "@/app/get-started/offer-banner";
 import { WORKFLOWS_PATH } from "@/app/paths";
 import { Button, type ButtonTone, Eyebrow, cx } from "@/app/ui";
 
@@ -96,6 +97,8 @@ export function DashboardScreen({
           )}
         </div>
       </div>
+
+      {readings.getStarted != null && <GetStartedBanner offer={readings.getStarted} />}
 
       <div className="dash-grid">
         {statRow(aggregate).map((stat) => (

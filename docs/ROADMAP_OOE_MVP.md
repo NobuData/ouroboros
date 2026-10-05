@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**381 of 454 ordered issues are closed** — P0 through P10, P12 and P13 are complete, and P11 and P14 are in progress.
+**390 of 454 ordered issues are closed** — P0 through P10, P12, P13 and P14 are complete, and P11 and P15 are in progress.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -39,9 +39,9 @@ and are accounted for in the counts below, not in the tables.
 
 | Status | Phases | Issues |
 |--------|--------|-------:|
-| ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P12, P13 | **322** |
-| 🟡 **In progress** | P11, P14 | **60** of 69 |
-| — **Not started** | P15–P17 | 0 of 63 |
+| ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P12, P13, P14 | **353** |
+| 🟡 **In progress** | P11, P15 | **37** of 44 |
+| — **Not started** | P16–P17 | 0 of 57 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
 > them with `gh issue list --state closed --limit 1000 --json number` whenever the plan
@@ -1631,11 +1631,11 @@ the blockquote above that records what it did and what it did differently.
 | 359 | **BW.5** | ✅ [#520](https://github.com/NobuData/ouroboros/issues/520) | Predicted-vs-measured & how-it-works cards | ouroboros-ui | S | BV.6, BW.1 |
 | 360 | **BW.6** | ✅ [#521](https://github.com/NobuData/ouroboros/issues/521) | Analyzer states & e2e leg | ouroboros-ui, .github | M | BW.2, BW.5 |
 
-## P14 — Decisions & Governance — Inbox & Settings
+## P14 — Decisions & Governance — Inbox & Settings ✅
 
 > **31 issues** · 102 complexity points · order **#361–#391** · 10 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_16_NEEDS_YOU_INBOX.md`, `ROADMAP_MOCKUP_17_SETTINGS.md`
-> **Status:** 🟡 **In progress** — 29 of 31 issues closed
+> **Status:** ✅ **Complete** — 31 of 31 issues closed
 
 **Goal.** Deliver the typed decision-kind registry with items emitted by every live plane and actions that resume loops through the real machinery, and the one versioned policy document that drives every enforcement point — auto-merge conditions, review-required, protected paths, spend guard, dry-run-for-new-repos — plus members, audit and lifecycle.
 
@@ -1683,7 +1683,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **6 issues** · 18 complexity points · order **#392–#397** · 5 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_13_ONBOARDING.md` (Epic BC)
-> **Status:** ⬜ **Not started** — 0 of 6 issues closed
+> **Status:** 🟡 **In progress** — 1 of 6 issues closed
 
 **Goal.** Build `/get-started` — step rail with states derived from subsystem truth, detection card, template tiles, first-issue card with safety rows, deployment-aware smart defaults, the projection-labelled timeline and the glow action bar.
 
@@ -1695,7 +1695,7 @@ the blockquote above that records what it did and what it did differently.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 392 | **BC.1** | [#390](https://github.com/NobuData/ouroboros/issues/390) | Wizard route, step rail & action bar | ouroboros-ui | M | 5.3, D.5, BB.2 |
+| 392 | **BC.1** | ✅ [#390](https://github.com/NobuData/ouroboros/issues/390) | Wizard route, step rail & action bar | ouroboros-ui | M | 5.3, D.5, BB.2 |
 | 393 | **BC.2** | [#391](https://github.com/NobuData/ouroboros/issues/391) | Detection card | ouroboros-ui | M | BB.1, BC.1 |
 | 394 | **BC.3** | [#392](https://github.com/NobuData/ouroboros/issues/392) | Template tiles | ouroboros-ui | M | BB.3, BC.1 |
 | 395 | **BC.4** | [#393](https://github.com/NobuData/ouroboros/issues/393) | First-issue & safety card | ouroboros-ui | M | BA.3, BB.4, BC.1 |

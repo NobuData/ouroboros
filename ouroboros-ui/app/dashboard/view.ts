@@ -27,6 +27,7 @@ import type {
 import type { EngineStatus } from "@/app/api/engine";
 import type { DependencyStatus, HealthReport } from "@/app/api/health";
 import type { Membership } from "@/app/api/membership";
+import type { GetStartedOffer } from "@/app/get-started/view";
 import type { Reading } from "@/app/api/reading";
 import type { SessionUser } from "@/app/api/identity";
 import {
@@ -100,6 +101,11 @@ export interface DashboardReadings {
    * (`app/api/health.ts`), so there is no reason to carry.
    */
   readonly readiness: HealthReport | null;
+  /**
+   * The Get Started wizard's offer (BC.1, #390) — present while the fresh-org rule (BB.2, #385)
+   * offers it, absent or null otherwise. Drawn as the banner under the head.
+   */
+  readonly getStarted?: GetStartedOffer | null;
   /** What the engine reported, or why the call did not reach it. */
   readonly engine: Reading<EngineStatus>;
   /**

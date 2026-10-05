@@ -7332,3 +7332,37 @@ snooze-aware count. Module: [`app/inbox/`](app/inbox/).
   the real eyebrow and subline over bars, `aria-busy`, named *Loading the inbox*.
 - The learned-facts card's *Review all →*, the topbar's needs-you pill and the dashboard's
   `needs human` rows all link here.
+
+## Get Started wizard
+
+`/get-started` ([#390](https://github.com/NobuData/ouroboros/issues/390), BC.1 — mockup 13) is the
+wizard's frame, rendered **standalone outside the shell** in a route group of its own,
+[`app/(wizard)/`](app/(wizard)/), over the module [`app/get-started/`](app/get-started/). It needs a
+signed-in person with a workspace (`requireWorkspace()`), but no shell header or sidebar: the shell
+describes a workspace that is not set up yet.
+
+- **Which repository.** `?repo=owner/name`; without it, the workspace's first mirrored repository
+  (an enabled one first, then by name). With nothing mirrored the page says so and offers to connect
+  GitHub — it never draws a rail of its own.
+- **The head** prints the mockup's eyebrow and headline and the promise from an approved claim set
+  (`PROMISE` in [`view.ts`](app/get-started/view.ts) — each claim names the mechanism that keeps it).
+  The corner link is labelled for what it does — *I've done this before — set it up in Settings ↗* —
+  and marks the wizard bypassed through BB.2's skip hook; nothing is imported (that is #398).
+- **The rail is the service's answer** (BB.2, #385): done/active/todo per step, each done step's
+  result line verbatim (step 1 says `token` until a GitHub App installation is recorded), and a
+  regressed step explained in a banner in the service's words. It is re-read on the I.8 poll
+  (`GET /api/onboarding?repo=`, [`poll.ts`](app/get-started/poll.ts)), so a source paused elsewhere
+  regresses step 1 here without a reload. Each step is a button that puts it on screen.
+- **Only the step content scrolls**; the head, the rail and the glow action bar keep their place.
+- **The action bar's primary action is per step** — *Connect GitHub →* (Settings → Sources),
+  *Enable {repo} →* (owner/admin; turns on the repository and its account), *Continue →* through the
+  service's `complete-step` guard, *Run my first loop →* (BB.5's launch; the receipt carries its
+  dry-run note) — and is **disabled with its reason** whenever a guard would refuse it: an earlier
+  step not done, no issue picked, or a role that may not act.
+- **Fresh-org surfacing** is a dismissible banner on the dashboard
+  ([`offer-banner.tsx`](app/get-started/offer-banner.tsx)), drawn while
+  `GET /api/v1/onboarding/surfacing` offers the wizard; any member may dismiss it, and the dismissal
+  is the service's fact.
+
+The step cards (detection, template tiles, first issue, defaults) arrive with BC.2–BC.5
+(#391–#394); steps 1–2's embedded flows, completion and the e2e leg with BC.6 (#395).

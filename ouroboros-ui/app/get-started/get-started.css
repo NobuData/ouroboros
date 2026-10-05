@@ -1,0 +1,365 @@
+/*
+ * The Get Started frame (BC.1, #390 — mockup 13).
+ *
+ * Standalone, outside the shell, so it owns its scroll (app/globals.css locks the document): the
+ * frame is the viewport's height, the head, the rail and the action bar keep their place, and only
+ * the step content scrolls. Every length is a token or a rem, so the font-scale preference scales
+ * the page; every hue is a token, so both themes come from app/tokens.css (the mockup is dark
+ * only — the light treatment is the tokens' own).
+ */
+
+.wizard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  box-sizing: border-box;
+  height: 100%;
+  max-width: 75rem;
+  margin: 0 auto;
+  padding: var(--sp-11) var(--sp-10) var(--sp-8);
+}
+
+/* ---------- head ---------- */
+
+.wizard__head {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-8);
+}
+
+/* The floor keeps the promise from being squeezed beside the corner link. */
+.wizard__headings {
+  flex: 1;
+  min-width: 20rem;
+}
+
+.wizard__title {
+  font-size: var(--t-2xl);
+  letter-spacing: var(--tr-tight);
+  text-wrap: balance;
+}
+
+.wizard__sub {
+  max-width: 64ch;
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-mut);
+  line-height: var(--lh-body);
+}
+
+.wizard__term {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.wizard__skip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-2);
+}
+
+/* The mockup's .import-link: mono, quiet, dotted — a way out, not a call to action. */
+.wizard__skip-link {
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+
+.wizard__refusal {
+  max-width: 32ch;
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  text-align: right;
+}
+
+/* ---------- step rail ---------- */
+
+.wizard-rail {
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.wizard-rail__steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  padding: var(--sp-9) 1.375rem;
+  list-style: none;
+}
+
+.wizard-step + .wizard-step {
+  border-left: 1px solid var(--line);
+}
+
+/* The whole step is the control: a rail step is reached by keyboard and puts its step on screen. */
+.wizard-step__button {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-6);
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 0 var(--sp-10);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wizard-step:first-child .wizard-step__button {
+  padding-left: 0;
+}
+
+.wizard-step__button:hover .wizard-step__name {
+  text-decoration: underline;
+}
+
+.wizard-step__button[aria-current="step"] .wizard-step__num {
+  color: var(--accent);
+}
+
+.wizard-step__mark {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.625rem;
+  height: 1.625rem;
+  margin-top: 1px;
+  border-radius: var(--r-round);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.wizard-step--done .wizard-step__mark {
+  border: 1px solid var(--ok-line);
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+.wizard-step--active .wizard-step__mark {
+  background: linear-gradient(180deg, var(--accent-lift), var(--accent-deep));
+  box-shadow: 0 0 0.875rem -0.125rem var(--accent-glow);
+  color: var(--accent-ink);
+  font-weight: 700;
+}
+
+.wizard-step--todo .wizard-step__mark {
+  border: 1px dashed var(--line-strong);
+  color: var(--ink-faint);
+}
+
+/* A step that went backwards is not done, and is marked so — the banner says why. */
+.wizard-step--regressed .wizard-step__mark {
+  border: 1px solid var(--warn-line);
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+.wizard-step__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.wizard-step__num {
+  margin-bottom: var(--sp-1);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: 0.65625rem;
+  letter-spacing: var(--tr-wider);
+  text-transform: uppercase;
+}
+
+.wizard-step__name {
+  font-family: var(--f-disp);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  letter-spacing: var(--tr-wide);
+}
+
+.wizard-step--done .wizard-step__name {
+  color: var(--ink-dim);
+}
+
+.wizard-step--active .wizard-step__name {
+  color: var(--accent);
+}
+
+.wizard-step--todo .wizard-step__name {
+  color: var(--ink-faint);
+}
+
+.wizard-step__result {
+  margin-top: 0.3125rem;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: 0.6875rem;
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- step content — the one thing that scrolls ---------- */
+
+.wizard__content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--sp-8);
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.wizard-regress {
+  padding: var(--sp-7) var(--sp-9);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-lg);
+  background: var(--warn-tint);
+}
+
+.wizard-regress__title {
+  margin-bottom: var(--sp-3);
+  color: var(--warn);
+  font-size: var(--t-md);
+}
+
+.wizard-regress__rows {
+  margin: 0;
+  padding-left: var(--sp-9);
+  color: var(--ink-dim);
+  line-height: var(--lh-body);
+}
+
+.wizard-panel {
+  padding: 1.375rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.wizard-panel__title {
+  font-size: var(--t-xl);
+}
+
+.wizard-panel__num {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+  letter-spacing: var(--tr-wider);
+  text-transform: uppercase;
+}
+
+.wizard-panel__line {
+  max-width: 70ch;
+  margin: var(--sp-4) 0 0;
+  color: var(--ink-mut);
+  line-height: var(--lh-body);
+}
+
+.wizard-panel__line--done {
+  color: var(--ok);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+}
+
+.wizard-panel__repo {
+  margin: var(--sp-6) 0 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* ---------- action bar (glow) ---------- */
+
+.wizard-bar {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-7);
+  padding: var(--sp-8) var(--sp-9);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: 0 0 1.875rem -0.625rem var(--accent-glow);
+}
+
+.wizard-bar__counter {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+}
+
+.wizard-bar__status {
+  margin: 0;
+  color: var(--ok);
+  font-size: var(--t-sm);
+}
+
+.wizard-bar__status--refused {
+  color: var(--err);
+}
+
+.wizard-bar__spacer {
+  flex: 1;
+}
+
+/* The mockup's media rule: the rail goes two by two, and the dividers go with it. */
+@media (max-width: 56.25rem) {
+  .wizard-rail__steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-8);
+  }
+
+  .wizard-step + .wizard-step {
+    border-left: 0;
+  }
+
+  .wizard-step__button {
+    padding: 0;
+  }
+}
+
+@media (max-width: 48rem) {
+  .wizard {
+    padding-inline: var(--sp-6);
+  }
+}
+
+/* ---------- the dashboard's offer of the wizard ---------- */
+
+.offer-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-6);
+  margin-bottom: var(--sp-10);
+  padding: var(--sp-7) var(--sp-9);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-lg);
+  background: var(--accent-tint);
+}
+
+.offer-banner__line {
+  flex: 1;
+  min-width: 16rem;
+  margin: 0;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.offer-banner__refusal {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+}

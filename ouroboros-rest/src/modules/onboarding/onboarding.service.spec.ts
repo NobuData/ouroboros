@@ -399,6 +399,26 @@ describe("the onboarding service", () => {
         reason: "organization_has_runs",
       });
     });
+
+    it("answers the rule with no repository named — the dashboard's banner (#390)", async () => {
+      expect(await service.surfacing(ORG)).toEqual({ offer: true, reason: "fresh_organization" });
+
+      fake.runsInOrganization = true;
+
+      expect(await service.surfacing(ORG)).toEqual({
+        offer: false,
+        reason: "organization_has_runs",
+      });
+    });
+
+    it("stops offering once any repository's wizard is dismissed — and agrees with the per-repo read", async () => {
+      await service.update(ORG, REPO, { dismissed: true });
+
+      expect(await service.surfacing(ORG)).toEqual(
+        (await service.read(ORG, "acme-robotics/other")).surfacing,
+      );
+      expect(await service.surfacing(ORG)).toEqual({ offer: false, reason: "wizard_finished" });
+    });
   });
 });
 

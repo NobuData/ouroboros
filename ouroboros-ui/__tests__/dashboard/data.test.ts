@@ -28,12 +28,14 @@ import { membership, sessionUser } from "../helpers/login";
 const read = vi.fn();
 const readReadiness = vi.fn();
 const status = vi.fn();
+const offer = vi.fn();
 const runPullRequests = vi.fn();
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/app/api/dashboard", () => ({ dashboard: { read: () => read() } }));
 vi.mock("@/app/api/health", () => ({ readReadiness: () => readReadiness() }));
 vi.mock("@/app/api/engine", () => ({ engine: { status: () => status() } }));
+vi.mock("@/app/get-started/data", () => ({ readGetStartedOffer: () => offer() }));
 vi.mock("@/app/prs/data", () => ({
   runPullRequests: (runIds: readonly string[]) => runPullRequests(runIds),
 }));
@@ -56,6 +58,7 @@ beforeEach(() => {
   read.mockReset().mockResolvedValue(dashboardPayload());
   readReadiness.mockReset().mockResolvedValue(healthReport());
   status.mockReset().mockResolvedValue(engineStatus());
+  offer.mockReset().mockResolvedValue(null);
   runPullRequests.mockReset().mockResolvedValue(new Map());
 });
 

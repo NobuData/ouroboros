@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.40.4"
+  version: "0.40.5"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -5294,6 +5294,66 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/onboarding/surfacing:
+    get:
+      tags: [onboarding]
+      summary: Whether to offer the Get Started wizard
+      description: |-
+        The fresh-org rule alone ([#390](https://github.com/NobuData/ouroboros/issues/390), the
+        dashboard's *Get started* banner) — the same decision every `GET /api/v1/onboarding` carries
+        as `surfacing`, answered for the workspace with **no repository named**, so a workspace that
+        has mirrored nothing yet can still be offered the wizard.
+
+        `offer` is true while the workspace has never had a run and no repository's wizard in it has
+        been completed, dismissed or bypassed.
+
+        **Any member may read it**, viewers included.
+      operationId: readOnboardingSurfacing
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The decision.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingSurfacing"
+              example:
+                offer: true
+                reason: fresh_organization
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/onboarding/complete-step:
     post:
       tags: [onboarding]
