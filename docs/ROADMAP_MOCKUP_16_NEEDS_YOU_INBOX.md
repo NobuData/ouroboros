@@ -562,7 +562,7 @@ dark-only).
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BO.1 | #466 ✅ | 🟢 Done | ouroboros-ui: [BO.1] Inbox route, head & pill wiring | `/inbox`, computed head, snooze-all, lit pill states | mvp, inbox, ui, design | N (after #41, BN.4, BA-D.5) | Y | S | ouroboros-ui |
 | BO.2 | #467 ✅ | 🟢 Done | ouroboros-ui: [BO.2] Decision cards | Kind-templated cards: severity, refs, why, action rows | mvp, inbox, ui, design | N (after BO.1, BN.2) | Y | L | ouroboros-ui |
-| BO.3 | #468 | 🟡 Open | ouroboros-ui: [BO.3] Resolved list & empty state | Collapsible resolved rows, auto-accept class, the zero card | mvp, inbox, ui, design | N (after BO.1) | Y | S | ouroboros-ui |
+| BO.3 | #468 ✅ | 🟢 Done | ouroboros-ui: [BO.3] Resolved list & empty state | Collapsible resolved rows, auto-accept class, the zero card | mvp, inbox, ui, design | N (after BO.1) | Y | S | ouroboros-ui |
 | BO.4 | #469 | 🟡 Open | ouroboros-ui: [BO.4] Channels & policy cards | Truth-state channel rows + prefs; composed policy rows | mvp, inbox, ui, design | N (after BO.1, BN.3/BN.4) | Y | M | ouroboros-ui |
 | BO.5 | #470 | 🟡 Open | ouroboros-ui: [BO.5] Stat card, states & e2e leg | Computed weekly stat; snoozed/error states; full e2e | mvp, inbox, ui, ci | N (after BO.2–BO.4) | Y | M | ouroboros-ui, .github |
 
@@ -638,7 +638,9 @@ topbar: [● Needs you · 3] ← lit (warn glow) on this page · excludes snooze
 
 ### Issue BO.3 — ouroboros-ui: [BO.3] Resolved list & empty state
 
-> **GitHub issue:** #468 · **Status:** 🟡 Open · **Parent epic:** #455
+> **GitHub issue:** #468 ✅ · **Status:** 🟢 Done · **Parent epic:** #455
+>
+> **Delivered (#468, UI 0.133.0, REST 0.39.13):** `ResolvedList` (`app/inbox/resolved-list.tsx`, rules in `resolved-view.ts`) on its own poll (`GET /api/inbox/resolved?day=`), the per-reader fold (`resolved-collapse.ts`, `localStorage` keyed by `user.id`), the *Earlier* / *Later* / *Today* pager, the channel tag for answers that did not come from the web, and `ZeroCard` — drawn only when nothing is asking, under the receipts of cards just answered. REST gained `subject`, `verdict` and `policyHref` on each resolved row (additive), so the policy's verdict is set apart without parsing the summary and its note links to `/settings#policies`. On the same decisions as BO.2: REST serves composed text and links, and the e2e leg (zero card after answering all three) stays with BO.5 (#470). Times print in the reader's locale clock, and "today" is the service's UTC day.
 
 - **Problem Statement:** The collapsible resolved-today list (with the
   policy auto-accept class rendered distinctly) and the true zero

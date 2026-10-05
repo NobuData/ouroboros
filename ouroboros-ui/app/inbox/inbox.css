@@ -1,10 +1,12 @@
 /*
- * The Needs-You inbox (BO.1, #466; decision cards BO.2, #467 — mockup 16).
+ * The Needs-You inbox (BO.1, #466; decision cards BO.2, #467; resolved list and zero card BO.3,
+ * #468 — mockup 16).
  *
  * Mounted in the shell's content pane: no fixed or sticky chrome of its own, every length a token
  * or a rem (so the five-step font-size preference scales the page), every hue a token (so both
  * themes come from `app/tokens.css`). The head is the insights frame's shape; the queue is the
- * mockup's `.decision` cards, and the snoozed items are plain rows until BO.5 (#470).
+ * mockup's `.decision` cards, the snoozed items are plain rows until BO.5 (#470), and under them
+ * are the zero card and the resolved list.
  */
 
 .inbox {
@@ -380,6 +382,246 @@
 
 .inbox-row__age {
   margin-left: auto;
+}
+
+/*
+ * ---------- Inbox zero (mockup 16's `.zero-card`) ----------
+ *
+ * Dashed and transparent: a place where something would be, not a panel of its own. The glyph is
+ * the #14 mark with real alpha, one drawing per palette, dimmed by opacity — the mockup's blend
+ * mode only works on a dark ground.
+ */
+
+.inbox-zero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 1.875rem 1.125rem;
+  border: 1px dashed var(--line-strong);
+  background: transparent;
+  text-align: center;
+}
+
+.inbox-zero__glyph {
+  display: inline-flex;
+  margin-bottom: var(--sp-3);
+}
+
+.inbox-zero__mark {
+  width: 5rem;
+  height: auto;
+  opacity: 0.35;
+}
+
+.inbox-zero__mark--dark {
+  display: none;
+}
+
+:root[data-theme="dark"] .inbox-zero__mark--light {
+  display: none;
+}
+
+:root[data-theme="dark"] .inbox-zero__mark--dark {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .inbox-zero__mark--light {
+    display: none;
+  }
+
+  :root:not([data-theme="light"]) .inbox-zero__mark--dark {
+    display: block;
+  }
+}
+
+.inbox-zero__line {
+  margin: 0;
+  color: var(--ink-dim);
+  font-family: var(--f-disp);
+  font-size: var(--t-md);
+  font-weight: 600;
+  letter-spacing: var(--tr-wide);
+}
+
+.inbox-zero__note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+/*
+ * ---------- the resolved list (mockup 16's `.resolved-head` and `.resolved-row`) ----------
+ *
+ * History under a hairline: a mono, upper-case heading that folds it, then compact rows — a tick,
+ * the composed line, and the time at the far edge.
+ */
+
+.inbox-resolved {
+  margin-top: var(--sp-10);
+  border-top: 1px solid var(--line);
+}
+
+.inbox-resolved__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-5);
+  margin: 1.375rem 0 var(--sp-4);
+}
+
+.inbox-resolved__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-5);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wider);
+  text-transform: uppercase;
+  cursor: pointer;
+  /* The count is live: tabular digits keep `· 9` → `· 10` from nudging the pager. */
+  font-variant-numeric: tabular-nums;
+}
+
+.inbox-resolved__toggle:hover {
+  color: var(--ink-mut);
+}
+
+.inbox-resolved__caret {
+  font-size: 0.625rem;
+}
+
+.inbox-resolved__pager {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-left: auto;
+}
+
+.inbox-resolved__body {
+  min-width: 0;
+}
+
+.inbox-resolved__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inbox-resolved__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-5);
+  padding: var(--sp-4) var(--sp-2);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+}
+
+.inbox-resolved__row:last-child {
+  border-bottom: 0;
+}
+
+.inbox-resolved__tick {
+  flex: none;
+  color: var(--ok);
+  font-family: var(--f-mono);
+}
+
+.inbox-resolved__line {
+  min-width: 0;
+}
+
+.inbox-resolved__mono {
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* How it ended. A person's answer reads in the row's own ink… */
+.inbox-resolved__verdict {
+  color: inherit;
+}
+
+/* …and what the system decided without anybody is set apart from it. */
+.inbox-resolved__verdict--policy {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/*
+ * The policy note sits in the row, after its control: hidden until the control is hovered, holds
+ * focus, or was pressed. In the flow rather than floating, so nothing clips it and the link in it
+ * is one Tab from the control.
+ */
+.inbox-resolved__policy {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.inbox-resolved__policy-toggle {
+  padding: 0 var(--sp-1);
+  border: 0;
+  background: transparent;
+  color: var(--ink-faint);
+  font: inherit;
+  line-height: var(--lh-tight);
+  cursor: pointer;
+}
+
+.inbox-resolved__policy-toggle:hover {
+  color: var(--accent);
+}
+
+.inbox-resolved__policy-note {
+  display: none;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-1) var(--sp-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+}
+
+.inbox-resolved__policy:hover .inbox-resolved__policy-note,
+.inbox-resolved__policy:focus-within .inbox-resolved__policy-note,
+.inbox-resolved__policy--pinned .inbox-resolved__policy-note {
+  display: inline-flex;
+}
+
+.inbox-resolved__policy-link {
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* Where an answer came from, when it was not here: quiet, beside the line. */
+.inbox-resolved__channel {
+  background: transparent;
+  color: var(--ink-faint);
+}
+
+.inbox-resolved__when {
+  margin-left: auto;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: 0.71875rem;
+  white-space: nowrap;
+}
+
+.inbox-resolved__quiet {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-2);
+  color: var(--ink-faint);
+  font-size: var(--t-sm);
 }
 
 /* ---------- Snooze all's confirmation ---------- */

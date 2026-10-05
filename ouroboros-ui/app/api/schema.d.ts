@@ -22870,12 +22870,35 @@ export interface components {
             /** Format: uuid */
             itemId: string;
             kindId: string;
-            /** @example Split */
+            /**
+             * @description The whole line — `subject`, a dash, `verdict`.
+             * @example Split
+             */
             summary: string;
+            /**
+             * @description What the decision was about (#468), composed from the kind, its facts and its refs —
+             *     never stored.
+             * @example Split #490 into 6 tickets
+             */
+            subject: string;
+            /**
+             * @description How it ended, in words (#468) — the row's resolver affix: `approved`, `waived`,
+             *     `allowed once`, or `auto-accepted by policy` / `closed — settled elsewhere` for a
+             *     `policy` resolution.
+             * @example auto-accepted by policy
+             */
+            verdict: string;
             actionId: string;
             /** @enum {string} */
             resolver: "human" | "policy";
             policy: string | null;
+            /**
+             * @description Where the policy that answered is configured (#468) — an origin-relative path on the
+             *     UI, so the row can answer *why did nobody ask me?* with a link. `null` for a person's
+             *     answer, and for `source_resolved`, which is not a rule anybody configured.
+             * @example /settings#policies
+             */
+            policyHref: string | null;
             actor: null | {
                 id: string;
                 name: string;

@@ -42,14 +42,15 @@ import {
   formatDuration,
   inboxActions,
   inboxHead,
+  outcomeWords,
   refsOf,
-  resolvedSummary,
+  resolvedSubject,
   utcDay,
   utcWeek,
   type InboxAction,
   type InboxHead,
 } from "./inbox.compose";
-import { linkedRefs, type LinkedRef } from "./inbox.links";
+import { linkedRefs, policyHref, type LinkedRef } from "./inbox.links";
 import { InboxRepository, type InboxItemRow } from "./inbox.repository";
 
 /** The roles that may snooze for everyone (a snooze hides an item from the whole workspace). */
@@ -114,11 +115,17 @@ export interface InboxQueueResource {
 export interface InboxResolvedRowResource {
   readonly itemId: string;
   readonly kindId: string;
-  /** `Split #490 into 6 tickets — approved`. */
+  /** `Split #490 into 6 tickets — approved` — {@link subject}, a dash, {@link verdict}. */
   readonly summary: string;
+  /** What it was about — `Split #490 into 6 tickets` (#468). */
+  readonly subject: string;
+  /** How it ended, in words — `approved`, `auto-accepted by policy` (#468). */
+  readonly verdict: string;
   readonly actionId: string;
   readonly resolver: "human" | "policy";
   readonly policy: string | null;
+  /** Where the answering policy is configured — an origin-relative UI path, or null (#468). */
+  readonly policyHref: string | null;
   readonly actor: { readonly id: string; readonly name: string } | null;
   readonly channel: DecisionChannel;
   readonly note: string | null;
@@ -290,24 +297,28 @@ export class InboxQueueService {
     for (const row of rows) {
       const kind = await this.registry.pinnedKind(row.kindId, row.kindVersion);
       const refs = refsOf(row.refs);
+      const subject = resolvedSubject(
+        row.kindId,
+        row.payload,
+        refs,
+        this.registry.render(kind, row.payload).question,
+      );
+      const verdict = outcomeWords({
+        resolver: row.resolver,
+        policy: row.policy,
+        actionId: row.actionId,
+      });
 
       lines.push({
         itemId: row.itemId,
         kindId: row.kindId,
-        summary: resolvedSummary(
-          row.kindId,
-          row.payload,
-          refs,
-          this.registry.render(kind, row.payload).question,
-          {
-            resolver: row.resolver,
-            policy: row.policy,
-            actionId: row.actionId,
-          },
-        ),
+        summary: `${subject} — ${verdict}`,
+        subject,
+        verdict,
         actionId: row.actionId,
         resolver: row.resolver,
         policy: row.policy,
+        policyHref: policyHref(row.policy),
         actor:
           row.actorId === null || row.actorName === null
             ? null

@@ -266,12 +266,74 @@ describe("InboxQueueService.resolved", () => {
     });
     expect(day.rows[0]).toMatchObject({
       summary: "Estimator re-size #486 L→M — auto-accepted by policy",
+      // The line's two halves, so the page can set the resolver affix apart (#468)…
+      subject: "Estimator re-size #486 L→M",
+      verdict: "auto-accepted by policy",
       resolver: "policy",
       policy: "auto_accept_resize",
+      // …and answer "why did nobody ask me?" with where the rule is configured.
+      policyHref: "/settings#policies",
       actor: null,
       channel: "api",
       outcome: { org_policy_version: 7 },
     });
+  });
+
+  it("splits a person's answer the same way, with no policy to configure (#468)", async () => {
+    const { queue, repository } = service();
+    const row = {
+      itemId: "item-2",
+      kindId: "split_approval",
+      kindVersion: 1,
+      payload: { subject: "Telemetry v2", draft_count: 6, target: "acme-robotics/helios-firmware" },
+      refs: [{ type: "ticket", id: "t", label: "issue #490" }],
+      actionId: "approve_split",
+      resolver: "human" as const,
+      policy: null,
+      actorId: "user-ken",
+      actorName: "Ken Suenobu",
+      channel: "email" as const,
+      note: null,
+      outcome: {},
+      resolvedAt: new Date("2026-10-04T09:12:00Z"),
+      answerLatencySeconds: 41,
+      loopWaitSeconds: 360,
+    };
+    repository.resolved.mockResolvedValue([
+      row,
+      // An item closed because its source settled: a policy resolution with no rule behind it.
+      {
+        ...row,
+        itemId: "item-3",
+        resolver: "policy" as const,
+        policy: "source_resolved",
+        actionId: "source_resolved",
+        actorId: null,
+        actorName: null,
+        channel: "api" as const,
+      },
+    ]);
+
+    const day = await queue.resolved(ORG, undefined);
+
+    expect(day.rows[0]).toMatchObject({
+      summary: "Split #490 into 6 tickets — approved",
+      subject: "Split #490 into 6 tickets",
+      verdict: "approved",
+      policyHref: null,
+      channel: "email",
+      actor: { id: "user-ken", name: "Ken Suenobu" },
+    });
+    expect(day.rows[1]).toMatchObject({
+      summary: "Split #490 into 6 tickets — closed — settled elsewhere",
+      subject: "Split #490 into 6 tickets",
+      verdict: "closed — settled elsewhere",
+      policy: "source_resolved",
+      policyHref: null,
+    });
+
+    // The summary is exactly its two halves: nothing is composed twice, so they cannot drift.
+    for (const line of day.rows) expect(line.summary).toBe(`${line.subject} — ${line.verdict}`);
   });
 
   it("offers the next day when the day asked is in the past", async () => {

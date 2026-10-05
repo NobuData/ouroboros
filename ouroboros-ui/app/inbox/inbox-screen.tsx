@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import type { InboxQueue } from "@/app/api/inbox";
+import type { InboxQueue, InboxResolved } from "@/app/api/inbox";
 import { clockTime } from "@/app/dashboard/view";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
 import { INBOX_BADGE_SOURCE } from "@/app/shell/nav-modules";
@@ -14,8 +14,15 @@ import type { InboxReadings } from "./data";
 import { InboxHead } from "./inbox-head";
 import { QueueList } from "./queue-list";
 import { INBOX_QUEUE_ENDPOINT, type QueuePollOptions, createQueuePoll } from "./queue-poll";
+import { setResolvedCollapsed, useResolvedCollapsed } from "./resolved-collapse";
+import { ResolvedList } from "./resolved-list";
+import { type ResolvedPollOptions, createResolvedPoll, resolvedEndpoint } from "./resolved-poll";
+import { ZeroCard } from "./zero-card";
 
 import "./inbox.css";
+
+/** Whose fold of the resolved list it is when the page was handed no reader. */
+const ANONYMOUS_READER = "anonymous";
 
 /** What the banner says over a stale queue. */
 export const STALE_HEADLINE = "The inbox could not be refreshed.";
@@ -36,6 +43,30 @@ export function queueReading(
   return initial.ok
     ? { queue: initial.value, failure: snapshot.error }
     : { queue: null, failure: snapshot.error ?? initial.reason };
+}
+
+/**
+ * The resolved day on screen: the poll's latest for the day asked, else — for today only — the
+ * server's first read.
+ *
+ * @param initial The first paint's reading of today.
+ * @param snapshot The poll's state for the day asked.
+ * @param day The day asked for, or `null` for today.
+ * @returns The day (or `null` while unread) and why the latest attempt failed (or `null`).
+ */
+export function resolvedReading(
+  initial: InboxReadings["resolved"],
+  snapshot: PollSnapshot<InboxResolved>,
+  day: string | null,
+): { resolved: InboxResolved | null; failure: string | null } {
+  if (snapshot.data !== null) return { resolved: snapshot.data, failure: snapshot.error };
+
+  // The first paint read today; another day has nothing until its own poll answers.
+  if (day !== null) return { resolved: null, failure: snapshot.error };
+
+  return initial.ok
+    ? { resolved: initial.value, failure: snapshot.error }
+    : { resolved: null, failure: snapshot.error ?? initial.reason };
 }
 
 /**
@@ -67,25 +98,42 @@ export function askingCount(queue: InboxQueue | null, settled: ReadonlyMap<strin
  * [#467](https://github.com/NobuData/ouroboros/issues/467)) drops the badge at once and asks for
  * a fresh read.
  *
+ * Under the queue (BO.3, [#468](https://github.com/NobuData/ouroboros/issues/468)): the **Inbox
+ * zero** card, drawn only when nothing is asking — never beside a live item, which is where the
+ * page deliberately parts from the mockup's demonstration layout — and the **Resolved** list for
+ * the day on screen, on a poll of its own that a settling card also refreshes.
+ *
  * @param props.readings What the route read for the first paint.
- * @param props.poll Test seams for the poll.
+ * @param props.readerId The reader's `user.id` — whose fold of the resolved list this is. A
+ *   page that cannot name its reader shares one anonymous fold rather than a heading that will
+ *   not fold.
+ * @param props.poll Test seams for the queue's poll.
+ * @param props.resolvedPoll Test seams for the resolved list's poll.
  * @param props.clock How an instant is printed — the reader's own clock by default.
  * @param props.newKey Mints a press's idempotency key — a test seam.
  * @returns The screen.
  */
 export function InboxScreen({
   readings,
+  readerId = ANONYMOUS_READER,
   poll,
+  resolvedPoll,
   clock = clockTime,
   newKey,
 }: Readonly<{
   readings: InboxReadings;
+  readerId?: string;
   poll?: QueuePollOptions;
+  resolvedPoll?: ResolvedPollOptions;
   clock?: (atMs: number) => string;
   newKey?: () => string;
 }>) {
   const { snapshot, refresh } = useKeyedPoll(INBOX_QUEUE_ENDPOINT, () => createQueuePoll(poll));
   const { queue, failure } = queueReading(readings.queue, snapshot);
+  const [day, setDay] = useState<string | null>(null);
+  const history = useKeyedPoll(resolvedEndpoint(day), (endpoint) => createResolvedPoll(endpoint, resolvedPoll));
+  const resolved = resolvedReading(readings.resolved, history.snapshot, day);
+  const collapsed = useResolvedCollapsed(readerId);
   const [retrying, setRetrying] = useState<PollSnapshot<InboxQueue> | null>(null);
   const [settled, setSettled] = useState<ReadonlyMap<string, string>>(new Map());
 
@@ -103,11 +151,15 @@ export function InboxScreen({
     if (count !== undefined) setNavBadge(INBOX_BADGE_SOURCE, count);
   }, [count]);
 
-  /** A card settled here: count it out against the read on screen, and ask for a fresh one. */
+  /**
+   * A card settled here: count it out against the read on screen, and ask for a fresh queue and
+   * a fresh resolved list — an answer made a moment ago belongs in today's history at once.
+   */
   function onSettled(itemId: string): void {
     if (asOf !== undefined) setSettled((before) => new Map(before).set(itemId, asOf));
 
     refresh();
+    history.refresh();
   }
 
   return (
@@ -129,9 +181,19 @@ export function InboxScreen({
           items={queue.items}
           newKey={newKey}
           onSettled={onSettled}
+          afterCards={count === 0 ? <ZeroCard /> : null}
           snoozed={queue.snoozed}
         />
       )}
+      <ResolvedList
+        clock={clock}
+        collapsed={collapsed}
+        day={day}
+        failure={resolved.failure}
+        onCollapse={(folded) => setResolvedCollapsed(readerId, folded)}
+        onDay={setDay}
+        resolved={resolved.resolved}
+      />
     </main>
   );
 }

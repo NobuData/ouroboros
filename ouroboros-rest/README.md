@@ -4405,6 +4405,13 @@ origin-relative UI paths, restated from `ouroboros-ui/app/paths.ts` in `UI_ROUTE
 table does not know, or one whose ref the item lacks, is `null`, and the card shows the link as
 unavailable. `inbox.links.spec.ts` fails when a shipped kind declares a target with no destination.
 
+**A resolved row comes in halves** (BO.3 [#468](https://github.com/NobuData/ouroboros/issues/468)):
+beside `summary`, `GET /api/v1/inbox/resolved` serves the `subject` (*Split #490 into 6 tickets*)
+and the `verdict` (*approved*, *auto-accepted by policy*) it is made of, so the page can set a
+policy's answer apart without parsing a sentence, and `policyHref` — where the rule that answered
+is configured (`/settings#policies`), `null` for a person's answer and for `source_resolved`,
+which is not a rule anybody configured.
+
 ## Needs-You action executor
 
 `POST /api/v1/inbox/items/{id}/actions/{actionId}` (`src/modules/inbox-actions/`, BN.2

@@ -1,6 +1,14 @@
 import { SHIPPED_KINDS } from "./decision.kinds.fixture";
 import type { DecisionRef } from "./decision.types";
-import { NAVIGATE_PREFIX, UI_ROUTES, linkedRefs, navigationHref, refHref } from "./inbox.links";
+import {
+  NAVIGATE_PREFIX,
+  SOURCE_RESOLVED,
+  UI_ROUTES,
+  linkedRefs,
+  navigationHref,
+  policyHref,
+  refHref,
+} from "./inbox.links";
 
 /**
  * Where a card's tags and link actions lead (#467): resolved from the declaration's binding and
@@ -38,6 +46,19 @@ describe("the UI's routes, restated", () => {
     expect(UI_ROUTES.planningBatch("b1")).toBe("/planning?batch=b1");
     expect(UI_ROUTES.knowledgeFacts).toBe("/knowledge#facts-awaiting");
     expect(UI_ROUTES.protectedPaths).toBe("/knowledge#repo-profile");
+    expect(UI_ROUTES.policies).toBe("/settings#policies");
+  });
+});
+
+describe("where an answering policy is configured (#468)", () => {
+  it("leads a rule of the org policy to Settings' policies section", () => {
+    expect(policyHref("auto_accept_resize")).toBe("/settings#policies");
+  });
+
+  it("leads nowhere for a person's answer, or for an item its source settled", () => {
+    expect(policyHref(null)).toBeNull();
+    expect(policyHref(SOURCE_RESOLVED)).toBeNull();
+    expect(SOURCE_RESOLVED).toBe("source_resolved");
   });
 });
 

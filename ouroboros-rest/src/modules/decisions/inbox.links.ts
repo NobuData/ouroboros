@@ -12,6 +12,7 @@
  * link action  handler_binding `navigate.<target>` + the item's refs / source ref
  *              pr_verification · pr_evidence · run_console · run_plan · run_diff
  *              protected_paths_settings · knowledge_fact · planning_batch · ticket
+ * policy       the rule that answered a resolved item → where it is configured (#468)
  * ```
  *
  * Every answer is an **origin-relative path on the UI** — the same routes `ouroboros-ui/app/paths.ts`
@@ -49,7 +50,12 @@ export const UI_ROUTES = {
   knowledgeFacts: "/knowledge#facts-awaiting",
   /** Knowledge's repo profile, where protected paths are edited — `KNOWLEDGE_ENV_PATH`. */
   protectedPaths: "/knowledge#repo-profile",
+  /** Settings' policies section, where the org policy's rules are edited — `POLICIES_PATH`. */
+  policies: "/settings#policies",
 } as const;
+
+/** The reserved closure BN.1 records when an item's source settled the question itself (V097). */
+export const SOURCE_RESOLVED = "source_resolved";
 
 /** What a link is resolved from: the item's refs and where it came from. */
 export interface LinkContext {
@@ -161,6 +167,22 @@ const TARGETS: Readonly<Record<string, (context: LinkContext) => string | null>>
     return ticket === undefined ? null : UI_ROUTES.intake(ticketKey(ticket));
   },
 };
+
+/**
+ * Where the policy that answered an item is configured (BO.3,
+ * [#468](https://github.com/NobuData/ouroboros/issues/468)) — the resolved row's *why did nobody
+ * ask me?* link.
+ *
+ * A rule of the org policy (`auto_accept_resize`) is edited in Settings' policies section.
+ * `source_resolved` is not a rule anybody configured — the item closed because its source settled
+ * — so it has nowhere to lead, and neither does a person's answer.
+ *
+ * @param policy - `decision_resolutions.resolved_by_policy`, or null for a person's answer.
+ * @returns The path, or null when there is no rule to configure.
+ */
+export function policyHref(policy: string | null): string | null {
+  return policy === null || policy === SOURCE_RESOLVED ? null : UI_ROUTES.policies;
+}
 
 /**
  * Where a link action leads.

@@ -1,8 +1,10 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { InboxQueue } from "@/app/api/inbox";
+import type { InboxQueue, InboxResolved } from "@/app/api/inbox";
 import type { QueuePollOptions } from "@/app/inbox/queue-poll";
+import { resetResolvedCollapsed } from "@/app/inbox/resolved-collapse";
+import type { ResolvedPollOptions } from "@/app/inbox/resolved-poll";
 import { INBOX_BADGE_SOURCE } from "@/app/shell/nav-modules";
 import { navRegistry, setNavBadge } from "@/app/shell/nav-registry";
 import type { PollAnswer } from "@/app/poll";
@@ -18,6 +20,8 @@ import {
   inboxQueue,
   inboxReadings,
   preferences,
+  resolvedDay,
+  resolvedRow,
   snoozedItem,
   utcClock,
 } from "../helpers/inbox";
@@ -26,8 +30,9 @@ import { settle } from "../helpers/settle";
 
 /**
  * The `/inbox` frame (BO.1, #466): the head the service composed, *Snooze all 1h* and its
- * confirmation, *Notification settings*, the queue as decision cards (BO.2, #467), the badge, and
- * the poll that keeps them fresh.
+ * confirmation, *Notification settings*, the queue as decision cards (BO.2, #467), the badge, the
+ * poll that keeps them fresh, and under the queue the *Inbox zero* card and the resolved list
+ * (BO.3, #468).
  */
 
 const snoozeAll = vi.fn();
@@ -61,14 +66,41 @@ const POLL: QueuePollOptions = {
   visible: () => true,
 };
 
+/** What each resolved endpoint answers; an endpoint with no entry never answers. */
+const days = new Map<string, InboxResolved>();
+
+/** Every resolved endpoint the page read, in order. */
+let dayReads: string[] = [];
+
+const RESOLVED_POLL: ResolvedPollOptions = {
+  read: (endpoint) => {
+    dayReads.push(endpoint);
+
+    const day = days.get(endpoint);
+
+    return day === undefined
+      ? new Promise(() => {})
+      : Promise.resolve({ state: "fresh", payload: day, etag: null, pollAfterSeconds: null });
+  },
+  visible: () => true,
+};
+
 /** A fresh poll answer. */
 function fresh(queue: InboxQueue): PollAnswer<InboxQueue> {
   return { state: "fresh", payload: queue, etag: null, pollAfterSeconds: null };
 }
 
-/** The frame, over these readings. */
-function frame(queue: InboxQueue | null = inboxQueue()) {
-  return render(<InboxScreen clock={utcClock} poll={POLL} readings={inboxReadings(queue)} />);
+/** The frame, over these readings, as Ken sees it. */
+function frame(queue: InboxQueue | null = inboxQueue(), resolved: InboxResolved | null = resolvedDay()) {
+  return render(
+    <InboxScreen
+      clock={utcClock}
+      poll={POLL}
+      readerId="user-ken"
+      readings={inboxReadings(queue, resolved)}
+      resolvedPoll={RESOLVED_POLL}
+    />,
+  );
 }
 
 /** The level-one heading. */
@@ -77,6 +109,10 @@ const headline = () => screen.getByRole("heading", { level: 1 });
 beforeEach(() => {
   answer = null;
   reads = 0;
+  days.clear();
+  dayReads = [];
+  window.localStorage.clear();
+  resetResolvedCollapsed();
   snoozeAll.mockReset();
   readNotificationSettings.mockReset();
   updateNotificationSettings.mockReset();
@@ -150,7 +186,7 @@ describe("the head", () => {
     expect(headline()).toHaveTextContent("3 decisions. About 90 seconds of your time.");
 
     await waitFor(() => expect(headline()).toHaveTextContent("2 decisions. About 50 seconds of your time."));
-    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getAllByRole("article")).toHaveLength(2);
   });
 
   it("says the head is unread, with a retry banner, when the first read failed", () => {
@@ -290,11 +326,13 @@ describe("the queue of cards", () => {
     expect(within(cards[0]!).getByRole("button", { name: "Approve & merge" })).toBeInTheDocument();
   });
 
-  it("draws nothing below the head for an empty queue", () => {
+  it("draws no cards and no snoozed rows for an empty queue — the zero card stands there instead", () => {
     frame(emptyQueue());
 
     expect(screen.queryByRole("region", { name: "Decisions waiting" })).toBeNull();
-    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+    expect(screen.queryByRole("region", { name: "Snoozed" })).toBeNull();
+    expect(screen.queryAllByRole("article")).toHaveLength(0);
+    expect(screen.getByRole("region", { name: "Inbox zero" })).toBeInTheDocument();
   });
 
   it("keeps an answered card on screen with its receipt after the queue stops listing it", async () => {
@@ -485,10 +523,224 @@ describe("the badge and a card's answer", () => {
   });
 });
 
+describe("Inbox zero", () => {
+  /** The zero card, or `null`. */
+  const zero = () => screen.queryByRole("region", { name: "Inbox zero" });
+
+  it("is the page's empty state: drawn when nothing is asking, with the two lines verbatim", () => {
+    frame(emptyQueue());
+
+    expect(zero()).toHaveTextContent("Inbox zero. The loop is turning on its own.");
+    expect(zero()).toHaveTextContent("You'll be pinged only when policy says so.");
+  });
+
+  it("is NOT drawn while anything is asking — the page parts from the mockup's demonstration here", () => {
+    frame();
+    expect(zero()).toBeNull();
+    cleanup();
+
+    frame(inboxQueue({ head: { ...inboxQueue().head, count: 1, sentence: "1 decision." }, items: [inboxItem()] }));
+    expect(zero()).toBeNull();
+  });
+
+  it("is not drawn for a queue that could not be read — unknown is not zero", () => {
+    frame(null);
+
+    expect(zero()).toBeNull();
+  });
+
+  it("arrives when the last decision is answered here, under that card's receipt", async () => {
+    answerDecision.mockResolvedValue({ outcome: "answered", result: actionResult() });
+    const one = inboxQueue({
+      head: { count: 1, noun: "decision", estimateSeconds: 8, estimate: null, sentence: "1 decision." },
+      items: inboxQueue().items.filter((item) => item.id === ALLOW_ITEM),
+    });
+    frame(one);
+    await settle();
+    expect(zero()).toBeNull();
+
+    answer = fresh(emptyQueue());
+    fireEvent.click(screen.getByRole("button", { name: "Allow once" }));
+
+    await waitFor(() => expect(zero()).not.toBeNull());
+
+    const receipt = screen.getByRole("article", { name: "Allow a one-time edit to a protected path?" });
+
+    expect(receipt).toHaveTextContent("exception granted");
+    // The receipt first, then the zero card — it never pushes the card just answered down.
+    expect(receipt.compareDocumentPosition(zero()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("is drawn above the snoozed rows when everything left is snoozed", () => {
+    frame(inboxQueue({ ...emptyQueue(), snoozed: [snoozedItem()] }));
+
+    const rows = screen.getByRole("region", { name: "Snoozed" });
+
+    expect(zero()).not.toBeNull();
+    expect(zero()!.compareDocumentPosition(rows) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+describe("the resolved list", () => {
+  /** The list's heading button. */
+  const heading = (name: string | RegExp) => screen.getByRole("button", { name });
+
+  it("is there on the first paint, under the queue: *Resolved today · 5* and its rows", () => {
+    frame();
+
+    const list = screen.getByRole("region", { name: "Resolved decisions" });
+
+    expect(heading("Resolved today · 5")).toHaveAttribute("aria-expanded", "true");
+    expect(within(list).getAllByRole("listitem")).toHaveLength(5);
+    expect(
+      screen.getByRole("region", { name: "Decisions waiting" }).compareDocumentPosition(list) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("follows its own poll: a decision resolved elsewhere joins today's list without a reload", async () => {
+    days.set(
+      "/api/inbox/resolved",
+      resolvedDay({ rows: [resolvedRow({ itemId: "new", subject: "Merge PR #504", verdict: "approved" }), ...resolvedDay().rows] }),
+    );
+    frame();
+
+    expect(await screen.findByRole("button", { name: "Resolved today · 6" })).toBeInTheDocument();
+    expect(screen.getByText("Merge PR", { exact: false })).toBeInTheDocument();
+  });
+
+  it("re-reads when a card settles — the answer just given is history at once", async () => {
+    answerDecision.mockResolvedValue({ outcome: "answered", result: actionResult() });
+    days.set("/api/inbox/resolved", resolvedDay());
+    frame();
+    await settle();
+    const before = dayReads.length;
+
+    days.set(
+      "/api/inbox/resolved",
+      resolvedDay({
+        rows: [
+          resolvedRow({ itemId: ALLOW_ITEM, subject: "One-time edit to boot/rollback_flag.c", verdict: "allowed once" }),
+          ...resolvedDay().rows,
+        ],
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Allow once" }));
+
+    expect(await screen.findByRole("button", { name: "Resolved today · 6" })).toBeInTheDocument();
+    expect(dayReads.length).toBeGreaterThan(before);
+  });
+
+  it("folds, and stays folded across a reload — for this reader, not for another", async () => {
+    const first = frame();
+
+    fireEvent.click(heading("Resolved today · 5"));
+
+    expect(heading("Resolved today · 5")).toHaveAttribute("aria-expanded", "false");
+    expect(within(screen.getByRole("region", { name: "Resolved decisions" })).queryAllByRole("listitem")).toHaveLength(0);
+
+    // A reload: the page is built again and reads the choice back from storage.
+    first.unmount();
+    resetResolvedCollapsed();
+    const again = frame();
+    await settle();
+
+    expect(heading("Resolved today · 5")).toHaveAttribute("aria-expanded", "false");
+    again.unmount();
+
+    // Somebody else at the same browser keeps their own.
+    render(
+      <InboxScreen
+        clock={utcClock}
+        poll={POLL}
+        readerId="user-maya"
+        readings={inboxReadings()}
+        resolvedPoll={RESOLVED_POLL}
+      />,
+    );
+    expect(heading("Resolved today · 5")).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("still folds for a page that was handed no reader — one anonymous fold, never a dead heading", () => {
+    render(<InboxScreen clock={utcClock} poll={POLL} readings={inboxReadings()} resolvedPoll={RESOLVED_POLL} />);
+
+    fireEvent.click(heading("Resolved today · 5"));
+
+    expect(heading("Resolved today · 5")).toHaveAttribute("aria-expanded", "false");
+    expect(JSON.parse(window.localStorage.getItem("ouro-inbox-resolved-collapsed")!)).toEqual({ anonymous: true });
+  });
+
+  it("opens again, and remembers that too", async () => {
+    window.localStorage.setItem("ouro-inbox-resolved-collapsed", JSON.stringify({ "user-ken": true }));
+    resetResolvedCollapsed();
+    frame();
+    await settle();
+
+    fireEvent.click(heading("Resolved today · 5"));
+
+    expect(heading("Resolved today · 5")).toHaveAttribute("aria-expanded", "true");
+    expect(window.localStorage.getItem("ouro-inbox-resolved-collapsed")).toBeNull();
+  });
+
+  it("pages into history: Earlier loads the previous day, Later and Today come back", async () => {
+    days.set(
+      "/api/inbox/resolved?day=2026-10-02",
+      resolvedDay({
+        day: "2026-10-02",
+        rows: [resolvedRow({ itemId: "old", subject: "Split #486 into 4 tickets", verdict: "discarded" })],
+        previousDay: null,
+        nextDay: "2026-10-03",
+      }),
+    );
+    days.set(
+      "/api/inbox/resolved?day=2026-10-03",
+      resolvedDay({ day: "2026-10-03", rows: [], previousDay: "2026-10-02", nextDay: "2026-10-04" }),
+    );
+    frame();
+
+    fireEvent.click(screen.getByRole("button", { name: "‹ Earlier" }));
+
+    expect(await screen.findByRole("button", { name: "Resolved Oct 2, 2026 · 1" })).toBeInTheDocument();
+    expect(dayReads).toContain("/api/inbox/resolved?day=2026-10-02");
+    expect(screen.getByText("Split", { exact: false })).toHaveTextContent("Split #486 into 4 tickets — discarded");
+    expect(screen.getByRole("button", { name: "‹ Earlier" })).toHaveAttribute("aria-disabled", "true");
+
+    // A day forward: nothing was resolved on it, and it says so in one line.
+    fireEvent.click(screen.getByRole("button", { name: "Later ›" }));
+    expect(await screen.findByText("Nothing was resolved on Oct 3, 2026.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Today" }));
+    expect(await screen.findByRole("button", { name: "Resolved today · 5" })).toBeInTheDocument();
+  });
+
+  it("says a past day is being read rather than show today's rows under its name", () => {
+    frame();
+
+    fireEvent.click(screen.getByRole("button", { name: "‹ Earlier" }));
+
+    expect(screen.getByRole("button", { name: "Resolved Oct 2, 2026" })).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Resolved decisions" })).queryAllByRole("listitem")).toHaveLength(0);
+    expect(screen.getByText("Reading…")).toBeInTheDocument();
+  });
+
+  it("says why when today's list could not be read, and still draws the queue", () => {
+    frame(inboxQueue(), null);
+
+    expect(screen.getByText("The resolved list could not be read.")).toBeInTheDocument();
+    expect(screen.getAllByRole("article")).toHaveLength(3);
+  });
+});
+
 describe("both themes", () => {
   it("renders the same markup in both palettes", () => {
     const [light, dark] = renderInBothPalettes(
-      <InboxScreen clock={utcClock} poll={POLL} readings={inboxReadings()} />,
+      <InboxScreen
+        clock={utcClock}
+        poll={POLL}
+        readerId="user-ken"
+        readings={inboxReadings()}
+        resolvedPoll={RESOLVED_POLL}
+      />,
     );
 
     expect(maskIds(light!)).toBe(maskIds(dark!));
