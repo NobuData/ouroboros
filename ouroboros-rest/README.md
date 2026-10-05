@@ -4425,6 +4425,15 @@ GET|PATCH /api/v1/inbox/notifications   the caller's digest on/time (UTC), insta
 - **Defaults** (no stored preferences): digest off (09:00 UTC once on), instant `err` mails on.
   Org-level notification routes are #488's (BR.4).
 
+**The inbox suites** (BN.5 [#465](https://github.com/NobuData/ouroboros/issues/465)) — integration
+specs on Testcontainers Postgres, the AP.5 driver and the PR sandbox: `decisions/` (registry
+generality, emitters, out-of-band closure, reads and the weekly oracle), `inbox-actions/` (every
+handler chain observed downstream, races, `allow-once.integration-spec.ts` for grant scope, TTL,
+single use, revocation and the audit chain, `inbox.isolation.integration-spec.ts` for every
+`/api/v1/inbox` route) and `inbox-channels/` (mirror, tokens, preferences, and mailpit content).
+Each safeguard — the confirm gate, single-use spend, idempotency replay, the role check — has a
+test that turns red when it is removed.
+
 ## Outbound webhooks
 
 > **Issue:** [#487](https://github.com/NobuData/ouroboros/issues/487) — *[BR.3] Outbound webhooks &

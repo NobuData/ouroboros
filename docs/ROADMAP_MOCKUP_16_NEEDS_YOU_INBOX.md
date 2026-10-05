@@ -369,7 +369,7 @@ seeds: 3 open (err 8m · warn 21m · warn 34m) + 5 resolved (1 policy-auto) + we
 | BN.2 | #462 ✅ | 🟢 Done | ouroboros-rest: [BN.2] Action executor & allow-once exceptions | Handler bindings to AX/AP/planning; exception grants (X3) | mvp, inbox, rest, runs, pr | N (after BN.1, BM.3) | Y | L | ouroboros-rest |
 | BN.3 | #463 ✅ | 🟢 Done | ouroboros-rest: [BN.3] Channels — GitHub mirror & email tokens | Idempotent mirroring; digest + instant mails with signed tokens | mvp, inbox, rest, sources | N (after BN.1, BM.3, BJ.4) | Y | M | ouroboros-rest |
 | BN.4 | #464 ✅ | 🟢 Done | ouroboros-rest: [BN.4] Inbox APIs, snooze & policy read-view | Queue/resolved/stat payloads, snooze, composed policy rows (X6/X7) | mvp, inbox, rest | N (after BN.1, BM.2) | Y | M | ouroboros-rest |
-| BN.5 | #465 | 🟡 Open | ouroboros-rest: [BN.5] Inbox integration tests | Registry, handlers, exceptions, tokens, channels, metrics | mvp, inbox, rest, ci | N (after BN.2–BN.4) | Y | M | ouroboros-rest |
+| BN.5 | #465 ✅ | 🟢 Done | ouroboros-rest: [BN.5] Inbox integration tests | Registry, handlers, exceptions, tokens, channels, metrics | mvp, inbox, rest, ci | N (after BN.2–BN.4) | Y | M | ouroboros-rest |
 
 ### Issue BN.1 — ouroboros-rest: [BN.1] DecisionKind SPI & emitter wiring
 
@@ -527,7 +527,9 @@ policy rows: refactor→human (org policy) · protected→allow-once (BA.1) · �
 
 ### Issue BN.5 — ouroboros-rest: [BN.5] Inbox integration tests
 
-> **GitHub issue:** #465 · **Status:** 🟡 Open · **Parent epic:** #454
+> **GitHub issue:** #465 ✅ · **Status:** 🟢 Done · **Parent epic:** #454
+>
+> **Delivered (#465):** the inbox suites in `ouroboros-rest` — `decisions/decisions.integration-spec.ts` (+ fixture kind queued and closed by a plane's own detector, version pinning, run-cancelled and fact-confirmed closures), `decisions/inbox.integration-spec.ts` (+ the weekly stat card against an independent oracle: 11 · 41s · 6m), `inbox-actions/inbox-actions.integration-spec.ts` (+ Approve split pushed onto a recording GitHub, a five-way race), new `inbox-actions/allow-once.integration-spec.ts` (scope, TTL, single use, revocation, audit chain), new `inbox-actions/inbox.isolation.integration-spec.ts` (every `/api/v1/inbox` route, held to the router's own list), new `inbox-channels/inbox-channels.mailpit.integration-spec.ts` (instant + digest content in mailpit, a mute honoured on the next send). The AP.6 matrix's three allow-once grant cells (red since #459) now plant their grants (`guardrails/guardrails.exceptions.integration.fixture.ts`). Removing the confirm gate, the single-use spend, idempotency replay or the role check each turns one named test red; the grant's single use is two layers (the live view and the consume function) and the suite goes red when both go. Sign-off and re-size stay `501 decision_action_unbound` (#462's decision), asserted as such.
 
 - **Problem Statement:** The inbox touches every plane; its correctness
   core is handlers, races, and token security.

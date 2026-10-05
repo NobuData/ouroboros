@@ -194,6 +194,70 @@ describe("the Needs-You reads, snooze and policy card, against a migrated databa
     expect(retry).toMatchObject({ allowed: true, disabledReason: null });
   });
 
+  it("computes this week's stat card exactly as an independent oracle does", async () => {
+    const { owner, bench, run } = await workspace();
+    const org = bench.workspace.id;
+    // Mockup 16's week: eleven answers, a median of 41 s, a longest loop wait of 6 minutes.
+    const latencies = [12, 41, 300, 41, 7, 95, 41, 18, 420, 60, 33];
+    const waits: Record<number, { wait: number; unblocked: boolean }> = {
+      2: { wait: 120, unblocked: true },
+      4: { wait: 7, unblocked: false },
+      8: { wait: 360, unblocked: true },
+    };
+
+    for (const [index, latency] of latencies.entries()) {
+      const itemId = await file(
+        org,
+        "run_needs_human",
+        `oracle-${String(index)}`,
+        [{ type: "run", id: run, label: "loop #1" }],
+        10,
+      );
+      const block = waits[index];
+
+      if (block !== undefined) {
+        await api.sql.query(
+          `insert into ${SCHEMA_NAME}.run_blocks (organization_id, decision_item_id, run_id, blocked_at, unblocked_at)
+           select organization_id, id, $2, created_at,
+                  case when $4 then created_at + make_interval(secs => $3) end
+             from ${SCHEMA_NAME}.decision_items where id = $1`,
+          [itemId, run, block.wait, block.unblocked],
+        );
+      }
+
+      await answer(itemId, org, "retry_with_note", owner.id, latency, "Retry it.");
+    }
+
+    // An out-of-band closure answered nothing: it is left out of every figure.
+    const closed = await file(org, "fact_review", "oracle-closed", [], 10);
+
+    await api.sql.query(
+      `select ouroboros.decision_item_source_resolve($1, 'web', '{"source": "fact_resolved"}')`,
+      [closed],
+    );
+
+    // The oracle: percentile_cont(0.5) over the answers; each wait capped at its answer.
+    const sorted = [...latencies].sort((a, b) => a - b);
+    const middle = (sorted.length - 1) / 2;
+    const median = (sorted[Math.floor(middle)] + sorted[Math.ceil(middle)]) / 2;
+    const longest = Math.max(
+      ...Object.entries(waits).map(([index, block]) =>
+        block.unblocked ? Math.min(block.wait, latencies[Number(index)]) : latencies[Number(index)],
+      ),
+    );
+    const stats = bodyOf<InboxStatsResource>(
+      await get(owner, bench.workspace.slug, "/api/v1/inbox/stats").expect(200),
+    );
+
+    expect(stats).toMatchObject({
+      decisions: latencies.length,
+      medianAnswerSeconds: median,
+      maxLoopWaitSeconds: longest,
+      policyResolutions: 0,
+    });
+    expect(stats.display).toEqual({ decisions: "11", medianAnswer: "41s", maxLoopWait: "6m" });
+  });
+
   it("snoozes out of the queue and the pill but not the metrics, its age still running; Snooze all is one event", async () => {
     const { owner, bench } = await workspace();
     const org = bench.workspace.id;

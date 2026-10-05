@@ -13,6 +13,7 @@ import {
   SLACK_BOT_TOKEN,
   STRIPE_SECRET_KEY,
 } from "./guardrails.fixture";
+import { plantGrant } from "./guardrails.exceptions.integration.fixture";
 import { MOCKUP_INPUT, RULE_MATRIX, type MatrixCell } from "./guardrails.matrix.fixture";
 
 /**
@@ -397,6 +398,15 @@ describe("guardrail evaluation", () => {
         const bench = await plannedBench(cell.input.planFiles ?? []);
         await protect(bench, cell.input.protectedPaths ?? []);
         const run = await implementingRun(bench);
+
+        // The cell's live grants, as BN.2 leaves them: one card per path, one grant through it.
+        for (const exception of cell.input.exceptions ?? []) {
+          await plantGrant(api, {
+            organizationId: bench.workspace.id,
+            runId: run,
+            pathGlob: exception.pathGlob,
+          });
+        }
 
         const answer = await report(run, "files-1", asReport(cell.input));
         const card = await latest(run);

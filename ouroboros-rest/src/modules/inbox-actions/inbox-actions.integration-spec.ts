@@ -33,7 +33,18 @@ import type { RunOpenedResource } from "../ingest/ingest.resources";
 import { MergeExecutorService } from "../pull-requests/merge/merge.executor";
 import { PrPlaneHosts, prPlaneScene, verdict } from "../pull-requests/pr-plane.integration.fixture";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
+import { OCTOKIT_FACTORY } from "../github/github.client.factory";
+import {
+  SOURCE_CONFIG,
+  SOURCE_TOKEN,
+  recordingFactory,
+} from "../ticket-sources/providers/github.provider.fixture";
+import {
+  writeRecording,
+  type WriteRecording,
+} from "../ticket-sources/providers/github.write-recordings.fixture";
 import type { InMemoryPrHost } from "../ticket-sources/providers/in-memory.pr.fixture";
+import { VaultService } from "../vault/vault.service";
 import { BENCH_UPGRADE_PLANNER } from "./inbox-actions.handlers";
 import type { ActionResultResource } from "./inbox-actions.resources";
 
@@ -368,6 +379,31 @@ describe("the inbox action executor, against a migrated database and the real pl
     expect(after.attempts.filter((attempt) => attempt.status === "succeeded")).toHaveLength(1);
   });
 
+  it("holds first-answer-wins under load: five people answering at once leave one resolution", async () => {
+    const { owner, bench, run, item } = await blockedRun();
+    const admins = [owner];
+
+    for (let i = 0; i < 4; i += 1) {
+      admins.push(await colleague(bench.workspace.id, "admin"));
+    }
+
+    const responses = await Promise.all(
+      admins.map((person) => press(person, bench.workspace.slug, item, "deny")),
+    );
+    const statuses = responses.map((response) => response.status).sort();
+    const steers = await api.sql.query(
+      `select 1 from ${SCHEMA_NAME}.run_controls where run_id = $1 and kind = 'steer'`,
+      [run],
+    );
+    const after = await state(item);
+
+    expect(statuses).toEqual([200, 409, 409, 409, 409]);
+    expect(after.resolutions).toHaveLength(1);
+    expect(after.attempts.filter((attempt) => attempt.status === "succeeded")).toHaveLength(1);
+    // One steer reached the run: the plane was called once.
+    expect(steers.rows).toHaveLength(1);
+  });
+
   it("does not execute a retried idempotency key twice", async () => {
     const { owner, bench, run, item } = await blockedRun();
     const key = randomUUID();
@@ -577,16 +613,22 @@ describe("the inbox action executor, against a migrated database and the real pl
   });
 });
 
-describe("Require bench upgrade, with a tracker planning can write to", () => {
+describe("Require bench upgrade and Approve split, with a tracker planning can write to", () => {
   let api: ApiHarness;
+  let github: WriteRecording;
 
   // The default provider registry, whose GitHub provider writes — the PR plane's harness above
-  // registers only the in-memory host, which planning cannot push to.
+  // registers only the in-memory host, which planning cannot push to. GitHub itself is the write
+  // kit's recording, so a push is observed where it lands.
   beforeAll(async () => {
-    api = await ApiHarness.start({
-      OURO_RUN_SIMULATOR_SECRET: SIMULATOR_SECRET,
-      OURO_BACKLOG_SYNC_INTERVAL_SECONDS: "86400",
-    });
+    github = writeRecording();
+    api = await ApiHarness.start(
+      {
+        OURO_RUN_SIMULATOR_SECRET: SIMULATOR_SECRET,
+        OURO_BACKLOG_SYNC_INTERVAL_SECONDS: "86400",
+      },
+      [{ provide: OCTOKIT_FACTORY, useValue: recordingFactory(github.octokit).factory }],
+    );
   });
 
   afterAll(() => api.close());
@@ -650,6 +692,70 @@ describe("Require bench upgrade, with a tracker planning can write to", () => {
     expect(answer.resolution).toMatchObject({
       actionId: "require_bench_upgrade",
       resolver: "human",
+    });
+  });
+
+  it("approves a split through AL.3's push: the drafts become issues on the tracker", async () => {
+    const owner = await api.signUp();
+    const bench = await seedIngestBench(api, owner);
+    const source = await api.sql.query<{ id: string }>(
+      `insert into ${SCHEMA_NAME}.ticket_sources (organization_id, kind, display_name, config)
+       values ($1, 'github', 'GitHub · acme-robotics', $2::jsonb) returning id`,
+      [bench.workspace.id, JSON.stringify(SOURCE_CONFIG)],
+    );
+    const sourceId = source.rows[0].id;
+    const sealed = await api.nest
+      .get(VaultService)
+      .encryptText(bench.workspace.id, sourceId, SOURCE_TOKEN);
+
+    await api.sql.query(
+      `update ${SCHEMA_NAME}.ticket_sources set credentials_encrypted = $2 where id = $1`,
+      [sourceId, sealed],
+    );
+
+    const batch = await api.sql.query<{ id: string }>(
+      `insert into ${SCHEMA_NAME}.draft_batches
+              (organization_id, source_prompt, planner, target_source_id, status, created_by)
+       values ($1, 'Telemetry v2', 'split-v1', $2, 'sized', $3) returning id`,
+      [bench.workspace.id, sourceId, owner.id],
+    );
+    const batchId = batch.rows[0].id;
+
+    await api.sql.query(
+      `insert into ${SCHEMA_NAME}.ticket_drafts (batch_id, local_key, title)
+       values ($1, 'T1', 'Telemetry v2: frame schema'), ($1, 'T2', 'Telemetry v2: uplink')`,
+      [batchId],
+    );
+
+    const { itemId } = await api.nest.get(DecisionKindRegistry, { strict: false }).emit({
+      organizationId: bench.workspace.id,
+      kindId: "split_approval",
+      payload: SEEDED_PAYLOADS.split_approval,
+      refs: [],
+      key: { plane: "planning", sourceRef: `batch:${batchId}` },
+    });
+    const before = github.issues.length;
+    const answer = bodyOf<ActionResultResource>(
+      await api
+        .as(owner)("post", `/api/v1/inbox/items/${itemId ?? ""}/actions/approve_split`)
+        .set(TENANT_HEADER, bench.workspace.slug)
+        .send({})
+        .expect(200),
+    );
+    const drafts = await api.sql.query<{ push_state: string }>(
+      `select push_state from ${SCHEMA_NAME}.ticket_drafts where batch_id = $1 order by local_key`,
+      [batchId],
+    );
+
+    // The downstream effect: two issues on the tracker, both drafts pushed.
+    expect(github.issues.slice(before).map((issue) => issue.title)).toEqual([
+      "Telemetry v2: frame schema",
+      "Telemetry v2: uplink",
+    ]);
+    expect(drafts.rows.map((row) => row.push_state)).toEqual(["pushed", "pushed"]);
+    expect(answer.resolution).toMatchObject({
+      actionId: "approve_split",
+      outcome: { draft_batch_id: batchId, pushed: 2 },
     });
   });
 });
