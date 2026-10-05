@@ -49,6 +49,7 @@ import { DigestController } from "./digest/digest.controller";
 import { DigestRepository } from "./digest/digest.repository";
 import { DigestRunner } from "./digest/digest.runner";
 import { DigestScheduler } from "./digest/digest.scheduler";
+import { DigestRouteComposer } from "./digest/digest.route";
 import { DigestService } from "./digest/digest.service";
 import { DigestUnsubscribeController } from "./digest/digest.unsubscribe.controller";
 import { InterventionsController } from "./interventions.controller";
@@ -99,7 +100,15 @@ import { ScoreboardService } from "./scoreboard/scoreboard.service";
     DigestService,
     DigestRunner,
     DigestScheduler,
+    DigestRouteComposer,
   ],
-  exports: [CALIBRATION_MERGE_OBSERVER, MetricsService, ScoreboardService, InsightsPageService],
+  exports: [
+    CALIBRATION_MERGE_OBSERVER,
+    MetricsService,
+    ScoreboardService,
+    InsightsPageService,
+    // The weekly digest as the org `weekly_insights` route sends it (#488).
+    DigestRouteComposer,
+  ],
 })
 export class InsightsModule {}

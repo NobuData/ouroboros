@@ -4610,6 +4610,58 @@ are dead-lettered.
 deleted | redelivered`, subject `webhook_endpoint`, naming the host but never the URL's path or the
 secret.
 
+## Integrations & notification routes
+
+> **Issue:** [#488](https://github.com/NobuData/ouroboros/issues/488) — *[BR.4] Integrations status
+> hub & org notification routes* · epic [#477](https://github.com/NobuData/ouroboros/issues/477) ·
+> schema `V094`, `V103`
+
+Two Settings cards. `src/modules/integrations/` is the grid; `src/modules/notification-routes/` is
+the routes, their API and their sender.
+
+```
+GET   /api/v1/settings/integrations           any member · tiles composed from the owning planes · connectedCount
+GET   /api/v1/settings/notifications          any member · the four core routes (stored or default) · custom · channels
+GET   /api/v1/settings/notifications/{kind}   any member · one route
+PATCH /api/v1/settings/notifications/{kind}   owner/admin · { channel?, config?, enabled? } · audited notification_route.updated
+```
+
+**The grid is a status hub, never a second store.** Each tile is read from the plane that owns the
+connection, on every request, and nothing is written: GitHub from `github_credentials` (token),
+`github_orgs.installed_at` (App) and its ticket sources; Jira and Linear from their ticket sources
+(unpaused, credential stored); webhooks from active `webhook_endpoints`; the build farm from
+`runners` by the farm's own online rule. `availability` is
+`connected | disconnected | unavailable_v2 | unavailable_unbuilt`: Slack is `unavailable_unbuilt`
+until Chat Ops (mockup 19) exists, and Teams, Datadog and PagerDuty are `unavailable_v2` (BT.3).
+Every `deepLink` is the owning surface (`/settings/sources`, `/build-farm`,
+`/settings#integrations` for the webhook sheet); there is no connection form here.
+
+**Org routes sit above BN.3's per-person preferences** and never read or write them. One route per
+(workspace, kind) — `needs_you_dm | daily_digest | loop_failures | weekly_insights | custom:<slug>`
+— bound to `email | slack | pagerduty`, with `config` `{ time (HH:MM UTC), weekday, recipients }`.
+
+- **The locked-row rule is server-side.** A channel with no connection in this build (Slack,
+  PagerDuty) locks its route with the card's reason (`connect PagerDuty first`). A save that would
+  leave a locked route *enabled* is `409 notification_route_locked` with `details.reason`; a locked
+  route may still be stored disabled. The sender reads only `delivering` routes, so a lock holds
+  even against a row written behind the API.
+- **Routes drive real sends.** `OrgRouteSender` (a one-minute jittered tick, booked only when SMTP
+  is configured) mails the **daily digest** at the route's `time` — the workspace's open Needs-You
+  decisions, read-only (`DecisionMailService.orgDigestMail`: no action tokens, no person's mutes) —
+  and the **weekly insights** report at its `weekday`/`time` (#440's digest via
+  `DigestRouteComposer`, no unsubscribe link). Recipients are `config.recipients`, else the
+  workspace's owners and admins. A slot is due through a grace (6 h daily, 24 h weekly) and not
+  again within a gap (20 h, 6 d), so moving the time does not send twice.
+- **Separate send log.** Every attempt is claimed in V103's `notification_route_sends` by
+  (workspace, kind, slot, recipient, attempt) before it leaves, settled once, retried up to 3 times;
+  a claim older than five minutes is failed and retried. A member who also has a personal digest
+  gets both — one is theirs, the other the workspace's.
+- **`loop_failures`** is registered and locked on PagerDuty until BT.3; nothing produces a loop
+  failure event yet.
+- Every change writes one `notification_route.updated` audit event — `kind`, `fields`,
+  `previousSource`, and `previousChannel`/`channel`, `previousEnabled`/`enabled`,
+  `previousConfig`/`config` — webhook registry version 7. A save that changes nothing writes none.
+
 ## Build logs
 
 > **Issue:** [#253](https://github.com/NobuData/ouroboros/issues/253) — *[AH.5] Log ingest &

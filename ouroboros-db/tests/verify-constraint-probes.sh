@@ -654,6 +654,15 @@
 #                                                  _org_actor_service_idx, _org_plane_idx,
 #                                                  _org_subject_idx, _detail_refs_idx
 #
+# #488 (BR.4, V103) logs the org notification routes' sends. One probe per rule "a route never
+# mails one address twice for one slot" rests on:
+#
+#   V103 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   one claim per (kind, slot, address, attempt) drop notification_route_sends_key
+#   only the mailing kinds log sends             drop notification_route_sends_kind
+#   a settled send is in shape                   drop notification_route_sends_settled_shape
+#
 # #457 (BM.1, V093) adds the decision domain — versioned kind declarations and the typed items
 # filed against them. One probe per rule the inbox's truthfulness rests on:
 #
@@ -3431,6 +3440,19 @@ for index in audit_events_org_actor_kind_idx audit_events_org_actor_service_idx 
     "did not use index ${index}" \
     "drop index ouroboros.${index};"
 done
+
+# V103 (#488). The org notification routes' send log.
+expect_red 'a route may mail one address twice for one slot' \
+  'two replicas never mail twice' \
+  'drop index ouroboros.notification_route_sends_key;'
+
+expect_red 'a route send may be logged for any kind' \
+  'only the mailing kinds log sends' \
+  'alter table ouroboros.notification_route_sends drop constraint notification_route_sends_kind;'
+
+expect_red 'a settled route send may be in any shape' \
+  'a sent claim is settled' \
+  'alter table ouroboros.notification_route_sends drop constraint notification_route_sends_settled_shape;'
 
 printf '\n'
 if check_summary; then

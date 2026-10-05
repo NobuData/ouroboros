@@ -228,6 +228,11 @@ export const WEBHOOK_REGISTRY: readonly WebhookRegistryVersion[] = [
     // BR.2 (#486): an audit-log CSV export, and the audit retention purge's per-workspace record.
     adds: ["audit.audit.exported", "audit.audit.purged"],
   },
+  {
+    version: 7,
+    // BR.4 (#488): an org-level notification route was saved.
+    adds: ["audit.notification_route.updated"],
+  },
 ];
 
 /** The newest registry version — what a new endpoint subscribes under. */

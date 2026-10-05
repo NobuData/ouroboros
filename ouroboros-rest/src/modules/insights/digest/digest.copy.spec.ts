@@ -45,4 +45,10 @@ describe("the digest's shared words", () => {
       "It was not sent to anyone.",
     );
   });
+
+  it("says why a routed mail came, when it was not a subscription (#488)", () => {
+    const reason = "A workspace administrator routed this digest to this address.";
+
+    expect(reasonNote({ ...DIGEST_CONTEXT, unsubscribeUrl: null, reason })).toBe(reason);
+  });
 });

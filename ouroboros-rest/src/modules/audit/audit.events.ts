@@ -77,7 +77,8 @@ export type AuditSubjectType =
   | "invitation"
   | "service_account"
   | "decision_item"
-  | "webhook_endpoint";
+  | "webhook_endpoint"
+  | "notification_route";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -585,6 +586,18 @@ export const WEBHOOK_DELETED_EVENT = "webhook.deleted";
 /** A dead-lettered delivery was queued again by an administrator (#487). */
 export const WEBHOOK_REDELIVERED_EVENT = "webhook.redelivered";
 
+/**
+ * An org-level notification route was saved from the Settings notifications card (BR.4,
+ * [#488](https://github.com/NobuData/ouroboros/issues/488)). Subject `notification_route`, whose id
+ * is the route's kind (one route per kind per workspace). The detail names the `kind`, the changed
+ * `fields`, and each field's value **before and after**: `previousChannel`/`channel`,
+ * `previousEnabled`/`enabled` and `previousConfig`/`config` (the config as JSON text, because a
+ * detail is flat), plus `previousSource` — `default` when no route was stored before. A save that
+ * changes nothing writes no event. Recipients are workspace contact addresses an administrator
+ * typed, not secrets.
+ */
+export const NOTIFICATION_ROUTE_UPDATED_EVENT = "notification_route.updated";
+
 /* ---------------------------------------------------------------------------
  * The audit plane itself — BR.2 ([#486](https://github.com/NobuData/ouroboros/issues/486)).
  *
@@ -695,6 +708,7 @@ export const AUDIT_ACTIONS = [
   WEBHOOK_REDELIVERED_EVENT,
   AUDIT_EXPORTED_EVENT,
   AUDIT_PURGED_EVENT,
+  NOTIFICATION_ROUTE_UPDATED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

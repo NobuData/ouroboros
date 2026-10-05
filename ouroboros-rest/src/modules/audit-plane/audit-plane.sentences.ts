@@ -158,6 +158,12 @@ const TEMPLATES: Readonly<Record<string, Template>> = {
     const older = days === undefined ? "" : ` older than ${String(days)}d`;
     return `purged ${plural(removed, "audit row")}${older}`;
   },
+  "notification_route.updated": (f) => {
+    const kind = text(f, "kind");
+    return kind === undefined
+      ? "updated a notification route"
+      : `updated the ${kind.replaceAll("_", " ")} notification route`;
+  },
 };
 
 /**

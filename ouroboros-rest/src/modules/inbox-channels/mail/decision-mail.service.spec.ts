@@ -13,6 +13,9 @@ import type {
 } from "../notifications/preferences.repository";
 import { FakeTokenStore, FakeVault } from "../tokens/action-token.fixture";
 import { ActionTokenService } from "../tokens/action-token.service";
+import { OrgRouteSender } from "../../notification-routes/routes.sender";
+import { FakeRouteStore } from "../../notification-routes/routes.store.fixture";
+import { ORG_DIGEST_FOOTER } from "./decision-mail.compose";
 import type {
   DecisionMailRepository,
   MailClaim,
@@ -437,6 +440,107 @@ describe("DecisionMailService (#463)", () => {
         [1, "failed"],
         [2, "sent"],
       ]);
+    });
+  });
+
+  describe("the org route's digest (#488)", () => {
+    beforeEach(() => {
+      items.set("info-old", item("info-old", "fact_review", "info", 3 * 3_600_000));
+      items.set("err-new", item("err-new", "merge_approval", "err", 60_000));
+      fake.recipients = [member("admin-a", ["admin"], { mutedKinds: ["fact_review"] })];
+    });
+
+    it("lists every open decision by severity, read-only — no token, no person's mutes", async () => {
+      const mail = await service.orgDigestMail(ORG, new Date("2026-10-04T09:00:00Z"));
+
+      expect(mail.subject).toBe("[Ouroboros] 2 decisions waiting · Acme Robotics");
+      expect(mail.text.indexOf("[Blocking]")).toBeLessThan(mail.text.indexOf("[FYI]"));
+      expect(mail.text).not.toContain("/inbox/answer/");
+      expect(tokens.tokens).toHaveLength(0);
+    });
+
+    it("says where the routing is changed, not that its links are the reader's own", async () => {
+      const mail = await service.orgDigestMail(ORG, new Date("2026-10-04T09:00:00Z"));
+
+      expect(mail.text).toContain(ORG_DIGEST_FOOTER);
+      expect(mail.html).toContain("Settings → Notifications");
+      expect(mail.text).not.toContain("only for you");
+    });
+
+    it("composes without sending or claiming anything", async () => {
+      await service.orgDigestMail(ORG, new Date("2026-10-04T09:00:00Z"));
+
+      expect(mailer.sent).toHaveLength(0);
+      expect(fake.sends).toHaveLength(0);
+    });
+  });
+
+  describe("layered under an org route (#488)", () => {
+    // A member who has both: a personal digest at 09:00 (BN.3) and the workspace's daily-digest
+    // route mailing the same address at 09:00 (BR.4). Two layers, two sends, neither changing the
+    // other.
+    const SLOT_NOW = new Date("2026-10-04T09:00:30Z");
+    let routes: FakeRouteStore;
+    let sender: OrgRouteSender;
+
+    beforeEach(() => {
+      items.set("err-new", item("err-new", "merge_approval", "err", 60_000));
+      fake.recipients = [
+        member("admin-a", ["admin"], { digestEnabled: true, digestTime: "09:00" }),
+      ];
+      routes = new FakeRouteStore().workspace(ORG, "Acme Robotics");
+      routes.route(ORG, "daily_digest", {
+        channel: "email",
+        config: { time: "09:00", recipients: ["admin-a@acme.test"] },
+        enabled: true,
+      });
+      sender = new OrgRouteSender(
+        routes.repository(),
+        {
+          daily_digest: { compose: (org, _name, slot) => service.orgDigestMail(org, slot) },
+          weekly_insights: { compose: () => Promise.reject(new Error("not routed")) },
+        },
+        mailer,
+        { mailFrom: "ouroboros@acme.test" } as AppConfigService,
+      );
+    });
+
+    it("sends both: the person's own digest with their links, and the workspace's read-only one", async () => {
+      await service.pass();
+      await sender.tick(SLOT_NOW);
+
+      const [personal, routed] = mailer.sent;
+
+      expect(mailer.sent.map((mail) => mail.to)).toEqual([
+        "admin-a@acme.test",
+        "admin-a@acme.test",
+      ]);
+      expect(personal?.text).toContain("/inbox/answer/");
+      expect(routed?.text).not.toContain("/inbox/answer/");
+      expect(routed?.text).toContain(ORG_DIGEST_FOOTER);
+      expect(fake.sends).toHaveLength(1);
+      expect(routes.sends).toHaveLength(1);
+    });
+
+    it("leaves the person's digest alone when the org route is switched off", async () => {
+      routes.route(ORG, "daily_digest", { channel: "email", config: {}, enabled: false });
+
+      await service.pass();
+      await sender.tick(SLOT_NOW);
+
+      expect(mailer.sent).toHaveLength(1);
+      expect(mailer.sent[0]?.text).toContain("/inbox/answer/");
+    });
+
+    it("still delivers the org route to a member whose own digest is off", async () => {
+      fake.recipients = [member("admin-a", ["admin"], { digestEnabled: false })];
+
+      await service.pass();
+      await sender.tick(SLOT_NOW);
+
+      expect(mailer.sent).toHaveLength(1);
+      expect(mailer.sent[0]?.text).toContain(ORG_DIGEST_FOOTER);
+      expect(fake.sends).toHaveLength(0);
     });
   });
 

@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.40.0"
+  version: "0.40.1"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -703,6 +703,15 @@ tags:
       — the events every plane writes, queried with indexed filters and keyset pages, the card's
       today view composed from typed events, and a bounded, streamed, itself-audited CSV export.
       Retention is the `audit` tier; its purge reports what it removed as `audit.purged`.
+  - name: integrations
+    description: |-
+      **The integrations grid** (mockup 17, issue [#488](https://github.com/NobuData/ouroboros/issues/488))
+      — a status hub composed from the planes that own each connection, never a second store.
+  - name: notification-routes
+    description: |-
+      **Org notification routes** (mockup 17, issue [#488](https://github.com/NobuData/ouroboros/issues/488))
+      — where the workspace's digest, weekly report and pages go, above each person's preferences;
+      a route on a channel with no connection is locked, server-side.
   - name: retention
     description: |-
       **Data retention** (mockup 17, issue [#482](https://github.com/NobuData/ouroboros/issues/482))
@@ -8499,6 +8508,254 @@ paths:
         "422":
           description: |-
             `validation_failed` — an id is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/integrations:
+    get:
+      tags: [integrations]
+      summary: The integrations grid
+      description: |-
+        The Settings integrations grid ([#488](https://github.com/NobuData/ouroboros/issues/488)) —
+        a **status hub composed on every request from the plane that owns each connection**, never
+        a second store: GitHub from its token, App installation and sources; Jira and Linear from
+        their ticket sources; webhooks from the active endpoints (*2 active*); the build farm from
+        its runners. `availability` separates *not connected* (`disconnected`) from *does not exist
+        yet*: Slack is `unavailable_unbuilt` until Chat Ops (mockup 19) lands, and Teams, Datadog
+        and PagerDuty are `unavailable_v2`. Every `deepLink` is the surface that owns the
+        connection — this page has no connection form. `connectedCount` (*4 connected*) is counted
+        from the tiles. Any member may read it.
+      operationId: listIntegrations
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: Every tile, in the grid's order, and the connected count.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Integrations"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `service_scope_missing` — a service token without `api.read`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/notifications:
+    get:
+      tags: [notification-routes]
+      summary: The org notification routes
+      description: |-
+        The Settings notifications card ([#488](https://github.com/NobuData/ouroboros/issues/488)):
+        the workspace's **org-level** routes, layered above each person's own preferences
+        (`/api/v1/inbox/notifications`), which they never change. The four core kinds are always
+        listed in the card's order — a kind nobody saved shows its default binding, switched off
+        (`stored: false`) — then any stored `custom:*` kind, and every channel's availability.
+        A route whose channel has no connection in this build is `locked` with the reason the card
+        prints (`connect PagerDuty first`). Any member may read it.
+      operationId: listNotificationRoutes
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The routes and the channels.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationRoutes"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `service_scope_missing` — a service token without `api.read`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/notifications/{kind}:
+    get:
+      tags: [notification-routes]
+      summary: One org notification route
+      description: |-
+        One route ([#488](https://github.com/NobuData/ouroboros/issues/488)) — stored, or its default
+        binding switched off. Any member may read it.
+      operationId: readNotificationRoute
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: kind
+          in: path
+          required: true
+          description: "`needs_you_dm`, `daily_digest`, `loop_failures`, `weekly_insights`, or `custom:<slug>`."
+          schema:
+            type: string
+            examples: [daily_digest]
+      responses:
+        "200":
+          description: The route.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationRoute"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `service_scope_missing` — a service token without `api.read`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+            `notification_route_kind_unknown` — not a route kind.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [notification-routes]
+      summary: Save an org notification route
+      description: |-
+        Re-bind a route's channel, replace its `config`, or switch it
+        ([#488](https://github.com/NobuData/ouroboros/issues/488)). Every field is optional; a body
+        carrying none reads back the route. **The locked-row rule is enforced here**: a save that
+        would leave a route *enabled* on a channel that cannot deliver in this build is refused
+        `409 notification_route_locked`, with `details.reason` the sentence the card prints — a
+        locked route may still be stored disabled. The daily digest route mails the workspace's
+        open decisions at `config.time`, and the weekly insights route the Insights digest at
+        `config.weekday`/`config.time`, to `config.recipients` (else the owners and admins). Every
+        change is audited as `notification_route.updated` with its before and after values.
+        Owners and admins only.
+      operationId: updateNotificationRoute
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: kind
+          in: path
+          required: true
+          description: "`needs_you_dm`, `daily_digest`, `loop_failures`, `weekly_insights`, or `custom:<slug>`."
+          schema:
+            type: string
+            examples: [daily_digest]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationRoutePatch"
+            example:
+              enabled: true
+              config:
+                weekday: monday
+                time: "09:00"
+                recipients: ["eng-leads@acme-robotics.dev"]
+      responses:
+        "200":
+          description: The route as stored, its lock derived.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationRoute"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            this route is for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+            `notification_route_kind_unknown` — not a route kind.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `notification_route_locked` — the route's channel cannot deliver in this build, so it
+            cannot be enabled; `details` carries `kind`, `channel`, `locked: true` and `reason`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — a malformed body. `notification_route_config_invalid` — a config
+            setting is malformed; `details.fields` names it (`config.time`).
           content:
             application/json:
               schema:
@@ -47202,6 +47459,176 @@ components:
             - $ref: "#/components/schemas/WebhookSiem"
         registry:
           $ref: "#/components/schemas/WebhookRegistry"
+
+    IntegrationLink:
+      type: object
+      title: IntegrationLink
+      description: Where a tile's action leads — always the surface that owns the connection.
+      additionalProperties: false
+      required: [label, path]
+      properties:
+        label:
+          type: string
+          examples: ["Connect", "Manage", "Enrol a runner"]
+        path:
+          type: string
+          description: An origin-relative UI path.
+          examples: ["/settings/sources"]
+
+    IntegrationTile:
+      type: object
+      title: IntegrationTile
+      description: One integration, composed from the plane that owns it.
+      additionalProperties: false
+      required: [kind, label, availability, state, contextLine, deepLink, reason]
+      properties:
+        kind:
+          type: string
+          enum: [github, slack, jira, linear, teams, webhooks, datadog, pagerduty, build_farm]
+        label:
+          type: string
+          examples: ["GitHub", "MS Teams", "Build farm"]
+        availability:
+          type: string
+          enum: [connected, disconnected, unavailable_v2, unavailable_unbuilt]
+          description: |-
+            `disconnected` — you have not connected this. `unavailable_unbuilt` — the surface does
+            not exist yet (Slack, until Chat Ops). `unavailable_v2` — a v2 connector kind (BT.3).
+        state:
+          type: string
+          enum: [ok, attention, "off"]
+          description: "`attention` — connected, but a source is failing or a runner is offline."
+        contextLine:
+          type: [string, "null"]
+          examples: ["acme-robotics · token", "2 active", "3 of 4 runners online"]
+        deepLink:
+          description: Connect or Manage on the owning surface; null for a kind that cannot be connected yet.
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/IntegrationLink"
+        reason:
+          type: [string, "null"]
+          description: Why the tile is unavailable or needs attention.
+
+    Integrations:
+      type: object
+      title: Integrations
+      additionalProperties: false
+      required: [tiles, connectedCount]
+      properties:
+        tiles:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntegrationTile"
+        connectedCount:
+          type: integer
+          minimum: 0
+          description: "*N connected* — counted from the tiles, never stored."
+
+    NotificationRouteChannel:
+      type: string
+      title: NotificationRouteChannel
+      enum: [email, slack, pagerduty]
+
+    NotificationRouteConfig:
+      type: object
+      title: NotificationRouteConfig
+      description: Each setting optional; nothing else permitted.
+      additionalProperties: false
+      properties:
+        time:
+          type: string
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          description: When the route sends, `HH:MM` UTC. 09:00 when unset.
+        weekday:
+          type: string
+          enum: [monday, tuesday, wednesday, thursday, friday, saturday, sunday]
+          description: The weekly route's day. Monday when unset.
+        recipients:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: string
+            format: email
+          description: Where the route mails. The workspace's owners and admins when unset.
+
+    NotificationRoute:
+      type: object
+      title: NotificationRoute
+      description: One org-level route, with its lock derived.
+      additionalProperties: false
+      required: [kind, channel, config, enabled, locked, lockedReason, delivering, stored, updatedAt, updatedBy]
+      properties:
+        kind:
+          type: string
+          examples: [daily_digest, "custom:release-notes"]
+        channel:
+          $ref: "#/components/schemas/NotificationRouteChannel"
+        config:
+          $ref: "#/components/schemas/NotificationRouteConfig"
+        enabled:
+          type: boolean
+          description: Whether the workspace wants the route.
+        locked:
+          type: boolean
+          description: The route's channel has no connection in this build.
+        lockedReason:
+          type: [string, "null"]
+          examples: ["connect PagerDuty first"]
+        delivering:
+          type: boolean
+          description: "`enabled` and not `locked` — whether the route can actually fire."
+        stored:
+          type: boolean
+          description: False for a core kind nobody has saved — its default binding, off.
+        updatedAt:
+          type: [string, "null"]
+          format: date-time
+        updatedBy:
+          type: [string, "null"]
+
+    NotificationRouteChannelAvailability:
+      type: object
+      title: NotificationRouteChannelAvailability
+      additionalProperties: false
+      required: [channel, available, reason]
+      properties:
+        channel:
+          $ref: "#/components/schemas/NotificationRouteChannel"
+        available:
+          type: boolean
+        reason:
+          type: [string, "null"]
+          description: The sentence a route on this channel is locked with.
+
+    NotificationRoutes:
+      type: object
+      title: NotificationRoutes
+      additionalProperties: false
+      required: [items, channels]
+      properties:
+        items:
+          type: array
+          description: The four core kinds in the card's order, then any custom kind.
+          items:
+            $ref: "#/components/schemas/NotificationRoute"
+        channels:
+          type: array
+          items:
+            $ref: "#/components/schemas/NotificationRouteChannelAvailability"
+
+    NotificationRoutePatch:
+      type: object
+      title: NotificationRoutePatch
+      additionalProperties: false
+      properties:
+        channel:
+          $ref: "#/components/schemas/NotificationRouteChannel"
+        config:
+          $ref: "#/components/schemas/NotificationRouteConfig"
+        enabled:
+          type: boolean
 
     WebhookDelivery:
       type: object

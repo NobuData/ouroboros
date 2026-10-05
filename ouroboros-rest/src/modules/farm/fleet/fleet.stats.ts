@@ -52,7 +52,7 @@ const DAY_S = 24 * HOUR_S;
  * is out because it is the measurement that says the fleet cannot vouch for it, and `removed`
  * is out of *both* sides of the fraction because a retired machine is not in the fleet at all.
  */
-const ONLINE_STATUSES = new Set(["online", "building", "draining"]);
+export const ONLINE_STATUSES: ReadonlySet<string> = new Set(["online", "building", "draining"]);
 
 /** The counted build outcomes today — V040's four terminal states, in the mockup's order. */
 export interface BuildOutcomeCounts {

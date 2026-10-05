@@ -201,7 +201,17 @@ export interface DigestMailInput {
   /** The last day's resolved lines — `Split #490 into 6 tickets — approved`. */
   readonly resolved: readonly string[];
   readonly inboxUrl: string;
+  /**
+   * The footer, when not the per-person one. An org notification route's digest (#488) carries no
+   * action links and goes to addresses rather than people, so the per-person footer — *each link
+   * works once, only for you* — would be untrue there.
+   */
+  readonly footer?: string;
 }
+
+/** The footer of an org notification route's digest (#488): read-only, sent to an address. */
+export const ORG_DIGEST_FOOTER =
+  "This digest was sent to this address by your workspace's notification routes. It carries no action links — answer in the inbox. Administrators change where it goes in Ouroboros → Settings → Notifications.";
 
 /**
  * The daily digest.
@@ -210,6 +220,7 @@ export interface DigestMailInput {
  * @returns The mail.
  */
 export function composeDigestMail(input: DigestMailInput): ComposedMail {
+  const footer = input.footer ?? FOOTER;
   const count = input.open.length;
   const waiting =
     count === 0
@@ -227,7 +238,7 @@ export function composeDigestMail(input: DigestMailInput): ComposedMail {
   text.push(
     ...(input.resolved.length === 0 ? ["  (none)"] : input.resolved.map((l) => `  ✓ ${l}`)),
   );
-  text.push("", `Inbox: ${input.inboxUrl}`, "", FOOTER, "");
+  text.push("", `Inbox: ${input.inboxUrl}`, "", footer, "");
 
   const resolvedHtml =
     input.resolved.length === 0
@@ -244,6 +255,6 @@ export function composeDigestMail(input: DigestMailInput): ComposedMail {
   return {
     subject: subjectLine(`[Ouroboros] ${title}`),
     text: text.join("\n"),
-    html: frame(title, body, FOOTER),
+    html: frame(title, body, footer),
   };
 }
