@@ -1676,7 +1676,7 @@ the blockquote above that records what it did and what it did differently.
 | 387 | **BO.5** | ✅ [#470](https://github.com/NobuData/ouroboros/issues/470) | Stat card, states & e2e leg | ouroboros-ui, .github | M | BO.2, BO.4 |
 | 388 | **BR.6** | ✅ [#490](https://github.com/NobuData/ouroboros/issues/490) | Settings integration tests | ouroboros-rest | M | BQ.2, BR.1, BR.5 |
 | 389 | **BS.4** | ✅ [#494](https://github.com/NobuData/ouroboros/issues/494) | Autonomy policies card | ouroboros-ui | L | BQ.2, BS.1 |
-| 390 | **BS.5** | [#495](https://github.com/NobuData/ouroboros/issues/495) | Audit, integrations & notifications cards | ouroboros-ui | M | BR.2, BR.4, BS.1 |
+| 390 | **BS.5** | ✅ [#495](https://github.com/NobuData/ouroboros/issues/495) | Audit, integrations & notifications cards | ouroboros-ui | M | BR.2, BR.4, BS.1 |
 | 391 | **BS.6** | [#496](https://github.com/NobuData/ouroboros/issues/496) | Danger zone, states & e2e leg | ouroboros-ui, .github | M | BR.5, BS.2, BS.5 |
 
 ## P15 — Onboarding Experience

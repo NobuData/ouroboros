@@ -36,6 +36,19 @@ vi.mock("@/app/policies/card-actions", () => ({
 // The Members card's Server Actions are never reached here: its own suites drive them.
 // The Workspace card's Server Action is never reached here: its own suites drive it.
 vi.mock("@/app/settings/workspace-actions", () => ({ saveWorkspaceCard: vi.fn() }));
+// BS.5's cards (#495) reach their Server Actions only in their own suites.
+vi.mock("@/app/audit-log/audit-actions", () => ({ readAuditLog: vi.fn() }));
+vi.mock("@/app/integrations/routes-actions", () => ({ saveRoutes: vi.fn() }));
+vi.mock("@/app/webhooks/webhook-actions", () => ({
+  readWebhooks: vi.fn(),
+  createWebhook: vi.fn(),
+  updateWebhook: vi.fn(),
+  deleteWebhook: vi.fn(),
+  rotateWebhookSecret: vi.fn(),
+  pingWebhook: vi.fn(),
+  readDeliveries: vi.fn(),
+  redeliverDelivery: vi.fn(),
+}));
 vi.mock("@/app/members/members-actions", () => ({
   inviteMember: vi.fn(),
   resendInvitation: vi.fn(),

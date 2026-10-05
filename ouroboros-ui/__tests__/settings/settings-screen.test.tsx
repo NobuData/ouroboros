@@ -7,6 +7,9 @@ import { FOOTER_LINE, historyTrigger, policyUnread } from "@/app/policies/card-v
 import { RULE_NAMES } from "@/app/policies/document";
 import { DRY_RUN_TITLE, POLICY_READ_ONLY, dryRunUnread } from "@/app/policies/view";
 import { FONT_SCALE_ATTRIBUTE, setFontScale } from "@/app/font-scale";
+import { AUDIT_ADMINS_ONLY, auditUnread } from "@/app/audit-log/view";
+import { routesUnread } from "@/app/integrations/routes";
+import { integrationsUnread } from "@/app/integrations/view";
 import { READ_ONLY_BODY, settingsAccess } from "@/app/settings/access";
 import { APPEARANCE_TAG } from "@/app/settings/appearance";
 import { NOTHING_TO_SAVE } from "@/app/settings/save-model";
@@ -21,7 +24,10 @@ import {
 
 import { ThemeProvider } from "@/app/theme-provider";
 
+import { auditToday } from "../helpers/audit-log";
+import { integrations, notificationRoutes } from "../helpers/integrations";
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
+import { webhookList } from "../helpers/webhooks";
 import { renderThemed } from "../helpers/theme";
 import { orgPolicyV7 } from "../helpers/org-policy";
 import { READ_AT, retentionSettings, workspaceSettings } from "../helpers/workspace";
@@ -44,6 +50,19 @@ vi.mock("@/app/policies/card-actions", () => ({
 // The Members card's Server Actions are never reached here: its own suites drive them.
 // The Workspace card's Server Action is never reached here: its own suites drive it.
 vi.mock("@/app/settings/workspace-actions", () => ({ saveWorkspaceCard: vi.fn() }));
+// BS.5's cards (#495) reach their Server Actions only in their own suites.
+vi.mock("@/app/audit-log/audit-actions", () => ({ readAuditLog: vi.fn() }));
+vi.mock("@/app/integrations/routes-actions", () => ({ saveRoutes: vi.fn() }));
+vi.mock("@/app/webhooks/webhook-actions", () => ({
+  readWebhooks: vi.fn(),
+  createWebhook: vi.fn(),
+  updateWebhook: vi.fn(),
+  deleteWebhook: vi.fn(),
+  rotateWebhookSecret: vi.fn(),
+  pingWebhook: vi.fn(),
+  readDeliveries: vi.fn(),
+  redeliverDelivery: vi.fn(),
+}));
 vi.mock("@/app/members/members-actions", () => ({
   inviteMember: vi.fn(),
   resendInvitation: vi.fn(),
@@ -405,6 +424,110 @@ describe("the Policies section", () => {
     // One failed read is one degraded region, never a blank page.
     expect(document.querySelectorAll(".settings__seat")).toHaveLength(8);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(SETTINGS_TITLE);
+  });
+});
+
+describe("the record surfaces — Audit, Integrations and Notifications (#495)", () => {
+  /**
+   * Draw the hub with BS.5's three reads.
+   *
+   * @param roles The reader's roles.
+   * @param overrides Readings to replace.
+   * @returns The render result.
+   */
+  function record(
+    roles: Parameters<typeof settingsAccess>[0] = ["owner"],
+    overrides: Partial<Parameters<typeof SettingsScreen>[0]> = {},
+  ) {
+    const administers = settingsAccess(roles).mayEdit;
+
+    return renderThemed(
+      <SettingsScreen
+        access={settingsAccess(roles)}
+        audit={administers ? { ok: true, value: auditToday() } : null}
+        dryRun={READ}
+        integrations={{ ok: true, value: integrations() }}
+        routes={{ ok: true, value: notificationRoutes() }}
+        webhooks={administers ? webhookList() : null}
+        workspaceName="acme-robotics"
+        {...overrides}
+      />,
+    );
+  }
+
+  it("seats the Audit card with the mockup's five rows, the tier's tag and the SIEM row", () => {
+    record();
+
+    const audit = within(seat("audit"));
+
+    expect(audit.getAllByRole("listitem").map((row) => row.textContent)).toEqual([
+      "14:31ouroboros-app[bot] (bot)pushed PR #514 rev 2",
+      "14:12Ken (person)rotated Anthropic API key",
+      "13:48Ken (person)enabled auto-merge (policy v7)",
+      "13:22Maya (person)approved waiver on PR #509",
+      "12:04system (system)runner forge-03 marked offline",
+    ]);
+    expect(audit.getByText("retained 400d")).toHaveClass("ou-tag");
+    expect(audit.getByRole("button", { name: /^Stream to SIEM\./ })).toBeInTheDocument();
+    expect(audit.getByRole("button", { name: "Export CSV" })).toBeInTheDocument();
+  });
+
+  it("seats the grid with the service's count, and the routes with their locked rows", () => {
+    record();
+
+    expect(within(seat("integrations")).getByText("4 connected")).toHaveClass("ou-tag");
+    expect(within(seat("integrations")).getByText("not built yet")).toBeInTheDocument();
+    expect(seat("notifications")).toHaveTextContent("connect PagerDuty first");
+  });
+
+  it("tells a viewer whose log the audit log is, and still draws the grid and the routes", () => {
+    record(["viewer"]);
+
+    expect(within(seat("audit")).getByRole("note")).toHaveTextContent(AUDIT_ADMINS_ONLY);
+    expect(within(seat("audit")).queryByRole("button")).toBeNull();
+    expect(within(seat("integrations")).getByText("4 connected")).toBeInTheDocument();
+    expect(seat("notifications")).toHaveTextContent("connect PagerDuty first");
+    // Nothing a viewer is drawn can change the workspace: no switch, no sheet, no dead control.
+    for (const id of ["integrations", "notifications"]) {
+      expect(within(seat(id)).queryByRole("button"), id).toBeNull();
+      expect(within(seat(id)).queryByRole("switch"), id).toBeNull();
+    }
+    expect(screen.getByRole("main").querySelector("[aria-disabled='true'], [disabled]")).toBeNull();
+  });
+
+  it("keeps each failed read to its own seat, with the sentence that says why", () => {
+    const down = { ok: false, reason: "The service is restarting." } as const;
+    record(["owner"], { audit: down, integrations: down, routes: down, webhooks: null });
+
+    expect(within(seat("audit")).getByRole("note")).toHaveTextContent(auditUnread(down.reason));
+    expect(within(seat("integrations")).getByRole("note")).toHaveTextContent(
+      integrationsUnread(down.reason),
+    );
+    expect(within(seat("notifications")).getByRole("note")).toHaveTextContent(
+      routesUnread(down.reason),
+    );
+    expect(document.querySelectorAll(".settings__seat")).toHaveLength(8);
+  });
+
+  it("draws the same markup in both palettes, for an owner and for a viewer", () => {
+    for (const role of ["owner", "viewer"] as const) {
+      const administers = role === "owner";
+      const [light, dark] = renderInBothPalettes(
+        <ThemeProvider>
+          <SettingsScreen
+            access={settingsAccess([role])}
+            audit={administers ? { ok: true, value: auditToday() } : null}
+            dryRun={READ}
+            integrations={{ ok: true, value: integrations() }}
+            routes={{ ok: true, value: notificationRoutes() }}
+            webhooks={administers ? webhookList() : null}
+            workspaceName="acme-robotics"
+          />
+        </ThemeProvider>,
+      );
+
+      expect(maskIds(light!), role).toBe(maskIds(dark!));
+    }
   });
 });
 

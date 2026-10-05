@@ -1,0 +1,435 @@
+/*
+ * The webhook surfaces (BS.5, issue 495) — the management sheet, the delivery log and the Audit
+ * card's Stream to SIEM row, on the issue 16 tokens.
+ *
+ * Tokens and rem only, so the font-size preference scales all of it. The sheets are the shell's
+ * overlay panel; the table is the `Table` primitive, which owns its own horizontal scroll. A
+ * state is always a word — the hues below only repeat what the text already says.
+ */
+
+/* ---------- the Stream to SIEM row ---------- */
+
+.webhooks-siem {
+  gap: var(--sp-2);
+}
+
+.webhooks-siem--warn {
+  border-color: var(--warn-line);
+  background: var(--warn-tint);
+}
+
+.webhooks-siem__mark {
+  font-weight: 600;
+}
+
+.webhooks-siem__mark--ok {
+  color: var(--ok);
+}
+
+.webhooks-siem__mark--warn {
+  color: var(--warn);
+}
+
+.webhooks-siem__detail {
+  color: var(--ink-mut);
+}
+
+/* ---------- the sheet ---------- */
+
+.webhooks-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  min-width: 0;
+}
+
+.webhooks-sheet__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-5);
+}
+
+.webhooks-sheet__head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.webhooks-sheet__notice {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  color: var(--ink);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.webhooks-sheet__notice--failed {
+  border-color: var(--err-line);
+  background: var(--err-tint);
+  color: var(--err);
+}
+
+.webhooks-sheet__state {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.webhooks-sheet__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---------- one endpoint ---------- */
+
+.webhooks-endpoint {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  min-width: 0;
+  padding: var(--sp-6) 0;
+  border-top: 1px solid var(--line);
+}
+
+.webhooks-endpoint__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-5);
+}
+
+.webhooks-endpoint__what {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 12rem;
+}
+
+.webhooks-endpoint__name {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.webhooks-endpoint__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-5);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.webhooks-endpoint__mono {
+  font-family: var(--f-mono);
+  overflow-wrap: anywhere;
+}
+
+.webhooks-endpoint__health {
+  color: var(--ink-mut);
+}
+
+.webhooks-endpoint__health--warn {
+  color: var(--warn);
+}
+
+.webhooks-endpoint__description {
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.webhooks-endpoint__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+.webhooks-endpoint__ping {
+  margin: 0;
+  padding: var(--sp-3) var(--sp-5);
+  border: 1px solid var(--ok-line);
+  border-radius: var(--r-md);
+  background: var(--ok-tint);
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.webhooks-endpoint__ping--failed {
+  border-color: var(--err-line);
+  background: var(--err-tint);
+  color: var(--err);
+}
+
+/* ---------- the form ---------- */
+
+.webhooks-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  padding: var(--sp-6);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+.webhooks-form__title {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-md);
+}
+
+.webhooks-form__families {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3) var(--sp-6);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.webhooks-form__legend {
+  margin-bottom: var(--sp-3);
+  padding: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.webhooks-form__choice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  color: var(--ink);
+  font-size: var(--t-sm);
+}
+
+.webhooks-form__box {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.webhooks-form__family {
+  font-family: var(--f-mono);
+}
+
+.webhooks-form__siem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.webhooks-form__hint {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.webhooks-form__error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.webhooks-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-4);
+}
+
+/* ---------- the delivery log ---------- */
+
+.webhooks-log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+
+.webhooks-log__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+
+.webhooks-log__filters {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.webhooks-log__filter {
+  padding: var(--sp-2) var(--sp-5);
+  border: 1px solid var(--line-control);
+  border-radius: var(--r-round);
+  background: transparent;
+  color: var(--ink-mut);
+  font: inherit;
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+
+.webhooks-log__filter[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--ink);
+}
+
+.webhooks-log__filter:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+.webhooks-log__pager {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.webhooks-log__range {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.webhooks-log__notice {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.webhooks-log__notice--failed {
+  color: var(--err);
+}
+
+.webhooks-log__state {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.webhooks-log__table {
+  min-width: 0;
+}
+
+.webhooks-log__when {
+  white-space: nowrap;
+}
+
+.webhooks-log__status {
+  color: var(--ink-mut);
+}
+
+.webhooks-log__status--ok {
+  color: var(--ok);
+}
+
+.webhooks-log__status--failed {
+  color: var(--warn);
+}
+
+.webhooks-log__status--dead {
+  color: var(--err);
+}
+
+.webhooks-log__detail {
+  color: var(--ink-dim);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- the one-time secret ---------- */
+
+.webhooks-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  padding: var(--sp-8);
+}
+
+.webhooks-dialog__title {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-lg);
+}
+
+.webhooks-dialog__note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.webhooks-dialog__warning {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+  color: var(--ink);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.webhooks-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-4);
+}
+
+.webhooks-secret__value {
+  display: block;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--inset);
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.webhooks-secret__copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.webhooks-secret__copied {
+  color: var(--ok);
+  font-size: var(--t-xs);
+}
+
+.webhooks-secret__failed {
+  color: var(--err);
+  font-size: var(--t-xs);
+}

@@ -1,0 +1,104 @@
+/*
+ * The Notifications card (BS.5, #495) — mockup 17's `.switch-row` list on the #16 tokens.
+ *
+ * Tokens and rem only. A locked row is quietened by colour, never opacity: its reason and the
+ * link that would unlock it are the row's whole content and stay at full contrast.
+ */
+
+.org-routes {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.org-routes__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-6);
+  padding: var(--sp-5) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.org-routes__row:last-child {
+  border-bottom: 0;
+}
+
+.org-routes__switch {
+  flex: none;
+  margin-top: var(--sp-1);
+}
+
+/* The lock, where the switch would be — the same width, so the titles stay in one column. */
+.org-routes__glyph {
+  flex: none;
+  width: 2.375rem;
+  font-size: var(--t-sm);
+  line-height: var(--lh-snug);
+  text-align: center;
+}
+
+/* A route's position as a word, for a reader with nothing to operate. */
+.org-routes__state {
+  flex: none;
+  width: 2.375rem;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-snug);
+}
+
+.org-routes__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.org-routes__what {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.org-routes__row--locked .org-routes__what {
+  color: var(--ink-mut);
+}
+
+.org-routes__why {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.org-routes__lock {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.org-routes__locked {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.org-routes__link {
+  color: var(--accent);
+}
+
+.org-routes__editor {
+  margin-top: var(--sp-3);
+}
+
+/* What the last save could not do, on the card it was about. */
+.org-routes__refusal {
+  margin: var(--sp-5) 0 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
