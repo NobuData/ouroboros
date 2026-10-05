@@ -1,19 +1,22 @@
-"""The six scenarios, played through the fake control plane.
+"""The seven scenarios, played through the fake control plane.
 
-Each one is checked for the story the issue gives it, and all six are checked for the rules
+Each one is checked for the story the issue gives it, and all seven are checked for the rules
 every run the driver writes must keep: every entry is in order, every write is keyed, every
 stage key is a node of the pinned workflow, and model output always names its model.
 """
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from ouroboros_simulator.runner import run_scenario
 from ouroboros_simulator.scenarios import SCENARIOS
 from ouroboros_simulator.scenarios.guardrail_violation import planted_aws_key_id
-from ouroboros_simulator.session import RunSession, Target
+from ouroboros_simulator.scenarios.protected_path_allow_once import PROTECTED_PATH
+from ouroboros_simulator.session import RunSession, ScenarioAborted, Target
+from ouroboros_simulator.transport import Response
 from simulator_fake import (
     FakeClock,
     FakeControlPlane,
@@ -52,7 +55,7 @@ def _model_bodies(fake: FakeControlPlane) -> list[str]:
 # --- every scenario -------------------------------------------------------------------------
 
 
-def test_there_are_the_six_scenarios_the_issues_name() -> None:
+def test_there_are_the_seven_scenarios_the_issues_name() -> None:
     assert list(SCENARIOS) == [
         "happy-path",
         "482-gate-return",
@@ -60,6 +63,7 @@ def test_there_are_the_six_scenarios_the_issues_name() -> None:
         "control-responsive",
         "correction-round",
         "failing-hil",
+        "protected-path-allow-once",
     ]
 
 
@@ -430,3 +434,137 @@ def test_failing_hil_says_the_results_are_the_rigs_uploads() -> None:
     ]
     assert len(sent) == 2
     assert all("uploads its JUnit and HIL reports" in body for body in sent)
+
+
+# --- protected-path-allow-once (#470) -------------------------------------------------------
+
+
+def _allow_once_on_first_poll(fake: FakeControlPlane, clock: FakeClock) -> None:
+    """Play the inbox's *Allow once* while the loop holds: grant the path, then resume — once."""
+
+    def allow() -> None:
+        clock.on_sleep.clear()
+        fake.allowances.add(PROTECTED_PATH)
+        fake.queue(QueuedControl("resume"))
+
+    clock.on_sleep.append(allow)
+
+
+class _AnsweredBeforeTheDriverLooks(FakeControlPlane):
+    """A control plane whose person allows the edit the moment the card is filed.
+
+    The grant and the resume are in place before the change-set answer reaches the driver,
+    so the resume is pending at the driver's very next fetch.
+    """
+
+    def _files(self, body: dict[str, Any]) -> Response:
+        answer = super()._files(body)
+        if answer.body["needsHuman"]:
+            self.allowances.add(PROTECTED_PATH)
+            self.queue(QueuedControl("resume"))
+        return answer
+
+
+def test_the_protected_path_is_the_only_check_that_fails() -> None:
+    fake = FakeControlPlane()
+    clock = FakeClock()
+    session = make_session(fake, clock, max_pause=3.0)
+    session.open(Target(), "loop/test")
+
+    assert SCENARIOS["protected-path-allow-once"].script(session) == "needs_human"
+
+    first = session.change_sets[0]
+    assert first.needs_human is True
+    assert first.guardrail_failures == ["allowed_paths"]
+    assert PROTECTED_PATH.startswith("boot/")
+    assert not any(f["path"].startswith(".github/") for f in fake.files)
+
+
+def test_allow_once_resumes_the_loop_past_implement_to_a_merge() -> None:
+    fake = FakeControlPlane()
+    clock = FakeClock()
+    _allow_once_on_first_poll(fake, clock)
+
+    assert _play("protected-path-allow-once", fake, clock) == "completed"
+
+    assert fake.acks == [("resume", {"effect": "resumed at implement attempt 1"})]
+    log = fake.stage_log
+    assert ("implement", 1, "failed") not in log
+    assert log.index(("implement", 1, "active")) < log.index(
+        ("implement", 1, "succeeded")
+    )
+    assert log[-1] == ("open-pr", 1, "succeeded")
+    assert all(attempt == 1 for _, attempt, _ in log)
+    assert fake.allowances == set(), "the grant is spent by the report it passed"
+    bodies = [e.get("body") or "" for e in fake.events]
+    holding = next(i for i, b in enumerate(bodies) if "Holding implement" in b)
+    resumed = bodies.index("Resumed at implement attempt 1.")
+    allowed = next(i for i, b in enumerate(bodies) if "One-time edit" in b)
+    assert holding < resumed < allowed
+    assert "allowed_paths" in bodies[holding]
+    assert "merged" in bodies[-1]
+
+
+def test_the_change_set_is_reported_again_after_the_resume() -> None:
+    fake = FakeControlPlane()
+    clock = FakeClock()
+    _allow_once_on_first_poll(fake, clock)
+    session = make_session(fake, clock)
+    session.open(Target(), "loop/test")
+
+    SCENARIOS["protected-path-allow-once"].script(session)
+
+    assert [c.guardrail_failures for c in session.change_sets] == [
+        ["allowed_paths"],
+        [],
+    ]
+    assert [c.change_set_seq for c in session.change_sets] == [1, 2]
+
+
+def test_a_resume_pending_before_the_driver_looks_again_is_not_lost() -> None:
+    # No boundary between the verdict and the hold, so the hold's first fetch claims it.
+    fake = _AnsweredBeforeTheDriverLooks()
+
+    assert _play("protected-path-allow-once", fake) == "completed"
+
+    assert fake.acks == [("resume", {"effect": "resumed at implement attempt 1"})]
+
+
+def test_without_a_resume_the_run_needs_a_human_at_the_session_limit() -> None:
+    fake = FakeControlPlane()
+    clock = FakeClock()
+    session = make_session(fake, clock, max_pause=4.0)
+    session.open(Target(), "loop/test")
+
+    assert SCENARIOS["protected-path-allow-once"].script(session) == "needs_human"
+
+    assert len(clock.sleeps) == 4
+    assert fake.stage_log[-1] == ("implement", 1, "failed")
+    assert not any(key == "build" for key, _, _ in fake.stage_log)
+    assert "No one allowed the edit in time" in fake.events[-1]["body"]
+    assert len(session.change_sets) == 1
+
+
+def test_a_resume_without_a_grant_stops_for_a_person() -> None:
+    fake = FakeControlPlane()
+    clock = FakeClock()
+    clock.on_sleep.append(lambda: fake.queue(QueuedControl("resume")))
+    session = make_session(fake, clock)
+    session.open(Target(), "loop/test")
+
+    assert SCENARIOS["protected-path-allow-once"].script(session) == "needs_human"
+
+    assert fake.stage_log[-1] == ("implement", 1, "failed")
+    assert "still fail" in fake.events[-1]["body"]
+
+
+def test_an_abort_while_holding_for_allow_once_ends_the_run_canceled() -> None:
+    fake = FakeControlPlane()
+    clock = FakeClock()
+    clock.on_sleep.append(lambda: fake.queue(QueuedControl("abort")))
+
+    with pytest.raises(ScenarioAborted):
+        _play("protected-path-allow-once", fake, clock)
+
+    assert fake.status == "canceled"
+    assert [kind for kind, _ in fake.acks] == ["abort"]

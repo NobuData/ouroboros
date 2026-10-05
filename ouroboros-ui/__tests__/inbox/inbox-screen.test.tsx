@@ -1,11 +1,13 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { InboxQueue, InboxResolved, InboxSide, NotificationPreferences } from "@/app/api/inbox";
+import type { InboxQueue, InboxResolved, InboxSide, InboxStats, NotificationPreferences } from "@/app/api/inbox";
 import type { QueuePollOptions } from "@/app/inbox/queue-poll";
 import { resetResolvedCollapsed } from "@/app/inbox/resolved-collapse";
 import type { ResolvedPollOptions } from "@/app/inbox/resolved-poll";
 import type { SidePollOptions } from "@/app/inbox/side-poll";
+import type { StatsPollOptions } from "@/app/inbox/stats-poll";
+import { CARD_FAILED_TITLE, STALE_HEADLINE } from "@/app/inbox/view";
 import { INBOX_BADGE_SOURCE } from "@/app/shell/nav-modules";
 import { navRegistry, setNavBadge } from "@/app/shell/nav-registry";
 import type { PollAnswer } from "@/app/poll";
@@ -16,12 +18,14 @@ import {
   MERGE_ITEM,
   WAIVE_ITEM,
   actionResult,
+  coldStats,
   digestOn,
   emptyQueue,
   inboxItem,
   inboxQueue,
   inboxReadings,
   inboxSide,
+  inboxStats,
   preferences,
   resolvedDay,
   resolvedRow,
@@ -39,7 +43,8 @@ import { settle } from "../helpers/settle";
  * poll that keeps them fresh, and under the queue the *Inbox zero* card and the resolved list
  * (BO.3, #468). Beside them, the side column (BO.4, #469): the channels' truth and the policy
  * card on a poll of their own, and the reader's preferences shared by the email row and the
- * sheet's two entry points.
+ * sheet's two entry points. The states (BO.5, #470): the week's stat card on a poll of its own,
+ * the snoozed section's early wake, the lag banner's last refresh and one card failing alone.
  */
 
 const snoozeAll = vi.fn();
@@ -47,6 +52,7 @@ const readNotificationSettings = vi.fn();
 const updateNotificationSettings = vi.fn();
 const answerDecision = vi.fn();
 const snoozeDecision = vi.fn();
+const unsnoozeDecision = vi.fn();
 
 vi.mock("@/app/inbox/inbox-actions", () => ({
   snoozeAll: () => snoozeAll(),
@@ -54,6 +60,7 @@ vi.mock("@/app/inbox/inbox-actions", () => ({
   updateNotificationSettings: (patch: unknown) => updateNotificationSettings(patch),
   answerDecision: (itemId: string, actionId: string, press: unknown) => answerDecision(itemId, actionId, press),
   snoozeDecision: (itemId: string, minutes: number) => snoozeDecision(itemId, minutes),
+  unsnoozeDecision: (itemId: string) => unsnoozeDecision(itemId),
 }));
 
 const { InboxScreen, askingCount } = await import("@/app/inbox/inbox-screen");
@@ -107,6 +114,26 @@ const SIDE_POLL: SidePollOptions = {
   visible: () => true,
 };
 
+/** What the stat card's poll answers next; `null` never answers. */
+let statsAnswer: PollAnswer<InboxStats> | null = null;
+
+/** How many times the stat card's poll read. */
+let statsReads = 0;
+
+const STATS_POLL: StatsPollOptions = {
+  read: () => {
+    statsReads += 1;
+
+    return statsAnswer === null ? new Promise(() => {}) : Promise.resolve(statsAnswer);
+  },
+  visible: () => true,
+};
+
+/** A fixed stamp for the lag banner: the instant as UTC `HH:MM:SS`. */
+function utcStamp(atMs: number): string {
+  return new Date(atMs).toISOString().slice(11, 19);
+}
+
 /** A fresh poll answer. */
 function fresh<T>(payload: T): PollAnswer<T> {
   return { state: "fresh", payload, etag: null, pollAfterSeconds: null };
@@ -118,17 +145,27 @@ function frame(
   resolved: InboxResolved | null = resolvedDay(),
   side: InboxSide | null = inboxSide(),
   notifications: NotificationPreferences | null = preferences(),
+  stats: InboxStats | null = inboxStats(),
 ) {
   return render(
     <InboxScreen
       clock={utcClock}
       poll={POLL}
       readerId="user-ken"
-      readings={inboxReadings(queue, resolved, side, notifications)}
+      readings={inboxReadings(queue, resolved, side, notifications, stats)}
       resolvedPoll={RESOLVED_POLL}
       sidePoll={SIDE_POLL}
+      stamp={utcStamp}
+      statsPoll={STATS_POLL}
     />,
   );
+}
+
+/** Ask every poll on the page for a fresh read — what the summary refresh does. */
+async function refreshAll(): Promise<void> {
+  await act(async () => {
+    (await import("@/app/dashboard/summary-refresh")).requestSummaryRefresh();
+  });
 }
 
 /** The level-one heading. */
@@ -139,6 +176,8 @@ beforeEach(() => {
   reads = 0;
   sideAnswer = null;
   sideReads = 0;
+  statsAnswer = null;
+  statsReads = 0;
   days.clear();
   dayReads = [];
   window.localStorage.clear();
@@ -148,6 +187,7 @@ beforeEach(() => {
   updateNotificationSettings.mockReset();
   answerDecision.mockReset();
   snoozeDecision.mockReset();
+  unsnoozeDecision.mockReset();
   setNavBadge(INBOX_BADGE_SOURCE, null);
   vi.spyOn(Date, "now").mockReturnValue(INBOX_READ_AT);
 });
@@ -288,7 +328,8 @@ describe("Snooze all 1h", () => {
     // The items moved to the snoozed group rather than vanishing.
     const snoozed = screen.getByRole("region", { name: "Snoozed" });
 
-    expect(within(snoozed).getByRole("heading")).toHaveTextContent("Snoozed (3)");
+    expect(within(snoozed).getByRole("heading", { level: 2 })).toHaveTextContent("Snoozed (3)");
+    expect(within(snoozed).getAllByRole("article")).toHaveLength(3);
     expect(within(snoozed).getAllByText("until 14:20")).toHaveLength(3);
   });
 
@@ -1054,6 +1095,8 @@ describe("both themes", () => {
         readings={inboxReadings(inboxQueue(), resolvedDay(), inboxSide(), digestOn("09:00"))}
         resolvedPoll={RESOLVED_POLL}
         sidePoll={SIDE_POLL}
+        stamp={utcStamp}
+        statsPoll={STATS_POLL}
       />,
     );
 
@@ -1062,6 +1105,226 @@ describe("both themes", () => {
     // The side column is in the comparison: both cards, the digest's controls included.
     expect(light).toContain("inbox-channels__digest-time");
     expect(light).toContain("inbox-rules__caption");
+    expect(light).toContain("inbox-stat__figure");
+  });
+});
+
+describe("This week (#470)", () => {
+  /** The stat card. */
+  const week = () => screen.getByRole("region", { name: "This week" });
+
+  it("closes the side column with the seeded week, from the first read", () => {
+    frame();
+
+    const column = screen.getByRole("complementary", { name: "Channels and policies" });
+    const cards = [...column.children];
+
+    expect(cards.at(-1)).toBe(week());
+    expect(week()).toHaveTextContent("11 decisions");
+    expect(week()).toHaveTextContent("median answer time 41s · loops never waited longer than 6m");
+  });
+
+  it("follows a poll of its own — the figures change when the week does", async () => {
+    statsAnswer = fresh(inboxStats({ decisions: 12, display: { decisions: "12", medianAnswer: "39s", maxLoopWait: "6m" } }));
+    frame();
+
+    await waitFor(() => expect(week()).toHaveTextContent("12 decisions"));
+    expect(week()).toHaveTextContent("median answer time 39s");
+    expect(statsReads).toBeGreaterThan(0);
+  });
+
+  it("draws em dashes for a cold workspace, never zeros", () => {
+    frame(inboxQueue(), resolvedDay(), inboxSide(), preferences(), coldStats());
+
+    expect(week()).toHaveTextContent("— decisions");
+    expect(week()).toHaveTextContent("median answer time — · loops never waited longer than —");
+    expect(week().querySelector(".ou-stat__value")!.textContent).not.toMatch(/\d/);
+  });
+
+  it("says its read failed in its own card, and leaves every other card alone", () => {
+    frame(inboxQueue(), resolvedDay(), inboxSide(), preferences(), null);
+
+    expect(week()).toHaveTextContent("This week's figures could not be read.");
+    expect(week().querySelector(".ou-stat__delta")).toHaveClass("ou-stat__delta--failed");
+    expect(screen.getByRole("region", { name: "What needs a human" })).toHaveTextContent("refactor label");
+    expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
+  });
+});
+
+describe("the snoozed section (#470)", () => {
+  /** A decision snoozed elsewhere, waking at 13:42. */
+  const asleep = snoozedItem({
+    id: "snoozed-1",
+    question: "Should the loops trust this fact?",
+    createdAt: "2026-10-04T12:00:00.000Z",
+    ageSeconds: 4800,
+    snoozedUntil: "2026-10-04T13:42:00.000Z",
+  });
+
+  it("draws dimmed cards with the original age and a countdown, out of the badge", async () => {
+    frame(inboxQueue({ snoozed: [asleep] }));
+
+    const card = screen.getByRole("article", { name: asleep.question });
+
+    expect(card).toHaveClass("inbox-snoozed");
+    expect(card.querySelector(".inbox-snoozed__age")).toHaveTextContent("1h");
+    expect(card.querySelector(".inbox-snoozed__countdown")).toHaveTextContent("wakes in 22m");
+    // The head's count is the service's, snooze-aware: three asking, the snoozed one not among them.
+    await waitFor(() => expect(navRegistry().badges[INBOX_BADGE_SOURCE]).toBe(3));
+  });
+
+  it("wakes one early and re-reads the queue, which brings it back as a card", async () => {
+    unsnoozeDecision.mockResolvedValue({ ok: true, value: { unsnoozed: [asleep.id] } });
+    frame(inboxQueue({ snoozed: [asleep] }));
+    await settle();
+
+    const before = reads;
+    answer = fresh(
+      inboxQueue({
+        head: { count: 4, noun: "decisions", estimateSeconds: 120, estimate: null, sentence: "4 decisions." },
+        items: [...inboxQueue().items, inboxItem({ id: asleep.id, question: asleep.question, severity: "info" })],
+        snoozed: [],
+        asOf: "2026-10-04T13:20:06.000Z",
+      }),
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: `Wake now: ${asleep.question}` }));
+    });
+
+    expect(unsnoozeDecision).toHaveBeenCalledExactlyOnceWith(asleep.id);
+    await waitFor(() => expect(headline()).toHaveTextContent("4 decisions."));
+    expect(reads).toBeGreaterThan(before);
+    expect(screen.queryByRole("region", { name: "Snoozed" })).toBeNull();
+    expect(within(screen.getByRole("region", { name: "Decisions waiting" })).getAllByRole("article")).toHaveLength(4);
+  });
+});
+
+describe("the lag banner (#470)", () => {
+  /** The banner's paragraph. */
+  const bannerText = () => document.querySelector(".inbox__stale .ou-retry__text")!;
+
+  it("prints the queue's last refresh, to the second, when a poll fails", async () => {
+    answer = { state: "failed", reason: "The inbox could not be reached.", pollAfterSeconds: null };
+    frame();
+
+    await waitFor(() => expect(document.querySelector(".inbox__stale")).not.toBeNull());
+    expect(bannerText()).toHaveTextContent(`${STALE_HEADLINE} Last refreshed 13:20:00. The inbox could not be reached.`);
+    // The queue it is stale about is still on screen.
+    expect(screen.getAllByRole("article")).toHaveLength(3);
+  });
+
+  it("moves with each good read, so it says how far behind the page really is", async () => {
+    answer = fresh(inboxQueue({ asOf: "2026-10-04T13:20:45.000Z" }));
+    frame();
+    await waitFor(() => expect(reads).toBeGreaterThan(0));
+    await settle();
+
+    answer = { state: "failed", reason: "The inbox could not be reached.", pollAfterSeconds: null };
+    await refreshAll();
+
+    await waitFor(() => expect(bannerText()).toHaveTextContent("Last refreshed 13:20:45."));
+  });
+
+  it("does not invent a refresh for a queue that was never read", () => {
+    frame(null);
+
+    expect(bannerText().querySelector(".ou-retry__headline")).toHaveTextContent(new RegExp(`^${STALE_HEADLINE.replace(".", "\\.")}$`));
+  });
+});
+
+describe("one card that cannot draw (#470)", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  it("degrades a decision card alone — its neighbours, the head and the side column stay", () => {
+    const broken = inboxItem({ id: "broken-1", question: "A card with a shape it did not expect", refs: null as never });
+    frame(inboxQueue({ items: [...inboxQueue().items, broken] }));
+
+    const standIn = screen.getByRole("region", { name: broken.question });
+
+    expect(standIn).toHaveTextContent(CARD_FAILED_TITLE);
+    expect(screen.getAllByRole("article")).toHaveLength(3);
+    expect(headline()).toHaveTextContent("3 decisions.");
+    expect(screen.getByRole("region", { name: "This week" })).toHaveTextContent("11 decisions");
+  });
+
+  it("degrades a side card alone — the queue and the other side cards stay", () => {
+    frame(inboxQueue(), resolvedDay(), inboxSide({ channels: { channels: null as never } }));
+
+    expect(screen.getByRole("region", { name: "Answer from anywhere" })).toHaveTextContent(CARD_FAILED_TITLE);
+    expect(screen.getByRole("region", { name: "What needs a human" })).toHaveTextContent("refactor label");
+    expect(screen.getByRole("region", { name: "This week" })).toHaveTextContent("11 decisions");
+    expect(screen.getAllByRole("article")).toHaveLength(3);
+  });
+
+  it("degrades the stat card alone", () => {
+    frame(inboxQueue(), resolvedDay(), inboxSide(), preferences(), inboxStats({ display: null as never }));
+
+    expect(screen.getByRole("region", { name: "This week" })).toHaveTextContent(CARD_FAILED_TITLE);
+    expect(screen.getByRole("region", { name: "What needs a human" })).toHaveTextContent("refactor label");
+    expect(screen.getAllByRole("article")).toHaveLength(3);
+  });
+});
+
+describe("as a member and as a viewer (#470)", () => {
+  /** The queue as the service resolves it for a role: the actions it may press, and its snooze. */
+  function queueFor(role: "member" | "viewer"): InboxQueue {
+    const allowed = role === "member";
+
+    return inboxQueue({
+      items: inboxQueue().items.map((item) =>
+        inboxItem({
+          ...item,
+          snooze: { allowed },
+          actions: item.actions.map((action) =>
+            action.requiredRole === "viewer" || (allowed && action.requiredRole === "member")
+              ? action
+              : { ...action, allowed: false, disabledReason: "role_required" as const },
+          ),
+        }),
+      ),
+      snoozed: [snoozedItem({ snooze: { allowed } })],
+    });
+  }
+
+  it("lets a member snooze and wake, and holds back what needs an approver — with the reason", () => {
+    frame(queueFor("member"));
+
+    const merge = screen.getByRole("article", { name: "Approve merge for a refactor PR?" });
+
+    expect(within(merge).getByRole("button", { name: "Approve & merge" })).toHaveAttribute("aria-disabled", "true");
+    expect(within(merge).getByRole("button", { name: "Return to loop with note" })).not.toHaveAttribute("aria-disabled");
+    expect(within(merge).getByRole("button", { name: "Snooze" })).not.toHaveAttribute("aria-disabled");
+    expect(screen.getByRole("button", { name: /^Wake now:/ })).not.toHaveAttribute("aria-disabled");
+    expect(screen.getByRole("button", { name: "Snooze all 1h" })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("gives a viewer every card to read and no write it would be refused — each inert with why", () => {
+    frame(queueFor("viewer"));
+
+    const merge = screen.getByRole("article", { name: "Approve merge for a refactor PR?" });
+
+    expect(within(merge).getByRole("button", { name: "Approve & merge" })).toHaveAttribute("aria-disabled", "true");
+    expect(within(merge).getByRole("button", { name: "Return to loop with note" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(within(merge).getByRole("button", { name: "Snooze" })).toHaveAttribute(
+      "title",
+      "Viewers can read the inbox but not snooze it.",
+    );
+    expect(screen.getByRole("button", { name: /^Wake now:/ })).toHaveAttribute(
+      "title",
+      "Viewers can read the inbox but not snooze it.",
+    );
+    expect(screen.getByRole("button", { name: "Snooze all 1h" })).toHaveAttribute("aria-disabled", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: /^Wake now:/ }));
+    expect(unsnoozeDecision).not.toHaveBeenCalled();
+    // Navigation is not a write: a viewer may still open what the card points at.
+    expect(within(merge).getByRole("link", { name: "Open PR verification →" })).toBeInTheDocument();
   });
 });
 

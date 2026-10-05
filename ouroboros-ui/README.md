@@ -7026,7 +7026,15 @@ snooze-aware count. Module: [`app/inbox/`](app/inbox/).
 - **Per-item snooze** offers 1 hour, 4 hours or 1 day, then dims the card in place and says when it
   returns. A card pressed here stays on screen with its receipt after the queue stops listing the
   item ([`queue-list.tsx`](app/inbox/queue-list.tsx)), and the badge drops with the press
-  (`askingCount`). Items snoozed elsewhere are plain rows until BO.5 (#470).
+  (`askingCount`).
+- **Snoozed is visible, not vanished** (BO.5, [#470](https://github.com/NobuData/ouroboros/issues/470);
+  [`snoozed-list.tsx`](app/inbox/snoozed-list.tsx), words in [`snoozed-view.ts`](app/inbox/snoozed-view.ts)).
+  Items snoozed elsewhere are dimmed cards under the queue: severity, question, the **original age**
+  still ticking (a snooze never stops a decision's clock), a live *wakes in 42m* countdown and the
+  wake time, and **Wake now** (`POST /api/v1/inbox/items/{id}/unsnooze`, through the
+  `unsnoozeDecision` server action), which re-reads the queue. It follows the item's
+  `snooze.allowed`: inert with the snooze's own reason for a viewer. Snoozed items stay out of the
+  badge — the service's count already leaves them out — and in the week's figures.
 - **Inbox zero is a real state.** The dashed [`ZeroCard`](app/inbox/zero-card.tsx) — the #14 glyph
   with its own alpha, one drawing per palette, dimmed by opacity — and the mockup's two lines
   verbatim are drawn **only** when nothing is asking, under the receipts of any cards just
@@ -7063,5 +7071,21 @@ snooze-aware count. Module: [`app/inbox/`](app/inbox/).
   absent, not greyed: no `spend > $2.50/run` row while AF.4 (#237) does not exist. The caption is
   the service's sentence, so it changes when dry-run is flipped. *Edit policies →* leads to
   `/settings#policies`.
+- **This week** ([`stats-card.tsx`](app/inbox/stats-card.tsx), words in
+  [`stats-view.ts`](app/inbox/stats-view.ts)) closes the side column on a poll of its own,
+  `GET /api/inbox/stats` ([`stats-poll.ts`](app/inbox/stats-poll.ts)) over BN.4's
+  `GET /api/v1/inbox/stats`. The figure and the two durations are the service's `display` strings,
+  verbatim — `11 decisions · median answer time 41s · loops never waited longer than 6m` from the
+  seeds, and `— decisions` with em-dash durations on a workspace that answered nothing this week,
+  never zeros. The ⓘ in its caption says how each is measured and that answer latency (asked →
+  answered, the median) and loop wait (the longest a run sat blocked) are different measures. A
+  failed read is the tile's `failed` tone with the reason.
+- **The states** (BO.5). A queue poll that fails puts the banner over the queue it is stale about,
+  with the real last refresh to the second in the reader's clock — *The inbox could not be
+  refreshed. Last refreshed 10:42:13.* Every decision card, snoozed card and side card stands under
+  its own [`InboxCardBoundary`](app/inbox/card-boundary.tsx), so one that cannot be drawn says so
+  in its own place and the rest of the page keeps working. While the route reads, its
+  [`loading.tsx`](<app/(app)/inbox/loading.tsx>) draws [`InboxSkeleton`](app/inbox/inbox-skeleton.tsx):
+  the real eyebrow and subline over bars, `aria-busy`, named *Loading the inbox*.
 - The learned-facts card's *Review all →*, the topbar's needs-you pill and the dashboard's
   `needs human` rows all link here.

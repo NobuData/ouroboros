@@ -5,9 +5,11 @@
  * Mounted in the shell's content pane: no fixed or sticky chrome of its own, every length a token
  * or a rem (so the five-step font-size preference scales the page), every hue a token (so both
  * themes come from `app/tokens.css`). The head is the insights frame's shape; the queue is the
- * mockup's `.decision` cards, the snoozed items are plain rows until BO.5 (#470), and under them
- * are the zero card and the resolved list. Beside all of it, the mockup's side column: where a
- * decision can be answered from, and which rules ask for a person.
+ * mockup's `.decision` cards, the snoozed items are dimmed cards that count down to their wake
+ * (BO.5, #470), and under them are the zero card and the resolved list. Beside all of it, the
+ * mockup's side column: where a decision can be answered from, which rules ask for a person, and
+ * the week's stat card. A card that cannot draw stands in as `.inbox-fault`, and the route's
+ * loading state is `.inbox-skeleton` (both BO.5).
  */
 
 .inbox {
@@ -361,53 +363,123 @@
   }
 }
 
-.inbox-row {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--sp-5);
-  padding: var(--sp-5) var(--sp-6);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--raised);
+/*
+ * ---------- snoozed cards (BO.5, #470) ----------
+ *
+ * Out of the queue, still on the page: the decision card's shape, dimmed as a card snoozed in
+ * place is, with its severity on the left border and in words. Pointing at one or moving the
+ * focus into it lifts the dimming, so *Wake now* and the countdown read at full contrast to the
+ * reader about to use them.
+ */
+
+.inbox-snoozed {
+  opacity: 0.6;
 }
 
-.inbox-row--snoozed {
+.inbox-snoozed:hover,
+.inbox-snoozed:focus-within {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .inbox-snoozed {
+    transition: opacity 0.2s ease;
+  }
+}
+
+.inbox-snoozed__body {
+  padding-left: 1.0625rem;
+  border-left: 0.1875rem solid var(--line-strong);
   background: var(--surface);
 }
 
-.inbox-row__body {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: var(--sp-2);
-  min-width: 0;
+.inbox-snoozed__body--err {
+  border-left-color: var(--err);
 }
 
-.inbox-row__question {
+.inbox-snoozed__body--warn {
+  border-left-color: var(--warn);
+}
+
+.inbox-snoozed__body--info {
+  border-left-color: var(--line-strong);
+}
+
+.inbox-snoozed__q-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-5);
+}
+
+.inbox-snoozed__question {
+  flex: 1;
+  min-width: 12.5rem;
   margin: 0;
   color: var(--ink);
+  font-size: var(--t-sm);
   font-weight: 600;
 }
 
-.inbox-row__meta {
+/* The original age, still counting through the snooze: tabular digits, as the card's. */
+.inbox-snoozed__age {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.inbox-snoozed__refs {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: var(--sp-3);
+  margin-top: var(--sp-3);
   color: var(--ink-faint);
   font-size: var(--t-xs);
 }
 
-.inbox-row__ref {
+.inbox-snoozed__ref {
   font-family: var(--f-mono);
 }
 
-.inbox-row__ref--link {
+.inbox-snoozed__ref--link {
   color: var(--accent);
 }
 
-.inbox-row__age {
-  margin-left: auto;
+.inbox-snoozed__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-5);
+  margin-top: var(--sp-5);
+}
+
+.inbox-snoozed__status {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+/* The countdown ticks: tabular digits keep `wakes in 9m` → `wakes in 8m` from nudging the line. */
+.inbox-snoozed__countdown {
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.inbox-snoozed__until {
+  color: var(--ink-faint);
+}
+
+.inbox-snoozed__failure {
+  margin: var(--sp-3) 0 0;
+  color: var(--err);
+  line-height: var(--lh-body);
 }
 
 /*
@@ -1049,5 +1121,119 @@
 @media (max-width: 48rem) {
   .inbox {
     padding-inline: var(--sp-6);
+  }
+}
+
+/*
+ * ---------- This week (mockup 16's stat card, BO.5 #470) ----------
+ *
+ * The tile is `StatCard`'s; this sheet adds the ⓘ in its caption — whose note opens under the
+ * caption, across the card, in the body face rather than the caption's mono capitals — and the
+ * mockup's mono, dimmer ink for the two durations in the line under the figure.
+ */
+
+.inbox-stat__caption {
+  display: inline-flex;
+  align-items: center;
+  column-gap: var(--sp-2);
+}
+
+.inbox-stat .inbox-tip__note {
+  max-width: 40ch;
+  font-family: var(--f-ui);
+  letter-spacing: normal;
+  line-height: var(--lh-body);
+  text-transform: none;
+}
+
+.inbox-stat__method {
+  display: block;
+}
+
+.inbox-stat__method + .inbox-stat__method {
+  margin-top: var(--sp-2);
+}
+
+.inbox-stat__figure {
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+}
+
+/* ---------- a card that could not be drawn (BO.5, #470) ---------- */
+
+.inbox-fault {
+  border-style: dashed;
+}
+
+/*
+ * ---------- the loading state (BO.5, #470) ----------
+ *
+ * The page's own frame with bars where the reads will land: each card shape reserves the height
+ * its card takes, so the first paint does not jump. The bars pulse only for a reader who has not
+ * asked for less motion.
+ */
+
+/* The page is reading: say so to a pointer as well. */
+.inbox-skeleton {
+  cursor: progress;
+}
+
+.inbox-skeleton__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.inbox-skeleton__bar {
+  display: block;
+  height: var(--sp-5);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+.inbox-skeleton__bar--title {
+  max-width: 28rem;
+  height: var(--sp-9);
+  margin: var(--sp-2) 0;
+}
+
+.inbox-skeleton__bar--question {
+  max-width: 32rem;
+  height: var(--sp-6);
+}
+
+.inbox-skeleton__bar--short {
+  max-width: 12rem;
+}
+
+.inbox-skeleton__actions {
+  display: flex;
+  gap: var(--sp-5);
+  margin-top: var(--sp-3);
+}
+
+.inbox-skeleton__button {
+  display: block;
+  width: 7rem;
+  height: 1.75rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .inbox-skeleton__bar,
+  .inbox-skeleton__button {
+    animation: inbox-skeleton-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes inbox-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.55;
   }
 }

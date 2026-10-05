@@ -2,17 +2,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/app/api/errors";
 import { ANSWER_FAILED, ITEM_SNOOZE_FAILED } from "@/app/inbox/card-view";
+import { WAKE_FAILED } from "@/app/inbox/snoozed-view";
 
 import { ALLOW_ITEM, actionResult } from "../helpers/inbox";
 
 /**
  * A decision card's server hop (#467). The role gate, the first-answer-wins claim and the planes
  * are the service's: this sends one press with its key, and hands back how it ended — answered,
- * raced, or failed with a sentence — as a value the card can draw.
+ * raced, or failed with a sentence — as a value the card can draw. A snoozed card's one (#470)
+ * wakes it early, and hands a refusal back the same way.
  */
 
 const answer = vi.fn();
 const snoozeItem = vi.fn();
+const unsnooze = vi.fn();
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/app/api/inbox", async (original) => ({
@@ -20,14 +23,16 @@ vi.mock("@/app/api/inbox", async (original) => ({
   inbox: {
     answer: (itemId: string, actionId: string, body: unknown) => answer(itemId, actionId, body),
     snoozeItem: (itemId: string, minutes: number) => snoozeItem(itemId, minutes),
+    unsnooze: (itemId: string) => unsnooze(itemId),
   },
 }));
 
-const { answerDecision, snoozeDecision } = await import("@/app/inbox/inbox-actions");
+const { answerDecision, snoozeDecision, unsnoozeDecision } = await import("@/app/inbox/inbox-actions");
 
 beforeEach(() => {
   answer.mockReset();
   snoozeItem.mockReset();
+  unsnooze.mockReset();
 });
 
 describe("answerDecision", () => {
@@ -152,5 +157,34 @@ describe("snoozeDecision", () => {
 
     expect(await snoozeDecision(ALLOW_ITEM, 60)).toEqual({ ok: false, reason: "Viewers may not snooze." });
     expect(await snoozeDecision(ALLOW_ITEM, 60)).toEqual({ ok: false, reason: ITEM_SNOOZE_FAILED });
+  });
+});
+
+describe("unsnoozeDecision", () => {
+  it("wakes the item and hands back what came back to the queue", async () => {
+    unsnooze.mockResolvedValue({ unsnoozed: [ALLOW_ITEM] });
+
+    expect(await unsnoozeDecision(ALLOW_ITEM)).toEqual({ ok: true, value: { unsnoozed: [ALLOW_ITEM] } });
+    expect(unsnooze).toHaveBeenCalledExactlyOnceWith(ALLOW_ITEM);
+  });
+
+  it("counts an item that was no longer snoozed as back — it is, either way", async () => {
+    unsnooze.mockResolvedValue({ unsnoozed: [] });
+
+    expect(await unsnoozeDecision(ALLOW_ITEM)).toEqual({ ok: true, value: { unsnoozed: [] } });
+  });
+
+  it("hands a viewer's refusal back as its sentence, and the service's own failure as a plain one", async () => {
+    unsnooze.mockRejectedValueOnce(new ApiError(403, "forbidden", "Viewers may not wake a decision."));
+    unsnooze.mockRejectedValueOnce(new ApiError(500, "internal_error", "Something went wrong."));
+
+    expect(await unsnoozeDecision(ALLOW_ITEM)).toEqual({ ok: false, reason: "Viewers may not wake a decision." });
+    expect(await unsnoozeDecision(ALLOW_ITEM)).toEqual({ ok: false, reason: WAKE_FAILED });
+  });
+
+  it("lets anything that is not the service's refusal through", async () => {
+    unsnooze.mockRejectedValue(new TypeError("boom"));
+
+    await expect(unsnoozeDecision(ALLOW_ITEM)).rejects.toThrow("boom");
   });
 });

@@ -21,6 +21,7 @@ vi.mock("@/app/inbox/inbox-actions", () => ({
   updateNotificationSettings: vi.fn(),
   answerDecision: vi.fn(),
   snoozeDecision: vi.fn(),
+  unsnoozeDecision: vi.fn(),
 }));
 
 // The route passes the screen no test seam, so its poll is the real one, answering nothing here.
@@ -56,6 +57,12 @@ describe("the inbox route", () => {
     render(await Page());
 
     expect(await screen.findByRole("button", { name: "Resolved today · 5", expanded: false })).toBeInTheDocument();
+  });
+
+  it("draws the week's stat card from the same server read (#470)", async () => {
+    render(await Page());
+
+    expect(screen.getByRole("region", { name: "This week" })).toHaveTextContent("11 decisions");
   });
 
   it("does not read when the gate refuses", async () => {

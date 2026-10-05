@@ -11,7 +11,7 @@
  * components stay layout.
  */
 
-import type { InboxItem, InboxSnoozedItem } from "@/app/api/inbox";
+import type { InboxItem, InboxQueue, InboxSnoozedItem } from "@/app/api/inbox";
 import { ageOfSeconds } from "@/app/format";
 import type { ChipTone } from "@/app/ui";
 
@@ -141,4 +141,66 @@ export function askedAgo(seconds: number): string {
  */
 export function snoozedUntil(item: InboxSnoozedItem, clock: (atMs: number) => string): string {
   return `until ${clock(Date.parse(item.snoozedUntil))}`;
+}
+
+/* ------------------------------------------------------------------ the states (BO.5, #470) */
+
+/** What the banner says over a stale queue. */
+export const STALE_HEADLINE = "The inbox could not be refreshed.";
+
+/** What leads the time the queue on screen was last confirmed current. */
+export const LAST_REFRESHED = "Last refreshed";
+
+/** The title of a card that failed to draw. */
+export const CARD_FAILED_TITLE = "This card could not be drawn";
+
+/** Its note: the rest of the inbox is unaffected, and a reload retries. */
+export const CARD_FAILED_NOTE =
+  "Something in it could not be shown. The rest of the inbox is unaffected — reload to try again.";
+
+/** What the skeleton's `<main>` is named while the first read is in flight. */
+export const INBOX_LOADING = "Loading the inbox";
+
+/**
+ * An instant to the second, in the reader's own locale and zone — the lag banner's stamp.
+ *
+ * The dashboard's banner stops at minutes; this one does not, because the queue polls every few
+ * seconds and *last refreshed 10:42* would not say whether the last good read was one poll ago or
+ * twenty.
+ *
+ * @param atMs The instant, epoch milliseconds.
+ * @returns `10:42:13`, as the reader's locale prints it.
+ */
+export function refreshedTime(atMs: number): string {
+  return new Date(atMs).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+/**
+ * When the queue on screen was last known to be current: the later of the service's `asOf` for
+ * it and the poll's own last confirmation (a `304` confirms the payload without re-sending it).
+ *
+ * @param queue The queue on screen — the last good one, which a failed poll leaves in place.
+ * @param confirmedAt When the poll last confirmed it, epoch milliseconds, or `null`.
+ * @returns The instant, or `null` when no queue was ever read.
+ */
+export function lastRefreshedAt(queue: Pick<InboxQueue, "asOf"> | null, confirmedAt: number | null): number | null {
+  if (queue === null) return null;
+
+  const asOf = Date.parse(queue.asOf);
+  const known = [asOf, confirmedAt ?? Number.NaN].filter((at) => Number.isFinite(at));
+
+  return known.length === 0 ? null : Math.max(...known);
+}
+
+/**
+ * The banner's headline over a queue that could not be refreshed: {@link STALE_HEADLINE}, and —
+ * when there is a queue on screen — the real time it was last refreshed, so the reader can judge
+ * how far behind it is rather than being told only that it is.
+ *
+ * @param refreshedAt When the queue on screen was last current, or `null` when there is none.
+ * @param stamp How an instant is printed — {@link refreshedTime}.
+ * @returns `The inbox could not be refreshed. Last refreshed 10:42:13.`
+ */
+export function staleHeadline(refreshedAt: number | null, stamp: (atMs: number) => string): string {
+  return refreshedAt === null ? STALE_HEADLINE : `${STALE_HEADLINE} ${LAST_REFRESHED} ${stamp(refreshedAt)}.`;
 }

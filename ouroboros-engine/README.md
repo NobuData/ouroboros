@@ -536,6 +536,7 @@ never posts a verdict. It never touches the database.
 | `control-responsive` | A long `implement` with a safe boundary between tool calls: pause mid-stage, resume, steer the approach, or abort |
 | `correction-round` | `implement`'s tests fail and the loop holds for Mark & Route: a correction round (a steer with `retryStage`, [#332](https://github.com/NobuData/ouroboros/issues/332)) starts attempt 2 with the note as its planning context; without one the run ends `needs_human` |
 | `failing-hil` | Mockup 11's story ([#334](https://github.com/NobuData/ouroboros/issues/334)): `implement` sends Build 1 (`49/63`, 14 failed) and Build 2 (`61/63`, the motor overshoot 2.4% > 2.0%) to rig `helios-rig-02`, holds for Mark & Route, and the correction round's Build 3 is `63/63`; without one the run ends `needs_human`. The results are the farm's: the rig's uploads go through REST's upload path, replayed with the same figures by `ouroboros-rest`'s `test-plane` suite |
+| `protected-path-allow-once` | The inbox's allow-once chain ([#470](https://github.com/NobuData/ouroboros/issues/470)): `implement` adds one line to `boot/can_bringup.c`, which every published org policy version protects (`boot/**`), so REST fails `allowed_paths` (and nothing else) and files a `protected_path_allow_once` decision. The loop **holds** rather than ending; *Allow once* grants the exception and submits a `resume`, the driver re-reports the change-set (the grant lifts the path) and runs on to a merge. Without a resume inside `max_pause` the run ends `needs_human` |
 
 ```bash
 # against a running stack (yarn dev, or compose, which publishes REST on :4000)
@@ -551,7 +552,7 @@ started with the simulator secret set also serves the driver, behind the interna
 
 | Path | Answers |
 |---|---|
-| `GET /dev/scenarios` | The six scenarios |
+| `GET /dev/scenarios` | The seven scenarios |
 | `POST /dev/simulations` | `{scenario, speed?, target?}` → `202 {id, state: running}`. At most four run at once (`429`) |
 | `GET /dev/simulations/{id}` | `runId` once the run opens, `result` once it ends |
 
@@ -561,6 +562,10 @@ there and is acknowledged once stopped. *Resume* carries on. *Abort* is acknowle
 closes the run as `canceled`, and the branch is kept. *Steer* is recorded against the current
 attempt **without pausing**, and the ack reads *"steering applied to attempt N"*. Scripts read
 the steer at their branch points, so it changes the edit, the change-set and the commit.
+A *Resume* also ends a hold the loop put itself in for a person (`RunSession.await_resume`,
+#470): the inbox's *Allow once* submits one after granting the exception, and the script holds
+straight after the verdict, with no boundary in between, so that resume is never claimed early
+and acknowledged as having nothing to resume.
 
 **Everything it writes is simulated** (decision R4). The watermark follows the secret, so
 REST marks the run, every transcript line and the JSONL export. The driver refuses a

@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   NOTHING_TO_SNOOZE,
+  STALE_HEADLINE,
   VIEWER_CANNOT_SNOOZE,
   askedAgo,
+  lastRefreshedAt,
+  refreshedTime,
+  staleHeadline,
   decisions,
   maySnoozeAll,
   snoozeAllReason,
@@ -81,5 +85,38 @@ describe("the preferences sheet's rules (#466)", () => {
         utcMinute,
       ),
     ).toBe("Next digest 2026-10-05 09:00 UTC");
+  });
+});
+
+describe("the lag banner (#470)", () => {
+  const AS_OF = Date.parse("2026-10-04T10:42:13.000Z");
+
+  /** A fixed stamp: the instant as UTC `HH:MM:SS`. */
+  const stamp = (atMs: number) => new Date(atMs).toISOString().slice(11, 19);
+
+  it("prints when the queue on screen was last refreshed, to the second", () => {
+    expect(staleHeadline(AS_OF, stamp)).toBe(`${STALE_HEADLINE} Last refreshed 10:42:13.`);
+  });
+
+  it("says only that it could not be refreshed when no queue was ever read", () => {
+    expect(staleHeadline(null, stamp)).toBe(STALE_HEADLINE);
+  });
+
+  it("takes the queue's own asOf, or the poll's later confirmation of it", () => {
+    expect(lastRefreshedAt({ asOf: "2026-10-04T10:42:13.000Z" }, null)).toBe(AS_OF);
+    expect(lastRefreshedAt({ asOf: "2026-10-04T10:42:13.000Z" }, AS_OF + 15_000)).toBe(AS_OF + 15_000);
+    expect(lastRefreshedAt({ asOf: "2026-10-04T10:42:13.000Z" }, AS_OF - 15_000)).toBe(AS_OF);
+  });
+
+  it("knows nothing about a queue it never read, or an asOf it cannot parse with no confirmation", () => {
+    expect(lastRefreshedAt(null, AS_OF)).toBeNull();
+    expect(lastRefreshedAt({ asOf: "later" }, null)).toBeNull();
+    expect(lastRefreshedAt({ asOf: "later" }, AS_OF)).toBe(AS_OF);
+  });
+
+  it("prints the reader's clock with seconds", () => {
+    expect(refreshedTime(AS_OF)).toBe(
+      new Date(AS_OF).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+    );
   });
 });

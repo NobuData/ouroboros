@@ -19,6 +19,7 @@ import type {
   InboxResolvedRow,
   InboxSide,
   InboxSnoozedItem,
+  InboxStats,
   NotificationPreferences,
 } from "@/app/api/inbox";
 import type { InboxReadings } from "@/app/inbox/data";
@@ -268,6 +269,7 @@ export function snoozedItem(overrides: Partial<InboxSnoozedItem> = {}): InboxSno
     snoozedUntil: "2026-10-04T14:20:00.000Z",
     snoozedBy: "5eed0003-0000-4000-8000-000000000001",
     reason: null,
+    snooze: { allowed: true },
     ...overrides,
   };
 }
@@ -482,12 +484,42 @@ export function inboxSide(overrides: Partial<InboxSide> = {}): InboxSide {
   return { channels: seededChannels(), policies: seededPolicyCard(), ...overrides };
 }
 
+/**
+ * The week's stat card as BN.4 serves it from the seeds (#460, #464) — mockup 16's *11 decisions ·
+ * median answer time 41s · loops never waited longer than 6m* — with overrides.
+ */
+export function inboxStats(overrides: Partial<InboxStats> = {}): InboxStats {
+  return {
+    week: "2026-W40",
+    decisions: 11,
+    medianAnswerSeconds: 41,
+    maxLoopWaitSeconds: 372,
+    policyResolutions: 1,
+    autoAcceptShare: 0.09,
+    display: { decisions: "11", medianAnswer: "41s", maxLoopWait: "6m" },
+    ...overrides,
+  };
+}
+
+/** A workspace that answered nothing this week: every figure `null`, every printing an em dash. */
+export function coldStats(): InboxStats {
+  return inboxStats({
+    decisions: null,
+    medianAnswerSeconds: null,
+    maxLoopWaitSeconds: null,
+    policyResolutions: null,
+    autoAcceptShare: null,
+    display: { decisions: "—", medianAnswer: "—", maxLoopWait: "—" },
+  });
+}
+
 /** What the route reads for the first paint. `null` is a read that failed. */
 export function inboxReadings(
   queue: InboxQueue | null = inboxQueue(),
   resolved: InboxResolved | null = resolvedDay(),
   side: InboxSide | null = inboxSide(),
   notifications: NotificationPreferences | null = preferences(),
+  stats: InboxStats | null = inboxStats(),
 ): InboxReadings {
   return {
     queue: queue === null ? { ok: false, reason: "The inbox could not be read." } : { ok: true, value: queue },
@@ -499,6 +531,7 @@ export function inboxReadings(
       side === null
         ? { ok: false, reason: "The inbox's channels and policies could not be read." }
         : { ok: true, value: side },
+    stats: stats === null ? { ok: false, reason: "This week's figures could not be read." } : { ok: true, value: stats },
     notifications:
       notifications === null
         ? { ok: false, reason: "Your notification settings could not be read." }

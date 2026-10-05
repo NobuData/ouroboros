@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.40.1"
+  version: "0.40.2"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -52977,7 +52977,7 @@ components:
     InboxSnoozedItem:
       type: object
       additionalProperties: false
-      required: [id, kindId, severity, question, refs, createdAt, ageSeconds, snoozedUntil, snoozedBy, reason]
+      required: [id, kindId, severity, question, refs, createdAt, ageSeconds, snoozedUntil, snoozedBy, reason, snooze]
       properties:
         id:
           type: string
@@ -53005,6 +53005,14 @@ components:
           type: [string, "null"]
         reason:
           type: [string, "null"]
+        snooze:
+          type: object
+          description: "Whether the reader may wake it early — the roles that may snooze (#470)."
+          additionalProperties: false
+          required: [allowed]
+          properties:
+            allowed:
+              type: boolean
     InboxQueue:
       type: object
       description: "`GET /api/v1/inbox` (#464)."

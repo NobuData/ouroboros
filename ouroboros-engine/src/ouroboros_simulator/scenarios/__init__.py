@@ -8,10 +8,12 @@
 | ``control-responsive`` | Pause mid-stage, resume, steer a branch, abort from a running state |
 | ``correction-round`` | Tests fail, the loop holds, a Mark & Route correction round starts attempt 2 |
 | ``failing-hil`` | Mockup 11: rig builds fail 14 then 2 of 63, a correction round, Build 3 green |
+| ``protected-path-allow-once`` | A protected ``boot/**`` edit fails ``allowed_paths``; the loop holds for Allow once, resumes, merges |
 
 Each is a plain function over :class:`~ouroboros_simulator.session.RunSession`, so a script
-reads as the story it tells. Every control is honoured in all six; ``control-responsive``
-is the one built to be pressed.
+reads as the story it tells. Every control is honoured in all seven; ``control-responsive``
+is the one built to be pressed, and ``protected-path-allow-once`` the one that waits for a
+decision's ``resume``.
 """
 
 from ouroboros_simulator.scenarios import (
@@ -21,6 +23,7 @@ from ouroboros_simulator.scenarios import (
     gate_return,
     guardrail_violation,
     happy_path,
+    protected_path_allow_once,
 )
 from ouroboros_simulator.scenarios.common import Outcome, Scenario
 
@@ -34,6 +37,7 @@ SCENARIOS: dict[str, Scenario] = {
         control_responsive.SCENARIO,
         correction_round.SCENARIO,
         failing_hil.SCENARIO,
+        protected_path_allow_once.SCENARIO,
     )
 }
 

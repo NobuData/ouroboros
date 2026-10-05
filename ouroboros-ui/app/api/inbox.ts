@@ -14,7 +14,10 @@
  * day's answered decisions (`GET /api/v1/inbox/resolved`, BN.4 #464). BO.4
  * ([#469](https://github.com/NobuData/ouroboros/issues/469)) adds the side column's two: the
  * channels' truth (`GET /api/v1/inbox/channels`, BN.3 #463) and the policy card
- * (`GET /api/v1/inbox/policies`, BN.4 #464).
+ * (`GET /api/v1/inbox/policies`, BN.4 #464). BO.5
+ * ([#470](https://github.com/NobuData/ouroboros/issues/470)) adds the week's stat card
+ * (`GET /api/v1/inbox/stats`, BN.4 #464) and waking a snooze early — one item
+ * (`POST /api/v1/inbox/items/{id}/unsnooze`) or all of them (`POST /api/v1/inbox/unsnooze-all`).
  *
  * ### `open` is the badge
  *
@@ -77,6 +80,16 @@ export interface InboxSide {
   readonly channels: InboxChannels;
   readonly policies: InboxPolicyCard;
 }
+
+/**
+ * This week's stat card — decisions answered, the median answer time and the longest loop wait,
+ * with the service's own printing of each in `display` (an em dash for a figure with nothing
+ * behind it).
+ */
+export type InboxStats = components["schemas"]["InboxStats"];
+
+/** What waking a snooze early did: the items back in the queue (none when nothing was snoozed). */
+export type InboxUnsnoozeResult = components["schemas"]["InboxUnsnoozeResult"];
 
 /** What *Snooze all* did. */
 export type InboxSnoozeResult = components["schemas"]["InboxSnoozeResult"];
@@ -170,6 +183,18 @@ export const inbox = {
   },
 
   /**
+   * Read this week's stat card — the current UTC ISO week, snoozed time included.
+   *
+   * @param client The client to read through. A poll passes `anonymousApi()`.
+   * @param signal A way to give up on the read — a poll's deadline.
+   * @returns The figures and their printing, as served.
+   * @throws {ApiError} When the service refuses.
+   */
+  async stats(client: ApiClient = api(), signal?: AbortSignal): Promise<InboxStats> {
+    return unwrap(await client.GET("/api/v1/inbox/stats", { signal }));
+  },
+
+  /**
    * Snooze every asking item for a while — one event for all of them.
    *
    * @param minutes How long. *Snooze all 1h* is 60.
@@ -197,6 +222,34 @@ export const inbox = {
         body: { minutes },
       }),
     );
+  },
+
+  /**
+   * Wake one snoozed item now, before its time.
+   *
+   * @param itemId The item.
+   * @param client The client to write through.
+   * @returns The items back in the queue — empty when it was not snoozed.
+   * @throws {ApiError} When the service refuses — `403` for a viewer, `404` for an item it does
+   *   not know.
+   */
+  async unsnooze(itemId: string, client: ApiClient = api()): Promise<InboxUnsnoozeResult> {
+    return unwrap(
+      await client.POST("/api/v1/inbox/items/{id}/unsnooze", {
+        params: { path: { id: itemId } },
+      }),
+    );
+  },
+
+  /**
+   * Wake every snoozed item now — the undo of *Snooze all*.
+   *
+   * @param client The client to write through.
+   * @returns The items back in the queue.
+   * @throws {ApiError} When the service refuses — `403` for a viewer.
+   */
+  async unsnoozeAll(client: ApiClient = api()): Promise<InboxUnsnoozeResult> {
+    return unwrap(await client.POST("/api/v1/inbox/unsnooze-all"));
   },
 
   /**

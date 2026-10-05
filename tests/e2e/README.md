@@ -14,7 +14,7 @@ to the product — and that question is what this directory exists to ask.
 
 It is deliberately a **smoke** suite. It does not re-test what a module already covers; it
 walks one path through each boundary and asserts the things that are only true of a running
-deployment. Five legs from the issue, and nineteen amended in since:
+deployment. Five legs from the issue, and twenty amended in since:
 
 | Leg | Spec | What only this can see |
 |---|---|---|
@@ -42,6 +42,7 @@ deployment. Five legs from the issue, and nineteen amended in since:
 | 22 | [`specs/insights.spec.ts`](specs/insights.spec.ts) | **The Insights MVP gate (#447)** against the #436 rollup seed: every visual of mockup 15 screenshot in both palettes; one press of the range segment moving every consumer to the same window, agreeing with the API; the DORA strip's `proxy` tags on change failure rate and MTTR, and each popover printing the registry's formula and caveat; a re-categorization made in the card that moves the bars at once (and is put back); **a digest subscription made in the sheet, the scheduler's real tick sending at the slot, and the mail in mailpit carrying the page's own headline and merge rate under the preview's subject**; the routing suggestion and the cost alerts claim absent from the payload and the page; a cold workspace saying *not enough data* with no curve drawn; rollups held back raising the lag banner with the real last-filled time; and the shell at 125% |
 | 23 | [`specs/analyzer.spec.ts`](specs/analyzer.spec.ts) | **The Build Analyzer's suggestion cards (#518)** against the #509 seed: mockup 18's two cards as the seed composes them — titles, evidence lines, impact pills, confidences, `4 open` and the spike row offering **Draft spike ticket**; **an Apply whose effect is its preview** — the pool move's dialog names the runner, pool, UTC window and days, and after the confirm *the farm's own route* holds exactly that window; **a workflow draft that is real** — *Draft as vN →* previews the stage delta, says publishing remains human, opens the studio, and the draft the workflow route answers cites the suggestion in its change note; **a dismissal that outlives a real re-analysis**, on the page and in the database; and a member reading the same preview with the confirm inert while the service refuses their direct apply. Since #519, **the drafted-tickets card as the seed composes it** too: mockup 18's four rows with their keys, titles, estimator chips and evidence lines, `est. total ~1.5 days of loop time`, an evidence line opening references that land on a loop's test results, a tick that moves the push button's count at once and the total when the service answers (and is put back), and a member who may tick and may not push. Since #520, **the predicted-vs-measured and how-it-works cards**: mockup 18's pair with the miss drawn as plainly as the delivery (the same face and weight, three distinct hues in both palettes), *retrains* opening the service's formula and the calibration cells the two closes moved, and the three steps with the tenant-locality link; then, through the writers, **the apply's own measurement as a third row** (`day 0 of 14`, naming its metric) that the applied row's link lands on, and **an ingest line that stops claiming rig telemetry** once a real analysis has read a corpus without it. Since #521 — **the Build Analyzer's MVP gate** — the page as a whole and the states mockup 18 does not draw: the seven regions photographed in both themes on the mockup's own calendar; provenance that claims no model and no `$`; the three chips on the shifts the seed plants; fixed chrome, **Build Farm** lit and the 125% step; a member's page; **insufficient corpus for real** on the two seeded repositories that are that thin (the count and the floor from the service, and no chart or suggestion drawn); and — by answering the page's poll with the service's answer, changed — **never run**, **running**, **failed** and **stopped at its budget**, each over the results that were already there. Its writers then prove the chain: **a real analysis reproduces the seeded findings** (the chart redrawn from the new run carries the same three chips), and the dismissal now spans **two real runs**, asserting that the one suggestion a live run re-finds keeps its identity. Cold-only: a resolution is final |
 | 24 | [`specs/tickets.spec.ts`](specs/tickets.spec.ts) | **The Build Analyzer's drafted tickets, pushed (#519)** — the chain behind mockup 18's **Push 4 tickets to backlog →**, in one traversal: **Edit drafts** opens the planning editor on the analyzer's batch, whose **Regenerate** is inert, and a title edited there is the title the card shows on return; `BA-3` unticked and the batch pushed to the **sandbox tracker** with one creation refused mid-batch — the failed row says why and offers **Retry**, the others link to their tracker issues; after the retry the tracker holds **exactly the three ticked drafts, each once**, read back through its own API with the evidence line, the references and the suggestion in each body; a further push is refused rather than filed again; the toast links to Issues, where the backlog's own sync shows them; and the card is left a summary, not an empty box. Named to sort last: it files canonical tickets the planning, intake and dashboard legs' parity counts. Cold-only: a pushed batch is closed |
+| 25 | [`specs/inbox.spec.ts`](specs/inbox.spec.ts) | **The Needs-You inbox's MVP gate (#470)** against the #460 seed: mockup 16 photographed whole in both palettes; the **This week** card reading `11 decisions` and *median answer time 41s · loops never waited longer than 6m* as `GET /api/v1/inbox/stats` does — and reading four more after the chain; **all three answers asserted on their effect** — *Approve & merge* merging PR `#504` **on the sandbox host**, at the sha the receipt names; *Allow once* resuming a simulated loop past its protected-path stop until its `implement` stage succeeds and the driver reports `completed`; *Waive & annotate* leaving the claim, the note and the waiver's author **in the host PR's conversation**; **the daily digest, sent by the scheduler's real tick, read out of mailpit** — its *Deny* link answering loop `#1844` with one signed-out `POST` (and refusing a second), its merge-class *Approve & merge* link showing *Sign in to confirm*, answering a signed-out `POST` `401` and merging nothing; a one-minute snooze that dims the card and leaves the badge's count, and **expires back into the queue with its age intact**, and *Wake now*; **two concurrent answers making exactly one resolution and one guardrail exception**, the stale card saying *Answered by …*; a member whose approver-only answers are inert on the page and `403` past it; a queue that cannot be refreshed naming its last refresh to the second, and *Retry*; inbox zero with every answer a resolved row in its resolver's class, the email answer tagged `email`, and the **Needs You** badge gone; and the shell at 125%. Cold-only: an answer is final |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
 route-migration gate. Its containment assertions come with their own falsifier:
@@ -539,6 +540,44 @@ The registered pairs (`scripts/verify-failure-modes.sh`) are `db`, which takes l
 down at sign-in, and `engine`, against the one test that starts an analysis: the start is refused
 before a run exists, and the leg reports *the analysis could not be started* in the page's words.
 
+Leg 25 is [#470](https://github.com/NobuData/ouroboros/issues/470)'s — BO.5, the Needs-You inbox
+roadmap's MVP gate — and #466–#469's before it: twelve tests in one serial chain, budgeted at the
+issue's three minutes and expected at about two and a half, most of it two waits that are run on
+top of each other — the channels scheduler's one-minute tick, which sends the digest, and the
+one-minute snooze the leg watches run out. The simulated loop is started under the same wait.
+
+**The chain's order is its argument.** The tests that read run first, against the seed as it
+loaded (parity, the stat card, the lag banner, the shell, the member); the answers follow, in the
+one order each can be made in: the snooze starts its clock; the digest is read and its merge-class
+link refused while PR `#504` is still open to merge; the simulated loop's allow-once is raced;
+the leg's own claim is waived; and only then is `#504` approved, because a PR carrying an
+unverified claim is not one to ask the merge plan to land. The spec's header has the table of what
+the seed could not give the chain and what the leg brings — a claim-waiver card on an unverified
+criterion of `#504` (filed through psql, as its emitter would), the simulator's
+`protected-path-allow-once` scenario (the seeded `#1844` stop always answers
+`409 allow_once_still_blocked`, so it is answered **Deny**, from the mail), and a credential for
+the seeded GitHub source, which is put back as it was found afterwards.
+
+**Every answer is asserted on its effect, not its receipt.** The merge is the sandbox host's
+`GET /__sandbox/pulls/…`; the annotation its `GET /__sandbox/comments/…`; the allow-once the
+driver's own exit and `GET /api/v1/runs/{id}`'s `implement` stage; the race the resolved list and
+`guardrail_exceptions` beneath the service; the deny-by-mail the resolved row's `channel`; the
+badge `GET /api/v1/inbox/feed`; and the snooze's preserved age `GET /api/v1/inbox`'s `ageSeconds`.
+
+**What it leaves behind** is in the spec's header, and was checked against every leg that sorts
+after it. **The digest is once per twenty hours**, so a second run against the same stack fails at
+the email test's precondition, by name — the insights leg's position (leg 22) for its own digest.
+
+The skeleton, a card that throws while drawing and the stat card's own fault are not reachable
+from a browser against a healthy stack — each is painted from a *server* read — and are
+`ouroboros-ui`'s (`inbox-skeleton`, `card-boundary`, `stats-card`). A viewer's inert *Wake now*
+needs a viewer, and the seed has none.
+
+The registered pairs (`scripts/verify-failure-modes.sh`) are `db`, which takes the leg down at
+sign-in; `tracker-stub`, which takes it down where it resets the sandbox, before any write; and
+`mailpit`, against the email test alone, which must say the digest never arrived rather than time
+out on a link.
+
 ## Stack
 
 [Playwright](https://playwright.dev) on Node 24, Chromium only, over the stack
@@ -704,9 +743,11 @@ tests/e2e/
 │   ├── compose.ts              # stopping and starting the one service a spec may stop (leg 10)
 │   ├── farm.ts                 # what mockup 08 renders, the fresh workspace the real chain runs in, and what leg 16 leaves
 │   ├── farm-runner.ts          # the build machine's three verbs: a fresh one, a pasted line, a pulled plug (leg 16)
-│   ├── simulator.ts            # the simulated-run driver, started on the host, and the run it opened (legs 17, 18)
+│   ├── simulator.ts            # the simulated-run driver, started on the host, and the run it opened (legs 17, 18, 25)
 │   ├── pull-requests.ts        # what mockup 12 renders for the seeded PR, and the page's poll rewritten into the states the seed does not hold (leg 20)
 │   ├── knowledge.ts            # the cold workspace and the seeded one, the fixture import's figures, the sandbox issue, and the two reads beneath the browser (leg 21)
+│   ├── inbox.ts                # the inbox's REST surface as a person, the digest's links, the card leg 25 files, and the source credential it puts back
+│   ├── sandbox.ts              # the sandbox tracker's PR plane, read back: a merge and an annotation (leg 25)
 │   ├── analyzer.ts             # what mockup 18's seven regions and the page's other states render, the reads beneath the browser, the poll rewriter and the calendar pin, and what legs 23 and 24 put back
 │   ├── shell.ts                # the containment contract as assertions (leg 7)
 │   ├── readability.ts          # the matrix roster and the 150% probes (leg 8)
@@ -721,7 +762,7 @@ tests/e2e/
 │   └── api.ts                  # scripted requests and their failure messages
 ├── fixtures/
 │   ├── provider-stub/          # the provider leg 10 connects to, and really stops
-│   ├── tracker-stub/           # the sandbox tracker legs 15 and 24 push to, and read back — and the host leg 21 imports rules files from (repos/)
+│   ├── tracker-stub/           # the sandbox tracker legs 15 and 24 push to, and read back — the host leg 21 imports rules files from (repos/), and the PR `#504` leg 25 merges and annotates
 │   ├── engine-tap/             # the wire between rest and the engine: forwards everything, remembers each estimate request (leg 21)
 │   ├── farm-gateway/           # TLS in front of rest, forwarding the runner's client certificate (leg 16)
 │   ├── runner-release/         # this checkout's agent release, for rest to serve (leg 16)
@@ -853,6 +894,15 @@ panel for a repository with no build, unmasked; `analyzer-never-run-{light,dark}
 with its call to action, masking the count; and `analyzer-{running,failed,budget}-{light,dark}`
 the progress panel in each of those endings, masking the one line that says how long ago the
 last finished analysis was.
+
+Leg 25's pair, `inbox-{light,dark}`, is the whole seeded inbox through a 1440 × 2400 window the
+leg asserts does not scroll, with **five masks** — the cards' ages, the snoozed card's age,
+countdown and wake time, and the resolved list's times — each an instant the seed wrote relative to
+the moment it migrated, or the moment the sweeper settled the seed's claim-waiver card. **It is not
+recorded yet**, as leg 22's are not: it needs a cold stack, which is the next recording's step 1.
+It has leg 6's kind of calendar precondition too: on a **Monday** the seed's clamp puts the week's
+eleven answers on today (its header says so), and *Resolved today* draws more rows than the pair —
+record and verify on any other day.
 
 Leg 12's pair is of the **canvas region alone** rather than the page —
 `studio-canvas-{light,dark}` in [`specs/studio.spec.ts`](specs/studio.spec.ts), through a
@@ -1090,5 +1140,8 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
 - [#414](https://github.com/NobuData/ouroboros/issues/414) — context assembly, whose manifest leg 21 follows a fact through
 - [#105](https://github.com/NobuData/ouroboros/issues/105) — the estimator, whose request leg 21 reads off the wire
 - [#415](https://github.com/NobuData/ouroboros/issues/415) — playbooks and the repo-map generator leg 21 launches and refuses
+- [#470](https://github.com/NobuData/ouroboros/issues/470) — leg 25, the Needs-You inbox's states, its answer chains and the inbox MVP gate
+- [#466](https://github.com/NobuData/ouroboros/issues/466), [#467](https://github.com/NobuData/ouroboros/issues/467), [#468](https://github.com/NobuData/ouroboros/issues/468), [#469](https://github.com/NobuData/ouroboros/issues/469) — the frame, the decision cards, inbox zero and the side column leg 25 drives
+- [#460](https://github.com/NobuData/ouroboros/issues/460) — the inbox seed leg 25's parity and stat card assert against
 - [#306](https://github.com/NobuData/ouroboros/issues/306) — the control queue leg 17's presses travel through
 - [#307](https://github.com/NobuData/ouroboros/issues/307) — the simulated-run driver that acknowledges them

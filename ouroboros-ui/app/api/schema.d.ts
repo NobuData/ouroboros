@@ -23461,6 +23461,10 @@ export interface components {
             snoozedUntil: string;
             snoozedBy: string | null;
             reason: string | null;
+            /** @description Whether the reader may wake it early — the roles that may snooze (#470). */
+            snooze: {
+                allowed: boolean;
+            };
         };
         /** @description `GET /api/v1/inbox` (#464). */
         InboxQueue: {

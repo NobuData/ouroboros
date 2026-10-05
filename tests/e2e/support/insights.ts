@@ -220,10 +220,14 @@ export async function messageText(id: string): Promise<string> {
 /**
  * Run one statement against the stack's database, as the migration owner.
  *
+ * Exported since the inbox leg ([#470](https://github.com/NobuData/ouroboros/issues/470)), which
+ * files a claim-waiver card and puts a source's credential back the same way — one copy of the
+ * `compose exec` line rather than two.
+ *
  * @param statement The SQL.
  * @returns What psql printed.
  */
-async function psql(statement: string): Promise<string> {
+export async function psql(statement: string): Promise<string> {
   const outcome = await composeOutcome(
     "exec",
     "-T",

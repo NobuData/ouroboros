@@ -50,7 +50,8 @@ export interface Simulation {
 /**
  * Start a scenario, and wait for the run it opens.
  *
- * @param scenario One of the driver's four scenario names.
+ * @param scenario One of the driver's scenario names — `ouroboros_simulator/scenarios/__init__.py`
+ *   lists them, `protected-path-allow-once` among them (#470).
  * @param speed The time compression. The driver's safe boundaries come every
  *   `STEP_SECONDS / speed` real seconds, which is how quickly a control lands.
  * @returns The simulation, once its run is open.
