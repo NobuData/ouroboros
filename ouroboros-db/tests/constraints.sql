@@ -14517,8 +14517,10 @@ select pg_temp.must_hold(
    -- token's TTL can be bounded by workspace settings the writer cannot read — asserted in
    -- V096's section. #482 added `run_events_sweep()`, so the transcript retention sweep can
    -- remove a finished run's entries while the writer still cannot delete one — asserted in
-   -- V101's section.
-   and (select array_agg(proname::text order by proname) = array['decision_ref_resolves',
+   -- V101's section. #486 added `audit_events_purge()`, so the audit retention purge can remove
+   -- expired events while the writer still cannot delete one — asserted in V102's section.
+   and (select array_agg(proname::text order by proname) = array['audit_events_purge',
+                                                                 'decision_ref_resolves',
                                                                  'decision_ttl_settings',
                                                                  'fact_transitions_record',
                                                                  'failure_classifications_routed_valid',
@@ -14531,7 +14533,7 @@ select pg_temp.must_hold(
                                                                  'sync_intervention_events']
           from pg_proc
          where pronamespace = 'ouroboros'::regnamespace and prosecdef),
-  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks, #457''s decision ref resolver, #459''s TTL settings reader and #482''s transcript sweep are the only functions in the schema that run as the owner at all');
+  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks, #457''s decision ref resolver, #459''s TTL settings reader, #482''s transcript sweep and #486''s audit purge are the only functions in the schema that run as the owner at all');
 
 -- --- the cascades ----------------------------------------------------------------
 delete from ouroboros.runs where id = 'a6100000-0000-0000-0000-000000000484';
@@ -34068,6 +34070,219 @@ select pg_temp.must_hold(
   not exists (select 1 from ouroboros.retention_policies where organization_id = 'org-v101')
   and not exists (select 1 from ouroboros.runs where organization_id = 'org-v101'),
   'a workspace''s tiers and runs go with it');
+
+-- ===========================================================================
+-- V102 — the audit plane: actor kind, plane, its indexes, and the purge (#486, BR.2)
+-- ===========================================================================
+--
+-- Every event carries a stored actor kind — derived for a writer that omits it, consistent with
+-- the attribution, and still `human` after the person is erased — and a generated plane. The
+-- purge is a definer function: it deletes only events older than a cutoff outside the 90-day
+-- floor, a batch at a time, oldest first, and holds back an event another table references.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt", "metadata")
+  values ('org-v102', 'V102 Workspace', 'v102-workspace', now(), null),
+         ('org-v102b', 'V102 Other', 'v102-other', now(), null);
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified")
+  values ('user-v102', 'Ken V102', 'ken-v102@example.invalid', true);
+
+-- --- actor_kind: derived by the rule REST applies ---------------------------------------
+insert into ouroboros.audit_events (id, organization_id, actor_id, actor_service, action, subject_type)
+  values ('b2000000-0000-0000-0000-000000102001', 'org-v102', 'user-v102', null, 'provider.rotated', 'provider_connection'),
+         ('b2000000-0000-0000-0000-000000102002', 'org-v102', null, 'ouroboros-app', 'pr_revision.pushed', 'pr_revision'),
+         ('b2000000-0000-0000-0000-000000102003', 'org-v102', null, 'devops-bot', 'runner.job_submitted', 'build_job'),
+         ('b2000000-0000-0000-0000-000000102004', 'org-v102', null, null, 'runner.marked_offline', 'runner');
+
+select pg_temp.must_hold(
+  (select array_agg(actor_kind || ':' || plane order by id)
+     from ouroboros.audit_events where id::text like 'b2000000-0000-0000-0000-000000102%')
+  = array['human:provider', 'bot:pr_revision', 'service:runner', 'system:runner'],
+  'a writer that omits actor_kind gets the rule REST applies, and every event knows its plane');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.audit_events where actor_kind is null),
+  'every event, backfilled or new, carries an actor kind');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.audit_events (organization_id, actor_service, actor_kind, action, subject_type)
+    values ('org-v102', 'devops-bot', 'robot', 'runner.job_submitted', 'build_job')$$,
+  'an actor kind is one of four', 'audit_events_actor_kind_known');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.audit_events (organization_id, actor_id, actor_kind, action, subject_type)
+    values ('org-v102', 'user-v102', 'system', 'provider.rotated', 'provider_connection')$$,
+  'a person''s event cannot be filed as the system''s', 'audit_events_actor_kind_consistent');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.audit_events (organization_id, actor_service, actor_kind, action, subject_type)
+    values ('org-v102', 'devops-bot', 'human', 'runner.job_submitted', 'build_job')$$,
+  'a service account''s event cannot be filed as a person''s', 'audit_events_actor_kind_consistent');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.audit_events (organization_id, actor_kind, action, subject_type)
+    values ('org-v102', 'bot', 'pr_revision.pushed', 'pr_revision')$$,
+  'a bot event names its account', 'audit_events_actor_kind_consistent');
+
+select pg_temp.must_raise(
+  $$update ouroboros.audit_events set actor_kind = 'system'
+     where id = 'b2000000-0000-0000-0000-000000102001'$$,
+  '23001',
+  'an actor kind cannot be revised');
+
+select pg_temp.must_reject(
+  $$update ouroboros.audit_events set action = 'policy.published'
+     where id = 'b2000000-0000-0000-0000-000000102004'$$,
+  'the append-only trigger still refuses a revision', null);
+
+-- Erasing a person may not relabel their event: `system` is consistent with no actor, so only
+-- the append-only trigger's column list stands between an erasure and a rewritten kind.
+select pg_temp.must_raise(
+  $$update ouroboros.audit_events set actor_id = null, actor_kind = 'system'
+     where id = 'b2000000-0000-0000-0000-000000102001'$$,
+  '23001',
+  'a person''s event cannot be relabelled the system''s under cover of erasing the person');
+
+-- Erasing the person is the one update permitted, and the event stays a human's.
+delete from ouroboros."user" where "id" = 'user-v102';
+
+select pg_temp.must_hold(
+  (select actor_id is null and actor_kind = 'human' and plane = 'provider'
+     from ouroboros.audit_events where id = 'b2000000-0000-0000-0000-000000102001'),
+  'an erased person''s event is still a human''s — what happened is kept, who did it forgotten');
+
+-- --- the purge -------------------------------------------------------------------------
+-- Five old events of org-v102 (500, 450, 401 days), one young one (100 days), one old event of
+-- another workspace, and one old event an applied suggestion references (below).
+insert into ouroboros.audit_events (id, organization_id, action, subject_type, occurred_at)
+  values ('b2000000-0000-0000-0000-000000102101', 'org-v102', 'runner.marked_offline', 'runner', now() - interval '500 days'),
+         ('b2000000-0000-0000-0000-000000102102', 'org-v102', 'runner.marked_offline', 'runner', now() - interval '450 days'),
+         ('b2000000-0000-0000-0000-000000102103', 'org-v102', 'runner.marked_offline', 'runner', now() - interval '401 days'),
+         ('b2000000-0000-0000-0000-000000102104', 'org-v102', 'runner.marked_offline', 'runner', now() - interval '100 days'),
+         ('b2000000-0000-0000-0000-000000102105', 'org-v102b', 'runner.marked_offline', 'runner', now() - interval '500 days');
+
+-- An applied suggestion whose audit event is past the cutoff: the event must be held, because
+-- analysis_suggestions.applied_event_id has no cascade and the record of the apply is a fact.
+insert into ouroboros.runner_pools (id, organization_id, name, executor, image, tags) values
+  ('a1020001-0000-4000-8000-000000000001', 'org-v102', 'pool-a', 'shell', null, '[]');
+
+insert into ouroboros.analysis_runs (id, organization_id, repo_ref, trigger, analyzer_set)
+  values ('a1021000-0000-4000-8000-000000000001', 'org-v102', 'acme/helios-firmware', 'weekly',
+          '{"label": "v102", "analyzers": [{"id": "cache_window", "version": 1, "kind": "deterministic"}]}');
+
+insert into ouroboros.analysis_findings
+    (run_id, organization_id, repo_ref, analyzer, analyzer_version, finding_type, subject_key,
+     data, evidence_refs, confidence, confidence_basis)
+  values ('a1021000-0000-4000-8000-000000000001', 'org-v102', 'acme/helios-firmware',
+          'cache_window', 1, 'cache_window', 'deps-refresh',
+          '{"trigger": "deps-refresh merge", "hit_rate_before": 0.78, "hit_rate_after": 0.31,
+            "window_hours": 6, "occurrences": 14}',
+          '[{"kind": "runner_pool", "id": "a1020001-0000-4000-8000-000000000001"}]', 88,
+          '{"method": "posterior", "sample_size": 14, "effect_size": 0.6, "stability": 0.9}');
+
+create temp table v102_s on commit drop as
+  select ouroboros.record_analysis_suggestion(
+           'a1021000-0000-4000-8000-000000000001', 'build_process',
+           array(select id from ouroboros.analysis_findings
+                  where run_id = 'a1021000-0000-4000-8000-000000000001'),
+           'Re-warm ccache right after deps-refresh merges', 'evidence', 88,
+           '{"estimate": -110, "unit": "seconds", "applies_to": "per build",
+             "basis": {"method": "extrapolated", "description": "fixture"}}',
+           '{"plane": "job_hook", "change": {}}') as id;
+
+set constraints ouroboros.analysis_suggestions_identity_holds, ouroboros.analysis_suggestion_findings_identity_holds immediate;
+set constraints ouroboros.analysis_suggestions_identity_holds, ouroboros.analysis_suggestion_findings_identity_holds deferred;
+
+with event as (
+  insert into ouroboros.audit_events (id, organization_id, action, subject_type, subject_id, occurred_at)
+  select 'b2000000-0000-0000-0000-000000102106', 'org-v102', 'analysis_suggestion.applied',
+         'analysis_suggestion', id::text, now() - interval '480 days'
+    from v102_s
+  returning id)
+update ouroboros.analysis_suggestions
+   set status = 'applied', resolved_at = now() - interval '480 days',
+       applied_event_id = (select id from event)
+ where id = (select id from v102_s);
+
+select pg_temp.must_reject(
+  $$select * from ouroboros.audit_events_purge('org-v102', now() - interval '89 days', 10)$$,
+  'no cutoff reaches inside the 90-day floor', 'audit_events_purge_cutoff_floor');
+
+select pg_temp.must_reject(
+  $$select * from ouroboros.audit_events_purge('org-v102', now() - interval '400 days', 0)$$,
+  'a purge batch removes at least one row', 'audit_events_purge_limit_positive');
+
+-- A batch of two takes the two oldest unreferenced events, and reports the held one.
+select pg_temp.must_hold(
+  (select removed = 2 and held = 1
+     from ouroboros.audit_events_purge('org-v102', now() - interval '400 days', 2)),
+  'a batch removes at most its limit and reports what it holds back');
+
+select pg_temp.must_hold(
+  (select array_agg(id::text order by id)
+     from ouroboros.audit_events
+    where id::text like 'b2000000-0000-0000-0000-0000001021%')
+  = array['b2000000-0000-0000-0000-000000102103', 'b2000000-0000-0000-0000-000000102104',
+          'b2000000-0000-0000-0000-000000102105', 'b2000000-0000-0000-0000-000000102106'],
+  'the purge works oldest first, within one workspace, and keeps the referenced event');
+
+select pg_temp.must_hold(
+  (select removed = 1 and held = 1
+     from ouroboros.audit_events_purge('org-v102', now() - interval '400 days', 10)),
+  'the next batch finishes the backlog: what is past the tier goes, what is inside it stays');
+
+select pg_temp.must_hold(
+  (select removed = 0 and held = 1
+     from ouroboros.audit_events_purge('org-v102', now() - interval '400 days', 10)),
+  'a purge with nothing left to remove says so, and still reports the hold');
+
+select pg_temp.must_hold(
+  exists (select 1 from ouroboros.audit_events where id = 'b2000000-0000-0000-0000-000000102104')
+  and exists (select 1 from ouroboros.audit_events where id = 'b2000000-0000-0000-0000-000000102105'),
+  'an event inside the tier, and another workspace''s event, survive the purge');
+
+select pg_temp.must_hold(
+  has_function_privilege('ouroboros_app',
+                         'ouroboros.audit_events_purge(text, timestamptz, integer)', 'execute')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.audit_events', 'delete'),
+  'the application role may run the purge and still may not delete an event directly');
+
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select id from ouroboros.audit_events
+     where organization_id = 'org-v102' and actor_kind = 'bot'
+     order by occurred_at desc, id desc limit 51$$,
+  'audit_events_org_actor_kind_idx');
+
+select pg_temp.must_use_index(
+  $$select id from ouroboros.audit_events
+     where organization_id = 'org-v102' and plane = 'policy'
+     order by occurred_at desc, id desc limit 51$$,
+  'audit_events_org_plane_idx');
+
+select pg_temp.must_use_index(
+  $$select id from ouroboros.audit_events
+     where organization_id = 'org-v102' and actor_service = 'devops-bot'
+     order by occurred_at desc, id desc limit 51$$,
+  'audit_events_org_actor_service_idx');
+
+select pg_temp.must_use_index(
+  $$select id from ouroboros.audit_events
+     where organization_id = 'org-v102' and subject_id = 'x'
+     order by occurred_at desc, id desc limit 51$$,
+  'audit_events_org_subject_idx');
+
+select pg_temp.must_use_index(
+  $$select id from ouroboros.audit_events where detail @> '{"pr_number": 509}'$$,
+  'audit_events_detail_refs_idx');
+
+set local enable_seqscan = on;
+
+delete from ouroboros.organization where "id" in ('org-v102', 'org-v102b');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.audit_events where organization_id like 'org-v102%'),
+  'a workspace''s events go with it');
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

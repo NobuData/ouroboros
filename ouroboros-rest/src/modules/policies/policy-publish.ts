@@ -39,13 +39,18 @@ import { evaluatePredicate, type PredicateFacts } from "./org-policy.predicate";
 /** Which way one change moves autonomy. */
 export type ChangeClass = "tightening" | "loosening" | "neutral";
 
+/** What happened to one rule — the typed fact the audit line is composed from (#486). */
+export type RuleChangeVerb = "enabled" | "disabled" | "changed" | "removed";
+
 /** One rule an edit changes. */
 export interface RuleChange {
   /** `auto_merge`, `custom:freeze-friday`, … */
   readonly ruleId: string;
   /** Which way it moves autonomy. */
   readonly classification: ChangeClass;
-  /** What the audit line and the dialog say — `enabled auto-merge`. */
+  /** What happened to it. */
+  readonly verb: RuleChangeVerb;
+  /** What the dialog says — `enabled auto-merge`. */
   readonly summary: string;
 }
 
@@ -332,29 +337,74 @@ export function classifyRule(
 }
 
 /**
- * How the change reads in a sentence — `enabled auto-merge`.
+ * What happened to one rule.
  *
- * @param ruleId - The rule.
  * @param before - It before, or undefined.
  * @param after - It after, or undefined.
- * @returns The phrase.
+ * @returns `removed` when it is gone, `enabled`/`disabled` when its switch moved, else `changed`.
  */
-function summaryOf(
-  ruleId: string,
+function verbOf(
   before: OrgPolicyRule | undefined,
   after: OrgPolicyRule | undefined,
-): string {
-  const name = ruleName(ruleId);
-
+): RuleChangeVerb {
   if (after === undefined) {
-    return `removed ${name}`;
+    return "removed";
   }
 
   if (before?.enabled !== after.enabled) {
-    return after.enabled ? `enabled ${name}` : `disabled ${name}`;
+    return after.enabled ? "enabled" : "disabled";
   }
 
-  return `changed ${name}`;
+  return "changed";
+}
+
+/**
+ * How one change reads in a sentence — `enabled auto-merge`. Shared by the publish dialog and the
+ * audit plane's composer, so the two never word a change differently.
+ *
+ * @param ruleId - The rule.
+ * @param verb - What happened to it.
+ * @returns The phrase.
+ */
+export function ruleChangePhrase(ruleId: string, verb: RuleChangeVerb): string {
+  return `${verb} ${ruleName(ruleId)}`;
+}
+
+/**
+ * The changes as one flat audit fact — `auto_merge:enabled,custom:freeze:removed` — since an audit
+ * detail holds scalars only. A rule id may itself contain `:`, so a reader splits each entry at
+ * its *last* colon (see {@link parseRuleChanges}).
+ *
+ * @param diff - What the publish changed.
+ * @returns The fact; empty when nothing changed.
+ */
+export function ruleChangesFact(diff: PolicyDiff): string {
+  return diff.changes.map((change) => `${change.ruleId}:${change.verb}`).join(",");
+}
+
+/** The verbs {@link parseRuleChanges} accepts. */
+const RULE_CHANGE_VERBS: readonly string[] = ["enabled", "disabled", "changed", "removed"];
+
+/**
+ * Read {@link ruleChangesFact}'s text back.
+ *
+ * @param fact - The stored fact, or anything else.
+ * @returns Each well-formed `rule:verb` entry; malformed entries are dropped rather than guessed.
+ */
+export function parseRuleChanges(
+  fact: unknown,
+): { readonly ruleId: string; readonly verb: RuleChangeVerb }[] {
+  if (typeof fact !== "string" || fact === "") return [];
+
+  return fact.split(",").flatMap((entry) => {
+    const at = entry.lastIndexOf(":");
+    const ruleId = entry.slice(0, at);
+    const verb = entry.slice(at + 1);
+
+    return at > 0 && RULE_CHANGE_VERBS.includes(verb)
+      ? [{ ruleId, verb: verb as RuleChangeVerb }]
+      : [];
+  });
 }
 
 /**
@@ -397,10 +447,13 @@ export function diffPolicies(
       continue;
     }
 
+    const verb = verbOf(was, is);
+
     changes.push({
       ruleId,
       classification: classifyRule(ruleId, was, is),
-      summary: summaryOf(ruleId, was, is),
+      verb,
+      summary: ruleChangePhrase(ruleId, verb),
     });
   }
 
@@ -415,8 +468,9 @@ export function diffPolicies(
 }
 
 /**
- * The audit line's text — the mockup's `enabled auto-merge (policy v7)`, which the audit card
- * prefixes with the person (*"Ken enabled auto-merge (policy v7)"*).
+ * The publish's line for the dialog's answer — `enabled auto-merge (policy v7)`. The audit card
+ * reads the same words, composed by the audit plane from the row's typed `changes` fact rather
+ * than from this string (#486).
  *
  * @param diff - What the publish changed.
  * @param version - The version it published.

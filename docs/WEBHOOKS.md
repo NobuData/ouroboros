@@ -48,7 +48,7 @@ event types (`run.merged`). Matching is **exact**: `audit.*` receives audit even
 
 | Family | Types (registry version 1) | `data` |
 |---|---|---|
-| `audit.*` | `audit.<action>` for every audit action — `audit.provider.rotated`, `audit.workspace.paused`, `audit.webhook.secret_rotated`, … | The audit row: `id`, `action`, `actorKind` (`user`/`service`/`system`), `actorId`, `actorService`, `subjectType`, `subjectId`, `ip`, `detail`, `occurredAt` |
+| `audit.*` | `audit.<action>` for every audit action — `audit.provider.rotated`, `audit.workspace.paused`, `audit.webhook.secret_rotated`, … | The audit row: `id`, `action`, `actorKind` (`human`/`bot`/`service`/`system` — `user` before #486), `actorId`, `actorService`, `subjectType`, `subjectId`, `ip`, `detail`, `occurredAt` |
 | `decision.*` | `decision.filed`, `decision.refreshed`, `decision.source_resolved` | The same audit row |
 | `pr.*` | `pr.criterion_verified`, `pr.criterion_unverified`, `pr.criterion_waived`, `pr.approval_requested`, `pr.approval_approved`, `pr.approval_declined`, `pr.thread_resolved`, `pr.merged` | The audit row; for `pr.merged`, the run's facts as below |
 | `run.*` | `run.opened`, `run.merged`, `run.canceled` | `runId`, `loopSeq`, `repositoryId`, `issueNumber`, `status`, `prNumber`, `startedAt`, `finishedAt` |
@@ -59,6 +59,10 @@ plane refused: `audit.decision.answered`, `audit.decision.answer_failed`, `decis
 **Registry version 3** (#464) adds snoozing: `audit.decision.snoozed`, `audit.decision.snoozed_all`,
 `audit.decision.unsnoozed` and their `decision.*` types.
 **Registry version 4** (#482) adds a data-retention tier change: `audit.workspace.retention_changed`.
+**Registry version 5** (#481) adds a published org policy: `audit.policy.published`.
+**Registry version 6** (#486) adds the audit plane's own events: `audit.audit.exported` (a CSV
+export of the log — its range, filters, row count and actor) and `audit.audit.purged` (the retention
+purge's per-workspace record — cutoff, tier, `removed` and `held`).
 
 The full list is `GET /api/v1/settings/webhooks` → `registry.eventTypes`.
 

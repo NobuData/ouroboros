@@ -86,6 +86,8 @@ import {
   WEBHOOK_SECRET_ROTATED_EVENT,
   WEBHOOK_DELETED_EVENT,
   WEBHOOK_REDELIVERED_EVENT,
+  AUDIT_EXPORTED_EVENT,
+  AUDIT_PURGED_EVENT,
 } from "./audit.events";
 
 /**
@@ -140,6 +142,9 @@ describe("the vocabulary", () => {
     //
     // The last six are BR.5's ([#489](https://github.com/NobuData/ouroboros/issues/489)): the
     // Danger zone's transitions — pause, resume, disconnect, delete, restore and the purge.
+    //
+    // The last two are BR.2's ([#486](https://github.com/NobuData/ouroboros/issues/486)): the audit
+    // plane's own — an export of the log, and the retention purge of it.
     expect([...AUDIT_ACTIONS]).toEqual([
       "provider.added",
       "provider.revealed",
@@ -225,6 +230,8 @@ describe("the vocabulary", () => {
       "webhook.secret_rotated",
       "webhook.deleted",
       "webhook.redelivered",
+      "audit.exported",
+      "audit.purged",
     ]);
   });
 
@@ -253,7 +260,8 @@ describe("the vocabulary", () => {
     // `workspace.` for the Danger zone's lifecycle (#489), `member.` for the Members & Roles card
     // and `service_account.` for its non-human principals (#485), and `decision.` for what the
     // planes file into the Needs-You inbox and what closes itself out of band (#461), and
-    // `webhook.` for the outbound webhook management API (#487). The
+    // `webhook.` for the outbound webhook management API (#487), and `audit.` for the audit plane's
+    // own export and purge (#486). The
     // families are what make `action like 'provider.%'` a useful question — and what keeps
     // *"who changed our GitHub token"* and *"what has happened to our fleet"* answerable
     // without knowing every name in either. The pool events are deliberately inside
@@ -263,6 +271,7 @@ describe("the vocabulary", () => {
     expect([...families].sort()).toEqual([
       "analysis_suggestion",
       "analyzer",
+      "audit",
       "credential",
       "decision",
       "github",
@@ -370,6 +379,8 @@ describe("the vocabulary", () => {
       WEBHOOK_SECRET_ROTATED_EVENT,
       WEBHOOK_DELETED_EVENT,
       WEBHOOK_REDELIVERED_EVENT,
+      AUDIT_EXPORTED_EVENT,
+      AUDIT_PURGED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

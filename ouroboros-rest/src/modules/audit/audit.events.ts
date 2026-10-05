@@ -585,6 +585,21 @@ export const WEBHOOK_DELETED_EVENT = "webhook.deleted";
 /** A dead-lettered delivery was queued again by an administrator (#487). */
 export const WEBHOOK_REDELIVERED_EVENT = "webhook.redelivered";
 
+/* ---------------------------------------------------------------------------
+ * The audit plane itself — BR.2 ([#486](https://github.com/NobuData/ouroboros/issues/486)).
+ *
+ * Reading the log is not audited; extracting it is. A full-range CSV is the most concentrated
+ * data extraction the product offers, so an export that left no trace would be a blind spot
+ * exactly where it matters. The purge is audited for the opposite reason: *it was deleted,
+ * probably* is not a compliance answer, so each workspace's purge leaves a row saying how many
+ * events went and how many were held.
+ * ------------------------------------------------------------------------ */
+
+/** A CSV export of the audit log — its range, filters, row count, and whether it finished. */
+export const AUDIT_EXPORTED_EVENT = "audit.exported";
+/** The retention purge removed a workspace's events older than its `audit` tier. */
+export const AUDIT_PURGED_EVENT = "audit.purged";
+
 /**
  * Every action this service writes.
  *
@@ -678,6 +693,8 @@ export const AUDIT_ACTIONS = [
   WEBHOOK_SECRET_ROTATED_EVENT,
   WEBHOOK_DELETED_EVENT,
   WEBHOOK_REDELIVERED_EVENT,
+  AUDIT_EXPORTED_EVENT,
+  AUDIT_PURGED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

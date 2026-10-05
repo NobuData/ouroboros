@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P12, P13 | **322** |
-| 🟡 **In progress** | P11, P14 | **59** of 69 |
+| 🟡 **In progress** | P11, P14 | **60** of 69 |
 | — **Not started** | P15–P17 | 0 of 63 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -117,11 +117,11 @@ position is not forced by dependencies, one of these decided it.
 | **P11** | Evidence — tests & PR verification | 🟡 36/38 | 38 | 119 | Mockups 11, 12 |
 | **P12** | Knowledge & onboarding mechanism | ✅ 28/28 | 28 | 83 | Mockups 14, 13 |
 | **P13** | Analytics — insights & build analyzer | ✅ 32/32 | 32 | 109 | Mockups 15, 18 |
-| **P14** | Decisions & governance — inbox, settings | 🟡 15/31 | 31 | 102 | Mockups 16, 17 |
+| **P14** | Decisions & governance — inbox, settings | 🟡 24/31 | 31 | 102 | Mockups 16, 17 |
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
 | **P16** | Intelligence — research & copilot | — 0/42 | 42 | 147 | Mockups 22, 20 |
 | **P17** | ChatOps — Slack integration | — 0/15 | 15 | 50 | Mockup 19 |
-| | **Total** | **365/454** | **454** | **1,404** | |
+| | **Total** | **382/454** | **454** | **1,404** | |
 
 ```mermaid
 flowchart TD
@@ -1635,7 +1635,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **31 issues** · 102 complexity points · order **#361–#391** · 10 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_16_NEEDS_YOU_INBOX.md`, `ROADMAP_MOCKUP_17_SETTINGS.md`
-> **Status:** 🟡 **In progress** — 23 of 31 issues closed
+> **Status:** 🟡 **In progress** — 24 of 31 issues closed
 
 **Goal.** Deliver the typed decision-kind registry with items emitted by every live plane and actions that resume loops through the real machinery, and the one versioned policy document that drives every enforcement point — auto-merge conditions, review-required, protected paths, spend guard, dry-run-for-new-repos — plus members, audit and lifecycle.
 
@@ -1670,7 +1670,7 @@ the blockquote above that records what it did and what it did differently.
 | 381 | **BO.3** | ✅ [#468](https://github.com/NobuData/ouroboros/issues/468) | Resolved list & empty state | ouroboros-ui | S | BO.1 |
 | 382 | **BO.4** | ✅ [#469](https://github.com/NobuData/ouroboros/issues/469) | Channels & policy cards | ouroboros-ui | M | BN.3, BN.4, BO.1 |
 | 383 | **BQ.2** | ✅ [#481](https://github.com/NobuData/ouroboros/issues/481) | Policy resolution & enforcement wiring | ouroboros-rest | L | AP.3, AX.2, BA.3, BQ.1 |
-| 384 | **BR.2** | [#486](https://github.com/NobuData/ouroboros/issues/486) | Audit plane — viewer, export & retention | ouroboros-rest | M | AD.4, BQ.3 |
+| 384 | **BR.2** | ✅ [#486](https://github.com/NobuData/ouroboros/issues/486) | Audit plane — viewer, export & retention | ouroboros-rest | M | AD.4, BQ.3 |
 | 385 | **BR.4** | [#488](https://github.com/NobuData/ouroboros/issues/488) | Integrations status hub & org notification routes | ouroboros-rest | M | BJ.4, BN.3 |
 | 386 | **BS.2** | [#492](https://github.com/NobuData/ouroboros/issues/492) | Workspace card | ouroboros-ui | S | BQ.3, BQ.4, BS.1 |
 | 387 | **BO.5** | [#470](https://github.com/NobuData/ouroboros/issues/470) | Stat card, states & e2e leg | ouroboros-ui, .github | M | BO.2, BO.4 |

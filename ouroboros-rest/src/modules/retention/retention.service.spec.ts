@@ -270,7 +270,7 @@ describe("the card", () => {
       nextSweepAt: next.toISOString(),
       lastSweep: { at: NOW.toISOString(), removed: 4 },
     });
-    // Nothing purges audit until BR.2, and the card says so rather than inventing a time.
+    // Nothing booked an audit purge in this harness, and the card says so rather than inventing a time.
     expect(audit).toMatchObject({ floor: 90, ceiling: 3650, loopData: false, nextSweepAt: null });
   });
 

@@ -30,7 +30,7 @@
 import { Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../db/db.service";
-import type { NewAuditEvent } from "../db/schema";
+import type { AuditActorKind, NewAuditEvent } from "../db/schema";
 import type { PageWindow } from "../tenancy/pagination";
 import { enqueueWebhookEvents, type OutboxEvent } from "../webhooks/webhook.outbox";
 
@@ -49,6 +49,8 @@ export interface AuditEventRow {
   actor_name: string | null;
   /** The service account the event is attributed to (#485), when no person is. */
   actor_service: string | null;
+  /** What kind of actor did it — stored (V102, #486), so an erased person still reads `human`. */
+  actor_kind: AuditActorKind;
   action: string;
   subject_type: string;
   subject_id: string | null;
@@ -135,6 +137,7 @@ export class AuditRepository {
         "audit_events.actor_id",
         "user.name as actor_name",
         "audit_events.actor_service",
+        "audit_events.actor_kind",
         "audit_events.action",
         "audit_events.subject_type",
         "audit_events.subject_id",

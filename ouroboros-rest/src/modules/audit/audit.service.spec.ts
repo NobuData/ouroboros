@@ -39,6 +39,7 @@ const ROW: AuditEventRow = {
   actor_id: ACTOR,
   actor_name: "Ken Suenobu",
   actor_service: null,
+  actor_kind: "human",
   action: PROVIDER_REVEALED_EVENT,
   subject_type: "provider_connection",
   subject_id: CONNECTION,
@@ -105,6 +106,7 @@ describe("recording an event", () => {
     expect(events.append.mock.calls[0][0]).toMatchObject({
       actor_id: null,
       actor_service: "devops-bot",
+      actor_kind: "service",
     });
   });
 
@@ -125,6 +127,15 @@ describe("recording an event", () => {
     await new AuditService(events).record({ ...RECORD, actorId: null });
 
     expect(events.append.mock.calls[0][0].actor_service).toBeNull();
+    expect(events.append.mock.calls[0][0].actor_kind).toBe("system");
+  });
+
+  it("stores a person's event as human, so erasing them later leaves it a human's (#486)", async () => {
+    const events = repository();
+
+    await new AuditService(events).record(RECORD);
+
+    expect(events.append.mock.calls[0][0].actor_kind).toBe("human");
   });
 
   it("drops the fields a builder left undefined", async () => {
@@ -181,7 +192,7 @@ describe("publishing an event to the webhook pipeline (#487)", () => {
       data: {
         id: "b2000000-0000-0000-0000-000000000001",
         action: PROVIDER_REVEALED_EVENT,
-        actorKind: "user",
+        actorKind: "human",
         actorId: ACTOR,
         actorService: null,
         subjectType: "provider_connection",
@@ -266,7 +277,7 @@ describe("reading a workspace's trail", () => {
         occurredAt: "2026-08-24T16:13:00.000Z",
         actorId: ACTOR,
         actorName: "Ken Suenobu",
-        actorKind: "user",
+        actorKind: "human",
         actorService: null,
         action: PROVIDER_REVEALED_EVENT,
         subjectType: "provider_connection",

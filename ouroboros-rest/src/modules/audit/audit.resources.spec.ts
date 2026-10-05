@@ -1,4 +1,4 @@
-import { auditEventResource } from "./audit.resources";
+import { actorKindOf, auditEventResource, BOT_ACTOR_SERVICE } from "./audit.resources";
 import type { AuditEventRow } from "./audit.repository";
 
 /**
@@ -15,6 +15,7 @@ const ROW: AuditEventRow = {
   actor_id: "5eed0003-0000-4000-8000-000000000001",
   actor_name: "Ken Suenobu",
   actor_service: null,
+  actor_kind: "human",
   action: "provider.rotated",
   subject_type: "provider_connection",
   subject_id: "5eed000c-0000-4000-8000-000000000001",
@@ -59,6 +60,7 @@ describe("rendering one event", () => {
       ...ROW,
       actor_id: null,
       actor_name: null,
+      actor_kind: "system",
       action: "credential.lease_granted",
       subject_type: "run",
     };
@@ -71,8 +73,15 @@ describe("rendering one event", () => {
     });
   });
 
-  it("names a person's event as a user's", () => {
-    expect(auditEventResource(ROW)).toMatchObject({ actorKind: "user", actorService: null });
+  it("names a person's event as a human's", () => {
+    expect(auditEventResource(ROW)).toMatchObject({ actorKind: "human", actorService: null });
+  });
+
+  it("reads the stored kind, so an erased person's event stays a human's (#486)", () => {
+    // V022's set-null clears actor_id when the person is deleted; the stored kind does not move.
+    const erased: AuditEventRow = { ...ROW, actor_id: null, actor_name: null };
+
+    expect(auditEventResource(erased)).toMatchObject({ actorId: null, actorKind: "human" });
   });
 
   it("names a service-authenticated event service:<name>, distinct from a person (#485)", () => {
@@ -81,6 +90,7 @@ describe("rendering one event", () => {
       actor_id: null,
       actor_name: null,
       actor_service: "devops-bot",
+      actor_kind: "service",
     };
 
     expect(auditEventResource(bot)).toMatchObject({
@@ -98,5 +108,16 @@ describe("rendering one event", () => {
 
   it("renders an event with no address", () => {
     expect(auditEventResource({ ...ROW, ip: null }).ip).toBeNull();
+  });
+});
+
+describe("classifying an actor at write time (#486)", () => {
+  it.each([
+    [{ actor_id: "user-ken", actor_service: null }, "human"],
+    [{ actor_id: null, actor_service: BOT_ACTOR_SERVICE }, "bot"],
+    [{ actor_id: null, actor_service: "devops-bot" }, "service"],
+    [{ actor_id: null, actor_service: null }, "system"],
+  ] as const)("classifies %p as %s — V102's derive rule", (attribution, kind) => {
+    expect(actorKindOf(attribution)).toBe(kind);
   });
 });

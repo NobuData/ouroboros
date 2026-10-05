@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.39.15"
+  version: "0.40.0"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -696,6 +696,13 @@ tags:
       [#483](https://github.com/NobuData/ouroboros/issues/483), decision **S6**) — the workspace
       name and tenant domain as edits, and the data region and training-data row as what is true
       of this deployment, every control carrying a machine-readable reason when it cannot be used.
+  - name: audit
+    description: |-
+      **The audit log** (mockup 17's Audit Log card, issue
+      [#486](https://github.com/NobuData/ouroboros/issues/486), delivering #26's deferred surface)
+      — the events every plane writes, queried with indexed filters and keyset pages, the card's
+      today view composed from typed events, and a bounded, streamed, itself-audited CSV export.
+      Retention is the `audit` tier; its purge reports what it removed as `audit.purged`.
   - name: retention
     description: |-
       **Data retention** (mockup 17, issue [#482](https://github.com/NobuData/ouroboros/issues/482))
@@ -6667,9 +6674,10 @@ paths:
         select's value: the tier the three loop classes share, or `null` once they differ.
 
         **Saving deletes nothing.** A change moves the *next* sweep's cutoff for that class only.
-        `nextSweepAt` says when that is (`null` for a class nothing sweeps yet — audit, until the
-        audit purge, BR.2), and `lastSweep.removed` how many rows or objects that class's last
-        sweep removed.
+        `nextSweepAt` says when that is (`null` for a class nothing sweeps in this process — a
+        `custom:*` class), and `lastSweep.removed` how many rows or objects that class's last sweep
+        removed — for `audit`, the events the audit purge
+        ([#486](https://github.com/NobuData/ouroboros/issues/486)) removed.
 
         **Any member may read it**; it is `editable` for `owner` and `admin` and `reason: role`
         for everyone else.
@@ -6729,7 +6737,7 @@ paths:
                     ceiling: 3650
                     updatedAt: "2026-08-04T09:12:00.000Z"
                     updatedBy: 5eed0001-0000-4000-8000-000000000001
-                    nextSweepAt: null
+                    nextSweepAt: "2026-10-04T12:58:30.000Z"
                     lastSweep: null
         "400":
           description: |-
@@ -6848,7 +6856,7 @@ paths:
                     ceiling: 3650
                     updatedAt: "2026-08-04T09:12:00.000Z"
                     updatedBy: 5eed0001-0000-4000-8000-000000000001
-                    nextSweepAt: null
+                    nextSweepAt: "2026-10-04T12:58:30.000Z"
                     lastSweep: null
         "400":
           description: |-
@@ -6904,6 +6912,364 @@ paths:
           description: |-
             `internal_error` — the service itself failed. The message is a constant and
             `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/settings/audit:
+    get:
+      tags: [audit]
+      summary: Query the audit log
+      description: |-
+        The workspace's audit log, newest first, keyset-paged and filtered
+        ([#486](https://github.com/NobuData/ouroboros/issues/486), BR.2 — the surface #26 deferred).
+        Every plane writes the AD.4 event shape; this is the reading half.
+
+        **Filters run on indexed columns, never on rendered text**: a time range (`from` inclusive,
+        `to` exclusive), `actorKind`, one person (`actorId`), one service account or the bot
+        (`actorService`), a plane (`action=policy.*`) or one action (`action=policy.published`),
+        and a reference (`ref=pr:509`, `run:<id>`, `repo:<ref>`, `key:<id>`, `subject:<id>`). They
+        combine with *and*.
+
+        **Keyset pagination.** Follow `nextCursor` until it is `null`. A cursor is the last row's
+        exact position, so events that arrive mid-scroll appear before page one and never
+        duplicate or skip a row on the pages after it.
+
+        Each event carries the trail's own fields plus `plane`, and `actor` and `event` —
+        the line composed from the event's typed facts (`rotated Anthropic API key`). No writer
+        stores a sentence. Owners and admins only.
+      operationId: listAuditLog
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/AuditFrom"
+        - $ref: "#/components/parameters/AuditTo"
+        - $ref: "#/components/parameters/AuditActorKind"
+        - $ref: "#/components/parameters/AuditActorId"
+        - $ref: "#/components/parameters/AuditActorService"
+        - $ref: "#/components/parameters/AuditActionFilter"
+        - $ref: "#/components/parameters/AuditReference"
+        - name: cursor
+          in: query
+          required: false
+          description: The previous page's `nextCursor`. Opaque.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+        - name: limit
+          in: query
+          required: false
+          description: Page size.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: One page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditPlanePage"
+              example:
+                items:
+                  - id: 5eed0074-0000-4000-8000-000000000002
+                    occurredAt: "2026-10-05T14:12:00.000Z"
+                    actorId: 5eed0003-0000-4000-8000-000000000001
+                    actorName: Ken Suenobu
+                    actorKind: human
+                    actorService: null
+                    action: provider.rotated
+                    plane: provider
+                    subjectType: provider_connection
+                    subjectId: 5eed000c-0000-4000-8000-000000000001
+                    ip: 198.51.100.24
+                    detail:
+                      kind: anthropic
+                      outcome: success
+                    actor: Ken
+                    event: rotated Anthropic API key
+                nextCursor: eyJhdCI6IjIwMjYtMTAtMDVUMTQ6MTI6MDAuMDAwMDAwWiIsImlkIjoiNWVlZDAwNzQtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAyIn0
+                limit: 1
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            the audit log is read by people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — a malformed filter, cursor or limit. `audit_range_invalid` — `to`
+            is not after `from`. `audit_cursor_invalid` — a cursor this service did not issue.
+            `audit_reference_invalid` — a `pr:` that names no positive number. `details.fields` is
+            keyed by the parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/audit/today:
+    get:
+      tags: [audit]
+      summary: The audit card's today view
+      description: |-
+        Mockup 17's **Audit Log** card: today's newest events as `time · actor · event` lines,
+        composed from typed events, and the footer's `retained 400d` (the workspace's `audit`
+        retention tier). *Today* starts at local midnight in `tz` (UTC by default), and each
+        `time` is `HH:MM` in that zone. `actorKind` lets the card style bots and the system.
+        Owners and admins only.
+      operationId: readAuditToday
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: tz
+          in: query
+          required: false
+          description: An IANA time zone — `Europe/Berlin`.
+          schema:
+            type: string
+            default: UTC
+        - name: limit
+          in: query
+          required: false
+          description: Lines.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 5
+      responses:
+        "200":
+          description: Today's lines.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditToday"
+              example:
+                timeZone: UTC
+                since: "2026-10-05T00:00:00.000Z"
+                rows:
+                  - id: 5eed0074-0000-4000-8000-000000000001
+                    occurredAt: "2026-10-05T14:31:00.000Z"
+                    time: "14:31"
+                    actorKind: bot
+                    actor: ouroboros-app[bot]
+                    event: "pushed PR #514 rev 2"
+                  - id: 5eed0074-0000-4000-8000-000000000002
+                    occurredAt: "2026-10-05T14:12:00.000Z"
+                    time: "14:12"
+                    actorKind: human
+                    actor: Ken
+                    event: rotated Anthropic API key
+                  - id: 5eed0074-0000-4000-8000-000000000003
+                    occurredAt: "2026-10-05T13:48:00.000Z"
+                    time: "13:48"
+                    actorKind: human
+                    actor: Ken
+                    event: enabled auto-merge (policy v7)
+                  - id: 5eed0074-0000-4000-8000-000000000004
+                    occurredAt: "2026-10-05T13:22:00.000Z"
+                    time: "13:22"
+                    actorKind: human
+                    actor: Maya
+                    event: "approved waiver on PR #509"
+                  - id: 5eed0074-0000-4000-8000-000000000005
+                    occurredAt: "2026-10-05T12:04:00.000Z"
+                    time: "12:04"
+                    actorKind: system
+                    actor: system
+                    event: runner forge-03 marked offline
+                more: false
+                retainedDays: 400
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            the audit log is read by people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `tz` is not an IANA zone, or `limit` is out of range.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/audit/export.csv:
+    get:
+      tags: [audit]
+      summary: Export the audit log as CSV
+      description: |-
+        The filtered view over a **bounded range**, streamed as CSV. `from` and `to` are required
+        and at most **366 days** apart; a longer history is several exports. `to` is clamped to
+        the moment of the request. The content equals the filtered view of `GET
+        /api/v1/settings/audit` row for row, newest first.
+
+        **Exporting is itself audited, before the first byte.** The export counts its rows and
+        writes `audit.exported` — the range, the filters, the row count, and you as the actor —
+        and only then streams. If that record cannot be written, nothing is exported. The row
+        also fans out to `audit.*` webhook endpoints (`audit.audit.exported`).
+
+        **Columns, in order, append only:** `occurred_at, actor_kind, actor, actor_id,
+        actor_service, event, action, plane, subject_type, subject_id, ip, detail, id` — RFC 4180,
+        CRLF line ends, `detail` as JSON. A cell a spreadsheet would read as a formula (`=`, `+`,
+        `-`, `@`) is prefixed with `'`. `X-Ouro-Export-Rows` carries the row count. Owners and
+        admins only.
+      operationId: exportAuditLog
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: from
+          in: query
+          required: true
+          description: The range's start, inclusive — an ISO-8601 instant.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: true
+          description: The range's end, exclusive — at most 366 days after `from`.
+          schema:
+            type: string
+            format: date-time
+        - $ref: "#/components/parameters/AuditActorKind"
+        - $ref: "#/components/parameters/AuditActorId"
+        - $ref: "#/components/parameters/AuditActorService"
+        - $ref: "#/components/parameters/AuditActionFilter"
+        - $ref: "#/components/parameters/AuditReference"
+      responses:
+        "200":
+          description: The CSV, streamed.
+          headers:
+            X-Ouro-Export-Rows:
+              description: The rows the export carries — the count `audit.exported` recorded.
+              schema:
+                type: integer
+                minimum: 0
+            Content-Disposition:
+              description: '`attachment; filename="audit-<from>-<to>.csv"`.'
+              schema:
+                type: string
+          content:
+            text/csv:
+              schema:
+                type: string
+              example: |
+                occurred_at,actor_kind,actor,actor_id,actor_service,event,action,plane,subject_type,subject_id,ip,detail,id
+                2026-10-05T14:12:00.000Z,human,Ken,5eed0003-0000-4000-8000-000000000001,,rotated Anthropic API key,provider.rotated,provider,provider_connection,5eed000c-0000-4000-8000-000000000001,198.51.100.24,"{""kind"":""anthropic"",""outcome"":""success""}",5eed0074-0000-4000-8000-000000000002
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            the audit log is read by people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `audit_export_range_required` — `from` or `to` is missing.
+            `audit_export_range_too_long` — the range is longer than 366 days. `audit_range_invalid`
+            — `to` is not after `from`. `audit_reference_invalid`, or `validation_failed` for a
+            malformed filter. `details.fields` is keyed by the parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
           content:
             application/json:
               schema:
@@ -8924,6 +9290,7 @@ paths:
                 changes:
                   - ruleId: human_review
                     classification: loosening
+                    verb: disabled
                     summary: disabled human review
                 requiresOwner: true
                 mayPublish: false
@@ -16399,7 +16766,7 @@ paths:
                     occurredAt: "2026-08-24T16:13:00.000Z"
                     actorId: 5eed0003-0000-4000-8000-000000000001
                     actorName: Ken Suenobu
-                    actorKind: user
+                    actorKind: human
                     actorService: null
                     action: provider.revealed
                     subjectType: provider_connection
@@ -33182,6 +33549,65 @@ components:
   # Referenced rather than repeated: `tenantId` appears on fifteen operations, and fifteen
   # copies of a description is fifteen places for one of them to say something else.
   parameters:
+    AuditFrom:
+      name: from
+      in: query
+      required: false
+      description: Events at or after this instant — ISO-8601 with a zone.
+      schema:
+        type: string
+        format: date-time
+    AuditTo:
+      name: to
+      in: query
+      required: false
+      description: Events strictly before this instant — ISO-8601 with a zone.
+      schema:
+        type: string
+        format: date-time
+    AuditActorKind:
+      name: actorKind
+      in: query
+      required: false
+      description: One kind of actor.
+      schema:
+        $ref: "#/components/schemas/AuditActorKind"
+    AuditActorId:
+      name: actorId
+      in: query
+      required: false
+      description: One person — their user id.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+    AuditActorService:
+      name: actorService
+      in: query
+      required: false
+      description: One service account (`devops-bot`) or the bot (`ouroboros-app`).
+      schema:
+        type: string
+        pattern: "^[a-z][a-z0-9-]{1,38}[a-z0-9]$"
+    AuditActionFilter:
+      name: action
+      in: query
+      required: false
+      description: A plane (`policy.*`) or one action (`policy.published`).
+      schema:
+        type: string
+        pattern: "^[a-z][a-z0-9_]*\\.(\\*|[a-z][a-z0-9_]*)$"
+    AuditReference:
+      name: ref
+      in: query
+      required: false
+      description: |-
+        A reference: `pr:<number>` (events whose detail names the PR), `run:<id>` (the run as
+        subject, or `detail.run_id`), `repo:<ref>` (the repository as subject, or `detail.repo`),
+        `key:<id>` (a provider key — its connection is the subject), or `subject:<id>`.
+      schema:
+        type: string
+        pattern: "^(pr|run|repo|key|subject):[^\\s,]{1,200}$"
     OrgId:
       name: orgId
       in: path
@@ -42745,16 +43171,23 @@ components:
       type: object
       title: OrgPolicyRuleChange
       additionalProperties: false
-      required: [ruleId, classification, summary]
+      required: [ruleId, classification, verb, summary]
       properties:
         ruleId:
           type: string
           examples: [auto_merge]
         classification:
           $ref: "#/components/schemas/OrgPolicyChangeClass"
+        verb:
+          type: string
+          enum: [enabled, disabled, changed, removed]
+          description: |-
+            What happened to the rule — the typed fact the audit log's line is composed from
+            ([#486](https://github.com/NobuData/ouroboros/issues/486)).
+          examples: [enabled]
         summary:
           type: string
-          description: The change as the audit line says it — `enabled auto-merge`.
+          description: The change as the dialog and the audit line say it — `enabled auto-merge`.
 
     OrgPolicyPreviewRequest:
       type: object
@@ -47093,13 +47526,7 @@ components:
             mailbox.
           examples: [Ken Suenobu]
         actorKind:
-          type: string
-          enum: [user, service, system]
-          description: |-
-            Who it is attributed to ([#485](https://github.com/NobuData/ouroboros/issues/485)):
-            `user` when a person is named, `service` when a service account's token authenticated
-            the request, `system` when neither — so the audit plane can style and filter bot rows.
-          examples: [user]
+          $ref: "#/components/schemas/AuditActorKind"
         actorService:
           type: [string, "null"]
           description: The service account's name when `actorKind` is `service` — rendered `service:<name>`.
@@ -47128,6 +47555,151 @@ components:
           examples: [198.51.100.24]
         detail:
           $ref: "#/components/schemas/AuditEventDetail"
+
+    AuditActorKind:
+      type: string
+      title: AuditActorKind
+      enum: [human, bot, service, system]
+      description: |-
+        What kind of actor an event is attributed to — stored on every row (V102,
+        [#486](https://github.com/NobuData/ouroboros/issues/486)): `human` for a person (still
+        `human` after the person is deleted and the attribution erased), `bot` for the GitHub App
+        (`ouroboros-app`), `service` for a service account
+        ([#485](https://github.com/NobuData/ouroboros/issues/485)), `system` for nobody.
+      examples: [human]
+
+    AuditPlaneEvent:
+      type: object
+      title: AuditPlaneEvent
+      description: |-
+        One event of the audit log — the trail's fields, its plane, and the line composed from its
+        typed facts ([#486](https://github.com/NobuData/ouroboros/issues/486)).
+      additionalProperties: false
+      required:
+        [id, occurredAt, actorId, actorName, actorKind, actorService, action, plane, subjectType, subjectId, ip, detail, actor, event]
+      properties:
+        id:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+        actorId:
+          type: [string, "null"]
+          description: The person, or `null` — nobody, or a person since deleted.
+        actorName:
+          type: [string, "null"]
+          description: Their name — never an address — or `null`.
+        actorKind:
+          $ref: "#/components/schemas/AuditActorKind"
+        actorService:
+          type: [string, "null"]
+          description: The service account or bot name, when one is the actor.
+        action:
+          type: string
+          pattern: "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+          description: |-
+            What happened, `family.event`. Any action a plane writes — including ones written by
+            database triggers — so this is a grammar, not a closed list.
+          examples: [provider.rotated]
+        plane:
+          type: string
+          description: The action's family — `provider`.
+          examples: [provider]
+        subjectType:
+          type: string
+          examples: [provider_connection]
+        subjectId:
+          type: [string, "null"]
+        ip:
+          type: [string, "null"]
+        detail:
+          $ref: "#/components/schemas/AuditEventDetail"
+        actor:
+          type: string
+          description: |-
+            Who, as the card prints it — a person's first name, `ouroboros-app[bot]`,
+            `service:<name>`, `system`, or `former member` for an erased person.
+          examples: [Ken]
+        event:
+          type: string
+          description: What happened, composed from the event's typed facts — never stored.
+          examples: [rotated Anthropic API key]
+
+    AuditPlanePage:
+      type: object
+      title: AuditPlanePage
+      description: One keyset page of the audit log, newest first.
+      additionalProperties: false
+      required: [items, nextCursor, limit]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditPlaneEvent"
+        nextCursor:
+          type: [string, "null"]
+          description: The next page's cursor, or `null` on the last page.
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 200
+
+    AuditTodayRow:
+      type: object
+      title: AuditTodayRow
+      description: One line of the audit card — `14:31 · ouroboros-app[bot] · pushed PR #514 rev 2`.
+      additionalProperties: false
+      required: [id, occurredAt, time, actorKind, actor, event]
+      properties:
+        id:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+        time:
+          type: string
+          pattern: "^\\d{2}:\\d{2}$"
+          description: "`HH:MM`, 24-hour, in the view's zone."
+          examples: ["14:31"]
+        actorKind:
+          $ref: "#/components/schemas/AuditActorKind"
+        actor:
+          type: string
+          examples: ["ouroboros-app[bot]"]
+        event:
+          type: string
+          examples: ["pushed PR #514 rev 2"]
+
+    AuditToday:
+      type: object
+      title: AuditToday
+      description: The audit card's today view, and its retention footer.
+      additionalProperties: false
+      required: [timeZone, since, rows, more, retainedDays]
+      properties:
+        timeZone:
+          type: string
+          description: The IANA zone today and each line's time were taken in.
+          examples: [UTC]
+        since:
+          type: string
+          format: date-time
+          description: Local midnight in that zone — where today starts.
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditTodayRow"
+        more:
+          type: boolean
+          description: Whether today has more events than `rows` holds.
+        retainedDays:
+          type: integer
+          minimum: 90
+          maximum: 3650
+          description: The workspace's `audit` retention tier — the footer's `retained 400d`.
+          examples: [400]
 
     AuditEventPage:
       type: object

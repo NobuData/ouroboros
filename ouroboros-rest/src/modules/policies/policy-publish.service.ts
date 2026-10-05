@@ -43,6 +43,7 @@ import {
   type RuleChange,
   diffPolicies,
   publishSummary,
+  ruleChangesFact,
 } from "./policy-publish";
 import { PolicyResolutionService } from "./policy-resolution.service";
 
@@ -342,7 +343,8 @@ export class PolicyPublishService {
           .filter((change) => change.classification === "tightening")
           .map((change) => change.ruleId)
           .join(","),
-        summary,
+        // Typed facts, never the sentence: the audit plane composes the line (#486).
+        changes: ruleChangesFact(diff),
         change_note: changeNote,
       },
     });

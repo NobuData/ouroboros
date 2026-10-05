@@ -45,6 +45,7 @@ import { MembersModule } from "../members/members.module";
 import { ServiceAccountsModule } from "../service-accounts/service-accounts.module";
 import { WebhooksModule } from "../webhooks/webhooks.module";
 import { RetentionModule } from "../retention/retention.module";
+import { AuditPlaneModule } from "../audit-plane/audit-plane.module";
 import { SettingsModule } from "../settings/settings.module";
 import { PoliciesModule } from "../policies/policies.module";
 import { InsightsModule } from "../insights/insights.module";
@@ -349,6 +350,10 @@ export class AppModule {
         // `/api/v1/settings/retention`, and the policy service every sweep reads: a distinct
         // literal segment beside the other settings routes.
         RetentionModule,
+        // BR.2 ([#486](https://github.com/NobuData/ouroboros/issues/486)) — the Audit Log card under
+        // `/api/v1/settings/audit` (a distinct literal segment beside the other settings routes),
+        // and the `audit` tier's purge. After `RetentionModule` and `AuditModule`, which it imports.
+        AuditPlaneModule,
         // BR.1 ([#485](https://github.com/NobuData/ouroboros/issues/485)) — the Members & Roles card
         // under `/api/v1/settings/members` and service accounts under
         // `/api/v1/settings/service-accounts`: distinct literal segments beside the other

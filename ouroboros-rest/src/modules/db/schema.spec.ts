@@ -519,6 +519,9 @@ describe("TABLE_COLUMNS", () => {
       "occurred_at",
       // V091 (#485): the service account a request authenticated as.
       "actor_service",
+      // V102 (#486): the stored actor kind, and the action's generated plane.
+      "actor_kind",
+      "plane",
     ]);
   });
 

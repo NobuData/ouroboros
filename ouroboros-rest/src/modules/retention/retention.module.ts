@@ -13,7 +13,7 @@
  *
  * It exports the service and the schedule to the sweeps that read them — the build-log sweep
  * (`FarmLogsModule`), the artifact sweep (`ResultsModule`), the transcript sweep (`RunsModule`)
- * and, when BR.2 lands, the audit purge. It imports none of them, so the dependency only ever
+ * and the audit purge (`AuditPlaneModule`, BR.2). It imports none of them, so the dependency only ever
  * points from a sweep to its policy.
  */
 

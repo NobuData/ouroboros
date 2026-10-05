@@ -636,6 +636,24 @@
 #   the sweep's candidates are an index read     drop runs_events_unswept_idx
 #   live artifacts are scanned by created_at     drop test_artifacts_live_created_idx
 #
+# #486 (BR.2, V102) opens the audit log: a stored actor kind, a plane, the query API's indexes and
+# the audit purge. One probe per rule "the log can be filtered honestly and pruned without loss
+# of anything still referenced" rests on:
+#
+#   V102 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   an actor kind is one of four                 drop audit_events_actor_kind_known
+#   the kind agrees with the attribution         drop audit_events_actor_kind_consistent
+#   a writer that omits the kind gets one        drop trigger audit_events_actor_kind
+#   erasing a person never relabels the kind     rewrite audit_events_refuse_update() to the
+#                                                  V091 column list, without actor_kind
+#   no purge cutoff inside the 90-day floor      rewrite audit_events_purge() without the floor
+#   a referenced event is held, not deleted      rewrite audit_events_purge() ignoring references
+#   a purge stays inside its workspace           rewrite audit_events_purge() ignoring the workspace
+#   each filter enters through its index         drop audit_events_org_actor_kind_idx,
+#                                                  _org_actor_service_idx, _org_plane_idx,
+#                                                  _org_subject_idx, _detail_refs_idx
+#
 # #457 (BM.1, V093) adds the decision domain — versioned kind declarations and the typed items
 # filed against them. One probe per rule the inbox's truthfulness rests on:
 #
@@ -3360,6 +3378,59 @@ expect_red 'the transcript sweep has no index' \
 expect_red 'the artifact sweep has no index' \
   'did not use index test_artifacts_live_created_idx' \
   'drop index ouroboros.test_artifacts_live_created_idx;'
+
+# V102 (#486). The stored actor kind, and the audit purge's guards.
+expect_red 'an actor kind may be anything' \
+  'an actor kind is one of four' \
+  'alter table ouroboros.audit_events drop constraint audit_events_actor_kind_known;'
+
+expect_red 'an actor kind may disagree with the attribution' \
+  'cannot be filed as the system' \
+  'alter table ouroboros.audit_events drop constraint audit_events_actor_kind_consistent;'
+
+expect_red 'a writer that omits the actor kind gets none' \
+  'actor_kind' \
+  'drop trigger audit_events_actor_kind on ouroboros.audit_events;'
+
+expect_red 'erasing a person may relabel their event' \
+  'cannot be relabelled the system' \
+  'create or replace function ouroboros.audit_events_refuse_update() returns trigger
+   language plpgsql as $$
+   begin
+     if new.actor_id is null and old.actor_id is not null
+        and row(new.id, new.organization_id, new.action, new.subject_type,
+            new.subject_id, new.ip, new.detail, new.occurred_at, new.actor_service)
+        is not distinct from
+        row(old.id, old.organization_id, old.action, old.subject_type,
+            old.subject_id, old.ip, old.detail, old.occurred_at, old.actor_service)
+     then
+       return new;
+     end if;
+     raise exception $m$audit_events is append-only$m$ using errcode = $m$restrict_violation$m$;
+   end;
+   $$;'
+
+expect_red 'an audit cutoff may reach inside the floor' \
+  'no cutoff reaches inside the 90-day floor' \
+  "$(rewrite_definition "pg_get_functiondef('ouroboros.audit_events_purge(text, timestamptz, integer)'::regprocedure)" \
+       "if p_cutoff > now() - interval '90 days' then" '' 'if false then')"
+
+expect_red 'the audit purge may delete a referenced event' \
+  'analysis_suggestions_applied_event_id_fkey' \
+  "$(rewrite_definition "pg_get_functiondef('ouroboros.audit_events_purge(text, timestamptz, integer)'::regprocedure)" \
+       'and e.id not in (select r.id from referenced r)' '' '')"
+
+expect_red 'the audit purge may reach another workspace' \
+  'the purge works oldest first, within one workspace' \
+  "$(rewrite_definition "pg_get_functiondef('ouroboros.audit_events_purge(text, timestamptz, integer)'::regprocedure)" \
+       'e.organization_id = p_organization_id' '' 'true')"
+
+for index in audit_events_org_actor_kind_idx audit_events_org_actor_service_idx \
+             audit_events_org_plane_idx audit_events_org_subject_idx audit_events_detail_refs_idx; do
+  expect_red "the audit plane's ${index} is gone" \
+    "did not use index ${index}" \
+    "drop index ouroboros.${index};"
+done
 
 printf '\n'
 if check_summary; then

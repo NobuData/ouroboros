@@ -6624,7 +6624,7 @@ select pg_temp.must_hold(
 select pg_temp.must_hold(
   (select person."email" = 'ken@acme-robotics.dev' and v7.change_note = 'Enable auto-merge'
           and event.occurred_at = v7.published_at and event.actor_id = v7.published_by
-          and event.detail = '{"version": 7, "rule": "auto_merge", "change": "enabled"}'::jsonb
+          and event.detail = '{"version": 7, "previous_version": 6, "classification": "loosening", "changed_rules": "auto_merge", "loosening_rules": "auto_merge", "tightening_rules": "", "changes": "auto_merge:enabled", "change_note": "Enable auto-merge"}'::jsonb
      from ouroboros.org_policy_versions v7
      join ouroboros."user" person on person."id" = v7.published_by
      join ouroboros.audit_events event on event.id = '5eed0074-0000-4000-8000-000000000003'
@@ -6665,10 +6665,7 @@ select pg_temp.must_hold(
 
 -- --- the audit card: today's five lines, in the shared universe ------------------------------------
 select pg_temp.must_hold(
-  (select array_agg(event.action || ':' || case when event.actor_id is not null then 'human'
-                                                when event.actor_service is not null then 'bot'
-                                                else 'system' end
-                    order by event.id)
+  (select array_agg(event.action || ':' || event.actor_kind order by event.id)
           = array['pr_revision.pushed:bot', 'provider.rotated:human', 'policy.published:human',
                   'triage.waived:human', 'runner.marked_offline:system']
      from ouroboros.audit_events event
