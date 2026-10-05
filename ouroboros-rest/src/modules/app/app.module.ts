@@ -44,6 +44,7 @@ import { LifecycleModule } from "../lifecycle/lifecycle.module";
 import { MembersModule } from "../members/members.module";
 import { ServiceAccountsModule } from "../service-accounts/service-accounts.module";
 import { WebhooksModule } from "../webhooks/webhooks.module";
+import { RetentionModule } from "../retention/retention.module";
 import { SettingsModule } from "../settings/settings.module";
 import { PoliciesModule } from "../policies/policies.module";
 import { InsightsModule } from "../insights/insights.module";
@@ -344,6 +345,10 @@ export class AppModule {
         // `/api/v1/settings/lifecycle`. After `GithubModule`, whose token a disconnect clears; a
         // distinct literal segment beside `/settings/auto-merge` and `/settings/github-token`.
         LifecycleModule,
+        // BQ.3 ([#482](https://github.com/NobuData/ouroboros/issues/482)) — data-retention tiers under
+        // `/api/v1/settings/retention`, and the policy service every sweep reads: a distinct
+        // literal segment beside the other settings routes.
+        RetentionModule,
         // BR.1 ([#485](https://github.com/NobuData/ouroboros/issues/485)) — the Members & Roles card
         // under `/api/v1/settings/members` and service accounts under
         // `/api/v1/settings/service-accounts`: distinct literal segments beside the other

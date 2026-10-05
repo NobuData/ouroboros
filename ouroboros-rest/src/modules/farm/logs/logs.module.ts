@@ -12,23 +12,24 @@
  *                reassembly.ts         seq order before anything is stored
  *                rate.guard.ts         per workspace; refusals are elided and marked
  * the rows       log.repository.ts     every statement; the cap trigger does the rest
- * retention      log.retention.ts      30 days per chunk · a byte budget per workspace · whole logs
+ * retention      log.retention.ts      the build_logs tier (#482) · a byte budget per workspace · whole logs
  * log.policy.ts  every number, once
  * ```
  *
  * **It imports the gateway and the gateway does not import it** — dispatch's position (#252), for
  * dispatch's reason: frames arrive through `AgentSessions.listen`. It exports `FarmLogsService`
  * for the readers to come (mockup 10's run console; #510's analyzer when it grows tail reads) and
- * the {@link FARM_LOG_RETENTION} token for #482 to bind its retention service to.
+ * the {@link FARM_LOG_RETENTION} token that holds the byte budget. The age rule's tier is
+ * BQ.3's `RetentionPolicyService` (#482), which is why `RetentionModule` is imported.
  */
 
 import { Module } from "@nestjs/common";
 
 import { AppConfigService } from "../../config/config.service";
 import { DbModule } from "../../db/db.module";
+import { RetentionModule } from "../../retention/retention.module";
 import { FarmGatewayModule } from "../gateway/gateway.module";
 import { LogIngest } from "./log.ingest";
-import { LOG_RETENTION_DAYS } from "./log.policy";
 import { LogRepository } from "./log.repository";
 import { FARM_LOG_RETENTION, LogRetentionSweeper, type LogRetentionPolicy } from "./log.retention";
 import { FarmLogsController } from "./logs.controller";
@@ -36,7 +37,7 @@ import { FarmLogsService } from "./logs.service";
 import { FARM_LOG_RATE_GUARD, RateGuard } from "./rate.guard";
 
 @Module({
-  imports: [DbModule, FarmGatewayModule],
+  imports: [DbModule, FarmGatewayModule, RetentionModule],
   controllers: [FarmLogsController],
   providers: [
     LogRepository,
@@ -45,11 +46,10 @@ import { FARM_LOG_RATE_GUARD, RateGuard } from "./rate.guard";
     FarmLogsService,
     { provide: FARM_LOG_RATE_GUARD, useFactory: () => new RateGuard() },
     {
-      // Thirty days and the configured budget, until BQ.3's retention service (#482) binds its own.
+      // The configured byte budget. How long a log is kept is the `build_logs` tier (#482).
       provide: FARM_LOG_RETENTION,
       inject: [AppConfigService],
       useFactory: (config: AppConfigService): LogRetentionPolicy => ({
-        days: LOG_RETENTION_DAYS,
         budgetBytesPerOrg: config.farmLogBudgetBytes,
       }),
     },

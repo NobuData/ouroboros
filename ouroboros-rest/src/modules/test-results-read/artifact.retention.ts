@@ -4,17 +4,18 @@
  * [#482](https://github.com/NobuData/ouroboros/issues/482)).
  *
  * ```
- * every hour (jittered) ─▶ live rows past retained_until, this driver's, oldest first, ≤ 200
+ * every hour (jittered) ─▶ live rows stored before their workspace's `artifacts` cutoff,
+ *                          this driver's, oldest first, ≤ 200
  *   each ─▶ ArtifactStore.delete(key) ─▶ expired_at = now   (name, kind, size stay)
  *        ─▶ the card renders `expired`, and GET /artifacts/:id answers 410
  * ```
  *
- * **The policy is on the row.** The upload writes `retained_until` from the workspace's policy —
- * thirty days by default, `OURO_ARTIFACT_RETENTION_DAYS` — so a file is kept as long as the policy
- * it was uploaded under said, and a later change never reaches back into what was already
- * promised. The sweep reads nothing but `retained_until`, which is why it honours per-workspace
- * policy without knowing any. **#482's seam** is that write: its retention policy service
- * computes the `artifacts` tier's cutoff centrally, and its defaults reproduce these thirty days.
+ * **The policy is the workspace's tier, as it stands at each sweep.** BQ.3's retention policy
+ * service computes each workspace's `artifacts` cutoff — `now − tier`, thirty days by default or
+ * `OURO_ARTIFACT_RETENTION_DAYS` — and this sweep compares each row's `created_at` with it, so a
+ * changed tier moves the *next* sweep and no other class's. The default reproduces what the
+ * sweep did when it read the `retained_until` stamped at upload, so the switch deleted nothing
+ * unexpected; `retained_until` is still written, as the card's `retained 30d`.
  *
  * **Bytes first, then the tombstone.** A delete that fails leaves the row live, to be tried
  * again next tick; a tombstone that fails after the delete is written next tick too, because
@@ -37,6 +38,8 @@ import { SchedulerRegistry } from "@nestjs/schedule";
 import { describeForLog } from "../errors/failure";
 import type { ArtifactStore } from "../farm/artifacts/artifact.store";
 import { ARTIFACT_STORE } from "../farm/artifacts/artifact.store.factory";
+import { RetentionSchedule } from "../retention/retention.schedule";
+import { RetentionPolicyService } from "../retention/retention.service";
 import { jittered } from "../scheduling/cadence";
 import { ResultsRepository } from "./results.repository";
 import { storedKey } from "./results.service";
@@ -68,11 +71,15 @@ export class ArtifactRetentionSweeper implements OnApplicationBootstrap, OnAppli
   /**
    * @param results - The sweep's statements.
    * @param store - The configured store — the one whose bytes this sweep may remove.
+   * @param retention - The `artifacts` tier's cutoffs (#482).
+   * @param retentionSchedule - Where the next sweep and the tombstone counts are reported.
    * @param scheduler - Nest's registry, so the timer has a name.
    */
   constructor(
     private readonly results: ResultsRepository,
     @Inject(ARTIFACT_STORE) private readonly store: ArtifactStore,
+    private readonly retention: RetentionPolicyService,
+    private readonly retentionSchedule: RetentionSchedule,
     private readonly scheduler: SchedulerRegistry,
   ) {}
 
@@ -93,6 +100,7 @@ export class ArtifactRetentionSweeper implements OnApplicationBootstrap, OnAppli
   /** Stop the loop, and clear a pending timer. */
   onApplicationShutdown(): void {
     this.stopped = true;
+    this.retentionSchedule.stopped("artifacts");
 
     if (this.scheduler.doesExist("timeout", ARTIFACT_RETENTION_SWEEP)) {
       this.scheduler.deleteTimeout(ARTIFACT_RETENTION_SWEEP);
@@ -110,8 +118,10 @@ export class ArtifactRetentionSweeper implements OnApplicationBootstrap, OnAppli
     let bytes = 0;
     let failed = 0;
 
+    const cutoffs = await this.retention.cutoffs("artifacts", at);
+
     for (const artifact of await this.results.expiring(
-      at,
+      cutoffs,
       this.store.driver,
       ARTIFACT_SWEEP_BATCH,
     )) {
@@ -147,6 +157,7 @@ export class ArtifactRetentionSweeper implements OnApplicationBootstrap, OnAppli
 
     try {
       const report = await this.sweep();
+      this.retentionSchedule.swept("artifacts", this.now(), report.expired);
 
       if (report.expired > 0 || report.failed > 0) {
         this.logger.log(
@@ -169,9 +180,11 @@ export class ArtifactRetentionSweeper implements OnApplicationBootstrap, OnAppli
   private schedule(): void {
     if (this.stopped) return;
 
+    const delay = jittered(ARTIFACT_SWEEP_INTERVAL_MS);
     const timer = setTimeout(() => {
       void this.tick();
-    }, jittered(ARTIFACT_SWEEP_INTERVAL_MS));
+    }, delay);
+    this.retentionSchedule.booked("artifacts", new Date(Date.now() + delay));
 
     // The loop must not be the reason a process stays alive.
     timer.unref();

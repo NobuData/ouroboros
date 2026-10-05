@@ -949,6 +949,12 @@ export interface RunsTable {
    * of runs carrying its id — there is no counter column. Set null when the playbook is deleted.
    */
   playbook_id: string | null;
+  /**
+   * When the retention sweep removed this run's transcript (V101,
+   * [#482](https://github.com/NobuData/ouroboros/issues/482)) — written by `run_events_sweep()`
+   * alone, only on a finished run. Null while the transcript is kept.
+   */
+  events_swept_at: ColumnType<Date | null, never, never>;
 }
 
 /**
@@ -1156,6 +1162,7 @@ export interface RunsWithStageView {
   event_hint: number;
   change_set_seq: number;
   playbook_id: string | null;
+  events_swept_at: Date | null;
 }
 
 /**
@@ -6226,6 +6233,22 @@ export interface DecisionItemsTable {
 export type WebhookDeliveryStatus = "pending" | "succeeded" | "failed" | "dead_lettered";
 
 /**
+ * `ouroboros.retention_policies` — how long each class of a workspace's data is kept (V094,
+ * [#484](https://github.com/NobuData/ouroboros/issues/484); ceiling V101,
+ * [#482](https://github.com/NobuData/ouroboros/issues/482)). One row per (workspace, class); a
+ * class with no row takes `retention/retention.policy.ts`'s default.
+ */
+export interface RetentionPoliciesTable {
+  organization_id: string;
+  /** `transcripts | build_logs | artifacts | audit`, or `custom:<slug>`. */
+  data_class: string;
+  /** Whole days: audit 90–3650, loop data 7–365, custom 7–3650 (CHECKs). */
+  days: number;
+  updated_by: string | null;
+  updated_at: Stamped;
+}
+
+/**
  * `ouroboros.webhook_endpoints` — where signed events go (V094,
  * [#484](https://github.com/NobuData/ouroboros/issues/484); description, registry version and
  * exact-type subscriptions V098, [#487](https://github.com/NobuData/ouroboros/issues/487)).
@@ -6598,6 +6621,7 @@ export interface Database {
   decision_kinds: DecisionKindsTable;
   decision_items: DecisionItemsTable;
   decision_resolutions: DecisionResolutionsTable;
+  retention_policies: RetentionPoliciesTable;
   webhook_endpoints: WebhookEndpointsTable;
   webhook_deliveries: WebhookDeliveriesTable;
   guardrail_exceptions: GuardrailExceptionsTable;
@@ -6723,6 +6747,7 @@ export const TABLE_COLUMNS = {
     "event_hint",
     "change_set_seq",
     "playbook_id",
+    "events_swept_at",
   ],
   run_stages: [
     "id",
@@ -8022,6 +8047,7 @@ export const TABLE_COLUMNS = {
     "loop_wait",
     "created_at",
   ],
+  retention_policies: ["organization_id", "data_class", "days", "updated_by", "updated_at"],
   webhook_endpoints: [
     "id",
     "organization_id",
@@ -8200,6 +8226,7 @@ export const TABLE_COLUMNS = {
     "event_hint",
     "change_set_seq",
     "playbook_id",
+    "events_swept_at",
   ],
   run_events_jsonl: ["run_id", "seq", "line"],
   v_run_guardrails_latest: [

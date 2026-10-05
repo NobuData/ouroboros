@@ -10,7 +10,7 @@
  * log.chunk ── ahead of a gap? held (≤ LOG_PENDING_MAX, ≤ LOG_GAP_WAIT_MS) ── then stored in seq order
  *           ── over the workspace's rate (LOG_ORG_RATE_BYTES_PER_S, LOG_ORG_BURST_BYTES)? elided, marked
  * GET …/log?after= ── at most LOG_PAGE_MAX_BYTES ── X-Ouro-Poll-After: 2 s while live, 15 s after
- * sweep, every LOG_SWEEP_INTERVAL_MS ── LOG_RETENTION_DAYS, and the workspace budget ── ≤ LOG_SWEEP_BATCH jobs
+ * sweep, every LOG_SWEEP_INTERVAL_MS ── the build_logs tier (#482), and the workspace budget ── ≤ LOG_SWEEP_BATCH jobs
  * ```
  */
 
@@ -51,13 +51,6 @@ export const LOG_ORG_BURST_BYTES = 8 * MIB;
 
 /** The most log bytes one read returns. The next read continues from its `nextOffset`. */
 export const LOG_PAGE_MAX_BYTES = 262_144;
-
-/**
- * How long a stored chunk is kept — thirty days, written onto the chunk as its `retain_until`
- * when it is stored, so a policy that changes later never reaches back into what was written
- * under the old one (V040). Also #482's default for the `build_logs` tier.
- */
-export const LOG_RETENTION_DAYS = 30;
 
 /** How often the retention sweep runs, before `scheduling/cadence.ts`'s jitter — ten minutes. */
 export const LOG_SWEEP_INTERVAL_MS = 600_000;

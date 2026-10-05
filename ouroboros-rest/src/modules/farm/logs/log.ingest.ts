@@ -55,6 +55,7 @@ import {
 import { SchedulerRegistry } from "@nestjs/schedule";
 
 import { describeForLog } from "../../errors/failure";
+import { RetentionPolicyService } from "../../retention/retention.service";
 import { AgentSessions, type FrameContext } from "../gateway/agent.sessions";
 import { GATEWAY_CLOCK, type GatewayClock } from "../gateway/gateway.clock";
 import type { Envelope } from "../protocol/protocol";
@@ -66,7 +67,6 @@ import {
   LOG_PENDING_MAX,
 } from "./log.policy";
 import { LogRepository, type WritableJob } from "./log.repository";
-import { FARM_LOG_RETENTION, retainUntil, type LogRetentionPolicy } from "./log.retention";
 import { Reassembly, type ReadyChunk } from "./reassembly";
 import { FARM_LOG_RATE_GUARD, RateGuard } from "./rate.guard";
 
@@ -101,7 +101,7 @@ export class LogIngest implements OnApplicationBootstrap, OnApplicationShutdown 
    * @param repository - Every statement ingest issues.
    * @param sessions - Where the frames come from.
    * @param rateGuard - The per-workspace guard.
-   * @param policy - The retention policy, for each chunk's `retain_until`.
+   * @param retention - The `build_logs` tier, for each chunk's `retain_until` (#482).
    * @param scheduler - Nest's registry, so the timer has a name.
    * @param now - The gateway's clock.
    */
@@ -109,7 +109,7 @@ export class LogIngest implements OnApplicationBootstrap, OnApplicationShutdown 
     private readonly repository: LogRepository,
     private readonly sessions: AgentSessions,
     @Inject(FARM_LOG_RATE_GUARD) private readonly rateGuard: RateGuard,
-    @Inject(FARM_LOG_RETENTION) private readonly policy: LogRetentionPolicy,
+    private readonly retention: RetentionPolicyService,
     private readonly scheduler: SchedulerRegistry,
     @Inject(GATEWAY_CLOCK) private readonly now: GatewayClock,
   ) {}
@@ -253,7 +253,7 @@ export class LogIngest implements OnApplicationBootstrap, OnApplicationShutdown 
         elidedBytes: state.refusedBytes + chunk.droppedBytes,
         missingChunks: state.refusedMissing + chunk.missingBefore,
         agentDropped: chunk.droppedBytes,
-        retainUntil: retainUntil(this.policy, at),
+        retainUntil: await this.retention.retainUntil(state.job.organization_id, "build_logs", at),
       });
 
       // The job finished while this was on its way: its log is final, and so is this state.

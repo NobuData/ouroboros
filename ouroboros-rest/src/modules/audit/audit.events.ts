@@ -438,6 +438,15 @@ export const WORKSPACE_PURGED_EVENT = "workspace.purged";
 export const WORKSPACE_UPDATED_EVENT = "workspace.updated";
 
 /**
+ * A data-retention tier was changed from the Settings page (BQ.3,
+ * [#482](https://github.com/NobuData/ouroboros/issues/482)). Subject `workspace`; one event per
+ * class changed, the detail naming the `dataClass`, its `previousDays`, the new `days` and whether
+ * the previous value was the class's default (`previousSource`). A save that changes nothing
+ * writes no event.
+ */
+export const WORKSPACE_RETENTION_CHANGED_EVENT = "workspace.retention_changed";
+
+/**
  * A runner was given a time-windowed pool assignment — *"forge-02 joins pool-a between
  * 14:00–16:00 UTC on weekdays"* (BV.5, [#514](https://github.com/NobuData/ouroboros/issues/514)).
  * Subject `runner_pool_window`; the detail names the runner, the pool, the days and the window.
@@ -631,6 +640,7 @@ export const AUDIT_ACTIONS = [
   WORKSPACE_RESTORED_EVENT,
   WORKSPACE_PURGED_EVENT,
   WORKSPACE_UPDATED_EVENT,
+  WORKSPACE_RETENTION_CHANGED_EVENT,
   MEMBER_INVITED_EVENT,
   MEMBER_INVITATION_RESENT_EVENT,
   MEMBER_INVITATION_REVOKED_EVENT,

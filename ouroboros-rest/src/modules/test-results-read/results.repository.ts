@@ -30,6 +30,7 @@ import type {
   TestSuiteKind,
   TestSuiteResultsFormat,
 } from "../db/schema";
+import { cutoffSql, type RetentionCutoffs } from "../retention/retention.cutoffs";
 import type { ClassificationRow } from "../triage/triage.repository";
 
 /** The run a timeline belongs to — what the attempts card's header prints. */
@@ -537,26 +538,26 @@ export class ResultsRepository {
   }
 
   /**
-   * Live artifacts whose retention has run out, oldest first — the sweep's batch. Every
-   * workspace's: the sweep is the system's, and each row carries its own policy in
-   * `retained_until`.
+   * Live artifacts stored before their workspace's `artifacts` cutoff, oldest first — the sweep's
+   * batch. Every workspace's: the sweep is the system's, and the cutoffs carry each workspace's
+   * tier as it stands now (#482), so a changed tier moves the next sweep.
    *
    * Only rows stored through `driver` are chosen: bytes in another store cannot be removed from
    * here, and tombstoning them anyway would orphan them — they wait for the migration (AV.5, #347).
    *
-   * @param at - Now.
+   * @param cutoffs - The `artifacts` cutoffs, per workspace.
    * @param driver - The driver this process runs.
    * @param limit - The batch size.
    * @returns At most `limit` artifacts.
    */
-  expiring(at: Date, driver: string, limit: number): Promise<ExpiringArtifact[]> {
+  expiring(cutoffs: RetentionCutoffs, driver: string, limit: number): Promise<ExpiringArtifact[]> {
     return this.db
       .selectFrom("test_artifacts")
       .select(["id", "organization_id", "storage_ref", "size_bytes"])
       .where("expired_at", "is", null)
-      .where("retained_until", "<=", at)
+      .where(sql<boolean>`created_at <= ${cutoffSql(cutoffs, "organization_id")}`)
       .where(sql<string>`storage_ref ->> 'driver'`, "=", driver)
-      .orderBy("retained_until")
+      .orderBy("created_at")
       .limit(limit)
       .execute();
   }

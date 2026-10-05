@@ -113,6 +113,16 @@ select pg_temp.must_reject(
   $$update ouroboros.retention_policies set days = 3 where data_class = 'transcripts'$$,
   'retention_policies_floor: a transcript tier below 7 days is refused', 'retention_policies_days_floor');
 
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.retention_policies p
+               where p.days > case when p.data_class in ('transcripts', 'build_logs', 'artifacts')
+                                   then 365 else 3650 end),
+  'retention_policies_ceiling: every stored tier keeps loop data at most 365 days and audit at most 3650');
+
+select pg_temp.must_reject(
+  $$update ouroboros.retention_policies set days = 400 where data_class = 'artifacts'$$,
+  'retention_policies_ceiling: an artifacts tier above 365 days is refused', 'retention_policies_days_ceiling');
+
 -- ===========================================================================
 -- 4. No plaintext secrets
 -- ===========================================================================

@@ -58,6 +58,7 @@ plane refused: `audit.decision.answered`, `audit.decision.answer_failed`, `decis
 `decision.answer_failed`.
 **Registry version 3** (#464) adds snoozing: `audit.decision.snoozed`, `audit.decision.snoozed_all`,
 `audit.decision.unsnoozed` and their `decision.*` types.
+**Registry version 4** (#482) adds a data-retention tier change: `audit.workspace.retention_changed`.
 
 The full list is `GET /api/v1/settings/webhooks` → `registry.eventTypes`.
 

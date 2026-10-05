@@ -92,6 +92,7 @@ function run(over: Partial<Run> = {}): Run {
     event_hint: 20,
     change_set_seq: 2,
     playbook_id: null,
+    events_swept_at: null,
     ...over,
   };
 }

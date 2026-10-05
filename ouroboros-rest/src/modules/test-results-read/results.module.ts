@@ -21,13 +21,15 @@ import { ScheduleModule } from "@nestjs/schedule";
 
 import { DbModule } from "../db/db.module";
 import { FarmArtifactsModule } from "../farm/artifacts/artifacts.module";
+import { RetentionModule } from "../retention/retention.module";
 import { ArtifactRetentionSweeper } from "./artifact.retention";
 import { ResultsController } from "./results.controller";
 import { ResultsRepository } from "./results.repository";
 import { ResultsService } from "./results.service";
 
 @Module({
-  imports: [DbModule, FarmArtifactsModule, ScheduleModule.forRoot()],
+  // `RetentionModule` for the sweep's `artifacts` cutoffs and its schedule (#482).
+  imports: [DbModule, FarmArtifactsModule, RetentionModule, ScheduleModule.forRoot()],
   controllers: [ResultsController],
   providers: [ResultsRepository, ResultsService, ArtifactRetentionSweeper],
 })

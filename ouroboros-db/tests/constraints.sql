@@ -14515,7 +14515,9 @@ select pg_temp.must_hold(
    -- decision item's run and ticket refs resolve for a writer that cannot read either table —
    -- asserted in V093's section. #459 added `decision_ttl_settings()`, so an exception's and a
    -- token's TTL can be bounded by workspace settings the writer cannot read — asserted in
-   -- V096's section.
+   -- V096's section. #482 added `run_events_sweep()`, so the transcript retention sweep can
+   -- remove a finished run's entries while the writer still cannot delete one — asserted in
+   -- V101's section.
    and (select array_agg(proname::text order by proname) = array['decision_ref_resolves',
                                                                  'decision_ttl_settings',
                                                                  'fact_transitions_record',
@@ -14525,10 +14527,11 @@ select pg_temp.must_hold(
                                                                  'record_intervention_event',
                                                                  'run_controls_audit',
                                                                  'run_events_append',
+                                                                 'run_events_sweep',
                                                                  'sync_intervention_events']
           from pg_proc
          where pronamespace = 'ouroboros'::regnamespace and prosecdef),
-  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks, #457''s decision ref resolver and #459''s TTL settings reader are the only functions in the schema that run as the owner at all');
+  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks, #457''s decision ref resolver, #459''s TTL settings reader and #482''s transcript sweep are the only functions in the schema that run as the owner at all');
 
 -- --- the cascades ----------------------------------------------------------------
 delete from ouroboros.runs where id = 'a6100000-0000-0000-0000-000000000484';
@@ -19257,11 +19260,8 @@ select pg_temp.must_reject(
   'and the note says something', 'test_artifacts_truncation_note');
 
 -- --- retention drives the sweep, and expiry is a tombstone ------------------------------------
-set local enable_seqscan = off;
-select pg_temp.must_use_index(
-  $$select id from ouroboros.test_artifacts where expired_at is null and retained_until <= now()$$,
-  'test_artifacts_retention_idx');
-set local enable_seqscan = on;
+-- The sweep's index is asserted in V101's section: #482 moved the sweep from `retained_until` to
+-- `created_at` against the workspace's `artifacts` cutoff, and replaced this migration's index.
 
 select pg_temp.must_hold(
   (select array_agg(id) from ouroboros.test_artifacts
@@ -33885,6 +33885,189 @@ select pg_temp.must_hold(
   and not exists (select 1 from ouroboros.notification_preferences where organization_id = 'org-v100')
   and not exists (select 1 from ouroboros.decision_mail_sends where organization_id = 'org-v100'),
   'a workspace''s keys, mirrors, preferences and sends go with it');
+
+-- ===========================================================================
+-- V101 — retention tiers bounded above, and the transcript sweep (#482, BQ.3)
+-- ===========================================================================
+--
+-- A tier has a ceiling as well as a floor, and the `transcripts` tier finally has a sweep behind
+-- it: `run_events_sweep()` removes a finished run's whole transcript once it finished before the
+-- cutoff, tombstones the run, and refuses a cutoff inside the 7-day floor. The application role
+-- still cannot delete one transcript entry directly.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt", "metadata")
+  values ('org-v101', 'V101 Workspace', 'v101-workspace', now(), null),
+         ('org-v101b', 'V101 Other', 'v101-other', now(), null);
+
+-- --- retention_policies: the ceiling -------------------------------------------------
+insert into ouroboros.retention_policies (organization_id, data_class, days)
+  values ('org-v101', 'transcripts', 365), ('org-v101', 'audit', 3650),
+         ('org-v101', 'custom:ci-cache', 3650);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.retention_policies (organization_id, data_class, days)
+    values ('org-v101', 'artifacts', 366)$$,
+  'loop data is kept at most a year', 'retention_policies_days_ceiling');
+
+select pg_temp.must_reject(
+  $$update ouroboros.retention_policies set days = 3651
+     where organization_id = 'org-v101' and data_class = 'audit'$$,
+  'an audit trail is kept at most ten years', 'retention_policies_days_ceiling');
+
+select pg_temp.must_reject(
+  $$update ouroboros.retention_policies set days = 3651
+     where organization_id = 'org-v101' and data_class = 'custom:ci-cache'$$,
+  'a custom class is kept at most ten years', 'retention_policies_days_ceiling');
+
+-- --- the transcript sweep ------------------------------------------------------------
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a1010000-0000-0000-0000-00000000000a', 'org-v101', 'v101-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a101ff00-0000-0000-0000-00000000000a', 'a1010000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main');
+
+-- Three runs: one finished 40 days ago (past a 30-day cutoff), one finished 10 days ago (inside
+-- it), and one still live. Each says two things.
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at, finished_at,
+     updated_at)
+  values ('a1011000-0000-0000-0000-000000000001', 'org-v101',
+          'a101ff00-0000-0000-0000-00000000000a', 1, 'Old and finished', 'standard-fix',
+          'claude-fable-5', 'failed', 'Build farm', 3, 6, now() - interval '41 days',
+          now() - interval '40 days', now() - interval '40 days'),
+         ('a1011000-0000-0000-0000-000000000002', 'org-v101',
+          'a101ff00-0000-0000-0000-00000000000a', 2, 'Recent and finished', 'standard-fix',
+          'claude-fable-5', 'failed', 'Build farm', 3, 6, now() - interval '11 days',
+          now() - interval '10 days', now() - interval '10 days'),
+         ('a1011000-0000-0000-0000-000000000003', 'org-v101',
+          'a101ff00-0000-0000-0000-00000000000a', 3, 'Still running', 'standard-fix',
+          'claude-fable-5', 'coding', 'Implement', 4, 8, now() - interval '50 days',
+          null, now() - interval '1 hour');
+
+insert into ouroboros.run_events (run_id, actor, stage_key, attempt, body, payload)
+select run_id, 'plan', 'plan', 1, 'abcd', payload
+  from (values ('a1011000-0000-0000-0000-000000000001'::uuid, null::jsonb),
+               ('a1011000-0000-0000-0000-000000000001'::uuid, '{"k": 1}'::jsonb),
+               ('a1011000-0000-0000-0000-000000000002'::uuid, null::jsonb),
+               ('a1011000-0000-0000-0000-000000000002'::uuid, null::jsonb),
+               ('a1011000-0000-0000-0000-000000000003'::uuid, null::jsonb),
+               ('a1011000-0000-0000-0000-000000000003'::uuid, null::jsonb))
+         as e (run_id, payload);
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set events_swept_at = now()
+     where id = 'a1011000-0000-0000-0000-000000000003'$$,
+  'only a finished run''s transcript is ever tombstoned', 'runs_events_swept_when_finished');
+
+select pg_temp.must_hold(
+  (select prosecdef
+      and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+      and not has_function_privilege('public', oid, 'execute')
+      and has_function_privilege('ouroboros_app', oid, 'execute')
+     from pg_proc
+    where proname = 'run_events_sweep' and pronamespace = 'ouroboros'::regnamespace),
+  'the transcript sweep runs as its owner with its search_path pinned, callable by the application role and nobody else');
+
+-- Appending an entry moves the run's counters, which touches updated_at, and `now()` does not
+-- move inside this file's one transaction — so put the two finished runs' updated_at back where
+-- they were last heard from, past the touch trigger, to make what follows observable.
+alter table ouroboros.runs disable trigger runs_touch_updated_at;
+update ouroboros.runs set updated_at = now() - interval '40 days'
+ where id in ('a1011000-0000-0000-0000-000000000001', 'a1011000-0000-0000-0000-000000000002');
+alter table ouroboros.runs enable trigger runs_touch_updated_at;
+
+set local role ouroboros_app;
+
+select pg_temp.must_raise(
+  $$select * from ouroboros.run_events_sweep('org-v101', 'a1011000-0000-0000-0000-000000000002',
+                                             now() - interval '6 days', now())$$,
+  '23514', 'a transcript cutoff inside the 7-day floor is refused, whatever the caller computed');
+
+create temporary table v101_swept as
+select * from ouroboros.run_events_sweep('org-v101b', 'a1011000-0000-0000-0000-000000000001',
+                                         now() - interval '30 days', now());
+select pg_temp.must_hold((select count(*) = 0 from v101_swept),
+  'a run is swept only under its own workspace');
+drop table v101_swept;
+
+create temporary table v101_swept as
+select * from ouroboros.run_events_sweep('org-v101', 'a1011000-0000-0000-0000-000000000002',
+                                         now() - interval '30 days', now());
+select pg_temp.must_hold((select count(*) = 0 from v101_swept),
+  'a run that finished inside the window keeps its transcript');
+drop table v101_swept;
+
+create temporary table v101_swept as
+select * from ouroboros.run_events_sweep('org-v101', 'a1011000-0000-0000-0000-000000000003',
+                                         now() - interval '30 days', now());
+select pg_temp.must_hold((select count(*) = 0 from v101_swept),
+  'a live run''s transcript is never swept, however old the run');
+drop table v101_swept;
+
+create temporary table v101_swept as
+select * from ouroboros.run_events_sweep('org-v101', 'a1011000-0000-0000-0000-000000000001',
+                                         now() - interval '30 days', now());
+select pg_temp.must_hold((select events = 2 and bytes = 8 + length('{"k": 1}') from v101_swept),
+  'the sweep reports its tombstone counts — every entry of the run, and their bytes');
+drop table v101_swept;
+
+select pg_temp.must_raise(
+  $$delete from ouroboros.run_events where run_id = 'a1011000-0000-0000-0000-000000000002'$$,
+  '42501', 'the application role still cannot delete a transcript entry directly');
+
+reset role;
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.run_events
+    where run_id = 'a1011000-0000-0000-0000-000000000001')
+  and (select count(*) = 2 from ouroboros.run_events
+        where run_id = 'a1011000-0000-0000-0000-000000000002')
+  and (select count(*) = 2 from ouroboros.run_events
+        where run_id = 'a1011000-0000-0000-0000-000000000003'),
+  'the sweep removed the old run''s whole transcript and nothing else');
+
+select pg_temp.must_hold(
+  (select events_swept_at = now() and updated_at = now() - interval '40 days'
+     from ouroboros.runs where id = 'a1011000-0000-0000-0000-000000000001'),
+  'the swept run carries its tombstone, and the tombstone is not the run being heard from');
+
+update ouroboros.runs set updated_at = now() - interval '1 day'
+ where id = 'a1011000-0000-0000-0000-000000000002';
+select pg_temp.must_hold(
+  (select updated_at = now() from ouroboros.runs
+    where id = 'a1011000-0000-0000-0000-000000000002'),
+  'any other change to a run still touches updated_at, and a statement still cannot backdate it');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.run_events_sweep('org-v101',
+                'a1011000-0000-0000-0000-000000000001', now() - interval '30 days', now())),
+  'a swept run is swept once');
+
+set local enable_seqscan = off;
+
+-- The transcript sweep finds its candidates by index.
+select pg_temp.must_use_index(
+  $$select id from ouroboros.runs
+     where events_swept_at is null and finished_at is not null and finished_at < now()
+     order by finished_at limit 200$$,
+  'runs_events_unswept_idx');
+
+-- The artifact sweep finds live artifacts by when they were stored.
+select pg_temp.must_use_index(
+  $$select id from ouroboros.test_artifacts
+     where expired_at is null and created_at <= now() - interval '30 days'
+     order by created_at limit 200$$,
+  'test_artifacts_live_created_idx');
+
+set local enable_seqscan = on;
+
+delete from ouroboros.organization where "id" in ('org-v101', 'org-v101b');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.retention_policies where organization_id = 'org-v101')
+  and not exists (select 1 from ouroboros.runs where organization_id = 'org-v101'),
+  'a workspace''s tiers and runs go with it');
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

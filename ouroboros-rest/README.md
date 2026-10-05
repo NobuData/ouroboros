@@ -306,7 +306,7 @@ service never starts half-configured.
 | `OURO_ARTIFACT_QUOTA_BYTES` | Live artifact bytes one workspace keeps; a file past it is skipped with a job **warning**, never a failure |     no — `10737418240`     | 1 KiB to 1 PiB |
 | `OURO_ARTIFACT_MAX_FILE_BYTES` | The per-file cap each offer carries; larger files are sent cut to it, as truncated |     no — `67108864`     | 1 KiB to 64 GiB |
 | `OURO_ARTIFACT_MAX_JOB_BYTES` | The per-job cap each offer carries; files past it are listed as skipped |     no — `268435456`     | at least the per-file cap, ≤ 64 GiB |
-| `OURO_ARTIFACT_RETENTION_DAYS` | Days an artifact is kept — its `retained_until` |     no — `30`     | 1–3650 |
+| `OURO_ARTIFACT_RETENTION_DAYS` | Days an artifact is kept in a workspace with no `artifacts` [retention tier](#data-retention) of its own |     no — `30`     | 1–3650 |
 | `OURO_LOCAL_PROVIDER_URLS`  | Where this deployment's **local** model providers are — what a worker is told by the [internal surface](#the-internal-surface) ([#224](https://github.com/NobuData/ouroboros/issues/224)) |     no — unset     | comma-separated `kind=url` pairs; `ollama` and `openai_compatible` only, each an absolute `http(s)` URL |
 | `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS` | Seconds between [provider health](#provider-health) sweeps, and the age at which a local provider's last check is stale ([#196](https://github.com/NobuData/ouroboros/issues/196)) — jittered ±25% |      no — 60       | a whole number of seconds, 10–86400 |
 | `OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS` | Seconds before a cloud provider's key validation is redone — deliberately much slower, because it asks a vendor rather than the operator's own machine |     no — 900      | a whole number of seconds, 60–86400 |
@@ -4280,6 +4280,41 @@ stored hash-only with a vault-sealed hint; see `docs/SECURITY_MODEL.md` §6.8. A
 V091's CHECK, `SERVICE_SCOPES` and a route that declares it — `service.scopes.spec.ts` keeps the
 first two in step.
 
+## Data retention
+
+**One policy service, per-class tiers, every sweep reading it**
+([#482](https://github.com/NobuData/ouroboros/issues/482), BQ.3). `src/modules/retention/`.
+
+```
+GET   /api/v1/settings/retention   any member · tiers, bounds, next sweep, last tombstone count
+PATCH /api/v1/settings/retention   owner/admin · { loopDays } or { classes } · audited workspace.retention_changed
+```
+
+| Class | Default | Bounds | Swept by |
+|---|---|---|---|
+| `transcripts` | 30 d | 7–365 | `runs/transcript.retention.ts` — a finished run's whole transcript, via V101's `run_events_sweep()`; the run keeps `events_swept_at` |
+| `build_logs` | 30 d | 7–365 | `farm/logs/log.retention.ts` — a finished job's whole log ([build logs](#build-logs)) |
+| `artifacts` | `OURO_ARTIFACT_RETENTION_DAYS` (30) | 7–365 | `test-results-read/artifact.retention.ts` — bytes deleted, row tombstoned |
+| `audit` | 400 d | 90–3650 | the audit purge, BR.2 ([#486](https://github.com/NobuData/ouroboros/issues/486)) — `cutoffs("audit")` is ready for it |
+| `custom:<slug>` | 30 d | 7–3650 | whichever plane adds the class; stored without a schema change |
+
+- **The defaults reproduce the old sweeps**, so a workspace with no stored tier is swept exactly as
+  before, and data inside the old thirty-day boundary survives the first sweep after upgrade.
+- **The cutoff is computed once, centrally**: `RetentionPolicyService.cutoffs(class, now)` answers
+  `now − days` per workspace (a `case` over the workspace column via `cutoffSql`), and a sweep only
+  compares a stored time with it. `retention.sweeps.spec.ts` greps the sweeps for the constants and
+  date arithmetic they used to carry.
+- **The simple select** (`loopDays`) sets the three loop classes and leaves `audit` alone; **the
+  advanced editor** (`classes`) sets classes individually. Bounds are checked before anything is
+  stored; a refusal is `422 retention_out_of_bounds` with `details.refusals[].reason`
+  (`below_floor | above_ceiling | not_whole_days`) and `details.fields`. V094/V101 enforce the same
+  bounds as CHECKs.
+- **Saving deletes nothing.** The change moves the class's *next* sweep; each sweeper reports its
+  next booked time and each run's tombstone count to `RetentionSchedule`, which the `GET` shows as
+  `nextSweepAt` and `lastSweep` (this process's view).
+- Every changed class writes one `workspace.retention_changed` audit event (`dataClass`,
+  `previousDays`, `previousSource`, `days`, actor) — webhook registry version 4.
+
 ## Workspace lifecycle
 
 **Mockup 17's Danger zone as mechanism — pause, disconnect, delete**
@@ -4553,12 +4588,14 @@ placed. That is one figure, so the console draws one marker where two caps meet.
 ships logs (AG.5, #247), every finished job's log is empty and its tail is all of its output,
 which is the truth.
 
-**Retention.** Each chunk keeps its V040 `retain_until`, written at ingest thirty days out. Each
+**Retention.** A finished job's log is removed once every chunk was stored (`received_at`) before
+the workspace's `build_logs` cutoff — the [retention tier](#data-retention), thirty days by default
+— which the sweep asks `RetentionPolicyService` for at each run, so a changed tier moves the next
+sweep. Each chunk still records its `retain_until` at ingest, from the tier at that moment. Each
 workspace also keeps at most `OURO_FARM_LOG_BUDGET_BYTES` (2 GiB) of finished builds' logs, with
 the oldest removed first. Logs are removed whole, never in part, and only a finished job's; the
 job keeps `log_swept_at`, so a read answers `retained: false` rather than an empty log. The sweep
-is bounded to 200 jobs per rule per run, and logs its tombstone counts. BQ.3 (#482) will govern
-the policy per class through the `FARM_LOG_RETENTION` token, and its defaults reproduce these.
+is bounded to 200 jobs per rule per run, and logs and reports its tombstone counts.
 
 **Known limits.** The reorder buffer and the rate guard live in one process, so after a restart
 or a reconnect to another replica, a gap in flight is recorded as lost chunks rather than waited
@@ -5891,7 +5928,7 @@ GET /api/v1/runs/:id/test-runs                   attempts oldest first, each wit
 GET /api/v1/test-runs/:id                        suites · cases · HIL · classifications · artifacts · coverage · warnings
 GET /api/v1/test-runs/:id/cases/:caseId/failure  message · log excerpt · path — 404 for a case that did not fail
 GET /api/v1/artifacts/:id                        the file, streamed through the store — 410 once expired
-hourly sweep                                     retained_until passed ─▶ delete bytes ─▶ expired_at (a tombstone)
+hourly sweep                                     stored before the artifacts cutoff ─▶ delete bytes ─▶ expired_at (a tombstone)
 ```
 
 **The strip.** `total`, `suiteCount` (*across 5 suites*), `passed`, `failed` and `flaky` with the
@@ -5920,13 +5957,16 @@ through `ArtifactStore.open`, so the local→S3 swap is invisible to a caller. A
 or `other` is an `attachment`; an unknown type is `application/octet-stream`, never HTML. Every
 answer carries `nosniff`, `Content-Security-Policy: sandbox` and `private, no-cache`.
 
-**Retention leaves tombstones.** `ArtifactRetentionSweeper` runs hourly (jittered): live rows past
-`retained_until`, stored through this process's driver, oldest first, at most 200 a tick — the
+**Retention leaves tombstones.** `ArtifactRetentionSweeper` runs hourly (jittered): live rows
+stored (`created_at`) before their workspace's `artifacts` cutoff, stored through this process's
+driver, oldest first, at most 200 a tick — the
 bytes are deleted through the store **first**, then `expired_at` is set, and name, kind and size
 stay. The page lists the row as `state: expired` with no `href`, and the download answers `410
-artifact_expired`. The policy is the row's `retained_until`, written at upload from
-`OURO_ARTIFACT_RETENTION_DAYS` (30), so a later change never reaches back; #482's retention service
-computes the `artifacts` tier there. Each tick that removed something logs its tombstone counts.
+artifact_expired`. The cutoff is `RetentionPolicyService`'s `artifacts` tier as it stands at the
+sweep ([data retention](#data-retention)) — `OURO_ARTIFACT_RETENTION_DAYS` (30) for a workspace that
+set none — so a changed tier moves the next sweep. `retained_until` is still written at upload, from
+the tier then, as the card's `retained 30d`. Each tick that removed something logs its tombstone
+counts.
 
 Coverage's `delta` is **absent**, not zero, with no earlier attempt that has coverage; the parser's
 `parseWarnings` (#329) are on the page payload for the banner. Everything is scoped to the session's
@@ -5944,7 +5984,7 @@ suites:
 | `farm/artifacts/upload.integration-spec.ts` | token scope and single use, cross-job replay refused, quota warning, truncation manifests, checksum refusal — declared twice, local volume and MinIO, unchanged (AT.2) |
 | `flakes/flakes.integration-spec.ts` | sanctioned vs unsanctioned retries, formula 1's window boundaries (three observations, the band between thresholds, twenty runs) crossed both ways, `formula_version` stamping, the nightly cap (AT.3) |
 | `triage/triage.integration-spec.ts` | hints with `confidence: null`, the correction round's steer and attempt increment, dispatch carrying only the failed set, the infra flag, audit rows (AT.4); `triage.rules.spec.ts` replays the hint matrix, every rule firing and not |
-| `test-results-read/artifact.retention.integration-spec.ts` | the sweep removes bytes, leaves tombstones (`410`, `state: expired`), honours each workspace's `retained_until`, leaves another driver's rows — local volume and MinIO |
+| `test-results-read/artifact.retention.integration-spec.ts` | the sweep removes bytes, leaves tombstones (`410`, `state: expired`), honours each workspace's `artifacts` tier, leaves another driver's rows — local volume and MinIO |
 | `test-plane/test-plane.integration-spec.ts` | the **`failing-HIL` scenario** replayed, and **isolation**: every route the epic added, enumerated from the route table, `404`s another workspace |
 
 **The `failing-HIL` scenario** (`test-plane/failing-hil.scenario.fixture.ts`) plays mockup 11's
@@ -7010,6 +7050,7 @@ ouroboros-rest/
 │       ├── triage/         # Mark & Route: hints, classify, re-run, waive  · #332
 │       │                   #   triage.rules.ts — the three heuristic rules, pure
 │       │                   #   triage.contract.ts — /v0/triage, held to schemas/triage/v0.json
+│       ├── retention/        # data-retention tiers, the cutoffs every sweep reads · #482
 │       ├── test-results-read/ # the Test Results page's reads, downloads, retention · #333
 │       │                   #   results.strip.ts — ▲ deltas, T8's activation state, pure
 │       │                   #   artifact.serving.ts — type, inline or attachment, safe headers

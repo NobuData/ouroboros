@@ -76,7 +76,7 @@ printf '\nThe markers, the fragment and the migrations agree\n'
 # invariant's stored-row assertion — so each one has to be a message the fragment raises.
 markers=$(awk "/^expect_red '/ { getline; sub(/^ *'/, \"\"); sub(/' \\\\\$/, \"\"); print }" "$VERIFIER")
 marker_count=$(printf '%s\n' "$markers" | grep -c .)
-check_equals 13 "$marker_count" 'the verifier plants thirteen bad rows'
+check_equals 14 "$marker_count" 'the verifier plants fourteen bad rows'
 
 printf '%s\n' "$markers" | while IFS= read -r marker; do
   if grep -qF -- "'$marker" "$FRAGMENT"; then
@@ -95,6 +95,7 @@ for invariant in \
   member_capabilities_explicit \
   service_accounts_least_privilege \
   retention_policies_floor \
+  retention_policies_ceiling \
   webhook_keys_sealed \
   service_tokens_hash_only \
   webhook_deliveries_family_subscribed \

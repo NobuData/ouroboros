@@ -622,6 +622,20 @@
 #   a send names its item or its slot            drop decision_mail_sends_subject
 #   a settled send is in shape                   drop decision_mail_sends_settled_shape
 #
+# #482 (BQ.3, V101) bounds retention tiers above and gives the transcripts tier its sweep. One
+# probe per rule "a tier governs what it claims, and no sweep reaches inside the window" rests on:
+#
+#   V101 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   loop data at most 365 days, audit 3650       drop retention_policies_days_ceiling
+#   only a finished run is tombstoned            drop runs_events_swept_when_finished
+#   no cutoff reaches inside the 7-day floor     rewrite run_events_sweep() without the floor
+#   a run inside its window keeps its transcript rewrite run_events_sweep() ignoring the cutoff
+#   a run is swept only under its own workspace  rewrite run_events_sweep() ignoring the workspace
+#   the tombstone does not touch updated_at      recreate V008's unconditional touch trigger
+#   the sweep's candidates are an index read     drop runs_events_unswept_idx
+#   live artifacts are scanned by created_at     drop test_artifacts_live_created_idx
+#
 # #457 (BM.1, V093) adds the decision domain — versioned kind declarations and the typed items
 # filed against them. One probe per rule the inbox's truthfulness rests on:
 #
@@ -3308,6 +3322,44 @@ expect_red 'a digest may name an item' \
 expect_red 'a failed send may say nothing' \
   'a failed send says why' \
   'alter table ouroboros.decision_mail_sends drop constraint decision_mail_sends_settled_shape;'
+
+# V101 (#482). The tier ceiling, and the transcript sweep's guards.
+expect_red 'loop data may be kept for years' \
+  'loop data is kept at most a year' \
+  'alter table ouroboros.retention_policies drop constraint retention_policies_days_ceiling;'
+
+expect_red 'a live run may carry a transcript tombstone' \
+  'only a finished run.s transcript is ever tombstoned' \
+  'alter table ouroboros.runs drop constraint runs_events_swept_when_finished;'
+
+expect_red 'a transcript cutoff may reach inside the floor' \
+  'a transcript cutoff inside the 7-day floor is refused' \
+  "$(rewrite_definition "pg_get_functiondef('ouroboros.run_events_sweep(text, uuid, timestamptz, timestamptz)'::regprocedure)" \
+       "if p_cutoff > now() - interval '7 days' then" '' 'if false then')"
+
+expect_red 'the transcript sweep may ignore the cutoff' \
+  'a run that finished inside the window keeps its transcript' \
+  "$(rewrite_definition "pg_get_functiondef('ouroboros.run_events_sweep(text, uuid, timestamptz, timestamptz)'::regprocedure)" \
+       'and run.finished_at < p_cutoff' '' '')"
+
+expect_red 'the transcript sweep may reach another workspace' \
+  'a run is swept only under its own workspace' \
+  "$(rewrite_definition "pg_get_functiondef('ouroboros.run_events_sweep(text, uuid, timestamptz, timestamptz)'::regprocedure)" \
+       'and run.organization_id = p_organization_id' '' '')"
+
+expect_red 'a transcript tombstone may touch updated_at' \
+  'the tombstone is not the run being heard from' \
+  'drop trigger runs_touch_updated_at on ouroboros.runs;
+   create trigger runs_touch_updated_at before update on ouroboros.runs
+     for each row execute function ouroboros.touch_updated_at();'
+
+expect_red 'the transcript sweep has no index' \
+  'did not use index runs_events_unswept_idx' \
+  'drop index ouroboros.runs_events_unswept_idx;'
+
+expect_red 'the artifact sweep has no index' \
+  'did not use index test_artifacts_live_created_idx' \
+  'drop index ouroboros.test_artifacts_live_created_idx;'
 
 printf '\n'
 if check_summary; then

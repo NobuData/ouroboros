@@ -6,7 +6,9 @@ import { fixtureFrame } from "../gateway/gateway.fixture";
 import { GatewayMetrics } from "../gateway/gateway.metrics";
 import { decode, type Envelope, type MessageType } from "../protocol/protocol";
 import { wireId } from "../protocol/ulid";
-import { LOG_GAP_WAIT_MS, LOG_IDLE_FORGET_MS, LOG_RETENTION_DAYS } from "./log.policy";
+import { retentionHarness, type RetentionHarness } from "../../retention/retention.fixture";
+import { RETENTION_DEFAULT_DAYS } from "../../retention/retention.policy";
+import { LOG_GAP_WAIT_MS, LOG_IDLE_FORGET_MS } from "./log.policy";
 import { LogIngest } from "./log.ingest";
 import type { ChunkWrite, FinishedLog, LogRepository, Stored, WritableJob } from "./log.repository";
 import { RateGuard } from "./rate.guard";
@@ -112,6 +114,7 @@ describe("log ingest", () => {
   let now: number;
   let repository: RecordingRepository;
   let sessions: AgentSessions;
+  let retention: RetentionHarness;
   let guard: RateGuard;
   let ingest: LogIngest;
   const from: FrameContext = { organizationId: ORG, runnerId: RUNNER, sessionId: "sess_x" };
@@ -119,13 +122,14 @@ describe("log ingest", () => {
   beforeEach(() => {
     now = Date.parse("2026-09-19T12:00:00.000Z");
     repository = new RecordingRepository();
+    retention = retentionHarness();
     sessions = new AgentSessions(() => new Date(now), new GatewayMetrics());
     guard = new RateGuard(1_000_000, 1_000_000);
     ingest = new LogIngest(
       repository as unknown as LogRepository,
       sessions,
       guard,
-      { days: LOG_RETENTION_DAYS, budgetBytesPerOrg: 1 << 30 },
+      retention.service,
       new SchedulerRegistry(),
       () => new Date(now),
     );
@@ -148,8 +152,22 @@ describe("log ingest", () => {
       elidedBytes: 0,
       missingChunks: 0,
       agentDropped: 0,
-      retainUntil: new Date(now + LOG_RETENTION_DAYS * 86_400_000),
+      retainUntil: new Date(now + RETENTION_DEFAULT_DAYS.build_logs * 86_400_000),
     });
+  });
+
+  it("stamps retain_until from the workspace's build_logs tier (#482)", async () => {
+    await retention.service.update(
+      ORG,
+      { userId: "u-admin", roles: ["owner"] },
+      {
+        classes: { build_logs: 90 },
+      },
+    );
+
+    await sessions.notify(from, chunk(0, "$ west build\n"));
+
+    expect(repository.stored[0].retainUntil).toEqual(new Date(now + 90 * 86_400_000));
   });
 
   it("REASSEMBLES IN ORDER under deliberately out-of-order arrival", async () => {
@@ -197,7 +215,7 @@ describe("log ingest", () => {
       repository as unknown as LogRepository,
       sessions,
       guard,
-      { days: LOG_RETENTION_DAYS, budgetBytesPerOrg: 1 << 30 },
+      retention.service,
       new SchedulerRegistry(),
       () => new Date(now),
     );
