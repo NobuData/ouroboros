@@ -7111,5 +7111,26 @@ select pg_temp.must_hold(
    and (select count(*) = 0 from ouroboros.draft_operations),
   'no seed applies a draft operation yet — every workflow is at revision 0 with nothing counted');
 
+-- ===========================================================================
+-- Dry runs stay out of the run plane, and say what they rest on (#557, CC.3)
+-- ===========================================================================
+--
+-- The W4 isolation probe over the seeded database — every migration and every seeded view in
+-- place: no foreign key joins a dry_run* table to the run plane, and no view reads from both.
+-- And the honesty probes over whatever dry runs exist: no replayed row without a sample count,
+-- and no cost of 0 on a run that metered nothing. CC.4 (#558) seeds mockup 20's dry run.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.dry_run_isolation_violations),
+  'no seeded foreign key or view couples the dry-run domain to the run plane');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.dry_run_stages
+    where how = 'replayed' and not (metrics ? 'sample_count')),
+  'no replayed dry-run row exists without the sample count its estimate rests on');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.dry_runs where cost_cents = 0 and tokens is null),
+  'no seeded dry run carries a fabricated zero cost for a run nothing was metered for');
+
 \o
 \echo 'seed.sql: all assertions passed'

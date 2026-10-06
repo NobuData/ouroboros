@@ -14528,12 +14528,15 @@ select pg_temp.must_hold(
    -- #609 added `source_records_allocate_cite_no()`, so a source's [cite number] is drawn from a
    -- counter the writer cannot set — asserted in V108's section. #556 added `apply_draft_batch()`,
    -- so a draft operation is recorded only with the draft it changed — asserted in V110's section.
+   -- #557 added `dry_runs_sweep()`, so the dry-run retention sweep can remove finished dry runs
+   -- and their artifacts while the writer still cannot delete one — asserted in V111's section.
    and (select array_agg(proname::text order by proname) = array['apply_draft_batch',
                                                                  'audit_events_purge',
                                                                  'copilot_messages_allocate_seq',
                                                                  'copilot_sessions_sweep',
                                                                  'decision_ref_resolves',
                                                                  'decision_ttl_settings',
+                                                                 'dry_runs_sweep',
                                                                  'fact_transitions_record',
                                                                  'failure_classifications_routed_valid',
                                                                  'intervention_hook_classification',
@@ -14547,7 +14550,7 @@ select pg_temp.must_hold(
                                                                  'sync_intervention_events']
           from pg_proc
          where pronamespace = 'ouroboros'::regnamespace and prosecdef),
-  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks, #457''s decision ref resolver, #459''s TTL settings reader, #482''s transcript sweep, #486''s audit purge, #608''s RS allocator and #555''s copilot seq allocator and chat sweep and #609''s cite allocator and #556''s draft batch writer are the only functions in the schema that run as the owner at all');
+  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks, #457''s decision ref resolver, #459''s TTL settings reader, #482''s transcript sweep, #486''s audit purge, #608''s RS allocator and #555''s copilot seq allocator and chat sweep and #609''s cite allocator and #556''s draft batch writer and #557''s dry-run sweep are the only functions in the schema that run as the owner at all');
 
 -- --- the cascades ----------------------------------------------------------------
 delete from ouroboros.runs where id = 'a6100000-0000-0000-0000-000000000484';
@@ -36488,6 +36491,538 @@ select pg_temp.must_hold(
   'a workflow''s operation log goes with it');
 
 -- ===========================================================================
+-- V111 — dry-run records in their own domain (#557, CC.3)
+-- ===========================================================================
+--
+-- Mockup 20's dry-run card, as rows: #489 on draft v0.3, seven result rows with their exact how
+-- labels and notes (the skipped row's reason among them), the replayed build's estimate with its
+-- sample, the simulated diff bounded and summarised, 2m 41s and $0.31, guards clean. Then what
+-- the schema refuses, an unpriced and a budget-stopped run, an injected guard violation, the W4
+-- isolation probe going red on a planted coupling, history read by index over a corpus, and the
+-- retention sweep cutting the bulk before the record.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v111',  'Dry Works', 'dry-works-v111', now()),
+  ('org-v111b', 'Dry Two',   'dry-two-v111',   now());
+
+insert into ouroboros.workflows (id, organization_id, slug, name) values
+  ('a1110000-0000-0000-0000-000000000101', 'org-v111',  'security-patch', 'Security patch'),
+  ('a1110000-0000-0000-0000-000000000102', 'org-v111',  'standard-fix',   'Standard fix'),
+  ('a1110000-0000-0000-0000-000000000103', 'org-v111b', 'security-patch', 'Security patch');
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('a1110000-0000-0000-0000-00000000000a', 'org-v111',  'github', 'GitHub · dry works'),
+  ('a1110000-0000-0000-0000-00000000000b', 'org-v111b', 'github', 'GitHub · dry two');
+
+insert into ouroboros.tickets
+    (id, organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values
+    ('a1110000-0000-0000-0000-000000000489', 'org-v111', 'a1110000-0000-0000-0000-00000000000a',
+     '489', '#489', 'https://github.com/dry-works-v111/helios-firmware/issues/489',
+     'CAN arbitration-lost storm under full telemetry load', 'open', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z'),
+    ('a1110000-0000-0000-0000-000000000490', 'org-v111b', 'a1110000-0000-0000-0000-00000000000b',
+     '490', '#490', 'https://github.com/dry-two-v111/helios-firmware/issues/490',
+     'Another workspace''s ticket', 'open', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+insert into ouroboros.copilot_sessions (id, organization_id, workflow_id, draft_name) values
+  ('a1110000-0000-0000-0000-000000000201', 'org-v111', 'a1110000-0000-0000-0000-000000000101', 'security-patch'),
+  ('a1110000-0000-0000-0000-000000000202', 'org-v111', 'a1110000-0000-0000-0000-000000000102', 'standard-fix');
+
+-- --- the mockup's dry run --------------------------------------------------------------
+insert into ouroboros.dry_runs
+    (id, organization_id, workflow_id, base_version, draft_rev, session_id, ticket_id, pinned_sha, started_at)
+  values
+    ('a1110000-0000-0000-0000-000000000301', 'org-v111', 'a1110000-0000-0000-0000-000000000101', null, 3,
+     'a1110000-0000-0000-0000-000000000201', 'a1110000-0000-0000-0000-000000000489',
+     'b7e4c2a19f0d3e5b6a7c8d9e0f1a2b3c4d5e6f70', '2026-10-06T10:00:00Z');
+
+select pg_temp.must_hold(
+  (select status = 'precheck' and mode = 'deep' and guard_audit = '[]' and guards_clean
+          and precheck_findings is null and duration_ms is null and cost_cents is null and finished_at is null
+     from ouroboros.dry_runs where id = 'a1110000-0000-0000-0000-000000000301'),
+  'a dry run starts in precheck, deep, with a clean guard audit, no pre-check result and no totals');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_runs set status = 'running' where id = 'a1110000-0000-0000-0000-000000000301'$$,
+  'a dry run is not past its pre-check until the pre-check''s findings are recorded', 'dry_runs_precheck_recorded');
+
+update ouroboros.dry_runs set status = 'running', precheck_findings = '[]'
+ where id = 'a1110000-0000-0000-0000-000000000301';
+
+insert into ouroboros.dry_run_stages
+    (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note, metrics, skip_reason)
+  values
+    ('org-v111', 'a1110000-0000-0000-0000-000000000301', 1, 'analyze', 'analyze', 'ok', 'llm',
+     'mapped 4 files · advisory DB skipped (no CVE on this issue)', '{"tokens": 12000, "files_touched": 4}', null),
+    ('org-v111', 'a1110000-0000-0000-0000-000000000301', 2, 'plan', 'plan', 'ok', 'llm',
+     '3 steps · would touch drivers/can/arbitration.c', '{"tokens": 9000}', null),
+    ('org-v111', 'a1110000-0000-0000-0000-000000000301', 3, 'implement', 'implement', 'ok', 'llm',
+     'diff drafted +41 −9 (below) · 84k tokens',
+     '{"tokens": 84000, "files_touched": 1, "simulated_writes": 1, "lines_added": 41, "lines_removed": 9}', null),
+    ('org-v111', 'a1110000-0000-0000-0000-000000000301', 4, 'build', 'build', 'ok', 'replayed',
+     'est. 4m 02s (214 similar builds, ±20s)',
+     '{"estimate_ms": 242000, "sample_count": 214, "spread_ms": 20000, "similarity_class": "zephyr-can-driver"}', null),
+    ('org-v111', 'a1110000-0000-0000-0000-000000000301', 5, 'exploit-verify', 'exploit-verify', 'skipped', 'skipped',
+     'no PoC exists: stage had nothing to do', '{}', 'no PoC exists: stage had nothing to do'),
+    ('org-v111', 'a1110000-0000-0000-0000-000000000301', 6, 'review', 'review ×2', 'ok', 'llm',
+     'both approve · 1 style nit', '{"tokens": 31000}', null),
+    ('org-v111', 'a1110000-0000-0000-0000-000000000301', 7, 'open-pr', 'open PR', 'not_reached', 'deterministic',
+     'would open DRAFT PR · not merged (policy)', '{}', null);
+
+insert into ouroboros.dry_run_artifacts
+    (organization_id, dry_run_id, kind, content, truncated, original_bytes, path_summary)
+  values
+    ('org-v111', 'a1110000-0000-0000-0000-000000000301', 'overlay_diff',
+     E'@@ drivers/can/arbitration.c @@\n-    if (err & CAN_ERR_LOSTARB) {\n+    if (err & CAN_ERR_LOSTARB) {\n',
+     false, octet_length(E'@@ drivers/can/arbitration.c @@\n-    if (err & CAN_ERR_LOSTARB) {\n+    if (err & CAN_ERR_LOSTARB) {\n'),
+     '[{"path": "drivers/can/arbitration.c", "added": 41, "removed": 9}]'),
+    ('org-v111', 'a1110000-0000-0000-0000-000000000301', 'plan_excerpt',
+     '1. back off exponentially on lost arbitration', false, 45, null);
+
+update ouroboros.dry_runs
+   set status = 'complete', finished_at = started_at + interval '2 minutes 41 seconds',
+       duration_ms = 161000, cost_cents = 31, tokens = 136000
+ where id = 'a1110000-0000-0000-0000-000000000301';
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s|%s|%s|%s', display_name, verdict,
+                           coalesce(ouroboros.dry_run_stage_how_label(how, metrics), '-'), note) order by seq)
+          = array['analyze|ok|-|mapped 4 files · advisory DB skipped (no CVE on this issue)',
+                  'plan|ok|-|3 steps · would touch drivers/can/arbitration.c',
+                  'implement|ok|simulated|diff drafted +41 −9 (below) · 84k tokens',
+                  'build|ok|replayed from history|est. 4m 02s (214 similar builds, ±20s)',
+                  'exploit-verify|skipped|skipped|no PoC exists: stage had nothing to do',
+                  'review ×2|ok|-|both approve · 1 style nit',
+                  'open PR|not_reached|-|would open DRAFT PR · not merged (policy)']
+     from ouroboros.dry_run_stages where dry_run_id = 'a1110000-0000-0000-0000-000000000301'),
+  'the seven mockup result rows read back with their exact how labels and composed notes');
+
+select pg_temp.must_hold(
+  (select skip_reason = 'no PoC exists: stage had nothing to do'
+     from ouroboros.dry_run_stages
+    where dry_run_id = 'a1110000-0000-0000-0000-000000000301' and stage_key = 'exploit-verify'),
+  'the skipped row carries its reason');
+
+select pg_temp.must_hold(
+  (select (metrics ->> 'estimate_ms')::int = 242000 and (metrics ->> 'sample_count')::int = 214
+          and (metrics ->> 'spread_ms')::int = 20000
+     from ouroboros.dry_run_stages
+    where dry_run_id = 'a1110000-0000-0000-0000-000000000301' and how = 'replayed'),
+  'the replayed row stores its estimate with the sample count and spread it rests on');
+
+select pg_temp.must_hold(
+  (select duration_ms = 161000 and cost_cents = 31 and guards_clean and status = 'complete'
+     from ouroboros.dry_runs where id = 'a1110000-0000-0000-0000-000000000301')
+   and (select truncated = false and original_bytes = octet_length(content)
+               and path_summary -> 0 ->> 'path' = 'drivers/can/arbitration.c'
+          from ouroboros.dry_run_artifacts
+         where dry_run_id = 'a1110000-0000-0000-0000-000000000301' and kind = 'overlay_diff'),
+  'the card''s head reads 2m 41s · $0.31 with guards clean, and the whole diff says it is whole');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(format('v%s.%s', coalesce(base_version, 0), draft_rev) = 'v0.3')
+     from ouroboros.dry_runs where workflow_id = 'a1110000-0000-0000-0000-000000000101'),
+  'the footer''s history line: 1 dry run · draft v0.3');
+
+-- --- a finished dry run is a record --------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.dry_runs set cost_cents = 0 where id = 'a1110000-0000-0000-0000-000000000301'$$,
+  'a finished dry run''s totals are final', 'dry_runs_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_runs set status = 'failed', failure_reason = 'later'
+     where id = 'a1110000-0000-0000-0000-000000000301'$$,
+  'complete is terminal', 'dry_runs_transition');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000301', 8, 'merge', 'merge', 'ok', 'deterministic', 'merged')$$,
+  'a finished dry run takes no new result rows', 'dry_run_stages_open');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_run_stages set note = 'rewritten'
+     where dry_run_id = 'a1110000-0000-0000-0000-000000000301' and seq = 1$$,
+  'a finished dry run''s result rows are final', 'dry_run_stages_open');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_run_artifacts set content = 'rewritten', original_bytes = 9
+     where dry_run_id = 'a1110000-0000-0000-0000-000000000301' and kind = 'plan_excerpt'$$,
+  'a finished dry run''s artifacts are final', 'dry_run_artifacts_open');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_runs set pinned_sha = '0000000000000000000000000000000000000000'
+     where id = 'a1110000-0000-0000-0000-000000000301'$$,
+  'a dry run keeps the commit it read at', 'dry_runs_transition');
+
+-- --- an unpriced run, budget-stopped -------------------------------------------------
+insert into ouroboros.dry_runs
+    (id, organization_id, workflow_id, draft_rev, ticket_id, pinned_sha, status, precheck_findings)
+  values
+    ('a1110000-0000-0000-0000-000000000302', 'org-v111', 'a1110000-0000-0000-0000-000000000102', 1,
+     'a1110000-0000-0000-0000-000000000489', 'c0ffee0000000000000000000000000000000001', 'running', '[]');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_runs set status = 'budget_stopped', finished_at = now(), duration_ms = 5000
+     where id = 'a1110000-0000-0000-0000-000000000302'$$,
+  'a budget stop says why', 'dry_runs_failure_reason');
+
+update ouroboros.dry_runs
+   set status = 'budget_stopped', finished_at = started_at + interval '5 seconds', duration_ms = 5000,
+       failure_reason = 'spend cap of $5.00 reached'
+ where id = 'a1110000-0000-0000-0000-000000000302';
+
+select pg_temp.must_hold(
+  (select status = 'budget_stopped' and cost_cents is null and tokens is null
+     from ouroboros.dry_runs where id = 'a1110000-0000-0000-0000-000000000302')
+   and (select array_agg(status order by status)
+               = array['budget_stopped', 'complete']
+          from ouroboros.dry_runs where organization_id = 'org-v111'),
+  'an unpriced run has a null cost, not 0, and budget_stopped stands apart from complete');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_runs set status = 'failed' where id = 'a1110000-0000-0000-0000-000000000302'$$,
+  'budget_stopped is terminal and distinct from failed', 'dry_runs_transition');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_runs (organization_id, workflow_id, draft_rev, ticket_id, pinned_sha, status, precheck_findings)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000102', 1, 'a1110000-0000-0000-0000-000000000489',
+            'c0ffee0000000000000000000000000000000001', 'stopped', '[]')$$,
+  'the status vocabulary is closed', 'dry_runs_status');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_runs (organization_id, workflow_id, draft_rev, ticket_id, pinned_sha, mode)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000102', 1, 'a1110000-0000-0000-0000-000000000489',
+            'c0ffee0000000000000000000000000000000001', 'shallow')$$,
+  'the mode vocabulary is deep and the reserved deep_build', 'dry_runs_mode');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_runs (organization_id, workflow_id, draft_rev, ticket_id, pinned_sha)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000102', 1, 'a1110000-0000-0000-0000-000000000489', 'b7e')$$,
+  'the pinned sha is a full commit sha', 'dry_runs_pinned_sha_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_runs (organization_id, workflow_id, draft_rev, ticket_id, pinned_sha, cost_cents)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000102', 1, 'a1110000-0000-0000-0000-000000000489',
+            'c0ffee0000000000000000000000000000000001', -1)$$,
+  'a cost is never negative', 'dry_runs_cost_nonnegative');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_runs (organization_id, workflow_id, draft_rev, ticket_id, pinned_sha)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000102', 1, 'a1110000-0000-0000-0000-000000000490',
+            'c0ffee0000000000000000000000000000000001')$$,
+  'a dry run runs against a ticket of its own workspace', 'dry_runs_ticket_workspace');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_runs (organization_id, workflow_id, draft_rev, session_id, ticket_id, pinned_sha)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000101', 1, 'a1110000-0000-0000-0000-000000000202',
+            'a1110000-0000-0000-0000-000000000489', 'c0ffee0000000000000000000000000000000001')$$,
+  'a dry run''s copilot session is a conversation about the same workflow', 'dry_runs_session_workflow');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_runs (organization_id, workflow_id, draft_rev, ticket_id, pinned_sha)
+    values ('org-v111b', 'a1110000-0000-0000-0000-000000000101', 1, 'a1110000-0000-0000-0000-000000000490',
+            'c0ffee0000000000000000000000000000000001')$$,
+  'a dry run tests a workflow of its own workspace', 'dry_runs_workflow_fk');
+
+-- --- the stage vocabulary and its honesty --------------------------------------------
+insert into ouroboros.dry_runs
+    (id, organization_id, workflow_id, draft_rev, ticket_id, pinned_sha, status, precheck_findings)
+  values
+    ('a1110000-0000-0000-0000-000000000303', 'org-v111', 'a1110000-0000-0000-0000-000000000102', 1,
+     'a1110000-0000-0000-0000-000000000489', 'c0ffee0000000000000000000000000000000002', 'running', '[]');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note, metrics)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'build', 'build', 'ok', 'replayed',
+            'est. 4m 02s', '{"estimate_ms": 242000, "spread_ms": 20000, "similarity_class": "zephyr"}')$$,
+  'a replayed row without a sample count is refused — an estimate travels with its basis',
+  'dry_run_stages_metrics_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note, metrics)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'build', 'build', 'ok', 'replayed',
+            'est. 4m 02s', '{"estimate_ms": 242000, "sample_count": 0, "spread_ms": 20000, "similarity_class": "zephyr"}')$$,
+  'a replay rests on at least one sample', 'dry_run_stages_metrics_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note, metrics)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'build', 'build', 'ok', 'llm',
+            'est. 4m 02s', '{"estimate_ms": 242000, "sample_count": 214, "spread_ms": 20000, "similarity_class": "zephyr"}')$$,
+  'only a replayed row carries an estimate — a measurement is not dressed as one', 'dry_run_stages_metrics_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note, metrics)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'plan', 'plan', 'ok', 'llm', 'x', '{"mood": 1}')$$,
+  'metrics carry only the known measurements', 'dry_run_stages_metrics_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'plan', 'plan', 'ok', 'guessed', 'x')$$,
+  'how is one of llm, replayed, deterministic and skipped', 'dry_run_stages_how');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'plan', 'plan', 'passed', 'llm', 'x')$$,
+  'verdict is one of ok, skipped, failed and not_reached', 'dry_run_stages_verdict');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note, skip_reason)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'verify', 'verify', 'skipped', 'llm', 'x', 'nothing')$$,
+  'a skipped verdict is a skipped how', 'dry_run_stages_skipped_paired');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'verify', 'verify', 'skipped', 'skipped', 'x')$$,
+  'a skipped row says why', 'dry_run_stages_skip_reason');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'plan', 'plan', 'ok', 'llm', '  ')$$,
+  'a reached row has a result line', 'dry_run_stages_note_when_reached');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'Open PR', 'open PR', 'ok', 'llm', 'x')$$,
+  'a stage key is a DSL slug', 'dry_run_stages_stage_key_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note)
+    values ('org-v111b', 'a1110000-0000-0000-0000-000000000303', 1, 'plan', 'plan', 'ok', 'llm', 'x')$$,
+  'a result row belongs to a dry run of its own workspace', 'dry_run_stages_dry_run_fk');
+
+-- --- the diff is bounded, and a truncated one says so ---------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_artifacts (organization_id, dry_run_id, kind, content, truncated, original_bytes, path_summary)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 'overlay_diff', repeat('+', 65537), false, 65537,
+            '[{"path": "a.c", "added": 1, "removed": 0}]')$$,
+  'an artifact''s content is at most 64 KiB', 'dry_run_artifacts_content_bounded');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_artifacts (organization_id, dry_run_id, kind, content, truncated, original_bytes, path_summary)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 'overlay_diff', repeat('+', 65536), false, 400000,
+            '[{"path": "a.c", "added": 1, "removed": 0}]')$$,
+  'a cut diff cannot claim to be whole', 'dry_run_artifacts_truncation_honest');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_artifacts (organization_id, dry_run_id, kind, content, truncated, original_bytes, path_summary)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 'overlay_diff', 'abc', true, 3,
+            '[{"path": "a.c", "added": 1, "removed": 0}]')$$,
+  'a whole diff cannot claim to be cut', 'dry_run_artifacts_truncation_honest');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_artifacts (organization_id, dry_run_id, kind, content, truncated, original_bytes)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 'overlay_diff', 'abc', false, 3)$$,
+  'an overlay diff carries its path summary', 'dry_run_artifacts_path_summary');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_artifacts (organization_id, dry_run_id, kind, content, truncated, original_bytes, path_summary)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 'review_excerpt', 'lgtm', false, 4,
+            '[{"path": "a.c", "added": 1, "removed": 0}]')$$,
+  'an excerpt has no path summary', 'dry_run_artifacts_path_summary');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_artifacts (organization_id, dry_run_id, kind, content, truncated, original_bytes)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 'transcript', 'x', false, 1)$$,
+  'the artifact kinds are overlay_diff, plan_excerpt and review_excerpt', 'dry_run_artifacts_kind');
+
+insert into ouroboros.dry_run_artifacts
+    (organization_id, dry_run_id, kind, content, truncated, original_bytes, path_summary)
+  values
+    ('org-v111', 'a1110000-0000-0000-0000-000000000303', 'overlay_diff', repeat('+', 65536), true, 400000,
+     '[{"path": "src/a.c", "added": 9000, "removed": 12}, {"path": "src/b.c", "added": 3, "removed": 3}]');
+
+select pg_temp.must_hold(
+  (select truncated and original_bytes = 400000 and octet_length(content) = 65536
+          and jsonb_array_length(path_summary) = 2
+     from ouroboros.dry_run_artifacts
+    where dry_run_id = 'a1110000-0000-0000-0000-000000000303' and kind = 'overlay_diff'),
+  'a large refactor''s diff is stored bounded, flagged truncated, with its original size and every path');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_artifacts (organization_id, dry_run_id, kind, content, truncated, original_bytes, path_summary)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 'overlay_diff', 'x', false, 1,
+            '[{"path": "a.c", "added": 1, "removed": 0}]')$$,
+  'a dry run has one overlay diff', 'dry_run_artifacts_one_overlay_diff');
+
+-- --- the guard audit: empty when clean, populated when a guard held ------------------
+select pg_temp.must_reject(
+  $$update ouroboros.dry_runs set guard_audit = '[{"guard": "pr", "call": "open_pr", "count": 0}]'
+     where id = 'a1110000-0000-0000-0000-000000000303'$$,
+  'a guard audit entry counts at least one blocked call', 'dry_runs_guard_audit_shape');
+
+-- The injected violation: the implement stage tried to push and open a PR.
+update ouroboros.dry_runs
+   set guard_audit = '[{"guard": "write", "call": "git push origin HEAD", "count": 2, "stage_key": "implement"},
+                       {"guard": "pr", "call": "open_pr", "count": 1, "stage_key": "implement"}]',
+       status = 'failed', failure_reason = 'guards blocked 3 calls', finished_at = now(), duration_ms = 12000
+ where id = 'a1110000-0000-0000-0000-000000000303';
+
+select pg_temp.must_hold(
+  (select not guards_clean and jsonb_array_length(guard_audit) = 2
+     from ouroboros.dry_runs where id = 'a1110000-0000-0000-0000-000000000303')
+   and (select guards_clean and guard_audit = '[]'
+          from ouroboros.dry_runs where id = 'a1110000-0000-0000-0000-000000000301'),
+  'the guard audit is empty on the clean run and populated on the injected violation');
+
+-- --- W4: zero coupling to the run plane ----------------------------------------------
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.dry_run_isolation_violations),
+  'no foreign key joins the dry-run domain to the run plane, and no view reads from both');
+
+select pg_temp.must_hold(
+  not exists (select 1 from pg_constraint
+               where contype = 'f'
+                 and conrelid in ('ouroboros.dry_runs'::regclass, 'ouroboros.dry_run_stages'::regclass,
+                                  'ouroboros.dry_run_artifacts'::regclass)
+                 and confrelid not in ('ouroboros.organization'::regclass, 'ouroboros.workflows'::regclass,
+                                       'ouroboros.copilot_sessions'::regclass, 'ouroboros.tickets'::regclass,
+                                       'ouroboros.dry_runs'::regclass)),
+  'the dry-run tables reference only the workspace, workflow, copilot session, ticket and each other');
+
+-- The probe is load-bearing: a planted foreign key and a planted read-model view are each named.
+alter table ouroboros.dry_runs add column planted_run_id uuid
+  constraint dry_runs_planted_run_fk references ouroboros.runs (id);
+create view ouroboros.planted_runs_with_dry_runs as
+  select r.id, d.id as dry_run_id from ouroboros.runs_with_stage r cross join ouroboros.dry_run_stages s
+  join ouroboros.dry_runs d on d.id = s.dry_run_id;
+
+select pg_temp.must_hold(
+  (select array_agg(kind || ':' || relation order by kind)
+          = array['foreign_key:dry_runs', 'view:planted_runs_with_dry_runs']
+     from ouroboros.dry_run_isolation_violations),
+  'the isolation probe names a foreign key into runs and a view reading runs beside dry runs');
+
+drop view ouroboros.planted_runs_with_dry_runs;
+alter table ouroboros.dry_runs drop column planted_run_id;
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.dry_run_isolation_violations),
+  'with the plants removed the probe is empty again');
+
+-- --- per-draft history, index-backed over a corpus -----------------------------------
+insert into ouroboros.dry_runs
+    (organization_id, workflow_id, draft_rev, ticket_id, pinned_sha, status, precheck_findings,
+     started_at, finished_at, duration_ms)
+select 'org-v111b', 'a1110000-0000-0000-0000-000000000103', (i % 7) + 1,
+       'a1110000-0000-0000-0000-000000000490', md5(i::text) || '00000000', 'complete', '[]',
+       timestamptz '2026-01-01' + i * interval '1 hour',
+       timestamptz '2026-01-01' + i * interval '1 hour' + interval '3 minutes', 180000
+  from generate_series(1, 2000) i;
+
+analyze ouroboros.dry_runs;
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select id, draft_rev, started_at from ouroboros.dry_runs
+     where workflow_id = 'a1110000-0000-0000-0000-000000000103' order by started_at desc limit 10$$,
+  'dry_runs_workflow_history_idx');
+set local enable_seqscan = on;
+
+select pg_temp.must_hold(
+  (select array_agg(draft_rev order by started_at desc) = array[(2000 % 7) + 1, (1999 % 7) + 1, (1998 % 7) + 1]
+     from (select draft_rev, started_at from ouroboros.dry_runs
+            where workflow_id = 'a1110000-0000-0000-0000-000000000103'
+            order by started_at desc limit 3) page),
+  'a draft''s history reads newest first');
+
+-- --- the retention sweep: the bulk before the record ----------------------------------
+insert into ouroboros.dry_runs
+    (id, organization_id, workflow_id, draft_rev, ticket_id, pinned_sha, status, precheck_findings, started_at)
+  values
+    ('a1110000-0000-0000-0000-000000000304', 'org-v111', 'a1110000-0000-0000-0000-000000000102', 1,
+     'a1110000-0000-0000-0000-000000000489', 'c0ffee0000000000000000000000000000000004', 'running', '[]',
+     '2020-01-01'),
+    ('a1110000-0000-0000-0000-000000000305', 'org-v111', 'a1110000-0000-0000-0000-000000000102', 1,
+     'a1110000-0000-0000-0000-000000000489', 'c0ffee0000000000000000000000000000000005', 'running', '[]',
+     '2020-01-01');
+insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note) values
+  ('org-v111', 'a1110000-0000-0000-0000-000000000304', 1, 'plan', 'plan', 'ok', 'llm', '1 step'),
+  ('org-v111', 'a1110000-0000-0000-0000-000000000305', 1, 'plan', 'plan', 'ok', 'llm', '1 step');
+insert into ouroboros.dry_run_artifacts (organization_id, dry_run_id, kind, content, truncated, original_bytes) values
+  ('org-v111', 'a1110000-0000-0000-0000-000000000304', 'plan_excerpt', 'step', false, 4),
+  ('org-v111', 'a1110000-0000-0000-0000-000000000305', 'plan_excerpt', 'step', false, 4);
+update ouroboros.dry_runs set status = 'complete', finished_at = '2020-01-01 00:05', duration_ms = 300000
+ where id = 'a1110000-0000-0000-0000-000000000304';
+
+select pg_temp.must_reject(
+  $$select ouroboros.dry_runs_sweep('org-v111', now() - interval '1 day', now() - interval '30 days', 100)$$,
+  'a dry-run cutoff inside the 7-day floor is refused', 'dry_runs_sweep_cutoff_floor');
+
+select pg_temp.must_reject(
+  $$select ouroboros.dry_runs_sweep('org-v111', now() - interval '30 days', now() - interval '30 days', 0)$$,
+  'a sweep removes at least one dry run per call', 'dry_runs_sweep_limit');
+
+-- The artifact tier has passed the finished run; the record tier has not. The bulk goes first.
+select pg_temp.must_hold(
+  (select dry_runs = 0 and stages = 0 and artifacts = 1
+     from ouroboros.dry_runs_sweep('org-v111', '2019-01-01', '2021-01-01', 100)),
+  'the sweep removes a finished run''s artifacts past their cutoff and keeps its record');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.dry_run_stages where dry_run_id = 'a1110000-0000-0000-0000-000000000304')
+   and (select count(*) = 0 from ouroboros.dry_run_artifacts where dry_run_id = 'a1110000-0000-0000-0000-000000000304')
+   and (select count(*) = 1 from ouroboros.dry_run_artifacts where dry_run_id = 'a1110000-0000-0000-0000-000000000305'),
+  'history survives without the bulk, and a running dry run keeps its artifacts');
+
+-- An artifact tier set longer than the record tier is held to it: artifacts never outlive the record.
+select pg_temp.must_hold(
+  (select dry_runs = 1 and stages = 1 and artifacts = 0
+     from ouroboros.dry_runs_sweep('org-v111', '2021-01-01', '2019-01-01', 100)),
+  'past the record cutoff the dry run goes with its stages');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.dry_runs where id = 'a1110000-0000-0000-0000-000000000305')
+   and (select count(*) = 2000 from ouroboros.dry_runs where organization_id = 'org-v111b'),
+  'a dry run still running is never swept, and a sweep of one workspace leaves the others alone');
+
+-- --- a swept session leaves the dry run standing ---------------------------------------
+update ouroboros.copilot_sessions set status = 'discarded', closed_at = now()
+ where id = 'a1110000-0000-0000-0000-000000000201';
+delete from ouroboros.copilot_sessions where id = 'a1110000-0000-0000-0000-000000000201';
+
+select pg_temp.must_hold(
+  (select session_id is null and status = 'complete' and cost_cents = 31
+     from ouroboros.dry_runs where id = 'a1110000-0000-0000-0000-000000000301'),
+  'the dry run outlives a swept copilot session — the record stays, the link goes null');
+
+-- --- the application role ------------------------------------------------------------
+set local role ouroboros_app;
+
+select pg_temp.must_raise(
+  $$delete from ouroboros.dry_runs where id = 'a1110000-0000-0000-0000-000000000305'$$,
+  '42501', 'the application role cannot delete a dry run');
+
+select pg_temp.must_raise(
+  $$delete from ouroboros.dry_run_stages where dry_run_id = 'a1110000-0000-0000-0000-000000000305'$$,
+  '42501', 'the application role cannot delete a result row');
+
+select pg_temp.must_raise(
+  $$delete from ouroboros.dry_run_artifacts where dry_run_id = 'a1110000-0000-0000-0000-000000000305'$$,
+  '42501', 'the application role cannot delete an artifact');
+
+insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note) values
+  ('org-v111', 'a1110000-0000-0000-0000-000000000305', 2, 'review', 'review', 'ok', 'llm', 'approve');
+
+select count(*) from ouroboros.dry_runs_sweep('org-v111', '2019-01-01', '2019-01-01', 1);
+select count(*) from ouroboros.dry_run_isolation_violations;
+
+reset role;
+
+select pg_temp.must_hold(
+  (select prosecdef
+          and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+          and not has_function_privilege('public', oid, 'execute')
+     from pg_proc where proname = 'dry_runs_sweep' and pronamespace = 'ouroboros'::regnamespace),
+  'the dry-run sweep runs as its owner with search_path pinned and execute revoked from public');
+
+-- --- the workspace takes everything with it ------------------------------------------
+delete from ouroboros.organization where "id" in ('org-v111', 'org-v111b');
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.dry_runs where organization_id in ('org-v111', 'org-v111b'))
+   and (select count(*) = 0 from ouroboros.dry_run_stages where organization_id in ('org-v111', 'org-v111b'))
+   and (select count(*) = 0 from ouroboros.dry_run_artifacts where organization_id in ('org-v111', 'org-v111b')),
+  'deleting a workspace deletes its dry runs, their results and their artifacts');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --
@@ -36552,6 +37087,7 @@ analyze ouroboros.ticket_sources;
 analyze ouroboros.investigations;
 analyze ouroboros.copilot_messages;
 analyze ouroboros.source_records;
+analyze ouroboros.dry_runs;
 
 \o
 \echo 'constraints.sql: all assertions passed'
