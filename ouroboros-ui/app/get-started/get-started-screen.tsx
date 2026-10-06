@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { Fragment, useId, useState } from "react";
 
 import type { RepoDetection } from "@/app/api/detection";
-import type { Onboarding, OnboardingTemplateTiles } from "@/app/api/onboarding";
+import type { FirstIssueCard as FirstIssueCardRead, Onboarding, OnboardingTemplateTiles } from "@/app/api/onboarding";
 import type { Reading } from "@/app/api/reading";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
 import { SOURCES_PATH } from "@/app/paths";
@@ -14,6 +14,8 @@ import { cx } from "@/app/ui/class-names";
 import { continueStep, enableRepository, launchFirstLoop, skipWizard } from "./actions";
 import { DetectionCard } from "./detection-card";
 import type { DetectionPollOptions } from "./detection-poll";
+import { FirstIssueCard } from "./first-issue-card";
+import type { FirstIssuePollOptions } from "./first-issue-poll";
 import { type OnboardingPollOptions, createOnboardingPoll, onboardingEndpoint } from "./poll";
 import { TemplatesCard } from "./templates-card";
 import type { TemplatesPollOptions } from "./templates-poll";
@@ -58,6 +60,8 @@ export interface GetStartedScreenProps {
   readonly detection?: Reading<RepoDetection> | null;
   /** The first paint's read of its template tiles (BC.3, #392), or null when there is no repository. */
   readonly templates?: Reading<OnboardingTemplateTiles> | null;
+  /** The first paint's read of its first-issue card (BC.4, #393), or null when there is no repository. */
+  readonly firstIssue?: Reading<FirstIssueCardRead> | null;
   /** Why the repository list could not be read, when that is why there is no repository. */
   readonly reposFailure: string | null;
   /** What the person may do. */
@@ -68,7 +72,9 @@ export interface GetStartedScreenProps {
   readonly detectionPoll?: DetectionPollOptions;
   /** Test seams for the template tiles' poll. */
   readonly templatesPoll?: TemplatesPollOptions;
-  /** The detection card's clock — a test seam. */
+  /** Test seams for the first-issue card's poll. */
+  readonly firstIssuePoll?: FirstIssuePollOptions;
+  /** The detection and first-issue cards' clock — a test seam. */
   readonly now?: () => number;
 }
 
@@ -273,10 +279,13 @@ function ActionBar({
  * **Live.** The rail is re-read on the poll family's cadence, so a source disconnected elsewhere
  * regresses step 1 here — and the banner says why, in the service's words.
  *
- * **The detection card** (BC.2, [#391](https://github.com/NobuData/ouroboros/issues/391)) and
- * **the template tiles** (BC.3, [#392](https://github.com/NobuData/ouroboros/issues/392)) sit in
- * the step content under the step panel whenever there is a repository, each on a poll of its
- * own; a selection re-reads the rail, which derives step 3 from the workflow it created.
+ * **The detection card** (BC.2, [#391](https://github.com/NobuData/ouroboros/issues/391)),
+ * **the template tiles** (BC.3, [#392](https://github.com/NobuData/ouroboros/issues/392)) and
+ * **the first-issue card** (BC.4, [#393](https://github.com/NobuData/ouroboros/issues/393)) sit
+ * in the step content under the step panel whenever there is a repository, each on a poll of its
+ * own; a selection or a pick re-reads the rail, which derives steps 3 and 4 from what was stored.
+ * While the wizard stores no pick, the first-issue card hands up the picker's suggestion, and
+ * *Run my first loop* stores it before it launches.
  *
  * **Which step is on screen** is the page's own choice — the service's current step at first,
  * then whichever the person picks on the rail or reaches with Back and Continue. What the step
@@ -290,11 +299,13 @@ export function GetStartedScreen({
   wizard: initial,
   detection = null,
   templates = null,
+  firstIssue = null,
   reposFailure,
   abilities,
   poll,
   detectionPoll,
   templatesPoll,
+  firstIssuePoll,
   now,
 }: GetStartedScreenProps) {
   const { snapshot, refresh } = useKeyedPoll(repo === null ? null : onboardingEndpoint(repo), (endpoint) =>
@@ -305,13 +316,14 @@ export function GetStartedScreen({
   const [viewed, setViewed] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ tone: "ok" | "refused"; text: string } | null>(null);
+  const [suggested, setSuggested] = useState<string | null>(null);
   const content = useId();
 
   const step = viewed ?? (wizard === null ? 1 : openingStep(wizard));
   const action: PrimaryAction =
     wizard === null
       ? { kind: "link", label: CONNECT_LABEL, href: SOURCES_PATH, blocked: null }
-      : primaryAction(wizard, step, abilities);
+      : primaryAction(wizard, step, abilities, { suggestedIssueId: suggested });
   const regressions = wizard === null ? [] : regressionsOf(wizard);
   const onScreen = wizard?.steps.find((one) => one.step === step);
 
@@ -341,7 +353,7 @@ export function GetStartedScreen({
         void enableRepository(repo).then((outcome) => done(outcome));
         break;
       case "launch":
-        void launchFirstLoop(repo).then((outcome) =>
+        void launchFirstLoop(repo, action.pickIssueId ?? null).then((outcome) =>
           done(outcome, () => {
             if (outcome.ok) setStatus({ tone: "ok", text: receiptLine(outcome.value) });
           }),
@@ -411,6 +423,19 @@ export function GetStartedScreen({
             poll={templatesPoll}
             repo={repo}
             stepStatus={wizard?.steps.find((one) => one.step === 3)?.status ?? null}
+          />
+        )}
+        {repo !== null && (
+          <FirstIssueCard
+            abilities={abilities}
+            initial={firstIssue}
+            now={now}
+            onChanged={refresh}
+            onSuggestion={setSuggested}
+            pickedTicket={wizard?.refs.pickedTicket ?? null}
+            poll={firstIssuePoll}
+            repo={repo}
+            stepStatus={wizard?.steps.find((one) => one.step === 4)?.status ?? null}
           />
         )}
       </main>

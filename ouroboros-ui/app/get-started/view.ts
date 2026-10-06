@@ -249,6 +249,17 @@ export interface PrimaryAction {
   readonly href?: string;
   /** Why it cannot be pressed, or null when it can. */
   readonly blocked: string | null;
+  /**
+   * The picker's suggestion a launch stores before it queues (BC.4, #393) — set only while the
+   * wizard stores no pick and the first-issue card shows one; null otherwise.
+   */
+  readonly pickIssueId?: string | null;
+}
+
+/** What the frame knows beyond the wizard when it decides the primary action. */
+export interface PrimaryContext {
+  /** The picker's suggestion on screen while nothing is stored (its `issueId`), or null. */
+  readonly suggestedIssueId?: string | null;
 }
 
 /** What the person may do in this workspace. */
@@ -279,17 +290,21 @@ export function repoName(repo: string): string {
  * - **Step 1 links to Settings → Sources**, where GitHub is connected; **step 2 enables** the
  *   repository (owner or admin); **step 3 continues** once a workflow is instantiated — its
  *   reason until then is the service's; **step 4 runs the first loop** once an issue is picked
- *   (launching is what queues it, so *not queued yet* is what the button is for).
+ *   (launching is what queues it, so *not queued yet* is what the button is for) — or, with
+ *   nothing stored, once the first-issue card shows the picker's suggestion, which the press
+ *   stores first (BC.4, #393).
  *
  * @param wizard The wizard.
  * @param step The step on screen, 1–4.
  * @param abilities What the person may do.
+ * @param context The picker's suggestion on screen, when the card shows one.
  * @returns The action.
  */
 export function primaryAction(
   wizard: Pick<Onboarding, "steps" | "repo" | "choices">,
   step: number,
   abilities: Abilities,
+  context: PrimaryContext = {},
 ): PrimaryAction {
   const at = wizard.steps.find((one) => one.step === step);
   const earlier = wizard.steps.find((one) => one.step < step && one.status !== "done");
@@ -320,7 +335,9 @@ export function primaryAction(
         label: CONTINUE_LABEL,
         blocked: blockedBy ?? at.reason ?? `${at.title} is not done yet.`,
       };
-    default:
+    default: {
+      const suggested = wizard.choices.pickedTicketId === null ? (context.suggestedIssueId ?? null) : null;
+
       return {
         kind: "launch",
         label: LAUNCH_LABEL,
@@ -328,10 +345,12 @@ export function primaryAction(
           blockedBy ??
           (!abilities.contribute
             ? VIEWER_REASON
-            : wizard.choices.pickedTicketId === null
+            : wizard.choices.pickedTicketId === null && suggested === null
               ? (at.reason ?? NO_PICK_REASON)
               : null),
+        pickIssueId: suggested,
       };
+    }
   }
 }
 

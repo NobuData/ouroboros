@@ -7,7 +7,18 @@ import type { PollAnswer } from "@/app/poll";
 
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 import { settle } from "../helpers/settle";
-import { REPO, launchReceipt, readyToRun, regressed, seededCard, seededTiles, step, wizard } from "../helpers/onboarding";
+import {
+  ISSUE_488,
+  REPO,
+  firstIssueCard,
+  launchReceipt,
+  readyToRun,
+  regressed,
+  seededCard,
+  seededTiles,
+  step,
+  wizard,
+} from "../helpers/onboarding";
 
 /**
  * `/get-started` (BC.1, #390, mockup 13): the head's promise, the rail that displays the service's
@@ -24,13 +35,14 @@ const push = vi.fn();
 vi.mock("@/app/get-started/actions", () => ({
   continueStep: (repo: string, step: number) => continueStep(repo, step),
   enableRepository: (repo: string) => enableRepository(repo),
-  launchFirstLoop: (repo: string) => launchFirstLoop(repo),
+  launchFirstLoop: (repo: string, pick: string | null) => launchFirstLoop(repo, pick),
   skipWizard: (repo: string) => skipWizard(repo),
   dismissWizard: vi.fn(),
   rescanRepository: vi.fn(),
   saveProtectedPaths: vi.fn(),
   previewProtectedPaths: vi.fn(),
   selectTemplate: vi.fn(),
+  pickFirstIssue: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh: vi.fn() }) }));
 
@@ -57,6 +69,8 @@ function frame(initial: Onboarding | null = wizard(), abilities = OWNER, repo: s
       abilities={abilities}
       detection={{ ok: true, value: seededCard() }}
       detectionPoll={{ read: () => new Promise(() => {}), visible: () => true }}
+      firstIssue={{ ok: true, value: firstIssueCard() }}
+      firstIssuePoll={{ read: () => new Promise(() => {}), visible: () => true }}
       poll={POLL}
       repo={repo}
       reposFailure={null}
@@ -276,7 +290,7 @@ describe("the action bar", () => {
     fireEvent.click(within(bar()).getByRole("button", { name: "Run my first loop →" }));
     await settle();
 
-    expect(launchFirstLoop).toHaveBeenCalledWith(REPO);
+    expect(launchFirstLoop).toHaveBeenCalledWith(REPO, null);
     expect(within(bar()).getByRole("status")).toHaveTextContent(
       "#488 queued under quick-fixes. Dry-run is on: the PR opens as a draft and nothing merges until you say so.",
     );
@@ -379,6 +393,71 @@ describe("the template tiles (#392)", () => {
     frame(null, OWNER, null);
 
     expect(screen.queryByRole("region", { name: "Choose a starting workflow" })).toBeNull();
+  });
+});
+
+describe("the first-issue card (#393)", () => {
+  it("sits in the scrolling step content under the tiles, with step 4's pill and the stored pick", () => {
+    const { container } = frame(readyToRun());
+
+    const card = screen.getByRole("region", { name: "Your first issue" });
+    const tiles = screen.getByRole("region", { name: "Choose a starting workflow" });
+    expect(container.querySelector(".wizard__content")).toContainElement(card);
+    expect(tiles.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(card).getByText("step 4 · you are here")).toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: "#488" })).toBeInTheDocument();
+    expect(within(card).getByText("We picked a safe one:")).toBeInTheDocument();
+  });
+
+  it("stores the picker's suggestion on launch when the wizard stores no pick — the mockup's one press", async () => {
+    launchFirstLoop.mockResolvedValue({ ok: true, value: launchReceipt() });
+    const unpicked = wizard({
+      steps: readyToRun().steps,
+      choices: { ...readyToRun().choices, pickedTicketId: null },
+      refs: { detectionScan: null, templates: [], pickedTicket: null },
+    });
+    frame(unpicked);
+
+    const primary = within(bar()).getByRole("button", { name: "Run my first loop →" });
+    expect(primary).not.toHaveAttribute("aria-disabled");
+
+    fireEvent.click(primary);
+    await settle();
+
+    expect(launchFirstLoop).toHaveBeenCalledWith(REPO, ISSUE_488);
+  });
+
+  it("stays blocked with the service's reason while nothing is stored and the backlog offers no pick", () => {
+    const unpicked = wizard({
+      steps: readyToRun().steps,
+      choices: { ...readyToRun().choices, pickedTicketId: null },
+      refs: { detectionScan: null, templates: [], pickedTicket: null },
+    });
+    render(
+      <GetStartedScreen
+        abilities={OWNER}
+        detection={{ ok: true, value: seededCard() }}
+        detectionPoll={{ read: () => new Promise(() => {}), visible: () => true }}
+        firstIssue={{ ok: false, reason: "The picker is busy." }}
+        firstIssuePoll={{ read: () => new Promise(() => {}), visible: () => true }}
+        poll={POLL}
+        repo={REPO}
+        reposFailure={null}
+        templates={{ ok: true, value: seededTiles() }}
+        templatesPoll={{ read: () => new Promise(() => {}), visible: () => true }}
+        wizard={{ ok: true, value: unpicked }}
+      />,
+    );
+
+    const primary = within(bar()).getByRole("button", { name: "Run my first loop →" });
+    expect(primary).toHaveAttribute("aria-disabled", "true");
+    expect(primary).toHaveAccessibleDescription("#488 has not been queued yet.");
+  });
+
+  it("is not drawn without a repository", () => {
+    frame(null, OWNER, null);
+
+    expect(screen.queryByRole("region", { name: "Your first issue" })).toBeNull();
   });
 });
 

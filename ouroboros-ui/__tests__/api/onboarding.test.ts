@@ -4,7 +4,16 @@ import { ApiError } from "@/app/api/errors";
 import { UNREACHABLE_ONBOARDING } from "@/app/get-started/view";
 
 import { STUB_BASE_URL, stubClient } from "../helpers/api";
-import { REPO, launchReceipt, seededTiles, templateSelection, wizard } from "../helpers/onboarding";
+import {
+  REPO,
+  dryRunOn,
+  launchReceipt,
+  seededAlternatives,
+  seededFirstIssue,
+  seededTiles,
+  templateSelection,
+  wizard,
+} from "../helpers/onboarding";
 
 /** The wizard's service calls (#385, #388) and the `/get-started` poll's hop (#390). */
 
@@ -14,7 +23,7 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("next/navigation", () => ({ redirect: () => {} }));
 
-const { onboarding } = await import("@/app/api/onboarding");
+const { ALTERNATIVES_LIMIT, onboarding, readFirstIssueCard } = await import("@/app/api/onboarding");
 const { ONBOARDING_REPO_MISSING, ONBOARDING_UNAVAILABLE_CODE, readOnboardingPoll } = await import(
   "@/app/api/onboarding-poll"
 );
@@ -167,3 +176,61 @@ describe("the template tiles' service calls (#392)", () => {
   });
 });
 
+
+describe("the first-issue card's service calls (#393)", () => {
+  /** A client answering each of the card's three reads by its path. */
+  function cardClient(dryRunStatus = 200) {
+    return stubClient((request) => {
+      if (request.url.includes("/policies/dry-run")) {
+        return dryRunStatus === 200
+          ? { body: dryRunOn() }
+          : { status: dryRunStatus, body: { code: "unavailable", message: "The policy is busy.", details: {} } };
+      }
+
+      return { body: request.url.includes("alternatives") ? seededAlternatives() : seededFirstIssue() };
+    });
+  }
+
+  it("reads the pick and the alternatives, naming the repository and the limit, with the poll's deadline", async () => {
+    const { client, requests } = cardClient();
+    const controller = new AbortController();
+
+    expect(await onboarding.firstIssue(REPO, client, controller.signal)).toEqual(seededFirstIssue());
+    expect(await onboarding.firstIssueAlternatives(REPO, 5, client, controller.signal)).toEqual(seededAlternatives());
+    expect(await asked(requests)).toEqual([
+      { call: "GET /api/v1/onboarding/first-issue?repo=acme-robotics%2Fhelios-firmware", body: null },
+      { call: "GET /api/v1/onboarding/first-issue/alternatives?repo=acme-robotics%2Fhelios-firmware&limit=5", body: null },
+    ]);
+  });
+
+  it("reads the card in one go — the pick, the whole ranking, and the policy as a reading", async () => {
+    const { client, requests } = cardClient();
+
+    expect(await readFirstIssueCard(REPO, client)).toEqual({
+      firstIssue: seededFirstIssue(),
+      alternatives: seededAlternatives(),
+      dryRun: { ok: true, value: dryRunOn() },
+    });
+    expect((await asked(requests)).map((one) => one.call)).toEqual([
+      "GET /api/v1/onboarding/first-issue?repo=acme-robotics%2Fhelios-firmware",
+      `GET /api/v1/onboarding/first-issue/alternatives?repo=acme-robotics%2Fhelios-firmware&limit=${String(ALTERNATIVES_LIMIT)}`,
+      "GET /api/v1/policies/dry-run",
+    ]);
+    expect(ALTERNATIVES_LIMIT).toBe(50);
+  });
+
+  it("keeps a policy that could not be read as a reason, beside a pick that could", async () => {
+    const { client } = cardClient(503);
+
+    expect((await readFirstIssueCard(REPO, client)).dryRun).toEqual({ ok: false, reason: "The policy is busy." });
+  });
+
+  it("throws the picker's refusal — the card is nothing without its pick", async () => {
+    const { client } = stubClient(() => ({
+      status: 422,
+      body: { code: "validation_failed", message: "repo must be owner/name.", details: {} },
+    }));
+
+    await expect(readFirstIssueCard("nope", client)).rejects.toMatchObject({ status: 422 });
+  });
+});

@@ -26,11 +26,12 @@ export const dryRunPolicy = {
    * Where the policy stands, and who last moved it.
    *
    * @param client The client to call through. Defaults to the server-side one.
+   * @param signal Aborts the read — a poll's deadline (the Get Started safety rows, #393).
    * @returns The policy — never a `404`: a workspace that never answered reads off.
    * @throws {ApiError} What the service answered.
    */
-  async read(client: ApiClient = api()): Promise<DryRunPolicy> {
-    return unwrap(await client.GET("/api/v1/policies/dry-run", {}));
+  async read(client: ApiClient = api(), signal?: AbortSignal): Promise<DryRunPolicy> {
+    return unwrap(await client.GET("/api/v1/policies/dry-run", { signal }));
   },
 
   /**

@@ -4,7 +4,7 @@ import type { Workspace } from "@/app/api/access";
 import { ApiError } from "@/app/api/errors";
 
 import { membership, sessionUser } from "../helpers/login";
-import { REPO, seededCard, seededTiles, wizard } from "../helpers/onboarding";
+import { REPO, firstIssueCard, seededCard, seededTiles, wizard } from "../helpers/onboarding";
 
 /**
  * `/get-started`'s first paint (#390): which repository — the query's, else the first mirrored
@@ -16,6 +16,7 @@ vi.mock("server-only", () => ({}));
 const read = vi.fn();
 const readDetection = vi.fn();
 const readTemplates = vi.fn();
+const readFirstIssue = vi.fn();
 const surfacing = vi.fn();
 const readEnablement = vi.fn();
 
@@ -25,6 +26,7 @@ vi.mock("@/app/api/onboarding", () => ({
     surfacing: () => surfacing(),
     templates: (repo: string) => readTemplates(repo),
   },
+  readFirstIssueCard: (repo: string) => readFirstIssue(repo),
 }));
 vi.mock("@/app/api/detection", () => ({ detection: { read: (repo: string) => readDetection(repo) } }));
 vi.mock("@/app/api/enablement", () => ({ readEnablement: (tenant: string) => readEnablement(tenant) }));
@@ -52,6 +54,7 @@ beforeEach(() => {
   read.mockReset().mockResolvedValue(wizard());
   readDetection.mockReset().mockResolvedValue(seededCard());
   readTemplates.mockReset().mockResolvedValue(seededTiles());
+  readFirstIssue.mockReset().mockResolvedValue(firstIssueCard());
   surfacing.mockReset().mockResolvedValue({ offer: true, reason: "fresh_organization" });
   readEnablement.mockReset().mockResolvedValue(
     listed([
@@ -67,12 +70,14 @@ describe("readGetStarted", () => {
       wizard: { ok: true, value: wizard() },
       detection: { ok: true, value: seededCard() },
       templates: { ok: true, value: seededTiles() },
+      firstIssue: { ok: true, value: firstIssueCard() },
       reposFailure: null,
       abilities: { contribute: true, administer: true },
     });
     expect(readEnablement).not.toHaveBeenCalled();
     expect(readDetection).toHaveBeenCalledWith(REPO);
     expect(readTemplates).toHaveBeenCalledWith(REPO);
+    expect(readFirstIssue).toHaveBeenCalledWith(REPO);
   });
 
   it("opens on the first enabled repository when the query names none — or names one that is not", async () => {
@@ -101,11 +106,13 @@ describe("readGetStarted", () => {
       wizard: null,
       detection: null,
       templates: null,
+      firstIssue: null,
       reposFailure: null,
     });
     expect(read).not.toHaveBeenCalled();
     expect(readDetection).not.toHaveBeenCalled();
     expect(readTemplates).not.toHaveBeenCalled();
+    expect(readFirstIssue).not.toHaveBeenCalled();
   });
 
   it("says why when the repository list could not be read", async () => {
@@ -136,6 +143,15 @@ describe("readGetStarted", () => {
 
     expect(readings.wizard).toEqual({ ok: true, value: wizard() });
     expect(readings.templates).toEqual({ ok: false, reason: "Templates are busy." });
+  });
+
+  it("carries a first-issue card that could not be read as a reason, beside the rest (#393)", async () => {
+    readFirstIssue.mockRejectedValue(new ApiError(503, "unavailable", "The picker is busy."));
+
+    const readings = await readGetStarted(access(), REPO);
+
+    expect(readings.wizard).toEqual({ ok: true, value: wizard() });
+    expect(readings.firstIssue).toEqual({ ok: false, reason: "The picker is busy." });
   });
 
   it("knows a member may move the wizard on but not enable a repository, and a viewer neither", async () => {

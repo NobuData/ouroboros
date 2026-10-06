@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/app/api/errors";
+import { NOT_AN_ISSUE } from "@/app/get-started/first-issue-view";
 import { NOT_A_REPOSITORY, WIZARD_WRITE_FAILED } from "@/app/get-started/view";
 
 import { membership } from "../helpers/login";
-import { REPO, launchReceipt, scanProgress, seededCard, templateSelection, wizard } from "../helpers/onboarding";
+import { ISSUE_488, ISSUE_491, REPO, launchReceipt, scanProgress, seededCard, templateSelection, wizard } from "../helpers/onboarding";
 
 /** The wizard's writes (#390): each guarded by the service, a refusal carried in its words. */
 
@@ -48,6 +49,7 @@ const {
   dismissWizard,
   enableRepository,
   launchFirstLoop,
+  pickFirstIssue,
   previewProtectedPaths,
   rescanRepository,
   saveProtectedPaths,
@@ -143,6 +145,55 @@ describe("the wizard's writes", () => {
     expect(await skipWizard(REPO)).toEqual({ ok: true, value: "/settings" });
     expect(await dismissWizard(REPO)).toEqual({ ok: true, value: false });
     expect(update).toHaveBeenCalledWith(REPO, { dismissed: true });
+  });
+});
+
+describe("the first-issue card's writes (#393)", () => {
+  it("stores a pick by the picker's id, scoped to the repository", async () => {
+    expect(await pickFirstIssue(REPO, ISSUE_491)).toEqual({ ok: true, value: wizard({ surfacing: { offer: false, reason: "wizard_finished" } }) });
+    expect(update).toHaveBeenCalledExactlyOnceWith(REPO, { pickedIssueId: ISSUE_491 });
+  });
+
+  it("refuses an id that is not one, and a repository that is not one, asking nothing", async () => {
+    expect(await pickFirstIssue(REPO, "issue-491")).toEqual({ ok: false, reason: NOT_AN_ISSUE });
+    expect(await pickFirstIssue("nope", ISSUE_491)).toEqual({ ok: false, reason: NOT_A_REPOSITORY });
+    expect(await launchFirstLoop(REPO, "488")).toEqual({ ok: false, reason: NOT_AN_ISSUE });
+    expect(update).not.toHaveBeenCalled();
+    expect(launch).not.toHaveBeenCalled();
+  });
+
+  it("carries the service's refusal of a pick in its words", async () => {
+    update.mockRejectedValue(new ApiError(404, "onboarding_issue_not_found", "#491 is not an issue of this repository's backlog."));
+
+    expect(await pickFirstIssue(REPO, ISSUE_491)).toEqual({ ok: false, reason: "#491 is not an issue of this repository's backlog." });
+  });
+
+  it("stores the suggestion before the launch when the wizard stores no pick", async () => {
+    const order: string[] = [];
+    update.mockImplementation(() => {
+      order.push("update");
+      return Promise.resolve(wizard());
+    });
+    launch.mockImplementation(() => {
+      order.push("launch");
+      return Promise.resolve(launchReceipt());
+    });
+
+    expect(await launchFirstLoop(REPO, ISSUE_488)).toEqual({ ok: true, value: launchReceipt() });
+    expect(update).toHaveBeenCalledExactlyOnceWith(REPO, { pickedIssueId: ISSUE_488 });
+    expect(order).toEqual(["update", "launch"]);
+  });
+
+  it("launches nothing when the store is refused", async () => {
+    update.mockRejectedValue(new ApiError(403, "forbidden", "Viewers cannot pick."));
+
+    expect(await launchFirstLoop(REPO, ISSUE_488)).toEqual({ ok: false, reason: "Viewers cannot pick." });
+    expect(launch).not.toHaveBeenCalled();
+  });
+
+  it("stores nothing when a pick is stored already", async () => {
+    expect(await launchFirstLoop(REPO)).toEqual({ ok: true, value: launchReceipt() });
+    expect(update).not.toHaveBeenCalled();
   });
 });
 
