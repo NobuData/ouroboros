@@ -1,0 +1,1 @@
+{ "kind": "remove_edge", "params": { "from": "test", "to": "done" } }

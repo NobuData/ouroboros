@@ -1484,6 +1484,26 @@
 > idempotent upsert that runs as the caller and returns no row when there is nothing to compare —
 > the BI.4 (`V077`) discipline, so recalibration is arithmetic over recorded history.
 >
+> `V110` ([#556](https://github.com/NobuData/ouroboros/issues/556), CC.2) puts **per-operation
+> provenance on the shared draft** (decision **W2**) — mockup 20's `draft v0.3 (2 copilot edits
+> applied)` and its `added by copilot` pill, readable by the canvas and the code editor without
+> touching a copilot table. `draft_operations` records each typed operation —
+> `add_stage{node}`, `set_stage{node}`, `remove_stage{id}`, `add_edge{edge}`,
+> `remove_edge{from,to}`, `set_trigger{trigger}`, carrying DSL v1 objects — with its batch, its
+> `draft_rev`, the `base_version` it was applied over, and its actor
+> (`canvas|code|copilot|suggestion`, with user, session and suggestion references). The
+> mockup's `set_guard` is not in the vocabulary yet: DSL v1 has no guard to set. Its one writer is
+> `apply_draft_batch()` (security definer): it locks the workflow, applies the batch to the stored
+> draft, records it, and moves `workflows.draft_rev` and `workflows.provenance_summary` (batches
+> per actor) — the WF-P.1 amendment — atomically; publishing zeroes both. The log is append-only.
+> `workflow_draft_node_provenance` gives each stage's origin (`copilot`/`suggestion` until a canvas
+> or code operation touches it, then `human`; `published` when inherited), and the consistency
+> probe `workflow_draft_replay_mismatches` lists any draft whose log, replayed over its base by
+> `workflow_draft_replay()`, is not the stored draft. ci/db holds every stored operation to
+> [`schemas/workflow-dsl/operations-v1.json`](../schemas/workflow-dsl/operations-v1.json), which
+> `$ref`s the DSL, through [`scripts/draft-ops-parity.mjs`](scripts/draft-ops-parity.mjs) — a DSL
+> change that would reject recorded history fails there.
+>
 > [#484](https://github.com/NobuData/ouroboros/issues/484) (BQ.5) seeds mockup 17 from those rows:
 > [`R__dev_seed_workspace_settings.sql`](migrations/R__dev_seed_workspace_settings.sql) — see
 > [Who may do what, and where the record goes](#who-may-do-what-and-where-the-record-goes). Its
@@ -3265,6 +3285,7 @@ ouroboros-db/
 │   ├── V107__copilot_sessions_messages.sql # copilot_sessions (one active per draft), copilot_messages (seq, choices, tool_trace, cost) — #555
 │   ├── V108__citation_ledger.sql     # source_records (dense [cite_no], validated locators), briefs, brief_claims, citation links — #609
 │   ├── V109__investigation_estimate_outcomes.sql # estimate_calibration_version, investigation_estimate_outcomes + record_investigation_estimate_outcome() — #622
+│   ├── V110__draft_operations.sql    # draft_operations, workflows.draft_rev/provenance_summary, apply_draft_batch(), node provenance + replay probe — #556
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -3506,6 +3527,7 @@ outside this module alters it.
 | `investigation_seq_counters` | `V106` | The per-workspace counter `investigations.seq` is drawn from ([#608](https://github.com/NobuData/ouroboros/issues/608)) | one row per workspace; bumped inside the creating transaction, so concurrent creates serialise on it, a rollback returns its number and the counter only rises; written only by `investigations_allocate_seq()`, which is `security definer` — `ouroboros_app` has no grant on it |
 | `investigations` | `V106` | One investigation — `RS-###` ([#608](https://github.com/NobuData/ouroboros/issues/608), CK.1, decision **V1**): `seq`/`display_id`, `kind_id`, `question`, `depth`, `tools_enabled`, `status`, `estimate`, `actuals`, `provenance`, `origin`, `engine_task_ref`, `created_by` | `seq` unique per workspace and immutable; the kind is of the same workspace (composite key); `depth` `quick\|standard\|deep_dive`; `tools_enabled` a non-empty set of registered slugs, checked at write; `status` transitions constrained by `investigations_status_transition` (terminal: `issues_filed`, `failed`, `cancelled`); `estimate` `{sources, cost_cents \| null}` and `actuals` `{sources_used, spend_cents \| null, duration_ms}` independently nullable; `provenance` `{researcher, alias, resolution_ref}` required from `running`, `actuals` from `brief_ready`; `origin` `user\|regression_watch\|scheduled`; *brief_ready requires a brief* lands with CK.2 ([#609](https://github.com/NobuData/ouroboros/issues/609)); `ouroboros_app` may select, insert and update, never delete |
 | `investigation_estimate_outcomes` | `V109` | Estimate vs actuals per investigation ([#622](https://github.com/NobuData/ouroboros/issues/622), CM.3, decision **V5**) — the calibration version, depth, tools and alias the estimate was made under, its source and cost ranges, the actual sources and spend, and generated `sources_within_estimate` / `cost_within_estimate` verdicts | one row per investigation, keyed to it by a composite `(organization_id, investigation_id)` foreign key that cascades; a cost range is whole or null; `cost_within_estimate` is null when either cost side is unknown; written by `record_investigation_estimate_outcome()` (idempotent upsert, runs as the caller); `ouroboros_app` may select, insert and update, never delete. `V109` also adds `investigations.estimate_calibration_version`, present exactly when `estimate` is |
+| `draft_operations` | `V110` | Per-operation provenance on a workflow's shared draft ([#556](https://github.com/NobuData/ouroboros/issues/556), CC.2, decision **W2**) — each typed operation (`{kind, params}` over DSL v1 objects), its batch and position, the `draft_rev` its batch produced, the `base_version` it was applied over, and its actor `canvas\|code\|copilot\|suggestion` with user, copilot session and suggestion references | written only by `apply_draft_batch()`, which applies the batch to the stored draft in the same transaction; append-only (`draft_operations_no_update`, a foreign key's set-null excepted); the envelope is CHECKed (`draft_operations_op_shape`) and the DSL validity of its objects is ci/db's parity check (`scripts/draft-ops-parity.mjs`); a session only on copilot/suggestion operations, a suggestion id only on suggestion ones (its foreign key arrives with CC.4, #558); one batch per `(workflow, base, rev)`; composite `(workflow_id, organization_id)` key cascades, the session is set null when swept; `ouroboros_app` may only select, and applies batches through the function. `V110` also adds `workflows.draft_rev` and `workflows.provenance_summary` (reset when `current_version` moves), the `workflow_draft_node_provenance` view (the pill's source) and the `workflow_draft_replay_mismatches` probe |
 
 Two **functions**, both `V012`'s and both documented in
 [The bundled price catalog](#the-bundled-price-catalog).

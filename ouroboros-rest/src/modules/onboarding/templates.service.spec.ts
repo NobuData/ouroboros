@@ -104,6 +104,8 @@ function harness(options: { workflows?: InstantiatedWorkflowRow[]; override?: nu
           current_version: null,
           template_slug: "quick-fixes",
           template_version: 3,
+          draft_rev: 0,
+          provenance_summary: { canvas: 0, code: 0, copilot: 0, suggestion: 0 },
           created_at: AT,
           updated_at: AT,
         } satisfies Workflow,

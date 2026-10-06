@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ouroboros.build/schemas/workflow-dsl/operations-v1.json",
+  "title": "Workflow draft operation (v1)",
+  "description": "One typed operation on a workflow's shared draft (#556, CC.2), as ouroboros.draft_operations.op stores it: {kind, params}, where params carries the DSL's own node, edge and trigger objects by reference to v1.json — so a DSL change that would reject recorded history fails the parity check instead of leaving it unreplayable. The vocabulary is what DSL v1 can express; set_guard joins it with the DSL minor that adds a guard construct.",
+  "oneOf": [
+    {
+      "title": "add_stage",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "params"],
+      "properties": {
+        "kind": { "const": "add_stage" },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["node"],
+          "properties": { "node": { "$ref": "v1.json#/$defs/node" } }
+        }
+      }
+    },
+    {
+      "title": "set_stage",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "params"],
+      "properties": {
+        "kind": { "const": "set_stage" },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["node"],
+          "properties": { "node": { "$ref": "v1.json#/$defs/node" } }
+        }
+      }
+    },
+    {
+      "title": "remove_stage",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "params"],
+      "properties": {
+        "kind": { "const": "remove_stage" },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id"],
+          "properties": { "id": { "$ref": "v1.json#/$defs/node_id" } }
+        }
+      }
+    },
+    {
+      "title": "add_edge",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "params"],
+      "properties": {
+        "kind": { "const": "add_edge" },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["edge"],
+          "properties": { "edge": { "$ref": "v1.json#/$defs/edge" } }
+        }
+      }
+    },
+    {
+      "title": "remove_edge",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "params"],
+      "properties": {
+        "kind": { "const": "remove_edge" },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["from", "to"],
+          "properties": {
+            "from": { "$ref": "v1.json#/$defs/node_id" },
+            "to": { "$ref": "v1.json#/$defs/node_id" }
+          }
+        }
+      }
+    },
+    {
+      "title": "set_trigger",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "params"],
+      "properties": {
+        "kind": { "const": "set_trigger" },
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["trigger"],
+          "properties": { "trigger": { "$ref": "v1.json#/$defs/trigger" } }
+        }
+      }
+    }
+  ]
+}

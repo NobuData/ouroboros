@@ -14526,8 +14526,10 @@ select pg_temp.must_hold(
    -- writer cannot set, and `copilot_sessions_sweep()`, so the chat retention sweep can remove
    -- closed transcripts while the writer still cannot delete one — asserted in V107's section.
    -- #609 added `source_records_allocate_cite_no()`, so a source's [cite number] is drawn from a
-   -- counter the writer cannot set — asserted in V108's section.
-   and (select array_agg(proname::text order by proname) = array['audit_events_purge',
+   -- counter the writer cannot set — asserted in V108's section. #556 added `apply_draft_batch()`,
+   -- so a draft operation is recorded only with the draft it changed — asserted in V110's section.
+   and (select array_agg(proname::text order by proname) = array['apply_draft_batch',
+                                                                 'audit_events_purge',
                                                                  'copilot_messages_allocate_seq',
                                                                  'copilot_sessions_sweep',
                                                                  'decision_ref_resolves',
@@ -14545,7 +14547,7 @@ select pg_temp.must_hold(
                                                                  'sync_intervention_events']
           from pg_proc
          where pronamespace = 'ouroboros'::regnamespace and prosecdef),
-  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks, #457''s decision ref resolver, #459''s TTL settings reader, #482''s transcript sweep, #486''s audit purge, #608''s RS allocator and #555''s copilot seq allocator and chat sweep and #609''s cite allocator are the only functions in the schema that run as the owner at all');
+  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks, #457''s decision ref resolver, #459''s TTL settings reader, #482''s transcript sweep, #486''s audit purge, #608''s RS allocator and #555''s copilot seq allocator and chat sweep and #609''s cite allocator and #556''s draft batch writer are the only functions in the schema that run as the owner at all');
 
 -- --- the cascades ----------------------------------------------------------------
 delete from ouroboros.runs where id = 'a6100000-0000-0000-0000-000000000484';
@@ -36115,6 +36117,375 @@ select pg_temp.must_hold(
    and has_function_privilege('ouroboros_app',
          'ouroboros.record_investigation_estimate_outcome(text, uuid)', 'execute'),
   'the service reconciles through the function and may read and refresh outcomes, never delete them');
+
+-- ===========================================================================
+-- V110 — draft-operation provenance on the shared draft (#556, CC.2)
+-- ===========================================================================
+--
+-- Mockup 20's `draft v0.3 (2 copilot edits applied)` and its `added by copilot` pill, as rows:
+-- a draft built by three batches — the author's in the code editor, then two of the copilot's —
+-- reads v0.3 with two copilot batches counted; the stage the copilot added reads `copilot` until
+-- a canvas edit touches it; a suggestion Apply is told apart from the conversation; the log
+-- replays to the stored draft exactly, and a draft written around the log is named by the probe.
+-- The second copilot batch is a `set_stage` rather than the mockup's spend guard: DSL v1 has no
+-- guard construct, so `set_guard` is not in the vocabulary yet (see V110's header).
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v110',  'Draft Works', 'draft-works-v110', now()),
+  ('org-v110b', 'Draft Two',   'draft-two-v110',   now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a1100000-0000-0000-0000-00000000000a', 'Ken Drafts', 'ken@draft-works.example', true);
+
+insert into ouroboros.workflows (id, organization_id, slug, name) values
+  ('a1100000-0000-0000-0000-000000000101', 'org-v110',  'security-patch', 'Security patch'),
+  ('a1100000-0000-0000-0000-000000000102', 'org-v110',  'standard-fix',   'Standard fix'),
+  ('a1100000-0000-0000-0000-000000000103', 'org-v110b', 'security-patch', 'Security patch');
+
+insert into ouroboros.copilot_sessions (id, organization_id, workflow_id, draft_name, created_by) values
+  ('a1100000-0000-0000-0000-000000000201', 'org-v110', 'a1100000-0000-0000-0000-000000000101',
+   'security-patch', 'a1100000-0000-0000-0000-00000000000a'),
+  ('a1100000-0000-0000-0000-000000000202', 'org-v110', 'a1100000-0000-0000-0000-000000000102',
+   'standard-fix', 'a1100000-0000-0000-0000-00000000000a');
+
+select pg_temp.must_hold(
+  (select draft_rev = 0
+          and provenance_summary = '{"canvas": 0, "code": 0, "copilot": 0, "suggestion": 0}'
+     from ouroboros.workflows where id = 'a1100000-0000-0000-0000-000000000101'),
+  'a workflow starts at draft_rev 0 with no batch counted for any actor');
+
+-- --- v0.1: the author's draft, in the code editor ------------------------------------
+select pg_temp.must_hold(
+  (select draft_rev = 1 from ouroboros.apply_draft_batch(
+     'org-v110', 'a1100000-0000-0000-0000-000000000101', 'code',
+     'a1100000-0000-0000-0000-00000000000a', null, null,
+     '[{"kind": "set_trigger", "params": {"trigger": {"event": "ticket_queued", "conditions": {"labels": ["security"]}}}},
+       {"kind": "add_stage", "params": {"node": {"id": "start", "type": "trigger", "title": "Issue queued",
+                                                 "position": {"x": 0, "y": 0}, "config": {}}}},
+       {"kind": "add_stage", "params": {"node": {"id": "test", "type": "infra", "title": "Test",
+                                                 "position": {"x": 240, "y": 0}, "config": {}}}},
+       {"kind": "add_stage", "params": {"node": {"id": "done", "type": "term", "title": "Needs review",
+                                                 "position": {"x": 480, "y": 0},
+                                                 "config": {"action": "needs_review", "options": {}}}}},
+       {"kind": "add_edge", "params": {"edge": {"from": "start", "to": "test", "kind": "default"}}},
+       {"kind": "add_edge", "params": {"edge": {"from": "test", "to": "done", "kind": "default"}}}]')),
+  'the first batch produces revision 1');
+
+select pg_temp.must_hold(
+  (select v.definition = '{"dsl_version": "1.0",
+                           "trigger": {"event": "ticket_queued", "conditions": {"labels": ["security"]}},
+                           "nodes": [{"id": "start", "type": "trigger", "title": "Issue queued",
+                                      "position": {"x": 0, "y": 0}, "config": {}},
+                                     {"id": "test", "type": "infra", "title": "Test",
+                                      "position": {"x": 240, "y": 0}, "config": {}},
+                                     {"id": "done", "type": "term", "title": "Needs review",
+                                      "position": {"x": 480, "y": 0},
+                                      "config": {"action": "needs_review", "options": {}}}],
+                           "edges": [{"from": "start", "to": "test", "kind": "default"},
+                                     {"from": "test", "to": "done", "kind": "default"}]}'::jsonb
+          and v.edited_in = 'code'
+     from ouroboros.workflow_versions v
+    where v.workflow_id = 'a1100000-0000-0000-0000-000000000101' and v.version is null),
+  'a batch on a workflow with no draft creates the draft from the empty base, as the code editor''s edit');
+
+-- --- v0.2 and v0.3: the copilot's two batches ----------------------------------------
+select pg_temp.must_hold(
+  (select draft_rev = 2 from ouroboros.apply_draft_batch(
+     'org-v110', 'a1100000-0000-0000-0000-000000000101', 'copilot', null,
+     'a1100000-0000-0000-0000-000000000201', null,
+     '[{"kind": "add_stage", "params": {"node": {"id": "exploit-verify", "type": "infra",
+                                                 "title": "Exploit verify", "position": {"x": 360, "y": 0},
+                                                 "config": {"command": "./scripts/rerun-poc.sh"}}}},
+       {"kind": "remove_edge", "params": {"from": "test", "to": "done"}},
+       {"kind": "add_edge", "params": {"edge": {"from": "test", "to": "exploit-verify", "kind": "default"}}},
+       {"kind": "add_edge", "params": {"edge": {"from": "exploit-verify", "to": "done", "kind": "default"}}}]')),
+  'the copilot''s first batch produces revision 2');
+
+select pg_temp.must_hold(
+  (select draft_rev = 3 from ouroboros.apply_draft_batch(
+     'org-v110', 'a1100000-0000-0000-0000-000000000101', 'copilot', null,
+     'a1100000-0000-0000-0000-000000000201', null,
+     '[{"kind": "set_stage", "params": {"node": {"id": "exploit-verify", "type": "infra",
+                                                 "title": "Exploit verify (sandboxed)",
+                                                 "position": {"x": 360, "y": 0},
+                                                 "config": {"command": "./scripts/rerun-poc.sh --sandbox"}}}}]')),
+  'the copilot''s second batch produces revision 3');
+
+select pg_temp.must_hold(
+  (select format('v%s.%s', coalesce(current_version, 0), draft_rev) = 'v0.3'
+          and (provenance_summary ->> 'copilot')::int = 2
+          and provenance_summary = '{"canvas": 0, "code": 1, "copilot": 2, "suggestion": 0}'
+     from ouroboros.workflows where id = 'a1100000-0000-0000-0000-000000000101'),
+  'the draft reads v0.3 with 2 copilot edits applied — the dry-run footer, from the workflow row alone');
+
+select pg_temp.must_hold(
+  (select count(distinct batch_id) = 1 and min(seq) = 1 and max(seq) = 4 and count(*) = 4
+          and bool_and(actor = 'copilot' and session_id = 'a1100000-0000-0000-0000-000000000201'
+                       and base_version is null)
+     from ouroboros.draft_operations
+    where workflow_id = 'a1100000-0000-0000-0000-000000000101' and draft_rev = 2),
+  'a batch''s operations share one batch id and revision, numbered from 1, with the session and no base yet');
+
+-- --- node provenance — the pill's source ---------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(node_id || ':' || provenance order by node_id)
+          = array['done:human', 'exploit-verify:copilot', 'start:human', 'test:human']
+     from ouroboros.workflow_draft_node_provenance
+    where workflow_id = 'a1100000-0000-0000-0000-000000000101'),
+  'the stage the copilot added reads copilot — its own later edit keeps it so — and the code editor''s read human');
+
+select pg_temp.must_hold(
+  (select added_rev = 2 from ouroboros.workflow_draft_node_provenance
+    where workflow_id = 'a1100000-0000-0000-0000-000000000101' and node_id = 'exploit-verify'),
+  'the projection says which revision added the stage');
+
+-- --- the consistency probe -----------------------------------------------------------
+select pg_temp.must_hold(
+  ouroboros.workflow_draft_replay('a1100000-0000-0000-0000-000000000101')
+    = (select definition from ouroboros.workflow_versions
+        where workflow_id = 'a1100000-0000-0000-0000-000000000101' and version is null)
+   and not exists (select 1 from ouroboros.workflow_draft_replay_mismatches
+                    where workflow_id = 'a1100000-0000-0000-0000-000000000101'),
+  'replaying the operation log over the empty base reproduces the stored draft exactly');
+
+-- A draft written around the log is exactly what the probe names.
+update ouroboros.workflow_versions
+   set definition = jsonb_set(definition, '{nodes,0,title}', '"Issue queued (edited outside)"')
+ where workflow_id = 'a1100000-0000-0000-0000-000000000101' and version is null;
+
+select pg_temp.must_hold(
+  exists (select 1 from ouroboros.workflow_draft_replay_mismatches
+           where workflow_id = 'a1100000-0000-0000-0000-000000000101'
+             and stored #>> '{nodes,0,title}' = 'Issue queued (edited outside)'
+             and replayed #>> '{nodes,0,title}' = 'Issue queued'),
+  'a draft edited outside the operation log is reported by the consistency probe, with both versions');
+
+update ouroboros.workflow_versions
+   set definition = jsonb_set(definition, '{nodes,0,title}', '"Issue queued"')
+ where workflow_id = 'a1100000-0000-0000-0000-000000000101' and version is null;
+
+-- --- a human edit clears the pill ----------------------------------------------------
+select ouroboros.apply_draft_batch(
+  'org-v110', 'a1100000-0000-0000-0000-000000000101', 'canvas',
+  'a1100000-0000-0000-0000-00000000000a', null, null,
+  '[{"kind": "set_stage", "params": {"node": {"id": "exploit-verify", "type": "infra",
+                                              "title": "Exploit verify (sandboxed)",
+                                              "position": {"x": 380, "y": 40},
+                                              "config": {"command": "./scripts/rerun-poc.sh --sandbox"}}}}]');
+
+select pg_temp.must_hold(
+  (select provenance = 'human' from ouroboros.workflow_draft_node_provenance
+    where workflow_id = 'a1100000-0000-0000-0000-000000000101' and node_id = 'exploit-verify')
+   and (select edited_in = 'visual' from ouroboros.workflow_versions
+         where workflow_id = 'a1100000-0000-0000-0000-000000000101' and version is null),
+  'a canvas operation touching the copilot''s stage flips its provenance to human — the pill clears');
+
+-- --- a suggestion Apply is not the conversation --------------------------------------
+select ouroboros.apply_draft_batch(
+  'org-v110', 'a1100000-0000-0000-0000-000000000101', 'suggestion',
+  'a1100000-0000-0000-0000-00000000000a', 'a1100000-0000-0000-0000-000000000201',
+  'a1100000-0000-0000-0000-000000000301',
+  '[{"kind": "add_stage", "params": {"node": {"id": "advisory-check", "type": "infra",
+                                              "title": "Advisory check", "position": {"x": 240, "y": 120},
+                                              "config": {}}}},
+    {"kind": "add_edge", "params": {"edge": {"from": "test", "to": "advisory-check", "kind": "default"}}}]');
+
+select pg_temp.must_hold(
+  (select provenance = 'suggestion' from ouroboros.workflow_draft_node_provenance
+    where workflow_id = 'a1100000-0000-0000-0000-000000000101' and node_id = 'advisory-check')
+   and (select array_agg(distinct actor order by actor) = array['canvas', 'code', 'copilot', 'suggestion']
+          from ouroboros.draft_operations where workflow_id = 'a1100000-0000-0000-0000-000000000101')
+   and (select provenance_summary = '{"canvas": 1, "code": 1, "copilot": 2, "suggestion": 1}' and draft_rev = 5
+          from ouroboros.workflows where id = 'a1100000-0000-0000-0000-000000000101')
+   and (select count(*) = 2 from ouroboros.draft_operations
+         where suggestion_id = 'a1100000-0000-0000-0000-000000000301' and actor = 'suggestion'),
+  'all four actors record, and a suggestion Apply reads suggestion — never copilot — with its suggestion id');
+
+-- --- remove_stage takes the stage''s edges with it ------------------------------------
+select ouroboros.apply_draft_batch(
+  'org-v110', 'a1100000-0000-0000-0000-000000000101', 'canvas',
+  'a1100000-0000-0000-0000-00000000000a', null, null,
+  '[{"kind": "remove_stage", "params": {"id": "advisory-check"}}]');
+
+select pg_temp.must_hold(
+  (select not (definition::text like '%advisory-check%')
+     from ouroboros.workflow_versions
+    where workflow_id = 'a1100000-0000-0000-0000-000000000101' and version is null)
+   and not exists (select 1 from ouroboros.workflow_draft_replay_mismatches
+                    where workflow_id = 'a1100000-0000-0000-0000-000000000101'),
+  'removing a stage removes every edge touching it, and the log still replays to the draft');
+
+-- --- refusals ------------------------------------------------------------------------
+select pg_temp.must_raise(
+  $$select ouroboros.apply_draft_batch(
+      'org-v110', 'a1100000-0000-0000-0000-000000000101', 'copilot', null,
+      'a1100000-0000-0000-0000-000000000201', null,
+      '[{"kind": "add_stage", "params": {"node": {"id": "fresh", "type": "infra", "title": "Fresh",
+                                                  "position": {"x": 0, "y": 200}, "config": {}}}},
+        {"kind": "add_stage", "params": {"node": {"id": "test", "type": "infra", "title": "Again",
+                                                  "position": {"x": 0, "y": 0}, "config": {}}}}]')$$,
+  '23514', 'a batch whose operation cannot apply — a stage id that already exists — is refused');
+
+select pg_temp.must_hold(
+  (select draft_rev = 6 from ouroboros.workflows where id = 'a1100000-0000-0000-0000-000000000101')
+   and not exists (select 1 from ouroboros.draft_operations where op #>> '{params,node,id}' = 'fresh'),
+  'a refused batch writes nothing — not its valid first operation, not a revision');
+
+select pg_temp.must_raise(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'canvas',
+      null, null, null, '[{"kind": "set_stage", "params": {"node": {"id": "ghost"}}}]')$$,
+  '23514', 'set_stage of a stage that does not exist is refused');
+
+select pg_temp.must_raise(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'canvas',
+      null, null, null, '[{"kind": "add_edge", "params": {"edge": {"from": "start", "to": "ghost", "kind": "default"}}}]')$$,
+  '23514', 'an edge to a stage that does not exist is refused');
+
+select pg_temp.must_raise(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'canvas',
+      null, null, null, '[{"kind": "add_edge", "params": {"edge": {"from": "start", "to": "test", "kind": "default"}}}]')$$,
+  '23514', 'a second edge joining the same ordered pair is refused');
+
+select pg_temp.must_raise(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'canvas',
+      null, null, null, '[{"kind": "remove_edge", "params": {"from": "done", "to": "start"}}]')$$,
+  '23514', 'removing an edge that is not there is refused');
+
+select pg_temp.must_raise(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'copilot',
+      null, null, null, '[{"kind": "set_guard", "params": {"spend_cap_cents": 500}}]')$$,
+  '23514', 'set_guard is not in the vocabulary while DSL v1 has no guard to set');
+
+select pg_temp.must_raise(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'canvas',
+      null, null, null, '[]')$$,
+  '23514', 'an empty batch is refused — a revision is a batch of operations');
+
+select pg_temp.must_raise(
+  $$select ouroboros.apply_draft_batch('org-v110b', 'a1100000-0000-0000-0000-000000000101', 'canvas',
+      null, null, null, '[{"kind": "remove_stage", "params": {"id": "test"}}]')$$,
+  '23503', 'another workspace cannot apply a batch to this workspace''s draft');
+
+select pg_temp.must_raise(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'copilot',
+      null, 'a1100000-0000-0000-0000-000000000202', null,
+      '[{"kind": "remove_stage", "params": {"id": "test"}}]')$$,
+  '23503', 'a copilot session can apply only to the draft its conversation edits');
+
+select pg_temp.must_reject(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'canvas',
+      null, 'a1100000-0000-0000-0000-000000000201', null,
+      '[{"kind": "remove_stage", "params": {"id": "test"}}]')$$,
+  'a canvas operation carries no copilot session', 'draft_operations_session_actor');
+
+select pg_temp.must_reject(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'copilot',
+      null, 'a1100000-0000-0000-0000-000000000201', 'a1100000-0000-0000-0000-000000000301',
+      '[{"kind": "remove_stage", "params": {"id": "test"}}]')$$,
+  'only a suggestion Apply carries a suggestion id', 'draft_operations_suggestion_actor');
+
+select pg_temp.must_reject(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'robot',
+      null, null, null, '[{"kind": "remove_stage", "params": {"id": "test"}}]')$$,
+  'the actor is one of canvas, code, copilot and suggestion', 'draft_operations_actor');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.draft_operations
+      (organization_id, workflow_id, draft_rev, batch_id, seq, op, actor)
+    values ('org-v110', 'a1100000-0000-0000-0000-000000000101', 99, gen_random_uuid(), 1,
+            '{"kind": "add_stage", "params": {"node": {"id": "Not A Slug"}}}', 'canvas')$$,
+  'an operation names stages by DSL slug', 'draft_operations_op_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.draft_operations
+      (organization_id, workflow_id, draft_rev, batch_id, seq, op, actor)
+    values ('org-v110', 'a1100000-0000-0000-0000-000000000101', 99, gen_random_uuid(), 1,
+            '{"kind": "add_stage", "params": {"node": {"id": "x"}, "extra": true}}', 'canvas')$$,
+  'an operation carries exactly its kind''s parameters', 'draft_operations_op_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.draft_operations
+      (organization_id, workflow_id, draft_rev, batch_id, seq, op, actor)
+    values ('org-v110b', 'a1100000-0000-0000-0000-000000000101', 99, gen_random_uuid(), 1,
+            '{"kind": "remove_stage", "params": {"id": "x"}}', 'canvas')$$,
+  'an operation belongs to a workflow of its own workspace', 'draft_operations_workflow_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.draft_operations
+      (organization_id, workflow_id, draft_rev, batch_id, seq, op, actor)
+    select organization_id, workflow_id, draft_rev, gen_random_uuid(), seq, op, actor
+      from ouroboros.draft_operations
+     where workflow_id = 'a1100000-0000-0000-0000-000000000101' and draft_rev = 3$$,
+  'one revision of one base is one batch', 'draft_operations_revision_seq_key');
+
+select pg_temp.must_raise(
+  $$update ouroboros.draft_operations set actor = 'canvas'
+     where workflow_id = 'a1100000-0000-0000-0000-000000000101' and draft_rev = 2$$,
+  '23001', 'the operation log is history — an operation''s actor cannot be rewritten');
+
+select pg_temp.must_raise(
+  $$update ouroboros.workflows set provenance_summary = '{"canvas": 0, "code": 0, "copilot": -1, "suggestion": 0}'
+     where id = 'a1100000-0000-0000-0000-000000000102'$$,
+  '23514', 'the provenance summary counts are non-negative integers for exactly the four actors');
+
+-- A deleted person and a swept session leave the operations standing, unattributed.
+delete from ouroboros.copilot_sessions where id = 'a1100000-0000-0000-0000-000000000201';
+select pg_temp.must_hold(
+  (select count(*) = 4 + 1 + 2 from ouroboros.draft_operations
+    where workflow_id = 'a1100000-0000-0000-0000-000000000101'
+      and actor in ('copilot', 'suggestion') and session_id is null),
+  'the provenance outlives a swept copilot session — the operations keep their actor, the link goes null');
+
+-- --- publishing gives the draft a new base -------------------------------------------
+insert into ouroboros.workflow_versions (workflow_id, version, definition, published_at)
+select workflow_id, 1, definition, now() from ouroboros.workflow_versions
+ where workflow_id = 'a1100000-0000-0000-0000-000000000101' and version is null;
+update ouroboros.workflows set current_version = 1 where id = 'a1100000-0000-0000-0000-000000000101';
+
+select pg_temp.must_hold(
+  (select draft_rev = 0 and provenance_summary = '{"canvas": 0, "code": 0, "copilot": 0, "suggestion": 0}'
+     from ouroboros.workflows where id = 'a1100000-0000-0000-0000-000000000101')
+   and (select bool_and(provenance = 'published') from ouroboros.workflow_draft_node_provenance
+         where workflow_id = 'a1100000-0000-0000-0000-000000000101'),
+  'publishing starts the draft''s revision again at v1.0, and every stage reads as published');
+
+select pg_temp.must_hold(
+  (select draft_rev = 1 from ouroboros.apply_draft_batch(
+     'org-v110', 'a1100000-0000-0000-0000-000000000101', 'copilot', null, null, null,
+     '[{"kind": "set_trigger", "params": {"trigger": {"event": "ticket_queued", "conditions": {}}}}]')),
+  'the first batch after publishing is revision 1 again');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(draft_rev = 1) from ouroboros.draft_operations
+    where workflow_id = 'a1100000-0000-0000-0000-000000000101' and base_version = 1)
+   and not exists (select 1 from ouroboros.workflow_draft_replay_mismatches
+                    where workflow_id = 'a1100000-0000-0000-0000-000000000101'),
+  'the next batch is v1.1 on base 1, and the log replays from the published version to the draft');
+
+-- --- what the surfaces may do ---------------------------------------------------------
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.draft_operations', 'select')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.draft_operations', 'insert')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.draft_operations', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.draft_operations', 'delete')
+   and has_table_privilege('ouroboros_app', 'ouroboros.workflow_draft_node_provenance', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.workflow_draft_replay_mismatches', 'select')
+   and has_function_privilege('ouroboros_app',
+         'ouroboros.apply_draft_batch(text, uuid, text, text, uuid, uuid, jsonb)', 'execute')
+   and not has_function_privilege('public',
+         'ouroboros.apply_draft_batch(text, uuid, text, text, uuid, uuid, jsonb)', 'execute'),
+  'the application reads the log and applies batches through the writer, and never writes an operation itself');
+
+select pg_temp.must_hold(
+  (select prosecdef and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+     from pg_proc where proname = 'apply_draft_batch' and pronamespace = 'ouroboros'::regnamespace),
+  'the batch writer runs as its owner with its search_path pinned and pg_temp last');
+
+-- Deleting the workflow takes its log with it.
+delete from ouroboros.workflows where id = 'a1100000-0000-0000-0000-000000000101';
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.draft_operations
+    where workflow_id = 'a1100000-0000-0000-0000-000000000101'),
+  'a workflow''s operation log goes with it');
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

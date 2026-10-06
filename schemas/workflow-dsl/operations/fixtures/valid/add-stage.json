@@ -1,0 +1,12 @@
+{
+  "kind": "add_stage",
+  "params": {
+    "node": {
+      "id": "exploit-verify",
+      "type": "infra",
+      "title": "Exploit verify",
+      "position": { "x": 360, "y": 0 },
+      "config": { "command": "./scripts/rerun-poc.sh" }
+    }
+  }
+}

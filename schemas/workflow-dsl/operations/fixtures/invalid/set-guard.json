@@ -1,0 +1,1 @@
+{ "kind": "set_guard", "params": { "spend_cap_cents": 500 } }

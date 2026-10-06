@@ -43,6 +43,8 @@ on:
       - "ouroboros-rest/src/auth/**"
       - "ouroboros-rest/package.json"
       - "schemas/workflow-dsl/v1.json"
+      - "schemas/workflow-dsl/operations-v1.json"
+      - "schemas/workflow-dsl/operations/**"
       - "schemas/org-policy/**"
       - "ouroboros-engine/src/ouroboros_engine/analysis/**"
       - "ouroboros-engine/uv.lock"
@@ -56,6 +58,8 @@ on:
       - "ouroboros-rest/src/auth/**"
       - "ouroboros-rest/package.json"
       - "schemas/workflow-dsl/v1.json"
+      - "schemas/workflow-dsl/operations-v1.json"
+      - "schemas/workflow-dsl/operations/**"
       - "schemas/org-policy/**"
       - "ouroboros-engine/src/ouroboros_engine/analysis/**"
       - "ouroboros-engine/uv.lock"
@@ -458,6 +462,22 @@ jobs:
               -v ON_ERROR_STOP=1 -f /tests/lib/seeded-definitions.sql \
               > "$RUNNER_TEMP/seeded-definitions.json"
           ouroboros-db/scripts/workflow-dsl-drift.mjs "$RUNNER_TEMP/seeded-definitions.json"
+
+      # CC.2 (#556): the same question asked of recorded history. Every operation stored in
+      # `draft_operations` carries DSL objects — a node, an edge, a trigger — and a DSL change
+      # that would reject one leaves that history unreplayable. V110's CHECK holds only the
+      # envelope; this holds each operation to schemas/workflow-dsl/operations-v1.json, which
+      # `$ref`s v1.json's own definitions. An empty log is green until CC.4 (#558) seeds one.
+      - name: Assert every stored draft operation still validates against the DSL
+        run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            --volume "$PWD/ouroboros-db/tests:/tests:ro" \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
+              -v ON_ERROR_STOP=1 -f /tests/lib/draft-operations.sql \
+              > "$RUNNER_TEMP/draft-operations.json"
+          ouroboros-db/scripts/draft-ops-parity.mjs "$RUNNER_TEMP/draft-operations.json"
 
       # BQ.1 (#480): the org-policy document's half of the same question. The module tooling step
       # above already holds schemas/org-policy/v1.json to its golden fixtures (valid ones pass,
