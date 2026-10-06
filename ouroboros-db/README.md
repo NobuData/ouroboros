@@ -1419,6 +1419,20 @@
 > choice, not a step status (**O1**); it cannot predate the row
 > (`onboarding_state_protected_paths_edited_after_created`).
 >
+> `V106` ([#608](https://github.com/NobuData/ouroboros/issues/608), CK.1) opens the **Research**
+> domain (mockup 22). `investigations` is the `RS-###` entity every card on that page is a view
+> over — kind, question, depth (`quick|standard|deep_dive`), `tools_enabled`, a constrained
+> lifecycle (`queued → running → brief_ready → issues_filed`, or `failed`/`cancelled` from
+> `queued` or `running`), `estimate` and `actuals` (independently nullable), `provenance` and
+> `origin` (`user|regression_watch|scheduled`). `investigation_kinds` is the per-workspace kind
+> registry (decision **V10**): every workspace is given `bug_root_cause`,
+> `regression_forensics`, `roadmap_improvements` and `gap_analysis` when it is created, each with
+> a versioned `playbook` whose version must rise with any change. `research_tools` registers the
+> adapter slugs a tool selection or playbook may name, checked at write. `seq` is drawn from a
+> per-workspace counter row (`investigation_seq_counters`), so concurrent creates serialise, a
+> rollback returns its number and a deleted number is never reused —
+> [`tests/verify-investigation-seq.sh`](tests/verify-investigation-seq.sh) proves it under a race.
+>
 > [#484](https://github.com/NobuData/ouroboros/issues/484) (BQ.5) seeds mockup 17 from those rows:
 > [`R__dev_seed_workspace_settings.sql`](migrations/R__dev_seed_workspace_settings.sql) — see
 > [Who may do what, and where the record goes](#who-may-do-what-and-where-the-record-goes). Its
@@ -2675,6 +2689,24 @@ way, through the same harness ([`tests/lib/sessions.sh`](tests/lib/sessions.sh))
 PGPASSWORD=ouroboros ouroboros-db/tests/verify-analysis-run-guard.sh
 ```
 
+Research's `RS-###` numbers ([#608](https://github.com/NobuData/ouroboros/issues/608)) must be
+gapless under concurrent creation, and
+[`tests/verify-investigation-seq.sh`](tests/verify-investigation-seq.sh) proves it through the
+same harness:
+
+1. **Creates serialise.** A creates an investigation and has not committed; B's create in the
+   same workspace *waits* on the counter row, then takes RS-002 when A commits.
+2. **A rollback leaves no gap.** A rolls back instead, and B takes RS-001.
+3. **The probe.** With the allocator swapped for a lock-free `max + 1`, the same race collides
+   on `investigations_organization_seq_key`.
+4. **Workspaces do not contend.** Two workspaces create at once without waiting.
+5. **A burst stays gapless.** Six clients × ten creates, every third rolled back, commit
+   exactly RS-001…RS-042.
+
+```bash
+PGPASSWORD=ouroboros ouroboros-db/tests/verify-investigation-seq.sh
+```
+
 ### The drift check
 
 Every table BetterAuth uses is hand-ported into a `V###__*.sql` migration here, because
@@ -2807,6 +2839,7 @@ misnamed migration is worth reporting before a database is waited on.
 | `tests/verify-constraint-probes.sh` | That those assertions are load-bearing — each goes red when the rule it watches is dropped, routing ([#193](https://github.com/NobuData/ouroboros/issues/193)), the registry ([#583](https://github.com/NobuData/ouroboros/issues/583)), intake ([#104](https://github.com/NobuData/ouroboros/issues/104)), the workflow studio ([#137](https://github.com/NobuData/ouroboros/issues/137)) and planning ([#276](https://github.com/NobuData/ouroboros/issues/276)) included | yes (copies of its own) |
 | `tests/verify-alias-reference-guard.sh` | That the alias delete guard is a lock and not a count — the rule two concurrent writers make, which one session cannot assert | yes (one of its own) |
 | `tests/verify-analysis-run-guard.sh` | That two triggers racing to analyse one repo leave one running analysis — and that without `analysis_runs_one_running` they leave two ([#506](https://github.com/NobuData/ouroboros/issues/506)) | yes (one of its own) |
+| `tests/verify-investigation-seq.sh` | That concurrent investigation creates get gapless `RS-###` numbers, a rollback returns its number — and that a lock-free `max + 1` collides ([#608](https://github.com/NobuData/ouroboros/issues/608)) | yes (one of its own) |
 | `scripts/betterauth-schema.mjs --applied` | The applied schema still holds everything BetterAuth expects | yes |
 | `scripts/betterauth-schema.mjs --check` | The library still expects what the committed snapshot describes | yes (an empty one) |
 | `scripts/migrate --config flyway.seed.toml` ×2 | The seed applies, and applies twice without changing anything | yes (a second one) |
@@ -3136,6 +3169,7 @@ ouroboros-db/
 │   ├── V103__notification_route_sends.sql   # notification_route_sends — the org notification routes' per-address send log — #488
 │   ├── V104__workspace_purge_resumable.sql  # workspace_tombstones as the purge's progress record (started_at, nullable purged_at) — #490
 │   ├── V105__onboarding_protected_paths_edited.sql  # onboarding_state.protected_paths_edited_at — a saved protected-path list stops scan suggestions — #391
+│   ├── V106__investigations.sql      # research_tools, investigation_kinds (versioned playbooks), investigations (RS-###) — #608
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -3201,6 +3235,7 @@ ouroboros-db/
     ├── inbox-invariants.sql          # the Needs-You inbox invariants against the seeded rows — #460
     ├── verify-inbox-invariants.sh    # that they go red when a rule is broken, naming it — #460
     ├── verify-analysis-run-guard.sh  # one running analysis per repo, under a two-session race — #506
+    ├── verify-investigation-seq.sh   # gapless RS-### numbers under concurrent creates — #608
     ├── decision-refs.sql             # BM.1's typed decision refs against the seeded universe — #457
     ├── constraints.sql               # what the schema enforces, asserted against a live database
     └── seed.sql                      # what the seeds put there, asserted against a live database
@@ -3369,6 +3404,10 @@ outside this module alters it.
 | `playbooks` | `V072` | Mockup 14's playbooks card ([#407](https://github.com/NobuData/ouroboros/issues/407), BE.3, decision **K6**) — `name`, `description`, `workflow_id`, `workflow_version`, `skill_overrides`, `context_preset`, `source_run_id`, `issue_filter` | `name` unique per organization; `(workflow_id, workflow_version)` is a published version of a workflow of the same workspace (`playbooks_workflow_version_fk`, `playbooks_workflow_fk` cascading) — `not null`, so never head; `skill_overrides` `{enable?, disable?}` (disjoint uuid sets ≤ 64), `context_preset` `{steer_notes?, fact_ids?}` and `issue_filter` `{labels?, repos?}` are typed by `playbook_*_typed`; `playbooks_refs_resolve` holds skill and fact ids to the workspace and refuses disabling a required skill; `source_run_id` is a run of the workspace, `on delete set null (source_run_id)`; launches are `runs.playbook_id` / `queue_items.playbook_id` (same-workspace, set null) — **no count column**; `ouroboros_app` has full DML |
 | `env_recipes` | `V073` | Mockup 14's Repo Profile **Environment** block ([#408](https://github.com/NobuData/ouroboros/issues/408), BE.4, decision **K7**) — `repo_ref`, `version`, `commands`, `source`, `updated_by`, `updated_at` | `commands` is an ordered array of 1–64 `{command, comment?}` single lines (`env_recipes_commands_typed`); `(organization_id, repo_ref, version)` unique and dense from 1 (`env_recipes_next_version`); every version immutable (`env_recipes_no_update`, the `updated_by` set-null excepted); `source` is `detected\|edited`, a detected version names no person and cannot follow an edited one (`env_recipes_provenance`); `env_recipes_current` is the newest version per repository — no row is a valid "no recipe" state; consumers (farm pool setup, BD.4 prebuild input, AR.1 workspace prep) are documented in the migration header; **no snapshot, boot-time or schedule column**; `ouroboros_app` may select and insert only |
 | `model_prices` | `V012` | What a model costs — the pricing catalog behind mockup 21's `$ per 1M in·out` column, and the shared price table [#92](https://github.com/NobuData/ouroboros/issues/92), [#198](https://github.com/NobuData/ouroboros/issues/198) and [#210](https://github.com/NobuData/ouroboros/issues/210) read rather than re-invent | `billing_mode` is one of `token\|seat\|usage\|free`, and the amounts follow it structurally — `token` requires both, `free` requires zero or none, `seat` and `usage` may carry none, and a `token` row that costs nothing in both directions is refused as a mislabelled `free`; `organization_id` null means a bundled catalog row and set means a workspace's override, with `source` required to agree and `catalog_version` required on bundled rows; the match key is unique **`nulls not distinct`**, without which every re-import would duplicate the whole catalog; the only wildcard is a whole `*` |
+| `research_tools` | `V106` | The research-tool slugs this installation answers to ([#608](https://github.com/NobuData/ouroboros/issues/608), CK.1) — `web`, `competitor`, `code`, `tickets`, `telemetry`, `docs`, mockup 22's tools card. The adapters are code (CL.1, [#614](https://github.com/NobuData/ouroboros/issues/614)); a row is what lets the database refuse a slug no adapter has | installation-wide, not per workspace; `slug` is lower-case; a slug an investigation or kind playbook still names cannot be deleted or renamed (`research_tools_in_use`) |
+| `investigation_kinds` | `V106` | The kind registry per workspace ([#608](https://github.com/NobuData/ouroboros/issues/608), decision **V10**) — `slug`, `display_name` (the composer's label), `tint_key` (the chip hue) and `playbook` `{version, default_tools, synthesis_template, deliverables}` | kinds differ by playbook, never by code path; `investigation_kinds_seed()` gives every new workspace the four built-ins (an `after insert` trigger on `organization`); `slug` unique per workspace; `playbook` is exactly that shape, `deliverables` a distinct subset of `brief\|matrix\|roadmap_doc\|fix_draft` that includes `brief`, and `default_tools` are registered slugs; a playbook change must raise its `version` (`investigation_kinds_playbook_version`); a kind with investigations cannot be deleted |
+| `investigation_seq_counters` | `V106` | The per-workspace counter `investigations.seq` is drawn from ([#608](https://github.com/NobuData/ouroboros/issues/608)) | one row per workspace; bumped inside the creating transaction, so concurrent creates serialise on it, a rollback returns its number and the counter only rises; written only by `investigations_allocate_seq()`, which is `security definer` — `ouroboros_app` has no grant on it |
+| `investigations` | `V106` | One investigation — `RS-###` ([#608](https://github.com/NobuData/ouroboros/issues/608), CK.1, decision **V1**): `seq`/`display_id`, `kind_id`, `question`, `depth`, `tools_enabled`, `status`, `estimate`, `actuals`, `provenance`, `origin`, `engine_task_ref`, `created_by` | `seq` unique per workspace and immutable; the kind is of the same workspace (composite key); `depth` `quick\|standard\|deep_dive`; `tools_enabled` a non-empty set of registered slugs, checked at write; `status` transitions constrained by `investigations_status_transition` (terminal: `issues_filed`, `failed`, `cancelled`); `estimate` `{sources, cost_cents \| null}` and `actuals` `{sources_used, spend_cents \| null, duration_ms}` independently nullable; `provenance` `{researcher, alias, resolution_ref}` required from `running`, `actuals` from `brief_ready`; `origin` `user\|regression_watch\|scheduled`; *brief_ready requires a brief* lands with CK.2 ([#609](https://github.com/NobuData/ouroboros/issues/609)); `ouroboros_app` may select, insert and update, never delete |
 
 Two **functions**, both `V012`'s and both documented in
 [The bundled price catalog](#the-bundled-price-catalog).
