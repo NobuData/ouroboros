@@ -247,7 +247,7 @@ chips: **XS · S · M · L**.
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CC.1 | #555 ✅ | 🟢 Done | ouroboros-db: [CC.1] Copilot sessions & messages | Typed conversation records: bubbles, chips, tool traces | mvp, copilot, db | N (after WF-P.1) | Y | M | ouroboros-db |
 | CC.2 | #556 ✅ | 🟢 Done | ouroboros-db: [CC.2] Draft-operation provenance | Applied ops per draft: actor, source, versions (`v0.3`) | mvp, copilot, db | N (after CC.1, WF-P.1) | Y | S | ouroboros-db |
-| CC.3 | #557 | 🟡 Open | ouroboros-db: [CC.3] Dry-run records | Per-stage results, overlay diffs, costs, history — own domain (W4) | mvp, copilot, db | N (after CC.1) | Y | M | ouroboros-db |
+| CC.3 | #557 ✅ | 🟢 Done | ouroboros-db: [CC.3] Dry-run records | Per-stage results, overlay diffs, costs, history — own domain (W4) | mvp, copilot, db | N (after CC.1) | Y | M | ouroboros-db |
 | CC.4 | #558 | 🟡 Open | ouroboros-db: [CC.4] Suggestions & seeds — mockup-20 parity | Rule/LLM suggestion rows; the full seeded exchange; ci probes | mvp, copilot, db, ci | N (after CC.2/CC.3, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue CC.1 — ouroboros-db: [CC.1] Copilot sessions & messages
@@ -324,7 +324,9 @@ stage.exploit-verify.provenance = copilot ─▶ "added by copilot" pill
 
 ### Issue CC.3 — ouroboros-db: [CC.3] Dry-run records
 
-> **GitHub issue:** #557 · **Status:** 🟡 Open · **Parent epic:** #551
+> **GitHub issue:** #557 ✅ · **Status:** 🟢 Done · **Parent epic:** #551
+>
+> **Delivered (#557, `V111__dry_run_records.sql` — no REST/UI change):** `dry_runs` — org, workflow by composite key + the draft under test (`base_version`, `draft_rev` — V110's `v{base}.{rev}`), copilot `session_id` **nullable** (studio-started runs; set null when the session is swept; must be a conversation about the same workflow), canonical `ticket_id` (#138, same workspace), `pinned_sha` (full sha), `mode` `deep|deep_build` (`deep_build` reserved and inert until #572), `status` `precheck → running | failed`, `running → complete | failed | budget_stopped` (three distinct terminals; a finished run is final), `duration_ms` / `cost_cents` (**null when unpriced**) / `tokens`, `guard_audit` `[{guard, call, count, stage_key?}]` (`[]` on a clean run) with a generated `guards_clean`, `precheck_findings` (the R.2 result, required past the pre-check), `failure_reason` (exactly for failed / budget_stopped), `started_at` / `finished_at`. `dry_run_stages` — `seq`, `stage_key` + `display_name`, `verdict` `ok|skipped|failed|not_reached`, `how` `llm|replayed|deterministic|skipped` (skipped in both or neither, `skip_reason` exactly then), composed `note`, `metrics` (tokens, cost, files touched, simulated writes, ± lines; a **replayed row must carry `estimate_ms` with `sample_count` ≥ 1, `spread_ms` and `similarity_class`**, and no other row may), timings; the card's label is derived by `dry_run_stage_how_label()` (`simulated` for an llm stage with simulated writes, `replayed from history`, `skipped`). The mockup's `open PR ○` row is `not_reached` / `deterministic`. `dry_run_artifacts` — `overlay_diff|plan_excerpt|review_excerpt`, `content` ≤ 64 KiB with `truncated` held equal to `original_bytes > octet_length(content)`, `path_summary` `[{path, added, removed}]` on the diff; one diff per run. Stages and artifacts are written only while the run is open. **History:** `dry_runs_workflow_history_idx (workflow_id, started_at desc)`, index-use asserted over a 2 000-row corpus. **Isolation (W4):** the `dry_run_isolation_violations` probe lists any foreign key between a `dry_run*` table and the run plane (`runs` + every table with an FK path into it) and any view reading both; empty in `constraints.sql` and `seed.sql`, and proven to name a planted FK and a planted read-model view. **Retention (#482):** `custom:dry-run` (records) and `custom:dry-run-artifacts` (bulk, cut at the later cutoff so it never outlives the record) through the definer `dry_runs_sweep()` (7-day floor); the application role cannot delete. Mockup 20's seeded dry run is CC.4's (#558).
 
 - **Problem Statement:** Dry runs need their own domain (W4): per-stage
   results with `how` labels, overlay diffs, costs, and history — never
@@ -916,7 +918,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    BF.5 (#414), BF.1 (#410), WF-P.1/P.2/P.3 (#132/#133/#134), R.2 (#144),
    R.3 (#145), S.1 (#147) + U/V (#165–#169), AH.1 (#249) / BI.2 (#433),
    INTAKE (#138), #41/#46/#16, BA-D.5 (unfiled).
-2. **Phase 1 — Domain:** CC.1 (#555) ✅ → { CC.2 (#556) ✅ ⊕ CC.3 (#557) } →
+2. **Phase 1 — Domain:** CC.1 (#555) ✅ → { CC.2 (#556) ✅ ⊕ CC.3 (#557) ✅ } →
    CC.4 (#558)
 3. **Phase 2 — Services:** { CD.1 (#559) ⊕ CD.2 (#560) ⊕ CD.3 (#561) } →
    CD.4 (#562) → CD.5 (#563) → CD.6 (#564)

@@ -1723,7 +1723,7 @@ the blockquote above that records what it did and what it did differently.
 | 400 | **CK.2** | ✅ [#609](https://github.com/NobuData/ouroboros/issues/609) | Citation ledger — source records & claims | ouroboros-db | M | CK.1 |
 | 401 | **CM.3** | ✅ [#622](https://github.com/NobuData/ouroboros/issues/622) | Scope & cost estimation + research routing | ouroboros-rest | M | CH.3, CK.1 |
 | 402 | **CC.2** | ✅ [#556](https://github.com/NobuData/ouroboros/issues/556) | Draft-operation provenance | ouroboros-db | S | P.1, CC.1 |
-| 403 | **CC.3** | [#557](https://github.com/NobuData/ouroboros/issues/557) | Dry-run records | ouroboros-db | M | CC.1 |
+| 403 | **CC.3** | ✅ [#557](https://github.com/NobuData/ouroboros/issues/557) | Dry-run records | ouroboros-db | M | CC.1 |
 | 404 | **CK.3** | [#610](https://github.com/NobuData/ouroboros/issues/610) | Capability matrices & competitor watch schema | ouroboros-db | M | CK.2 |
 | 405 | **CK.5** | [#612](https://github.com/NobuData/ouroboros/issues/612) | Roadmap docs & suggested changes | ouroboros-db | M | AK.1, CK.1 |
 | 406 | **CL.1** | [#614](https://github.com/NobuData/ouroboros/issues/614) | ResearchToolAdapter SPI & conformance kit | ouroboros-rest | L | CK.2 |

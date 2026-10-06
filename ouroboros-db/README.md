@@ -1504,6 +1504,28 @@
 > `$ref`s the DSL, through [`scripts/draft-ops-parity.mjs`](scripts/draft-ops-parity.mjs) — a DSL
 > change that would reject recorded history fails there.
 >
+> `V111` ([#557](https://github.com/NobuData/ouroboros/issues/557), CC.3) records **deep dry
+> runs in a domain of their own** (decision **W4**) — mockup 20's dry-run card. `dry_runs` holds
+> one dry run of a draft revision (`base_version`, `draft_rev`) against a canonical ticket, with
+> the copilot session that proposed it (nullable: the studio can start one; set null when the
+> session is swept), `pinned_sha`, `mode` `deep|deep_build` (`deep_build` reserved for CF.3),
+> `status` `precheck → running → complete|failed|budget_stopped` (three distinct terminals),
+> totals (`cost_cents` **null when unpriced**), `guard_audit` (blocked calls — `[]` on a clean
+> run, with a generated `guards_clean`), the R.2 `precheck_findings` and `failure_reason`.
+> `dry_run_stages` are the result rows: `verdict` `ok|skipped|failed|not_reached`, `how`
+> `llm|replayed|deterministic|skipped` (the card's label is `dry_run_stage_how_label()` —
+> `simulated`, `replayed from history`, `skipped`), the composed `note`, `metrics` (a replayed
+> row must carry `estimate_ms` **with** `sample_count` ≥ 1, `spread_ms` and `similarity_class`)
+> and `skip_reason`. `dry_run_artifacts` hold the overlay diff and plan/review excerpts, at most
+> 64 KiB with an honest `truncated` flag and `original_bytes`, and a `path_summary` for the diff
+> header. A finished dry run and its rows are final. History reads are backed by
+> `dry_runs_workflow_history_idx` `(workflow_id, started_at desc)`. **Isolation is asserted**:
+> `dry_run_isolation_violations` lists any foreign key between a `dry_run*` table and the run
+> plane (`runs` and every table with a foreign-key path into it) and any view reading both — it
+> is empty, and `constraints.sql` proves it names a planted coupling. Retention:
+> `custom:dry-run` (records) and `custom:dry-run-artifacts` (the bulk, never kept longer than
+> the record) through `dry_runs_sweep()`; the application role cannot delete.
+>
 > [#484](https://github.com/NobuData/ouroboros/issues/484) (BQ.5) seeds mockup 17 from those rows:
 > [`R__dev_seed_workspace_settings.sql`](migrations/R__dev_seed_workspace_settings.sql) — see
 > [Who may do what, and where the record goes](#who-may-do-what-and-where-the-record-goes). Its
@@ -3286,6 +3308,7 @@ ouroboros-db/
 │   ├── V108__citation_ledger.sql     # source_records (dense [cite_no], validated locators), briefs, brief_claims, citation links — #609
 │   ├── V109__investigation_estimate_outcomes.sql # estimate_calibration_version, investigation_estimate_outcomes + record_investigation_estimate_outcome() — #622
 │   ├── V110__draft_operations.sql    # draft_operations, workflows.draft_rev/provenance_summary, apply_draft_batch(), node provenance + replay probe — #556
+│   ├── V111__dry_run_records.sql     # dry_runs, dry_run_stages (verdict/how), dry_run_artifacts (bounded), W4 isolation probe, dry_runs_sweep() — #557
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -3528,6 +3551,9 @@ outside this module alters it.
 | `investigations` | `V106` | One investigation — `RS-###` ([#608](https://github.com/NobuData/ouroboros/issues/608), CK.1, decision **V1**): `seq`/`display_id`, `kind_id`, `question`, `depth`, `tools_enabled`, `status`, `estimate`, `actuals`, `provenance`, `origin`, `engine_task_ref`, `created_by` | `seq` unique per workspace and immutable; the kind is of the same workspace (composite key); `depth` `quick\|standard\|deep_dive`; `tools_enabled` a non-empty set of registered slugs, checked at write; `status` transitions constrained by `investigations_status_transition` (terminal: `issues_filed`, `failed`, `cancelled`); `estimate` `{sources, cost_cents \| null}` and `actuals` `{sources_used, spend_cents \| null, duration_ms}` independently nullable; `provenance` `{researcher, alias, resolution_ref}` required from `running`, `actuals` from `brief_ready`; `origin` `user\|regression_watch\|scheduled`; *brief_ready requires a brief* lands with CK.2 ([#609](https://github.com/NobuData/ouroboros/issues/609)); `ouroboros_app` may select, insert and update, never delete |
 | `investigation_estimate_outcomes` | `V109` | Estimate vs actuals per investigation ([#622](https://github.com/NobuData/ouroboros/issues/622), CM.3, decision **V5**) — the calibration version, depth, tools and alias the estimate was made under, its source and cost ranges, the actual sources and spend, and generated `sources_within_estimate` / `cost_within_estimate` verdicts | one row per investigation, keyed to it by a composite `(organization_id, investigation_id)` foreign key that cascades; a cost range is whole or null; `cost_within_estimate` is null when either cost side is unknown; written by `record_investigation_estimate_outcome()` (idempotent upsert, runs as the caller); `ouroboros_app` may select, insert and update, never delete. `V109` also adds `investigations.estimate_calibration_version`, present exactly when `estimate` is |
 | `draft_operations` | `V110` | Per-operation provenance on a workflow's shared draft ([#556](https://github.com/NobuData/ouroboros/issues/556), CC.2, decision **W2**) — each typed operation (`{kind, params}` over DSL v1 objects), its batch and position, the `draft_rev` its batch produced, the `base_version` it was applied over, and its actor `canvas\|code\|copilot\|suggestion` with user, copilot session and suggestion references | written only by `apply_draft_batch()`, which applies the batch to the stored draft in the same transaction; append-only (`draft_operations_no_update`, a foreign key's set-null excepted); the envelope is CHECKed (`draft_operations_op_shape`) and the DSL validity of its objects is ci/db's parity check (`scripts/draft-ops-parity.mjs`); a session only on copilot/suggestion operations, a suggestion id only on suggestion ones (its foreign key arrives with CC.4, #558); one batch per `(workflow, base, rev)`; composite `(workflow_id, organization_id)` key cascades, the session is set null when swept; `ouroboros_app` may only select, and applies batches through the function. `V110` also adds `workflows.draft_rev` and `workflows.provenance_summary` (reset when `current_version` moves), the `workflow_draft_node_provenance` view (the pill's source) and the `workflow_draft_replay_mismatches` probe |
+| `dry_runs` | `V111` | One deep dry run ([#557](https://github.com/NobuData/ouroboros/issues/557), CC.3, decision **W4**) — workflow and draft revision (`base_version`, `draft_rev`), copilot `session_id`, canonical `ticket_id`, `pinned_sha`, `mode`, `status`, `duration_ms`/`cost_cents`/`tokens`, `guard_audit` (+ generated `guards_clean`), `precheck_findings`, `failure_reason`, `started_at`/`finished_at` | `status` `precheck → running \| failed`, `running → complete \| failed \| budget_stopped` (`dry_runs_transition`); a finished run is final; `finished_at` and `duration_ms` exactly when terminal; `failure_reason` exactly for `failed`/`budget_stopped`; `cost_cents` null when unpriced; `pinned_sha` a full sha; ticket of the same workspace and session about the same workflow (`dry_runs_references_check`); the session is set null when swept; no foreign key into the run plane (`dry_run_isolation_violations`); history index `(workflow_id, started_at desc)`; `ouroboros_app` may select, insert and update, never delete — `dry_runs_sweep()` is the one delete |
+| `dry_run_stages` | `V111` | A dry run's result rows in card order ([#557](https://github.com/NobuData/ouroboros/issues/557)) — `seq`, `stage_key`, `display_name`, `verdict`, `how`, `note`, `metrics`, `skip_reason`, timings | `verdict` `ok\|skipped\|failed\|not_reached`; `how` `llm\|replayed\|deterministic\|skipped`, skipped in both or neither, with a `skip_reason` exactly then; `metrics` known keys only, and a replayed row carries `estimate_ms`, `sample_count` ≥ 1, `spread_ms`, `similarity_class` (no other row may); a reached row has a note; unique `(dry_run_id, seq)`; written only while the dry run is open (`dry_run_stages_open`); cascades with the dry run |
+| `dry_run_artifacts` | `V111` | A dry run's overlay diff and plan/review excerpts ([#557](https://github.com/NobuData/ouroboros/issues/557)) — `kind`, `content`, `truncated`, `original_bytes`, `path_summary` | `kind` `overlay_diff\|plan_excerpt\|review_excerpt`; `content` at most 64 KiB, `truncated` exactly when `original_bytes` exceeds it; `path_summary` `[{path, added, removed}]` on the diff and null on an excerpt; one overlay diff per dry run; written only while the dry run is open; retention `custom:dry-run-artifacts`, cut no later than the record |
 
 Two **functions**, both `V012`'s and both documented in
 [The bundled price catalog](#the-bundled-price-catalog).
