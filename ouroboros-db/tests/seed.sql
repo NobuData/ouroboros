@@ -6961,5 +6961,20 @@ select pg_temp.must_hold(
     where item.id::text like '5eed0082-%'),
   'one expired item, and one answer that came in by email');
 
+-- ===========================================================================
+-- Copilot messages carry no fabricated cost (#555, CC.1)
+-- ===========================================================================
+--
+-- *"cost_cents is null for unpriced exchanges, and a probe asserts no seeded or fixture message
+-- carries a fabricated cost."* V107's CHECKs refuse a cost on a user message or on an exchange
+-- with no token counts; this asks the same of every row a seed left, so a seed that bypassed the
+-- constraints — or a later one that copies a demo figure in — fails here by name. CC.4 (#558)
+-- seeds mockup 20's exchange; until then the table is empty and the probe is vacuously green.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.copilot_messages
+    where cost_cents is not null
+      and (role <> 'copilot' or tokens_in is null or tokens_out is null)),
+  'no seeded copilot message carries a cost for an exchange nothing was metered for');
+
 \o
 \echo 'seed.sql: all assertions passed'

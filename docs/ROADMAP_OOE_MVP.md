@@ -1719,7 +1719,7 @@ the blockquote above that records what it did and what it did differently.
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
 | 398 | **CK.1** | ✅ [#608](https://github.com/NobuData/ouroboros/issues/608) | Investigations & kind registry schema | ouroboros-db | M | 3.1, B.3 |
-| 399 | **CC.1** | [#555](https://github.com/NobuData/ouroboros/issues/555) | Copilot sessions & messages | ouroboros-db | M | P.1 |
+| 399 | **CC.1** | ✅ [#555](https://github.com/NobuData/ouroboros/issues/555) | Copilot sessions & messages | ouroboros-db | M | P.1 |
 | 400 | **CK.2** | [#609](https://github.com/NobuData/ouroboros/issues/609) | Citation ledger — source records & claims | ouroboros-db | M | CK.1 |
 | 401 | **CM.3** | [#622](https://github.com/NobuData/ouroboros/issues/622) | Scope & cost estimation + research routing | ouroboros-rest | M | CH.3, CK.1 |
 | 402 | **CC.2** | [#556](https://github.com/NobuData/ouroboros/issues/556) | Draft-operation provenance | ouroboros-db | S | P.1, CC.1 |

@@ -245,14 +245,16 @@ chips: **XS · S · M · L**.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CC.1 | #555 | 🟡 Open | ouroboros-db: [CC.1] Copilot sessions & messages | Typed conversation records: bubbles, chips, tool traces | mvp, copilot, db | N (after WF-P.1) | Y | M | ouroboros-db |
+| CC.1 | #555 ✅ | 🟢 Done | ouroboros-db: [CC.1] Copilot sessions & messages | Typed conversation records: bubbles, chips, tool traces | mvp, copilot, db | N (after WF-P.1) | Y | M | ouroboros-db |
 | CC.2 | #556 | 🟡 Open | ouroboros-db: [CC.2] Draft-operation provenance | Applied ops per draft: actor, source, versions (`v0.3`) | mvp, copilot, db | N (after CC.1, WF-P.1) | Y | S | ouroboros-db |
 | CC.3 | #557 | 🟡 Open | ouroboros-db: [CC.3] Dry-run records | Per-stage results, overlay diffs, costs, history — own domain (W4) | mvp, copilot, db | N (after CC.1) | Y | M | ouroboros-db |
 | CC.4 | #558 | 🟡 Open | ouroboros-db: [CC.4] Suggestions & seeds — mockup-20 parity | Rule/LLM suggestion rows; the full seeded exchange; ci probes | mvp, copilot, db, ci | N (after CC.2/CC.3, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue CC.1 — ouroboros-db: [CC.1] Copilot sessions & messages
 
-> **GitHub issue:** #555 · **Status:** 🟡 Open · **Parent epic:** #551
+> **GitHub issue:** #555 ✅ · **Status:** 🟢 Done · **Parent epic:** #551
+>
+> **Delivered (#555, `V107__copilot_sessions_messages.sql` — no REST/UI change):** `copilot_sessions` — org, workflow by composite key (same workspace), `status` `active → promoted | discarded` (terminal; `closed_at` set exactly when closed; the transcript is kept), `model_provenance` `[{seq, alias, model_id}]` appended to and never rewritten, `draft_name`, `created_by`, `created_at`, `closed_at`; **one active session per draft** by the partial unique index `copilot_sessions_one_active`. `copilot_messages` — org + session by composite key, `seq` allocated from the session row's `last_seq` (a supplied seq is refused; concurrent appends serialise, so commit order is seq order and pagination is stable; a closed session takes no new messages), `role` `user | copilot`, `body`, `choices` `[{prompt, options, selected, answered_at}]` (questions frozen once the reply completes, each answerable once), `tool_trace` `{operations: [{op, outcome proposed|applied|bounced, validator_message iff bounced}], reads: [{tool,…}], dry_run_proposals: [{ticket,…}]}`, `tokens_in`/`tokens_out` (paired), `cost_cents` (null when unpriced; refused without token counts; recorded once), `status` `streaming → complete | interrupted`. Retention: two `custom:*` classes — `custom:copilot-chat` (discarded) and `custom:copilot-chat-promoted` (promoted, never cut earlier than the chat tier) — swept by the definer `copilot_sessions_sweep()` (7-day floor); the application role cannot delete either table. Proven by `tests/verify-copilot-sessions.sh` (new `ci/db` step: one-active race, rollback, index-dropped probe, cross-draft, ordered appends, lock-free `max + 1` probe, 6×10 burst committing exactly 1…42); single-session rules in `constraints.sql`'s V107 section; `seed.sql` probes that no seeded message carries a fabricated cost. Wiring the sweep into `RetentionPolicyService` is left to the REST ticket that reads these tables.
 
 - **Problem Statement:** The conversation is a durable artifact — bubbles,
   choice questions with answers, and the tool activity behind each reply.
@@ -912,7 +914,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    BF.5 (#414), BF.1 (#410), WF-P.1/P.2/P.3 (#132/#133/#134), R.2 (#144),
    R.3 (#145), S.1 (#147) + U/V (#165–#169), AH.1 (#249) / BI.2 (#433),
    INTAKE (#138), #41/#46/#16, BA-D.5 (unfiled).
-2. **Phase 1 — Domain:** CC.1 (#555) → { CC.2 (#556) ⊕ CC.3 (#557) } →
+2. **Phase 1 — Domain:** CC.1 (#555) ✅ → { CC.2 (#556) ⊕ CC.3 (#557) } →
    CC.4 (#558)
 3. **Phase 2 — Services:** { CD.1 (#559) ⊕ CD.2 (#560) ⊕ CD.3 (#561) } →
    CD.4 (#562) → CD.5 (#563) → CD.6 (#564)
