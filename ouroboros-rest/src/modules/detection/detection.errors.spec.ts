@@ -2,7 +2,13 @@
 
 import { HttpStatus } from "@nestjs/common";
 
-import { DETECTION_ERRORS, rescanTooSoon, scanNotFound, sourceMissing } from "./detection.errors";
+import {
+  DETECTION_ERRORS,
+  globInvalid,
+  rescanTooSoon,
+  scanNotFound,
+  sourceMissing,
+} from "./detection.errors";
 
 describe("the detection refusals", () => {
   it("say which repository nothing can probe, as a 409", () => {
@@ -34,5 +40,24 @@ describe("the detection refusals", () => {
       message: "acme/helios has no scan 3.",
       details: { repo: "acme/helios", scanSeq: 3 },
     });
+  });
+
+  it("name the one glob the guardrails cannot enforce, as a 422", () => {
+    const error = globInvalid(["/etc/**"]);
+
+    expect(error.getStatus()).toBe(HttpStatus.UNPROCESSABLE_ENTITY);
+    expect(error.getResponse()).toMatchObject({
+      code: DETECTION_ERRORS.globInvalid,
+      message:
+        '"/etc/**" is not a path pattern the guardrails can enforce — use a relative glob like boot/**.',
+      details: { invalid: ["/etc/**"] },
+    });
+  });
+
+  it("count several refused globs, and list every one", () => {
+    const error = globInvalid(["/etc/**", "../x"]);
+
+    expect((error.getResponse() as { message: string }).message).toMatch(/^2 patterns are not/);
+    expect(error.getResponse()).toMatchObject({ details: { invalid: ["/etc/**", "../x"] } });
   });
 });

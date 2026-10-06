@@ -1,3 +1,4 @@
+import type { RepoDetection, RepoDetectionProgress, RepoDetectionRow } from "@/app/api/detection";
 import type { Onboarding, OnboardingLaunchReceipt, OnboardingStep } from "@/app/api/onboarding";
 
 /**
@@ -121,3 +122,102 @@ export function launchReceipt(overrides: Partial<OnboardingLaunchReceipt> = {}):
     ...overrides,
   };
 }
+
+/* ------------------------------------------------------------------ the detection card (#391) */
+
+/** When the seeded scan ran. */
+export const SCANNED_AT = "2026-10-03T09:00:00.000Z";
+
+/**
+ * One detection row, with overrides.
+ *
+ * @param overrides What to change.
+ * @returns The row.
+ */
+export function cardRow(overrides: Partial<RepoDetectionRow> & Pick<RepoDetectionRow, "rowKey">): RepoDetectionRow {
+  return {
+    verdict: "ok",
+    value: "",
+    label: "detected",
+    confidence: "high",
+    determined: true,
+    evidence: { pack: overrides.rowKey, packVersion: "1.0.0", probes: ["tree"] },
+    ...overrides,
+  };
+}
+
+/**
+ * The seeded card — `R__dev_seed_onboarding.sql`'s six rows of scan 1, 38 s, and the two
+ * suggested protected paths: mockup 13's card with its honesty labels.
+ *
+ * @param overrides What to change.
+ * @returns The detection.
+ */
+export function seededCard(overrides: Partial<RepoDetection> = {}): RepoDetection {
+  return {
+    repo: REPO,
+    scan: {
+      scanSeq: 1,
+      scannedAt: SCANNED_AT,
+      durationMs: 38_000,
+      packVersions: { language: "1.0.0", conventions: "1.1.0" },
+      probeBudgetUsed: 9,
+    },
+    rows: [
+      cardRow({
+        rowKey: "language",
+        value: "C 92% · Zephyr RTOS 4.1",
+        evidence: { pack: "language", packVersion: "1.0.0", probes: ["languages", "tree", "file:west.yml"] },
+      }),
+      cardRow({
+        rowKey: "build",
+        value: "west + twister (found west.yml)",
+        evidence: { hit: "west.yml", pack: "build", packVersion: "1.0.0", probes: ["tree"] },
+      }),
+      cardRow({
+        rowKey: "devcontainer",
+        value: "found .devcontainer.json → image ghcr.io/zephyrproject-rtos/ci:v0.27.4",
+        evidence: {
+          hit: ".devcontainer.json",
+          pack: "devcontainer",
+          packVersion: "1.0.0",
+          probes: ["tree", "file:.devcontainer.json"],
+        },
+      }),
+      cardRow({ rowKey: "tests", value: "5 suites, 63 tests (detected)", confidence: "medium" }),
+      cardRow({ rowKey: "protected_paths", value: "boot/, keys/ suggested", confidence: "medium" }),
+      cardRow({
+        rowKey: "conventions",
+        verdict: "warn",
+        value: "No CONTRIBUTING.md — a coming knowledge release will learn your conventions from merged PRs.",
+        evidence: { pack: "conventions", packVersion: "1.1.0", probes: ["tree"], contributing: null },
+      }),
+    ],
+    protectedPaths: [
+      { glob: "boot/**", source: "suggested" },
+      { glob: "keys/**", source: "suggested" },
+    ],
+    progress: null,
+    ...overrides,
+  };
+}
+
+/**
+ * A scan's progress, with overrides.
+ *
+ * @param overrides What to change.
+ * @returns The progress — running, four of nine probes settled.
+ */
+export function scanProgress(overrides: Partial<RepoDetectionProgress> = {}): RepoDetectionProgress {
+  return {
+    state: "running",
+    startedAt: "2026-10-05T12:00:00.000Z",
+    finishedAt: null,
+    probesPlanned: 9,
+    probesSettled: 4,
+    scanSeq: null,
+    error: null,
+    ...overrides,
+  };
+}
+

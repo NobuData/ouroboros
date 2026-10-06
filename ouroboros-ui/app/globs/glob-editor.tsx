@@ -25,9 +25,9 @@ import "./globs.css";
  * one actually matches.
  *
  * It is shared by construction rather than by copy: the policy card's `protected_paths` rule
- * mounts it today, and the onboarding wizard's protected-paths row (the BB epic, whose surface
- * is not built yet) mounts the same component when it lands — one grammar, one editor, one
- * preview. It names no domain concept: it takes a list, says when the list changes, and is
+ * and the Get Started detection card's protected-paths row (BC.2,
+ * [#391](https://github.com/NobuData/ouroboros/issues/391)) both mount it — one grammar, one
+ * editor, one preview. It names no domain concept: it takes a list, says when the list changes, and is
  * handed the function that fetches a preview.
  *
  * ### An invalid pattern never joins the list

@@ -33,7 +33,15 @@ describe("RulePackRegistry", () => {
       "protected_paths",
       "conventions",
     ]);
-    expect(Object.values(registry.versions()).every((version) => version === "1.0.0")).toBe(true);
+    expect(registry.versions()).toEqual({
+      language: "1.0.0",
+      build: "1.0.0",
+      devcontainer: "1.0.0",
+      tests: "1.0.0",
+      protected_paths: "1.0.0",
+      // 1.1.0 (#391): the warn line speaks of the knowledge roadmap in the future tense.
+      conventions: "1.1.0",
+    });
   });
 
   it("accepts a pack emitting custom rows beside the core", () => {

@@ -57,6 +57,8 @@ export class InMemoryDetectionStore implements DetectionStore {
   readonly relabels: { repo: string; scanSeq: number; row: DetectionRow }[] = [];
   /** The protected-path policies, by `workspace|repo`. */
   readonly policyRows = new Map<string, PolicyRow[]>();
+  /** The repositories whose list a person saved (V105), by `workspace|repo` — scans suggest none. */
+  readonly edited = new Set<string>();
   /** The sources `candidateSources` answers. */
   sources: SyncSource[] = [detectionSource()];
   /** The measurement `measuredTests` answers. */
@@ -76,7 +78,7 @@ export class InMemoryDetectionStore implements DetectionStore {
     const key = `${record.organizationId}|${record.repo}`;
     const policies = this.policyRows.get(key) ?? [];
 
-    for (const glob of record.protectedPaths) {
+    for (const glob of this.edited.has(key) ? [] : record.protectedPaths) {
       if (!policies.some((policy) => policy.path_glob === glob)) {
         policies.push({ path_glob: glob, source: "suggested" });
       }
@@ -152,6 +154,21 @@ export class InMemoryDetectionStore implements DetectionStore {
 
   policies(organizationId: string, repo: string): Promise<PolicyRow[]> {
     return Promise.resolve([...(this.policyRows.get(`${organizationId}|${repo}`) ?? [])]);
+  }
+
+  /** @inheritdoc */
+  replacePolicies(
+    organizationId: string,
+    repo: string,
+    globs: readonly string[],
+  ): Promise<PolicyRow[]> {
+    const key = `${organizationId}|${repo}`;
+    const rows = [...globs].sort().map((glob) => ({ path_glob: glob, source: "edited" as const }));
+
+    this.edited.add(key);
+    this.policyRows.set(key, rows);
+
+    return Promise.resolve(rows);
   }
 
   /**

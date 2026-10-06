@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.40.5"
+  version: "0.40.6"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -6252,7 +6252,8 @@ paths:
         depends on (#101). Each scan is stored as the next `scanSeq`; earlier scans stay readable.
 
         Protected-path suggestions are written as `suggested` policy rows the guardrails enforce;
-        a glob a person has edited is never overwritten.
+        a glob a person has edited is never overwritten, and once a person has saved the list
+        (`PUT …/protected-paths`, #391) no scan suggests for the repository again.
 
         `owner`, `admin` or `member`.
       operationId: scanRepoDetection
@@ -6321,6 +6322,97 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/onboarding/detection/protected-paths:
+    put:
+      tags: [onboarding]
+      summary: Save a repository's protected-path list
+      description: |-
+        The detection card's inline glob editor
+        ([#391](https://github.com/NobuData/ouroboros/issues/391)). **These paths are refused by run
+        guardrails**: the `allowed_paths` check (#305) fails a change-set that touches one, so this
+        is the highest-consequence control on the card and is `owner` or `admin`.
+
+        The list **replaces** what is stored: every glob in it becomes `edited` (a person's),
+        every other — suggested or edited — is removed, and duplicates are dropped. From then on a
+        scan of the repository suggests nothing; the list is the person's. An empty list protects
+        nothing. Nothing is written when any glob is refused. Answers the card, re-read.
+      operationId: editRepoProtectedPaths
+      parameters:
+        - $ref: "#/components/parameters/OnboardingRepo"
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProtectedPathsEdit"
+            example:
+              globs: ["boot/**", "keys/**"]
+      responses:
+        "200":
+          description: The card, with the list as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepoDetection"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — a `member` or `viewer` cannot change what run guardrails refuse.
+            `details.role` is what you hold and `details.required` is what would have been enough.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `detection_glob_invalid` — one or more globs are not relative path patterns the
+            guardrails can enforce (blank, padded, absolute, a backslash, a `..` segment, a control
+            character, or over 512 characters); `details.invalid` lists every one. Or
+            `validation_failed` — `repo` is malformed, or `globs` is not a list of at most 64
+            strings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: detection_glob_invalid
+                message: '"/etc/**" is not a path pattern the guardrails can enforce — use a relative glob like boot/**.'
+                details:
+                  invalid: ["/etc/**"]
         "500":
           description: |-
             `internal_error` — the service itself failed. The message is a constant and
@@ -41360,6 +41452,20 @@ components:
         joined:
           type: boolean
           description: True when a scan was already running and this request joined it.
+
+    ProtectedPathsEdit:
+      type: object
+      title: ProtectedPathsEdit
+      description: What `PUT /api/v1/onboarding/detection/protected-paths` takes — the whole list.
+      additionalProperties: false
+      required: [globs]
+      properties:
+        globs:
+          type: array
+          maxItems: 64
+          description: The globs (`boot/**`), relative to the repository root. Empty protects nothing.
+          items:
+            type: string
 
     InterventionCause:
       type: string

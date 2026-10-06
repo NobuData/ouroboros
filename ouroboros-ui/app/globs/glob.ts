@@ -4,9 +4,9 @@
  * glob editor (`app/globs/glob-editor.tsx`).
  *
  * A protected-path glob is written in one language wherever it is edited: the policy card's
- * `protected_paths` rule today, the onboarding wizard's protected-paths row when its surface is
- * built. The grammar is `schemas/workflow-dsl/v1.json`'s `path_glob` — relative to the repository
- * root, no leading `/`, no `..` segment, no whitespace — and {@link GLOB_PATTERN} is that
+ * `protected_paths` rule and the Get Started detection card's protected-paths row (#391). The
+ * grammar is `schemas/workflow-dsl/v1.json`'s `path_glob` — relative to the repository root, no
+ * leading `/`, no `..` segment, no whitespace — and {@link GLOB_PATTERN} is that
  * definition's pattern, verbatim, so a glob this module accepts is one the service's validator
  * accepts.
  *

@@ -3,7 +3,7 @@
  * code `openapi.yaml` publishes.
  */
 
-import { ConflictError, NotFoundError } from "../errors/error.envelope";
+import { ConflictError, InvalidRequestError, NotFoundError } from "../errors/error.envelope";
 
 /** The codes, as one object. */
 export const DETECTION_ERRORS = {
@@ -13,6 +13,8 @@ export const DETECTION_ERRORS = {
   rescanTooSoon: "detection_rescan_too_soon",
   /** The repository has no scan with that number. */
   scanNotFound: "detection_scan_not_found",
+  /** A protected-path glob is not one the policy accepts (#391). `details.invalid` names them. */
+  globInvalid: "detection_glob_invalid",
 } as const;
 
 /**
@@ -61,5 +63,23 @@ export function scanNotFound(repo: string, scanSeq: number): NotFoundError {
       repo,
       scanSeq,
     },
+  );
+}
+
+/**
+ * `422` — a protected-path list with a glob the policy does not accept (#391): absolute, a `..`
+ * segment, a backslash, surrounding whitespace, a control character, blank, or over 512
+ * characters. Nothing is written.
+ *
+ * @param invalid - The globs refused, in the order sent.
+ * @returns The error.
+ */
+export function globInvalid(invalid: readonly string[]): InvalidRequestError {
+  return new InvalidRequestError(
+    DETECTION_ERRORS.globInvalid,
+    invalid.length === 1
+      ? `"${invalid[0]}" is not a path pattern the guardrails can enforce — use a relative glob like boot/**.`
+      : `${String(invalid.length)} patterns are not ones the guardrails can enforce — use relative globs like boot/**.`,
+    { invalid: [...invalid] },
   );
 }

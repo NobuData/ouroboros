@@ -675,7 +675,7 @@ source — steprail/detect/tile/safety/timeline/action-bar treatments — via th
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BC.1 | #390 ✅ | 🟢 Done | ouroboros-ui: [BC.1] Wizard route, step rail & action bar | `/get-started` frame, derived rail, glow bar, nav surfacing | mvp, onboarding, ui, design | N (after #41, BB.2, BA-D.5) | Y | M | ouroboros-ui |
-| BC.2 | #391 | 🟡 Open | ouroboros-ui: [BC.2] Detection card | Six evidence rows, warn variant, re-scan, protected-path edit | mvp, onboarding, ui, design | N (after BC.1, BB.1) | Y | M | ouroboros-ui |
+| BC.2 | #391 ✅ | 🟢 Done | ouroboros-ui: [BC.2] Detection card | Six evidence rows, warn variant, re-scan, protected-path edit | mvp, onboarding, ui, design | N (after BC.1, BB.1) | Y | M | ouroboros-ui |
 | BC.3 | #392 | 🟡 Open | ouroboros-ui: [BC.3] Template tiles | Selection/locked treatments, stage dots, instantiation flow | mvp, onboarding, ui, design | N (after BC.1, BB.3) | Y | M | ouroboros-ui |
 | BC.4 | #393 | 🟡 Open | ouroboros-ui: [BC.4] First-issue & safety card | Scored pick with reasoning, own-pick flow, safety truth rows | mvp, onboarding, ui, design | N (after BC.1, BB.4, BA.3) | Y | M | ouroboros-ui |
 | BC.5 | #394 | 🟡 Open | ouroboros-ui: [BC.5] Defaults, timeline & reassure cards | Deployment-aware defaults, projection timeline, O9 strip | mvp, onboarding, ui, design | N (after BC.1, BB.5) | Y | M | ouroboros-ui |
@@ -715,7 +715,9 @@ Step 3 of 4                                   [Back] [Run my first loop →](gat
 
 ### Issue BC.2 — ouroboros-ui: [BC.2] Detection card
 
-> **GitHub issue:** #391 · **Status:** 🟡 Open · **Parent epic:** #378
+> **GitHub issue:** #391 ✅ · **Status:** 🟢 Done · **Parent epic:** #378
+>
+> **Delivered (#391, UI 0.140.0, REST 0.40.6, V105):** the *"We already figured this out"* card in `/get-started`'s step content (`app/get-started/detection-card.tsx`, pure rules in `detection-view.ts`), first painted with the page and then on its own I.8 poll (`GET /api/onboarding/detection?repo=`, every 2 s while a scan runs). Rows: ✓/!/✗ (and ? for undetermined) marks, label, mono value with its trailing parenthetical dimmed, and the service's `detected`/`measured` chip verbatim — the devcontainer row claims no snapshot or timing. `✓ step 2 done` follows the rail; `scanned in Ns` is the scan's real `durationMs`. Every row has a keyboard-reachable *evidence* disclosure listing its probe hits, the file found, unfinished probes, the rule pack and confidence. Re-scan (contributors) keeps the stored rows on screen under a progress meter until the poll reads the new `scanSeq`, and is debounced — held while asked/running and through the service's 30 s window, counting down. The protected-paths row's *edit* opens the shared glob editor (BS.4) inline with the consequence stated (*These paths are refused by run guardrails*), its match preview kept to this repository; invalid globs get the editor's designed error and never join the list. Saving is a new REST route, `PUT /api/v1/onboarding/detection/protected-paths` (owner/admin — decided with the user; `422 detection_glob_invalid` names every refused glob), which replaces the list as `edited` rows — the rows AP.3's guardrail (#305) reads. Decided with the user: a saved list is never re-suggested over, recorded by V105's `onboarding_state.protected_paths_edited_at` (an emptied list stays empty). The conventions pack is 1.1.0: its warn line is future tense (*"a coming knowledge release will learn your conventions from merged PRs"*) and the card links the knowledge page, re-phrasing a line stored before. States: never scanned, first scan running, partial (line + undetermined rows marked, never hidden), failed with retry, unreadable card.
 
 
 - **Problem Statement:** The detection rows with their evidence, the warn

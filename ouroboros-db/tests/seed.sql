@@ -5166,7 +5166,7 @@ select pg_temp.must_hold(
                        and scan.pack_versions
                            = '{"language": "1.0.0", "build": "1.0.0", "devcontainer": "1.0.0",
                                "tests": "1.0.0", "protected_paths": "1.0.0",
-                               "conventions": "1.0.0"}'::jsonb)
+                               "conventions": "1.1.0"}'::jsonb)
      from ouroboros.repo_detection_scans scan
     where scan.organization_id = '5eed0049-0000-4000-8000-000000000001'
       and scan.repo_ref = 'acme-robotics/helios-firmware'),
@@ -5181,7 +5181,7 @@ select pg_temp.must_hold(
               'devcontainer|ok|detected|found .devcontainer.json → image ghcr.io/zephyrproject-rtos/ci:v0.27.4',
               'tests|ok|detected|5 suites, 63 tests (detected)',
               'protected_paths|ok|detected|boot/, keys/ suggested',
-              'conventions|warn|detected|No CONTRIBUTING.md — we''ll learn your conventions from merged PRs instead.']
+              'conventions|warn|detected|No CONTRIBUTING.md — a coming knowledge release will learn your conventions from merged PRs.']
           and bool_and(row.duration_ms = 38000 and row.scan_seq = 1)
      from ouroboros.repo_detections_latest row
     where row.organization_id = '5eed0049-0000-4000-8000-000000000001'

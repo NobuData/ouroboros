@@ -23056,8 +23056,10 @@ select pg_temp.must_hold(
      from information_schema.columns
     where table_schema = 'ouroboros' and table_name = 'onboarding_state')
   -- bypassed_at is V070's (#385): the import-skip, a choice rather than a step status.
+  -- protected_paths_edited_at is V105's (#391): a person took over the protected-path list.
   = array['bypassed_at', 'completed_at', 'created_at', 'dismissed', 'id', 'organization_id',
-          'picked_ticket_id', 'repo_ref', 'selected_template', 'updated_at'],
+          'picked_ticket_id', 'protected_paths_edited_at', 'repo_ref', 'selected_template',
+          'updated_at'],
   'onboarding_state has exactly its wizard-owned columns and no step-status column (O1)');
 
 select pg_temp.must_hold(
@@ -24044,6 +24046,21 @@ select pg_temp.must_reject(
   $$update ouroboros.onboarding_state set bypassed_at = created_at - interval '1 second'
      where id = 'a7000000-0000-0000-0000-000000000001'$$,
   'a bypass cannot predate the wizard state', 'onboarding_state_bypassed_after_created');
+
+-- V105 (#391): a person's edit of the protected-path list is recorded, and cannot predate the state.
+update ouroboros.onboarding_state set protected_paths_edited_at = now()
+ where id = 'a7000000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select protected_paths_edited_at is not null and bypassed_at is not null
+     from ouroboros.onboarding_state where id = 'a7000000-0000-0000-0000-000000000001'),
+  'a protected-path edit is recorded on the wizard state, beside its other choices');
+
+select pg_temp.must_reject(
+  $$update ouroboros.onboarding_state set protected_paths_edited_at = created_at - interval '1 second'
+     where id = 'a7000000-0000-0000-0000-000000000001'$$,
+  'a protected-path edit cannot predate the wizard state',
+  'onboarding_state_protected_paths_edited_after_created');
 
 delete from ouroboros.organization where "id" = 'org-v070';
 

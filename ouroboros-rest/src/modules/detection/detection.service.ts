@@ -37,7 +37,7 @@ import {
 import { TicketSourceRegistry } from "../ticket-sources/ticket-source.registry";
 import type { SyncSource } from "../ticket-sources/ticket-sources.repository";
 import { TicketSourcesService } from "../ticket-sources/ticket-sources.service";
-import { rescanTooSoon, scanNotFound, sourceMissing } from "./detection.errors";
+import { globInvalid, rescanTooSoon, scanNotFound, sourceMissing } from "./detection.errors";
 import type { ProbeSpec, ProbeValue } from "./detection.pack";
 import { reconcileRows, measuredTestsRow } from "./detection.reconcile";
 import { RulePackRegistry } from "./detection.registry";
@@ -50,6 +50,7 @@ import {
 } from "./detection.resources";
 import {
   DEFAULT_SCAN_BUDGET,
+  isProtectedGlob,
   runScan,
   type DetectionRow,
   type Prober,
@@ -193,6 +194,35 @@ export class DetectionService {
       await this.store.policies(organizationId, ref),
       this.scans.get(scanKey(organizationId, ref))?.progress ?? null,
     );
+  }
+
+  /**
+   * Save a person's protected-path list for a repository (#391) — the detection card's inline
+   * editor. The list replaces what is stored: every glob in it is `edited` (a person's, never
+   * overwritten), every other is removed, and from now on a scan suggests nothing for the
+   * repository (V105). AP.3's guardrail evaluation (#305) reads the same rows on the next run.
+   *
+   * @param organizationId - The workspace.
+   * @param repo - `owner/name`.
+   * @param globs - The list; duplicates are dropped.
+   * @returns The card, re-read with the list as stored.
+   * @throws {InvalidRequestError} `detection_glob_invalid` naming every refused glob; nothing is written.
+   */
+  async editProtectedPaths(
+    organizationId: string,
+    repo: string,
+    globs: readonly string[],
+  ): Promise<DetectionResource> {
+    const ref = repo.toLowerCase();
+    const invalid = globs.filter((glob) => !isProtectedGlob(glob));
+
+    if (invalid.length > 0) {
+      throw globInvalid(invalid);
+    }
+
+    await this.store.replacePolicies(organizationId, ref, [...new Set(globs)]);
+
+    return this.read(organizationId, ref);
   }
 
   /**

@@ -148,7 +148,7 @@
         {
           "rowKey": "conventions",
           "verdict": "warn",
-          "value": "No CONTRIBUTING.md — we'll learn your conventions from merged PRs instead.",
+          "value": "No CONTRIBUTING.md — a coming knowledge release will learn your conventions from merged PRs.",
           "label": "detected",
           "confidence": "high",
           "determined": true,
@@ -159,7 +159,7 @@
             ],
             "codeowners": null,
             "confidence": "high",
-            "packVersion": "1.0.0",
+            "packVersion": "1.1.0",
             "contributing": null,
             "commitConvention": null
           }
@@ -179,7 +179,7 @@
         "build": "1.0.0",
         "tests": "1.0.0",
         "language": "1.0.0",
-        "conventions": "1.0.0",
+        "conventions": "1.1.0",
         "devcontainer": "1.0.0",
         "protected_paths": "1.0.0"
       },
@@ -336,7 +336,7 @@
             ],
             "codeowners": ".github/CODEOWNERS",
             "confidence": "high",
-            "packVersion": "1.0.0",
+            "packVersion": "1.1.0",
             "contributing": "CONTRIBUTING.md",
             "commitConvention": "commitlint.config.js"
           }
@@ -352,7 +352,7 @@
         "build": "1.0.0",
         "tests": "1.0.0",
         "language": "1.0.0",
-        "conventions": "1.0.0",
+        "conventions": "1.1.0",
         "devcontainer": "1.0.0",
         "protected_paths": "1.0.0"
       },
@@ -500,7 +500,7 @@
             ],
             "codeowners": null,
             "confidence": "high",
-            "packVersion": "1.0.0",
+            "packVersion": "1.1.0",
             "contributing": ".github/CONTRIBUTING.md",
             "commitConvention": null
           }
@@ -511,7 +511,7 @@
         "build": "1.0.0",
         "tests": "1.0.0",
         "language": "1.0.0",
-        "conventions": "1.0.0",
+        "conventions": "1.1.0",
         "devcontainer": "1.0.0",
         "protected_paths": "1.0.0"
       },
@@ -637,7 +637,7 @@
             ],
             "codeowners": null,
             "confidence": "high",
-            "packVersion": "1.0.0",
+            "packVersion": "1.1.0",
             "contributing": null,
             "commitConvention": null
           }
@@ -648,7 +648,7 @@
         "build": "1.0.0",
         "tests": "1.0.0",
         "language": "1.0.0",
-        "conventions": "1.0.0",
+        "conventions": "1.1.0",
         "devcontainer": "1.0.0",
         "protected_paths": "1.0.0"
       },

@@ -143,6 +143,7 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1/onboarding/detection`                  | [The detection card](#repository-detection) (#384) — the newest scan's rows, evidence, `detected \| measured` label and progress |
 | `GET /api/v1/onboarding/detection/scans/{scanSeq}`  | One earlier scan, as stored — re-scans version by `scan_seq` |
 | `POST /api/v1/onboarding/detection/scan`            | `202` — scan (or join the running scan); debounced 30 s, `409 detection_rescan_too_soon` |
+| `PUT /api/v1/onboarding/detection/protected-paths`  | Owner/admin — save the protected-path list (#391); scans stop suggesting; `422 detection_glob_invalid` |
 | `GET /api/v1/onboarding/first-issue`                | [The safe first issue](#the-safe-first-issue-picker) (#387) — a scored, explained pick; cold states answered honestly |
 | `GET /api/v1/onboarding/first-issue/alternatives`   | *Or pick your own* — the qualifying backlog, safest first, each with its own reasoning (`?limit=` 1–50) |
 | `GET /api/v1/onboarding/defaults`                   | [The right column](#the-first-run-launcher-and-smart-defaults) (#388) — Smart Defaults rows by declared deployment capability, reassure claims with their mechanisms, the projected timeline |
@@ -2757,6 +2758,7 @@ connection and rate guard (#101) as the backlog sync.
 GET  /api/v1/onboarding/detection?repo=owner/name                  any member — newest scan + progress
 GET  /api/v1/onboarding/detection/scans/{scanSeq}?repo=owner/name  any member — an earlier scan
 POST /api/v1/onboarding/detection/scan?repo=owner/name             owner, admin, member — 202, debounced
+PUT  /api/v1/onboarding/detection/protected-paths?repo=owner/name  owner, admin — { globs }, the whole list
 ```
 
 | Pack | Reads | Row |
@@ -2766,7 +2768,7 @@ POST /api/v1/onboarding/detection/scan?repo=owner/name             owner, admin,
 | `devcontainer` | `.devcontainer.json` or `.devcontainer/devcontainer.json`, parsed | `found .devcontainer.json → image …` |
 | `tests` | per-ecosystem suites, ≤ 12 files counted | `5 suites, 63 tests (detected)` |
 | `protected_paths` | boot / keys / secrets / infra directories | `boot/, keys/ suggested` — written as `suggested` policy |
-| `conventions` | `CONTRIBUTING`, `CODEOWNERS`, commit-convention files | ok, or the mockup's warn |
+| `conventions` | `CONTRIBUTING`, `CODEOWNERS`, commit-convention files | ok, or the warn — in the future tense since 1.1.0 (#391): learning conventions from merged PRs is the knowledge roadmap, not built |
 
 **Bounded and honest.** A scan spends at most 24 probes in 20 s, 4 at a time, and stops at the
 host's first rate-limit refusal. A row it could not determine is stored with verdict `warn`,
@@ -2774,6 +2776,16 @@ host's first rate-limit refusal. A row it could not determine is stored with ver
 card's `scanned in 38s`. Re-scans take the next `scan_seq`; an `edited` protected path is never
 overwritten. When the test plane (#324) has a completed run, the tests row is relabelled
 `measured` with the real counts — at scan time, and on read.
+
+**The protected-path list is a person's once saved** (since REST 0.40.6,
+[#391](https://github.com/NobuData/ouroboros/issues/391)). `PUT …/protected-paths` replaces the
+repository's list: every glob in it becomes `edited`, every other is removed, and V105's
+`onboarding_state.protected_paths_edited_at` is stamped (the database's clock — the column may not
+predate the row), after which no scan writes a suggestion for the repository. These are the rows
+AP.3's `allowed_paths` guardrail (#305) reads on the next run, so the route is owner/admin, and a
+glob the guardrails cannot enforce (blank, padded, absolute, a backslash, a `..` segment, a control
+character, over 512 characters) is refused `422 detection_glob_invalid` with every refused glob in
+`details.invalid`, writing nothing.
 
 **A new pack is a file in `detection/packs/` and an entry in `CORE_PACKS`** — it may emit
 `custom:<name>` rows, and the orchestrator (`detection.scan.ts`) never names a pack.

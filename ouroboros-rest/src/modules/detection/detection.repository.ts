@@ -59,6 +59,21 @@ export interface DetectionStore {
     row: DetectionRow,
   ): Promise<void>;
   policies(organizationId: string, repo: string): Promise<PolicyRow[]>;
+  /**
+   * Replace a repository's protected-path list with a person's (#391): every glob kept or added is
+   * `edited`, every other is removed, and the wizard state records the edit so no later scan
+   * suggests again. One transaction.
+   *
+   * @param organizationId - The workspace.
+   * @param repo - `owner/name`, lower-case.
+   * @param globs - The list, validated and deduplicated.
+   * @returns The list as stored.
+   */
+  replacePolicies(
+    organizationId: string,
+    repo: string,
+    globs: readonly string[],
+  ): Promise<PolicyRow[]>;
 }
 
 @Injectable()
@@ -158,7 +173,16 @@ export class DetectionRepository implements DetectionStore {
           .execute();
       }
 
-      if (record.protectedPaths.length > 0) {
+      // Once a person has saved the list (V105, #391), a scan suggests nothing: a glob they
+      // removed stays removed, and an emptied list stays empty.
+      const edited = await trx
+        .selectFrom("onboarding_state")
+        .select("protected_paths_edited_at")
+        .where("organization_id", "=", organizationId)
+        .where("repo_ref", "=", repo)
+        .executeTakeFirst();
+
+      if (record.protectedPaths.length > 0 && edited?.protected_paths_edited_at == null) {
         await trx
           .insertInto("protected_path_policies")
           .values(
@@ -323,5 +347,68 @@ export class DetectionRepository implements DetectionStore {
       .where("repo_ref", "=", repo)
       .orderBy("path_glob")
       .execute();
+  }
+
+  /** @inheritdoc */
+  replacePolicies(
+    organizationId: string,
+    repo: string,
+    globs: readonly string[],
+  ): Promise<PolicyRow[]> {
+    return this.database.transaction(async (trx) => {
+      // The database's clock, not this process's: V105 holds the stamp at or after `created_at`,
+      // which `now()` set — a process clock a moment behind would be refused.
+      await trx
+        .insertInto("onboarding_state")
+        .values({
+          organization_id: organizationId,
+          repo_ref: repo,
+          protected_paths_edited_at: sql<Date>`now()`,
+        })
+        .onConflict((conflict) =>
+          conflict
+            .columns(["organization_id", "repo_ref"])
+            .doUpdateSet({ protected_paths_edited_at: sql<Date>`now()` }),
+        )
+        .execute();
+
+      let removal = trx
+        .deleteFrom("protected_path_policies")
+        .where("organization_id", "=", organizationId)
+        .where("repo_ref", "=", repo);
+
+      if (globs.length > 0) {
+        removal = removal.where("path_glob", "not in", [...globs]);
+      }
+
+      await removal.execute();
+
+      if (globs.length > 0) {
+        await trx
+          .insertInto("protected_path_policies")
+          .values(
+            globs.map((glob) => ({
+              organization_id: organizationId,
+              repo_ref: repo,
+              path_glob: glob,
+              source: "edited" as const,
+            })),
+          )
+          .onConflict((conflict) =>
+            conflict
+              .columns(["organization_id", "repo_ref", "path_glob"])
+              .doUpdateSet({ source: "edited" }),
+          )
+          .execute();
+      }
+
+      return trx
+        .selectFrom("protected_path_policies")
+        .select(["path_glob", "source"])
+        .where("organization_id", "=", organizationId)
+        .where("repo_ref", "=", repo)
+        .orderBy("path_glob")
+        .execute();
+    });
   }
 }

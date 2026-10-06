@@ -4,7 +4,7 @@ import { ApiError } from "@/app/api/errors";
 import { NOT_A_REPOSITORY, WIZARD_WRITE_FAILED } from "@/app/get-started/view";
 
 import { membership } from "../helpers/login";
-import { REPO, launchReceipt, wizard } from "../helpers/onboarding";
+import { REPO, launchReceipt, scanProgress, seededCard, wizard } from "../helpers/onboarding";
 
 /** The wizard's writes (#390): each guarded by the service, a refusal carried in its words. */
 
@@ -16,6 +16,9 @@ const read = vi.fn();
 const readEnablement = vi.fn();
 const setOrg = vi.fn();
 const setRepo = vi.fn();
+const scan = vi.fn();
+const editProtectedPaths = vi.fn();
+const pathPreview = vi.fn();
 
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => Promise.resolve({ membership: membership() }) }));
 vi.mock("@/app/api/onboarding", () => ({
@@ -27,13 +30,27 @@ vi.mock("@/app/api/onboarding", () => ({
     read: (repo: string) => read(repo),
   },
 }));
+vi.mock("@/app/api/detection", () => ({
+  detection: {
+    scan: (repo: string) => scan(repo),
+    editProtectedPaths: (repo: string, globs: readonly string[]) => editProtectedPaths(repo, globs),
+  },
+}));
+vi.mock("@/app/api/org-policy", () => ({ orgPolicy: { pathPreview: (globs: readonly string[]) => pathPreview(globs) } }));
 vi.mock("@/app/api/enablement", () => ({ readEnablement: (tenant: string) => readEnablement(tenant) }));
 vi.mock("@/app/api/orgs", () => ({ orgs: { setEnabled: (...args: unknown[]) => setOrg(...args) } }));
 vi.mock("@/app/api/repos", () => ({ repos: { setEnabled: (...args: unknown[]) => setRepo(...args) } }));
 
-const { continueStep, dismissWizard, enableRepository, launchFirstLoop, skipWizard } = await import(
-  "@/app/get-started/actions"
-);
+const {
+  continueStep,
+  dismissWizard,
+  enableRepository,
+  launchFirstLoop,
+  previewProtectedPaths,
+  rescanRepository,
+  saveProtectedPaths,
+  skipWizard,
+} = await import("@/app/get-started/actions");
 
 /** An enablement list with the seeded account and repository. */
 function enablement(orgEnabled: boolean, repoEnabled: boolean) {
@@ -50,7 +67,9 @@ function enablement(orgEnabled: boolean, repoEnabled: boolean) {
 }
 
 beforeEach(() => {
-  for (const mock of [completeStep, launch, skip, update, read, readEnablement, setOrg, setRepo]) mock.mockReset();
+  for (const mock of [completeStep, launch, skip, update, read, readEnablement, setOrg, setRepo, scan, editProtectedPaths, pathPreview]) {
+    mock.mockReset();
+  }
   completeStep.mockResolvedValue(wizard());
   launch.mockResolvedValue(launchReceipt());
   skip.mockResolvedValue({ onboarding: wizard(), settingsPath: "/settings", configurationImported: false });
@@ -146,3 +165,94 @@ describe("enabling the repository (step 2)", () => {
     expect(await enableRepository(REPO)).toEqual({ ok: false, reason: "Only an owner or admin can change this." });
   });
 });
+
+describe("the detection card's writes (#391)", () => {
+  it("re-scans the validated repository and answers the progress", async () => {
+    scan.mockResolvedValue({ progress: scanProgress(), joined: false });
+
+    expect(await rescanRepository(REPO)).toEqual({ ok: true, value: { progress: scanProgress(), joined: false } });
+    expect(scan).toHaveBeenCalledWith(REPO);
+  });
+
+  it("carries the debounce's refusal in the service's words", async () => {
+    scan.mockRejectedValue(
+      new ApiError(409, "detection_rescan_too_soon", "This repository was scanned a moment ago. Try again shortly."),
+    );
+
+    expect(await rescanRepository(REPO)).toEqual({
+      ok: false,
+      reason: "This repository was scanned a moment ago. Try again shortly.",
+    });
+  });
+
+  it("refuses a repository that is not one, asking nothing", async () => {
+    expect(await rescanRepository("../etc")).toEqual({ ok: false, reason: NOT_A_REPOSITORY });
+    expect(await saveProtectedPaths("nope", ["boot/**"])).toEqual({ ok: false, reason: NOT_A_REPOSITORY });
+    expect(scan).not.toHaveBeenCalled();
+    expect(editProtectedPaths).not.toHaveBeenCalled();
+  });
+
+  it("saves the whole list and answers the card as stored", async () => {
+    const stored = seededCard({ protectedPaths: [{ glob: "boot/**", source: "edited" }] });
+    editProtectedPaths.mockResolvedValue(stored);
+
+    expect(await saveProtectedPaths(REPO, ["boot/**"])).toEqual({ ok: true, value: stored });
+    expect(editProtectedPaths).toHaveBeenCalledWith(REPO, ["boot/**"]);
+  });
+
+  it("carries the service's glob refusal and its role refusal in its words", async () => {
+    editProtectedPaths.mockRejectedValueOnce(
+      new ApiError(422, "detection_glob_invalid", '"/etc/**" is not a path pattern the guardrails can enforce.'),
+    );
+    editProtectedPaths.mockRejectedValueOnce(new ApiError(403, "forbidden", "Owners and admins only."));
+
+    expect(await saveProtectedPaths(REPO, ["/etc/**"])).toEqual({
+      ok: false,
+      reason: '"/etc/**" is not a path pattern the guardrails can enforce.',
+    });
+    expect(await saveProtectedPaths(REPO, ["boot/**"])).toEqual({ ok: false, reason: "Owners and admins only." });
+  });
+
+  it("refuses a list that is not one before asking — a Server Action is a public endpoint", async () => {
+    const tooMany = Array.from({ length: 65 }, (_, index) => `d${String(index)}/**`);
+
+    expect(await saveProtectedPaths(REPO, tooMany)).toEqual({ ok: false, reason: WIZARD_WRITE_FAILED });
+    expect(await saveProtectedPaths(REPO, [7] as unknown as string[])).toEqual({ ok: false, reason: WIZARD_WRITE_FAILED });
+    expect(await saveProtectedPaths(REPO, "boot/**" as unknown as string[])).toEqual({
+      ok: false,
+      reason: WIZARD_WRITE_FAILED,
+    });
+    expect(editProtectedPaths).not.toHaveBeenCalled();
+  });
+
+  it("previews only the wizard's repository", async () => {
+    const repository = (name: string) => ({
+      repository: name,
+      status: "listed" as const,
+      reason: null,
+      fileCount: 12,
+      truncated: false,
+      globs: [{ glob: "boot/**", matchCount: 3, samples: ["boot/a.c"] }],
+    });
+    pathPreview.mockResolvedValue({ repositories: [repository("acme-robotics/other"), repository("Acme-Robotics/Helios-Firmware")] });
+
+    expect(await previewProtectedPaths(REPO, ["boot/**"])).toEqual({
+      ok: true,
+      repositories: [repository("Acme-Robotics/Helios-Firmware")],
+    });
+    expect(pathPreview).toHaveBeenCalledWith(["boot/**"]);
+  });
+
+  it("says why there is no preview, in the service's words when it refused", async () => {
+    pathPreview.mockRejectedValueOnce(new ApiError(403, "forbidden", "Owners and admins only."));
+    pathPreview.mockRejectedValueOnce(new ApiError(500, "internal_error", "boom"));
+
+    expect(await previewProtectedPaths(REPO, ["boot/**"])).toEqual({ ok: false, reason: "Owners and admins only." });
+    expect(await previewProtectedPaths(REPO, ["boot/**"])).toEqual({
+      ok: false,
+      reason: "The match preview could not be read. The patterns themselves are unaffected.",
+    });
+    expect(await previewProtectedPaths("nope", ["boot/**"])).toMatchObject({ ok: false });
+  });
+});
+

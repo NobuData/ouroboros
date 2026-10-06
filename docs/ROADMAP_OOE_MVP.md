@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**390 of 454 ordered issues are closed** — P0 through P10, P12, P13 and P14 are complete, and P11 and P15 are in progress.
+**391 of 454 ordered issues are closed** — P0 through P10, P12, P13 and P14 are complete, and P11 and P15 are in progress.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P12, P13, P14 | **353** |
-| 🟡 **In progress** | P11, P15 | **37** of 44 |
+| 🟡 **In progress** | P11, P15 | **38** of 44 |
 | — **Not started** | P16–P17 | 0 of 57 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -117,11 +117,11 @@ position is not forced by dependencies, one of these decided it.
 | **P11** | Evidence — tests & PR verification | 🟡 36/38 | 38 | 119 | Mockups 11, 12 |
 | **P12** | Knowledge & onboarding mechanism | ✅ 28/28 | 28 | 83 | Mockups 14, 13 |
 | **P13** | Analytics — insights & build analyzer | ✅ 32/32 | 32 | 109 | Mockups 15, 18 |
-| **P14** | Decisions & governance — inbox, settings | 🟡 29/31 | 31 | 102 | Mockups 16, 17 |
-| **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
+| **P14** | Decisions & governance — inbox, settings | ✅ 31/31 | 31 | 102 | Mockups 16, 17 |
+| **P15** | Onboarding experience | 🟡 2/6 | 6 | 18 | Mockup 13 |
 | **P16** | Intelligence — research & copilot | — 0/42 | 42 | 147 | Mockups 22, 20 |
 | **P17** | ChatOps — Slack integration | — 0/15 | 15 | 50 | Mockup 19 |
-| | **Total** | **387/454** | **454** | **1,404** | |
+| | **Total** | **391/454** | **454** | **1,404** | |
 
 ```mermaid
 flowchart TD
@@ -1683,7 +1683,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **6 issues** · 18 complexity points · order **#392–#397** · 5 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_13_ONBOARDING.md` (Epic BC)
-> **Status:** 🟡 **In progress** — 1 of 6 issues closed
+> **Status:** 🟡 **In progress** — 2 of 6 issues closed
 
 **Goal.** Build `/get-started` — step rail with states derived from subsystem truth, detection card, template tiles, first-issue card with safety rows, deployment-aware smart defaults, the projection-labelled timeline and the glow action bar.
 
@@ -1696,7 +1696,7 @@ the blockquote above that records what it did and what it did differently.
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
 | 392 | **BC.1** | ✅ [#390](https://github.com/NobuData/ouroboros/issues/390) | Wizard route, step rail & action bar | ouroboros-ui | M | 5.3, D.5, BB.2 |
-| 393 | **BC.2** | [#391](https://github.com/NobuData/ouroboros/issues/391) | Detection card | ouroboros-ui | M | BB.1, BC.1 |
+| 393 | **BC.2** | ✅ [#391](https://github.com/NobuData/ouroboros/issues/391) | Detection card | ouroboros-ui | M | BB.1, BC.1 |
 | 394 | **BC.3** | [#392](https://github.com/NobuData/ouroboros/issues/392) | Template tiles | ouroboros-ui | M | BB.3, BC.1 |
 | 395 | **BC.4** | [#393](https://github.com/NobuData/ouroboros/issues/393) | First-issue & safety card | ouroboros-ui | M | BA.3, BB.4, BC.1 |
 | 396 | **BC.5** | [#394](https://github.com/NobuData/ouroboros/issues/394) | Defaults, timeline & reassure cards | ouroboros-ui | M | BB.5, BC.1 |

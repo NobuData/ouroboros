@@ -10,12 +10,16 @@
  */
 
 import { requireWorkspace } from "@/app/api/access";
+import { type RepoDetection, type RepoDetectionRescan, detection } from "@/app/api/detection";
 import { readEnablement } from "@/app/api/enablement";
 import { isApiError } from "@/app/api/errors";
 import { type Onboarding, type OnboardingLaunchReceipt, onboarding } from "@/app/api/onboarding";
+import { orgPolicy } from "@/app/api/org-policy";
 import { orgs } from "@/app/api/orgs";
 import { repos } from "@/app/api/repos";
+import { GLOBS_MAX, type GlobPreview } from "@/app/globs/glob";
 
+import { DETECTION_WRITE_FAILED } from "./detection-view";
 import { NOT_A_REPOSITORY, STEP_COUNT, WIZARD_WRITE_FAILED, parseRepo } from "./view";
 
 /** A write's outcome: what the service answered, or why not as a sentence. */
@@ -140,4 +144,71 @@ class NotMirrored extends Error {}
  */
 function notMirrored(repo: string): Error {
   return new NotMirrored(`${repo} is not a repository of this workspace's GitHub accounts.`);
+}
+
+/**
+ * The detection card's *Re-scan* (BC.2, #391) — start a scan, or join the one running. The
+ * service debounces it (`409 detection_rescan_too_soon`, in its words); any contributor.
+ *
+ * @param repo The repository.
+ * @returns The scan's progress, or the service's stated refusal.
+ */
+export async function rescanRepository(repo: string): Promise<WizardWrite<RepoDetectionRescan>> {
+  return guarded(repo, (valid) => detection.scan(valid));
+}
+
+/**
+ * Whether what a caller passed is a list of at most {@link GLOBS_MAX} strings — the shape the
+ * service takes; the grammar of each is the service's to judge, in its own words.
+ *
+ * @param globs What was passed.
+ * @returns True for such a list.
+ */
+function isGlobList(globs: unknown): globs is readonly string[] {
+  return Array.isArray(globs) && globs.length <= GLOBS_MAX && globs.every((glob) => typeof glob === "string");
+}
+
+/**
+ * The protected-paths row's *Save* (BC.2, #391) — replace the repository's list, which run
+ * guardrails then refuse. Owner or admin; the service refuses anyone else, and names every glob
+ * it cannot enforce (`422 detection_glob_invalid`).
+ *
+ * @param repo The repository.
+ * @param globs The whole list.
+ * @returns The card re-read with the list as stored, or why not.
+ */
+export async function saveProtectedPaths(repo: string, globs: readonly string[]): Promise<WizardWrite<RepoDetection>> {
+  if (!isGlobList(globs)) return { ok: false, reason: DETECTION_WRITE_FAILED };
+
+  return guarded(repo, (valid) => detection.editProtectedPaths(valid, globs));
+}
+
+/** What the match preview says when the service gave no reason. */
+const PATH_PREVIEW_FAILED = "The match preview could not be read. The patterns themselves are unaffected.";
+
+/**
+ * What a list of protected-path globs matches in the wizard's repository — the guardrails' own
+ * matcher over its tree (`POST /api/v1/policies/path-preview`), kept to this one repository.
+ *
+ * @param repo The repository.
+ * @param globs The globs.
+ * @returns The preview, or why there is none.
+ */
+export async function previewProtectedPaths(repo: string, globs: readonly string[]): Promise<GlobPreview> {
+  const valid = parseRepo(repo);
+
+  if (valid === null || !isGlobList(globs)) return { ok: false, reason: PATH_PREVIEW_FAILED };
+
+  try {
+    const { repositories } = await orgPolicy.pathPreview(globs);
+
+    return {
+      ok: true,
+      repositories: repositories.filter((one) => one.repository.toLowerCase() === valid.toLowerCase()),
+    };
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+
+    return { ok: false, reason: error.status >= 400 && error.status < 500 ? error.message : PATH_PREVIEW_FAILED };
+  }
 }

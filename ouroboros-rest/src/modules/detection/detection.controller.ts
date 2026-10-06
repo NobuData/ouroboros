@@ -6,18 +6,29 @@
  * GET  /api/v1/onboarding/detection?repo=owner/name                   any member
  * GET  /api/v1/onboarding/detection/scans/{scanSeq}?repo=owner/name   any member
  * POST /api/v1/onboarding/detection/scan?repo=owner/name              contributors — 202, debounced
+ * PUT  /api/v1/onboarding/detection/protected-paths?repo=owner/name   owner, admin — the list (#391)
  * ```
  *
  * The scan is asynchronous: `POST` answers `202` with the progress at once, and the card polls
  * `GET` — whose `progress` says how many probes have settled — until the new `scanSeq` appears.
  */
 
-import { Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Put,
+  Query,
+} from "@nestjs/common";
 
 import type { Organization } from "../db/schema";
-import { CONTRIBUTORS, Roles } from "../tenancy/roles.guard";
+import { ADMINISTRATORS, CONTRIBUTORS, Roles } from "../tenancy/roles.guard";
 import { CurrentTenant } from "../tenancy/tenant.decorators";
-import { DetectionRepoQuery, ScanSeqParams } from "./detection.dto";
+import { DetectionRepoQuery, ProtectedPathsDto, ScanSeqParams } from "./detection.dto";
 import type { DetectionResource, RescanResource } from "./detection.resources";
 import { DetectionService } from "./detection.service";
 
@@ -73,5 +84,25 @@ export class DetectionController {
     @Query() query: DetectionRepoQuery,
   ): Promise<RescanResource> {
     return this.detection.start(tenant.id, query.repo);
+  }
+
+  /**
+   * Save the repository's protected-path list — the card's inline editor (#391). The globs are
+   * what run guardrails refuse to let a loop touch, so this is **owner or admin**; the list
+   * replaces what is stored, and no later scan suggests over it.
+   *
+   * @param tenant - The workspace.
+   * @param query - `?repo=owner/name`.
+   * @param body - The whole list.
+   * @returns The card, with the list as stored; `422 detection_glob_invalid` naming refused globs.
+   */
+  @Put("protected-paths")
+  @Roles(...ADMINISTRATORS)
+  editProtectedPaths(
+    @CurrentTenant() tenant: Organization,
+    @Query() query: DetectionRepoQuery,
+    @Body() body: ProtectedPathsDto,
+  ): Promise<DetectionResource> {
+    return this.detection.editProtectedPaths(tenant.id, query.repo, body.globs);
   }
 }

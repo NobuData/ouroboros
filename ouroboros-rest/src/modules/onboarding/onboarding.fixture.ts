@@ -75,6 +75,7 @@ export class FakeOnboarding {
       created_at: new Date(),
       updated_at: new Date(),
       bypassed_at: null,
+      protected_paths_edited_at: null,
     };
 
     this.rows.set(repo, created);
@@ -218,5 +219,6 @@ export function emptyRow(): OnboardingState {
     created_at: new Date(),
     updated_at: new Date(),
     bypassed_at: null,
+    protected_paths_edited_at: null,
   };
 }
