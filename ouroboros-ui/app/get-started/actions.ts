@@ -13,17 +13,32 @@ import { requireWorkspace } from "@/app/api/access";
 import { type RepoDetection, type RepoDetectionRescan, detection } from "@/app/api/detection";
 import { readEnablement } from "@/app/api/enablement";
 import { isApiError } from "@/app/api/errors";
-import { type Onboarding, type OnboardingLaunchReceipt, onboarding } from "@/app/api/onboarding";
+import {
+  type Onboarding,
+  type OnboardingLaunchReceipt,
+  type OnboardingTemplateSelection,
+  onboarding,
+} from "@/app/api/onboarding";
 import { orgPolicy } from "@/app/api/org-policy";
 import { orgs } from "@/app/api/orgs";
 import { repos } from "@/app/api/repos";
 import { GLOBS_MAX, type GlobPreview } from "@/app/globs/glob";
 
 import { DETECTION_WRITE_FAILED } from "./detection-view";
+import { NOT_A_TEMPLATE, type TemplateFinding, findingsOf, isTemplateSlug } from "./templates-view";
 import { NOT_A_REPOSITORY, STEP_COUNT, WIZARD_WRITE_FAILED, parseRepo } from "./view";
 
 /** A write's outcome: what the service answered, or why not as a sentence. */
 export type WizardWrite<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly reason: string };
+
+/**
+ * A template selection's outcome (BC.3, #392): the selection, or the refusal — with the publish
+ * gate's findings when the template's definition was what the service refused, so the tile can
+ * draw the problem rather than a bare "no".
+ */
+export type TemplateSelectOutcome =
+  | { readonly ok: true; readonly value: OnboardingTemplateSelection }
+  | { readonly ok: false; readonly reason: string; readonly findings: readonly TemplateFinding[] };
 
 /**
  * A refusal in the service's words, or a plain failure for anything that is not a refusal.
@@ -210,5 +225,36 @@ export async function previewProtectedPaths(repo: string, globs: readonly string
     if (!isApiError(error)) throw error;
 
     return { ok: false, reason: error.status >= 400 && error.status < 500 ? error.message : PATH_PREVIEW_FAILED };
+  }
+}
+
+/**
+ * A template tile's press (BC.3, #392) — instantiate a published workflow from the template, or
+ * reuse the live one already made from it, and make it the repository's choice. Owner or admin;
+ * the service refuses anyone else and a locked tier in its own words, and a definition its
+ * publish gate refused comes back with the gate's findings (`422 onboarding_template_invalid`),
+ * nothing created.
+ *
+ * @param repo The repository.
+ * @param slug The template.
+ * @returns The selection, or why not — with findings when the definition was the reason.
+ */
+export async function selectTemplate(repo: string, slug: string): Promise<TemplateSelectOutcome> {
+  if (!isTemplateSlug(slug)) return { ok: false, reason: NOT_A_TEMPLATE, findings: [] };
+
+  const valid = parseRepo(repo);
+
+  if (valid === null) return { ok: false, reason: NOT_A_REPOSITORY, findings: [] };
+
+  try {
+    return { ok: true, value: await onboarding.selectTemplate(valid, slug) };
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+
+    return {
+      ok: false,
+      reason: refusal(error),
+      findings: error.code === "onboarding_template_invalid" ? findingsOf(error.details) : [],
+    };
   }
 }

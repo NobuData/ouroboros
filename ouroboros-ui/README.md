@@ -7398,5 +7398,37 @@ default otherwise).
   undetermined row marked and its tag shown, never hidden), a failed scan with retry, and a card
   that could not be read.
 
-The other step cards (template tiles, first issue, defaults) arrive with BC.3–BC.5 (#392–#394);
-steps 1–2's embedded flows, completion and the e2e leg with BC.6 (#395).
+### The template tiles
+
+*"Choose a starting workflow"* ([#392](https://github.com/NobuData/ouroboros/issues/392), BC.3 —
+[`templates-card.tsx`](app/get-started/templates-card.tsx), rules in
+[`templates-view.ts`](app/get-started/templates-view.ts)) sits under the detection card, over
+BB.3's tiles (#386), first painted with the page and then on its own I.8 poll
+(`GET /api/onboarding/templates?repo=` — [`templates-poll.ts`](app/get-started/templates-poll.ts)).
+
+- **Four tiles from the service**: name, description, stage dots (accent on the selected tile),
+  effort chips, caption; the mockup's selected treatment (glow, `✓ selected`) and the dimmed
+  locked tier. Each tile is a button, so the grid is fully keyboard-operable; `aria-pressed` says
+  which is chosen. The head's pill follows the rail — `step 3 · you are here`, then
+  `✓ step 3 done` — and *Open Workflow Studio →* and the footer's *Workflow Studio* link the studio.
+- **The lock is computed.** A locked tile prints the service's progress — `3 of 10 merged loops`,
+  never the static tag — stays focusable with `aria-disabled`, and its state and reason are its
+  accessible description (*Locked — 3 of 10 merged loops; unlock after 10 merged loops*). The poll
+  re-evaluates the gate, so the tile opens by itself once the workspace crosses the threshold.
+- **A press publishes** (O4, owner/admin — others see why): the card shows *Creating your
+  workflow…*, then the success state names what was created (or that the existing workflow is
+  used) and links it in the Studio; the tile gains its own *Open in the Studio →*. A definition the
+  publish gate refused is a designed error listing each finding (`source · code — message (at
+  path)`) and saying nothing was created. Other refusals — the lock, the role — come in the
+  service's words.
+- **Re-selection asks first** when a created workflow would be left behind
+  ([`reselect-dialog.tsx`](app/get-started/reselect-dialog.tsx), a `ShellOverlay` dialog): it
+  states that the previous workflow stays, links it, and switches only on confirm. A recorded
+  choice with nothing created yet switches without asking.
+- **Captions stay qualitative** (**O8**, a review gate): `captionOf` drops any caption carrying a
+  digit or a percent sign, and the suite scans the module's own copy and the seeded fixture for a
+  `%` — the mockup's *"92% of teams start here"* never renders.
+
+The remaining step cards (first issue, defaults) arrive with BC.4–BC.5 (#393–#394); steps 1–2's
+embedded flows, completion and the e2e leg (the select → Studio round trip among its assertions)
+with BC.6 (#395).
