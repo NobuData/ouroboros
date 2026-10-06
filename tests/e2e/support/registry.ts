@@ -5,7 +5,7 @@
  * Two halves, and they are two different kinds of thing — the arrangement
  * `support/providers.ts` makes, for the same reason.
  *
- * **What the seed makes of `/models/registry`** — eight aliases, their bindings, their chips,
+ * **What the seed makes of `/models/registry`** — nine aliases, their bindings, their chips,
  * their health, their prices and what references them — is written down here rather than read
  * back, the rule `support/seed.ts` states at length. Every value comes from
  * `R__dev_seed_routing.sql` ([#582](https://github.com/NobuData/ouroboros/issues/582)) and
@@ -107,7 +107,7 @@ export function switchName(alias: string): string {
   return `Allow ${alias}`;
 }
 
-/* ------------------------------------------------------------------ the seeded eight */
+/* ------------------------------------------------------------------ the seeded nine */
 
 /** One row of the allowed-models table, as the seed makes it draw. */
 export interface SeededRegistryRow {
@@ -141,7 +141,7 @@ export const NO_KEY = "no key — connect a provider";
 export const FIX_IN_PROVIDERS = "Fix in Providers →";
 
 /**
- * The eight aliases, in the order the registry read serves them — **by name**, which is CH.5's
+ * The nine aliases, in the order the registry read serves them — **by name**, which is CH.5's
  * order and not mockup 21's (the drawing leads with `coder-max`). The order is asserted position
  * by position, so a service that started sorting some other way turns this leg red.
  *
@@ -152,6 +152,10 @@ export const FIX_IN_PROVIDERS = "Fix in Providers →";
  * seeded routes point at `coder-std`, `sizer` and `local-docs` more often than the artwork shows,
  * and the column is a count over the references that exist. Asserting the artwork would make
  * this leg red for discrepancies the roadmap has already resolved.
+ *
+ * **The ninth row is #622's, not mockup 21's.** `researcher-long-ctx` is the research route's
+ * primary — what mockup 22's composer pill resolves to — and its two research routes move three
+ * `Used by` counts: `coder-std`, `local-free` and `sizer` are each referenced once more.
  */
 export const SEEDED_REGISTRY: readonly SeededRegistryRow[] = [
   {
@@ -184,7 +188,7 @@ export const SEEDED_REGISTRY: readonly SeededRegistryRow[] = [
     health: "ok",
     healthDetail: null,
     price: "$2 · $10",
-    usedBy: "4 routes",
+    usedBy: "5 routes",
     enabled: true,
   },
   {
@@ -217,7 +221,18 @@ export const SEEDED_REGISTRY: readonly SeededRegistryRow[] = [
     health: "ok",
     healthDetail: null,
     price: "$0",
-    usedBy: "2 routes",
+    usedBy: "3 routes",
+    enabled: true,
+  },
+  {
+    alias: "researcher-long-ctx",
+    provider: "Anthropic Claude",
+    model: "claude-sonnet-4-6",
+    chips: ["std thinking"],
+    health: "ok",
+    healthDetail: null,
+    price: "$3 · $15",
+    usedBy: "1 route",
     enabled: true,
   },
   {
@@ -239,7 +254,7 @@ export const SEEDED_REGISTRY: readonly SeededRegistryRow[] = [
     health: "ok",
     healthDetail: null,
     price: "$1 · $5",
-    usedBy: "3 routes",
+    usedBy: "4 routes",
     enabled: true,
   },
 ];
@@ -408,7 +423,7 @@ async function listAliases(context: BrowserContext): Promise<readonly ListedAlia
  * Delete every alias this suite created, in any run.
  *
  * Found by {@link RUN_ALIAS_PREFIX} rather than by the names one test remembers, so an alias a
- * failed run left behind is taken too — a ninth row in a table whose parity is eight is a failure
+ * failed run left behind is taken too — a tenth row in a table whose parity is nine is a failure
  * the *next* run reports, against the wrong leg. Copies first, so an original is never still
  * being duplicated from when it goes. A route still pointing at one refuses its delete with a
  * `409`; the caller restores routes before calling this.

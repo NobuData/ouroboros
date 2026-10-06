@@ -757,7 +757,7 @@ compare(hover_drift_gusts, baseline:v2.0.4, nightly) ─▶ {+14%, unit:%, n, wi
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CM.1 | #620 | 🟡 Open | ouroboros-engine: [CM.1] Investigation loop & `/v0/investigate` contract | Plan→tools→synthesize→brief; checkpoints, budgets, citations; AF.2 LLM | mvp, research, engine, providers | N (after CL.1, AF.2, CK.2) | Y | L | ouroboros-engine, ouroboros-rest |
 | CM.2 | #621 | 🟡 Open | ouroboros-rest: [CM.2] Brief composition, matrices & export | Claim-linked briefs, matrix builder, source panels, Markdown export | mvp, research, rest | N (after CM.1, CK.3) | Y | M | ouroboros-rest |
-| CM.3 | #622 | 🟡 Open | ouroboros-rest: [CM.3] Scope & cost estimation + research routing | Depth×tools×alias-pricing estimates; `research` task kinds registered | mvp, research, rest, routing | N (after CK.1, CH.3) | Y | M | ouroboros-rest |
+| CM.3 | #622 ✅ | 🟢 Done | ouroboros-rest: [CM.3] Scope & cost estimation + research routing | Depth×tools×alias-pricing estimates; `research` task kinds registered | mvp, research, rest, routing | N (after CK.1, CH.3) | Y | M | ouroboros-rest |
 | CM.4 | #623 | 🟡 Open | ouroboros-rest: [CM.4] Regression watch service & bisect orchestration | Baseline capture, nightly compare, drift→bisect→forensics→draft chain | mvp, research, rest, engine | N (after CK.4, CL.4, CL.6) | Y | L | ouroboros-rest, ouroboros-engine |
 | CM.5 | #624 | 🟡 Open | ouroboros-rest: [CM.5] Gaps→Planning handoff & roadmap-doc pipeline | Draft batches from gaps; create-roadmap/create-issues skill runs, suggestions, writeback, repo PR | mvp, research, rest, planning, knowledge | N (after CM.2, CK.5, AL.4, BE.1) | Y | L | ouroboros-rest, ouroboros-engine |
 | CM.6 | #625 | 🟡 Open | ouroboros-rest: [CM.6] Investigation lifecycle API | Start/cancel/list/detail/history/library payloads; progress stream | mvp, research, rest | N (after CM.1, CM.3) | Y | M | ouroboros-rest |
@@ -845,7 +845,9 @@ export.md: brief + matrix + 44 numbered sources + provenance
 
 ### Issue CM.3 — ouroboros-rest: [CM.3] Scope & cost estimation + research routing
 
-> **GitHub issue:** #622 · **Status:** 🟡 Open · **Parent epic:** #605
+> **GitHub issue:** #622 ✅ · **Status:** 🟢 Done · **Parent epic:** #605
+>
+> **Delivered (#622 — `ouroboros-rest` 0.40.7, `V109__investigation_estimate_outcomes.sql`, Y.4 seed amendment):** **Routing:** the dev routing seed registers the `research-plan` (sort 9, `researchplan-primary`: `sizer` → `local-free`) and `research` (sort 10, `research-primary`: `researcher-long-ctx` → `coder-std`) task kinds, and a ninth alias `researcher-long-ctx` bound to Anthropic's `claude-sonnet-4-6` — the catalog's `$3 · $15` / 1M, 1M-context model, so the diagram's price is real rather than an override (the mockup's pill text `sonnet-long-ctx` is the drawing's; the alias is the issue's and RS-127's `researcher-long-ctx`). Both kinds render in routing's matrix with em-dash cost/latency (no usage — M7). **Estimator:** new `ResearchModule` — `estimate.calibration.ts` (version 1: rounds quick 1 / standard 2 / deep dive 4; per-round ops web 3, competitor/code/tickets/docs 2, telemetry 1; 1–1.5 sources per op; a 20k-in/1.5k-out digest call per source plus 1/2/4 synthesis passes of 120k/8k) and a pure `estimateInvestigation()` with exact `bigint` arithmetic; deep dive × five tools × `$3 · $15` = 40 ops → **40–60 sources, 522–687¢ → `est. 40–60 sources · ~$6`**. Unpriced researcher (no row, seat or usage price, no route, nothing kept) → `costCents: null`, no hosted cost, no `$` in the label. Hosted tool costs enter through the injectable `ResearchToolPricing` seam (default: none configured; CL.2 #615 binds its provider cost metadata). **Endpoint:** `POST /api/v1/research/estimates` `{kind, depth, tools?}` answers the estimate, the operation breakdown, the researcher (first kept hop of `resolve("research")`) and the composer's `label`; `404 investigation_kind_not_found`, `422 research_tool_unknown` / `research_tools_required`. **Storage & reconciliation:** V109 adds `investigations.estimate_calibration_version` (paired with `estimate`) and `investigation_estimate_outcomes` filled by the idempotent `record_investigation_estimate_outcome(org, investigation)` with generated `sources_within_estimate` / `cost_within_estimate`; `ResearchEstimateService.storeEstimate` (queued only) and `reconcile` are the contract CM.6/CM.1 call. RS-127's seed carries the estimate and its outcome (44 sources, 612¢ — both inside).
 
 - **Problem Statement:** `est. 40–60 sources · ~$6` must be computed
   before start (decision V5), and the composer's `researcher:
@@ -1462,7 +1464,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    CK.5 (#612) } → CK.3 (#610) → CK.6 (#613)
 3. **Phase 2 — Tools:** CL.1 (#614) → { CL.2 (#615) ⊕ CL.3 (#616) ⊕
    CL.4 (#617) ⊕ CL.5 (#618) ⊕ CL.6 (#619) }
-4. **Phase 3 — Engine & pipeline:** CM.3 (#622) → CM.1 (#620) →
+4. **Phase 3 — Engine & pipeline:** CM.3 (#622) ✅ → CM.1 (#620) →
    { CM.2 (#621) ⊕ CM.4 (#623) ⊕ CM.6 (#625) } → CM.5 (#624) → CM.7 (#626)
 5. **Phase 4 — UI:** CN.1 (#627) → { CN.2 (#628) ⊕ CN.3 (#629) ⊕
    CN.4 (#630) ⊕ CN.5 (#631) ⊕ CN.6 (#632) } → CN.7 (#633) →

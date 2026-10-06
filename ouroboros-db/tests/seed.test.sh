@@ -1750,6 +1750,17 @@ check_absent "$RESEARCH_BODY" "'44 sources'|'SOURCES — 44 CITED'" \
 check_contains "$RESEARCH_BODY" 'placeholder until #613 seeds the full ledger' \
   'the 39 unfeatured sources say they are placeholders'
 
+# RS-127's estimate (#622): stored with the calibration that produced it, written into an existing
+# RS-127 only when it has none, and reconciled by V109's one writer rather than by a hand-made row.
+check_contains "$RESEARCH_BODY" 'estimate_calibration_version = 1' \
+  "RS-127's estimate names calibration v1"
+check_contains "$RESEARCH_BODY" 'and inv\.estimate is null' \
+  'the estimate is given only to an RS-127 that has none'
+check_contains "$RESEARCH_BODY" 'cross join lateral ouroboros\.record_investigation_estimate_outcome\(' \
+  'the estimate-vs-actuals outcome is recorded by record_investigation_estimate_outcome()'
+check_absent "$RESEARCH_BODY" 'insert into ouroboros\.investigation_estimate_outcomes' \
+  'and never inserted by hand'
+
 # ---------------------------------------------------------------------------
 # The documentation the seed is only usable through
 # ---------------------------------------------------------------------------
