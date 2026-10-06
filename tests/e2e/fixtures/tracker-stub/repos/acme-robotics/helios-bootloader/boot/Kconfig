@@ -1,0 +1,24 @@
+# Helios bootloader options. `west build` reads this through the application's Kconfig.
+
+menu "Helios bootloader"
+
+config HELIOS_SLOT0_ADDR
+	hex "Address of the application image (slot 0)"
+	default 0x10000
+	help
+	  Where the signed application image starts. The bootloader occupies everything
+	  below it.
+
+config HELIOS_SLOT0_SIZE
+	hex "Size of slot 0"
+	default 0xF0000
+
+config HELIOS_RECOVERY_BAUD
+	int "Serial recovery console baud rate"
+	default 115200
+
+module = HELIOS_BOOT
+module-str = helios_boot
+source "subsys/logging/Kconfig.template.log_config"
+
+endmenu

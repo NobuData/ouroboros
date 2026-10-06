@@ -349,7 +349,7 @@ export function tracker(request: APIRequestContext) {
 }
 
 /**
- * Empty the sandbox tracker back to its four repositories.
+ * Empty the sandbox tracker back to its five repositories.
  *
  * @param request - Playwright's request context.
  * @returns When it is empty.

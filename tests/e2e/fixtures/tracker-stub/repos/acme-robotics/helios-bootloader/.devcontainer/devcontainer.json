@@ -1,0 +1,15 @@
+{
+  // The Zephyr project's CI image: the SDK, west and twister are preinstalled, so a fresh
+  // container builds and tests without a setup step.
+  "name": "Helios bootloader",
+  "image": "ghcr.io/zephyrproject-rtos/ci:v0.27.4",
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": { "version": "3.12" }
+  },
+  "postCreateCommand": "west init -l . && west update",
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-vscode.cpptools", "marus25.cortex-debug"]
+    }
+  }
+}

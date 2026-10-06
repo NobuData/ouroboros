@@ -1,8 +1,11 @@
-"""The seven scenarios, played through the fake control plane.
+"""The eight scenarios, played through the fake control plane.
 
-Each one is checked for the story the issue gives it, and all seven are checked for the rules
+Each one is checked for the story the issue gives it, and all eight are checked for the rules
 every run the driver writes must keep: every entry is in order, every write is keyed, every
 stage key is a node of the pinned workflow, and model output always names its model.
+
+Seven are pinned to ``standard-fix`` v14; ``first-loop`` (#395) is pinned to the
+``quick-fixes`` v1 template, so its stage keys are checked against that document instead.
 """
 
 import json
@@ -35,6 +38,50 @@ _STANDARD_FIX = (
     / "standard-fix.json"
 )
 
+#: The migration that seeds the shipped templates; `quick-fixes` v1's DSL document is inline
+#: in it, between `$quick_fixes_v1$` dollar quotes.
+_V068_TEMPLATES = (
+    Path(__file__).resolve().parents[2]
+    / "ouroboros-db"
+    / "migrations"
+    / "V068__workflow_templates.sql"
+)
+
+#: The dollar-quote tag around `quick-fixes` v1's document in V068.
+_QUICK_FIXES_TAG = "$quick_fixes_v1$"
+
+#: The one scenario pinned to `quick-fixes` v1 — the wizard's first loop (#395). Every other
+#: scenario runs `standard-fix` v14, which has the `effort-recheck` fork the first loop lacks.
+QUICK_FIXES_SCENARIOS = frozenset({"first-loop"})
+STANDARD_FIX_SCENARIOS = frozenset(SCENARIOS) - QUICK_FIXES_SCENARIOS
+
+
+def _standard_fix_nodes() -> set[str]:
+    """`standard-fix` v14's node ids, from the committed fixture it is seeded from."""
+    return {
+        node["id"]
+        for node in json.loads(_STANDARD_FIX.read_text(encoding="utf-8"))["nodes"]
+    }
+
+
+def _quick_fixes_nodes() -> set[str]:
+    """`quick-fixes` v1's node ids, read out of V068 byte for byte.
+
+    The document is the text between the two `$quick_fixes_v1$` delimiters — a SQL dollar
+    quote, so it is JSON as written, with nothing escaped.
+    """
+    sql = _V068_TEMPLATES.read_text(encoding="utf-8")
+    start = sql.index(_QUICK_FIXES_TAG) + len(_QUICK_FIXES_TAG)
+    end = sql.index(_QUICK_FIXES_TAG, start)
+    return {node["id"] for node in json.loads(sql[start:end])["nodes"]}
+
+
+def _pinned_nodes(name: str) -> set[str]:
+    """The node ids of the workflow a scenario is written against."""
+    if name in QUICK_FIXES_SCENARIOS:
+        return _quick_fixes_nodes()
+    return _standard_fix_nodes()
+
 
 def _play(name: str, fake: FakeControlPlane, clock: FakeClock | None = None) -> str:
     """Run one scenario's script through the fake and return its outcome."""
@@ -55,7 +102,7 @@ def _model_bodies(fake: FakeControlPlane) -> list[str]:
 # --- every scenario -------------------------------------------------------------------------
 
 
-def test_there_are_the_seven_scenarios_the_issues_name() -> None:
+def test_there_are_the_eight_scenarios_the_issues_name() -> None:
     assert list(SCENARIOS) == [
         "happy-path",
         "482-gate-return",
@@ -64,21 +111,36 @@ def test_there_are_the_seven_scenarios_the_issues_name() -> None:
         "correction-round",
         "failing-hil",
         "protected-path-allow-once",
+        "first-loop",
     ]
 
 
 @pytest.mark.parametrize("name", list(SCENARIOS))
 def test_every_stage_key_is_a_node_of_the_pinned_workflow(name: str) -> None:
-    nodes = {
-        node["id"]
-        for node in json.loads(_STANDARD_FIX.read_text(encoding="utf-8"))["nodes"]
-    }
+    nodes = _pinned_nodes(name)
     fake = FakeControlPlane()
 
     _play(name, fake)
 
     used = {key for key, _, _ in fake.stage_log}
     assert used <= nodes, used - nodes
+
+
+def test_the_two_pinned_workflows_are_read_from_their_seeds() -> None:
+    standard_fix = _standard_fix_nodes()
+    quick_fixes = _quick_fixes_nodes()
+
+    assert quick_fixes == {
+        "issue-queued",
+        "analyze",
+        "plan",
+        "code",
+        "build",
+        "test",
+        "open-pr",
+    }
+    assert {"effort-recheck", "split", "back-to-queue"} <= standard_fix
+    assert {"effort-recheck", "split", "back-to-queue"}.isdisjoint(quick_fixes)
 
 
 @pytest.mark.parametrize("name", list(SCENARIOS))
@@ -115,8 +177,13 @@ def test_every_scenario_opens_at_the_queue_and_skips_the_split_branch(
         ("issue-queued", 1, "active"),
         ("issue-queued", 1, "succeeded"),
     ]
-    assert ("split", 1, "skipped") in fake.stage_log
-    assert ("back-to-queue", 1, "skipped") in fake.stage_log
+    # Only `standard-fix` has the `effort-recheck` fork whose `split` branch a ≤ M issue
+    # skips. `quick-fixes` v1 has no fork at all, so `first-loop` reports no skipped stage.
+    if name in STANDARD_FIX_SCENARIOS:
+        assert ("split", 1, "skipped") in fake.stage_log
+        assert ("back-to-queue", 1, "skipped") in fake.stage_log
+    else:
+        assert not any(status == "skipped" for _, _, status in fake.stage_log)
 
 
 @pytest.mark.parametrize("name", list(SCENARIOS))
@@ -568,3 +635,62 @@ def test_an_abort_while_holding_for_allow_once_ends_the_run_canceled() -> None:
 
     assert fake.status == "canceled"
     assert [kind for kind, _ in fake.acks] == ["abort"]
+
+
+# --- first-loop (#395) ----------------------------------------------------------------------
+
+#: `quick-fixes` v1's one path, in order — the whole stage log of a first loop.
+QUICK_FIXES_PATH = [
+    "issue-queued",
+    "analyze",
+    "plan",
+    "code",
+    "build",
+    "test",
+    "open-pr",
+]
+
+
+def test_the_first_loop_walks_quick_fixes_once_in_order_and_completes() -> None:
+    fake = FakeControlPlane()
+
+    assert _play("first-loop", fake) == "completed"
+
+    assert fake.stage_log == [
+        (key, 1, status)
+        for key in QUICK_FIXES_PATH
+        for status in ("active", "succeeded")
+    ]
+    assert fake.stage_log[-1] == ("open-pr", 1, "succeeded")
+    assert fake.status == "coding", "the contract has no operation that closes a run"
+
+
+def test_the_first_loop_leaves_the_pull_request_a_draft() -> None:
+    fake = FakeControlPlane()
+
+    _play("first-loop", fake)
+
+    last = fake.events[-1]["body"]
+    assert "draft" in last
+    assert "merged" not in last
+    opened = [e["body"] for e in fake.events if "pull request" in (e.get("body") or "")]
+    assert all("merged" not in body for body in opened)
+    assert any("Opened a draft pull request from loop/test" in body for body in opened)
+
+
+def test_the_first_loops_change_set_is_docs_only_and_clean() -> None:
+    fake = FakeControlPlane()
+    clock = FakeClock()
+    session = _open(fake, clock)
+
+    SCENARIOS["first-loop"].script(session)
+
+    paths = [f["path"] for f in fake.files]
+    assert paths == ["docs/operator-manual.md", "docs/pairing-guide.md"]
+    assert all(f["status"] == "modified" for f in fake.files)
+    assert [c.guardrail_failures for c in session.change_sets] == [[]]
+    assert [c["message"] for c in fake.commits] == [
+        "docs: fix typos in operator manual and pairing guide"
+    ]
+    assert [s["taskKind"] for s in fake.spends] == ["analyze", "plan", "implement"]
+    assert 120 <= clock.scripted_total <= 180, "two to three scripted minutes"

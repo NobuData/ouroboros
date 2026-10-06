@@ -11,20 +11,33 @@ import {
   SKIP_LABEL,
   SKIP_NOTE,
   VIEWER_REASON,
+  coveredBy,
   defaultRepo,
   getStartedPath,
+  githubSources,
+  isComplete,
+  notCoveredReason,
   openingStep,
   parseRepo,
+  pickerRowNote,
+  pickerRows,
+  positionLine,
   primaryAction,
   receiptLine,
+  receiptView,
+  regressionFixLabel,
   regressionLine,
   regressionsOf,
   repoName,
+  sourceRepos,
   stepCounter,
+  switchLabel,
 } from "@/app/get-started/view";
 import { DASHBOARD_PATH, SOURCES_PATH } from "@/app/paths";
 
-import { ISSUE_488, REPO, launchReceipt, readyToRun, regressed, step, wizard } from "../helpers/onboarding";
+import { enablement, org, repo } from "../helpers/login";
+import { ISSUE_488, REPO, completed, launchReceipt, mirrored, readyToRun, regressed, step, wizard } from "../helpers/onboarding";
+import { jiraSource, source } from "../helpers/sources";
 
 /**
  * The Get Started frame's pure rules (BC.1, #390): the head's approved promise, which repository
@@ -202,5 +215,115 @@ describe("the launch receipt", () => {
       "#488 queued under quick-fixes. Dry-run is on: the PR opens as a draft and nothing merges until you say so.",
     );
     expect(receiptLine(launchReceipt({ outcome: "already_started" }))).toContain("#488 has already started");
+  });
+});
+
+/* ------------------------------------------------------- the states the mockup cannot show (#395) */
+
+describe("the sources a repository is read through (#395)", () => {
+  it("reads a GitHub source's account and repositories out of its public config, lower-cased", () => {
+    expect(sourceRepos(source({ config: { login: "Acme-Robotics", repos: ["Helios-Firmware", 7, ""] } }))).toMatchObject({
+      login: "acme-robotics",
+      repos: ["helios-firmware"],
+    });
+    expect(sourceRepos(source({ config: { login: "", repos: [] } }))).toBeNull();
+    expect(sourceRepos(source({ config: { base_url: "https://x" } }))).toBeNull();
+  });
+
+  it("keeps only the GitHub sources, and knows which repository one names", () => {
+    expect(githubSources([jiraSource(), source()])).toEqual([source()]);
+    expect(coveredBy([source()], "Acme-Robotics/Helios-Firmware")).toBe(true);
+    expect(coveredBy([source()], "acme-robotics/nowhere")).toBe(false);
+    expect(coveredBy([jiraSource()], REPO)).toBe(false);
+  });
+
+  it("refuses, in a sentence that says what to do first, a repository no source names", () => {
+    expect(notCoveredReason("acme-robotics/nowhere")).toBe("No GitHub source names acme-robotics/nowhere — connect one that does first.");
+  });
+});
+
+describe("the repository picker's rows (#395)", () => {
+  it("joins what the sources name with what the mirror holds — this wizard's row first, then by name, once each", () => {
+    const rows = pickerRows([source(), source({ id: "twin", config: { login: "acme-robotics", repos: ["helios-firmware"] } })], mirrored(), REPO);
+
+    expect(rows.map((row) => [row.repo, row.recorded, row.enabled, row.current])).toEqual([
+      ["acme-robotics/helios-firmware", true, true, true],
+      ["acme-robotics/atlas-scheduler", false, false, false],
+      ["acme-robotics/helios-console", true, false, false],
+      ["acme-robotics/helios-telemetry", false, false, false],
+    ]);
+  });
+
+  it("counts a repository under a disabled account as off, and every row unrecorded with no mirror", () => {
+    const off = enablement([[org({ enabled: false }), [repo()]]]);
+
+    expect(pickerRows([source()], off, null)[0]).toMatchObject({ repo: "acme-robotics/atlas-scheduler", recorded: false });
+    expect(pickerRows([source()], off, null).find((row) => row.name === "helios-firmware")).toMatchObject({ recorded: true, enabled: false });
+    expect(pickerRows([source()], null, null).every((row) => !row.recorded && !row.enabled)).toBe(true);
+  });
+
+  it("says what each row's switches mean, and names what pressing the switch does", () => {
+    const [current, unrecorded, off] = pickerRows([source()], mirrored(), REPO);
+
+    expect(pickerRowNote(current!)).toBe("enabled");
+    expect(pickerRowNote(unrecorded!)).toBe("not recorded yet — switching on records it");
+    expect(pickerRowNote(off!)).toBe("off");
+    expect(switchLabel(current!)).toBe("Disable Ouroboros in acme-robotics/helios-firmware");
+    expect(switchLabel(off!)).toBe("Enable Ouroboros in acme-robotics/helios-console");
+  });
+});
+
+describe("the regression's fix (#395)", () => {
+  it("leads to the step whose surface owns the problem", () => {
+    expect(regressionFixLabel({ step: 1 })).toBe("Fix step 1 →");
+  });
+});
+
+describe("the completion card (#395)", () => {
+  it("knows a complete wizard by its stamp or its last step", () => {
+    expect(isComplete(completed())).toBe(true);
+    expect(isComplete(wizard({ steps: completed().steps }))).toBe(true);
+    expect(isComplete(readyToRun())).toBe(false);
+  });
+
+  it("says a position in words", () => {
+    expect(positionLine(1)).toBe("next in the queue");
+    expect(positionLine(13)).toBe("queue position 13");
+  });
+
+  it("is the receipt while the press is fresh — position, note and the service's links — with the console only when there is a run", () => {
+    const receipt = launchReceipt({ run: { id: "run-1", path: "/runs/run-1" }, outcome: "already_started" });
+    const view = receiptView(receipt, completed(), mirrored());
+
+    expect(view.headline).toBe("#488 has already started under quick-fixes@v1");
+    expect(view.position).toBeNull();
+    expect(view.dryRunNote).toBe("Dry-run is on: the PR opens as a draft and nothing merges until you say so.");
+    expect(view.consoleHref).toBe("/runs/run-1");
+    expect(view.dashboardHref).toBe(DASHBOARD_PATH);
+    expect(receiptView(launchReceipt(), completed(), mirrored()).consoleHref).toBeNull();
+    expect(receiptView(launchReceipt({ workflow: { ...launchReceipt().workflow, version: null } }), completed(), mirrored()).headline).toBe(
+      "#488 queued under quick-fixes",
+    );
+  });
+
+  it("is the rail's own evidence after a reload, with no position or note it did not read", () => {
+    const view = receiptView(null, completed(), mirrored());
+
+    expect(view).toMatchObject({
+      headline: "#488 · queued",
+      position: null,
+      dryRunNote: null,
+      dashboardHref: "/dashboard",
+      queueHref: "/dashboard#dash-up-next-title",
+      consoleHref: null,
+      runsHref: "/runs",
+    });
+  });
+
+  it("re-enters for every other mirrored repository, by name, and none without a mirror", () => {
+    expect(receiptView(null, completed(), mirrored()).others).toEqual([
+      { repo: "acme-robotics/helios-console", href: "/get-started?repo=acme-robotics%2Fhelios-console" },
+    ]);
+    expect(receiptView(null, completed(), null).others).toEqual([]);
   });
 });

@@ -5,7 +5,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { membership, sessionUser } from "../helpers/login";
-import { REPO, wizard } from "../helpers/onboarding";
+import { REPO, mirrored, sourcesReadings, wizard } from "../helpers/onboarding";
 
 /**
  * The `/get-started` route (#390): gated to a signed-in person with a workspace, read once on the
@@ -25,8 +25,23 @@ vi.mock("@/app/get-started/actions", () => ({
   launchFirstLoop: vi.fn(),
   skipWizard: vi.fn(),
   dismissWizard: vi.fn(),
+  setRepositoryEnabled: vi.fn(),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+// Step 1's embedded flow is `app/sources`' own dialog and rows (#395); their actions are server-only.
+vi.mock("@/app/sources/actions", () => ({
+  readSourceCatalog: vi.fn(),
+  addSource: vi.fn(),
+  testSource: vi.fn(),
+  syncSource: vi.fn(),
+  readSourceStatus: vi.fn(),
+  setSourceStatus: vi.fn(),
+  setSourceCredentials: vi.fn(),
+  updateSourceConfig: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+// The one shell piece the standalone group mounts (#395): it renders nothing and reads the
+// person's font-scale preference — `__tests__/shell/font-scale-sync.test.tsx` covers what it does.
+vi.mock("@/app/shell/font-scale-sync", () => ({ FontScaleSync: () => null }));
 vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
 
 const Page = (await import("@/app/(wizard)/get-started/page")).default;
@@ -39,6 +54,8 @@ beforeEach(() => {
   readGetStarted.mockReset().mockResolvedValue({
     repo: REPO,
     wizard: { ok: true, value: wizard() },
+    sources: { ok: true, value: sourcesReadings() },
+    enablement: { ok: true, value: mirrored() },
     reposFailure: null,
     abilities: { contribute: true, administer: true },
   });
@@ -60,7 +77,7 @@ describe("the get-started route", () => {
     expect(readGetStarted).not.toHaveBeenCalled();
   });
 
-  it("sits in a route group with no shell — the layout adds nothing around the page", () => {
+  it("sits in a route group with no shell — the layout adds nothing around the page but the font-scale sync (#395)", () => {
     render(
       <WizardLayout>
         <p>the wizard</p>
@@ -70,6 +87,9 @@ describe("the get-started route", () => {
     expect(document.body.innerHTML).toBe("<div><p>the wizard</p></div>");
     const layout = readFileSync(join(import.meta.dirname, "..", "..", "app", "(wizard)", "layout.tsx"), "utf8");
 
-    expect(layout).not.toMatch(/AppShell|from "@\/app\/shell/);
+    // Nothing of the shell's frame — the one import from it is the preference sync, which draws
+    // nothing and is what lets the standalone screen honour the reader's font-size step.
+    expect(layout).not.toMatch(/AppShell|from "@\/app\/shell\/(?!font-scale-sync")/);
+    expect(layout).toMatch(/<FontScaleSync \/>/);
   });
 });

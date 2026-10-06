@@ -1510,3 +1510,328 @@
   color: var(--err);
   font-size: var(--t-sm);
 }
+
+/* ---------- the states the mockup cannot show (BC.6, #395) ---------- */
+
+/*
+ * The regression banner's rows lead somewhere: the fix is the step whose surface owns the
+ * problem, so each row ends in a control that puts that step on screen.
+ */
+.wizard-regress__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-4);
+}
+
+.wizard-regress__fix {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+
+.wizard-regress__fix:hover {
+  text-decoration: underline;
+}
+
+/* ---------- step 1: connect, in the wizard's frame ---------- */
+
+/*
+ * The sources module's own rows and dialog sit inside this card; what is styled here is only the
+ * framing around them — the line, the state, the actions — never the rows themselves.
+ */
+.wizard-connect {
+  flex: none;
+}
+
+/* The mockup's .import-link treatment: mono, quiet, dotted — a way out, not a call to action. */
+.wizard-connect__settings {
+  padding-bottom: 1px;
+  border-bottom: 1px dotted var(--line-strong);
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+
+.wizard-connect__settings:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.wizard-connect__line,
+.wizard-picker__line,
+.wizard-receipt__reenter-line {
+  max-width: 70ch;
+  margin: 0 0 var(--sp-7);
+  color: var(--ink-mut);
+  line-height: var(--lh-body);
+}
+
+.wizard-connect__state,
+.wizard-picker__state {
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+}
+
+.wizard-connect__failure,
+.wizard-picker__failure {
+  margin: 0 0 var(--sp-5);
+  color: var(--err);
+  font-size: var(--t-sm);
+}
+
+.wizard-connect__list {
+  margin-bottom: var(--sp-7);
+}
+
+.wizard-connect__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-7);
+  margin-top: var(--sp-7);
+}
+
+.wizard-connect__next {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-sm);
+}
+
+/* ---------- step 2: the repository picker ---------- */
+
+.wizard-picker {
+  flex: none;
+}
+
+.wizard-picker__readonly {
+  margin: 0 0 var(--sp-5);
+  color: var(--ink-faint);
+  font-size: var(--t-sm);
+}
+
+.wizard-picker__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A row is the login screen's: name and summary on the left, the switch on the right. */
+.wizard-picker__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-7);
+  padding: var(--sp-5) var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.wizard-picker__row:last-child {
+  border-bottom: 0;
+}
+
+.wizard-picker__row--current {
+  border-radius: var(--r-sm);
+  background: var(--accent-tint);
+}
+
+.wizard-picker__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.wizard-picker__repo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  color: var(--ink);
+  font-family: var(--f-disp);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  letter-spacing: var(--tr-wide);
+  overflow-wrap: anywhere;
+}
+
+.wizard-picker__login {
+  color: var(--ink-faint);
+  font-weight: 400;
+}
+
+.wizard-picker__note {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.wizard-picker__row--on .wizard-picker__note {
+  color: var(--ok);
+}
+
+.wizard-picker__switch {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+
+/* ---------- the completion state ---------- */
+
+.wizard-receipt {
+  flex: none;
+  border-color: var(--ok-line);
+}
+
+.wizard-receipt__headline {
+  margin: 0;
+  font-size: var(--t-lg);
+  line-height: var(--lh-body);
+}
+
+.wizard-receipt__issue {
+  color: var(--accent);
+  font-family: var(--f-mono);
+}
+
+.wizard-receipt__position {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+}
+
+.wizard-receipt__note {
+  max-width: 70ch;
+  margin: var(--sp-4) 0 0;
+  color: var(--ok);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.wizard-receipt__links,
+.wizard-receipt__others {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-5) var(--sp-8);
+  margin: var(--sp-7) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wizard-receipt__link {
+  color: var(--accent);
+  font-size: var(--t-sm);
+}
+
+.wizard-receipt__link:hover {
+  text-decoration: underline;
+}
+
+.wizard-receipt__pending {
+  color: var(--ink-faint);
+  font-size: var(--t-sm);
+}
+
+.wizard-receipt__reenter-title {
+  margin: var(--sp-9) 0 var(--sp-3);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-weight: 400;
+  letter-spacing: var(--tr-wider);
+  text-transform: uppercase;
+}
+
+.wizard-receipt__reenter-none {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+}
+
+.wizard-receipt__other {
+  font-family: var(--f-mono);
+}
+
+/* ---------- the loading state ---------- */
+
+/*
+ * The frame's geometry, reserved: the same head, rail and bar boxes with bars where the reads
+ * will land. Nothing ticks and nothing is named — every one of those is the service's answer.
+ */
+.wizard-skeleton {
+  cursor: progress;
+}
+
+.wizard-skeleton__bone {
+  display: block;
+  width: 70%;
+  height: 0.75rem;
+  border-radius: var(--r-xs);
+  background: var(--inset);
+}
+
+.wizard-skeleton__bone--sub {
+  width: 28rem;
+  max-width: 100%;
+  margin-top: var(--sp-4);
+}
+
+.wizard-skeleton__bone--name {
+  width: 8rem;
+}
+
+.wizard-skeleton__bone--title {
+  width: 12rem;
+  height: 1rem;
+}
+
+.wizard-skeleton__bone--short {
+  width: 45%;
+}
+
+.wizard-skeleton__bone--counter {
+  width: 6rem;
+}
+
+.wizard-skeleton__bone--button {
+  width: 10rem;
+  height: 2.25rem;
+  border-radius: var(--r-md);
+}
+
+.wizard-skeleton__step {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  padding: 0 var(--sp-10);
+}
+
+.wizard-skeleton__step:first-child {
+  padding-left: 0;
+}
+
+.wizard-skeleton__mark {
+  flex: none;
+  width: 1.625rem;
+  height: 1.625rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-round);
+}
+
+.wizard-skeleton__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  padding: 1.375rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}

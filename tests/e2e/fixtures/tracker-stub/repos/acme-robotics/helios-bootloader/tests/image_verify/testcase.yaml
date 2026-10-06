@@ -1,0 +1,10 @@
+# Twister's manifest for the verifier suite — `twister -T tests/image_verify`.
+tests:
+  helios.boot.image_verify:
+    platform_allow:
+      - native_sim
+    integration_platforms:
+      - native_sim
+    tags:
+      - boot
+      - helios

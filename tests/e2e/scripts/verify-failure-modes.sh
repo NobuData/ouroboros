@@ -791,6 +791,15 @@ expect_red engine-tap knowledge.spec.ts "the engine tap is not answering" "a rul
 # estimate runs without the engine; the issue is then never sized, and the leg says which hop.
 expect_red engine knowledge.spec.ts "the estimator sizes it through the engine" "a rules file's fact reaches the estimator"
 
+# The Get Started leg (#395, BC.6 — the onboarding roadmap's MVP gate). Its first touch of the
+# database is the sign-in. Its chain connects a sandbox source through the embedded dialog —
+# the service validates the token against the host, so with `tracker-stub` stopped the add is
+# refused and the leg says which layer did not answer — and sizes the issue it filed through
+# the engine, so with `engine` stopped the pick never appears and the leg names the estimator.
+expect_red db wizard.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+expect_red tracker-stub wizard.spec.ts "validates it against the sandbox tracker" "the chain"
+expect_red engine wizard.spec.ts "the estimator sizes it through the engine" "the chain"
+
 printf '\n'
 if check_summary; then
   rm -rf "$LOG_DIR"

@@ -7,16 +7,21 @@ import type { PollAnswer } from "@/app/poll";
 
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 import { settle } from "../helpers/settle";
+import { source } from "../helpers/sources";
 import {
   ISSUE_488,
   REPO,
+  completed,
   firstIssueCard,
+  fresh,
   launchReceipt,
+  mirrored,
   readyToRun,
   regressed,
   seededCard,
   seededTiles,
   selfHostedDefaults,
+  sourcesReadings,
   step,
   wizard,
 } from "../helpers/onboarding";
@@ -31,7 +36,12 @@ const continueStep = vi.fn();
 const enableRepository = vi.fn();
 const launchFirstLoop = vi.fn();
 const skipWizard = vi.fn();
+const setRepositoryEnabled = vi.fn();
+const readSourceCatalog = vi.fn();
+const addSource = vi.fn();
+const setSourceStatus = vi.fn();
 const push = vi.fn();
+const refresh = vi.fn();
 
 vi.mock("@/app/get-started/actions", () => ({
   continueStep: (repo: string, step: number) => continueStep(repo, step),
@@ -44,8 +54,20 @@ vi.mock("@/app/get-started/actions", () => ({
   previewProtectedPaths: vi.fn(),
   selectTemplate: vi.fn(),
   pickFirstIssue: vi.fn(),
+  setRepositoryEnabled: (formData: FormData) => setRepositoryEnabled(formData),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh: vi.fn() }) }));
+// Step 1's embedded flow is `app/sources`' own dialog and rows (#395); their actions are server-only.
+vi.mock("@/app/sources/actions", () => ({
+  readSourceCatalog: () => readSourceCatalog(),
+  addSource: (body: unknown) => addSource(body),
+  testSource: vi.fn(),
+  syncSource: vi.fn(),
+  readSourceStatus: vi.fn(),
+  setSourceStatus: (id: string, status: string) => setSourceStatus(id, status),
+  setSourceCredentials: vi.fn(),
+  updateSourceConfig: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh }) }));
 
 const { GetStartedScreen } = await import("@/app/get-started/get-started-screen");
 
@@ -64,7 +86,12 @@ const POLL: OnboardingPollOptions = {
 const OWNER = { contribute: true, administer: true };
 
 /** The frame over a first read. */
-function frame(initial: Onboarding | null = wizard(), abilities = OWNER, repo: string | null = REPO) {
+function frame(
+  initial: Onboarding | null = wizard(),
+  abilities = OWNER,
+  repo: string | null = REPO,
+  extra: Partial<Pick<Parameters<typeof GetStartedScreen>[0], "sources" | "enablement">> = {},
+) {
   return render(
     <GetStartedScreen
       abilities={abilities}
@@ -72,14 +99,17 @@ function frame(initial: Onboarding | null = wizard(), abilities = OWNER, repo: s
       defaultsPoll={{ read: () => new Promise(() => {}), visible: () => true }}
       detection={{ ok: true, value: seededCard() }}
       detectionPoll={{ read: () => new Promise(() => {}), visible: () => true }}
+      enablement={{ ok: true, value: mirrored() }}
       firstIssue={{ ok: true, value: firstIssueCard() }}
       firstIssuePoll={{ read: () => new Promise(() => {}), visible: () => true }}
       poll={POLL}
       repo={repo}
       reposFailure={null}
+      sources={{ ok: true, value: sourcesReadings() }}
       templates={{ ok: true, value: seededTiles() }}
       templatesPoll={{ read: () => new Promise(() => {}), visible: () => true }}
       wizard={initial === null ? null : { ok: true, value: initial }}
+      {...extra}
     />,
   );
 }
@@ -96,7 +126,10 @@ const bar = () => screen.getByRole("group", { name: "Wizard actions" });
 beforeEach(() => {
   answer = null;
   reads = 0;
-  for (const mock of [continueStep, enableRepository, launchFirstLoop, skipWizard, push]) mock.mockReset();
+  for (const mock of [continueStep, enableRepository, launchFirstLoop, skipWizard, setRepositoryEnabled, readSourceCatalog, addSource, setSourceStatus, push, refresh]) {
+    mock.mockReset();
+  }
+  readSourceCatalog.mockResolvedValue({ ok: true, entries: [] });
 });
 
 afterEach(() => {
@@ -325,13 +358,17 @@ describe("the action bar", () => {
 });
 
 describe("a workspace with no repository yet", () => {
-  it("says so, draws no rail of its own, and offers to connect GitHub", () => {
-    frame(null, OWNER, null);
+  it("says so, draws no rail of its own, and offers to connect GitHub — here, and in Settings", () => {
+    frame(null, OWNER, null, { sources: { ok: true, value: sourcesReadings({ sources: { ok: true, value: [] } }) } });
 
     expect(screen.queryByRole("navigation", { name: "Get Started steps" })).toBeNull();
-    expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent("No repository is connected yet");
+    expect(screen.getByRole("heading", { level: 2, name: "No repository is connected yet" })).toBeInTheDocument();
     expect(within(bar()).getByRole("link", { name: "Connect GitHub →" })).toHaveAttribute("href", "/settings/sources");
     expect(within(bar()).getByText("Step 1 of 4")).toBeInTheDocument();
+    // Steps 1 and 2's surfaces both draw, so a workspace starts from zero on this page (#395).
+    expect(screen.getByRole("region", { name: "Connect GitHub" })).toHaveTextContent("No GitHub source is connected yet.");
+    expect(screen.getByRole("button", { name: "+ Add source" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Pick a repo" })).toHaveTextContent("Connect GitHub first");
   });
 
   it("says why when the wizard could not be read", () => {
@@ -528,5 +565,134 @@ describe("both themes", () => {
 
     expect(maskIds(light!)).toBe(maskIds(dark!));
     expect(light).toContain("wizard-regress");
+  });
+});
+
+/* ------------------------------------------------------- the states the mockup cannot show (#395) */
+
+describe("steps 1 and 2 before they are done (#395)", () => {
+  it("draws step 1's surface — the sources module's rows and opener — on step 1, with its done pill once the rail says so", () => {
+    frame();
+
+    // The seeded wizard is on step 3: nothing of steps 1–2 is on screen until asked.
+    expect(screen.queryByRole("region", { name: "Connect GitHub" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Pick a repo" })).toBeNull();
+
+    fireEvent.click(stepButtons()[0]!);
+
+    const connect = screen.getByRole("region", { name: "Connect GitHub" });
+    expect(within(connect).getByText("✓ step 1 done")).toBeInTheDocument();
+    expect(within(connect).getByRole("heading", { name: "GitHub · acme-robotics" })).toBeInTheDocument();
+    expect(within(connect).getByRole("button", { name: "Pause" })).toBeInTheDocument();
+    expect(within(connect).getByRole("button", { name: "+ Add source" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Pick a repo" })).toBeNull();
+  });
+
+  it("draws step 2's surface — the enablement switches — on step 2, this wizard's repository first", () => {
+    frame();
+
+    fireEvent.click(stepButtons()[1]!);
+
+    const picker = screen.getByRole("region", { name: "Pick a repo" });
+    expect(within(picker).getByText("✓ step 2 done")).toBeInTheDocument();
+    expect(within(picker).getAllByRole("listitem")[0]).toHaveAttribute("data-repo", REPO);
+    expect(within(picker).getByRole("switch", { name: `Disable Ouroboros in ${REPO}` })).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("region", { name: "Connect GitHub" })).toBeNull();
+  });
+
+  it("opens on step 1 with its surface active when nothing covers the repository, and the bar still links Settings", () => {
+    frame(fresh(), OWNER, REPO, { sources: { ok: true, value: sourcesReadings({ sources: { ok: true, value: [] } }) } });
+
+    const connect = screen.getByRole("region", { name: "Connect GitHub" });
+    expect(within(connect).getByText("step 1 · you are here")).toBeInTheDocument();
+    expect(connect).toHaveTextContent("No GitHub source is connected yet.");
+    expect(within(bar()).getByRole("link", { name: "Connect GitHub →" })).toHaveAttribute("href", "/settings/sources");
+  });
+
+  it("draws both surfaces for a workspace that has mirrored nothing, and the picker offers what the source names", () => {
+    frame(null, OWNER, null, { enablement: { ok: true, value: { orgTotal: 0, orgs: [] } } });
+
+    expect(screen.getByRole("region", { name: "Connect GitHub" })).toBeInTheDocument();
+    const picker = screen.getByRole("region", { name: "Pick a repo" });
+    expect(within(picker).getAllByRole("listitem")).toHaveLength(4);
+    for (const row of within(picker).getAllByRole("listitem")) expect(row).toHaveTextContent("not recorded yet — switching on records it");
+  });
+});
+
+describe("regression, fixed (#395)", () => {
+  it("leads from the banner to the step whose surface owns the problem — the source's own Resume", () => {
+    frame(regressed(), OWNER, REPO, {
+      sources: { ok: true, value: sourcesReadings({ sources: { ok: true, value: [source({ status: "paused" })] } }) },
+    });
+
+    const banner = screen.getByRole("region", { name: "A step that was done is not any more" });
+
+    // Wherever the person has gone on the rail, the banner's fix leads back to the step that owns the problem.
+    fireEvent.click(stepButtons()[2]!);
+    expect(within(bar()).getByText("Step 3 of 4")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Connect GitHub" })).toBeNull();
+
+    fireEvent.click(within(banner).getByRole("button", { name: "Fix step 1 →" }));
+
+    expect(within(bar()).getByText("Step 1 of 4")).toBeInTheDocument();
+    const connect = screen.getByRole("region", { name: "Connect GitHub" });
+    expect(within(connect).getByText("step 1 · you are here")).toBeInTheDocument();
+    expect(within(connect).getByRole("button", { name: "Resume" })).toBeInTheDocument();
+  });
+});
+
+describe("completion (#395)", () => {
+  it("leads the step content with the receipt once the launch answers, and offers the dashboard from the bar", async () => {
+    launchFirstLoop.mockResolvedValue({ ok: true, value: launchReceipt() });
+    answer = { state: "fresh", payload: completed(), etag: null, pollAfterSeconds: null };
+    frame(readyToRun());
+
+    fireEvent.click(within(bar()).getByRole("button", { name: "Run my first loop →" }));
+    await settle();
+
+    const receipt = screen.getByRole("region", { name: "Your first loop is queued" });
+    expect(receipt).toHaveTextContent("#488 queued under quick-fixes@v1");
+    expect(receipt).toHaveTextContent("Dry-run is on");
+    expect(within(receipt).getByRole("link", { name: "Open the dashboard →" })).toHaveAttribute("href", "/dashboard");
+    expect(within(receipt).getByRole("link", { name: "acme-robotics/helios-console →" })).toHaveAttribute(
+      "href",
+      "/get-started?repo=acme-robotics%2Fhelios-console",
+    );
+    // The receipt is the first thing in the scrolling region, above the step panel and the cards.
+    const content = document.querySelector(".wizard__content")!;
+    expect(content.firstElementChild).toBe(receipt);
+    await waitFor(() => expect(within(bar()).getByRole("link", { name: "Open the dashboard →" })).toHaveAttribute("href", "/dashboard"));
+  });
+
+  it("stays on a reload, drawn from the rail's own evidence, and the wizard remains reachable", () => {
+    frame(completed());
+
+    const receipt = screen.getByRole("region", { name: "Your first loop is queued" });
+    expect(receipt).toHaveTextContent("#488 · queued");
+    expect(receipt).not.toHaveTextContent("queue position");
+    expect(within(bar()).getByText("Step 4 of 4")).toBeInTheDocument();
+    expect(within(bar()).getByRole("link", { name: "Open the dashboard →" })).toBeInTheDocument();
+  });
+
+  it("flips to run started on the poll once a loop claims the issue", async () => {
+    answer = {
+      state: "fresh",
+      payload: wizard({ ...completed(), steps: completed().steps.map((one) => (one.step === 4 ? { ...one, evidence: "#488 · run started" } : one)) }),
+      etag: null,
+      pollAfterSeconds: null,
+    };
+    frame(completed());
+
+    await waitFor(() => expect(screen.getByRole("region", { name: "Your first loop is queued" })).toHaveTextContent("#488 · run started"));
+  });
+});
+
+describe("dismissed (#395)", () => {
+  it("renders a dismissed wizard unchanged — dismissal governs the dashboard's offer, not this page", () => {
+    frame(wizard({ choices: { ...wizard().choices, dismissed: true }, surfacing: { offer: false, reason: "wizard_finished" } }));
+
+    expect(rail()).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Choose a starting workflow" })).toBeInTheDocument();
+    expect(within(bar()).getByText("Step 3 of 4")).toBeInTheDocument();
   });
 });

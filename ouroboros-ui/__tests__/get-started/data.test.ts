@@ -4,7 +4,7 @@ import type { Workspace } from "@/app/api/access";
 import { ApiError } from "@/app/api/errors";
 
 import { membership, sessionUser } from "../helpers/login";
-import { REPO, firstIssueCard, seededCard, seededTiles, selfHostedDefaults, wizard } from "../helpers/onboarding";
+import { REPO, firstIssueCard, seededCard, seededTiles, selfHostedDefaults, sourcesReadings, wizard } from "../helpers/onboarding";
 
 /**
  * `/get-started`'s first paint (#390): which repository — the query's, else the first mirrored
@@ -32,6 +32,9 @@ vi.mock("@/app/api/onboarding", () => ({
 }));
 vi.mock("@/app/api/detection", () => ({ detection: { read: (repo: string) => readDetection(repo) } }));
 vi.mock("@/app/api/enablement", () => ({ readEnablement: (tenant: string) => readEnablement(tenant) }));
+vi.mock("@/app/sources/data", () => ({ readSources: (access: unknown) => readSources(access) }));
+
+const readSources = vi.fn();
 
 const { readGetStarted, readGetStartedOffer } = await import("@/app/get-started/data");
 
@@ -59,6 +62,7 @@ beforeEach(() => {
   readFirstIssue.mockReset().mockResolvedValue(firstIssueCard());
   readDefaults.mockReset().mockResolvedValue(selfHostedDefaults());
   surfacing.mockReset().mockResolvedValue({ offer: true, reason: "fresh_organization" });
+  readSources.mockReset().mockResolvedValue(sourcesReadings());
   readEnablement.mockReset().mockResolvedValue(
     listed([
       { login: "acme-robotics", enabled: true, repos: [{ name: "zeta", enabled: false }, { name: "helios-firmware", enabled: true }] },
@@ -67,7 +71,11 @@ beforeEach(() => {
 });
 
 describe("readGetStarted", () => {
-  it("reads the repository the query names, and does not list repositories", async () => {
+  it("reads the repository the query names — and the sources and the mirror once, for steps 1–2's surfaces (#395)", async () => {
+    const mirror = listed([
+      { login: "acme-robotics", enabled: true, repos: [{ name: "zeta", enabled: false }, { name: "helios-firmware", enabled: true }] },
+    ]);
+
     expect(await readGetStarted(access(), REPO)).toEqual({
       repo: REPO,
       wizard: { ok: true, value: wizard() },
@@ -75,10 +83,13 @@ describe("readGetStarted", () => {
       templates: { ok: true, value: seededTiles() },
       firstIssue: { ok: true, value: firstIssueCard() },
       defaults: { ok: true, value: selfHostedDefaults() },
+      sources: { ok: true, value: sourcesReadings() },
+      enablement: { ok: true, value: mirror },
       reposFailure: null,
       abilities: { contribute: true, administer: true },
     });
-    expect(readEnablement).not.toHaveBeenCalled();
+    expect(readEnablement).toHaveBeenCalledExactlyOnceWith(membership().id);
+    expect(readSources).toHaveBeenCalledOnce();
     expect(readDetection).toHaveBeenCalledWith(REPO);
     expect(readTemplates).toHaveBeenCalledWith(REPO);
     expect(readFirstIssue).toHaveBeenCalledWith(REPO);
@@ -103,7 +114,7 @@ describe("readGetStarted", () => {
     expect((await readGetStarted(access(), undefined)).repo).toBe(REPO);
   });
 
-  it("asks nothing of the wizard when the workspace has mirrored no repository", async () => {
+  it("asks nothing of the wizard when the workspace has mirrored no repository — and still hands over the sources, so step 1 can start here", async () => {
     readEnablement.mockResolvedValue(listed([]));
 
     expect(await readGetStarted(access(), undefined)).toMatchObject({
@@ -113,6 +124,8 @@ describe("readGetStarted", () => {
       templates: null,
       firstIssue: null,
       defaults: null,
+      sources: { ok: true, value: sourcesReadings() },
+      enablement: { ok: true, value: listed([]) },
       reposFailure: null,
     });
     expect(read).not.toHaveBeenCalled();
@@ -125,7 +138,21 @@ describe("readGetStarted", () => {
   it("says why when the repository list could not be read", async () => {
     readEnablement.mockRejectedValue(new ApiError(503, "unavailable", "Try again."));
 
-    expect(await readGetStarted(access(), undefined)).toMatchObject({ repo: null, wizard: null, reposFailure: "Try again." });
+    expect(await readGetStarted(access(), undefined)).toMatchObject({
+      repo: null,
+      wizard: null,
+      enablement: { ok: false, reason: "Try again." },
+      reposFailure: "Try again.",
+    });
+  });
+
+  it("carries the sources that could not be read as a reason, beside a wizard that could (#395)", async () => {
+    readSources.mockRejectedValue(new ApiError(503, "unavailable", "The sources are busy."));
+
+    const readings = await readGetStarted(access(), REPO);
+
+    expect(readings.wizard).toEqual({ ok: true, value: wizard() });
+    expect(readings.sources).toEqual({ ok: false, reason: "The sources are busy." });
   });
 
   it("carries a wizard that could not be read as a reason, not a throw", async () => {

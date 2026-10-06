@@ -19,6 +19,10 @@ import type {
   PlanningReestimationStatus,
 } from "@/app/api/onboarding";
 import type { DryRunPolicy } from "@/app/api/policies";
+import type { SourcesReadings } from "@/app/sources/data";
+
+import { enablement, org, repo } from "./login";
+import { githubEntry, source, statusReport } from "./sources";
 
 /**
  * The Get Started wizard as BB.2 (#385) serves it — the onboarding seed's `acme-robotics/helios-firmware`,
@@ -908,4 +912,71 @@ export function mergingDefaults(): OnboardingDefaults {
     reassure: { claims, line: claims.map((claim) => claim.text).join(" ") },
     timeline: mergingTimeline(),
   });
+}
+
+/* ------------------------------------------------------- the states the mockup cannot show (#395) */
+
+/** The wizard once the first loop is queued: every step done, completion stamped. */
+export function completed(): Onboarding {
+  return wizard({
+    steps: [
+      step({ step: 1, status: "done", evidence: "acme-robotics · token" }),
+      step({ step: 2, status: "done", evidence: "helios-firmware · auto-detected below" }),
+      step({ step: 3, status: "done", evidence: "quick-fixes · from quick-fixes@v1" }),
+      step({ step: 4, status: "done", evidence: "#488 · queued" }),
+    ],
+    currentStep: null,
+    choices: {
+      selectedTemplate: "quick-fixes",
+      pickedTicketId: "5eed0080-0000-4000-8000-000000000488",
+      dismissed: false,
+      completedAt: "2026-10-05T09:00:00.000Z",
+      bypassedAt: null,
+    },
+    refs: { detectionScan: null, templates: [], pickedTicket: pickedTicket() },
+    surfacing: { offer: false, reason: "wizard_finished" },
+  });
+}
+
+/** The wizard before anything is connected: step 1 active, nothing covers the repository. */
+export function fresh(): Onboarding {
+  return wizard({
+    steps: [
+      step({ step: 1, status: "active", reason: `No GitHub source covers ${REPO} yet — connect GitHub to continue.` }),
+      step({ step: 2, reason: `${REPO} is not a repository of this workspace's GitHub accounts.` }),
+      step({ step: 3, reason: "No starting workflow has been chosen yet." }),
+      step({ step: 4, reason: "No first issue has been picked yet." }),
+    ],
+  });
+}
+
+/**
+ * The workspace's ticket sources as Settings → Sources reads them — the seed's GitHub source,
+ * with its catalog entry and a status report.
+ *
+ * @param overrides What differs — an empty listing, a failed read.
+ * @returns The readings.
+ */
+export function sourcesReadings(overrides: Partial<SourcesReadings> = {}): SourcesReadings {
+  const github = source();
+
+  return {
+    sources: { ok: true, value: [github] },
+    catalog: { ok: true, value: [githubEntry()] },
+    statuses: new Map([[github.id, { ok: true, value: statusReport() }]]),
+    now: "2026-10-05T12:00:00.000Z",
+    ...overrides,
+  };
+}
+
+/**
+ * The GitHub mirror: the seeded account with `helios-firmware` recorded and on, and
+ * `helios-console` recorded and off — the other two the source names are not recorded yet.
+ *
+ * @returns The enablement list.
+ */
+export function mirrored() {
+  return enablement([
+    [org(), [repo(), repo({ id: "5eed0006-0000-4000-8000-000000000002", name: "helios-console", enabled: false })]],
+  ]);
 }

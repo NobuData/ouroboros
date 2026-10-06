@@ -537,6 +537,7 @@ never posts a verdict. It never touches the database.
 | `correction-round` | `implement`'s tests fail and the loop holds for Mark & Route: a correction round (a steer with `retryStage`, [#332](https://github.com/NobuData/ouroboros/issues/332)) starts attempt 2 with the note as its planning context; without one the run ends `needs_human` |
 | `failing-hil` | Mockup 11's story ([#334](https://github.com/NobuData/ouroboros/issues/334)): `implement` sends Build 1 (`49/63`, 14 failed) and Build 2 (`61/63`, the motor overshoot 2.4% > 2.0%) to rig `helios-rig-02`, holds for Mark & Route, and the correction round's Build 3 is `63/63`; without one the run ends `needs_human`. The results are the farm's: the rig's uploads go through REST's upload path, replayed with the same figures by `ouroboros-rest`'s `test-plane` suite |
 | `protected-path-allow-once` | The inbox's allow-once chain ([#470](https://github.com/NobuData/ouroboros/issues/470)): `implement` adds one line to `boot/can_bringup.c`, which every published org policy version protects (`boot/**`), so REST fails `allowed_paths` (and nothing else) and files a `protected_path_allow_once` decision. The loop **holds** rather than ending; *Allow once* grants the exception and submits a `resume`, the driver re-reports the change-set (the grant lifts the path) and runs on to a merge. Without a resume inside `max_pause` the run ends `needs_human` |
+| `first-loop` | The Get Started wizard's first run ([#395](https://github.com/NobuData/ouroboros/issues/395)): the only scenario scripted on the **`quick-fixes` v1** template's nodes (`issue-queued → analyze → plan → code → build → test → open-pr`, no fork, no gate), so it must be opened pinned to it (`--workflow quick-fixes --workflow-version 1`). A docs-only typo sweep: two `modified` Markdown files under `docs/`, one commit, every guardrail clean, and a **draft** pull request — the wizard's dry-run policy never merges |
 
 ```bash
 # against a running stack (yarn dev, or compose, which publishes REST on :4000)
@@ -552,7 +553,7 @@ started with the simulator secret set also serves the driver, behind the interna
 
 | Path | Answers |
 |---|---|
-| `GET /dev/scenarios` | The seven scenarios |
+| `GET /dev/scenarios` | The eight scenarios |
 | `POST /dev/simulations` | `{scenario, speed?, target?}` → `202 {id, state: running}`. At most four run at once (`429`) |
 | `GET /dev/simulations/{id}` | `runId` once the run opens, `result` once it ends |
 
@@ -858,7 +859,7 @@ ouroboros-engine/
 │   └── settings.py     # pydantic-settings, OURO_*
 ├── src/ouroboros_simulator/  # the simulated-run driver — NOT in the wheel      · #307
 │   ├── session.py      #   one run: reports through the client, honours controls
-│   ├── scenarios/      #   the six scripts, over the session
+│   ├── scenarios/      #   the eight scripts, over the session
 │   ├── runner.py       #   open a run, play a scenario, say what happened
 │   ├── transport.py    #   urllib, retrying 502/503/504 with the same key
 │   ├── clock.py        #   real timestamps, compressed waits

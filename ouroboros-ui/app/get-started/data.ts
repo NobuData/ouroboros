@@ -6,17 +6,23 @@ import "server-only";
  * BB.1 (#384) stored it (BC.2, #391), its template tiles as BB.3 (#386) evaluates them (BC.3,
  * #392), its first-issue card as BB.4 (#387) scores it with the dry-run policy (BA.3, #382) its
  * safety rows state (BC.4, #393), its right column as BB.5 (#388) selects it for this deployment
- * (BC.5, #394), and what the person may do.
+ * (BC.5, #394), the workspace's ticket sources and GitHub mirror that steps 1–2's embedded flows
+ * draw (BC.6, #395), and what the person may do.
  *
  * **Which repository.** The request names it (`?repo=owner/name`); otherwise the wizard opens on
  * the workspace's first mirrored repository — an enabled one first ({@link defaultRepo}). With
  * nothing mirrored there is nothing to ask the service about, and the page says so rather than
- * drawing a rail of its own (the user's decision on the ticket).
+ * drawing a rail of its own (the user's decision on the ticket) — and draws step 1's connect
+ * flow and step 2's picker in its place, so a workspace starts from zero on this page.
+ *
+ * **One listing of the mirror.** The repository the wizard opens on, step 2's picker and the
+ * completion card's re-enter list all read the same `1 + n` listing (`readEnablement`), so it is
+ * read once per paint and handed down.
  */
 
 import type { Workspace } from "@/app/api/access";
 import { type RepoDetection, detection } from "@/app/api/detection";
-import { readEnablement } from "@/app/api/enablement";
+import { type Enablement, readEnablement } from "@/app/api/enablement";
 import { mayAdminister, mayContribute } from "@/app/api/membership";
 import {
   type FirstIssueCard,
@@ -27,6 +33,7 @@ import {
   readFirstIssueCard,
 } from "@/app/api/onboarding";
 import { type Reading, attempt } from "@/app/api/reading";
+import { type SourcesReadings, readSources } from "@/app/sources/data";
 
 import { type Abilities, type GetStartedOffer, defaultRepo, parseRepo } from "./view";
 
@@ -44,6 +51,10 @@ export interface GetStartedReadings {
   readonly firstIssue: Reading<FirstIssueCard> | null;
   /** Its right column — defaults, timeline, reassure (BC.5, #394) — or null when there is no repository. */
   readonly defaults: Reading<OnboardingDefaults> | null;
+  /** The workspace's ticket sources, as Settings → Sources reads them — step 1's flow (BC.6, #395). */
+  readonly sources: Reading<SourcesReadings>;
+  /** The workspace's GitHub mirror — step 2's picker and the completion card's re-enter list (BC.6, #395). */
+  readonly enablement: Reading<Enablement>;
   /** Why the repository list could not be read, when the request named none and it failed. */
   readonly reposFailure: string | null;
   /** What the person may do. */
@@ -51,14 +62,12 @@ export interface GetStartedReadings {
 }
 
 /**
- * The repository the wizard opens on when the request names none.
+ * The repository the wizard opens on when the request names none, from one listing.
  *
- * @param tenantId The workspace.
+ * @param listed The mirror, or why it could not be read.
  * @returns The repository (or null when nothing is mirrored), or why the list could not be read.
  */
-export async function openingRepo(tenantId: string): Promise<Reading<string | null>> {
-  const listed = await attempt(() => readEnablement(tenantId));
-
+function defaultRepoOf(listed: Reading<Enablement>): Reading<string | null> {
   if (!listed.ok) return listed;
 
   return {
@@ -69,6 +78,16 @@ export async function openingRepo(tenantId: string): Promise<Reading<string | nu
       ),
     ),
   };
+}
+
+/**
+ * The repository the wizard opens on when the request names none.
+ *
+ * @param tenantId The workspace.
+ * @returns The repository (or null when nothing is mirrored), or why the list could not be read.
+ */
+export async function openingRepo(tenantId: string): Promise<Reading<string | null>> {
+  return defaultRepoOf(await attempt(() => readEnablement(tenantId)));
 }
 
 /**
@@ -84,9 +103,13 @@ export async function readGetStarted(access: Workspace, asked: string | string[]
     administer: mayAdminister(access.membership.roles),
   };
   const named = parseRepo(asked);
-  const chosen: Reading<string | null> = named === null ? await openingRepo(access.membership.id) : { ok: true, value: named };
+  const [enablement, sources] = await Promise.all([
+    attempt(() => readEnablement(access.membership.id)),
+    attempt(() => readSources(access)),
+  ]);
+  const chosen: Reading<string | null> = named === null ? defaultRepoOf(enablement) : { ok: true, value: named };
 
-  if (!chosen.ok) {
+  if (!chosen.ok || chosen.value === null) {
     return {
       repo: null,
       wizard: null,
@@ -94,20 +117,9 @@ export async function readGetStarted(access: Workspace, asked: string | string[]
       templates: null,
       firstIssue: null,
       defaults: null,
-      reposFailure: chosen.reason,
-      abilities,
-    };
-  }
-
-  if (chosen.value === null) {
-    return {
-      repo: null,
-      wizard: null,
-      detection: null,
-      templates: null,
-      firstIssue: null,
-      defaults: null,
-      reposFailure: null,
+      sources,
+      enablement,
+      reposFailure: chosen.ok ? null : chosen.reason,
       abilities,
     };
   }
@@ -122,7 +134,7 @@ export async function readGetStarted(access: Workspace, asked: string | string[]
     attempt(() => onboarding.defaults(repo)),
   ]);
 
-  return { repo, wizard, detection: card, templates, firstIssue, defaults, reposFailure: null, abilities };
+  return { repo, wizard, detection: card, templates, firstIssue, defaults, sources, enablement, reposFailure: null, abilities };
 }
 
 /**

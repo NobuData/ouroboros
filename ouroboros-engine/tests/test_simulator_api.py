@@ -166,6 +166,7 @@ def test_the_scenarios_are_listed(dev: TestClient) -> None:
         "correction-round",
         "failing-hil",
         "protected-path-allow-once",
+        "first-loop",
     ]
 
 
