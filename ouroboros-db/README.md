@@ -248,6 +248,11 @@
 > typed. `Used by` is computed by `V023`'s view over mockup 06's chains, and four of mockup
 > 21's drawn counts are not what those chains yield — the seed's header and
 > [`tests/seed.sql`](tests/seed.sql) say which, and why the routing matrix wins.
+> [#622](https://github.com/NobuData/ouroboros/issues/622) (CM.3) extends it once more with the
+> **`research` task-kind family** — `research-plan` (`researchplan-primary`: `sizer` →
+> `local-free`) and `research` (`research-primary`: `researcher-long-ctx` → `coder-std`) — and a
+> ninth alias, `researcher-long-ctx`, bound to the catalog's `claude-sonnet-4-6` (300¢ · 1500¢
+> per 1M, a 1M context). The two kinds carry no usage, so their matrix figures are M7's em-dash.
 > `V025` ([#584](https://github.com/NobuData/ouroboros/issues/584)) adds
 > [`alias_revisions`](migrations/V025__alias_revisions.sql) — who changed a model alias, when,
 > and what moved: the lightweight revision record every write the registry's lifecycle API
@@ -1466,6 +1471,19 @@
 > `finding` has at least one citation** (`brief_claims_finding_cited`), and an investigation is
 > `brief_ready`/`issues_filed` only with a brief (`investigations_brief_exists`).
 >
+> `V109` ([#622](https://github.com/NobuData/ouroboros/issues/622), CM.3) makes the composer's
+> estimate **answerable for** (decision **V5**). `investigations.estimate_calibration_version`
+> names the set of CM.3 calibration constants that computed `estimate`, and is present exactly
+> when `estimate` is (`investigations_estimate_calibration_version_paired`).
+> `investigation_estimate_outcomes` holds one row per investigation with both an estimate and
+> actuals: the estimate (its calibration version, depth, tools, alias, source and cost ranges) and
+> the actuals, copied at reconciliation, plus two **generated** verdicts —
+> `sources_within_estimate`, and `cost_within_estimate`, which is **null** when either side of the
+> cost is unknown (an unpriced alias estimated no dollars; an unpriced run spent an unknown amount).
+> Its one writer is `record_investigation_estimate_outcome(workspace, investigation)`, an
+> idempotent upsert that runs as the caller and returns no row when there is nothing to compare —
+> the BI.4 (`V077`) discipline, so recalibration is arithmetic over recorded history.
+>
 > [#484](https://github.com/NobuData/ouroboros/issues/484) (BQ.5) seeds mockup 17 from those rows:
 > [`R__dev_seed_workspace_settings.sql`](migrations/R__dev_seed_workspace_settings.sql) — see
 > [Who may do what, and where the record goes](#who-may-do-what-and-where-the-record-goes). Its
@@ -1711,7 +1729,7 @@ days:
 | [`R__dev_seed_dashboard.sql`](migrations/R__dev_seed_dashboard.sql) | *What the loop has done* — runs, queue, spend, and the auto-merge switch | [#68](https://github.com/NobuData/ouroboros/issues/68) |
 | [`R__dev_seed_intake.sql`](migrations/R__dev_seed_intake.sql) | *What it has an opinion about next* — mockup 03's nine mirrored issues and the estimates behind their effort chips | [#103](https://github.com/NobuData/ouroboros/issues/103) |
 | [`R__dev_seed_providers.sql`](migrations/R__dev_seed_providers.sql) | *What it is allowed to call* — mockup 07's five provider cards, their discovered models, and the spend behind their meters | [#221](https://github.com/NobuData/ouroboros/issues/221) |
-| [`R__dev_seed_routing.sql`](migrations/R__dev_seed_routing.sql) | *How it decides which one to call* — mockup 06's aliases, task kinds, chains, escalation rules, and the routed calls its numbers are computed from — and, since [#582](https://github.com/NobuData/ouroboros/issues/582), *what the registry says about the same names*: mockup 21's eighth (unbound) alias, the params behind every chip, the one price override, and run #482's resolution snapshot | [#192](https://github.com/NobuData/ouroboros/issues/192), [#582](https://github.com/NobuData/ouroboros/issues/582) |
+| [`R__dev_seed_routing.sql`](migrations/R__dev_seed_routing.sql) | *How it decides which one to call* — mockup 06's aliases, task kinds, chains, escalation rules, and the routed calls its numbers are computed from — and, since [#582](https://github.com/NobuData/ouroboros/issues/582), *what the registry says about the same names*: mockup 21's eighth (unbound) alias, the params behind every chip, the one price override, and run #482's resolution snapshot — and, since [#622](https://github.com/NobuData/ouroboros/issues/622), the `research-plan` and `research` task kinds, their routes and the `researcher-long-ctx` alias mockup 22's composer pill resolves to | [#192](https://github.com/NobuData/ouroboros/issues/192), [#582](https://github.com/NobuData/ouroboros/issues/582), [#622](https://github.com/NobuData/ouroboros/issues/622) |
 | [`R__dev_seed_audit.sql`](migrations/R__dev_seed_audit.sql) | *Who touched the keys* — the credential trail mockup 07's **Audit log** sheet opens, including a failed rotation and a lease grant with no actor | [#225](https://github.com/NobuData/ouroboros/issues/225) |
 | [`R__dev_seed_sources.sql`](migrations/R__dev_seed_sources.sql) | *Where the work comes from* — the two trackers `acme-robotics` ingests from: a `github` source over its four enabled repositories, and a `jira` source with no repository in it at all, both connected (sealed development credentials, `active`) since [#275](https://github.com/NobuData/ouroboros/issues/275) | [#138](https://github.com/NobuData/ouroboros/issues/138), [#275](https://github.com/NobuData/ouroboros/issues/275) |
 | [`R__dev_seed_ticket_planning.sql`](migrations/R__dev_seed_ticket_planning.sql) | *The work and the plan over it* — mockup 09's planning page: a canonical backlog of fifty-two GitHub tickets whose aggregates are the *Tracker Sync* and *Backlog Health* cards, the five gantt lanes with months relative to `now()`, and the six-draft OTA batch sized through `issue_estimates.draft_id`; plus mockup 10's closed `#482`, for the simulated-run driver | [#275](https://github.com/NobuData/ouroboros/issues/275), [#307](https://github.com/NobuData/ouroboros/issues/307) |
@@ -2279,6 +2297,7 @@ its brief.
 | `RS-127 — Autonomous docking vs. the field` · `44 sources · deep dive` · `✓ brief ready` | the `investigations` row (`seq` 127, gap_analysis, `brief_ready`); `44` is the count of its `source_records` |
 | `SOURCES — 44 CITED`: `[07]` `[12]` `[19]` `[31]` `[git]` | five `source_records` verbatim — the card drops the `https://` scheme and renders `git://helios-firmware@8c1b2e4/src/dock/dock_ctrl.c#L214` as `helios-firmware @ 8c1b2e4 · src/dock/dock_ctrl.c`; `[git]` is source 44 with `cite_key` `git` |
 | The brief's markers `[07]` · `[12][31]` · `[git]` · `[19]` | brief v1's four `finding` claims and their `brief_claim_sources` links |
+| The composer's `est. 40–60 sources · ~$6` | RS-127's stored `estimate` `{sources 40–60, cost_cents 522–687}` under calibration v1 ([#622](https://github.com/NobuData/ouroboros/issues/622)) — what CM.3's estimator computes for a five-tool deep dive at `researcher-long-ctx`'s price — and its `investigation_estimate_outcomes` row against the actuals (44 sources, 612¢), both within |
 
 Cite numbers are dense by rule, so `[07]`…`[31]` exist only with the numbers around them: the
 other **39 sources are placeholders that say so in their titles**, until
@@ -3245,6 +3264,7 @@ ouroboros-db/
 │   ├── V106__investigations.sql      # research_tools, investigation_kinds (versioned playbooks), investigations (RS-###) — #608
 │   ├── V107__copilot_sessions_messages.sql # copilot_sessions (one active per draft), copilot_messages (seq, choices, tool_trace, cost) — #555
 │   ├── V108__citation_ledger.sql     # source_records (dense [cite_no], validated locators), briefs, brief_claims, citation links — #609
+│   ├── V109__investigation_estimate_outcomes.sql # estimate_calibration_version, investigation_estimate_outcomes + record_investigation_estimate_outcome() — #622
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -3252,8 +3272,8 @@ ouroboros-db/
 │   ├── R__dev_seed_intake.sql        # mockup 03's backlog and its estimates, dev only — #103 (sorts after the above)
 │   ├── R__dev_seed_onboarding.sql    # mockup 13 mid-wizard, in its own workspace acme-onboarding, dev only — #383 (sorts after intake)
 │   ├── R__dev_seed_providers.sql     # mockup 07's connections and meters, dev only — #221
-│   ├── R__dev_seed_research.sql      # mockup 22 — RS-127, its 44-source ledger (five featured verbatim) and brief v1, dev only — #609
-│   ├── R__dev_seed_routing.sql       # mockup 06 as rows, and mockup 21's registry over them, dev only — #192, #582 (sorts after the above)
+│   ├── R__dev_seed_research.sql      # mockup 22 — RS-127, its 44-source ledger (five featured verbatim), brief v1 and its estimate vs actuals, dev only — #609, #622
+│   ├── R__dev_seed_routing.sql       # mockup 06 as rows, mockup 21's registry over them, and the research routes, dev only — #192, #582, #622 (sorts after the above)
 │   ├── R__dev_seed_run_console.sql   # mockup 10 — run #482 mid-flight, transcript and cards, dev only — #302 (sorts after dashboard and farm)
 │   ├── R__dev_seed_sources.sql       # the two trackers acme-robotics ingests from, dev only — #138 (sorts after the above)
 │   ├── R__dev_seed_test_results.sql  # mockup 11 — #482's three builds, suites, HIL, flaky case, artifacts, dev only — #328 (sorts after dashboard)
@@ -3485,6 +3505,7 @@ outside this module alters it.
 | `investigation_kinds` | `V106` | The kind registry per workspace ([#608](https://github.com/NobuData/ouroboros/issues/608), decision **V10**) — `slug`, `display_name` (the composer's label), `tint_key` (the chip hue) and `playbook` `{version, default_tools, synthesis_template, deliverables}` | kinds differ by playbook, never by code path; `investigation_kinds_seed()` gives every new workspace the four built-ins (an `after insert` trigger on `organization`); `slug` unique per workspace; `playbook` is exactly that shape, `deliverables` a distinct subset of `brief\|matrix\|roadmap_doc\|fix_draft` that includes `brief`, and `default_tools` are registered slugs; a playbook change must raise its `version` (`investigation_kinds_playbook_version`); a kind with investigations cannot be deleted |
 | `investigation_seq_counters` | `V106` | The per-workspace counter `investigations.seq` is drawn from ([#608](https://github.com/NobuData/ouroboros/issues/608)) | one row per workspace; bumped inside the creating transaction, so concurrent creates serialise on it, a rollback returns its number and the counter only rises; written only by `investigations_allocate_seq()`, which is `security definer` — `ouroboros_app` has no grant on it |
 | `investigations` | `V106` | One investigation — `RS-###` ([#608](https://github.com/NobuData/ouroboros/issues/608), CK.1, decision **V1**): `seq`/`display_id`, `kind_id`, `question`, `depth`, `tools_enabled`, `status`, `estimate`, `actuals`, `provenance`, `origin`, `engine_task_ref`, `created_by` | `seq` unique per workspace and immutable; the kind is of the same workspace (composite key); `depth` `quick\|standard\|deep_dive`; `tools_enabled` a non-empty set of registered slugs, checked at write; `status` transitions constrained by `investigations_status_transition` (terminal: `issues_filed`, `failed`, `cancelled`); `estimate` `{sources, cost_cents \| null}` and `actuals` `{sources_used, spend_cents \| null, duration_ms}` independently nullable; `provenance` `{researcher, alias, resolution_ref}` required from `running`, `actuals` from `brief_ready`; `origin` `user\|regression_watch\|scheduled`; *brief_ready requires a brief* lands with CK.2 ([#609](https://github.com/NobuData/ouroboros/issues/609)); `ouroboros_app` may select, insert and update, never delete |
+| `investigation_estimate_outcomes` | `V109` | Estimate vs actuals per investigation ([#622](https://github.com/NobuData/ouroboros/issues/622), CM.3, decision **V5**) — the calibration version, depth, tools and alias the estimate was made under, its source and cost ranges, the actual sources and spend, and generated `sources_within_estimate` / `cost_within_estimate` verdicts | one row per investigation, keyed to it by a composite `(organization_id, investigation_id)` foreign key that cascades; a cost range is whole or null; `cost_within_estimate` is null when either cost side is unknown; written by `record_investigation_estimate_outcome()` (idempotent upsert, runs as the caller); `ouroboros_app` may select, insert and update, never delete. `V109` also adds `investigations.estimate_calibration_version`, present exactly when `estimate` is |
 
 Two **functions**, both `V012`'s and both documented in
 [The bundled price catalog](#the-bundled-price-catalog).

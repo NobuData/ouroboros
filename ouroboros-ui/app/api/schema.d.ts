@@ -10566,6 +10566,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/research/estimates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Estimate an investigation's sources and cost, and name the researcher
+         * @description Mockup 22's composer line — `est. 40–60 sources · ~$6` — and its `researcher:` pill
+         *     ([#622](https://github.com/NobuData/ouroboros/issues/622), decision **V5**). The
+         *     composer calls this on **every kind, depth or tool change**; nothing is stored.
+         *
+         *     **Computed, never invented.** The depth preset and each enabled tool plan an
+         *     *operation budget*; the budget yields a *source range*; the planned synthesis calls (one
+         *     digest per source plus the depth's synthesis passes) are priced at the routed alias's
+         *     per-token rates through the pricing service, and a hosted tool provider's per-operation
+         *     price is added where one charges. The constants are versioned — `calibrationVersion`
+         *     — and every finished investigation's estimate is reconciled against its actuals so the
+         *     calibration improves from real history.
+         *
+         *     **The pill is a routing answer.** `researcher` is the first *kept* hop of the
+         *     resolution of the `research` task kind — the same resolution execution uses — so it
+         *     names what would actually run now, fallback included. It is `null` when the workspace
+         *     has no `research` route or nothing in its chain is usable.
+         *
+         *     **No price, no dollars.** When the researcher's model has no per-token price (no price
+         *     row, a seat or vendor-metered price, or no researcher at all), `costCents` is `null`,
+         *     every `hostedCostCents` is `null`, and `label` carries no `$`: a source range and
+         *     nothing else. A free model is priced, at a real zero, and reads `$0`.
+         *
+         *     **`tools` is optional.** Omitted, the kind's playbook defaults are estimated. Given, it
+         *     is the enabled chips — at least one, no repeats.
+         *
+         *     **`POST` for a read**, as `routing/simulate` is: nothing is created, hence `200`. Any
+         *     member may ask. **The workspace is the session's.**
+         */
+        post: operations["estimateInvestigation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -18520,6 +18566,108 @@ export interface components {
              */
             taskKind: string;
             ctx?: components["schemas"]["RoutingSimulationContext"];
+        };
+        /**
+         * InvestigationEstimateRequest
+         * @description What the composer has chosen so far. No workspace: it is the session's.
+         */
+        InvestigationEstimateRequest: {
+            /**
+             * @description The investigation kind's slug — one of this workspace's kinds.
+             * @example gap_analysis
+             */
+            kind: string;
+            /**
+             * @description The composer's Depth menu. Deeper plans more rounds and synthesis passes.
+             * @enum {string}
+             */
+            depth: "quick" | "standard" | "deep_dive";
+            /**
+             * @description The enabled tool chips — registered research-tool slugs. Omit for the kind's
+             *     playbook defaults.
+             * @example [
+             *       "web",
+             *       "competitor",
+             *       "code",
+             *       "tickets",
+             *       "telemetry"
+             *     ]
+             */
+            tools?: string[];
+        };
+        /**
+         * IntRange
+         * @description An inclusive range of non-negative integers.
+         */
+        IntRange: {
+            min: number;
+            max: number;
+        };
+        /**
+         * ResearchToolOperations
+         * @description One tool's share of the operation budget.
+         */
+        ResearchToolOperations: {
+            /** @description The research-tool slug. */
+            tool: string;
+            /** @description Operations it plans over the whole investigation. */
+            operations: number;
+            /**
+             * @description What a hosted provider charges for those operations, in cents, rounded up — or
+             *     null when it charges nothing, none is configured, or the researcher is unpriced.
+             */
+            hostedCostCents: number | null;
+        };
+        /**
+         * Researcher
+         * @description The alias routing resolved the `research` task kind to — the first kept hop, i.e. what
+         *     would run now. The composer's pill prints `alias`.
+         */
+        Researcher: {
+            /** @constant */
+            taskKind: "research";
+            /** @example research-primary */
+            routeTag: string;
+            /** @example researcher-long-ctx */
+            alias: string;
+            /**
+             * @description The raw model id the alias names (decision M1 — the only place it appears).
+             * @example claude-sonnet-4-6
+             */
+            modelId: string;
+        };
+        /**
+         * ScopeEstimate
+         * @description An investigation's estimate: the operation budget, the source range, the planned
+         *     synthesis calls and — only when the researcher is priced — the cost range. `label` is
+         *     the composer's line, verbatim.
+         */
+        ScopeEstimate: {
+            /** @enum {string} */
+            depth: "quick" | "standard" | "deep_dive";
+            /** @description The tools estimated — the request's, or the kind's defaults. */
+            tools: string[];
+            /** @description Null when the workspace has no `research` route or nothing in it is usable. */
+            researcher: components["schemas"]["Researcher"] | null;
+            /** @description Which version of the estimator's constants computed this. */
+            calibrationVersion: number;
+            operations: {
+                total: number;
+                byTool: components["schemas"]["ResearchToolOperations"][];
+            };
+            synthesisCalls: components["schemas"]["IntRange"];
+            sources: components["schemas"]["IntRange"];
+            /**
+             * @description Expected spend in cents, or null when the researcher is unpriced — never a `0`
+             *     standing in for *unknown*.
+             */
+            costCents: components["schemas"]["IntRange"] | null;
+            /**
+             * @description The composer's line — `est. 40–60 sources · ~$6`. Contains no `$` when `costCents`
+             *     is null.
+             * @example est. 40–60 sources · ~$6
+             */
+            label: string;
         };
         /**
          * ResolvedProvider
@@ -77143,6 +77291,137 @@ export interface operations {
              *     `OURO_FARM_RELEASES_DIR` is unset or is not a readable directory.
              */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    estimateInvestigation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvestigationEstimateRequest"];
+            };
+        };
+        responses: {
+            /** @description The estimate, the researcher it was priced for, and the composer's line verbatim. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScopeEstimate"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `investigation_kind_not_found` — this workspace has no investigation kind with that
+             *     slug. `details.kind` echoes it.
+             *
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `research_tool_unknown` — a tool slug is well-formed but names no research tool
+             *     this installation has. `details.tools` lists the unknown ones, in selection order.
+             *
+             *     `research_tools_required` — no `tools` were sent and the kind's playbook turns none
+             *     on, so there is nothing to estimate. `details.kind` names the kind.
+             *
+             *     `validation_failed` — the body is malformed: a `kind` or tool outside the slug
+             *     shape, a `depth` outside the menu, an empty or repeating `tools`, or a field this
+             *     operation does not take.
+             */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

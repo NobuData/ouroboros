@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.40.6",
+    "version": "0.40.7",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -192,6 +192,10 @@
     {
       "name": "farm",
       "description": "**The build farm's identity layer** (mockup 08, epic\n[#240](https://github.com/NobuData/ouroboros/issues/240), issue\n[#250](https://github.com/NobuData/ouroboros/issues/250), decision **B3**) — how a\nmachine on hardware this control plane does not administer comes to have an identity it\ncan prove.\n\n**The chain is: a scoped token, spent once, for a certificate that lasts.** An owner or\nan admin mints an `orb_enroll_…` token scoped to one pool, with a TTL and a use count.\nThe install one-liner carries it; the agent generates a keypair, sends a certificate\nrequest, and is issued a client certificate by the workspace's own certificate\nauthority. Everything after that is mutual TLS, and the token is never used again.\n\n**The runner generates its own keypair, and this service has never held one.** The\nenrollment body carries a PKCS#10 certificate request rather than asking for a key to be\ngenerated and sent back — so there is no backup, no log and no column from which a\nrunner's private key could be recovered, including by us.\n`docs/SECURITY_MODEL.md`'s farm-CA section is where that is written down, together with\nthe custody of the CA key itself (sealed by the vault, unwrapped for one signature).\n\n**The CA private key is never returned by anything here.** `GET /api/v1/farm/authority`\nanswers the *public* certificate and its fingerprint — the pin an agent checks — and\nthere is no operation, field or parameter anywhere in this document through which the\nprivate half could travel.\n\n**Revocation is the security boundary, not expiry.** A revoked certificate is refused at\nthe next handshake, and a runner cannot renew its way back in: renewal is authenticated\nby the certificate being replaced. A certificate lasts ninety days and an agent is told\nwhen to come back; that window is a backstop, not the control.\n\n**The bearer fallback is a workspace setting and is visible where it is used.** Some\ncorporate proxies terminate TLS and strip client certificates. A workspace may permit a\nrunner to enrol without one — off by default — and a runner that does is recorded as\n`bearer_fallback` and rendered as a visibly degraded connection rather than a green\nshield over a weaker mode.\n\n**Two of these operations are reachable without a session**, because the caller is a\nmachine that holds none: registration authenticates on the enrollment token, and renewal\non the TLS client certificate. Neither names a workspace — an enrollment lands in the\ntoken's workspace and a renewal in the certificate's — so a token cannot enrol a runner\nanywhere but where it was minted.\n\n**A refused enrollment is always the same refusal.** A token that never existed, one\nwhose secret is wrong, an expired one, a spent one, a revoked one and one scoped to a\ndifferent pool all answer `401 farm_enrollment_refused` with no detail. Which of the six\nit was is recorded in the audit trail, where an operator can read it and a caller\ncannot.\n\nMinting, listing and revoking are `owner` or `admin`. Reading the CA certificate is any\nmember's: it is a public certificate, and the person who needs it is whoever is\nconfiguring the reverse proxy.\n\n**One more endpoint lives beside these and is not an operation in this document:**\n`wss://<control plane>/api/v1/farm/agent`, the agent gateway\n([#251](https://github.com/NobuData/ouroboros/issues/251)). It is a WebSocket spoken in the\nrunner protocol — `docs/RUNNER_PROTOCOL.md`, with `schemas/runner-protocol/v1.json` as its\nmachine-readable half — rather than in requests and responses, so OpenAPI cannot describe\nit and the protocol document is its contract. Its upgrade is authenticated as renewal is,\nby the client certificate checked against the revocation list, and refused with the same\ntwo codes: `401 farm_client_certificate_required` when no certificate reached this service\n(most often a proxy that terminates TLS without passing it through — see\n`docs/SECURITY_MODEL.md` § 7.6), and `401 farm_identity_refused` for one that is not a live\nrunner identity.\n\n**Two more routes answer without a session, at the origin root rather than under\n`/api/v1`:** `GET /install.sh` and `GET /runner/{version}/{file}`, the runner installer\nand the release files it downloads ([#248](https://github.com/NobuData/ouroboros/issues/248)).\nTheir reader is `curl` on a machine about to become a runner, piping a script into a shell\nin a command copied once and kept for years — so they answer where every such installer\nanswers, from this deployment's own origin rather than a public host. What they hand out\nis public: a released script and binaries, with this deployment's address filled in."
+    },
+    {
+      "name": "research",
+      "description": "**Research — investigations the product runs before it builds** (mockup 22, epic\n[#605](https://github.com/NobuData/ouroboros/issues/605)).\n\nOne operation is published so far: the composer's **scope and cost estimate**\n([#622](https://github.com/NobuData/ouroboros/issues/622), decision **V5**) — the\n`est. 40–60 sources · ~$6` line and the `researcher:` pill, computed together from the\ndepth, the tools and the alias routing resolves the `research` task kind to. Starting,\nlisting and following investigations is CM.6's\n([#625](https://github.com/NobuData/ouroboros/issues/625))."
     }
   ],
   "paths": {
@@ -38715,6 +38719,241 @@
           }
         }
       }
+    },
+    "/api/v1/research/estimates": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Estimate an investigation's sources and cost, and name the researcher",
+        "description": "Mockup 22's composer line — `est. 40–60 sources · ~$6` — and its `researcher:` pill\n([#622](https://github.com/NobuData/ouroboros/issues/622), decision **V5**). The\ncomposer calls this on **every kind, depth or tool change**; nothing is stored.\n\n**Computed, never invented.** The depth preset and each enabled tool plan an\n*operation budget*; the budget yields a *source range*; the planned synthesis calls (one\ndigest per source plus the depth's synthesis passes) are priced at the routed alias's\nper-token rates through the pricing service, and a hosted tool provider's per-operation\nprice is added where one charges. The constants are versioned — `calibrationVersion`\n— and every finished investigation's estimate is reconciled against its actuals so the\ncalibration improves from real history.\n\n**The pill is a routing answer.** `researcher` is the first *kept* hop of the\nresolution of the `research` task kind — the same resolution execution uses — so it\nnames what would actually run now, fallback included. It is `null` when the workspace\nhas no `research` route or nothing in its chain is usable.\n\n**No price, no dollars.** When the researcher's model has no per-token price (no price\nrow, a seat or vendor-metered price, or no researcher at all), `costCents` is `null`,\nevery `hostedCostCents` is `null`, and `label` carries no `$`: a source range and\nnothing else. A free model is priced, at a real zero, and reads `$0`.\n\n**`tools` is optional.** Omitted, the kind's playbook defaults are estimated. Given, it\nis the enabled chips — at least one, no repeats.\n\n**`POST` for a read**, as `routing/simulate` is: nothing is created, hence `200`. Any\nmember may ask. **The workspace is the session's.**",
+        "operationId": "estimateInvestigation",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvestigationEstimateRequest"
+              },
+              "examples": {
+                "seededDeepDive": {
+                  "summary": "The seeded composer — a deep-dive gap analysis over five tools",
+                  "value": {
+                    "kind": "gap_analysis",
+                    "depth": "deep_dive",
+                    "tools": [
+                      "web",
+                      "competitor",
+                      "code",
+                      "tickets",
+                      "telemetry"
+                    ]
+                  }
+                },
+                "kindDefaults": {
+                  "summary": "A quick bug root cause with the kind's default tools",
+                  "value": {
+                    "kind": "bug_root_cause",
+                    "depth": "quick"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The estimate, the researcher it was priced for, and the composer's line verbatim.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScopeEstimate"
+                },
+                "examples": {
+                  "priced": {
+                    "summary": "The seeded deep dive — `researcher-long-ctx` at $3 · $15 per 1M",
+                    "value": {
+                      "depth": "deep_dive",
+                      "tools": [
+                        "web",
+                        "competitor",
+                        "code",
+                        "tickets",
+                        "telemetry"
+                      ],
+                      "researcher": {
+                        "taskKind": "research",
+                        "routeTag": "research-primary",
+                        "alias": "researcher-long-ctx",
+                        "modelId": "claude-sonnet-4-6"
+                      },
+                      "calibrationVersion": 1,
+                      "operations": {
+                        "total": 40,
+                        "byTool": [
+                          {
+                            "tool": "web",
+                            "operations": 12,
+                            "hostedCostCents": null
+                          },
+                          {
+                            "tool": "competitor",
+                            "operations": 8,
+                            "hostedCostCents": null
+                          },
+                          {
+                            "tool": "code",
+                            "operations": 8,
+                            "hostedCostCents": null
+                          },
+                          {
+                            "tool": "tickets",
+                            "operations": 8,
+                            "hostedCostCents": null
+                          },
+                          {
+                            "tool": "telemetry",
+                            "operations": 4,
+                            "hostedCostCents": null
+                          }
+                        ]
+                      },
+                      "synthesisCalls": {
+                        "min": 44,
+                        "max": 64
+                      },
+                      "sources": {
+                        "min": 40,
+                        "max": 60
+                      },
+                      "costCents": {
+                        "min": 522,
+                        "max": 687
+                      },
+                      "label": "est. 40–60 sources · ~$6"
+                    }
+                  },
+                  "unpriced": {
+                    "summary": "The same choices with an unpriced researcher — no dollars anywhere",
+                    "value": {
+                      "depth": "deep_dive",
+                      "tools": [
+                        "web",
+                        "competitor",
+                        "code",
+                        "tickets",
+                        "telemetry"
+                      ],
+                      "researcher": {
+                        "taskKind": "research",
+                        "routeTag": "research-primary",
+                        "alias": "researcher-experimental",
+                        "modelId": "gpt-5.2-preview"
+                      },
+                      "calibrationVersion": 1,
+                      "operations": {
+                        "total": 40,
+                        "byTool": [
+                          {
+                            "tool": "web",
+                            "operations": 12,
+                            "hostedCostCents": null
+                          },
+                          {
+                            "tool": "competitor",
+                            "operations": 8,
+                            "hostedCostCents": null
+                          },
+                          {
+                            "tool": "code",
+                            "operations": 8,
+                            "hostedCostCents": null
+                          },
+                          {
+                            "tool": "tickets",
+                            "operations": 8,
+                            "hostedCostCents": null
+                          },
+                          {
+                            "tool": "telemetry",
+                            "operations": 4,
+                            "hostedCostCents": null
+                          }
+                        ]
+                      },
+                      "synthesisCalls": {
+                        "min": 44,
+                        "max": 64
+                      },
+                      "sources": {
+                        "min": 40,
+                        "max": 60
+                      },
+                      "costCents": null,
+                      "label": "est. 40–60 sources"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`investigation_kind_not_found` — this workspace has no investigation kind with that\nslug. `details.kind` echoes it.\n\n`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`research_tool_unknown` — a tool slug is well-formed but names no research tool\nthis installation has. `details.tools` lists the unknown ones, in selection order.\n\n`research_tools_required` — no `tools` were sent and the kind's playbook turns none\non, so there is nothing to estimate. `details.kind` names the kind.\n\n`validation_failed` — the body is malformed: a `kind` or tool outside the slug\nshape, a `depth` outside the menu, an empty or repeating `tools`, or a field this\noperation does not take.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -57726,6 +57965,236 @@
           },
           "ctx": {
             "$ref": "#/components/schemas/RoutingSimulationContext"
+          }
+        }
+      },
+      "InvestigationEstimateRequest": {
+        "type": "object",
+        "title": "InvestigationEstimateRequest",
+        "description": "What the composer has chosen so far. No workspace: it is the session's.",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "depth"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,47}$",
+            "description": "The investigation kind's slug — one of this workspace's kinds.",
+            "examples": [
+              "gap_analysis"
+            ]
+          },
+          "depth": {
+            "type": "string",
+            "enum": [
+              "quick",
+              "standard",
+              "deep_dive"
+            ],
+            "description": "The composer's Depth menu. Deeper plans more rounds and synthesis passes."
+          },
+          "tools": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "uniqueItems": true,
+            "description": "The enabled tool chips — registered research-tool slugs. Omit for the kind's\nplaybook defaults.",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,31}$"
+            },
+            "examples": [
+              [
+                "web",
+                "competitor",
+                "code",
+                "tickets",
+                "telemetry"
+              ]
+            ]
+          }
+        }
+      },
+      "IntRange": {
+        "type": "object",
+        "title": "IntRange",
+        "description": "An inclusive range of non-negative integers.",
+        "additionalProperties": false,
+        "required": [
+          "min",
+          "max"
+        ],
+        "properties": {
+          "min": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "ResearchToolOperations": {
+        "type": "object",
+        "title": "ResearchToolOperations",
+        "description": "One tool's share of the operation budget.",
+        "additionalProperties": false,
+        "required": [
+          "tool",
+          "operations",
+          "hostedCostCents"
+        ],
+        "properties": {
+          "tool": {
+            "type": "string",
+            "description": "The research-tool slug."
+          },
+          "operations": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Operations it plans over the whole investigation."
+          },
+          "hostedCostCents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "What a hosted provider charges for those operations, in cents, rounded up — or\nnull when it charges nothing, none is configured, or the researcher is unpriced."
+          }
+        }
+      },
+      "Researcher": {
+        "type": "object",
+        "title": "Researcher",
+        "description": "The alias routing resolved the `research` task kind to — the first kept hop, i.e. what\nwould run now. The composer's pill prints `alias`.",
+        "additionalProperties": false,
+        "required": [
+          "taskKind",
+          "routeTag",
+          "alias",
+          "modelId"
+        ],
+        "properties": {
+          "taskKind": {
+            "type": "string",
+            "const": "research"
+          },
+          "routeTag": {
+            "type": "string",
+            "examples": [
+              "research-primary"
+            ]
+          },
+          "alias": {
+            "type": "string",
+            "examples": [
+              "researcher-long-ctx"
+            ]
+          },
+          "modelId": {
+            "type": "string",
+            "description": "The raw model id the alias names (decision M1 — the only place it appears).",
+            "examples": [
+              "claude-sonnet-4-6"
+            ]
+          }
+        }
+      },
+      "ScopeEstimate": {
+        "type": "object",
+        "title": "ScopeEstimate",
+        "description": "An investigation's estimate: the operation budget, the source range, the planned\nsynthesis calls and — only when the researcher is priced — the cost range. `label` is\nthe composer's line, verbatim.",
+        "additionalProperties": false,
+        "required": [
+          "depth",
+          "tools",
+          "researcher",
+          "calibrationVersion",
+          "operations",
+          "synthesisCalls",
+          "sources",
+          "costCents",
+          "label"
+        ],
+        "properties": {
+          "depth": {
+            "type": "string",
+            "enum": [
+              "quick",
+              "standard",
+              "deep_dive"
+            ]
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The tools estimated — the request's, or the kind's defaults."
+          },
+          "researcher": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Researcher"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when the workspace has no `research` route or nothing in it is usable."
+          },
+          "calibrationVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Which version of the estimator's constants computed this."
+          },
+          "operations": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "total",
+              "byTool"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "byTool": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ResearchToolOperations"
+                }
+              }
+            }
+          },
+          "synthesisCalls": {
+            "$ref": "#/components/schemas/IntRange"
+          },
+          "sources": {
+            "$ref": "#/components/schemas/IntRange"
+          },
+          "costCents": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/IntRange"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Expected spend in cents, or null when the researcher is unpriced — never a `0`\nstanding in for *unknown*."
+          },
+          "label": {
+            "type": "string",
+            "description": "The composer's line — `est. 40–60 sources · ~$6`. Contains no `$` when `costCents`\nis null.",
+            "examples": [
+              "est. 40–60 sources · ~$6"
+            ]
           }
         }
       },

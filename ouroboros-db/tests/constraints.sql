@@ -34524,9 +34524,10 @@ select pg_temp.must_reject(
 -- --- RS-### -------------------------------------------------------------------
 
 insert into ouroboros.investigations
-    (id, organization_id, kind_id, question, depth, tools_enabled, estimate, created_by)
+    (id, organization_id, kind_id, question, depth, tools_enabled, estimate,
+     estimate_calibration_version, created_by)
 select v.id::uuid, v.org, k.id, v.question, 'deep_dive', '["web", "competitor"]',
-       '{"sources": {"min": 40, "max": 60}, "cost_cents": {"min": 500, "max": 700}}',
+       '{"sources": {"min": 40, "max": 60}, "cost_cents": {"min": 500, "max": 700}}', 1,
        'a1060000-0000-0000-0000-00000000000a'
   from (values ('a1061000-0000-0000-0000-000000000001', 'org-v106',  'First'),
                ('a1061000-0000-0000-0000-000000000002', 'org-v106',  'Second'),
@@ -35969,6 +35970,151 @@ select pg_temp.must_hold(
    and (select count(*) = 0 from ouroboros.source_cite_counters
          where investigation_id in ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000002')),
   'deleting a workspace deletes its ledger, briefs and counters — and the deferred rules have nothing left to object to');
+
+-- ===========================================================================
+-- V109 — the estimate's calibration, and estimate vs actuals recorded (#622, CM.3)
+-- ===========================================================================
+--
+-- The composer's `est. 40–60 sources · ~$6` is stored with the calibration version that computed
+-- it, and after the run record_investigation_estimate_outcome() records the comparison: one row
+-- per investigation, the estimate and actuals copied, two generated verdicts. A null cost on
+-- either side — an unpriced alias, an unpriced run — is a null verdict, never a miss.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v109',  'Estimate Works', 'estimate-works-v109', now()),
+  ('org-v109b', 'Estimate Two',   'estimate-two-v109',   now());
+
+-- --- the calibration version travels with the estimate ---------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigations (organization_id, kind_id, question, depth, tools_enabled, estimate)
+    select 'org-v109', id, 'Unversioned', 'deep_dive', '["web"]',
+           '{"sources": {"min": 40, "max": 60}, "cost_cents": null}'
+      from ouroboros.investigation_kinds where organization_id = 'org-v109' and slug = 'gap_analysis'$$,
+  'an estimate without the calibration version that computed it is refused',
+  'investigations_estimate_calibration_version_paired');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigations (organization_id, kind_id, question, depth, tools_enabled,
+                                          estimate_calibration_version)
+    select 'org-v109', id, 'Version alone', 'deep_dive', '["web"]', 1
+      from ouroboros.investigation_kinds where organization_id = 'org-v109' and slug = 'gap_analysis'$$,
+  'a calibration version with no estimate is refused',
+  'investigations_estimate_calibration_version_paired');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigations (organization_id, kind_id, question, depth, tools_enabled,
+                                          estimate, estimate_calibration_version)
+    select 'org-v109', id, 'Version zero', 'deep_dive', '["web"]',
+           '{"sources": {"min": 40, "max": 60}, "cost_cents": null}', 0
+      from ouroboros.investigation_kinds where organization_id = 'org-v109' and slug = 'gap_analysis'$$,
+  'a calibration version is a positive number',
+  'investigations_estimate_calibration_version_positive');
+
+-- Four investigations: priced and run, unpriced and run, priced and not yet run, and one with no
+-- estimate at all. Queued throughout — actuals are independent of the lifecycle (V106), and
+-- staying queued keeps V108's deferred brief rule out of this section.
+insert into ouroboros.investigations (id, organization_id, kind_id, question, depth, tools_enabled,
+                                      estimate, estimate_calibration_version, actuals, provenance)
+select v.id::uuid, 'org-v109', k.id, v.question, 'deep_dive',
+       '["web", "competitor", "code", "tickets", "telemetry"]',
+       v.estimate::jsonb, v.version, v.actuals::jsonb, v.provenance::jsonb
+  from (values
+    ('a1090000-0000-0000-0000-000000000001', 'Priced and run',
+     '{"sources": {"min": 40, "max": 60}, "cost_cents": {"min": 522, "max": 687}}', 1,
+     '{"sources_used": 44, "spend_cents": 612, "duration_ms": 1860000}',
+     '{"researcher": "loop-v1", "alias": "researcher-long-ctx", "resolution_ref": null}'),
+    ('a1090000-0000-0000-0000-000000000002', 'Unpriced and run',
+     '{"sources": {"min": 40, "max": 60}, "cost_cents": null}', 1,
+     '{"sources_used": 61, "spend_cents": 300, "duration_ms": 1}', null),
+    ('a1090000-0000-0000-0000-000000000003', 'Not yet run',
+     '{"sources": {"min": 10, "max": 15}, "cost_cents": {"min": 100, "max": 150}}', 1, null, null),
+    ('a1090000-0000-0000-0000-000000000004', 'Never estimated',
+     null, null, '{"sources_used": 5, "spend_cents": null, "duration_ms": 1}', null)
+  ) as v(id, question, estimate, version, actuals, provenance)
+  join ouroboros.investigation_kinds k on k.organization_id = 'org-v109' and k.slug = 'gap_analysis';
+
+-- --- reconciliation ---------------------------------------------------------------
+
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(o.calibration_version = 1 and o.depth = 'deep_dive'
+          and o.alias = 'researcher-long-ctx'
+          and (o.estimated_sources_min, o.estimated_sources_max) = (40, 60)
+          and (o.estimated_cost_cents_min, o.estimated_cost_cents_max) = (522, 687)
+          and (o.actual_sources, o.actual_spend_cents) = (44, 612)
+          and o.sources_within_estimate and o.cost_within_estimate)
+     from ouroboros.record_investigation_estimate_outcome('org-v109', 'a1090000-0000-0000-0000-000000000001') o),
+  'a priced, finished investigation reconciles to one row: 44 of 40–60 and 612¢ of 522–687¢, both within');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(o.estimated_cost_cents_min is null and o.alias is null
+          and not o.sources_within_estimate and o.cost_within_estimate is null)
+     from ouroboros.record_investigation_estimate_outcome('org-v109', 'a1090000-0000-0000-0000-000000000002') o),
+  'an unpriced estimate grades its sources and leaves the cost verdict null — no dollars were estimated, so none were missed');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.record_investigation_estimate_outcome('org-v109', 'a1090000-0000-0000-0000-000000000003'))
+   and (select count(*) = 0 from ouroboros.record_investigation_estimate_outcome('org-v109', 'a1090000-0000-0000-0000-000000000004'))
+   and (select count(*) = 0 from ouroboros.record_investigation_estimate_outcome('org-v109b', 'a1090000-0000-0000-0000-000000000001'))
+   and (select count(*) = 2 from ouroboros.investigation_estimate_outcomes where organization_id = 'org-v109'),
+  'nothing is recorded without actuals, without an estimate, or for another workspace''s investigation');
+
+-- Idempotent: a replay re-derives the same row, and a correction to the actuals moves it.
+select ouroboros.record_investigation_estimate_outcome('org-v109', 'a1090000-0000-0000-0000-000000000001');
+update ouroboros.investigations
+   set actuals = '{"sources_used": 70, "spend_cents": null, "duration_ms": 1}'
+ where id = 'a1090000-0000-0000-0000-000000000001';
+select ouroboros.record_investigation_estimate_outcome('org-v109', 'a1090000-0000-0000-0000-000000000001');
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(o.actual_sources = 70 and o.actual_spend_cents is null
+          and not o.sources_within_estimate and o.cost_within_estimate is null)
+     from ouroboros.investigation_estimate_outcomes o
+    where o.investigation_id = 'a1090000-0000-0000-0000-000000000001'),
+  'reconciling again replaces the one row — an unpriced run leaves the cost verdict null');
+
+-- --- the table's own rules -------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_estimate_outcomes
+      (investigation_id, organization_id, calibration_version, depth, tools_enabled,
+       estimated_sources_min, estimated_sources_max, estimated_cost_cents_min, actual_sources)
+    values ('a1090000-0000-0000-0000-000000000003', 'org-v109', 1, 'quick', '["web"]', 1, 2, 5, 1)$$,
+  'an estimated cost is a whole range or nothing', 'investigation_estimate_outcomes_cost_range');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_estimate_outcomes
+      (investigation_id, organization_id, calibration_version, depth, tools_enabled,
+       estimated_sources_min, estimated_sources_max, actual_sources)
+    values ('a1090000-0000-0000-0000-000000000003', 'org-v109', 1, 'quick', '["web"]', 9, 2, 1)$$,
+  'an estimated source range runs low to high', 'investigation_estimate_outcomes_sources_range');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_estimate_outcomes
+      (investigation_id, organization_id, calibration_version, depth, tools_enabled,
+       estimated_sources_min, estimated_sources_max, actual_sources)
+    values ('a1090000-0000-0000-0000-000000000003', 'org-v109b', 1, 'quick', '["web"]', 1, 2, 1)$$,
+  'an outcome is recorded only in the workspace of the investigation it grades',
+  'investigation_estimate_outcomes_investigation_fk');
+
+select pg_temp.must_raise(
+  $$update ouroboros.investigation_estimate_outcomes set sources_within_estimate = true
+     where investigation_id = 'a1090000-0000-0000-0000-000000000002'$$,
+  '428C9', 'a verdict is generated from the numbers beside it and cannot be written');
+
+-- Deleting the investigation takes its outcome with it.
+delete from ouroboros.investigations where id = 'a1090000-0000-0000-0000-000000000002';
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.investigation_estimate_outcomes
+    where investigation_id = 'a1090000-0000-0000-0000-000000000002'),
+  'an investigation''s outcome goes with it');
+
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.investigation_estimate_outcomes', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.investigation_estimate_outcomes', 'insert')
+   and has_table_privilege('ouroboros_app', 'ouroboros.investigation_estimate_outcomes', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.investigation_estimate_outcomes', 'delete')
+   and has_function_privilege('ouroboros_app',
+         'ouroboros.record_investigation_estimate_outcome(text, uuid)', 'execute'),
+  'the service reconciles through the function and may read and refresh outcomes, never delete them');
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

@@ -23,7 +23,7 @@
  *
  * The other tests are the same argument at lower stakes:
  *
- *   * **parity** — the eight seeded rows, the inspector, the why-card and the chain card, against
+ *   * **parity** — the nine seeded rows, the inspector, the why-card and the chain card, against
  *     the seed and against the mockup, and screenshot-diffed in both palettes;
  *   * **the delete guard, from both sides** — the presentation's blocked **Remove**, and the
  *     service's `409` reached through a page drawn *before* a route was pointed at the alias. The
@@ -265,13 +265,15 @@ test.describe("the registry draws the seeded workspace", () => {
     await enterRegistry(context, page, { alias: "coder-max" });
   });
 
-  test("the table draws the eight seeded aliases, each cell another subsystem's answer", async ({
+  test("the table draws the nine seeded aliases, each cell another subsystem's answer", async ({
     page,
   }) => {
     const rows = grid(page).locator("tbody tr");
 
     await expect(rows).toHaveCount(SEEDED_REGISTRY.length);
-    await expect(page.getByRole("region", { name: /^Allowed models/ })).toContainText("8 aliases");
+    await expect(page.getByRole("region", { name: /^Allowed models/ })).toContainText(
+      `${SEEDED_REGISTRY.length} aliases`,
+    );
     await expect(page.getByText(TABLE_NOTE)).toBeVisible();
 
     for (const [index, expected] of SEEDED_REGISTRY.entries()) {

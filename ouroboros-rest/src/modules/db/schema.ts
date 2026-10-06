@@ -5775,6 +5775,171 @@ export interface EstimateOutcomesTable {
 }
 
 /**
+ * `ouroboros.research_tools` — the research-tool slugs an investigation may name (V106,
+ * [#608](https://github.com/NobuData/ouroboros/issues/608)). Read by CM.3's estimator
+ * ([#622](https://github.com/NobuData/ouroboros/issues/622)) to refuse an unknown slug before
+ * the database would.
+ */
+export interface ResearchToolsTable {
+  /** `web`, `competitor`, `code`, `tickets`, `telemetry`, `docs`. */
+  slug: string;
+  /** The tools card's row title — *Web search & page reader*. */
+  display_name: string;
+  created_at: Stamped;
+}
+
+/** A depth preset — the composer's Depth menu (V106's `investigations_depth` CHECK). */
+export type InvestigationDepth = "quick" | "standard" | "deep_dive";
+
+/** Every {@link InvestigationDepth}, shallowest first — the composer's menu order. */
+export const INVESTIGATION_DEPTHS: readonly InvestigationDepth[] = [
+  "quick",
+  "standard",
+  "deep_dive",
+];
+
+/** An investigation's lifecycle state (V106's `investigations_status` CHECK). */
+export type InvestigationStatus =
+  "queued" | "running" | "brief_ready" | "issues_filed" | "failed" | "cancelled";
+
+/** Who opened an investigation (V106's `investigations_origin` CHECK). */
+export type InvestigationOrigin = "user" | "regression_watch" | "scheduled";
+
+/** An inclusive `{min, max}` of non-negative integers — V106's `jsonb_int_range_valid`. */
+export interface IntRangeDocument {
+  readonly min: number;
+  readonly max: number;
+}
+
+/**
+ * `investigations.estimate` — the composer's `est. 40–60 sources · ~$6` (V106, decision V5).
+ * `cost_cents` is null when the routed alias is unpriced: a source range and no dollar figure.
+ */
+export interface InvestigationEstimateDocument {
+  readonly sources: IntRangeDocument;
+  readonly cost_cents: IntRangeDocument | null;
+}
+
+/** `investigations.actuals` — what a run used and spent (V106). Null spend is unpriced. */
+export interface InvestigationActualsDocument {
+  readonly sources_used: number;
+  readonly spend_cents: number | null;
+  readonly duration_ms: number;
+}
+
+/** `investigations.provenance` — which researcher ran it, under which alias (V106). */
+export interface InvestigationProvenanceDocument {
+  readonly researcher: string;
+  readonly alias: string;
+  readonly resolution_ref: string | null;
+}
+
+/** `investigation_kinds.playbook` — a kind's versioned configuration (V106, decision V10). */
+export interface InvestigationPlaybookDocument {
+  readonly version: number;
+  readonly default_tools: readonly string[];
+  readonly synthesis_template: string;
+  readonly deliverables: readonly ("brief" | "matrix" | "roadmap_doc" | "fix_draft")[];
+}
+
+/**
+ * `ouroboros.investigation_kinds` — the per-workspace kind registry (V106,
+ * [#608](https://github.com/NobuData/ouroboros/issues/608)). Kinds differ by playbook only.
+ */
+export interface InvestigationKindsTable {
+  id: Generated<string>;
+  organization_id: string;
+  /** `gap_analysis`. Unique per workspace. */
+  slug: string;
+  /** The composer's segment label — *Gap analysis*. */
+  display_name: string;
+  /** The chip's hue key — `bug`, `reg`, `road`, `gap`. */
+  tint_key: string;
+  /** Written as JSON text; its `version` must rise on every change (V106's trigger). */
+  playbook: ColumnType<InvestigationPlaybookDocument, string, string>;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.investigations` — one row per `RS-###` (V106,
+ * [#608](https://github.com/NobuData/ouroboros/issues/608); V109's calibration version,
+ * [#622](https://github.com/NobuData/ouroboros/issues/622)).
+ */
+export interface InvestigationsTable {
+  id: Generated<string>;
+  organization_id: string;
+  /** Allocated by `investigations_allocate_seq()` when omitted. */
+  seq: Generated<number>;
+  /** `RS-127` — generated from `seq`. */
+  display_id: GeneratedAlways<string>;
+  kind_id: string;
+  question: string;
+  depth: InvestigationDepth;
+  /** A non-empty set of registered `research_tools` slugs. */
+  tools_enabled: ColumnType<string[], string, string>;
+  status: ColumnType<InvestigationStatus, InvestigationStatus | undefined, InvestigationStatus>;
+  /** Null until estimated; `cost_cents` null for an unpriced alias. */
+  estimate: ColumnType<
+    InvestigationEstimateDocument | null,
+    string | null | undefined,
+    string | null
+  >;
+  /**
+   * Which calibration of CM.3's estimator produced {@link estimate} (V109). Null exactly when
+   * `estimate` is — `investigations_estimate_calibration_version_paired`.
+   */
+  estimate_calibration_version: ColumnType<number | null, number | null | undefined, number | null>;
+  /** Null until run. */
+  actuals: ColumnType<
+    InvestigationActualsDocument | null,
+    string | null | undefined,
+    string | null
+  >;
+  /** Required from `running` on. */
+  provenance: ColumnType<
+    InvestigationProvenanceDocument | null,
+    string | null | undefined,
+    string | null
+  >;
+  origin: ColumnType<InvestigationOrigin, InvestigationOrigin | undefined, InvestigationOrigin>;
+  engine_task_ref: string | null;
+  created_by: string | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.investigation_estimate_outcomes` — estimate vs actuals, one row per investigation
+ * (V109, [#622](https://github.com/NobuData/ouroboros/issues/622)). Written only by
+ * `ouroboros.record_investigation_estimate_outcome(org, investigation)`, the idempotent fill;
+ * the calibration loop is arithmetic over these rows.
+ */
+export interface InvestigationEstimateOutcomesTable {
+  investigation_id: string;
+  organization_id: string;
+  /** The estimator calibration the estimate was computed under. */
+  calibration_version: number;
+  depth: InvestigationDepth;
+  tools_enabled: ColumnType<string[], string, string>;
+  /** The alias that ran it (`provenance.alias`), or null when none was recorded. */
+  alias: string | null;
+  estimated_sources_min: number;
+  estimated_sources_max: number;
+  /** Null (with its max) when the estimate carried no cost — an unpriced alias. */
+  estimated_cost_cents_min: number | null;
+  estimated_cost_cents_max: number | null;
+  actual_sources: number;
+  /** Null when the spend could not be priced. */
+  actual_spend_cents: number | null;
+  /** Generated: the actual source count lies inside the estimate, inclusive. */
+  sources_within_estimate: ColumnType<boolean, never, never>;
+  /** Generated: the actual spend lies inside the cost range; null when either side is unpriced. */
+  cost_within_estimate: ColumnType<boolean | null, never, never>;
+  recorded_at: Generated<Date>;
+}
+
+/**
  * `ouroboros.metric_definitions` — the Insights methodology registry (V076,
  * [#432](https://github.com/NobuData/ouroboros/issues/432); V078,
  * [#433](https://github.com/NobuData/ouroboros/issues/433)). Rows ship in migrations and the service
@@ -6709,6 +6874,10 @@ export interface Database {
   env_recipes: EnvRecipesTable;
   org_policies: OrgPoliciesTable;
   estimate_outcomes: EstimateOutcomesTable;
+  research_tools: ResearchToolsTable;
+  investigation_kinds: InvestigationKindsTable;
+  investigations: InvestigationsTable;
+  investigation_estimate_outcomes: InvestigationEstimateOutcomesTable;
   metric_definitions: MetricDefinitionsTable;
   metric_daily: MetricDailyTable;
   metric_rollup_state: MetricRollupStateTable;
@@ -7887,6 +8056,54 @@ export const TABLE_COLUMNS = {
     "merged_at",
     "computed_at",
   ],
+  research_tools: ["slug", "display_name", "created_at"],
+  investigation_kinds: [
+    "id",
+    "organization_id",
+    "slug",
+    "display_name",
+    "tint_key",
+    "playbook",
+    "created_at",
+    "updated_at",
+  ],
+  investigations: [
+    "id",
+    "organization_id",
+    "seq",
+    "display_id",
+    "kind_id",
+    "question",
+    "depth",
+    "tools_enabled",
+    "status",
+    "estimate",
+    "estimate_calibration_version",
+    "actuals",
+    "provenance",
+    "origin",
+    "engine_task_ref",
+    "created_by",
+    "created_at",
+    "updated_at",
+  ],
+  investigation_estimate_outcomes: [
+    "investigation_id",
+    "organization_id",
+    "calibration_version",
+    "depth",
+    "tools_enabled",
+    "alias",
+    "estimated_sources_min",
+    "estimated_sources_max",
+    "estimated_cost_cents_min",
+    "estimated_cost_cents_max",
+    "actual_sources",
+    "actual_spend_cents",
+    "sources_within_estimate",
+    "cost_within_estimate",
+    "recorded_at",
+  ],
   metric_definitions: [
     "metric_id",
     "family",
@@ -8898,6 +9115,12 @@ export type OrgPoliciesEffective = Selectable<OrgPoliciesEffectiveView>;
 
 /** A row of `ouroboros.estimate_outcomes`, as a `select` returns it. */
 export type EstimateOutcome = Selectable<EstimateOutcomesTable>;
+/** A row of `ouroboros.investigation_kinds`, as a `select` returns it. */
+export type InvestigationKind = Selectable<InvestigationKindsTable>;
+/** A row of `ouroboros.investigations`, as a `select` returns it. */
+export type Investigation = Selectable<InvestigationsTable>;
+/** A row of `ouroboros.investigation_estimate_outcomes`, as a `select` returns it. */
+export type InvestigationEstimateOutcome = Selectable<InvestigationEstimateOutcomesTable>;
 /** A row of `ouroboros.intervention_events`, as a `select` returns it. */
 export type InterventionEvent = Selectable<InterventionEventsTable>;
 /** A row of `ouroboros.intervention_overrides`, as a `select` returns it. */

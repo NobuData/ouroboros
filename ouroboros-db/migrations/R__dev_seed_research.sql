@@ -16,6 +16,9 @@
 --   * **RS-127** in `acme-robotics` — the gap_analysis kind V106 gave the workspace, deep dive,
 --     five tools, `brief_ready`, started by Ken. `seq` 127 is supplied; V106 keeps it and moves the
 --     workspace's counter past it.
+--   * **Its estimate and the reconciliation** (#622, CM.3) — `est. 40–60 sources · ~$6` as the
+--     calibration-v1 estimate it was started under, and the V109 outcome row comparing it with
+--     what it used. See the section after RS-127 for the arithmetic.
 --   * **A dense ledger of 44.** Cite numbers are dense by rule, so `[07]`, `[12]`, `[19]` and `[31]`
 --     can only exist with the numbers around them. The five featured sources are verbatim — titles
 --     and locators as the card prints them (the card drops the `https://` scheme, and renders the
@@ -41,11 +44,13 @@
 -- RS-127.
 -- ---------------------------------------------------------------------------
 insert into ouroboros.investigations (id, organization_id, kind_id, seq, question, depth,
-                                      tools_enabled, status, actuals, provenance, origin,
+                                      tools_enabled, status, estimate,
+                                      estimate_calibration_version, actuals, provenance, origin,
                                       created_by, created_at)
 select '5eed0084-0000-4000-8000-000000000127'::uuid, org."id", kind.id, 127,
        'Autonomous docking vs. Skylink / AeroMesh / Novum', 'deep_dive',
        '["web", "competitor", "code", "tickets", "telemetry"]', 'brief_ready',
+       '{"sources": {"min": 40, "max": 60}, "cost_cents": {"min": 522, "max": 687}}', 1,
        '{"sources_used": 44, "spend_cents": 612, "duration_ms": 1860000}',
        '{"researcher": "loop-v1", "alias": "researcher-long-ctx", "resolution_ref": null}',
        'user', ken."id", now() - interval '2 days'
@@ -55,6 +60,43 @@ select '5eed0084-0000-4000-8000-000000000127'::uuid, org."id", kind.id, 127,
  where org."slug" = 'acme-robotics'
    and ${ouro_dev_seed}
 on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
+-- RS-127's estimate, and its reconciliation against what it used (#622, CM.3).
+--
+-- The composer showed `est. 40–60 sources · ~$6` before RS-127 started, and V5 says that line is
+-- computed: it is what CM.3's estimator, **calibration v1**, answers for this investigation's
+-- inputs — deep dive × [web, competitor, code, tickets, telemetry] × `researcher-long-ctx` at the
+-- catalog's 300¢ · 1500¢ per 1M tokens:
+--
+--   operations  = (3 + 2 + 2 + 2 + 1 per round) × 4 deep-dive rounds        = 40
+--   sources     = 40 × 1.0 … 40 × 1.5                                         = 40–60
+--   digest call = 20 000 in × 300¢/1M + 1 500 out × 1500¢/1M                  = 8.25¢
+--   synthesis   = 4 passes × (120 000 in × 300¢/1M + 8 000 out × 1500¢/1M)    = 4 × 48¢ = 192¢
+--   cost        = 40 × 8.25 + 192 … 60 × 8.25 + 192                           = 522–687¢
+--
+-- The midpoint, 604.5¢, is the `~$6`. These figures are stored because an estimate is a record of
+-- what was said *before* the run — not recomputed, since the constants will move — and
+-- ouroboros-rest's estimator tests assert that calibration v1 reproduces them exactly.
+--
+-- The insert above carries them for a database migrated from empty; this update gives them to an
+-- RS-127 an earlier application of this file already wrote, and touches nothing else. Then the
+-- reconciliation: actuals of 44 sources and 612¢ land inside both ranges, and the outcome row
+-- records that. record_investigation_estimate_outcome() is idempotent, so a reapplication
+-- re-derives the same row.
+-- ---------------------------------------------------------------------------
+update ouroboros.investigations inv
+   set estimate = '{"sources": {"min": 40, "max": 60}, "cost_cents": {"min": 522, "max": 687}}',
+       estimate_calibration_version = 1
+ where inv.id = '5eed0084-0000-4000-8000-000000000127'::uuid
+   and inv.estimate is null
+   and ${ouro_dev_seed};
+
+select count(outcome.investigation_id) as reconciled
+  from ouroboros.investigations inv
+  cross join lateral ouroboros.record_investigation_estimate_outcome(inv.organization_id, inv.id) outcome
+ where inv.id = '5eed0084-0000-4000-8000-000000000127'::uuid
+   and ${ouro_dev_seed};
 
 -- ---------------------------------------------------------------------------
 -- The ledger: 44 sources, numbered 1…44 in order. The five featured ones verbatim; the rest

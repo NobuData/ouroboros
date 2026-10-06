@@ -483,7 +483,11 @@ describe("TABLE_COLUMNS", () => {
     // The hundred-and-thirty-seventh to ninth are BR.4's (#488): V094's `notification_routes` and
     // its `notification_routes_effective` view (the derived lock), and V103's
     // `notification_route_sends`, the org routes' per-address send log.
-    expect(TABLE_NAMES).toHaveLength(139);
+    //
+    // The hundred-and-fortieth to forty-third are CM.3's (#622): V106's `research_tools`,
+    // `investigation_kinds` and `investigations` (with V109's calibration version), and V109's
+    // `investigation_estimate_outcomes` — what the research estimator reads, stores and reconciles.
+    expect(TABLE_NAMES).toHaveLength(143);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

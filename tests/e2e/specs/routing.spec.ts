@@ -347,14 +347,14 @@ test.describe("the routing screen draws the seeded workspace", () => {
     await expect(chips.first()).toHaveAttribute("title", /^Last checked \d{4}-\d{2}-\d{2} /);
   });
 
-  test("the matrix draws the eight seeded kinds with their routes and their figures", async ({
+  test("the matrix draws the ten seeded kinds with their routes and their figures", async ({
     page,
   }) => {
     const rows = matrix(page).locator("tbody tr");
 
     await expect(rows).toHaveCount(SEEDED_MATRIX.length);
     await expect(page.getByRole("region", { name: "Routing matrix" })).toContainText(
-      "8 task kinds",
+      `${SEEDED_MATRIX.length} task kinds`,
     );
 
     for (const [index, expected] of SEEDED_MATRIX.entries()) {
@@ -827,7 +827,7 @@ test.describe("a workspace with no routing foundations is guided rather than bla
     // wonder whether the product is broken.
     await expect(card).toContainText("The development seed's acme-robotics workspace");
 
-    // No matrix, and nothing fabricated in its place: not one of the demo workspace's eight
+    // No matrix, and nothing fabricated in its place: not one of the demo workspace's ten
     // route tags appears here, which is the assertion that would catch a page falling back to
     // the artwork the way `app/models/` is drawn from it.
     await expect(matrix(page)).toHaveCount(0);
