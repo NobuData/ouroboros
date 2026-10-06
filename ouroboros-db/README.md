@@ -1526,6 +1526,31 @@
 > `custom:dry-run` (records) and `custom:dry-run-artifacts` (the bulk, never kept longer than
 > the record) through `dry_runs_sweep()`; the application role cannot delete.
 >
+> `V112` ([#610](https://github.com/NobuData/ouroboros/issues/610), CK.3) holds mockup 22's
+> **capability matrix** and the **competitor watch registry** as evidence (decisions **V7**, **V9**).
+> `competitors` are a workspace's rivals (`name` unique case-insensitively, `meta`
+> `{site, aliases, notes}`); `competitor_watches` say what is watched — `source_kind`
+> `release_notes|changelog|github_releases|rss|filings|page`, an `http(s)` `url`, an optional
+> `selector` scoping the diff, `cadence` `hourly|daily|weekly`, `enabled`, and `render_required`
+> for a JS-rendered page v1 cannot fetch (#637, v2), with `last_snapshot_at` kept by the snapshot
+> insert. `competitor_snapshots` are the archive, one linear chain per watch (`previous_id`): a
+> `sha256:` `content_hash`, a `content_ref` to the archived content, and a `diff` (≤ 64 KiB) present
+> **exactly when the content changed** — two snapshots of a changed page produce one diff. A
+> `competitor_diff` source record now names the snapshot whose diff it cites
+> (`source_records.snapshot_id`, required for that kind and only that kind, of the investigation's
+> own workspace). `capability_matrices` (one per investigation) carry the `us_label` and the
+> `rivals` columns in order; `matrix_rows` the capability, `sort_order`, `gap_severity`
+> `high|med|low|wip|lead` **with its `severity_derivation`** (a severity cannot change without
+> it); `matrix_cells` one per row and subject (`competitor_id` null for us), `status`
+> `shipping|partial|none|unknown|wip` and a `note` (`in flight`, `beta`); `matrix_cell_sources`
+> link cells to their investigation's sources. Two deferred constraint triggers hold at commit:
+> **a cell that is not `unknown` is cited** (`matrix_cells_cited`) and **every row has a cell for
+> us and each rival** (`matrix_rows_complete`) — a blank is not an answer. The
+> `competitor_tracker_summary` view computes the tracker's sub-line from the registry —
+> `4 rivals watched · release notes, changelogs, filings` — counting enabled watches that are not
+> `render_required`. Snapshots are never updated; a cited snapshot, and a rival a matrix names,
+> cannot be deleted from under them (deferred foreign keys, so a workspace delete still cascades).
+>
 > [#484](https://github.com/NobuData/ouroboros/issues/484) (BQ.5) seeds mockup 17 from those rows:
 > [`R__dev_seed_workspace_settings.sql`](migrations/R__dev_seed_workspace_settings.sql) — see
 > [Who may do what, and where the record goes](#who-may-do-what-and-where-the-record-goes). Its
@@ -3309,6 +3334,7 @@ ouroboros-db/
 │   ├── V109__investigation_estimate_outcomes.sql # estimate_calibration_version, investigation_estimate_outcomes + record_investigation_estimate_outcome() — #622
 │   ├── V110__draft_operations.sql    # draft_operations, workflows.draft_rev/provenance_summary, apply_draft_batch(), node provenance + replay probe — #556
 │   ├── V111__dry_run_records.sql     # dry_runs, dry_run_stages (verdict/how), dry_run_artifacts (bounded), W4 isolation probe, dry_runs_sweep() — #557
+│   ├── V112__capability_matrices_competitor_watches.sql # competitors, watches, snapshot chain + diffs, competitor_diff → snapshot, matrices/rows/cells (cited, complete), tracker sub-line view — #610
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -3554,6 +3580,13 @@ outside this module alters it.
 | `dry_runs` | `V111` | One deep dry run ([#557](https://github.com/NobuData/ouroboros/issues/557), CC.3, decision **W4**) — workflow and draft revision (`base_version`, `draft_rev`), copilot `session_id`, canonical `ticket_id`, `pinned_sha`, `mode`, `status`, `duration_ms`/`cost_cents`/`tokens`, `guard_audit` (+ generated `guards_clean`), `precheck_findings`, `failure_reason`, `started_at`/`finished_at` | `status` `precheck → running \| failed`, `running → complete \| failed \| budget_stopped` (`dry_runs_transition`); a finished run is final; `finished_at` and `duration_ms` exactly when terminal; `failure_reason` exactly for `failed`/`budget_stopped`; `cost_cents` null when unpriced; `pinned_sha` a full sha; ticket of the same workspace and session about the same workflow (`dry_runs_references_check`); the session is set null when swept; no foreign key into the run plane (`dry_run_isolation_violations`); history index `(workflow_id, started_at desc)`; `ouroboros_app` may select, insert and update, never delete — `dry_runs_sweep()` is the one delete |
 | `dry_run_stages` | `V111` | A dry run's result rows in card order ([#557](https://github.com/NobuData/ouroboros/issues/557)) — `seq`, `stage_key`, `display_name`, `verdict`, `how`, `note`, `metrics`, `skip_reason`, timings | `verdict` `ok\|skipped\|failed\|not_reached`; `how` `llm\|replayed\|deterministic\|skipped`, skipped in both or neither, with a `skip_reason` exactly then; `metrics` known keys only, and a replayed row carries `estimate_ms`, `sample_count` ≥ 1, `spread_ms`, `similarity_class` (no other row may); a reached row has a note; unique `(dry_run_id, seq)`; written only while the dry run is open (`dry_run_stages_open`); cascades with the dry run |
 | `dry_run_artifacts` | `V111` | A dry run's overlay diff and plan/review excerpts ([#557](https://github.com/NobuData/ouroboros/issues/557)) — `kind`, `content`, `truncated`, `original_bytes`, `path_summary` | `kind` `overlay_diff\|plan_excerpt\|review_excerpt`; `content` at most 64 KiB, `truncated` exactly when `original_bytes` exceeds it; `path_summary` `[{path, added, removed}]` on the diff and null on an excerpt; one overlay diff per dry run; written only while the dry run is open; retention `custom:dry-run-artifacts`, cut no later than the record |
+| `competitors` | `V112` | A workspace's rivals ([#610](https://github.com/NobuData/ouroboros/issues/610), CK.3, decision **V9**) — `name`, `meta` `{site, aliases, notes}` | `name` non-blank and unique per workspace case-insensitively (`competitors_organization_name_key`); `meta` shape checked (`competitor_meta_valid`); cascades with the workspace; a rival a matrix cell names cannot be deleted (deferred `matrix_cells_competitor_fk`); `ouroboros_app` may select, insert, update and delete |
+| `competitor_watches` | `V112` | A rival's watched source ([#610](https://github.com/NobuData/ouroboros/issues/610), CK.3) — `source_kind`, `url`, `selector`, `cadence`, `last_snapshot_at`, `enabled`, `render_required` | `source_kind` `release_notes\|changelog\|github_releases\|rss\|filings\|page`; `url` an `http(s)` URL; `cadence` `hourly\|daily\|weekly`; one watch per `(rival, kind, url, selector)`, nulls not distinct; `last_snapshot_at` moved forward by each snapshot; `render_required` marks a JS-rendered page (#637) and is not counted as watched; due index for the scheduler; `ouroboros_app` may select, insert, update and delete |
+| `competitor_snapshots` | `V112` | The archive of a watched source ([#610](https://github.com/NobuData/ouroboros/issues/610), CK.3) — `previous_id`, `content_hash`, `content_ref`, `diff`, `taken_at` | one linear chain per watch (one first snapshot, one successor each, the predecessor of the same watch); taken after its predecessor; `diff` (≤ 64 KiB) present exactly when the hash changed (`competitor_snapshots_chain`); never updated; a cited snapshot cannot be deleted (deferred `source_records_snapshot_fk`); `ouroboros_app` may select and insert |
+| `capability_matrices` | `V112` | An investigation's capability matrix ([#610](https://github.com/NobuData/ouroboros/issues/610), CK.3, decision **V7**) — `title`, `us_label`, `rivals` (columns in order) | one per investigation; `rivals` 1–12 distinct competitors of the investigation's workspace (`capability_matrices_rivals_valid`); cascades with the investigation; `ouroboros_app` may select, insert and update |
+| `matrix_rows` | `V112` | A matrix row ([#610](https://github.com/NobuData/ouroboros/issues/610), CK.3) — `capability`, `sort_order`, `gap_severity`, `severity_derivation` | `gap_severity` `high\|med\|low\|wip\|lead` stored with a non-blank derivation, which must change when it does (`matrix_rows_severity_rederived`); unique sort order and capability per matrix; a cell per subject by commit (`matrix_rows_complete`); `ouroboros_app` may select, insert and update |
+| `matrix_cells` | `V112` | A matrix cell ([#610](https://github.com/NobuData/ouroboros/issues/610), CK.3) — `row_id`, `competitor_id` (null = us), `status`, `note` | `status` `shipping\|partial\|none\|unknown\|wip`; one per row and subject; a rival cell names one of the matrix's columns; anything but `unknown` cited by commit (`matrix_cells_cited`); `ouroboros_app` may select, insert and update, never delete |
+| `matrix_cell_sources` | `V112` | A cell's citations ([#610](https://github.com/NobuData/ouroboros/issues/610), CK.3) — `cell_id`, `source_id` | composite keys keep a cell and its sources in one investigation; removing a stated cell's last link fails at commit; `ouroboros_app` may select, insert and delete |
 
 Two **functions**, both `V012`'s and both documented in
 [The bundled price catalog](#the-bundled-price-catalog).

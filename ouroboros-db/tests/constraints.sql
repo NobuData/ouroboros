@@ -37023,6 +37023,564 @@ select pg_temp.must_hold(
   'deleting a workspace deletes its dry runs, their results and their artifacts');
 
 -- ===========================================================================
+-- V112 — capability matrices and the competitor watch registry (#610, CK.3)
+-- ===========================================================================
+--
+-- Mockup 22's matrix and its tracker sub-line as rows: the registry's vocabularies, the sub-line
+-- computed from it, two snapshots of a fixture page producing one diff that a competitor_diff
+-- source cites, and RS-127's 5 × 4 matrix read back exactly — every non-unknown cell cited, every
+-- row complete, every severity stored with its derivation. The deferred rules are forced by name
+-- with `set constraints`, never `all`.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v112', 'Matrix Works', 'matrix-works-v112', now()),
+  ('org-v112b', 'Elsewhere', 'elsewhere-v112', now());
+
+insert into ouroboros.investigations (id, organization_id, kind_id, question, depth, tools_enabled,
+                                      status, provenance)
+select v.id, v.org, k.id, 'Autonomous docking vs. Skylink / AeroMesh / Novum', 'deep_dive',
+       '["web", "competitor", "code", "tickets", "telemetry"]', 'running',
+       '{"researcher": "loop-v1", "alias": "researcher-long-ctx", "resolution_ref": null}'
+  from (values ('a1120000-0000-0000-0000-000000000001'::uuid, 'org-v112'),
+               ('a1120000-0000-0000-0000-000000000002'::uuid, 'org-v112'),
+               ('a1120000-0000-0000-0000-000000000003'::uuid, 'org-v112b')) as v(id, org)
+  join ouroboros.investigation_kinds k on k.organization_id = v.org and k.slug = 'gap_analysis';
+
+-- --- the registry ------------------------------------------------------------------------
+
+insert into ouroboros.competitors (id, organization_id, name, meta) values
+  ('a1120000-0000-0000-0000-000000000011', 'org-v112', 'Skylink',
+   '{"site": "https://skylink.example.com", "aliases": ["Skylink Robotics"], "notes": "Docking leader."}'),
+  ('a1120000-0000-0000-0000-000000000012', 'org-v112', 'AeroMesh', '{"site": "https://aeromesh.example.com"}'),
+  ('a1120000-0000-0000-0000-000000000013', 'org-v112', 'Novum', '{}'),
+  ('a1120000-0000-0000-0000-000000000014', 'org-v112', 'Kestrel', '{}'),
+  ('a1120000-0000-0000-0000-000000000019', 'org-v112b', 'Skylink', '{}');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitors (organization_id, name) values ('org-v112', 'SKYLINK')$$,
+  'a rival is registered once per workspace, whatever its capitalisation', 'competitors_organization_name_key');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitors (organization_id, name) values ('org-v112', '  ')$$,
+  'a rival has a name', 'competitors_name_present');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitors (organization_id, name, meta) values ('org-v112', 'X', '{"site": "ftp://x.example.com"}')$$,
+  'meta.site is an http(s) URL', 'competitors_meta_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitors (organization_id, name, meta) values ('org-v112', 'X', '{"aliases": ["A", "a"]}')$$,
+  'meta.aliases are distinct', 'competitors_meta_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitors (organization_id, name, meta) values ('org-v112', 'X', '{"revenue": 1}')$$,
+  'meta has only site, aliases and notes', 'competitors_meta_shape');
+
+insert into ouroboros.competitor_watches (id, competitor_id, source_kind, url, selector, cadence, enabled,
+                                          render_required) values
+  ('a1120000-0000-0000-0000-000000000021', 'a1120000-0000-0000-0000-000000000011', 'release_notes',
+   'https://skylink.example.com/releases', 'main .release-notes', 'daily', true, false),
+  ('a1120000-0000-0000-0000-000000000022', 'a1120000-0000-0000-0000-000000000012', 'changelog',
+   'https://aeromesh.example.com/changelog', null, 'daily', true, false),
+  ('a1120000-0000-0000-0000-000000000023', 'a1120000-0000-0000-0000-000000000013', 'filings',
+   'https://novum.example.com/investors/filings', null, 'weekly', true, false),
+  ('a1120000-0000-0000-0000-000000000024', 'a1120000-0000-0000-0000-000000000014', 'changelog',
+   'https://kestrel.example.com/changelog', null, 'hourly', true, false),
+  -- Not counted: a JS-rendered page v1 cannot fetch, honestly marked, and a disabled feed.
+  ('a1120000-0000-0000-0000-000000000025', 'a1120000-0000-0000-0000-000000000013', 'page',
+   'https://novum.example.com/product', '#features', 'weekly', true, true),
+  ('a1120000-0000-0000-0000-000000000026', 'a1120000-0000-0000-0000-000000000012', 'rss',
+   'https://aeromesh.example.com/feed.xml', null, 'daily', false, false);
+
+-- The other workspace watches its own Skylink.
+insert into ouroboros.competitor_watches (id, competitor_id, source_kind, url) values
+  ('a1120000-0000-0000-0000-000000000029', 'a1120000-0000-0000-0000-000000000019', 'release_notes',
+   'https://skylink.example.com/releases');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_watches (competitor_id, source_kind, url)
+    values ('a1120000-0000-0000-0000-000000000011', 'tweets', 'https://skylink.example.com/x')$$,
+  'a watch source kind is one of the six', 'competitor_watches_source_kind');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_watches (competitor_id, source_kind, url, cadence)
+    values ('a1120000-0000-0000-0000-000000000011', 'rss', 'https://skylink.example.com/feed', 'every 5 minutes')$$,
+  'a watch cadence is hourly, daily or weekly', 'competitor_watches_cadence');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_watches (competitor_id, source_kind, url)
+    values ('a1120000-0000-0000-0000-000000000011', 'page', 'javascript:alert(1)')$$,
+  'a watched URL is an http(s) URL', 'competitor_watches_url_valid');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_watches (competitor_id, source_kind, url, selector)
+    values ('a1120000-0000-0000-0000-000000000011', 'page', 'https://skylink.example.com/', ' ')$$,
+  'a selector, when present, scopes something', 'competitor_watches_selector_present');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_watches (competitor_id, source_kind, url)
+    values ('a1120000-0000-0000-0000-000000000012', 'changelog', 'https://aeromesh.example.com/changelog')$$,
+  'a source is watched once — a null selector included', 'competitor_watches_target_key');
+
+-- Marking a page JS-rendered after the fact breaks nothing.
+update ouroboros.competitor_watches set render_required = true
+ where id = 'a1120000-0000-0000-0000-000000000024';
+update ouroboros.competitor_watches set render_required = false
+ where id = 'a1120000-0000-0000-0000-000000000024';
+
+select pg_temp.must_hold(
+  (select rivals_watched = 4 and watches_enabled = 4
+          and source_kinds = array['release_notes', 'changelog', 'filings']
+          and sub_line = '4 rivals watched · release notes, changelogs, filings'
+     from ouroboros.competitor_tracker_summary where organization_id = 'org-v112'),
+  'the tracker''s sub-line is computed from the registry — render_required and disabled watches not counted');
+
+update ouroboros.competitor_watches set enabled = false
+ where id in ('a1120000-0000-0000-0000-000000000023', 'a1120000-0000-0000-0000-000000000024');
+select pg_temp.must_hold(
+  (select sub_line = '2 rivals watched · release notes, changelogs'
+     from ouroboros.competitor_tracker_summary where organization_id = 'org-v112')
+   and (select sub_line = '1 rival watched · release notes'
+          from ouroboros.competitor_tracker_summary where organization_id = 'org-v112b')
+   and not exists (select 1 from ouroboros.competitor_tracker_summary where organization_id = 'org-v111'),
+  'and it follows the registry when a watch is switched off — one rival is singular, none is no row');
+update ouroboros.competitor_watches set enabled = true
+ where id in ('a1120000-0000-0000-0000-000000000023', 'a1120000-0000-0000-0000-000000000024');
+
+-- --- snapshots: two of a changed page, one diff ------------------------------------------
+
+insert into ouroboros.competitor_snapshots (id, watch_id, content_hash, content_ref, taken_at) values
+  ('a1120000-0000-0000-0000-000000000031', 'a1120000-0000-0000-0000-000000000021',
+   'sha256:' || encode(sha256('6.1 notes'::bytea), 'hex'), 'archive://competitor/skylink/releases/t1',
+   now() - interval '10 days');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_snapshots (watch_id, content_hash, content_ref, taken_at)
+    values ('a1120000-0000-0000-0000-000000000021', 'sha256:' || repeat('1', 64), 'archive://x', now())$$,
+  'a watch has one first snapshot — every later one names its predecessor', 'competitor_snapshots_first_key');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_snapshots (watch_id, previous_id, content_hash, content_ref, taken_at)
+    values ('a1120000-0000-0000-0000-000000000021', 'a1120000-0000-0000-0000-000000000031',
+            'sha256:' || encode(sha256('6.2 notes'::bytea), 'hex'), 'archive://x', now())$$,
+  'a changed page''s snapshot carries its diff', 'competitor_snapshots_chain');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_snapshots (watch_id, previous_id, content_hash, content_ref, diff, taken_at)
+    values ('a1120000-0000-0000-0000-000000000021', 'a1120000-0000-0000-0000-000000000031',
+            'sha256:' || encode(sha256('6.1 notes'::bytea), 'hex'), 'archive://x', '+ nothing', now())$$,
+  'an unchanged page''s snapshot has no diff', 'competitor_snapshots_chain');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_snapshots (watch_id, previous_id, content_hash, content_ref, diff, taken_at)
+    values ('a1120000-0000-0000-0000-000000000021', 'a1120000-0000-0000-0000-000000000031',
+            'sha256:' || repeat('2', 64), 'archive://x', '+ x', now() - interval '11 days')$$,
+  'a snapshot is taken after its predecessor', 'competitor_snapshots_chain');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_snapshots (watch_id, previous_id, content_hash, content_ref, diff, taken_at)
+    values ('a1120000-0000-0000-0000-000000000022', 'a1120000-0000-0000-0000-000000000031',
+            'sha256:' || repeat('2', 64), 'archive://x', '+ x', now())$$,
+  'a predecessor is the same watch''s', 'competitor_snapshots_previous_fk');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_snapshots (watch_id, content_hash, content_ref, diff, taken_at)
+    values ('a1120000-0000-0000-0000-000000000022', 'sha256:' || repeat('2', 64), 'archive://x', '+ x', now())$$,
+  'a first snapshot has nothing to diff against', 'competitor_snapshots_diff_has_previous');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_snapshots (watch_id, content_hash, content_ref, taken_at)
+    values ('a1120000-0000-0000-0000-000000000022', 'md5:abc', 'archive://x', now())$$,
+  'a snapshot hash is sha256:<hex>', 'competitor_snapshots_content_hash_format');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_snapshots (watch_id, content_hash, content_ref, taken_at)
+    values ('a1120000-0000-0000-0000-000000000022', 'sha256:' || repeat('2', 64), 'archive:// x', now())$$,
+  'a snapshot refers to archived content', 'competitor_snapshots_content_ref_present');
+
+insert into ouroboros.competitor_snapshots (id, watch_id, previous_id, content_hash, content_ref, diff, taken_at) values
+  ('a1120000-0000-0000-0000-000000000032', 'a1120000-0000-0000-0000-000000000021',
+   'a1120000-0000-0000-0000-000000000031', 'sha256:' || encode(sha256('6.2 notes'::bytea), 'hex'),
+   'archive://competitor/skylink/releases/t2',
+   '+ 6.2 — Gust-adaptive final approach: wind feedforward over the last 2 m of descent.',
+   now() - interval '3 days');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_snapshots (watch_id, previous_id, content_hash, content_ref, diff, taken_at)
+    values ('a1120000-0000-0000-0000-000000000021', 'a1120000-0000-0000-0000-000000000031',
+            'sha256:' || repeat('3', 64), 'archive://x', '+ fork', now())$$,
+  'the chain does not fork — a snapshot has one successor', 'competitor_snapshots_previous_key');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 and count(diff) = 1
+          and (array_agg(diff) filter (where diff is not null))[1] like '+ 6.2 — Gust-adaptive%'
+     from ouroboros.competitor_snapshots where watch_id = 'a1120000-0000-0000-0000-000000000021')
+   and (select last_snapshot_at = (select taken_at from ouroboros.competitor_snapshots
+                                    where id = 'a1120000-0000-0000-0000-000000000032')
+          from ouroboros.competitor_watches where id = 'a1120000-0000-0000-0000-000000000021'),
+  'two snapshots of a changed page produce one diff, and the watch says when it was last looked at');
+
+select pg_temp.must_reject(
+  $$update ouroboros.competitor_snapshots set diff = '+ rewritten' where id = 'a1120000-0000-0000-0000-000000000032'$$,
+  'an archived snapshot is never rewritten', 'competitor_snapshots_immutable');
+
+-- A snapshot of the other workspace's rival, with a diff, for the refusals below.
+insert into ouroboros.competitor_snapshots (id, watch_id, previous_id, content_hash, content_ref, diff, taken_at) values
+  ('a1120000-0000-0000-0000-000000000038', 'a1120000-0000-0000-0000-000000000029', null,
+   'sha256:' || repeat('4', 64), 'archive://b/1', null, now() - interval '2 days'),
+  ('a1120000-0000-0000-0000-000000000039', 'a1120000-0000-0000-0000-000000000029',
+   'a1120000-0000-0000-0000-000000000038', 'sha256:' || repeat('5', 64), 'archive://b/2', '+ b',
+   now() - interval '1 day');
+
+-- --- the diff is citable ------------------------------------------------------------------
+
+-- pg_temp.v112_source(investigation, kind, snapshot) — a source insert that varies its kind and
+-- the snapshot it names.
+create function pg_temp.v112_source(investigation text, kind text, snapshot text)
+returns text language sql as $$
+  select format($f$insert into ouroboros.source_records
+                     (investigation_id, tool_slug, kind, title, locator, retrieved_at, content_hash,
+                      excerpt, snapshot_id)
+                   values ('%s', 'competitor', '%s', 'Skylink release notes — diff',
+                           'https://skylink.example.com/releases/6.2', now(), 'sha256:%s', 'x', %s)$f$,
+                investigation, kind, repeat('0', 64), snapshot);
+$$;
+
+select pg_temp.must_reject(
+  pg_temp.v112_source('a1120000-0000-0000-0000-000000000001', 'competitor_diff', 'null'),
+  'a competitor_diff source names the archived snapshot it cites', 'source_records_competitor_diff_snapshot');
+select pg_temp.must_reject(
+  pg_temp.v112_source('a1120000-0000-0000-0000-000000000001', 'web', '''a1120000-0000-0000-0000-000000000032'''),
+  'and only a competitor_diff source names one', 'source_records_competitor_diff_snapshot');
+select pg_temp.must_reject(
+  pg_temp.v112_source('a1120000-0000-0000-0000-000000000001', 'competitor_diff', '''a1120000-0000-0000-0000-000000000031'''),
+  'a cited snapshot is one that carries a diff', 'source_records_snapshot_cited');
+select pg_temp.must_reject(
+  pg_temp.v112_source('a1120000-0000-0000-0000-000000000001', 'competitor_diff', '''a1120000-0000-0000-0000-000000000039'''),
+  'of a rival of the investigation''s own workspace', 'source_records_snapshot_cited');
+
+insert into ouroboros.source_records (id, investigation_id, tool_slug, kind, title, locator, retrieved_at,
+                                      content_hash, excerpt, snapshot_id) values
+  ('a1120000-0000-0000-0000-000000000101', 'a1120000-0000-0000-0000-000000000001', 'web', 'web',
+   'Skylink S4 docking module — teardown & sensor BOM', 'https://droneanalysts.example.com/s4-teardown',
+   now(), 'sha256:' || repeat('a', 64), 'The S4 carries a 6-axis IMU.', null),
+  ('a1120000-0000-0000-0000-000000000102', 'a1120000-0000-0000-0000-000000000001', 'competitor',
+   'competitor_diff', 'Skylink firmware 6.2 release notes — "gust-adaptive final approach"',
+   'https://skylink.example.com/releases/6.2', now(), 'sha256:' || encode(sha256('6.2 notes'::bytea), 'hex'),
+   'Gust-adaptive final approach.', 'a1120000-0000-0000-0000-000000000032'),
+  ('a1120000-0000-0000-0000-000000000103', 'a1120000-0000-0000-0000-000000000001', 'code', 'code',
+   'dock_ctrl.c blame — gains last tuned 14 months ago', 'git://helios-firmware@8c1b2e4/src/dock/dock_ctrl.c#L214',
+   now(), 'sha256:' || repeat('b', 64), 'kp = 1.8f;', null),
+  ('a1120000-0000-0000-0000-000000000104', 'a1120000-0000-0000-0000-000000000001', 'web', 'web',
+   'Field comparison', 'https://research.example.com/field', now(), 'sha256:' || repeat('c', 64), 'x', null);
+-- The second investigation's source, which no cell of the first may cite.
+do $x$ begin execute pg_temp.v112_source('a1120000-0000-0000-0000-000000000002', 'web', 'null'); end $x$;
+
+select pg_temp.must_hold(
+  (select s.cite_no = 2 and snap.diff like '+ 6.2%' and w.source_kind = 'release_notes' and c.name = 'Skylink'
+     from ouroboros.source_records s
+     join ouroboros.competitor_snapshots snap on snap.id = s.snapshot_id
+     join ouroboros.competitor_watches w      on w.id = snap.watch_id
+     join ouroboros.competitors c             on c.id = w.competitor_id
+    where s.id = 'a1120000-0000-0000-0000-000000000102'),
+  'the diff is addressable from its competitor_diff source: [02] → snapshot → watch → Skylink');
+
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       delete from ouroboros.competitor_watches where id = 'a1120000-0000-0000-0000-000000000021';
+       set constraints ouroboros.source_records_snapshot_fk immediate;
+     end $x$ $q$,
+  'a cited snapshot cannot be deleted from under the ledger', 'source_records_snapshot_fk');
+
+-- --- the matrix ----------------------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.capability_matrices (investigation_id, title, us_label, rivals)
+    values ('a1120000-0000-0000-0000-000000000001', 'x', 'Helios',
+            array['a1120000-0000-0000-0000-000000000011', 'a1120000-0000-0000-0000-000000000011']::uuid[])$$,
+  'a rival is one column', 'capability_matrices_rivals_valid');
+select pg_temp.must_reject(
+  $$insert into ouroboros.capability_matrices (investigation_id, title, us_label, rivals)
+    values ('a1120000-0000-0000-0000-000000000001', 'x', 'Helios',
+            array['a1120000-0000-0000-0000-000000000019']::uuid[])$$,
+  'a column is a rival of the investigation''s own workspace', 'capability_matrices_rivals_valid');
+select pg_temp.must_reject(
+  $$insert into ouroboros.capability_matrices (investigation_id, title, us_label, rivals)
+    values ('a1120000-0000-0000-0000-000000000001', 'x', 'Helios', '{}')$$,
+  'a matrix compares us with at least one rival', 'capability_matrices_rivals_bounded');
+
+insert into ouroboros.capability_matrices (id, investigation_id, title, us_label, rivals) values
+  ('a1120000-0000-0000-0000-000000000201', 'a1120000-0000-0000-0000-000000000001',
+   'Autonomous docking vs. the field', 'Helios',
+   array['a1120000-0000-0000-0000-000000000011', 'a1120000-0000-0000-0000-000000000012',
+         'a1120000-0000-0000-0000-000000000013']::uuid[]);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.capability_matrices (investigation_id, title, us_label, rivals)
+    values ('a1120000-0000-0000-0000-000000000001', 'Again', 'Helios',
+            array['a1120000-0000-0000-0000-000000000011']::uuid[])$$,
+  'an investigation has one matrix', 'capability_matrices_investigation_key');
+
+insert into ouroboros.matrix_rows (id, matrix_id, capability, sort_order, gap_severity, severity_derivation)
+select ('a1120000-0000-0000-0000-00000000030' || r.n)::uuid, 'a1120000-0000-0000-0000-000000000201',
+       r.capability, r.n, r.severity, r.derivation
+  from (values
+    (1, 'Docking in >8 m/s gusts', 'high', 'us partial · best rival shipping (Skylink) · the churn driver'),
+    (2, 'Visual-inertial approach (no beacon)', 'high', 'us none · two rivals shipping (Skylink, AeroMesh)'),
+    (3, 'Abort & retry recovery logic', 'med', 'us partial · best rival shipping (Skylink) · lower field impact'),
+    (4, 'OTA resilience (A/B + rollback)', 'wip', 'us in flight · best rival shipping (Skylink)'),
+    (5, 'Recovery beacon over BLE', 'lead', 'us shipping · no rival shipping (AeroMesh unknown)')
+  ) as r (n, capability, severity, derivation);
+
+-- The grid, as the card prints it: one cell per row and subject. `null` is us.
+insert into ouroboros.matrix_cells (investigation_id, matrix_id, row_id, competitor_id, status, note)
+select 'a1120000-0000-0000-0000-000000000001', 'a1120000-0000-0000-0000-000000000201',
+       ('a1120000-0000-0000-0000-00000000030' || g.n)::uuid, g.competitor_id, g.status, g.note
+  from (values
+    (1, null::uuid, 'partial', null::text),
+    (1, 'a1120000-0000-0000-0000-000000000011', 'shipping', null),
+    (1, 'a1120000-0000-0000-0000-000000000012', 'partial', null),
+    (1, 'a1120000-0000-0000-0000-000000000013', 'none', null),
+    (2, null, 'none', null),
+    (2, 'a1120000-0000-0000-0000-000000000011', 'shipping', null),
+    (2, 'a1120000-0000-0000-0000-000000000012', 'shipping', null),
+    (2, 'a1120000-0000-0000-0000-000000000013', 'partial', 'beta'),
+    (3, null, 'partial', null),
+    (3, 'a1120000-0000-0000-0000-000000000011', 'shipping', null),
+    (3, 'a1120000-0000-0000-0000-000000000012', 'partial', null),
+    (3, 'a1120000-0000-0000-0000-000000000013', 'none', null),
+    (4, null, 'wip', 'in flight'),
+    (4, 'a1120000-0000-0000-0000-000000000011', 'shipping', null),
+    (4, 'a1120000-0000-0000-0000-000000000012', 'none', null),
+    (4, 'a1120000-0000-0000-0000-000000000013', 'none', null),
+    (5, null, 'shipping', null),
+    (5, 'a1120000-0000-0000-0000-000000000011', 'none', null),
+    (5, 'a1120000-0000-0000-0000-000000000012', 'unknown', null),
+    (5, 'a1120000-0000-0000-0000-000000000013', 'none', null)
+  ) as g (n, competitor_id, status, note);
+
+-- Every cell but the unknown one cites a source: Skylink's gust cell the teardown and the archived
+-- diff ([01][02]), our cells the blame ([03]), the rest the field comparison ([04]).
+insert into ouroboros.matrix_cell_sources (investigation_id, cell_id, source_id)
+select c.investigation_id, c.id, s.source_id
+  from ouroboros.matrix_cells c
+  join ouroboros.matrix_rows r on r.id = c.row_id
+  cross join lateral (
+    select unnest(case
+             when c.competitor_id is null then array['a1120000-0000-0000-0000-000000000103']
+             when c.competitor_id = 'a1120000-0000-0000-0000-000000000011' and r.sort_order = 1
+               then array['a1120000-0000-0000-0000-000000000101', 'a1120000-0000-0000-0000-000000000102']
+             else array['a1120000-0000-0000-0000-000000000104'] end)::uuid as source_id
+  ) s
+ where c.matrix_id = 'a1120000-0000-0000-0000-000000000201' and c.status <> 'unknown';
+
+set constraints ouroboros.matrix_cells_cited, ouroboros.matrix_rows_complete immediate;
+set constraints ouroboros.matrix_cells_cited, ouroboros.matrix_rows_complete deferred;
+
+select pg_temp.must_hold(
+  (select m.us_label || ' (us)|' || array_to_string(array(select c.name from unnest(m.rivals) with ordinality as r(id, ord)
+                                                            join ouroboros.competitors c on c.id = r.id order by r.ord), '|')
+          = 'Helios (us)|Skylink|AeroMesh|Novum'
+     from ouroboros.capability_matrices m where m.id = 'a1120000-0000-0000-0000-000000000201'),
+  'the matrix''s columns read Helios (us) · Skylink · AeroMesh · Novum, in order');
+
+select pg_temp.must_hold(
+  (select array_agg(r.capability || '|'
+                    || (select string_agg(case c.status when 'shipping' then '●' when 'partial' then '◐'
+                                                        when 'none' then '○' when 'unknown' then '?'
+                                                        when 'wip' then '◐' end
+                                          || ' ' || coalesce(c.note, c.status), '|'
+                                          order by coalesce(array_position(m.rivals, c.competitor_id), 0))
+                          from ouroboros.matrix_cells c where c.row_id = r.id)
+                    || '|' || upper(r.gap_severity)
+                    order by r.sort_order)
+          = array['Docking in >8 m/s gusts|◐ partial|● shipping|◐ partial|○ none|HIGH',
+                  'Visual-inertial approach (no beacon)|○ none|● shipping|● shipping|◐ beta|HIGH',
+                  'Abort & retry recovery logic|◐ partial|● shipping|◐ partial|○ none|MED',
+                  'OTA resilience (A/B + rollback)|◐ in flight|● shipping|○ none|○ none|WIP',
+                  'Recovery beacon over BLE|● shipping|○ none|? unknown|○ none|LEAD']
+          and bool_and(btrim(r.severity_derivation) <> '')
+     from ouroboros.matrix_rows r
+     join ouroboros.capability_matrices m on m.id = r.matrix_id
+    where m.id = 'a1120000-0000-0000-0000-000000000201'),
+  'RS-127''s matrix round-trips exactly — five capabilities × four subjects, statuses, notes and severities, each severity with its derivation');
+
+select pg_temp.must_hold(
+  (select count(*) = 19 from ouroboros.matrix_cells c
+    where c.matrix_id = 'a1120000-0000-0000-0000-000000000201' and c.status <> 'unknown'
+      and exists (select 1 from ouroboros.matrix_cell_sources l where l.cell_id = c.id))
+   and (select string_agg('[' || lpad(s.cite_no::text, 2, '0') || ']', '' order by s.cite_no)
+          = '[01][02]'
+          from ouroboros.matrix_cell_sources l
+          join ouroboros.matrix_cells c    on c.id = l.cell_id
+          join ouroboros.matrix_rows r     on r.id = c.row_id and r.sort_order = 1
+          join ouroboros.source_records s  on s.id = l.source_id
+         where c.competitor_id = 'a1120000-0000-0000-0000-000000000011'),
+  'all nineteen stated cells are cited, Skylink''s gust cell by the teardown and the archived diff');
+
+-- --- the citation discipline ---------------------------------------------------------------
+
+-- A cell that says something cannot commit uncited…
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       update ouroboros.matrix_cells set status = 'partial'
+        where row_id = 'a1120000-0000-0000-0000-000000000305'
+          and competitor_id = 'a1120000-0000-0000-0000-000000000012';
+       set constraints ouroboros.matrix_cells_cited immediate;
+     end $x$ $q$,
+  'an unknown cell moved to a status without a citation fails the write', 'matrix_cells_cited');
+
+-- …nor lose its last citation…
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       delete from ouroboros.matrix_cell_sources l
+        using ouroboros.matrix_cells c
+        where c.id = l.cell_id and c.row_id = 'a1120000-0000-0000-0000-000000000304' and c.competitor_id is null;
+       set constraints ouroboros.matrix_cell_sources_cited immediate;
+     end $x$ $q$,
+  'a stated cell''s last citation cannot be removed', 'matrix_cells_cited');
+
+-- …but unknown needs none, and one of two citations can go.
+do $x$ begin
+  update ouroboros.matrix_cells set status = 'unknown', note = null
+   where row_id = 'a1120000-0000-0000-0000-000000000304'
+     and competitor_id = 'a1120000-0000-0000-0000-000000000013';
+  delete from ouroboros.matrix_cell_sources l
+   using ouroboros.matrix_cells c
+   where c.id = l.cell_id and c.row_id = 'a1120000-0000-0000-0000-000000000304'
+     and c.competitor_id = 'a1120000-0000-0000-0000-000000000013';
+  delete from ouroboros.matrix_cell_sources
+   where source_id = 'a1120000-0000-0000-0000-000000000101';
+  set constraints ouroboros.matrix_cells_cited, ouroboros.matrix_cell_sources_cited immediate;
+  set constraints ouroboros.matrix_cells_cited, ouroboros.matrix_cell_sources_cited deferred;
+end $x$;
+
+-- A row is answered for every subject: a missing cell is a blank, and a blank is not unknown.
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       insert into ouroboros.matrix_rows (matrix_id, capability, sort_order, gap_severity, severity_derivation)
+       values ('a1120000-0000-0000-0000-000000000201', 'Night docking', 6, 'low', 'us unknown');
+       insert into ouroboros.matrix_cells (investigation_id, matrix_id, row_id, competitor_id, status)
+       select 'a1120000-0000-0000-0000-000000000001', matrix_id, id, null, 'unknown'
+         from ouroboros.matrix_rows where capability = 'Night docking';
+       set constraints ouroboros.matrix_rows_complete immediate;
+     end $x$ $q$,
+  'a row with a subject left blank fails the write', 'matrix_rows_complete');
+
+do $x$ begin
+  insert into ouroboros.matrix_rows (id, matrix_id, capability, sort_order, gap_severity, severity_derivation)
+  values ('a1120000-0000-0000-0000-000000000306', 'a1120000-0000-0000-0000-000000000201', 'Night docking', 6,
+          'low', 'nothing found for any subject');
+  insert into ouroboros.matrix_cells (investigation_id, matrix_id, row_id, competitor_id, status)
+  select 'a1120000-0000-0000-0000-000000000001', 'a1120000-0000-0000-0000-000000000201',
+         'a1120000-0000-0000-0000-000000000306', s.competitor_id, 'unknown'
+    from (select null::uuid as competitor_id
+          union all select unnest(rivals) from ouroboros.capability_matrices
+                     where id = 'a1120000-0000-0000-0000-000000000201') s;
+  set constraints ouroboros.matrix_rows_complete, ouroboros.matrix_cells_cited immediate;
+  set constraints ouroboros.matrix_rows_complete, ouroboros.matrix_cells_cited deferred;
+end $x$;
+
+-- Adding a column leaves every row short until it is answered.
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       update ouroboros.capability_matrices set rivals = rivals || 'a1120000-0000-0000-0000-000000000014'::uuid
+        where id = 'a1120000-0000-0000-0000-000000000201';
+       set constraints ouroboros.capability_matrices_complete immediate;
+     end $x$ $q$,
+  'a new rival column needs a cell in every row', 'matrix_rows_complete');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.matrix_cells (investigation_id, matrix_id, row_id, competitor_id, status)
+    values ('a1120000-0000-0000-0000-000000000001', 'a1120000-0000-0000-0000-000000000201',
+            'a1120000-0000-0000-0000-000000000301', 'a1120000-0000-0000-0000-000000000014', 'unknown')$$,
+  'a cell''s rival is one of the matrix''s columns', 'matrix_cells_subject_in_matrix');
+select pg_temp.must_reject(
+  $$insert into ouroboros.matrix_cells (investigation_id, matrix_id, row_id, competitor_id, status)
+    values ('a1120000-0000-0000-0000-000000000001', 'a1120000-0000-0000-0000-000000000201',
+            'a1120000-0000-0000-0000-000000000301', null, 'unknown')$$,
+  'one cell per row and subject — us included', 'matrix_cells_row_subject_key');
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       insert into ouroboros.matrix_rows (id, matrix_id, capability, sort_order, gap_severity, severity_derivation)
+       values ('a1120000-0000-0000-0000-000000000307', 'a1120000-0000-0000-0000-000000000201', 'Swarm docking', 7,
+               'low', 'x');
+       insert into ouroboros.matrix_cells (investigation_id, matrix_id, row_id, competitor_id, status)
+       values ('a1120000-0000-0000-0000-000000000002', 'a1120000-0000-0000-0000-000000000201',
+               'a1120000-0000-0000-0000-000000000307', null, 'unknown');
+     end $x$ $q$,
+  'a cell belongs to its matrix''s investigation', 'matrix_cells_matrix_fk');
+select pg_temp.must_reject(
+  $$update ouroboros.matrix_cells set status = 'rumoured'
+     where row_id = 'a1120000-0000-0000-0000-000000000301' and competitor_id is null$$,
+  'a cell status is one of the five', 'matrix_cells_status');
+select pg_temp.must_reject(
+  $$insert into ouroboros.matrix_cell_sources (investigation_id, cell_id, source_id)
+    select c.investigation_id, c.id, s.id
+      from ouroboros.matrix_cells c, ouroboros.source_records s
+     where c.row_id = 'a1120000-0000-0000-0000-000000000301' and c.competitor_id is null
+       and s.investigation_id = 'a1120000-0000-0000-0000-000000000002'$$,
+  'a cell cites only its own investigation''s sources', 'matrix_cell_sources_source_fk');
+
+-- --- severities and their derivations --------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.matrix_rows set gap_severity = 'low' where id = 'a1120000-0000-0000-0000-000000000303'$$,
+  'a severity does not change without its derivation', 'matrix_rows_severity_rederived');
+select pg_temp.must_reject(
+  $$update ouroboros.matrix_rows set severity_derivation = ' ' where id = 'a1120000-0000-0000-0000-000000000303'$$,
+  'a severity is never stored without a derivation', 'matrix_rows_severity_derivation_present');
+select pg_temp.must_reject(
+  $$update ouroboros.matrix_rows set gap_severity = 'critical', severity_derivation = 'x'
+     where id = 'a1120000-0000-0000-0000-000000000303'$$,
+  'a severity is high, med, low, wip or lead', 'matrix_rows_gap_severity');
+
+update ouroboros.matrix_rows
+   set gap_severity = 'high', severity_derivation = 'us partial · best rival shipping · abort is now a churn driver'
+ where id = 'a1120000-0000-0000-0000-000000000303';
+
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       delete from ouroboros.competitors where id = 'a1120000-0000-0000-0000-000000000012';
+       set constraints ouroboros.matrix_cells_competitor_fk immediate;
+     end $x$ $q$,
+  'a rival a matrix cites cannot be removed from under it', 'matrix_cells_competitor_fk');
+
+-- --- the application role --------------------------------------------------------------------
+set local role ouroboros_app;
+
+select pg_temp.must_hold(
+  (select current_user = 'ouroboros_app'),
+  'the assertions below really are the application role''s');
+
+insert into ouroboros.competitor_watches (competitor_id, source_kind, url)
+values ('a1120000-0000-0000-0000-000000000014', 'github_releases', 'https://github.com/kestrel/firmware/releases');
+select pg_temp.must_hold(
+  (select source_kinds = array['release_notes', 'changelog', 'github_releases', 'filings']
+     from ouroboros.competitor_tracker_summary where organization_id = 'org-v112'),
+  'the application role manages watches and reads the sub-line');
+
+select pg_temp.must_raise(
+  $$update ouroboros.competitor_snapshots set content_ref = 'x'$$,
+  '42501', 'the application role cannot edit a snapshot');
+select pg_temp.must_raise(
+  $$delete from ouroboros.competitor_snapshots$$,
+  '42501', 'the application role cannot delete a snapshot');
+select pg_temp.must_raise(
+  $$delete from ouroboros.matrix_cells$$,
+  '42501', 'the application role cannot blank a cell');
+select pg_temp.must_raise(
+  $$delete from ouroboros.matrix_rows$$,
+  '42501', 'the application role cannot delete a matrix row');
+
+reset role;
+
+-- --- the workspace takes everything with it -------------------------------------------------
+
+delete from ouroboros.organization where "id" in ('org-v112', 'org-v112b');
+set constraints ouroboros.matrix_cells_cited, ouroboros.matrix_cell_sources_cited,
+                ouroboros.matrix_rows_complete, ouroboros.matrix_cells_complete,
+                ouroboros.capability_matrices_complete, ouroboros.matrix_cells_competitor_fk,
+                ouroboros.source_records_snapshot_fk immediate;
+set constraints ouroboros.matrix_cells_cited, ouroboros.matrix_cell_sources_cited,
+                ouroboros.matrix_rows_complete, ouroboros.matrix_cells_complete,
+                ouroboros.capability_matrices_complete, ouroboros.matrix_cells_competitor_fk,
+                ouroboros.source_records_snapshot_fk deferred;
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.competitors where organization_id in ('org-v112', 'org-v112b'))
+   and (select count(*) = 0 from ouroboros.competitor_snapshots
+         where watch_id in ('a1120000-0000-0000-0000-000000000021', 'a1120000-0000-0000-0000-000000000029'))
+   and (select count(*) = 0 from ouroboros.capability_matrices
+         where id = 'a1120000-0000-0000-0000-000000000201')
+   and (select count(*) = 0 from ouroboros.matrix_cells
+         where matrix_id = 'a1120000-0000-0000-0000-000000000201'),
+  'deleting a workspace deletes its rivals, watches, snapshots and matrices — cited diffs included');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

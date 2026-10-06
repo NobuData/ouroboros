@@ -321,7 +321,7 @@ issue assigned. Complexity chips: **XS · S · M · L**.
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CK.1 | #608 ✅ | 🟢 Done | ouroboros-db: [CK.1] Investigations & kind registry schema | RS-### entities: kind, depth, tools, status, provenance, spend | mvp, research, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
 | CK.2 | #609 ✅ | 🟢 Done | ouroboros-db: [CK.2] Citation ledger — source records & claims | Archived sources (external+internal URIs), claim→citation links | mvp, research, db | N (after CK.1) | Y | M | ouroboros-db |
-| CK.3 | #610 | 🟡 Open | ouroboros-db: [CK.3] Capability matrices & competitor watch schema | Matrix cells with citations; rival registry, watched sources, diffs | mvp, research, db | N (after CK.2) | Y | M | ouroboros-db |
+| CK.3 | #610 ✅ | 🟢 Done | ouroboros-db: [CK.3] Capability matrices & competitor watch schema | Matrix cells with citations; rival registry, watched sources, diffs | mvp, research, db | N (after CK.2) | Y | M | ouroboros-db |
 | CK.4 | #611 | 🟡 Open | ouroboros-db: [CK.4] Regression baselines & watch items | Release baselines, metric windows, drift states, bisect results | mvp, research, db | N (after CK.1, AS.1) | Y | M | ouroboros-db |
 | CK.5 | #612 | 🟡 Open | ouroboros-db: [CK.5] Roadmap docs & suggested changes | Versioned doc entities, projection state, writeback refs, suggestions | mvp, research, db | N (after CK.1, AK.1) | Y | M | ouroboros-db |
 | CK.6 | #613 | 🟡 Open | ouroboros-db: [CK.6] Research dev seeds — mockup-22 parity + probes | RS-118/121/124/127, 44-source ledger, matrix, watch rows, doc; ci checks | mvp, research, db, ci | N (after CK.2–CK.5, #24) | Y | M | ouroboros-db, .github |
@@ -402,7 +402,9 @@ brief_claims: "gap is control, not sensors" ──▶ {[07],[12],[31],[git]}   (
 
 ### Issue CK.3 — ouroboros-db: [CK.3] Capability matrices & competitor watch schema
 
-> **GitHub issue:** #610 · **Status:** 🟡 Open · **Parent epic:** #603
+> **GitHub issue:** #610 ✅ · **Status:** 🟢 Done · **Parent epic:** #603
+>
+> **Delivered (#610, `V112__capability_matrices_competitor_watches.sql` — no REST/UI change, no seed; CK.6 #613 seeds the matrix and registry):** `competitors` (workspace FK, `name` unique case-insensitively, `meta` `{site, aliases, notes}` checked by `competitor_meta_valid()`); `competitor_watches` (`source_kind` `release_notes|changelog|github_releases|rss|filings|page`, `http(s)` `url`, nullable `selector`, `cadence` `hourly|daily|weekly`, `last_snapshot_at` moved by each snapshot, `enabled`, `render_required`; one watch per rival/kind/url/selector; a scheduler due-index); `competitor_snapshots` (linear chain per watch via `previous_id` — one first, one successor, same watch, later `taken_at` — `sha256:` `content_hash`, `content_ref`, `diff` ≤ 64 KiB present **exactly when the hash changed**; never updated). `source_records.snapshot_id` makes a `competitor_diff` source cite the snapshot carrying the diff (required for that kind only, same workspace, diff present). `capability_matrices` (one per investigation, `us_label`, ordered `rivals` columns of the workspace's competitors), `matrix_rows` (`capability`, `sort_order`, `gap_severity` `high|med|low|wip|lead` with a required `severity_derivation` that must change with it), `matrix_cells` (one per row × subject, `competitor_id` null = us, `status` `shipping|partial|none|unknown|wip`, `note`), `matrix_cell_sources` (composite keys — a cell cites its own investigation's sources). **Deferred constraint triggers:** `matrix_cells_cited` (non-`unknown` needs ≥ 1 citation at commit; losing the last fails) and `matrix_rows_complete` (a cell for us and every rival — no blanks). Cited snapshots and rivals named by a matrix cannot be deleted (deferred FKs, so a workspace delete still cascades). The `competitor_tracker_summary` view computes `4 rivals watched · release notes, changelogs, filings` from enabled, fetchable watches. The matrix follows the mockup HTML (`Visual-inertial approach (no beacon)`, `OTA resilience (A/B + rollback)`, …), whose rows differ from the issue's ASCII sketch. Tests: `constraints.sql` V112 section — RS-127's 5 × 4 matrix round-trips exactly, two snapshots of a fixture page yield one diff cited by a `competitor_diff` source, and every vocabulary and refusal.
 
 - **Problem Statement:** The featured card's matrix and the tracker's rival
   registry are structured evidence, not markup (decisions V7, V9).
@@ -1461,7 +1463,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    BI.2/BJ.1 (#433/#437); AH dispatch (#253); #19/#24/#41/#46/#54;
    BA-B.3/C.3/D.5 (unfiled).
 2. **Phase 1 — Domain:** CK.1 (#608) ✅ → { CK.2 (#609) ✅ ⊕ CK.4 (#611) ⊕
-   CK.5 (#612) } → CK.3 (#610) → CK.6 (#613)
+   CK.5 (#612) } → CK.3 (#610) ✅ → CK.6 (#613)
 3. **Phase 2 — Tools:** CL.1 (#614) → { CL.2 (#615) ⊕ CL.3 (#616) ⊕
    CL.4 (#617) ⊕ CL.5 (#618) ⊕ CL.6 (#619) }
 4. **Phase 3 — Engine & pipeline:** CM.3 (#622) ✅ → CM.1 (#620) →
