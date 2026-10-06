@@ -359,7 +359,7 @@ insert into ouroboros.repo_detection_scans
 select '5eed0053-0000-4000-8000-000000000001'::uuid, org."id", 'acme-robotics/helios-firmware', 1,
        now() - interval '20 minutes', 38000,
        '{"language": "1.0.0", "build": "1.0.0", "devcontainer": "1.0.0", "tests": "1.0.0",
-         "protected_paths": "1.0.0", "conventions": "1.0.0"}'::jsonb,
+         "protected_paths": "1.0.0", "conventions": "1.1.0"}'::jsonb,
        9
   from ouroboros.organization org
  where org."slug" = 'acme-onboarding'
@@ -423,9 +423,9 @@ select ('5eed0054-0000-4000-8000-' || lpad(seed.ordinal::text, 12, '0'))::uuid,
             "probes": ["tree"],
             "confidence": "medium"}'),
          (6, 'conventions', 'warn',
-          'No CONTRIBUTING.md — we''ll learn your conventions from merged PRs instead.',
+          'No CONTRIBUTING.md — a coming knowledge release will learn your conventions from merged PRs.',
           '{"contributing": null, "codeowners": null, "commitConvention": null,
-            "pack": "conventions", "packVersion": "1.0.0",
+            "pack": "conventions", "packVersion": "1.1.0",
             "probes": ["tree"],
             "confidence": "high"}')
        ) as seed (ordinal, row_key, verdict, value, evidence)

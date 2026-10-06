@@ -23,6 +23,7 @@ export default async function Page({
   return (
     <GetStartedScreen
       abilities={readings.abilities}
+      detection={readings.detection}
       reposFailure={readings.reposFailure}
       repo={readings.repo}
       wizard={readings.wizard}

@@ -101,6 +101,11 @@ const CASES: Readonly<Record<string, RouteCase>> = {
   "GET /api/v1/onboarding/detection": { tail: "/detection" },
   "GET /api/v1/onboarding/detection/scans/:scanSeq": { tail: "/detection/scans/1" },
   "POST /api/v1/onboarding/detection/scan": { tail: "/detection/scan" },
+  "PUT /api/v1/onboarding/detection/protected-paths": {
+    tail: "/detection/protected-paths",
+    body: { globs: ["boot/**"] },
+  },
+  "GET /api/v1/onboarding/surfacing": { tail: "/surfacing" },
 };
 
 /** A route's verb, ready to send. */
@@ -520,6 +525,22 @@ describe("onboarding isolation: two workspaces, one repository, nothing shared",
         templates: null,
         queue: null,
         policies: null,
+      });
+    });
+  });
+
+  describe("Bob's protected paths (#391)", () => {
+    it("saves his own list for the same repository, leaving Alice's edited glob where it is", async () => {
+      const saved = bodyOf<DetectionResource>(
+        await bobSends("put", "/detection/protected-paths")
+          .send({ globs: ["docs/**"] })
+          .expect(200),
+      );
+
+      expect(saved.protectedPaths).toEqual([{ glob: "docs/**", source: "edited" }]);
+      expect(JSON.stringify(saved)).not.toContain(ALICE_PROTECTED);
+      expect(await entities(bob.workspace.id)).toMatchObject({
+        paths: [{ path_glob: "docs/**", source: "edited" }],
       });
     });
   });

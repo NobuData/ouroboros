@@ -663,6 +663,13 @@
 #   only the mailing kinds log sends             drop notification_route_sends_kind
 #   a settled send is in shape                   drop notification_route_sends_settled_shape
 #
+# #391 (BC.2, V105) records a person's edit of a repository's protected-path list, after which
+# scans stop suggesting. One probe for the one rule it adds:
+#
+#   V105 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   an edit never predates the wizard state      drop onboarding_state_protected_paths_edited_after_created
+#
 # #457 (BM.1, V093) adds the decision domain — versioned kind declarations and the typed items
 # filed against them. One probe per rule the inbox's truthfulness rests on:
 #
@@ -3453,6 +3460,11 @@ expect_red 'a route send may be logged for any kind' \
 expect_red 'a settled route send may be in any shape' \
   'a sent claim is settled' \
   'alter table ouroboros.notification_route_sends drop constraint notification_route_sends_settled_shape;'
+
+# V105 (#391). A person's protected-path edit, recorded on the wizard state.
+expect_red 'a protected-path edit may predate the wizard state' \
+  'a protected-path edit cannot predate the wizard state' \
+  'alter table ouroboros.onboarding_state drop constraint onboarding_state_protected_paths_edited_after_created;'
 
 printf '\n'
 if check_summary; then

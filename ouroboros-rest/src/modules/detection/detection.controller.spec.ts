@@ -5,7 +5,7 @@ import { HTTP_CODE_METADATA } from "@nestjs/common/constants";
 import { Reflector } from "@nestjs/core";
 
 import type { Organization } from "../db/schema";
-import { CONTRIBUTORS, REQUIRED_ROLES } from "../tenancy/roles.guard";
+import { ADMINISTRATORS, CONTRIBUTORS, REQUIRED_ROLES } from "../tenancy/roles.guard";
 import { DetectionController } from "./detection.controller";
 import type { DetectionService } from "./detection.service";
 
@@ -22,6 +22,7 @@ describe("the detection controller", () => {
       read: jest.fn().mockResolvedValue(RESOURCE),
       readScan: jest.fn().mockResolvedValue(RESOURCE),
       start: jest.fn().mockResolvedValue({ joined: false }),
+      editProtectedPaths: jest.fn().mockResolvedValue(RESOURCE),
     } as unknown as jest.Mocked<DetectionService>;
 
     controller = new DetectionController(service);
@@ -31,10 +32,12 @@ describe("the detection controller", () => {
     await controller.read(WORKSPACE, QUERY);
     await controller.readScan(WORKSPACE, { scanSeq: 2 }, QUERY);
     await controller.scan(WORKSPACE, QUERY);
+    await controller.editProtectedPaths(WORKSPACE, QUERY, { globs: ["boot/**"] });
 
     expect(service.read).toHaveBeenCalledWith("org-1", QUERY.repo);
     expect(service.readScan).toHaveBeenCalledWith("org-1", QUERY.repo, 2);
     expect(service.start).toHaveBeenCalledWith("org-1", QUERY.repo);
+    expect(service.editProtectedPaths).toHaveBeenCalledWith("org-1", QUERY.repo, ["boot/**"]);
   });
 
   it("asks contributors to scan, and lets any member read", () => {
@@ -43,6 +46,14 @@ describe("the detection controller", () => {
     expect(reflector.get<string[]>(REQUIRED_ROLES, controller.scan)).toEqual([...CONTRIBUTORS]);
     expect(reflector.get<string[]>(REQUIRED_ROLES, controller.read)).toBeUndefined();
     expect(reflector.get<string[]>(REQUIRED_ROLES, controller.readScan)).toBeUndefined();
+  });
+
+  it("asks an owner or an admin to edit the protected paths — they are what guardrails refuse", () => {
+    const reflector = new Reflector();
+
+    expect(reflector.get<string[]>(REQUIRED_ROLES, controller.editProtectedPaths)).toEqual([
+      ...ADMINISTRATORS,
+    ]);
   });
 
   it("answers a scan 202 — it runs in the background", () => {

@@ -4,7 +4,7 @@ import type { Workspace } from "@/app/api/access";
 import { ApiError } from "@/app/api/errors";
 
 import { membership, sessionUser } from "../helpers/login";
-import { REPO, wizard } from "../helpers/onboarding";
+import { REPO, seededCard, wizard } from "../helpers/onboarding";
 
 /**
  * `/get-started`'s first paint (#390): which repository — the query's, else the first mirrored
@@ -14,10 +14,12 @@ import { REPO, wizard } from "../helpers/onboarding";
 vi.mock("server-only", () => ({}));
 
 const read = vi.fn();
+const readDetection = vi.fn();
 const surfacing = vi.fn();
 const readEnablement = vi.fn();
 
 vi.mock("@/app/api/onboarding", () => ({ onboarding: { read: (repo: string) => read(repo), surfacing: () => surfacing() } }));
+vi.mock("@/app/api/detection", () => ({ detection: { read: (repo: string) => readDetection(repo) } }));
 vi.mock("@/app/api/enablement", () => ({ readEnablement: (tenant: string) => readEnablement(tenant) }));
 
 const { readGetStarted, readGetStartedOffer } = await import("@/app/get-started/data");
@@ -41,6 +43,7 @@ function listed(orgs: { login: string; enabled: boolean; repos: { name: string; 
 
 beforeEach(() => {
   read.mockReset().mockResolvedValue(wizard());
+  readDetection.mockReset().mockResolvedValue(seededCard());
   surfacing.mockReset().mockResolvedValue({ offer: true, reason: "fresh_organization" });
   readEnablement.mockReset().mockResolvedValue(
     listed([
@@ -54,10 +57,12 @@ describe("readGetStarted", () => {
     expect(await readGetStarted(access(), REPO)).toEqual({
       repo: REPO,
       wizard: { ok: true, value: wizard() },
+      detection: { ok: true, value: seededCard() },
       reposFailure: null,
       abilities: { contribute: true, administer: true },
     });
     expect(readEnablement).not.toHaveBeenCalled();
+    expect(readDetection).toHaveBeenCalledWith(REPO);
   });
 
   it("opens on the first enabled repository when the query names none — or names one that is not", async () => {
@@ -81,8 +86,14 @@ describe("readGetStarted", () => {
   it("asks nothing of the wizard when the workspace has mirrored no repository", async () => {
     readEnablement.mockResolvedValue(listed([]));
 
-    expect(await readGetStarted(access(), undefined)).toMatchObject({ repo: null, wizard: null, reposFailure: null });
+    expect(await readGetStarted(access(), undefined)).toMatchObject({
+      repo: null,
+      wizard: null,
+      detection: null,
+      reposFailure: null,
+    });
     expect(read).not.toHaveBeenCalled();
+    expect(readDetection).not.toHaveBeenCalled();
   });
 
   it("says why when the repository list could not be read", async () => {
@@ -95,6 +106,15 @@ describe("readGetStarted", () => {
     read.mockRejectedValue(new ApiError(503, "unavailable", "The service is busy."));
 
     expect((await readGetStarted(access(), REPO)).wizard).toEqual({ ok: false, reason: "The service is busy." });
+  });
+
+  it("carries a detection card that could not be read as a reason, beside a wizard that could (#391)", async () => {
+    readDetection.mockRejectedValue(new ApiError(503, "unavailable", "Detection is busy."));
+
+    const readings = await readGetStarted(access(), REPO);
+
+    expect(readings.wizard).toEqual({ ok: true, value: wizard() });
+    expect(readings.detection).toEqual({ ok: false, reason: "Detection is busy." });
   });
 
   it("knows a member may move the wizard on but not enable a repository, and a viewer neither", async () => {

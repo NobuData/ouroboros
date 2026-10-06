@@ -7364,5 +7364,39 @@ describes a workspace that is not set up yet.
   `GET /api/v1/onboarding/surfacing` offers the wizard; any member may dismiss it, and the dismissal
   is the service's fact.
 
-The step cards (detection, template tiles, first issue, defaults) arrive with BC.2–BC.5
-(#391–#394); steps 1–2's embedded flows, completion and the e2e leg with BC.6 (#395).
+### The detection card
+
+*"We already figured this out"* ([#391](https://github.com/NobuData/ouroboros/issues/391), BC.2 —
+[`detection-card.tsx`](app/get-started/detection-card.tsx), rules in
+[`detection-view.ts`](app/get-started/detection-view.ts)) sits in the step content under the step
+panel, over BB.1's detection read (#384), first painted with the page and then re-read on its own
+I.8 poll (`GET /api/onboarding/detection?repo=` —
+[`detection-poll.ts`](app/get-started/detection-poll.ts); every 2 s while a scan runs, the family's
+default otherwise).
+
+- **Rows show their work**: mark (✓ ! ✗, or ? for undetermined), label, the mono value with its
+  trailing parenthetical dimmed (`west + twister (found west.yml)`), and the service's
+  `detected`/`measured` chip verbatim — the devcontainer row never claims a snapshot or a timing.
+  The `scanned in 38s` tag is the scan's real `durationMs`; `✓ step 2 done` follows the rail.
+- **Evidence** — each row's *evidence* control (a real button, `aria-expanded`; Escape or a press
+  outside closes it and gives the focus back) lists the probe hits, the file found, any probe that
+  did not finish, the rule pack and its confidence.
+- **Re-scan** (contributors) runs **beside** the stored scan: the progress meter shows above the
+  rows, which stay until the poll reads the new `scanSeq`. It is debounced — held while a scan is
+  asked for or running, and for the service's 30 s window after one starts, counting down — and a
+  refusal is shown in the service's words. Never scanned, the button is *Scan this repository*;
+  after a failure, *Retry the scan*.
+- **Protected paths** is the one input: *edit* opens the shared glob editor
+  ([`app/globs/`](app/globs/)) inline under the row, with the consequence stated — *These paths are
+  refused by run guardrails* — and its match preview kept to this repository. An invalid glob never
+  joins the list (the editor's designed error); *Save* (owner/admin — others see why) replaces the
+  list through `PUT /api/v1/onboarding/detection/protected-paths`, after which scans stop
+  suggesting.
+- **Conventions** is phrased as a future capability and links the knowledge page; a line stored by
+  a scan before #391 (*"we'll learn your conventions…"*) is re-phrased the same way.
+- **States** — never scanned, the first scan running, a partial scan (a line above the rows, each
+  undetermined row marked and its tag shown, never hidden), a failed scan with retry, and a card
+  that could not be read.
+
+The other step cards (template tiles, first issue, defaults) arrive with BC.3–BC.5 (#392–#394);
+steps 1–2's embedded flows, completion and the e2e leg with BC.6 (#395).

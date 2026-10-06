@@ -278,6 +278,280 @@
   font-size: var(--t-xs);
 }
 
+/* ---------- the detection card (BC.2, #391) ---------- */
+
+/*
+ * Mockup 13's "We already figured this out": rows of mark · label · mono value, each with its
+ * dim parenthetical, the detected/measured chip and an evidence control. The mockup's 12.5px row
+ * type is 0.78125rem, so the 125 % step scales it like the rest of the frame.
+ */
+
+.detect {
+  flex: none;
+}
+
+/* The head's title, tag, duration and re-scan wrap rather than clip on a narrow screen. */
+.detect > .ou-card__head {
+  flex-wrap: wrap;
+  row-gap: var(--sp-4);
+}
+
+.detect__trail {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.detect__line {
+  max-width: 70ch;
+  margin: 0;
+  color: var(--ink-mut);
+  line-height: var(--lh-body);
+}
+
+.detect__empty {
+  padding: var(--sp-4) 0;
+}
+
+.detect__empty-title {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--t-md);
+}
+
+.detect__failure {
+  margin: 0 0 var(--sp-6);
+  color: var(--err);
+  font-size: var(--t-sm);
+}
+
+/* A partial scan says so above its rows; the undetermined rows below are marked, not hidden. */
+.detect__partial {
+  margin: 0 0 var(--sp-6);
+  padding: var(--sp-4) var(--sp-6);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.detect-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-6);
+}
+
+.detect-progress__line {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.detect__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.detect-row {
+  padding: var(--sp-5) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.detect-row:last-child {
+  border-bottom: 0;
+}
+
+.detect-row__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-6);
+}
+
+.detect-row__mark {
+  flex: none;
+  width: 1rem;
+  font-size: var(--t-sm);
+  text-align: center;
+}
+
+.detect-row--ok .detect-row__mark {
+  color: var(--ok);
+}
+
+.detect-row--warn .detect-row__mark,
+.detect-row--undetermined .detect-row__mark {
+  color: var(--warn);
+}
+
+.detect-row--missing .detect-row__mark {
+  color: var(--err);
+}
+
+.detect-row__label {
+  flex: none;
+  width: 8.125rem;
+  color: var(--ink-mut);
+  font-size: 0.78125rem;
+}
+
+.detect-row__value {
+  flex: 1;
+  min-width: 14rem;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: 0.78125rem;
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.detect-row__claim {
+  color: var(--ink-dim);
+}
+
+.detect-row__affix {
+  color: var(--ink-faint);
+}
+
+.detect-row__link {
+  color: var(--accent);
+}
+
+.detect-row__link:hover {
+  text-decoration: underline;
+}
+
+.detect-row__edit {
+  font-family: var(--f-mono);
+}
+
+.detect-row__chips {
+  display: flex;
+  flex: none;
+  gap: var(--sp-3);
+}
+
+/* ---------- a row's evidence ---------- */
+
+.detect-evidence {
+  flex: none;
+}
+
+/* Quiet and mono, like the mockup's affixes — a way to check the work, not a call to action. */
+.detect-evidence__toggle {
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  text-decoration: underline dotted;
+  cursor: pointer;
+}
+
+.detect-evidence__toggle:hover,
+.detect-evidence__toggle[aria-expanded="true"] {
+  color: var(--accent);
+}
+
+.detect-evidence__panel {
+  flex-basis: 100%;
+  margin-top: var(--sp-4);
+  margin-left: 1.75rem;
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--inset);
+  font-size: var(--t-xs);
+}
+
+.detect-evidence:has(.detect-evidence__panel) {
+  flex-basis: 100%;
+  order: 1;
+}
+
+.detect-evidence__line,
+.detect-evidence__meta {
+  margin: 0;
+  color: var(--ink-mut);
+  line-height: var(--lh-body);
+}
+
+.detect-evidence__path {
+  color: var(--ink);
+  font-family: var(--f-mono);
+}
+
+.detect-evidence__probes {
+  margin: var(--sp-2) 0;
+  padding-left: var(--sp-8);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  line-height: var(--lh-body);
+}
+
+.detect-evidence__probes--unfinished {
+  color: var(--warn);
+}
+
+.detect-evidence__probe {
+  overflow-wrap: anywhere;
+}
+
+.detect-evidence__meta {
+  margin-top: var(--sp-3);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+}
+
+/* ---------- the protected-paths editor ---------- */
+
+/* The highest-consequence control on the card: framed in the warn hue, its consequence first. */
+.detect-protect {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  margin-top: var(--sp-6);
+  margin-left: 1.75rem;
+  padding: var(--sp-7) var(--sp-8);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--ground);
+}
+
+.detect-protect__consequence {
+  max-width: 70ch;
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.detect-protect__term {
+  color: var(--warn);
+}
+
+.detect-protect__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+.detect-protect__status {
+  margin-left: var(--sp-4);
+  color: var(--ok);
+  font-family: var(--f-ui);
+  font-size: var(--t-xs);
+}
+
+.detect-protect__status--refused {
+  color: var(--err);
+}
+
 /* ---------- action bar (glow) ---------- */
 
 .wizard-bar {

@@ -17,6 +17,7 @@ const STATE = {
   created_at: new Date("2026-09-29T09:00:00.000Z"),
   updated_at: new Date("2026-09-29T10:00:00.000Z"),
   bypassed_at: null,
+  protected_paths_edited_at: null,
 } satisfies OnboardingState;
 
 const RAIL = deriveRail({

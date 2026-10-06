@@ -2034,11 +2034,40 @@ export interface paths {
          *     depends on (#101). Each scan is stored as the next `scanSeq`; earlier scans stay readable.
          *
          *     Protected-path suggestions are written as `suggested` policy rows the guardrails enforce;
-         *     a glob a person has edited is never overwritten.
+         *     a glob a person has edited is never overwritten, and once a person has saved the list
+         *     (`PUT …/protected-paths`, #391) no scan suggests for the repository again.
          *
          *     `owner`, `admin` or `member`.
          */
         post: operations["scanRepoDetection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/detection/protected-paths": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save a repository's protected-path list
+         * @description The detection card's inline glob editor
+         *     ([#391](https://github.com/NobuData/ouroboros/issues/391)). **These paths are refused by run
+         *     guardrails**: the `allowed_paths` check (#305) fails a change-set that touches one, so this
+         *     is the highest-consequence control on the card and is `owner` or `admin`.
+         *
+         *     The list **replaces** what is stored: every glob in it becomes `edited` (a person's),
+         *     every other — suggested or edited — is removed, and duplicates are dropped. From then on a
+         *     scan of the repository suggests nothing; the list is the person's. An empty list protects
+         *     nothing. Nothing is written when any glob is refused. Answers the card, re-read.
+         */
+        put: operations["editRepoProtectedPaths"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -14750,6 +14779,14 @@ export interface components {
             progress: components["schemas"]["RepoDetectionProgress"];
             /** @description True when a scan was already running and this request joined it. */
             joined: boolean;
+        };
+        /**
+         * ProtectedPathsEdit
+         * @description What `PUT /api/v1/onboarding/detection/protected-paths` takes — the whole list.
+         */
+        ProtectedPathsEdit: {
+            /** @description The globs (`boot/**`), relative to the repository root. Empty protects nothing. */
+            globs: string[];
         };
         /**
          * InterventionCause
@@ -33985,6 +34022,169 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    editRepoProtectedPaths: {
+        parameters: {
+            query: {
+                /**
+                 * @description The repository whose wizard this is, as `owner/name` — `acme-robotics/helios-firmware`
+                 *     ([#385](https://github.com/NobuData/ouroboros/issues/385)). V067's `repo_ref` grammar;
+                 *     compared case-insensitively. Each repository has its own, independent wizard.
+                 * @example acme-robotics/helios-firmware
+                 */
+                repo: components["parameters"]["OnboardingRepo"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "globs": [
+                 *         "boot/**",
+                 *         "keys/**"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["ProtectedPathsEdit"];
+            };
+        };
+        responses: {
+            /** @description The card, with the list as stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepoDetection"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — a `member` or `viewer` cannot change what run guardrails refuse.
+             *     `details.role` is what you hold and `details.required` is what would have been enough.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `detection_glob_invalid` — one or more globs are not relative path patterns the
+             *     guardrails can enforce (blank, padded, absolute, a backslash, a `..` segment, a control
+             *     character, or over 512 characters); `details.invalid` lists every one. Or
+             *     `validation_failed` — `repo` is malformed, or `globs` is not a list of at most 64
+             *     strings.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "detection_glob_invalid",
+                     *       "message": "\"/etc/**\" is not a path pattern the guardrails can enforce — use a relative glob like boot/**.",
+                     *       "details": {
+                     *         "invalid": [
+                     *           "/etc/**"
+                     *         ]
+                     *       }
+                     *     }
+                     */
                     "application/json": components["schemas"]["Error"];
                 };
             };

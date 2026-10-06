@@ -105,7 +105,7 @@ describe("starting a scan", () => {
       scanSeq: 1,
       probesUsed: 9,
       protectedPaths: ["boot/**", "keys/**"],
-      packVersions: { language: "1.0.0", conventions: "1.0.0" },
+      packVersions: { language: "1.0.0", conventions: "1.1.0" },
     });
     expect(store.records[0]?.durationMs).toBeGreaterThanOrEqual(0);
     expect(store.records[0]?.rows.map((row) => row.rowKey)).toEqual([
@@ -204,6 +204,88 @@ describe("starting a scan", () => {
       { glob: "boot/**", source: "edited" },
       { glob: "keys/**", source: "suggested" },
     ]);
+  });
+});
+
+describe("editing the protected paths (#391)", () => {
+  it("replaces the list with the person's, every glob edited, and answers the card", async () => {
+    const { service, store } = build();
+
+    await service.start(DETECTION_WORKSPACE, DETECTION_REPO, DETECTION_NOW);
+    await service.settled(DETECTION_WORKSPACE, DETECTION_REPO);
+
+    const card = await service.editProtectedPaths(DETECTION_WORKSPACE, DETECTION_REPO, [
+      "boot/**",
+      "firmware/keys/**",
+      "boot/**",
+    ]);
+
+    expect(card.protectedPaths).toEqual([
+      { glob: "boot/**", source: "edited" },
+      { glob: "firmware/keys/**", source: "edited" },
+    ]);
+    expect(card.scan?.scanSeq).toBe(1);
+    expect(store.edited.has(`${DETECTION_WORKSPACE}|${DETECTION_REPO}`)).toBe(true);
+  });
+
+  it("compares the repository case-insensitively", async () => {
+    const { service } = build();
+
+    await service.editProtectedPaths(DETECTION_WORKSPACE, "Acme-Robotics/Helios-Firmware", [
+      "boot/**",
+    ]);
+
+    expect((await service.read(DETECTION_WORKSPACE, DETECTION_REPO)).protectedPaths).toEqual([
+      { glob: "boot/**", source: "edited" },
+    ]);
+  });
+
+  it("saves an empty list — nothing protected — and no later scan suggests over it", async () => {
+    const { service } = build();
+
+    await service.editProtectedPaths(DETECTION_WORKSPACE, DETECTION_REPO, []);
+    await service.start(DETECTION_WORKSPACE, DETECTION_REPO, DETECTION_NOW);
+    await service.settled(DETECTION_WORKSPACE, DETECTION_REPO);
+
+    const card = await service.read(DETECTION_WORKSPACE, DETECTION_REPO);
+
+    expect(card.scan?.scanSeq).toBe(1);
+    expect(card.protectedPaths).toEqual([]);
+  });
+
+  it("refuses every glob the guardrails cannot enforce, naming each, and writes nothing", async () => {
+    const { service, store } = build();
+
+    store.setPolicy(DETECTION_REPO, "boot/**", "suggested");
+
+    const error = await refusal(
+      service.editProtectedPaths(DETECTION_WORKSPACE, DETECTION_REPO, [
+        "keys/**",
+        "/etc/**",
+        "../secrets/**",
+        " boot/**",
+        "",
+        "win\\path",
+      ]),
+    );
+
+    expect(error.getStatus()).toBe(422);
+    expect(error.getResponse()).toMatchObject({
+      code: DETECTION_ERRORS.globInvalid,
+      details: { invalid: ["/etc/**", "../secrets/**", " boot/**", "", "win\\path"] },
+    });
+    expect((await service.read(DETECTION_WORKSPACE, DETECTION_REPO)).protectedPaths).toEqual([
+      { glob: "boot/**", source: "suggested" },
+    ]);
+    expect(store.edited.size).toBe(0);
+  });
+
+  it("never touches another workspace's list", async () => {
+    const { service } = build();
+
+    await service.editProtectedPaths(DETECTION_WORKSPACE, DETECTION_REPO, ["boot/**"]);
+
+    expect((await service.read("org-elsewhere", DETECTION_REPO)).protectedPaths).toEqual([]);
   });
 });
 

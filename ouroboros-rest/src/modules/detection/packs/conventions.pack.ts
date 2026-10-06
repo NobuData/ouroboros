@@ -1,6 +1,8 @@
 /**
- * The `conventions` rule pack — the card's warn row, *"No CONTRIBUTING.md — we'll learn your
- * conventions from merged PRs instead."* ([#384](https://github.com/NobuData/ouroboros/issues/384)).
+ * The `conventions` rule pack — the card's warn row
+ * ([#384](https://github.com/NobuData/ouroboros/issues/384)). The mockup's line, *"we'll learn your
+ * conventions from merged PRs instead"*, describes the knowledge roadmap (mockup 14), which is not
+ * built, so since 1.1.0 (#391) the line says it in the future tense: a promise, not a claim.
  *
  * Existence checks only, all answered by the tree: a contributing guide, a `CODEOWNERS`, and the
  * files that declare a commit convention. No file is read — whether a guide exists is the
@@ -23,13 +25,13 @@ const COMMIT_CONVENTION = [
   /^\.gitmessage$/,
 ];
 
-/** The warn line, as the mockup prints it. */
+/** The warn line — the mockup's, phrased as the future capability it is (#391). */
 export const NO_CONTRIBUTING =
-  "No CONTRIBUTING.md — we'll learn your conventions from merged PRs instead.";
+  "No CONTRIBUTING.md — a coming knowledge release will learn your conventions from merged PRs.";
 
 export const CONVENTIONS_PACK: RulePack = {
   key: "conventions",
-  version: "1.0.0",
+  version: "1.1.0",
   rows: ["conventions"],
 
   probes(): ProbeSpec[] {

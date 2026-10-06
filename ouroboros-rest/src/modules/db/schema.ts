@@ -5399,7 +5399,8 @@ export interface ProtectedPathPoliciesTable {
 /**
  * `ouroboros.onboarding_state` — the onboarding wizard's memory, one row per repository (V067,
  * [#380](https://github.com/NobuData/ouroboros/issues/380); `bypassed_at` V070,
- * [#385](https://github.com/NobuData/ouroboros/issues/385)). Holds only what nothing else owns —
+ * [#385](https://github.com/NobuData/ouroboros/issues/385); `protected_paths_edited_at` V105,
+ * [#391](https://github.com/NobuData/ouroboros/issues/391)). Holds only what nothing else owns —
  * the choices. **There is no step-status column** (decision O1): BB.2's wizard API derives every
  * step on read, in `onboarding/onboarding.derivation.ts`.
  */
@@ -5420,6 +5421,8 @@ export interface OnboardingStateTable {
   updated_at: Stamped;
   /** When the import-skip was taken (V070) — distinct from a dismissal; imports nothing. */
   bypassed_at: Date | null;
+  /** When a person last saved the protected-path list (V105, #391) — scans then suggest none. */
+  protected_paths_edited_at: Date | null;
 }
 
 /**
@@ -7737,6 +7740,7 @@ export const TABLE_COLUMNS = {
     "created_at",
     "updated_at",
     "bypassed_at",
+    "protected_paths_edited_at",
   ],
   repo_detection_scans: [
     "id",

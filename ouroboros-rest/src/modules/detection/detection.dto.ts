@@ -7,7 +7,7 @@
  */
 
 import { Type } from "class-transformer";
-import { IsInt, Max, Min } from "class-validator";
+import { ArrayMaxSize, IsArray, IsInt, IsString, Max, Min } from "class-validator";
 
 export { OnboardingRepoQuery as DetectionRepoQuery } from "../onboarding/onboarding.dto";
 
@@ -22,4 +22,20 @@ export class ScanSeqParams {
   @Min(1)
   @Max(MAX_SCAN_SEQ)
   scanSeq!: number;
+}
+
+/** The most globs one repository's list holds — the policy document's own bound (64). */
+export const MAX_PROTECTED_GLOBS = 64;
+
+/**
+ * `PUT /api/v1/onboarding/detection/protected-paths` (#391) — a repository's whole protected-path
+ * list, as the person left it. Each glob's grammar is the service's to check, so a refusal can name
+ * every bad one at once.
+ */
+export class ProtectedPathsDto {
+  /** The globs — `boot/**`, `keys/**`. An empty list protects nothing. */
+  @IsArray()
+  @ArrayMaxSize(MAX_PROTECTED_GLOBS)
+  @IsString({ each: true })
+  globs!: string[];
 }

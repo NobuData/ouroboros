@@ -13,6 +13,11 @@ import { CI_REGISTRY_VERSION } from "./guardrails.ci";
 import { AWS_ACCESS_KEY_ID } from "./guardrails.fixture";
 import { MOCKUP_INPUT, RULE_MATRIX } from "./guardrails.matrix.fixture";
 import { SECRETS_RULESET_VERSION } from "./guardrails.ruleset";
+import {
+  DETECTION_REPO,
+  DETECTION_WORKSPACE,
+  InMemoryDetectionStore,
+} from "../detection/detection.store.fixture";
 
 /**
  * The four checks, driven by the rule matrix — every check × `pass` / `fail` / `not_applicable`.
@@ -205,5 +210,47 @@ describe("what a verdict records", () => {
 
     expect(row.verdict).toBe("fail");
     expect(JSON.stringify(row)).not.toContain(AWS_ACCESS_KEY_ID);
+  });
+});
+
+describe("protected paths edited on the detection card (#391)", () => {
+  /**
+   * The globs a person saved, as the guardrail reads them — the rows of `protected_path_policies`.
+   *
+   * @param globs - What the person saved.
+   * @returns The run's protected paths.
+   */
+  async function saved(globs: string[]): Promise<string[]> {
+    const store = new InMemoryDetectionStore();
+
+    store.setPolicy(DETECTION_REPO, "boot/**", "suggested");
+    store.setPolicy(DETECTION_REPO, "keys/**", "suggested");
+
+    const rows = await store.replacePolicies(DETECTION_WORKSPACE, DETECTION_REPO, globs);
+
+    return rows.map((row) => row.path_glob);
+  }
+
+  it("refuses a run that touches a glob the person added", async () => {
+    const row = checkAllowedPaths({
+      changeSetSeq: 1,
+      files: [{ path: "firmware/keys/signing.pem" }],
+      planFiles: ["firmware/keys/signing.pem"],
+      protectedPaths: await saved(["boot/**", "firmware/keys/**"]),
+    });
+
+    expect(row.verdict).toBe("fail");
+    expect(row.evidence?.glob).toBe("firmware/keys/**");
+  });
+
+  it("lets a run touch a suggestion the person removed", async () => {
+    const row = checkAllowedPaths({
+      changeSetSeq: 1,
+      files: [{ path: "keys/dev.pub" }],
+      planFiles: ["keys/dev.pub"],
+      protectedPaths: await saved(["boot/**"]),
+    });
+
+    expect(row.verdict).toBe("pass");
   });
 });

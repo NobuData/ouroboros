@@ -2,7 +2,8 @@
  * The detection statements and routes against a real PostgreSQL
  * ([#384](https://github.com/NobuData/ouroboros/issues/384)) — V067's tables, grants and triggers
  * holding what the in-memory store only imitates: `scan_seq` versioning, an edited protected path
- * surviving a re-scan's suggestions, the one granted relabel, and the test-plane join.
+ * surviving a re-scan's suggestions, the one granted relabel, and the test-plane join — and, since
+ * #391, a saved protected-path list (V105) that scans stop suggesting over and the guardrails read.
  */
 
 import { ApiHarness, type Person } from "../../testing/harness.fixture";
@@ -17,6 +18,8 @@ import { TENANT_HEADER } from "../tenancy/tenant.resolver";
 import { DETECTION_ERRORS } from "./detection.errors";
 import { EMPTY, ZEPHYR, fixtureProber } from "./detection.fixture";
 import { measuredTestsRow } from "./detection.reconcile";
+import { GuardrailsRepository } from "../guardrails/guardrails.repository";
+import { DatabaseService } from "../db/db.service";
 import { DetectionRepository } from "./detection.repository";
 import type { DetectionResource } from "./detection.resources";
 import { runScan, type ScanOutcome } from "./detection.scan";
@@ -187,5 +190,85 @@ describe("repository detection", () => {
 
     expect(scan.status).toBe(409);
     expect(bodyOf<ErrorEnvelope>(scan).code).toBe(DETECTION_ERRORS.sourceMissing);
+  });
+
+  it("replaces the list with a person's, and no later scan suggests over it — an emptied list too (#391)", async () => {
+    const { workspace, repo } = await bench();
+
+    await record(workspace.id, repo, await scanned());
+    expect(
+      await repository.replacePolicies(workspace.id, repo, ["firmware/keys/**", "boot/**"]),
+    ).toEqual([
+      { path_glob: "boot/**", source: "edited" },
+      { path_glob: "firmware/keys/**", source: "edited" },
+    ]);
+
+    await record(workspace.id, repo, await scanned());
+    expect(await repository.policies(workspace.id, repo)).toEqual([
+      { path_glob: "boot/**", source: "edited" },
+      { path_glob: "firmware/keys/**", source: "edited" },
+    ]);
+
+    await repository.replacePolicies(workspace.id, repo, []);
+    await record(workspace.id, repo, await scanned());
+    expect(await repository.policies(workspace.id, repo)).toEqual([]);
+
+    const state = await api.sql.query<{ protected_paths_edited_at: Date | null }>(
+      `select protected_paths_edited_at from ouroboros.onboarding_state
+        where organization_id = $1 and repo_ref = $2`,
+      [workspace.id, repo],
+    );
+    expect(state.rows[0]?.protected_paths_edited_at).toBeInstanceOf(Date);
+  });
+
+  it("saves through the API for an owner, refuses a member and a bad glob, and the guardrails read it (#391)", async () => {
+    const { owner, workspace, repo } = await bench();
+    const member = await api.signIn();
+    await api.join(workspace.id, member, "member");
+    await record(workspace.id, repo, await scanned());
+    const path = `/api/v1/onboarding/detection/protected-paths?repo=${encodeURIComponent(repo)}`;
+
+    const refused = await api
+      .as(member)("put", path)
+      .set(TENANT_HEADER, workspace.slug)
+      .send({ globs: ["boot/**"] });
+    expect(refused.status).toBe(403);
+
+    const invalid = await api
+      .as(owner)("put", path)
+      .set(TENANT_HEADER, workspace.slug)
+      .send({ globs: ["keys/**", "/etc/**"] });
+    expect(invalid.status).toBe(422);
+    expect(bodyOf<ErrorEnvelope>(invalid)).toMatchObject({
+      code: DETECTION_ERRORS.globInvalid,
+      details: { invalid: ["/etc/**"] },
+    });
+    expect((await repository.policies(workspace.id, repo)).map((row) => row.source)).toEqual([
+      "suggested",
+      "suggested",
+    ]);
+
+    const saved = await api
+      .as(owner)("put", path)
+      .set(TENANT_HEADER, workspace.slug)
+      .send({ globs: ["boot/**", "firmware/keys/**"] });
+    expect(saved.status).toBe(200);
+    expect(bodyOf<DetectionResource>(saved).protectedPaths).toEqual([
+      { glob: "boot/**", source: "edited" },
+      { glob: "firmware/keys/**", source: "edited" },
+    ]);
+
+    const guardrails = api.nest.get(GuardrailsRepository);
+    const run = {
+      organizationId: workspace.id,
+      githubRepoId: workspace.repoId,
+      issueNumber: 1,
+      workflowTag: "quick-fixes",
+      workflowVersionPin: null,
+    };
+    expect(await guardrails.protectedPaths(api.nest.get(DatabaseService).db, run)).toEqual([
+      "boot/**",
+      "firmware/keys/**",
+    ]);
   });
 });

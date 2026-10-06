@@ -101,7 +101,7 @@ describe("the Zephyr-like fixture — mockup 13's card", () => {
       devcontainer: "1.0.0",
       tests: "1.0.0",
       protected_paths: "1.0.0",
-      conventions: "1.0.0",
+      conventions: "1.1.0",
     });
   });
 });

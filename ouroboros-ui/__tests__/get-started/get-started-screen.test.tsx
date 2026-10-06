@@ -7,7 +7,7 @@ import type { PollAnswer } from "@/app/poll";
 
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 import { settle } from "../helpers/settle";
-import { REPO, launchReceipt, readyToRun, regressed, step, wizard } from "../helpers/onboarding";
+import { REPO, launchReceipt, readyToRun, regressed, seededCard, step, wizard } from "../helpers/onboarding";
 
 /**
  * `/get-started` (BC.1, #390, mockup 13): the head's promise, the rail that displays the service's
@@ -27,6 +27,9 @@ vi.mock("@/app/get-started/actions", () => ({
   launchFirstLoop: (repo: string) => launchFirstLoop(repo),
   skipWizard: (repo: string) => skipWizard(repo),
   dismissWizard: vi.fn(),
+  rescanRepository: vi.fn(),
+  saveProtectedPaths: vi.fn(),
+  previewProtectedPaths: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh: vi.fn() }) }));
 
@@ -51,6 +54,8 @@ function frame(initial: Onboarding | null = wizard(), abilities = OWNER, repo: s
   return render(
     <GetStartedScreen
       abilities={abilities}
+      detection={{ ok: true, value: seededCard() }}
+      detectionPoll={{ read: () => new Promise(() => {}), visible: () => true }}
       poll={POLL}
       repo={repo}
       reposFailure={null}
@@ -311,10 +316,40 @@ describe("a workspace with no repository yet", () => {
 
   it("says why when the wizard could not be read", () => {
     render(
-      <GetStartedScreen abilities={OWNER} poll={POLL} repo={REPO} reposFailure={null} wizard={{ ok: false, reason: "The service is busy." }} />,
+      <GetStartedScreen
+        abilities={OWNER}
+        detectionPoll={{ read: () => new Promise(() => {}), visible: () => true }}
+        poll={POLL}
+        repo={REPO}
+        reposFailure={null}
+        wizard={{ ok: false, reason: "The service is busy." }}
+      />,
     );
 
-    expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent("The service is busy.");
+    expect(screen.getAllByRole("heading", { level: 2 })[0]).toHaveTextContent("The service is busy.");
+  });
+});
+
+describe("the detection card (#391)", () => {
+  it("sits in the scrolling step content, tagged step 2 done when the rail says so", () => {
+    const { container } = frame();
+
+    const card = screen.getByRole("region", { name: "We already figured this out" });
+    expect(container.querySelector(".wizard__content")).toContainElement(card);
+    expect(within(card).getByText("✓ step 2 done")).toBeInTheDocument();
+    expect(within(card).getByText("scanned in 38s")).toBeInTheDocument();
+  });
+
+  it("drops the step tag while step 2 is not done", () => {
+    frame(wizard({ steps: [step({ step: 1, status: "done" }), step({ step: 2, status: "active" }), step({ step: 3 }), step({ step: 4 })] }));
+
+    expect(within(screen.getByRole("region", { name: "We already figured this out" })).queryByText("✓ step 2 done")).toBeNull();
+  });
+
+  it("is not drawn without a repository", () => {
+    frame(null, OWNER, null);
+
+    expect(screen.queryByRole("region", { name: "We already figured this out" })).toBeNull();
   });
 });
 
@@ -323,8 +358,11 @@ describe("standalone", () => {
     const { container } = frame();
 
     expect(container.querySelector(".app-shell, .shell-nav, .shell-header, .app-shell__pane")).toBeNull();
-    // The only banner is the wizard's own head, and the only navigation is its rail.
-    expect(screen.getByRole("banner")).toHaveClass("wizard__head");
+    // The wizard's own head is the first banner — any other is a card's head in the step content
+    // (jsdom does not scope a header inside a section) — and the only navigation is its rail.
+    const [head, ...cardHeads] = screen.getAllByRole("banner");
+    expect(head).toHaveClass("wizard__head");
+    for (const other of cardHeads) expect(other).toHaveClass("ou-card__head");
     expect(screen.getAllByRole("navigation")).toEqual([rail()]);
     expect(container.firstElementChild).toHaveClass("wizard");
   });
