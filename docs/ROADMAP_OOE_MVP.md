@@ -1725,7 +1725,7 @@ the blockquote above that records what it did and what it did differently.
 | 402 | **CC.2** | ✅ [#556](https://github.com/NobuData/ouroboros/issues/556) | Draft-operation provenance | ouroboros-db | S | P.1, CC.1 |
 | 403 | **CC.3** | ✅ [#557](https://github.com/NobuData/ouroboros/issues/557) | Dry-run records | ouroboros-db | M | CC.1 |
 | 404 | **CK.3** | ✅ [#610](https://github.com/NobuData/ouroboros/issues/610) | Capability matrices & competitor watch schema | ouroboros-db | M | CK.2 |
-| 405 | **CK.5** | [#612](https://github.com/NobuData/ouroboros/issues/612) | Roadmap docs & suggested changes | ouroboros-db | M | AK.1, CK.1 |
+| 405 | **CK.5** | ✅ [#612](https://github.com/NobuData/ouroboros/issues/612) | Roadmap docs & suggested changes | ouroboros-db | M | AK.1, CK.1 |
 | 406 | **CL.1** | [#614](https://github.com/NobuData/ouroboros/issues/614) | ResearchToolAdapter SPI & conformance kit | ouroboros-rest | L | CK.2 |
 | 407 | **CC.4** | [#558](https://github.com/NobuData/ouroboros/issues/558) | Suggestions & seeds — mockup-20 parity | ouroboros-db, .github | M | 3.6, CC.2, CC.3 |
 | 408 | **CD.1** | [#559](https://github.com/NobuData/ouroboros/issues/559) | Copilot conversation service | ouroboros-engine, ouroboros-rest | L | P.2, CC.2 |

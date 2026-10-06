@@ -1551,6 +1551,23 @@
 > `render_required`. Snapshots are never updated; a cited snapshot, and a rival a matrix names,
 > cannot be deleted from under them (deferred foreign keys, so a workspace delete still cascades).
 >
+> `V113` ([#612](https://github.com/NobuData/ouroboros/issues/612), CK.5) makes mockup 22's
+> `ROADMAP.md` a **versioned entity whose markdown is a projection** (decision **V8** — one owner, no
+> drift). `roadmap_docs` hold the workspace, the investigation it was generated from (nullable, set
+> null when it goes; one doc per investigation), the title and `current_version`, which follows each
+> new version. `roadmap_doc_versions` are dense from 1 and **immutable** (the WF-P.1 pattern) —
+> `structure` (milestones `{key, name, target_date}` with items `{key, title, draft_id, ticket_id,
+> ticket_key, mvp, effort, checked}`), `markdown` (the regenerated projection), `generated_by` (the
+> skill run) — except `repo_projection` `{state, path, pr_ref, committed_sha, observed_sha}`, whose
+> state machine `pending → pr_open → committed → drift_detected` (plus `pending → committed`,
+> `pr_open → pending`, `drift_detected → pr_open | committed`) is constrained and shaped per state.
+> Items name a Planning draft before the push and the canonical ticket after it, with the draft kept
+> and the ticket's `external_key` mirrored as `ticket_key`; refs are checked at write against the
+> doc's workspace. Writeback lands in the **next** version. `doc_suggestions` are `user` (a person)
+> or `ai` (an agent), with text and an optional `hint`, and move `open → applied` (recording the
+> version the re-run produced and who applied it) or `open → dismissed` (who and when), terminal
+> and never edited; indexed by `(doc_id, status)`.
+>
 > [#484](https://github.com/NobuData/ouroboros/issues/484) (BQ.5) seeds mockup 17 from those rows:
 > [`R__dev_seed_workspace_settings.sql`](migrations/R__dev_seed_workspace_settings.sql) — see
 > [Who may do what, and where the record goes](#who-may-do-what-and-where-the-record-goes). Its
@@ -3335,6 +3352,7 @@ ouroboros-db/
 │   ├── V110__draft_operations.sql    # draft_operations, workflows.draft_rev/provenance_summary, apply_draft_batch(), node provenance + replay probe — #556
 │   ├── V111__dry_run_records.sql     # dry_runs, dry_run_stages (verdict/how), dry_run_artifacts (bounded), W4 isolation probe, dry_runs_sweep() — #557
 │   ├── V112__capability_matrices_competitor_watches.sql # competitors, watches, snapshot chain + diffs, competitor_diff → snapshot, matrices/rows/cells (cited, complete), tracker sub-line view — #610
+│   ├── V113__roadmap_docs_suggestions.sql # roadmap_docs, immutable roadmap_doc_versions (structure, markdown projection, repo projection state machine), doc_suggestions (user|ai, applied@vN|dismissed) — #612
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -3587,6 +3605,9 @@ outside this module alters it.
 | `matrix_rows` | `V112` | A matrix row ([#610](https://github.com/NobuData/ouroboros/issues/610), CK.3) — `capability`, `sort_order`, `gap_severity`, `severity_derivation` | `gap_severity` `high\|med\|low\|wip\|lead` stored with a non-blank derivation, which must change when it does (`matrix_rows_severity_rederived`); unique sort order and capability per matrix; a cell per subject by commit (`matrix_rows_complete`); `ouroboros_app` may select, insert and update |
 | `matrix_cells` | `V112` | A matrix cell ([#610](https://github.com/NobuData/ouroboros/issues/610), CK.3) — `row_id`, `competitor_id` (null = us), `status`, `note` | `status` `shipping\|partial\|none\|unknown\|wip`; one per row and subject; a rival cell names one of the matrix's columns; anything but `unknown` cited by commit (`matrix_cells_cited`); `ouroboros_app` may select, insert and update, never delete |
 | `matrix_cell_sources` | `V112` | A cell's citations ([#610](https://github.com/NobuData/ouroboros/issues/610), CK.3) — `cell_id`, `source_id` | composite keys keep a cell and its sources in one investigation; removing a stated cell's last link fails at commit; `ouroboros_app` may select, insert and delete |
+| `roadmap_docs` | `V113` | A roadmap document ([#612](https://github.com/NobuData/ouroboros/issues/612), CK.5, decision **V8**) — `investigation_id`, `title`, `current_version` | investigation of the same workspace, nullable and set null when deleted, one doc per investigation; `current_version` follows each new version (deferred FK to it); cascades with the workspace; `ouroboros_app` may select, insert and update |
+| `roadmap_doc_versions` | `V113` | A roadmap version ([#612](https://github.com/NobuData/ouroboros/issues/612), CK.5) — `version`, `structure`, `markdown`, `generated_by`, `repo_projection` | dense from 1 (`roadmap_doc_versions_version_next`); `structure` shape-checked, item draft/ticket refs of the doc's workspace with `ticket_key` the ticket's own (`roadmap_doc_versions_refs_valid`); immutable but for `repo_projection` (`roadmap_doc_versions_no_update`), whose state moves only along `roadmap_doc_versions_projection_transition`; `ouroboros_app` may select, insert and update `repo_projection` only |
+| `doc_suggestions` | `V113` | A suggested change ([#612](https://github.com/NobuData/ouroboros/issues/612), CK.5) — `author_kind`, `author_user_id`/`author_agent`, `text`, `hint`, `status`, `applied_version`/`applied_at`/`applied_by`, `dismissed_at`/`dismissed_by` | `author_kind` `user\|ai` with the matching author; `status` `open → applied \| dismissed`, written open, terminal, recorded with actor and time, the applied version written after the suggestion; never edited (a person's deletion may clear an actor); `(doc_id, status)` index; `ouroboros_app` may select, insert and update |
 
 Two **functions**, both `V012`'s and both documented in
 [The bundled price catalog](#the-bundled-price-catalog).
