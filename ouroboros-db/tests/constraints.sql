@@ -14521,8 +14521,13 @@ select pg_temp.must_hold(
    -- V101's section. #486 added `audit_events_purge()`, so the audit retention purge can remove
    -- expired events while the writer still cannot delete one — asserted in V102's section.
    -- #608 added `investigations_allocate_seq()`, so an investigation's RS number is drawn from a
-   -- counter the writer cannot set — asserted in V106's section.
+   -- counter the writer cannot set — asserted in V106's section. #555 added
+   -- `copilot_messages_allocate_seq()`, so a copilot message's seq is drawn from a counter the
+   -- writer cannot set, and `copilot_sessions_sweep()`, so the chat retention sweep can remove
+   -- closed transcripts while the writer still cannot delete one — asserted in V107's section.
    and (select array_agg(proname::text order by proname) = array['audit_events_purge',
+                                                                 'copilot_messages_allocate_seq',
+                                                                 'copilot_sessions_sweep',
                                                                  'decision_ref_resolves',
                                                                  'decision_ttl_settings',
                                                                  'fact_transitions_record',
@@ -14537,7 +14542,7 @@ select pg_temp.must_hold(
                                                                  'sync_intervention_events']
           from pg_proc
          where pronamespace = 'ouroboros'::regnamespace and prosecdef),
-  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks, #457''s decision ref resolver, #459''s TTL settings reader, #482''s transcript sweep, #486''s audit purge and #608''s RS allocator are the only functions in the schema that run as the owner at all');
+  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks, #457''s decision ref resolver, #459''s TTL settings reader, #482''s transcript sweep, #486''s audit purge, #608''s RS allocator and #555''s copilot seq allocator and chat sweep are the only functions in the schema that run as the owner at all');
 
 -- --- the cascades ----------------------------------------------------------------
 delete from ouroboros.runs where id = 'a6100000-0000-0000-0000-000000000484';
@@ -34873,6 +34878,595 @@ select pg_temp.must_hold(
 delete from ouroboros."user" where "id" = 'a1060000-0000-0000-0000-00000000000a';
 
 -- ===========================================================================
+-- V107 — copilot sessions & messages (#555, CC.1)
+-- ===========================================================================
+--
+-- Mockup 20's conversation card as rows: the six-message exchange in order with both choice
+-- questions and their selections, a tool trace that tells proposed, applied and bounced apart,
+-- a cost that is null rather than a fabricated zero, one active session per draft, closing
+-- without deleting, seq allocated in order, and the chat retention sweep. The race half of the
+-- one-active and seq criteria needs two sessions and lives in tests/verify-copilot-sessions.sh;
+-- what is asserted here is the single-session behaviour.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v107',  'Copilot Works', 'copilot-works-v107', now()),
+  ('org-v107b', 'Copilot Two',   'copilot-two-v107',   now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a1070000-0000-0000-0000-00000000000a', 'Ken Copilot', 'ken@copilot-works.example', true);
+
+insert into ouroboros.workflows (id, organization_id, slug, name) values
+  ('a1070000-0000-0000-0000-000000000101', 'org-v107',  'security-patch', 'Security patch'),
+  ('a1070000-0000-0000-0000-000000000102', 'org-v107',  'standard-fix',   'Standard fix'),
+  ('a1070000-0000-0000-0000-000000000103', 'org-v107b', 'security-patch', 'Security patch');
+
+insert into ouroboros.copilot_sessions (id, organization_id, workflow_id, draft_name, created_by)
+values ('a1070000-0000-0000-0000-000000000201', 'org-v107', 'a1070000-0000-0000-0000-000000000101',
+        'security-patch', 'a1070000-0000-0000-0000-00000000000a');
+
+select pg_temp.must_hold(
+  (select status = 'active' and closed_at is null and model_provenance = '[]' and last_seq = 0
+     from ouroboros.copilot_sessions where id = 'a1070000-0000-0000-0000-000000000201'),
+  'a new copilot session is active, open, with no provenance and no messages yet');
+
+-- --- the mockup's six-message exchange ---------------------------------------------
+
+-- ① Ken's brief.
+insert into ouroboros.copilot_messages (organization_id, session_id, role, body) values
+  ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'user',
+   'security patches: always a second model''s review, never auto-merge, prove the CVE is actually fixed');
+
+-- ② The copilot's draft, streamed: it starts empty, grows, and completes with two open questions.
+insert into ouroboros.copilot_messages (id, organization_id, session_id, role, status) values
+  ('a1070000-0000-0000-0000-000000000302', 'org-v107', 'a1070000-0000-0000-0000-000000000201',
+   'copilot', 'streaming');
+
+update ouroboros.copilot_messages set body = 'Drafted security-patch' where id = 'a1070000-0000-0000-0000-000000000302';
+
+update ouroboros.copilot_messages
+   set body = 'Drafted security-patch. I invented an exploit-verify stage: it reruns the CVE PoC in a sandbox, so "fixed" is proven rather than claimed.',
+       choices = '[{"prompt": "What triggers it?", "options": ["label:security", "CVE pattern in title"],
+                    "selected": null, "answered_at": null},
+                   {"prompt": "May it read the GitHub Advisory DB?", "options": ["Yes", "No"],
+                    "selected": null, "answered_at": null}]',
+       tool_trace = '{"operations": [{"op": {"kind": "set_trigger", "label": "security"}, "outcome": "proposed"},
+                                     {"op": {"kind": "add_stage", "id": "exploit-verify"}, "outcome": "applied"},
+                                     {"op": {"kind": "add_edge", "from": "test", "to": "exploit-verify"}, "outcome": "applied"},
+                                     {"op": {"kind": "set_stage_config", "stage": "review", "count": 0}, "outcome": "bounced",
+                                      "validator_message": "review.count must be at least 1"}],
+                      "reads": [{"tool": "catalog"}, {"tool": "current_draft"}],
+                      "dry_run_proposals": []}',
+       tokens_in = 4210, tokens_out = 912, cost_cents = 4,
+       status = 'complete'
+ where id = 'a1070000-0000-0000-0000-000000000302';
+
+update ouroboros.copilot_sessions
+   set model_provenance = '[{"seq": 2, "alias": "coder-max", "model_id": "claude-opus-5-5"}]'
+ where id = 'a1070000-0000-0000-0000-000000000201';
+
+-- Ken answers both chips: label:security ✓, Yes ✓.
+update ouroboros.copilot_messages
+   set choices = '[{"prompt": "What triggers it?", "options": ["label:security", "CVE pattern in title"],
+                    "selected": "label:security", "answered_at": "2026-10-06T09:14:00Z"},
+                   {"prompt": "May it read the GitHub Advisory DB?", "options": ["Yes", "No"],
+                    "selected": "Yes", "answered_at": "2026-10-06T09:14:00Z"}]'
+ where id = 'a1070000-0000-0000-0000-000000000302';
+
+-- ③ Ken's refinement.
+insert into ouroboros.copilot_messages (organization_id, session_id, role, body) values
+  ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'user',
+   'label security. yes. also cap spend at $5 a run.');
+
+-- ④ The spend guard, and a proposed dry run on #489. Not priced: cost_cents stays null.
+insert into ouroboros.copilot_messages (id, organization_id, session_id, role, body, tool_trace,
+                                        tokens_in, tokens_out) values
+  ('a1070000-0000-0000-0000-000000000304', 'org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot',
+   'Added the spend guard ($5/run). Want to dry-run it on #489? No CVE there — a useful edge case.',
+   '{"operations": [{"op": {"kind": "set_guard", "spend_cap_cents": 500}, "outcome": "applied"}],
+     "reads": [], "dry_run_proposals": [{"ticket": "#489", "reason": "no CVE — a useful edge case"}]}',
+   3020, 240);
+
+-- ⑤ dry run #489.
+insert into ouroboros.copilot_messages (organization_id, session_id, role, body) values
+  ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'user', 'dry run #489');
+
+-- ⑥ The result.
+insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tokens_in, tokens_out, cost_cents) values
+  ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot',
+   '2m 41s, $0.31, zero side effects — two improvement suggestions below the results →', 1800, 120, 1);
+
+update ouroboros.copilot_sessions
+   set model_provenance = model_provenance
+                          || '[{"seq": 4, "alias": "coder-max", "model_id": "claude-opus-5-5"},
+                               {"seq": 6, "alias": "coder-max", "model_id": "claude-opus-5-5"}]'
+ where id = 'a1070000-0000-0000-0000-000000000201';
+
+select pg_temp.must_hold(
+  (select array_agg(role || ':' || left(body, 12) order by seq)
+          = array['user:security pat',
+                  'copilot:Drafted secu',
+                  'user:label securi',
+                  'copilot:Added the sp',
+                  'user:dry run #489',
+                  'copilot:2m 41s, $0.3']
+          and array_agg(seq order by seq) = array[1, 2, 3, 4, 5, 6]
+     from ouroboros.copilot_messages where session_id = 'a1070000-0000-0000-0000-000000000201'),
+  'the mockup''s six-message exchange reads back in order, numbered 1…6');
+
+select pg_temp.must_hold(
+  (select jsonb_path_query_array(choices, '$[*].prompt')
+            = '["What triggers it?", "May it read the GitHub Advisory DB?"]'
+          and jsonb_path_query_array(choices, '$[*].options')
+            = '[["label:security", "CVE pattern in title"], ["Yes", "No"]]'
+          and jsonb_path_query_array(choices, '$[*].selected') = '["label:security", "Yes"]'
+     from ouroboros.copilot_messages where id = 'a1070000-0000-0000-0000-000000000302'),
+  'both choice questions keep their prompts, options and selections');
+
+select pg_temp.must_hold(
+  (select last_seq = 6 and jsonb_array_length(model_provenance) = 3
+          and model_provenance -> -1 ->> 'alias' = 'coder-max'
+     from ouroboros.copilot_sessions where id = 'a1070000-0000-0000-0000-000000000201'),
+  'the session counts six messages and records the resolved alias per copilot exchange');
+
+-- --- the tool trace ------------------------------------------------------------------
+
+select pg_temp.must_hold(
+  (select jsonb_path_query_array(tool_trace, '$.operations[*] ? (@.outcome == "applied").op.kind')
+            = '["add_stage", "add_edge"]'
+          and jsonb_path_query_array(tool_trace, '$.operations[*] ? (@.outcome == "proposed").op.kind')
+            = '["set_trigger"]'
+          and jsonb_path_query_array(tool_trace, '$.operations[*] ? (@.outcome == "bounced").validator_message')
+            = '["review.count must be at least 1"]'
+     from ouroboros.copilot_messages where id = 'a1070000-0000-0000-0000-000000000302'),
+  'a tool trace tells proposed, applied and bounced operations apart, with the validator''s message on a bounce');
+
+select pg_temp.must_hold(
+  (select tool_trace -> 'dry_run_proposals' -> 0 ->> 'ticket' = '#489'
+     from ouroboros.copilot_messages where id = 'a1070000-0000-0000-0000-000000000304'),
+  'a proposed dry run is recorded in the trace');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tool_trace) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '{"operations": [{"op": {"kind": "add_stage"}, "outcome": "bounced"}], "reads": [], "dry_run_proposals": []}')$$,
+  'a bounced operation carries the validator''s message', 'copilot_messages_tool_trace_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tool_trace) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '{"operations": [{"op": {"kind": "add_stage"}, "outcome": "applied", "validator_message": "ok"}],
+       "reads": [], "dry_run_proposals": []}')$$,
+  'only a bounce carries a validator message', 'copilot_messages_tool_trace_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tool_trace) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '{"operations": [{"op": {"kind": "add_stage"}, "outcome": "rejected"}], "reads": [], "dry_run_proposals": []}')$$,
+  'an operation outcome is proposed, applied or bounced', 'copilot_messages_tool_trace_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tool_trace) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '{"operations": [{"op": "add_stage", "outcome": "applied"}], "reads": [], "dry_run_proposals": []}')$$,
+  'an operation is a typed op object with a kind', 'copilot_messages_tool_trace_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tool_trace) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '{"operations": [7], "reads": [], "dry_run_proposals": []}')$$,
+  'a non-object operation is refused by the shape check, not an error', 'copilot_messages_tool_trace_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tool_trace) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '{"operations": [], "reads": [{}], "dry_run_proposals": [{"ticket": ""}]}')$$,
+  'a read names its tool and a dry-run proposal its ticket', 'copilot_messages_tool_trace_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tool_trace) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x', '{"operations": []}')$$,
+  'a trace has operations, reads and dry-run proposals', 'copilot_messages_tool_trace_shape');
+
+-- --- choices -------------------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, choices) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '[{"prompt": "Q?", "options": ["Yes", "No"], "selected": "Maybe", "answered_at": "2026-10-06T09:14:00Z"}]')$$,
+  'a selection is one of the options', 'copilot_messages_choices_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, choices) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '[{"prompt": "Q?", "options": ["Yes", "No"], "selected": "Yes", "answered_at": null}]')$$,
+  'a selection carries when it was answered', 'copilot_messages_choices_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, choices) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '[{"prompt": "Q?", "options": ["Yes"], "selected": null, "answered_at": null}]')$$,
+  'a question offers at least two options', 'copilot_messages_choices_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, choices) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '[{"prompt": "Q?", "options": ["Yes", "Yes"], "selected": null, "answered_at": null}]')$$,
+  'a question''s options are distinct', 'copilot_messages_choices_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, choices) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x', '[]')$$,
+  'choices, when present, ask something', 'copilot_messages_choices_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, choices) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'user', 'x',
+     '[{"prompt": "Q?", "options": ["Yes", "No"], "selected": null, "answered_at": null}]')$$,
+  'only the copilot asks choice questions', 'copilot_messages_user_plain');
+
+-- An answered question stays answered, and the questions themselves are the record.
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_messages
+       set choices = jsonb_set(choices, '{0,selected}', '"CVE pattern in title"')
+     where id = 'a1070000-0000-0000-0000-000000000302'$$,
+  'an answer already given cannot be changed', 'copilot_messages_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_messages
+       set choices = jsonb_set(choices, '{1,prompt}', '"May it read anything?"')
+     where id = 'a1070000-0000-0000-0000-000000000302'$$,
+  'a finished reply''s questions cannot be reworded', 'copilot_messages_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_messages set choices = null
+     where id = 'a1070000-0000-0000-0000-000000000302'$$,
+  'a finished reply''s questions cannot be removed', 'copilot_messages_transition');
+
+-- --- cost: null when unpriced, never fabricated --------------------------------------
+
+select pg_temp.must_hold(
+  (select cost_cents is null and tokens_in = 3020
+     from ouroboros.copilot_messages where id = 'a1070000-0000-0000-0000-000000000304'),
+  'an exchange that was metered but not priced keeps a null cost');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.copilot_messages
+    where cost_cents is not null and (role <> 'copilot' or tokens_in is null or tokens_out is null)),
+  'no message in the database carries a cost for an exchange nothing was metered for');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, cost_cents) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x', 0)$$,
+  'a cost on an unmetered exchange is a fabricated cost', 'copilot_messages_cost_metered');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tokens_in) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x', 10)$$,
+  'token counts are metered together', 'copilot_messages_tokens_paired');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tokens_in, tokens_out, cost_cents) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'user', 'x', 1, 1, 1)$$,
+  'a user message carries no tokens or cost', 'copilot_messages_user_plain');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tokens_in, tokens_out, cost_cents) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x', 1, 1, -1)$$,
+  'a cost is not negative', 'copilot_messages_cost_nonnegative');
+
+-- A price may arrive after the reply, once; then it is the record.
+update ouroboros.copilot_messages set cost_cents = 3 where id = 'a1070000-0000-0000-0000-000000000304';
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_messages set cost_cents = 0 where id = 'a1070000-0000-0000-0000-000000000304'$$,
+  'a recorded cost is not rewritten', 'copilot_messages_transition');
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_messages set tokens_in = 1 where id = 'a1070000-0000-0000-0000-000000000304'$$,
+  'a recorded token count is not rewritten', 'copilot_messages_transition');
+
+-- --- streaming -----------------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_messages set body = 'rewritten' where id = 'a1070000-0000-0000-0000-000000000302'$$,
+  'a finished reply''s text is final', 'copilot_messages_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_messages set tool_trace = '{"operations": [], "reads": [], "dry_run_proposals": []}'
+     where id = 'a1070000-0000-0000-0000-000000000302'$$,
+  'a finished reply''s tool trace is final', 'copilot_messages_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_messages set status = 'streaming' where id = 'a1070000-0000-0000-0000-000000000302'$$,
+  'a finished reply does not resume streaming', 'copilot_messages_transition');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, status) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', '', 'complete')$$,
+  'a finished bubble says something', 'copilot_messages_body_when_complete');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, status) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'user', 'hi', 'streaming')$$,
+  'what a person types arrives whole', 'copilot_messages_user_plain');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'system', 'x')$$,
+  'a role is user or copilot', 'copilot_messages_role');
+
+-- --- seq -----------------------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, seq, role, body) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 99, 'user', 'x')$$,
+  'a seq is allocated, never supplied', 'copilot_messages_seq_allocated');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_messages set seq = 99 where id = 'a1070000-0000-0000-0000-000000000302'$$,
+  'a message keeps its place', 'copilot_messages_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions set last_seq = 1 where id = 'a1070000-0000-0000-0000-000000000201'$$,
+  'the session''s counter never moves back', 'copilot_sessions_transition');
+
+-- The refusals above rolled back their allocations: the next message is 7, no gap.
+insert into ouroboros.copilot_messages (id, organization_id, session_id, role, body) values
+  ('a1070000-0000-0000-0000-000000000307', 'org-v107', 'a1070000-0000-0000-0000-000000000201', 'user', 'thanks');
+select pg_temp.must_hold(
+  (select seq = 7 from ouroboros.copilot_messages where id = 'a1070000-0000-0000-0000-000000000307'),
+  'a refused append leaves no gap in seq');
+
+-- --- workspace isolation ---------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body) values
+    ('org-v107b', 'a1070000-0000-0000-0000-000000000201', 'user', 'x')$$,
+  'a message belongs to a session of its own workspace', 'copilot_messages_session_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body) values
+    ('org-v107', '00000000-0000-0000-0000-000000000000', 'user', 'x')$$,
+  'a message belongs to a session that exists', 'copilot_messages_session_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_sessions (organization_id, workflow_id, draft_name) values
+    ('org-v107b', 'a1070000-0000-0000-0000-000000000102', 'standard-fix')$$,
+  'a session edits a workflow of its own workspace', 'copilot_sessions_workflow_fk');
+
+-- --- one active session per draft ------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_sessions (organization_id, workflow_id, draft_name) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000101', 'security-patch')$$,
+  'a draft has at most one active conversation', 'copilot_sessions_one_active');
+
+-- Another draft, and the same slug in another workspace, are unaffected.
+insert into ouroboros.copilot_sessions (id, organization_id, workflow_id, draft_name) values
+  ('a1070000-0000-0000-0000-000000000202', 'org-v107',  'a1070000-0000-0000-0000-000000000102', 'standard-fix'),
+  ('a1070000-0000-0000-0000-000000000203', 'org-v107b', 'a1070000-0000-0000-0000-000000000103', 'security-patch');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_sessions (organization_id, workflow_id, draft_name) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000102', 'Standard Fix')$$,
+  'a draft name is spelt like a workflow slug', 'copilot_sessions_draft_name_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_sessions (organization_id, workflow_id, draft_name, status, closed_at) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000102', 'standard-fix', 'paused', now())$$,
+  'a session is active, promoted or discarded', 'copilot_sessions_status');
+
+-- --- model provenance ----------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions
+       set model_provenance = jsonb_set(model_provenance, '{0,alias}', '"cheap-fast"')
+     where id = 'a1070000-0000-0000-0000-000000000201'$$,
+  'a recorded alias is never rewritten', 'copilot_sessions_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions set model_provenance = '[]'
+     where id = 'a1070000-0000-0000-0000-000000000201'$$,
+  'recorded provenance is never removed', 'copilot_sessions_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions
+       set model_provenance = model_provenance || '[{"seq": 5, "alias": "coder-max", "model_id": "m"}]'
+     where id = 'a1070000-0000-0000-0000-000000000201'$$,
+  'provenance entries rise in seq', 'copilot_sessions_model_provenance_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions set model_provenance = '[{"seq": 1, "alias": "coder-max"}]'
+     where id = 'a1070000-0000-0000-0000-000000000202'$$,
+  'a provenance entry names the alias and the model it resolved to', 'copilot_sessions_model_provenance_shape');
+
+-- --- closing keeps the transcript ------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions set status = 'promoted'
+     where id = 'a1070000-0000-0000-0000-000000000201'$$,
+  'a closed session records when it closed', 'copilot_sessions_closed_when_not_active');
+
+update ouroboros.copilot_sessions set status = 'promoted', closed_at = now()
+ where id = 'a1070000-0000-0000-0000-000000000201';
+
+select pg_temp.must_hold(
+  (select count(*) = 7 from ouroboros.copilot_messages where session_id = 'a1070000-0000-0000-0000-000000000201'),
+  'promoting a session keeps its whole transcript');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'user', 'one more thing')$$,
+  'a closed session takes no new messages', 'copilot_messages_session_active');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions set status = 'discarded'
+     where id = 'a1070000-0000-0000-0000-000000000201'$$,
+  'promoted is terminal', 'copilot_sessions_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions set status = 'active', closed_at = null
+     where id = 'a1070000-0000-0000-0000-000000000201'$$,
+  'a closed session is not reopened', 'copilot_sessions_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions set closed_at = closed_at + interval '1 day'
+     where id = 'a1070000-0000-0000-0000-000000000201'$$,
+  'when a session closed is not moved', 'copilot_sessions_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions set workflow_id = 'a1070000-0000-0000-0000-000000000102'
+     where id = 'a1070000-0000-0000-0000-000000000201'$$,
+  'a session keeps its draft', 'copilot_sessions_transition');
+
+-- With the first conversation closed, the draft may have a new one.
+insert into ouroboros.copilot_sessions (id, organization_id, workflow_id, draft_name) values
+  ('a1070000-0000-0000-0000-000000000204', 'org-v107', 'a1070000-0000-0000-0000-000000000101', 'security-patch');
+
+update ouroboros.copilot_sessions set status = 'discarded', closed_at = now()
+ where id = 'a1070000-0000-0000-0000-000000000204';
+
+select pg_temp.must_hold(
+  (select array_agg(status order by created_at, id) = array['promoted', 'discarded']
+     from ouroboros.copilot_sessions where workflow_id = 'a1070000-0000-0000-0000-000000000101'),
+  'a draft''s closed conversations remain, promoted and discarded alike');
+
+-- --- indexes -------------------------------------------------------------------------
+
+analyze ouroboros.copilot_messages;
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select * from ouroboros.copilot_messages
+     where session_id = 'a1070000-0000-0000-0000-000000000201' and seq < 5 order by seq desc limit 2$$,
+  'copilot_messages_session_seq_key');
+set local enable_seqscan = on;
+
+-- History pages by seq: two pages of three, then the rest, with nothing repeated or skipped.
+select pg_temp.must_hold(
+  (select array_agg(seq order by seq desc) = array[7, 6, 5]
+     from (select seq from ouroboros.copilot_messages
+            where session_id = 'a1070000-0000-0000-0000-000000000201'
+            order by seq desc limit 3) page)
+   and (select array_agg(seq order by seq desc) = array[4, 3, 2]
+          from (select seq from ouroboros.copilot_messages
+                 where session_id = 'a1070000-0000-0000-0000-000000000201' and seq < 5
+                 order by seq desc limit 3) page),
+  'history pages by seq without repeating or skipping a message');
+
+-- --- the chat retention sweep ----------------------------------------------------------
+
+-- Two long-closed sessions in the second workspace: one discarded, one promoted.
+insert into ouroboros.workflows (id, organization_id, slug, name) values
+  ('a1070000-0000-0000-0000-000000000104', 'org-v107b', 'old-one', 'Old one'),
+  ('a1070000-0000-0000-0000-000000000105', 'org-v107b', 'old-two', 'Old two');
+insert into ouroboros.copilot_sessions (id, organization_id, workflow_id, draft_name, created_at) values
+  ('a1070000-0000-0000-0000-000000000205', 'org-v107b', 'a1070000-0000-0000-0000-000000000104', 'old-one', '2020-01-01'),
+  ('a1070000-0000-0000-0000-000000000206', 'org-v107b', 'a1070000-0000-0000-0000-000000000105', 'old-two', '2020-01-01');
+insert into ouroboros.copilot_messages (organization_id, session_id, role, body) values
+  ('org-v107b', 'a1070000-0000-0000-0000-000000000205', 'user', 'discard me'),
+  ('org-v107b', 'a1070000-0000-0000-0000-000000000205', 'user', 'really'),
+  ('org-v107b', 'a1070000-0000-0000-0000-000000000206', 'user', 'publish me');
+update ouroboros.copilot_sessions set status = 'discarded', closed_at = '2020-02-01'
+ where id = 'a1070000-0000-0000-0000-000000000205';
+update ouroboros.copilot_sessions set status = 'promoted', closed_at = '2020-02-01'
+ where id = 'a1070000-0000-0000-0000-000000000206';
+
+select pg_temp.must_reject(
+  $$select ouroboros.copilot_sessions_sweep('org-v107b', now() - interval '1 day', now() - interval '30 days', 100)$$,
+  'a chat cutoff inside the 7-day floor is refused', 'copilot_sessions_sweep_cutoff_floor');
+
+select pg_temp.must_reject(
+  $$select ouroboros.copilot_sessions_sweep('org-v107b', now() - interval '30 days', now() - interval '30 days', 0)$$,
+  'a sweep removes at least one session per call', 'copilot_sessions_sweep_limit');
+
+-- The chat tier has passed both; the promoted tier has passed neither. Only the discarded one goes.
+select pg_temp.must_hold(
+  (select sessions = 1 and messages = 2
+     from ouroboros.copilot_sessions_sweep('org-v107b', '2021-01-01', '2019-01-01', 100)),
+  'the sweep removes a discarded session past the chat cutoff, with its messages');
+
+select pg_temp.must_hold(
+  (select array_agg(id::text order by id) = array['a1070000-0000-0000-0000-000000000203',
+                                                  'a1070000-0000-0000-0000-000000000206']
+     from ouroboros.copilot_sessions where organization_id = 'org-v107b')
+   and (select count(*) = 0 from ouroboros.copilot_messages
+         where session_id = 'a1070000-0000-0000-0000-000000000205'),
+  'a promoted transcript inside its own tier is kept, and the active session is never swept');
+
+-- A promoted tier set shorter than the chat tier is held to it: promoted is never kept less.
+select pg_temp.must_hold(
+  (select sessions = 0 from ouroboros.copilot_sessions_sweep('org-v107b', '2020-01-15', '2021-01-01', 100)),
+  'a promoted transcript is never swept before a discarded one would be');
+
+select pg_temp.must_hold(
+  (select sessions = 1 and messages = 1
+     from ouroboros.copilot_sessions_sweep('org-v107b', '2021-01-01', '2021-01-01', 100)),
+  'once past both cutoffs a promoted transcript is swept too');
+
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.copilot_sessions where organization_id = 'org-v107'),
+  'a sweep of one workspace leaves every other workspace''s sessions alone');
+
+-- --- the application role ------------------------------------------------------------
+set local role ouroboros_app;
+
+select pg_temp.must_hold(
+  (select current_user = 'ouroboros_app'),
+  'the assertions below really are the application role''s');
+
+insert into ouroboros.copilot_messages (id, organization_id, session_id, role, body) values
+  ('a1070000-0000-0000-0000-000000000308', 'org-v107', 'a1070000-0000-0000-0000-000000000202', 'user',
+   'make it run nightly');
+
+update ouroboros.copilot_messages set body = body where id = 'a1070000-0000-0000-0000-000000000308';
+
+select pg_temp.must_raise(
+  $$update ouroboros.copilot_sessions set last_seq = 100 where id = 'a1070000-0000-0000-0000-000000000202'$$,
+  '42501', 'the application role cannot move a session''s message counter');
+
+select pg_temp.must_raise(
+  $$update ouroboros.copilot_messages set seq = 100 where id = 'a1070000-0000-0000-0000-000000000308'$$,
+  '42501', 'the application role cannot renumber a message');
+
+select pg_temp.must_raise(
+  $$delete from ouroboros.copilot_messages where id = 'a1070000-0000-0000-0000-000000000308'$$,
+  '42501', 'the application role cannot delete a message');
+
+select pg_temp.must_raise(
+  $$delete from ouroboros.copilot_sessions where id = 'a1070000-0000-0000-0000-000000000202'$$,
+  '42501', 'the application role cannot delete a session');
+
+select pg_temp.must_raise(
+  $$select ouroboros.copilot_messages_allocate_seq()$$,
+  '42501', 'the allocator is not callable outside its trigger');
+
+select count(*) from ouroboros.copilot_sessions_sweep('org-v107', '2019-01-01', '2019-01-01', 1);
+
+reset role;
+
+select pg_temp.must_hold(
+  (select seq = 1 from ouroboros.copilot_messages where id = 'a1070000-0000-0000-0000-000000000308'),
+  'a message appended by the application role is numbered by the allocator');
+
+select pg_temp.must_hold(
+  (select bool_and(prosecdef
+                   and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+                   and not has_function_privilege('public', oid, 'execute'))
+     from pg_proc
+    where proname in ('copilot_messages_allocate_seq', 'copilot_sessions_sweep')
+      and pronamespace = 'ouroboros'::regnamespace)
+   and not has_column_privilege('ouroboros_app', 'ouroboros.copilot_sessions', 'last_seq', 'update')
+   and not has_column_privilege('ouroboros_app', 'ouroboros.copilot_sessions', 'last_seq', 'insert')
+   and not has_column_privilege('ouroboros_app', 'ouroboros.copilot_messages', 'seq', 'insert'),
+  'the copilot allocator and sweep run as their owner with search_path pinned and execute revoked from public, and the counters have no grant to the application');
+
+-- --- the workspace takes everything with it ----------------------------------------------
+
+delete from ouroboros.organization where "id" in ('org-v107', 'org-v107b');
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.copilot_sessions where organization_id in ('org-v107', 'org-v107b'))
+   and (select count(*) = 0 from ouroboros.copilot_messages where organization_id in ('org-v107', 'org-v107b')),
+  'deleting a workspace deletes its copilot sessions and messages');
+delete from ouroboros."user" where "id" = 'a1070000-0000-0000-0000-00000000000a';
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --
@@ -34935,6 +35529,7 @@ analyze ouroboros.provider_connections;
 analyze ouroboros.tickets;
 analyze ouroboros.ticket_sources;
 analyze ouroboros.investigations;
+analyze ouroboros.copilot_messages;
 
 \o
 \echo 'constraints.sql: all assertions passed'

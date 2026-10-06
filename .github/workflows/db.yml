@@ -343,6 +343,15 @@ jobs:
       - name: Assert gapless investigation numbers under concurrency
         run: ouroboros-db/tests/verify-investigation-seq.sh --runner docker
 
+      # The Workflow Copilot's conversations (#555): *"at most one active session per draft —
+      # proven by a concurrent-insert test"* and *"seq is unique and monotonic per session;
+      # history pagination is stable under concurrent appends"*. Seven interleavings against a
+      # database of its own; the third drops copilot_sessions_one_active and must let two
+      # conversations through, and the sixth swaps the seq allocator for a lock-free `max + 1`
+      # and must collide — which is what proves the index and the session row lock are doing it.
+      - name: Assert one active copilot session per draft and ordered appends under concurrency
+        run: ouroboros-db/tests/verify-copilot-sessions.sh --runner docker
+
       # ---------------------------------------------------------------------------
       # The drift check (#710). Everything above asks what the applied schema enforces;
       # this asks whether it is still the schema BetterAuth expects. Decision A3 makes

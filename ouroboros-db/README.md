@@ -1433,6 +1433,23 @@
 > rollback returns its number and a deleted number is never reused —
 > [`tests/verify-investigation-seq.sh`](tests/verify-investigation-seq.sh) proves it under a race.
 >
+> `V107` ([#555](https://github.com/NobuData/ouroboros/issues/555), CC.1) records the **Workflow
+> Copilot**'s conversations (mockup 20). `copilot_sessions` binds a conversation to the workflow
+> whose shared draft it edits — `status` `active → promoted | discarded` (closing keeps the
+> transcript), `model_provenance` (`[{seq, alias, model_id}]`, the resolved alias per exchange,
+> appended to and never rewritten), `draft_name` — and **at most one session per draft is
+> active** (`copilot_sessions_one_active`, a partial unique index). `copilot_messages` are the
+> ordered exchange: `role` `user | copilot`, `body`, `choices` (the `ask_user` chip rows:
+> `{prompt, options, selected, answered_at}`, each answerable once), `tool_trace`
+> (`{operations: [{op, outcome proposed|applied|bounced, validator_message on a bounce}], reads,
+> dry_run_proposals}`), `tokens_in`/`tokens_out`, `cost_cents` (**null when unpriced**, never set
+> without token counts) and `status` `streaming → complete | interrupted`. `seq` is drawn from the
+> session row's `last_seq`, so concurrent appends commit in seq order and history pagination is
+> stable — [`tests/verify-copilot-sessions.sh`](tests/verify-copilot-sessions.sh) proves both
+> guards under a race. Retention: `custom:copilot-chat` (discarded) and
+> `custom:copilot-chat-promoted` (promoted, never cut earlier than the chat tier) through
+> `copilot_sessions_sweep()`; the application role cannot delete either table.
+>
 > [#484](https://github.com/NobuData/ouroboros/issues/484) (BQ.5) seeds mockup 17 from those rows:
 > [`R__dev_seed_workspace_settings.sql`](migrations/R__dev_seed_workspace_settings.sql) — see
 > [Who may do what, and where the record goes](#who-may-do-what-and-where-the-record-goes). Its
@@ -2707,6 +2724,27 @@ same harness:
 PGPASSWORD=ouroboros ouroboros-db/tests/verify-investigation-seq.sh
 ```
 
+The Workflow Copilot's conversations ([#555](https://github.com/NobuData/ouroboros/issues/555))
+allow one active session per draft and number messages in commit order, and
+[`tests/verify-copilot-sessions.sh`](tests/verify-copilot-sessions.sh) proves both through the same
+harness:
+
+1. **One active session per draft.** A starts a conversation and has not committed; B's start on
+   the same draft waits, then is refused by `copilot_sessions_one_active`.
+2. **A rollback does not wedge the draft.** A rolls back instead, and B's start succeeds.
+3. **The probe.** With the index dropped, the same race leaves two active conversations.
+4. **Drafts do not contend.** Conversations on two drafts start at once without waiting.
+5. **Appends commit in seq order.** B's append waits on the session row while A's is
+   uncommitted, then takes seq 2; a reader meanwhile sees only seq 1.
+6. **The probe.** With the allocator swapped for a lock-free `max + 1`, the append race collides
+   on `copilot_messages_session_seq_key`.
+7. **A burst stays gapless.** Six clients × ten appends, every third rolled back, commit exactly
+   seq 1…42.
+
+```bash
+PGPASSWORD=ouroboros ouroboros-db/tests/verify-copilot-sessions.sh
+```
+
 ### The drift check
 
 Every table BetterAuth uses is hand-ported into a `V###__*.sql` migration here, because
@@ -2840,6 +2878,7 @@ misnamed migration is worth reporting before a database is waited on.
 | `tests/verify-alias-reference-guard.sh` | That the alias delete guard is a lock and not a count — the rule two concurrent writers make, which one session cannot assert | yes (one of its own) |
 | `tests/verify-analysis-run-guard.sh` | That two triggers racing to analyse one repo leave one running analysis — and that without `analysis_runs_one_running` they leave two ([#506](https://github.com/NobuData/ouroboros/issues/506)) | yes (one of its own) |
 | `tests/verify-investigation-seq.sh` | That concurrent investigation creates get gapless `RS-###` numbers, a rollback returns its number — and that a lock-free `max + 1` collides ([#608](https://github.com/NobuData/ouroboros/issues/608)) | yes (one of its own) |
+| `tests/verify-copilot-sessions.sh` | That two conversations racing onto one draft leave one active, concurrent appends commit in seq order — and that without the index or the session row lock they do not ([#555](https://github.com/NobuData/ouroboros/issues/555)) | yes (one of its own) |
 | `scripts/betterauth-schema.mjs --applied` | The applied schema still holds everything BetterAuth expects | yes |
 | `scripts/betterauth-schema.mjs --check` | The library still expects what the committed snapshot describes | yes (an empty one) |
 | `scripts/migrate --config flyway.seed.toml` ×2 | The seed applies, and applies twice without changing anything | yes (a second one) |
@@ -3170,6 +3209,7 @@ ouroboros-db/
 │   ├── V104__workspace_purge_resumable.sql  # workspace_tombstones as the purge's progress record (started_at, nullable purged_at) — #490
 │   ├── V105__onboarding_protected_paths_edited.sql  # onboarding_state.protected_paths_edited_at — a saved protected-path list stops scan suggestions — #391
 │   ├── V106__investigations.sql      # research_tools, investigation_kinds (versioned playbooks), investigations (RS-###) — #608
+│   ├── V107__copilot_sessions_messages.sql # copilot_sessions (one active per draft), copilot_messages (seq, choices, tool_trace, cost) — #555
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -3236,6 +3276,7 @@ ouroboros-db/
     ├── verify-inbox-invariants.sh    # that they go red when a rule is broken, naming it — #460
     ├── verify-analysis-run-guard.sh  # one running analysis per repo, under a two-session race — #506
     ├── verify-investigation-seq.sh   # gapless RS-### numbers under concurrent creates — #608
+    ├── verify-copilot-sessions.sh    # one active copilot session per draft, ordered appends — #555
     ├── decision-refs.sql             # BM.1's typed decision refs against the seeded universe — #457
     ├── constraints.sql               # what the schema enforces, asserted against a live database
     └── seed.sql                      # what the seeds put there, asserted against a live database
