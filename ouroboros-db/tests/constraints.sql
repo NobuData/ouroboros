@@ -37581,6 +37581,436 @@ select pg_temp.must_hold(
   'deleting a workspace deletes its rivals, watches, snapshots and matrices — cited diffs included');
 
 -- ===========================================================================
+-- V113 — roadmap docs, their immutable versions and the suggestion queue (#612, CK.5)
+-- ===========================================================================
+--
+-- Mockup 22's pipeline step 1 as rows: RS-124's ROADMAP.md as a structured doc whose first version
+-- names Planning drafts and whose second, after the push, names the tickets too — numbers and MVP
+-- flags mirrored into the new version, the old one untouched. Versions refuse every edit but the
+-- repo projection, which moves only along its state machine; a suggestion is a user's or the AI's,
+-- and is applied (with the version its re-run produced) or dismissed (with who and when).
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v113', 'Roadmap Works', 'roadmap-works-v113', now()),
+  ('org-v113b', 'Elsewhere', 'elsewhere-v113', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v113', 'Ken Suenobu', 'ken@roadmap-works-v113.dev', true);
+
+insert into ouroboros.investigations (id, organization_id, kind_id, seq, question, depth, tools_enabled,
+                                      status, provenance)
+select v.id, v.org, k.id, 124, 'What should Helios ship next quarter?', 'deep_dive', '["tickets", "telemetry"]',
+       'running', '{"researcher": "loop-v1", "alias": "researcher-long-ctx", "resolution_ref": null}'
+  from (values ('a1130000-0000-0000-0000-000000000001'::uuid, 'org-v113'),
+               ('a1130000-0000-0000-0000-000000000002'::uuid, 'org-v113b')) as v(id, org)
+  join ouroboros.investigation_kinds k on k.organization_id = v.org and k.slug = 'roadmap_improvements';
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('a1130000-0000-0000-0000-00000000000a', 'org-v113',  'github', 'GitHub · roadmap works'),
+  ('a1130000-0000-0000-0000-00000000000b', 'org-v113b', 'github', 'GitHub · elsewhere');
+
+insert into ouroboros.draft_batches (id, organization_id, source_prompt, planner, target_source_id, created_by) values
+  ('a1130000-0000-0000-0000-000000000011', 'org-v113', 'RS-124 brief → roadmap', 'create-roadmap-v1',
+   'a1130000-0000-0000-0000-00000000000a', 'user-v113'),
+  ('a1130000-0000-0000-0000-000000000012', 'org-v113b', 'Somebody else''s drafts', 'create-roadmap-v1',
+   'a1130000-0000-0000-0000-00000000000b', null);
+
+-- RS-124's six items, drafted (AK.1) and then pushed as #742…#747.
+create temp table v113_items (n int, ms text, key text, title text, mvp boolean, effort text, checked boolean)
+  on commit drop;
+insert into v113_items values
+  (742, 'm1', 'dock-mpc',        'Wind-feedforward MPC in final approach', true,  'l',  true),
+  (743, 'm1', 'dock-retry',      'Re-planned abort & retry vectors',       true,  'm',  false),
+  (744, 'm1', 'dock-gust',       'Gust estimator from IMU residuals',      false, 'm',  false),
+  (745, 'm2', 'fleet-battery',   'Battery health model v2',                false, 'm',  false),
+  (746, 'm2', 'fleet-gaps',      'Telemetry gap alerts',                   false, 's',  false),
+  (747, 'm2', 'fleet-playbook',  'Operator recovery playbook docs',        false, 'xs', false);
+
+insert into ouroboros.ticket_drafts (id, batch_id, local_key, title)
+select ('a1130000-0000-0000-0000-000000000' || i.n)::uuid, 'a1130000-0000-0000-0000-000000000011',
+       'RM-' || (i.n - 741), i.title
+  from v113_items i;
+insert into ouroboros.ticket_drafts (id, batch_id, local_key, title) values
+  ('a1130000-0000-0000-0000-000000000999', 'a1130000-0000-0000-0000-000000000012', 'X-1', 'Elsewhere');
+
+insert into ouroboros.tickets (id, organization_id, source_id, external_id, external_key, external_url, title,
+                               state, source_created_at, source_updated_at)
+select ('a1130000-0000-0000-0000-000000001' || i.n)::uuid, 'org-v113', 'a1130000-0000-0000-0000-00000000000a',
+       i.n::text, '#' || i.n, 'https://github.com/roadmap-works-v113/helios-firmware/issues/' || i.n,
+       i.title, 'open', now(), now()
+  from v113_items i;
+insert into ouroboros.tickets (id, organization_id, source_id, external_id, external_key, external_url, title,
+                               state, source_created_at, source_updated_at) values
+  ('a1130000-0000-0000-0000-000000001999', 'org-v113b', 'a1130000-0000-0000-0000-00000000000b', '999', '#999',
+   'https://github.com/elsewhere-v113/x/issues/999', 'Elsewhere', 'open', now(), now());
+
+-- pg_temp.v113_structure(pushed) — RS-124's structure: drafts only before the push, drafts and
+-- tickets (with their keys mirrored) after it.
+create function pg_temp.v113_structure(pushed boolean)
+returns jsonb language sql as $$
+  select jsonb_build_object('milestones', jsonb_agg(m.milestone order by m.ms))
+    from (select i.ms,
+                 jsonb_build_object(
+                   'key', i.ms,
+                   'name', case i.ms when 'm1' then 'Docking parity' else 'Fleet reliability' end,
+                   'target_date', case i.ms when 'm1' then '2026-10-15' else '2026-11-20' end,
+                   'items', jsonb_agg(jsonb_build_object(
+                              'key', i.key, 'title', i.title,
+                              'draft_id', 'a1130000-0000-0000-0000-000000000' || i.n,
+                              'ticket_id', case when pushed then 'a1130000-0000-0000-0000-000000001' || i.n end,
+                              'ticket_key', case when pushed then '#' || i.n end,
+                              'mvp', i.mvp, 'effort', i.effort, 'checked', pushed and i.checked)
+                            order by i.n)) as milestone
+            from pg_temp.v113_items i group by i.ms) m;
+$$;
+
+-- --- the doc and its first version ------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.roadmap_docs (organization_id, investigation_id, title)
+    values ('org-v113', 'a1130000-0000-0000-0000-000000000002', 'x')$$,
+  'a doc''s investigation is of its own workspace', 'roadmap_docs_investigation_same_workspace');
+
+insert into ouroboros.roadmap_docs (id, organization_id, investigation_id, title) values
+  ('a1130000-0000-0000-0000-000000000101', 'org-v113', 'a1130000-0000-0000-0000-000000000001',
+   'Helios — Q4 Improvement Roadmap');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.roadmap_docs (organization_id, investigation_id, title)
+    values ('org-v113', 'a1130000-0000-0000-0000-000000000001', 'Again')$$,
+  'an investigation produces one roadmap', 'roadmap_docs_investigation_key');
+
+insert into ouroboros.roadmap_doc_versions (id, doc_id, version, structure, markdown, generated_by, repo_projection)
+select 'a1130000-0000-0000-0000-000000000201', 'a1130000-0000-0000-0000-000000000101', 1,
+       pg_temp.v113_structure(false), '# Helios — Q4 Improvement Roadmap\n', 'create-roadmap@run-a1',
+       '{"state": "pending", "path": "docs/ROADMAP.md", "pr_ref": null, "committed_sha": null, "observed_sha": null}';
+
+select pg_temp.must_hold(
+  (select current_version = 1 from ouroboros.roadmap_docs where id = 'a1130000-0000-0000-0000-000000000101'),
+  'the first version becomes the doc''s current one');
+
+-- --- versions are immutable -------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.roadmap_doc_versions set markdown = '# hand-edited' where id = 'a1130000-0000-0000-0000-000000000201'$$,
+  'a version''s markdown is never hand-edited', 'roadmap_doc_versions_no_update');
+select pg_temp.must_reject(
+  $$update ouroboros.roadmap_doc_versions set structure = jsonb_set(structure, '{milestones,0,items,0,mvp}', 'false')
+     where id = 'a1130000-0000-0000-0000-000000000201'$$,
+  'nor its structure — an MVP flag lands in the next version', 'roadmap_doc_versions_no_update');
+select pg_temp.must_reject(
+  $$update ouroboros.roadmap_doc_versions set generated_by = 'someone' where id = 'a1130000-0000-0000-0000-000000000201'$$,
+  'nor who generated it', 'roadmap_doc_versions_no_update');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.roadmap_doc_versions (doc_id, version, structure, markdown, generated_by, repo_projection)
+    select 'a1130000-0000-0000-0000-000000000101', 3, pg_temp.v113_structure(false), 'x', 'r',
+           '{"state": "pending", "path": "docs/ROADMAP.md", "pr_ref": null, "committed_sha": null, "observed_sha": null}'$$,
+  'a version is the next one, with no gap', 'roadmap_doc_versions_version_next');
+
+-- --- structure shape and refs ------------------------------------------------------------
+
+-- pg_temp.v113_version(structure) — a version-2 insert carrying the given structure.
+create function pg_temp.v113_version(structure text)
+returns text language sql as $$
+  select format($f$insert into ouroboros.roadmap_doc_versions (doc_id, version, structure, markdown, generated_by, repo_projection)
+                   values ('a1130000-0000-0000-0000-000000000101', 2, %s, 'x', 'r',
+                           '{"state": "pending", "path": "docs/ROADMAP.md", "pr_ref": null, "committed_sha": null, "observed_sha": null}')$f$,
+                structure);
+$$;
+
+select pg_temp.must_reject(pg_temp.v113_version($$'{"markdown": "# roadmap"}'$$),
+  'a structure is milestones, not free markdown', 'roadmap_doc_versions_structure_shape');
+select pg_temp.must_reject(pg_temp.v113_version($$'{"milestones": []}'$$),
+  'a roadmap has at least one milestone', 'roadmap_doc_versions_structure_shape');
+select pg_temp.must_reject(pg_temp.v113_version($$jsonb_set(pg_temp.v113_structure(false), '{milestones,0,target_date}', '"2026-02-30"')$$),
+  'a target date is a real date', 'roadmap_doc_versions_structure_shape');
+select pg_temp.must_reject(pg_temp.v113_version($$jsonb_set(pg_temp.v113_structure(false), '{milestones,0,items,0,effort}', '"huge"')$$),
+  'effort is xs, s, m, l or xl', 'roadmap_doc_versions_structure_shape');
+select pg_temp.must_reject(pg_temp.v113_version($$jsonb_set(pg_temp.v113_structure(false), '{milestones,1,items,0,key}', '"dock-mpc"')$$),
+  'an item key is unique in the doc', 'roadmap_doc_versions_structure_shape');
+select pg_temp.must_reject(pg_temp.v113_version($$jsonb_set(pg_temp.v113_structure(false), '{milestones,0,items,0,ticket_key}', '"#742"')$$),
+  'a mirrored ticket key comes only with its ticket', 'roadmap_doc_versions_structure_shape');
+select pg_temp.must_reject(pg_temp.v113_version($$jsonb_set(pg_temp.v113_structure(false), '{milestones,0,items,0,draft_id}', '"a1130000-0000-0000-0000-000000000999"')$$),
+  'an item''s draft is of the doc''s workspace', 'roadmap_doc_versions_refs_valid');
+select pg_temp.must_reject(pg_temp.v113_version($$jsonb_set(jsonb_set(pg_temp.v113_structure(false),
+                             '{milestones,0,items,0,ticket_id}', '"a1130000-0000-0000-0000-000000001999"'),
+                             '{milestones,0,items,0,ticket_key}', '"#999"')$$),
+  'an item''s ticket is of the doc''s workspace', 'roadmap_doc_versions_refs_valid');
+select pg_temp.must_reject(pg_temp.v113_version($$jsonb_set(pg_temp.v113_structure(true), '{milestones,0,items,0,ticket_key}', '"#700"')$$),
+  'a mirrored ticket key is the ticket''s own', 'roadmap_doc_versions_refs_valid');
+
+-- --- the push: version 2 names the tickets, keeps the drafts --------------------------------
+
+insert into ouroboros.roadmap_doc_versions (id, doc_id, version, structure, markdown, generated_by, repo_projection)
+select 'a1130000-0000-0000-0000-000000000202', 'a1130000-0000-0000-0000-000000000101', 2,
+       pg_temp.v113_structure(true), '# Helios — Q4 Improvement Roadmap\n', 'create-issues@run-a2',
+       '{"state": "pending", "path": "docs/ROADMAP.md", "pr_ref": null, "committed_sha": null, "observed_sha": null}';
+
+select pg_temp.must_hold(
+  (select d.current_version = 2 and d.title = 'Helios — Q4 Improvement Roadmap'
+     from ouroboros.roadmap_docs d where d.id = 'a1130000-0000-0000-0000-000000000101'),
+  'the push''s version is current');
+
+select pg_temp.must_hold(
+  (select array_agg(line order by ord)
+          = array['M1 · DOCKING PARITY — TARGET OCT 15',
+                  '[x] #742 Wind-feedforward MPC in final approach MVP L',
+                  '[ ] #743 Re-planned abort & retry vectors MVP M',
+                  '[ ] #744 Gust estimator from IMU residuals M',
+                  'M2 · FLEET RELIABILITY — TARGET NOV 20',
+                  '[ ] #745 Battery health model v2 M',
+                  '[ ] #746 Telemetry gap alerts S',
+                  '[ ] #747 Operator recovery playbook docs XS']
+     from (select mo * 100 as ord,
+                  'M' || mo || ' · ' || upper(m ->> 'name') || ' — TARGET '
+                  || upper(to_char((m ->> 'target_date')::date, 'Mon FMDD')) as line
+             from ouroboros.roadmap_doc_versions v,
+                  jsonb_array_elements(v.structure -> 'milestones') with ordinality as x(m, mo)
+            where v.id = 'a1130000-0000-0000-0000-000000000202'
+           union all
+           select mo * 100 + io,
+                  case when (i ->> 'checked')::boolean then '[x] ' else '[ ] ' end || (i ->> 'ticket_key') || ' '
+                  || (i ->> 'title') || case when (i ->> 'mvp')::boolean then ' MVP' else '' end
+                  || ' ' || upper(i ->> 'effort')
+             from ouroboros.roadmap_doc_versions v,
+                  jsonb_array_elements(v.structure -> 'milestones') with ordinality as x(m, mo),
+                  jsonb_array_elements(m -> 'items') with ordinality as y(i, io)
+            where v.id = 'a1130000-0000-0000-0000-000000000202') lines),
+  'RS-124''s document round-trips — two milestones with target dates, six items, MVP flags, one checked');
+
+select pg_temp.must_hold(
+  (select bool_and(r.draft_id is not null and r.ticket_id is not null)
+          and count(*) = 6
+     from ouroboros.roadmap_doc_versions v,
+          ouroboros.roadmap_structure_refs(v.structure) r
+    where v.id = 'a1130000-0000-0000-0000-000000000202')
+   and (select bool_and(r.draft_id is not null and r.ticket_id is null)
+          from ouroboros.roadmap_doc_versions v,
+               ouroboros.roadmap_structure_refs(v.structure) r
+         where v.id = 'a1130000-0000-0000-0000-000000000201'),
+  'v1 names drafts; after the push v2 names the tickets without losing the draft links, and v1 is untouched');
+
+-- --- the repo projection ---------------------------------------------------------------------
+
+-- pg_temp.v113_project(state, pr, sha, observed) — move version 2's projection.
+create function pg_temp.v113_project(state text, pr text, sha text, observed text, path text default 'docs/ROADMAP.md')
+returns text language sql as $$
+  select format($f$update ouroboros.roadmap_doc_versions
+                      set repo_projection = jsonb_build_object('state', %L, 'path', %L, 'pr_ref', %L::text,
+                                                               'committed_sha', %L::text, 'observed_sha', %L::text)
+                    where id = 'a1130000-0000-0000-0000-000000000202'$f$,
+                state, path, pr, sha, observed);
+$$;
+
+select pg_temp.must_reject(pg_temp.v113_project('pr_open', null, null, null),
+  'an open PR names its PR', 'roadmap_doc_versions_repo_projection_shape');
+select pg_temp.must_reject(pg_temp.v113_project('committed', 'PR #88', null, null),
+  'a committed projection names its commit', 'roadmap_doc_versions_repo_projection_shape');
+select pg_temp.must_reject(pg_temp.v113_project('merged', 'PR #88', '8c1b2e4', null),
+  'a projection state is one of the four', 'roadmap_doc_versions_projection_transition');
+select pg_temp.must_hold(
+  not ouroboros.roadmap_repo_projection_valid('{"state": "merged", "path": "docs/ROADMAP.md", "pr_ref": "PR #88", "committed_sha": "8c1b2e4", "observed_sha": null}')
+  and not ouroboros.roadmap_repo_projection_valid('{"state": "pending", "path": "../etc/ROADMAP.md", "pr_ref": null, "committed_sha": null, "observed_sha": null}')
+  and not ouroboros.roadmap_repo_projection_valid('{"state": "pending", "path": "/docs/ROADMAP.md", "pr_ref": null, "committed_sha": null, "observed_sha": null}')
+  and not ouroboros.roadmap_repo_projection_valid('{"state": "pending", "path": "docs/ROADMAP.md", "pr_ref": null, "committed_sha": "8c1b2e4", "observed_sha": null}')
+  and not ouroboros.roadmap_repo_projection_valid('{"state": "committed", "path": "docs/ROADMAP.md", "pr_ref": null, "committed_sha": "main", "observed_sha": null}')
+  and not ouroboros.roadmap_repo_projection_valid('{"state": "pending", "path": "docs/ROADMAP.md"}')
+  and ouroboros.roadmap_repo_projection_valid('{"state": "committed", "path": "docs/ROADMAP.md", "pr_ref": null, "committed_sha": "8c1b2e4", "observed_sha": null}'),
+  'a projection''s shape: one of four states, a path inside the repo, a sha only once committed, every key present');
+select pg_temp.must_reject(
+  $$insert into ouroboros.roadmap_doc_versions (doc_id, version, structure, markdown, generated_by, repo_projection)
+    select 'a1130000-0000-0000-0000-000000000101', 3, pg_temp.v113_structure(true), 'x', 'r',
+           '{"state": "pending", "path": "../etc/ROADMAP.md", "pr_ref": null, "committed_sha": null, "observed_sha": null}'$$,
+  'a projection path stays inside the repo', 'roadmap_doc_versions_repo_projection_shape');
+select pg_temp.must_reject(pg_temp.v113_project('drift_detected', 'PR #88', '8c1b2e4', '9d2c3f5'),
+  'drift is detected only on a committed projection', 'roadmap_doc_versions_projection_transition');
+select pg_temp.must_reject(pg_temp.v113_project('pending', null, null, null, 'ROADMAP.md'),
+  'a projection''s path is fixed once written', 'roadmap_doc_versions_projection_transition');
+
+do $x$ begin execute pg_temp.v113_project('pr_open', 'PR #88', null, null); end $x$;
+do $x$ begin execute pg_temp.v113_project('committed', 'PR #88', '8c1b2e4', null); end $x$;
+
+select pg_temp.must_reject(pg_temp.v113_project('pending', null, null, null),
+  'a committed projection does not go back to pending', 'roadmap_doc_versions_projection_transition');
+select pg_temp.must_reject(pg_temp.v113_project('drift_detected', 'PR #88', '8c1b2e4', null),
+  'drift names the commit it was observed at', 'roadmap_doc_versions_repo_projection_shape');
+
+do $x$ begin execute pg_temp.v113_project('drift_detected', 'PR #88', '8c1b2e4', '9d2c3f5'); end $x$;
+
+select pg_temp.must_hold(
+  (select repo_projection ->> 'state' = 'drift_detected' and repo_projection ->> 'committed_sha' = '8c1b2e4'
+          and repo_projection ->> 'observed_sha' = '9d2c3f5'
+     from ouroboros.roadmap_doc_versions where id = 'a1130000-0000-0000-0000-000000000202'),
+  'pending → pr_open → committed → drift_detected, each state shaped as the state requires');
+
+do $x$ begin execute pg_temp.v113_project('committed', 'PR #89', '0a1b2c3', null); end $x$;
+
+-- --- suggestions --------------------------------------------------------------------------------
+
+insert into ouroboros.doc_suggestions (id, doc_id, author_kind, author_user_id, author_agent, text, hint) values
+  ('a1130000-0000-0000-0000-000000000301', 'a1130000-0000-0000-0000-000000000101', 'user', 'user-v113', null,
+   'Pull #744 into the M1 MVP set — churn interviews rank gust handling above battery accuracy.',
+   '{"item": "dock-gust", "mvp": true}'),
+  ('a1130000-0000-0000-0000-000000000302', 'a1130000-0000-0000-0000-000000000101', 'ai', null, 'estimator',
+   'Split #745 — complexity is high for a single loop; model + calibration land better as two issues.',
+   '{"split": "fleet-battery", "into": 2}');
+
+select pg_temp.must_hold(
+  (select array_agg(case s.author_kind when 'user' then u."name" else 'AI · ' || s.author_agent end
+                    || ': ' || substring(s.text from '^\S+ #[0-9]+') order by s.id)
+          = array['Ken Suenobu: Pull #744', 'AI · estimator: Split #745']
+          and (select count(*) = 2 from ouroboros.doc_suggestions
+                where doc_id = 'a1130000-0000-0000-0000-000000000101' and status = 'open')
+     from ouroboros.doc_suggestions s
+     left join ouroboros."user" u on u."id" = s.author_user_id
+    where s.doc_id = 'a1130000-0000-0000-0000-000000000101'),
+  'SUGGESTED CHANGES — 2 OPEN: the human''s and the AI''s, distinguishably');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.doc_suggestions (doc_id, author_kind, author_user_id, text)
+    values ('a1130000-0000-0000-0000-000000000101', 'ai', 'user-v113', 'x')$$,
+  'an AI suggestion names its agent, not a person', 'doc_suggestions_author_coherent');
+select pg_temp.must_reject(
+  $$insert into ouroboros.doc_suggestions (doc_id, author_kind, author_agent, text)
+    values ('a1130000-0000-0000-0000-000000000101', 'user', 'estimator', 'x')$$,
+  'a user suggestion names no agent', 'doc_suggestions_author_coherent');
+select pg_temp.must_reject(
+  $$insert into ouroboros.doc_suggestions (doc_id, author_kind, author_agent, text)
+    values ('a1130000-0000-0000-0000-000000000101', 'robot', 'estimator', 'x')$$,
+  'an author is a user or the AI', 'doc_suggestions_author_kind');
+select pg_temp.must_reject(
+  $$insert into ouroboros.doc_suggestions (doc_id, author_kind, author_agent, text, status, dismissed_at, dismissed_by)
+    values ('a1130000-0000-0000-0000-000000000101', 'ai', 'estimator', 'x', 'dismissed', now(), 'user-v113')$$,
+  'a suggestion is written open', 'doc_suggestions_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.doc_suggestions set status = 'applied', applied_at = now(), applied_by = 'user-v113'
+     where id = 'a1130000-0000-0000-0000-000000000301'$$,
+  'applying records the version the re-run produced', 'doc_suggestions_status_coherent');
+select pg_temp.must_reject(
+  $$update ouroboros.doc_suggestions set status = 'applied', applied_version = 2, applied_at = now()
+     where id = 'a1130000-0000-0000-0000-000000000301'$$,
+  'and who applied it', 'doc_suggestions_transition');
+select pg_temp.must_reject(
+  $$update ouroboros.doc_suggestions set status = 'applied', applied_version = 9, applied_at = now(), applied_by = 'user-v113'
+     where id = 'a1130000-0000-0000-0000-000000000301'$$,
+  'the version is one the doc has', 'doc_suggestions_applied_version_fk');
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       update ouroboros.doc_suggestions set created_at = now() + interval '1 hour'
+        where id = 'a1130000-0000-0000-0000-000000000301';
+     end $x$ $q$,
+  'a suggestion is never edited', 'doc_suggestions_transition');
+select pg_temp.must_reject(
+  $$update ouroboros.doc_suggestions set text = 'Pull #745 instead' where id = 'a1130000-0000-0000-0000-000000000301'$$,
+  'nor its text', 'doc_suggestions_transition');
+
+-- Applying re-runs create-roadmap: version 3 is written, v2 untouched, and the suggestion records it.
+insert into ouroboros.roadmap_doc_versions (id, doc_id, version, structure, markdown, generated_by, repo_projection)
+select 'a1130000-0000-0000-0000-000000000203', 'a1130000-0000-0000-0000-000000000101', 3,
+       jsonb_set(pg_temp.v113_structure(true), '{milestones,0,items,2,mvp}', 'true'),
+       '# Helios — Q4 Improvement Roadmap\n', 'create-roadmap@run-a3',
+       '{"state": "pending", "path": "docs/ROADMAP.md", "pr_ref": null, "committed_sha": null, "observed_sha": null}';
+update ouroboros.doc_suggestions
+   set status = 'applied', applied_version = 3, applied_at = now(), applied_by = 'user-v113'
+ where id = 'a1130000-0000-0000-0000-000000000301';
+
+select pg_temp.must_hold(
+  (select s.status = 'applied' and s.applied_version = 3 and s.applied_by = 'user-v113'
+          and (v.structure #>> '{milestones,0,items,2,mvp}') = 'true'
+          and (v2.structure #>> '{milestones,0,items,2,mvp}') = 'false'
+          and d.current_version = 3
+     from ouroboros.doc_suggestions s
+     join ouroboros.roadmap_doc_versions v  on v.doc_id = s.doc_id and v.version = s.applied_version
+     join ouroboros.roadmap_doc_versions v2 on v2.doc_id = s.doc_id and v2.version = 2
+     join ouroboros.roadmap_docs d          on d.id = s.doc_id
+    where s.id = 'a1130000-0000-0000-0000-000000000301'),
+  'open → applied@v3: the re-run''s version is recorded, and v2 is untouched');
+
+select pg_temp.must_reject(
+  $$update ouroboros.doc_suggestions set status = 'dismissed', applied_version = null, applied_at = null,
+                                        applied_by = null, dismissed_at = now(), dismissed_by = 'user-v113'
+     where id = 'a1130000-0000-0000-0000-000000000301'$$,
+  'an applied suggestion stays applied', 'doc_suggestions_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.doc_suggestions set status = 'dismissed', dismissed_at = now()
+     where id = 'a1130000-0000-0000-0000-000000000302'$$,
+  'dismissing records who dismissed it', 'doc_suggestions_transition');
+update ouroboros.doc_suggestions set status = 'dismissed', dismissed_at = now(), dismissed_by = 'user-v113'
+ where id = 'a1130000-0000-0000-0000-000000000302';
+
+select pg_temp.must_hold(
+  (select status = 'dismissed' and dismissed_by = 'user-v113' and dismissed_at is not null
+          and applied_version is null
+     from ouroboros.doc_suggestions where id = 'a1130000-0000-0000-0000-000000000302'),
+  'open → dismissed, with actor and time');
+
+-- A suggestion made after a version cannot claim to have produced it.
+insert into ouroboros.doc_suggestions (id, doc_id, author_kind, author_agent, text, created_at) values
+  ('a1130000-0000-0000-0000-000000000303', 'a1130000-0000-0000-0000-000000000101', 'ai', 'estimator',
+   'Later idea', now() + interval '1 hour');
+select pg_temp.must_reject(
+  $$update ouroboros.doc_suggestions set status = 'applied', applied_version = 3, applied_at = now(), applied_by = 'user-v113'
+     where id = 'a1130000-0000-0000-0000-000000000303'$$,
+  'a suggestion cannot have produced a version written before it', 'doc_suggestions_transition');
+
+-- --- indexes ---------------------------------------------------------------------------------
+
+select pg_temp.must_hold(
+  (select indexdef like '%(doc_id, status)%' from pg_indexes
+    where schemaname = 'ouroboros' and indexname = 'doc_suggestions_doc_status_idx')
+   and exists (select 1 from pg_indexes where schemaname = 'ouroboros'
+                  and indexname = 'roadmap_doc_versions_doc_version_key'),
+  'versions are keyed by doc + version, and suggestions indexed by doc + status');
+
+-- --- the application role -----------------------------------------------------------------------
+set local role ouroboros_app;
+
+select pg_temp.must_hold(
+  (select current_user = 'ouroboros_app'),
+  'the assertions below really are the application role''s');
+
+select pg_temp.must_raise(
+  $$update ouroboros.roadmap_doc_versions set markdown = 'x'$$,
+  '42501', 'the application role may move only a version''s repo projection');
+select pg_temp.must_raise(
+  $$delete from ouroboros.roadmap_doc_versions$$,
+  '42501', 'the application role cannot delete a version');
+select pg_temp.must_raise(
+  $$delete from ouroboros.doc_suggestions$$,
+  '42501', 'the application role cannot delete a suggestion');
+do $x$ begin execute pg_temp.v113_project('drift_detected', 'PR #89', '0a1b2c3', '9d2c3f5'); end $x$;
+
+reset role;
+
+-- --- deletions -----------------------------------------------------------------------------------
+
+-- A person's deletion clears the actor and keeps the record.
+delete from ouroboros."user" where "id" = 'user-v113';
+select pg_temp.must_hold(
+  (select array_agg(status || ':' || coalesce(applied_by, dismissed_by, author_user_id, '∅') order by id)
+          = array['applied:∅', 'dismissed:∅', 'open:∅']
+     from ouroboros.doc_suggestions where doc_id = 'a1130000-0000-0000-0000-000000000101'),
+  'deleting a person clears who suggested, applied or dismissed — the suggestions stay');
+
+-- The investigation going leaves the roadmap.
+delete from ouroboros.investigations where id = 'a1130000-0000-0000-0000-000000000001';
+select pg_temp.must_hold(
+  (select investigation_id is null and current_version = 3
+     from ouroboros.roadmap_docs where id = 'a1130000-0000-0000-0000-000000000101'),
+  'a doc outlives its investigation');
+
+delete from ouroboros.organization where "id" in ('org-v113', 'org-v113b');
+set constraints ouroboros.roadmap_docs_current_version_fk immediate;
+set constraints ouroboros.roadmap_docs_current_version_fk deferred;
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.roadmap_docs where organization_id in ('org-v113', 'org-v113b'))
+   and (select count(*) = 0 from ouroboros.roadmap_doc_versions where doc_id = 'a1130000-0000-0000-0000-000000000101')
+   and (select count(*) = 0 from ouroboros.doc_suggestions where doc_id = 'a1130000-0000-0000-0000-000000000101'),
+  'deleting a workspace deletes its roadmaps, their versions and suggestions');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

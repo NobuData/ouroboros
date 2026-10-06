@@ -323,7 +323,7 @@ issue assigned. Complexity chips: **XS · S · M · L**.
 | CK.2 | #609 ✅ | 🟢 Done | ouroboros-db: [CK.2] Citation ledger — source records & claims | Archived sources (external+internal URIs), claim→citation links | mvp, research, db | N (after CK.1) | Y | M | ouroboros-db |
 | CK.3 | #610 ✅ | 🟢 Done | ouroboros-db: [CK.3] Capability matrices & competitor watch schema | Matrix cells with citations; rival registry, watched sources, diffs | mvp, research, db | N (after CK.2) | Y | M | ouroboros-db |
 | CK.4 | #611 | 🟡 Open | ouroboros-db: [CK.4] Regression baselines & watch items | Release baselines, metric windows, drift states, bisect results | mvp, research, db | N (after CK.1, AS.1) | Y | M | ouroboros-db |
-| CK.5 | #612 | 🟡 Open | ouroboros-db: [CK.5] Roadmap docs & suggested changes | Versioned doc entities, projection state, writeback refs, suggestions | mvp, research, db | N (after CK.1, AK.1) | Y | M | ouroboros-db |
+| CK.5 | #612 ✅ | 🟢 Done | ouroboros-db: [CK.5] Roadmap docs & suggested changes | Versioned doc entities, projection state, writeback refs, suggestions | mvp, research, db | N (after CK.1, AK.1) | Y | M | ouroboros-db |
 | CK.6 | #613 | 🟡 Open | ouroboros-db: [CK.6] Research dev seeds — mockup-22 parity + probes | RS-118/121/124/127, 44-source ledger, matrix, watch rows, doc; ci checks | mvp, research, db, ci | N (after CK.2–CK.5, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue CK.1 — ouroboros-db: [CK.1] Investigations & kind registry schema
@@ -470,7 +470,9 @@ baseline{v2.0.4, hover_drift_gusts, window} × nightly ─▶ item{+14%, err,
 
 ### Issue CK.5 — ouroboros-db: [CK.5] Roadmap docs & suggested changes
 
-> **GitHub issue:** #612 · **Status:** 🟡 Open · **Parent epic:** #603
+> **GitHub issue:** #612 ✅ · **Status:** 🟢 Done · **Parent epic:** #603
+>
+> **Delivered (#612, `V113__roadmap_docs_suggestions.sql` — no REST/UI change, no seed; CK.6 #613 seeds RS-124's doc):** `roadmap_docs` (workspace, nullable `investigation_id` of the same workspace — set null on delete, one doc per investigation — `title`, `current_version` advanced by each new version). `roadmap_doc_versions` dense from 1, **immutable** for every role except `repo_projection` (the WF-P.1 pattern): `structure` `{milestones: [{key, name, target_date, items: [{key, title, draft_id, ticket_id, ticket_key, mvp, effort, checked}]}]}` shape-checked (real dates, effort `xs…xl`, unique keys, `ticket_key` exactly with `ticket_id`), item refs checked at write — drafts (AK.1 `ticket_drafts`) and tickets of the doc's workspace, `ticket_key` = the ticket's `external_key` — so an item keeps its draft link after the push; `markdown` (projection, ≤ 512 KiB), `generated_by`; `repo_projection` `{state, path, pr_ref, committed_sha, observed_sha}` shaped per state, with transitions `pending → pr_open | committed`, `pr_open → committed | pending`, `committed → drift_detected`, `drift_detected → pr_open | committed`, path fixed. `doc_suggestions` — `author_kind` `user|ai` (person or agent), `text`, optional `hint`, `open → applied` (version produced after it, who, when) or `open → dismissed` (who, when), terminal, never edited; `(doc_id, status)` index. Tests: `constraints.sql` V113 section — RS-124's doc round-trips (2 milestones with target dates, 6 items, MVP flags, #742 checked), v1 names drafts and v2 names tickets too, apply ⟳ writes v3 and leaves v2 untouched.
 
 - **Problem Statement:** The pipeline card's `ROADMAP.md` is a versioned
   product entity projected to a file — with writeback state and a
@@ -1463,7 +1465,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    BI.2/BJ.1 (#433/#437); AH dispatch (#253); #19/#24/#41/#46/#54;
    BA-B.3/C.3/D.5 (unfiled).
 2. **Phase 1 — Domain:** CK.1 (#608) ✅ → { CK.2 (#609) ✅ ⊕ CK.4 (#611) ⊕
-   CK.5 (#612) } → CK.3 (#610) ✅ → CK.6 (#613)
+   CK.5 (#612) ✅ } → CK.3 (#610) ✅ → CK.6 (#613)
 3. **Phase 2 — Tools:** CL.1 (#614) → { CL.2 (#615) ⊕ CL.3 (#616) ⊕
    CL.4 (#617) ⊕ CL.5 (#618) ⊕ CL.6 (#619) }
 4. **Phase 3 — Engine & pipeline:** CM.3 (#622) ✅ → CM.1 (#620) →
