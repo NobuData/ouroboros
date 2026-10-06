@@ -16,6 +16,7 @@ import {
   regressed,
   seededCard,
   seededTiles,
+  selfHostedDefaults,
   step,
   wizard,
 } from "../helpers/onboarding";
@@ -67,6 +68,8 @@ function frame(initial: Onboarding | null = wizard(), abilities = OWNER, repo: s
   return render(
     <GetStartedScreen
       abilities={abilities}
+      defaults={{ ok: true, value: selfHostedDefaults() }}
+      defaultsPoll={{ read: () => new Promise(() => {}), visible: () => true }}
       detection={{ ok: true, value: seededCard() }}
       detectionPoll={{ read: () => new Promise(() => {}), visible: () => true }}
       firstIssue={{ ok: true, value: firstIssueCard() }}
@@ -393,6 +396,40 @@ describe("the template tiles (#392)", () => {
     frame(null, OWNER, null);
 
     expect(screen.queryByRole("region", { name: "Choose a starting workflow" })).toBeNull();
+  });
+});
+
+describe("the right column (#394)", () => {
+  it("sits beside the step cards in the scrolling step content, a labelled landmark holding the three cards", () => {
+    const { container } = frame();
+
+    const aside = screen.getByRole("complementary", { name: "What is set up, what happens next, and why it is safe" });
+    const columns = container.querySelector(".wizard__columns")!;
+    expect(container.querySelector(".wizard__content")).toContainElement(aside);
+    expect(aside).toHaveClass("wizard__aside");
+    expect(columns).toContainElement(aside);
+    expect(columns.querySelector(".wizard__main")).toContainElement(screen.getByRole("region", { name: "We already figured this out" }));
+    expect(columns.querySelector(".wizard__main")).toContainElement(screen.getByRole("region", { name: "Your first issue" }));
+    for (const name of ["Smart defaults", "What happens next", "Why this is safe to try"]) {
+      expect(aside).toContainElement(screen.getByRole("region", { name }));
+    }
+  });
+
+  it("shows the self-hosted rows and no managed copy, and labels every timeline row projected (O6, O7)", () => {
+    frame();
+
+    const aside = screen.getByRole("complementary", { name: "What is set up, what happens next, and why it is safe" });
+    expect(within(aside).getByRole("link", { name: "Providers" })).toHaveAttribute("href", "/models/providers");
+    expect(within(aside).getByRole("link", { name: "Build Farm" })).toHaveAttribute("href", "/build-farm");
+    expect(aside).not.toHaveTextContent(/trial credit|hosted runner|average|%/i);
+    expect(within(aside).getAllByText("projected")).toHaveLength(6);
+  });
+
+  it("is not drawn without a repository", () => {
+    frame(null, OWNER, null);
+
+    expect(screen.queryByRole("complementary")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Smart defaults" })).toBeNull();
   });
 });
 

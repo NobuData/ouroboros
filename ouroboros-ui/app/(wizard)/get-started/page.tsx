@@ -23,6 +23,7 @@ export default async function Page({
   return (
     <GetStartedScreen
       abilities={readings.abilities}
+      defaults={readings.defaults}
       detection={readings.detection}
       firstIssue={readings.firstIssue}
       templates={readings.templates}

@@ -219,6 +219,26 @@
   scrollbar-gutter: stable;
 }
 
+/*
+ * The mockup's two columns (c-8 · c-4): the step cards on the left, the right column (BC.5, #394)
+ * beside them. Both live inside the one scrolling region, so nothing here sticks on its own —
+ * the head, the rail and the bar keep their place because they are outside it (CP.4).
+ */
+.wizard__columns {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--sp-8);
+  align-items: start;
+}
+
+.wizard__main,
+.wizard__aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  min-width: 0;
+}
+
 .wizard-regress {
   padding: var(--sp-7) var(--sp-9);
   border: 1px solid var(--warn-line);
@@ -1184,6 +1204,220 @@
   gap: var(--sp-4);
 }
 
+/* ---------- the right column (BC.5, #394) ---------- */
+
+/*
+ * Mockup 13's "Smart Defaults" rows, "What Happens Next" timeline and reassure strip. The
+ * mockup's 13px rows are 0.8125rem and its 12px mono timeline 0.75rem (--t-xs), so the 125 %
+ * step scales the column like the rest of the frame.
+ */
+
+.defaults-card,
+.timeline-card {
+  flex: none;
+}
+
+/* The mockup's .default-row: mark · sentence, each row ruled from the next. */
+.defaults {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.defaults__row {
+  display: flex;
+  gap: var(--sp-5);
+  align-items: baseline;
+  padding: var(--sp-4) 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-dim);
+  font-size: 0.8125rem;
+  line-height: var(--lh-body);
+}
+
+.defaults__row:last-child {
+  border-bottom: 0;
+}
+
+.defaults__mark {
+  flex: none;
+  width: 1rem;
+  text-align: center;
+}
+
+.defaults__row--ready .defaults__mark {
+  color: var(--ok);
+}
+
+/* The mockup's .tick.dim: an optional row's ring, and its words a shade quieter. */
+.defaults__row--optional .defaults__mark {
+  color: var(--ink-faint);
+}
+
+.defaults__row--optional .defaults__text {
+  color: var(--ink-mut);
+}
+
+.defaults__text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.defaults__link {
+  color: var(--accent);
+}
+
+.defaults__link:hover {
+  text-decoration: underline;
+}
+
+/* The row's real status — the estimator's last run, what Slack waits for — mono, like every job line. */
+.defaults__affix {
+  display: block;
+  margin-top: var(--sp-1);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.defaults__failure {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* A card body before its first read: bars where the rows will be. */
+.defaults-skeleton {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.defaults-skeleton__row {
+  padding: var(--sp-4) 0;
+}
+
+.defaults-skeleton__bone {
+  display: block;
+  width: 70%;
+  height: 0.75rem;
+  border-radius: var(--r-xs);
+  background: var(--inset);
+}
+
+.defaults-skeleton__row:nth-child(odd) .defaults-skeleton__bone {
+  width: 85%;
+}
+
+/* The mockup's .timeline: time · node · what, mono throughout. */
+.timeline {
+  margin: 0;
+  padding: 0;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  list-style: none;
+}
+
+.timeline__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+  align-items: baseline;
+  padding: var(--sp-3) 0;
+}
+
+.timeline__time {
+  flex: none;
+  width: 3.625rem;
+  color: var(--ink-faint);
+  text-align: right;
+}
+
+.timeline__node {
+  flex: none;
+  color: var(--accent);
+}
+
+.timeline__what {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The mockup's .tl-row.you — the person's turn, in the warn hue. */
+.timeline__row--you .timeline__node,
+.timeline__row--you .timeline__what {
+  color: var(--warn);
+}
+
+/* The mockup's .tl-row.end — merge, in the ok hue; its words say whether a person decides it. */
+.timeline__row--end .timeline__node,
+.timeline__row--end .timeline__what {
+  color: var(--ok);
+}
+
+.timeline__row--loop .timeline__what {
+  color: var(--ink-dim);
+}
+
+/* Every projected row wears the label (O7); it drops when BD.1 measures the row. */
+.timeline__tag {
+  flex: none;
+}
+
+/* Where the one number comes from — not an average, and it says so. */
+.timeline__basis {
+  max-width: 60ch;
+  margin: var(--sp-6) 0 0;
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.timeline__failure {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* The mockup's .card.inset .reassure: glyph · one line of claims, each a link to its proof. */
+.reassure {
+  display: flex;
+  flex: none;
+  gap: var(--sp-6);
+  align-items: flex-start;
+  color: var(--ink-mut);
+  font-size: 0.78125rem;
+  line-height: var(--lh-loose);
+}
+
+.reassure__glyph {
+  flex: none;
+  margin-top: 1px;
+  color: var(--accent);
+  font-size: var(--t-md);
+}
+
+.reassure__line {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.reassure__claim {
+  color: inherit;
+}
+
+.reassure__claim:is(a):hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
 /* ---------- action bar (glow) ---------- */
 
 .wizard-bar {
@@ -1217,6 +1451,13 @@
 
 .wizard-bar__spacer {
   flex: 1;
+}
+
+/* The mockup's column rule: under 1100px the right column drops beneath the step cards. */
+@media (max-width: 68.75rem) {
+  .wizard__columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* The mockup's media rule: the rail goes two by two, and the dividers go with it. */

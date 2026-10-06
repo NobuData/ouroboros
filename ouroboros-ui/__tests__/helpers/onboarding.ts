@@ -2,15 +2,20 @@ import type { RepoDetection, RepoDetectionProgress, RepoDetectionRow } from "@/a
 import type {
   FirstIssueCard,
   Onboarding,
+  OnboardingDefaultRow,
+  OnboardingDefaults,
   OnboardingFirstIssue,
   OnboardingFirstIssueAlternatives,
   OnboardingFirstIssueCandidate,
   OnboardingInstantiatedWorkflow,
   OnboardingLaunchReceipt,
+  OnboardingReassureClaim,
   OnboardingStep,
   OnboardingTemplateSelection,
   OnboardingTemplateTile,
   OnboardingTemplateTiles,
+  OnboardingTimeline,
+  OnboardingTimelineRow,
   PlanningReestimationStatus,
 } from "@/app/api/onboarding";
 import type { DryRunPolicy } from "@/app/api/policies";
@@ -653,4 +658,254 @@ export function pickedTicket(overrides: Partial<NonNullable<Onboarding["refs"]["
     source: "github",
     ...overrides,
   };
+}
+
+/* ------------------------------------------------------------------ the right column (BB.5 → BC.5, #394) */
+
+/**
+ * One row of the *Smart Defaults* card, as BB.5 selects it — the self-hosted models row unless
+ * overridden.
+ *
+ * @param overrides What to change.
+ * @returns The row.
+ */
+export function defaultRow(overrides: Partial<OnboardingDefaultRow> & Pick<OnboardingDefaultRow, "key">): OnboardingDefaultRow {
+  const rows: Record<OnboardingDefaultRow["key"], OnboardingDefaultRow> = {
+    models: {
+      key: "models",
+      variant: "bring_your_own_keys",
+      status: "ready",
+      text: "Models: bring your own keys",
+      link: { label: "Providers", path: "/models/providers" },
+    },
+    build: {
+      key: "build",
+      variant: "enroll_runner",
+      status: "ready",
+      text: "Build: enroll a runner",
+      link: { label: "Build Farm", path: "/build-farm" },
+    },
+    estimator: {
+      key: "estimator",
+      variant: "nightly_estimator",
+      status: "ready",
+      text: "Estimator pre-sizes your backlog overnight",
+      link: null,
+      estimator: estimatorStatus(),
+    },
+    slack: {
+      key: "slack",
+      variant: "slack_future",
+      status: "optional",
+      text: "Slack: connect after your first PR (optional)",
+      link: null,
+      arrivesWith: "ChatOps",
+    },
+  };
+
+  return { ...rows[overrides.key], ...overrides };
+}
+
+/** The SaaS-flagged models row — a managed pool with a declared `$5` trial credit (#397's shape). */
+export function managedKeysRow(): OnboardingDefaultRow {
+  return defaultRow({
+    key: "models",
+    variant: "managed_keys",
+    text: "Models: managed keys with $5 trial credit",
+    link: { label: "bring your own keys anytime", path: "/models/providers" },
+    trialCredit: { cents: 500, display: "$5" },
+  });
+}
+
+/** The SaaS-flagged build row — a hosted runner pool. */
+export function hostedRunnerRow(): OnboardingDefaultRow {
+  return defaultRow({
+    key: "build",
+    variant: "hosted_runner",
+    text: "Build: hosted runner for your first loops",
+    link: { label: "enroll your own farm later", path: "/build-farm" },
+  });
+}
+
+/**
+ * One reassure claim, as BB.5 writes it for the seeded workspace (a token source).
+ *
+ * @param key Which claim.
+ * @param overrides What to change.
+ * @returns The claim.
+ */
+export function reassureClaim(
+  key: OnboardingReassureClaim["key"],
+  overrides: Partial<OnboardingReassureClaim> = {},
+): OnboardingReassureClaim {
+  const claims: Record<OnboardingReassureClaim["key"], OnboardingReassureClaim> = {
+    draft_only: {
+      key: "draft_only",
+      text: "Nothing is written to main.",
+      mechanism: {
+        key: "dry_run_policy",
+        description:
+          "The dry-run policy is on: loops open draft pull requests, and merging is refused until an owner or admin turns it off.",
+        issue: 382,
+        path: "/settings/policies",
+      },
+    },
+    uninstall: {
+      key: "uninstall",
+      text: "The GitHub connection can be paused in one click.",
+      mechanism: {
+        key: "source_pause",
+        description: "Pausing the acme-robotics source in Settings → Sources stops every read of it until it is resumed.",
+        issue: 141,
+        path: "/settings/sources",
+      },
+    },
+    vault: {
+      key: "vault",
+      text: "Your keys are sealed in the tenant vault and never leave the control plane.",
+      mechanism: {
+        key: "vault_envelope_encryption",
+        description:
+          "Every stored credential is envelope-encrypted under this workspace's own data key; only ciphertext is stored.",
+        issue: 222,
+        path: "/models/providers",
+      },
+    },
+  };
+
+  return { ...claims[key], ...overrides };
+}
+
+/** The uninstall claim where the account records a GitHub App installation. */
+export function appUninstallClaim(): OnboardingReassureClaim {
+  return reassureClaim("uninstall", {
+    text: "The app can be uninstalled in one click.",
+    mechanism: {
+      key: "github_app_uninstall",
+      description: "Uninstalling the GitHub App from acme-robotics on GitHub revokes its access; the source then reads as disconnected.",
+      issue: 122,
+      path: "/settings/sources",
+    },
+  });
+}
+
+/**
+ * One row of the projected timeline.
+ *
+ * @param overrides What to change.
+ * @returns The row.
+ */
+export function timelineRow(
+  overrides: Partial<OnboardingTimelineRow> & Pick<OnboardingTimelineRow, "key">,
+): OnboardingTimelineRow {
+  const rows: Record<OnboardingTimelineRow["key"], OnboardingTimelineRow> = {
+    loop_starts: { key: "loop_starts", actor: "loop", text: "loop starts on #488", kind: "projected", atMinutes: 0 },
+    plan_posted: { key: "plan_posted", actor: "loop", text: "draft plan posted to the issue", kind: "projected", atMinutes: null },
+    draft_pr_opens: { key: "draft_pr_opens", actor: "loop", text: "draft PR opens", kind: "projected", atMinutes: 4 },
+    you_review: { key: "you_review", actor: "you", text: "you review", kind: "projected", atMinutes: null },
+    merge: { key: "merge", actor: "you", text: "merge — only when you say so; dry-run never merges", kind: "projected", atMinutes: null },
+  };
+
+  return { ...rows[overrides.key], ...overrides };
+}
+
+/**
+ * The projection for the seeded pick under dry-run: `#488`, its `est. 4 min` on the draft-PR row,
+ * every row `projected`.
+ *
+ * @param overrides What to change.
+ * @returns The timeline.
+ */
+export function projectedTimeline(overrides: Partial<OnboardingTimeline> = {}): OnboardingTimeline {
+  return {
+    kind: "projected",
+    basis: "issue_estimate",
+    dryRun: true,
+    rows: [
+      timelineRow({ key: "loop_starts" }),
+      timelineRow({ key: "plan_posted" }),
+      timelineRow({ key: "draft_pr_opens" }),
+      timelineRow({ key: "you_review" }),
+      timelineRow({ key: "merge" }),
+    ],
+    ...overrides,
+  };
+}
+
+/** The projection for a workspace that turned dry-run off — the PR is not a draft, and the workflow decides the merge. */
+export function mergingTimeline(): OnboardingTimeline {
+  return projectedTimeline({
+    dryRun: false,
+    rows: [
+      timelineRow({ key: "loop_starts" }),
+      timelineRow({ key: "plan_posted" }),
+      timelineRow({ key: "draft_pr_opens", text: "pull request opens" }),
+      timelineRow({ key: "you_review" }),
+      timelineRow({ key: "merge", actor: "loop", text: "merge — as the workflow's final step decides" }),
+    ],
+  });
+}
+
+/** The projection before anything is picked — generic, and with no time beyond the origin. */
+export function genericTimeline(): OnboardingTimeline {
+  return projectedTimeline({
+    basis: "none",
+    rows: [
+      timelineRow({ key: "loop_starts", text: "loop starts on your first issue" }),
+      timelineRow({ key: "plan_posted" }),
+      timelineRow({ key: "draft_pr_opens", atMinutes: null }),
+      timelineRow({ key: "you_review" }),
+      timelineRow({ key: "merge" }),
+    ],
+  });
+}
+
+/**
+ * The right column as BB.5 serves it for a self-hosted deployment — the MVP default: bring your
+ * own keys, enroll a runner, the real estimator, Slack dim; the three claims a token-connected,
+ * dry-run workspace has; the projection for `#488`.
+ *
+ * @param overrides What to change.
+ * @returns The column.
+ */
+export function selfHostedDefaults(overrides: Partial<OnboardingDefaults> = {}): OnboardingDefaults {
+  const claims = [reassureClaim("draft_only"), reassureClaim("uninstall"), reassureClaim("vault")];
+
+  return {
+    repo: REPO,
+    deployment: "self_hosted",
+    capabilities: { managedKeyPool: false, hostedRunnerPool: false },
+    rows: [defaultRow({ key: "models" }), defaultRow({ key: "build" }), defaultRow({ key: "estimator" }), defaultRow({ key: "slack" })],
+    reassure: { claims, line: claims.map((claim) => claim.text).join(" ") },
+    timeline: projectedTimeline(),
+    ...overrides,
+  };
+}
+
+/**
+ * The column for a SaaS-flagged deployment — both pools declared (forward-compatible with #397).
+ *
+ * @returns The column.
+ */
+export function saasDefaults(): OnboardingDefaults {
+  return selfHostedDefaults({
+    deployment: "saas",
+    capabilities: { managedKeyPool: true, hostedRunnerPool: true },
+    rows: [managedKeysRow(), hostedRunnerRow(), defaultRow({ key: "estimator" }), defaultRow({ key: "slack" })],
+  });
+}
+
+/**
+ * The column for a workspace that turned dry-run off and has no covering source — only the vault
+ * claim holds, and the timeline merges as the workflow decides.
+ *
+ * @returns The column.
+ */
+export function mergingDefaults(): OnboardingDefaults {
+  const claims = [reassureClaim("vault")];
+
+  return selfHostedDefaults({
+    reassure: { claims, line: claims.map((claim) => claim.text).join(" ") },
+    timeline: mergingTimeline(),
+  });
 }
