@@ -7,7 +7,7 @@ import type { PollAnswer } from "@/app/poll";
 
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 import { settle } from "../helpers/settle";
-import { REPO, launchReceipt, readyToRun, regressed, seededCard, step, wizard } from "../helpers/onboarding";
+import { REPO, launchReceipt, readyToRun, regressed, seededCard, seededTiles, step, wizard } from "../helpers/onboarding";
 
 /**
  * `/get-started` (BC.1, #390, mockup 13): the head's promise, the rail that displays the service's
@@ -30,6 +30,7 @@ vi.mock("@/app/get-started/actions", () => ({
   rescanRepository: vi.fn(),
   saveProtectedPaths: vi.fn(),
   previewProtectedPaths: vi.fn(),
+  selectTemplate: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh: vi.fn() }) }));
 
@@ -59,6 +60,8 @@ function frame(initial: Onboarding | null = wizard(), abilities = OWNER, repo: s
       poll={POLL}
       repo={repo}
       reposFailure={null}
+      templates={{ ok: true, value: seededTiles() }}
+      templatesPoll={{ read: () => new Promise(() => {}), visible: () => true }}
       wizard={initial === null ? null : { ok: true, value: initial }}
     />,
   );
@@ -322,6 +325,7 @@ describe("a workspace with no repository yet", () => {
         poll={POLL}
         repo={REPO}
         reposFailure={null}
+        templatesPoll={{ read: () => new Promise(() => {}), visible: () => true }}
         wizard={{ ok: false, reason: "The service is busy." }}
       />,
     );
@@ -350,6 +354,31 @@ describe("the detection card (#391)", () => {
     frame(null, OWNER, null);
 
     expect(screen.queryByRole("region", { name: "We already figured this out" })).toBeNull();
+  });
+});
+
+describe("the template tiles (#392)", () => {
+  it("sit in the scrolling step content under the detection card, with step 3's pill", () => {
+    const { container } = frame();
+
+    const tiles = screen.getByRole("region", { name: "Choose a starting workflow" });
+    const detection = screen.getByRole("region", { name: "We already figured this out" });
+    expect(container.querySelector(".wizard__content")).toContainElement(tiles);
+    expect(detection.compareDocumentPosition(tiles) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(tiles).getByText("step 3 · you are here")).toBeInTheDocument();
+    expect(within(tiles).getAllByRole("button", { pressed: true }).map((b) => b.textContent)).toHaveLength(1);
+  });
+
+  it("wear the done tag once the rail says step 3 is done", () => {
+    frame(readyToRun());
+
+    expect(within(screen.getByRole("region", { name: "Choose a starting workflow" })).getByText("✓ step 3 done")).toBeInTheDocument();
+  });
+
+  it("are not drawn without a repository", () => {
+    frame(null, OWNER, null);
+
+    expect(screen.queryByRole("region", { name: "Choose a starting workflow" })).toBeNull();
   });
 });
 

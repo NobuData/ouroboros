@@ -4,7 +4,7 @@ import { ApiError } from "@/app/api/errors";
 import { UNREACHABLE_ONBOARDING } from "@/app/get-started/view";
 
 import { STUB_BASE_URL, stubClient } from "../helpers/api";
-import { REPO, launchReceipt, wizard } from "../helpers/onboarding";
+import { REPO, launchReceipt, seededTiles, templateSelection, wizard } from "../helpers/onboarding";
 
 /** The wizard's service calls (#385, #388) and the `/get-started` poll's hop (#390). */
 
@@ -125,3 +125,45 @@ describe("readOnboardingPoll", () => {
     expect(ONBOARDING_UNAVAILABLE_CODE).toBe("onboarding_unavailable");
   });
 });
+
+describe("the template tiles' service calls (#392)", () => {
+  it("reads one repository's tiles, naming it in the query, with the poll's deadline", async () => {
+    const { client, requests } = answering(seededTiles());
+    const controller = new AbortController();
+
+    expect(await onboarding.templates(REPO, client, controller.signal)).toEqual(seededTiles());
+    expect(await asked(requests)).toEqual([
+      { call: "GET /api/v1/onboarding/templates?repo=acme-robotics%2Fhelios-firmware", body: null },
+    ]);
+  });
+
+  it("selects a template by slug, scoped to the repository, and answers the selection", async () => {
+    const { client, requests } = answering(templateSelection());
+
+    expect(await onboarding.selectTemplate(REPO, "quick-fixes", client)).toEqual(templateSelection());
+    expect(await asked(requests)).toEqual([
+      {
+        call: "POST /api/v1/onboarding/select-template?repo=acme-robotics%2Fhelios-firmware",
+        body: JSON.stringify({ slug: "quick-fixes" }),
+      },
+    ]);
+  });
+
+  it("throws the gate's refusal with its findings, for the tile to draw", async () => {
+    const { client } = stubClient(() => ({
+      status: 422,
+      body: {
+        code: "onboarding_template_invalid",
+        message: "The quick-fixes template could not be turned into a workflow: its definition did not pass validation.",
+        details: { slug: "quick-fixes", version: 1, findings: [{ source: "dsl", code: "unreachable_node", message: "Stage review is unreachable.", path: "/nodes/3" }] },
+      },
+    }));
+
+    await expect(onboarding.selectTemplate(REPO, "quick-fixes", client)).rejects.toMatchObject({
+      status: 422,
+      code: "onboarding_template_invalid",
+      details: { findings: [{ code: "unreachable_node" }] },
+    });
+  });
+});
+

@@ -1,5 +1,13 @@
 import type { RepoDetection, RepoDetectionProgress, RepoDetectionRow } from "@/app/api/detection";
-import type { Onboarding, OnboardingLaunchReceipt, OnboardingStep } from "@/app/api/onboarding";
+import type {
+  Onboarding,
+  OnboardingInstantiatedWorkflow,
+  OnboardingLaunchReceipt,
+  OnboardingStep,
+  OnboardingTemplateSelection,
+  OnboardingTemplateTile,
+  OnboardingTemplateTiles,
+} from "@/app/api/onboarding";
 
 /**
  * The Get Started wizard as BB.2 (#385) serves it — the onboarding seed's `acme-robotics/helios-firmware`,
@@ -217,6 +225,135 @@ export function scanProgress(overrides: Partial<RepoDetectionProgress> = {}): Re
     probesSettled: 4,
     scanSeq: null,
     error: null,
+    ...overrides,
+  };
+}
+
+/* ------------------------------------------------------------------ the template tiles (#392) */
+
+/**
+ * One tile, with overrides — a starter tile, unselected, no workflow yet.
+ *
+ * @param overrides What to change.
+ * @returns The tile.
+ */
+export function tile(overrides: Partial<OnboardingTemplateTile> & Pick<OnboardingTemplateTile, "slug">): OnboardingTemplateTile {
+  return {
+    version: 1,
+    scope: "global",
+    name: overrides.slug,
+    description: "",
+    stageDots: ["analyze", "code", "PR"],
+    effortRange: ["s"],
+    caption: null,
+    tier: "starter",
+    selected: false,
+    unlock: null,
+    workflow: null,
+    ...overrides,
+  };
+}
+
+/**
+ * A workflow instantiated from a template, with overrides.
+ *
+ * @param overrides What to change.
+ * @returns The workflow — `quick-fixes` v1 by default.
+ */
+export function instantiated(overrides: Partial<OnboardingInstantiatedWorkflow> = {}): OnboardingInstantiatedWorkflow {
+  return {
+    id: "wf-quick-fixes",
+    slug: "quick-fixes",
+    name: "Quick fixes",
+    currentVersion: 1,
+    templateSlug: "quick-fixes",
+    templateVersion: 1,
+    studioPath: "/workflows/quick-fixes",
+    ...overrides,
+  };
+}
+
+/**
+ * The seeded grid — V068's four shipped templates as the onboarding seed's workspace sees them:
+ * Quick fixes chosen (and not yet created), three merged loops, so Deep refactor is locked at
+ * `3 of 10 merged loops`. Mockup 13's grid, minus the caption's invented statistic (O8).
+ *
+ * @param overrides What to change.
+ * @returns The tiles.
+ */
+export function seededTiles(overrides: Partial<OnboardingTemplateTiles> = {}): OnboardingTemplateTiles {
+  return {
+    repo: REPO,
+    selectedTemplate: "quick-fixes",
+    mergedLoops: 3,
+    studioPath: "/workflows",
+    tiles: [
+      tile({
+        slug: "quick-fixes",
+        name: "Quick fixes",
+        description: "Small bugs and cleanups, fully hands-off.",
+        stageDots: ["analyze", "plan", "code", "build", "test", "PR"],
+        effortRange: ["xs", "s", "m"],
+        caption: "recommended first workflow",
+        selected: true,
+      }),
+      tile({
+        slug: "feature-builder",
+        name: "Feature builder",
+        description: "Plans bigger changes, asks before merging.",
+        stageDots: ["analyze", "plan", "ask you", "code", "build", "test", "PR"],
+        effortRange: ["m", "l"],
+        caption: "best for new capabilities that touch several files",
+      }),
+      tile({
+        slug: "docs-chores",
+        name: "Docs & chores",
+        description: "Docs, typos, dep bumps on your cheapest model.",
+        stageDots: ["analyze", "code", "check", "PR"],
+        effortRange: ["xs", "s"],
+        caption: "best for keeping the backlog tidy at near-zero cost",
+      }),
+      tile({
+        slug: "deep-refactor",
+        name: "Deep refactor",
+        description: "Multi-PR restructures with staged rollout and extra review.",
+        stageDots: ["map", "plan", "split", "code ×n", "verify", "PR ×n"],
+        effortRange: ["l", "xl"],
+        caption: "best once the loop has learned your codebase",
+        tier: "advanced",
+        unlock: {
+          locked: true,
+          mergedLoops: 3,
+          threshold: 10,
+          rule: "unlock after 10 merged loops",
+          progress: "3 of 10 merged loops",
+        },
+      }),
+    ],
+    ...overrides,
+  };
+}
+
+/**
+ * What selecting a template answers.
+ *
+ * @param overrides What to change.
+ * @returns The selection — Quick fixes created, nothing kept, the wizard with step 3 done.
+ */
+export function templateSelection(overrides: Partial<OnboardingTemplateSelection> = {}): OnboardingTemplateSelection {
+  return {
+    created: true,
+    workflow: instantiated(),
+    kept: [],
+    onboarding: wizard({
+      steps: [
+        step({ step: 1, status: "done", evidence: "acme-robotics · token" }),
+        step({ step: 2, status: "done", evidence: "helios-firmware · auto-detected below" }),
+        step({ step: 3, status: "done", evidence: "quick-fixes · v1" }),
+        step({ step: 4, status: "active", reason: "No first issue has been picked yet." }),
+      ],
+      currentStep: 4,
+    }),
     ...overrides,
   };
 }

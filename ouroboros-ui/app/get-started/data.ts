@@ -3,7 +3,8 @@ import "server-only";
 /**
  * `/get-started`'s first paint (BC.1, [#390](https://github.com/NobuData/ouroboros/issues/390)):
  * which repository the wizard is for, its rail as BB.2 (#385) derives it, its detection card as
- * BB.1 (#384) stored it (BC.2, #391), and what the person may do.
+ * BB.1 (#384) stored it (BC.2, #391), its template tiles as BB.3 (#386) evaluates them (BC.3,
+ * #392), and what the person may do.
  *
  * **Which repository.** The request names it (`?repo=owner/name`); otherwise the wizard opens on
  * the workspace's first mirrored repository — an enabled one first ({@link defaultRepo}). With
@@ -15,7 +16,7 @@ import type { Workspace } from "@/app/api/access";
 import { type RepoDetection, detection } from "@/app/api/detection";
 import { readEnablement } from "@/app/api/enablement";
 import { mayAdminister, mayContribute } from "@/app/api/membership";
-import { type Onboarding, onboarding } from "@/app/api/onboarding";
+import { type Onboarding, type OnboardingTemplateTiles, onboarding } from "@/app/api/onboarding";
 import { type Reading, attempt } from "@/app/api/reading";
 
 import { type Abilities, type GetStartedOffer, defaultRepo, parseRepo } from "./view";
@@ -28,6 +29,8 @@ export interface GetStartedReadings {
   readonly wizard: Reading<Onboarding> | null;
   /** Its detection card (BC.2, #391), or null when there is no repository. */
   readonly detection: Reading<RepoDetection> | null;
+  /** Its template tiles (BC.3, #392), or null when there is no repository. */
+  readonly templates: Reading<OnboardingTemplateTiles> | null;
   /** Why the repository list could not be read, when the request named none and it failed. */
   readonly reposFailure: string | null;
   /** What the person may do. */
@@ -71,21 +74,22 @@ export async function readGetStarted(access: Workspace, asked: string | string[]
   const chosen: Reading<string | null> = named === null ? await openingRepo(access.membership.id) : { ok: true, value: named };
 
   if (!chosen.ok) {
-    return { repo: null, wizard: null, detection: null, reposFailure: chosen.reason, abilities };
+    return { repo: null, wizard: null, detection: null, templates: null, reposFailure: chosen.reason, abilities };
   }
 
   if (chosen.value === null) {
-    return { repo: null, wizard: null, detection: null, reposFailure: null, abilities };
+    return { repo: null, wizard: null, detection: null, templates: null, reposFailure: null, abilities };
   }
 
   const repo = chosen.value;
 
-  const [wizard, card] = await Promise.all([
+  const [wizard, card, templates] = await Promise.all([
     attempt(() => onboarding.read(repo)),
     attempt(() => detection.read(repo)),
+    attempt(() => onboarding.templates(repo)),
   ]);
 
-  return { repo, wizard, detection: card, reposFailure: null, abilities };
+  return { repo, wizard, detection: card, templates, reposFailure: null, abilities };
 }
 
 /**

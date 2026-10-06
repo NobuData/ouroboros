@@ -4,7 +4,7 @@ import { ApiError } from "@/app/api/errors";
 import { NOT_A_REPOSITORY, WIZARD_WRITE_FAILED } from "@/app/get-started/view";
 
 import { membership } from "../helpers/login";
-import { REPO, launchReceipt, scanProgress, seededCard, wizard } from "../helpers/onboarding";
+import { REPO, launchReceipt, scanProgress, seededCard, templateSelection, wizard } from "../helpers/onboarding";
 
 /** The wizard's writes (#390): each guarded by the service, a refusal carried in its words. */
 
@@ -19,6 +19,7 @@ const setRepo = vi.fn();
 const scan = vi.fn();
 const editProtectedPaths = vi.fn();
 const pathPreview = vi.fn();
+const selectTemplateCall = vi.fn();
 
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => Promise.resolve({ membership: membership() }) }));
 vi.mock("@/app/api/onboarding", () => ({
@@ -28,6 +29,7 @@ vi.mock("@/app/api/onboarding", () => ({
     skip: (repo: string) => skip(repo),
     update: (repo: string, patch: unknown) => update(repo, patch),
     read: (repo: string) => read(repo),
+    selectTemplate: (repo: string, slug: string) => selectTemplateCall(repo, slug),
   },
 }));
 vi.mock("@/app/api/detection", () => ({
@@ -49,6 +51,7 @@ const {
   previewProtectedPaths,
   rescanRepository,
   saveProtectedPaths,
+  selectTemplate,
   skipWizard,
 } = await import("@/app/get-started/actions");
 
@@ -67,7 +70,20 @@ function enablement(orgEnabled: boolean, repoEnabled: boolean) {
 }
 
 beforeEach(() => {
-  for (const mock of [completeStep, launch, skip, update, read, readEnablement, setOrg, setRepo, scan, editProtectedPaths, pathPreview]) {
+  for (const mock of [
+    completeStep,
+    launch,
+    skip,
+    update,
+    read,
+    readEnablement,
+    setOrg,
+    setRepo,
+    scan,
+    editProtectedPaths,
+    pathPreview,
+    selectTemplateCall,
+  ]) {
     mock.mockReset();
   }
   completeStep.mockResolvedValue(wizard());
@@ -253,6 +269,67 @@ describe("the detection card's writes (#391)", () => {
       reason: "The match preview could not be read. The patterns themselves are unaffected.",
     });
     expect(await previewProtectedPaths("nope", ["boot/**"])).toMatchObject({ ok: false });
+  });
+});
+
+describe("selecting a template (#392)", () => {
+  it("selects the validated repository's template and answers the selection", async () => {
+    selectTemplateCall.mockResolvedValue(templateSelection());
+
+    expect(await selectTemplate(REPO, "quick-fixes")).toEqual({ ok: true, value: templateSelection() });
+    expect(selectTemplateCall).toHaveBeenCalledWith(REPO, "quick-fixes");
+  });
+
+  it("carries the lock's and the role's refusals in the service's words, with no findings", async () => {
+    selectTemplateCall.mockRejectedValueOnce(
+      new ApiError(409, "onboarding_template_locked", "The deep-refactor template is locked: unlock after 10 merged loops (3 of 10 merged loops so far)."),
+    );
+    selectTemplateCall.mockRejectedValueOnce(new ApiError(403, "forbidden", "Owners and admins only."));
+
+    expect(await selectTemplate(REPO, "deep-refactor")).toEqual({
+      ok: false,
+      reason: "The deep-refactor template is locked: unlock after 10 merged loops (3 of 10 merged loops so far).",
+      findings: [],
+    });
+    expect(await selectTemplate(REPO, "quick-fixes")).toEqual({ ok: false, reason: "Owners and admins only.", findings: [] });
+  });
+
+  it("carries the publish gate's findings when the definition was refused — nothing created", async () => {
+    selectTemplateCall.mockRejectedValue(
+      new ApiError(422, "onboarding_template_invalid", "The quick-fixes template could not be turned into a workflow.", {
+        slug: "quick-fixes",
+        version: 1,
+        findings: [
+          { source: "dsl", code: "unreachable_node", message: "Stage review is unreachable.", path: "/nodes/3" },
+          { source: "registry", code: "alias_unknown", message: "No model alias named fast-coder." },
+        ],
+      }),
+    );
+
+    expect(await selectTemplate(REPO, "quick-fixes")).toEqual({
+      ok: false,
+      reason: "The quick-fixes template could not be turned into a workflow.",
+      findings: [
+        { source: "dsl", code: "unreachable_node", message: "Stage review is unreachable.", path: "/nodes/3" },
+        { source: "registry", code: "alias_unknown", message: "No model alias named fast-coder.", path: null },
+      ],
+    });
+  });
+
+  it("reads a server failure as a plain failure, and a 422 validation as its words", async () => {
+    selectTemplateCall.mockRejectedValueOnce(new ApiError(500, "internal_error", "boom"));
+    selectTemplateCall.mockRejectedValueOnce(new ApiError(422, "onboarding_template_unknown", "Not offered: nope.", { offered: ["quick-fixes"] }));
+
+    expect(await selectTemplate(REPO, "quick-fixes")).toEqual({ ok: false, reason: WIZARD_WRITE_FAILED, findings: [] });
+    expect(await selectTemplate(REPO, "nope")).toEqual({ ok: false, reason: "Not offered: nope.", findings: [] });
+  });
+
+  it("refuses a repository or a template that is not one, asking nothing", async () => {
+    expect(await selectTemplate("../etc", "quick-fixes")).toEqual({ ok: false, reason: NOT_A_REPOSITORY, findings: [] });
+    expect(await selectTemplate(REPO, "Quick Fixes")).toEqual({ ok: false, reason: "That is not a template.", findings: [] });
+    expect(await selectTemplate(REPO, "../x")).toMatchObject({ ok: false });
+    expect(await selectTemplate(REPO, 7 as unknown as string)).toMatchObject({ ok: false });
+    expect(selectTemplateCall).not.toHaveBeenCalled();
   });
 });
 

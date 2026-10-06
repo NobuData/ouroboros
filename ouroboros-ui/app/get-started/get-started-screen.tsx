@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { Fragment, useId, useState } from "react";
 
 import type { RepoDetection } from "@/app/api/detection";
-import type { Onboarding } from "@/app/api/onboarding";
+import type { Onboarding, OnboardingTemplateTiles } from "@/app/api/onboarding";
 import type { Reading } from "@/app/api/reading";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
 import { SOURCES_PATH } from "@/app/paths";
@@ -15,6 +15,8 @@ import { continueStep, enableRepository, launchFirstLoop, skipWizard } from "./a
 import { DetectionCard } from "./detection-card";
 import type { DetectionPollOptions } from "./detection-poll";
 import { type OnboardingPollOptions, createOnboardingPoll, onboardingEndpoint } from "./poll";
+import { TemplatesCard } from "./templates-card";
+import type { TemplatesPollOptions } from "./templates-poll";
 import {
   BACK_FROM_FIRST_HREF,
   BACK_LABEL,
@@ -54,6 +56,8 @@ export interface GetStartedScreenProps {
   readonly wizard: Reading<Onboarding> | null;
   /** The first paint's read of its detection card (BC.2, #391), or null when there is no repository. */
   readonly detection?: Reading<RepoDetection> | null;
+  /** The first paint's read of its template tiles (BC.3, #392), or null when there is no repository. */
+  readonly templates?: Reading<OnboardingTemplateTiles> | null;
   /** Why the repository list could not be read, when that is why there is no repository. */
   readonly reposFailure: string | null;
   /** What the person may do. */
@@ -62,6 +66,8 @@ export interface GetStartedScreenProps {
   readonly poll?: OnboardingPollOptions;
   /** Test seams for the detection card's poll and clock. */
   readonly detectionPoll?: DetectionPollOptions;
+  /** Test seams for the template tiles' poll. */
+  readonly templatesPoll?: TemplatesPollOptions;
   /** The detection card's clock — a test seam. */
   readonly now?: () => number;
 }
@@ -267,8 +273,10 @@ function ActionBar({
  * **Live.** The rail is re-read on the poll family's cadence, so a source disconnected elsewhere
  * regresses step 1 here — and the banner says why, in the service's words.
  *
- * **The detection card** (BC.2, [#391](https://github.com/NobuData/ouroboros/issues/391)) sits in
- * the step content under the step panel whenever there is a repository, on a poll of its own.
+ * **The detection card** (BC.2, [#391](https://github.com/NobuData/ouroboros/issues/391)) and
+ * **the template tiles** (BC.3, [#392](https://github.com/NobuData/ouroboros/issues/392)) sit in
+ * the step content under the step panel whenever there is a repository, each on a poll of its
+ * own; a selection re-reads the rail, which derives step 3 from the workflow it created.
  *
  * **Which step is on screen** is the page's own choice — the service's current step at first,
  * then whichever the person picks on the rail or reaches with Back and Continue. What the step
@@ -281,10 +289,12 @@ export function GetStartedScreen({
   repo,
   wizard: initial,
   detection = null,
+  templates = null,
   reposFailure,
   abilities,
   poll,
   detectionPoll,
+  templatesPoll,
   now,
 }: GetStartedScreenProps) {
   const { snapshot, refresh } = useKeyedPoll(repo === null ? null : onboardingEndpoint(repo), (endpoint) =>
@@ -391,6 +401,16 @@ export function GetStartedScreen({
             poll={detectionPoll}
             repo={repo}
             stepDone={wizard?.steps.find((one) => one.step === 2)?.status === "done"}
+          />
+        )}
+        {repo !== null && (
+          <TemplatesCard
+            abilities={abilities}
+            initial={templates}
+            onChanged={refresh}
+            poll={templatesPoll}
+            repo={repo}
+            stepStatus={wizard?.steps.find((one) => one.step === 3)?.status ?? null}
           />
         )}
       </main>

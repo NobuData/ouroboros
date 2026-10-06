@@ -7,6 +7,12 @@
  * line, each other step's stated reason and whether it regressed are derived on read from the
  * subsystem that owns them. Nothing here or in the screen decides a step.
  *
+ * Step 3's tiles and their selection (BB.3, [#386](https://github.com/NobuData/ouroboros/issues/386))
+ * ride here too, read by the Get Started template tiles (BC.3,
+ * [#392](https://github.com/NobuData/ouroboros/issues/392)): `templates` evaluates every tier's
+ * gate against the workspace's merged loops, and `selectTemplate` **creates a real workflow**
+ * (decision O4) through the studio's own publish gate — owner or admin.
+ *
  * Server-side only, by way of `app/api/server.ts`.
  */
 
@@ -31,6 +37,24 @@ export type OnboardingLaunchReceipt = components["schemas"]["OnboardingLaunchRec
 
 /** The body of a choices change. */
 export type OnboardingPatch = components["schemas"]["OnboardingPatch"];
+
+/** Step 3's tile grid: the tiles, the active choice, and the merged-loop count every gate saw. */
+export type OnboardingTemplateTiles = components["schemas"]["OnboardingTemplateTiles"];
+
+/** One tile — a template, its evaluated gate, and the live workflow made from it, if any. */
+export type OnboardingTemplateTile = components["schemas"]["OnboardingTemplateTile"];
+
+/** A tier's evaluated gate — `3 of 10 merged loops`, computed by the service. */
+export type OnboardingTemplateUnlock = components["schemas"]["OnboardingTemplateUnlock"];
+
+/** A workflow instantiated from a template, with where the studio opens it. */
+export type OnboardingInstantiatedWorkflow = components["schemas"]["OnboardingInstantiatedWorkflow"];
+
+/** What selecting a template answers: the workflow behind the choice, the ones kept, the wizard. */
+export type OnboardingTemplateSelection = components["schemas"]["OnboardingTemplateSelection"];
+
+/** One finding of the publish gate — what a refused template's definition got wrong. */
+export type WorkflowFinding = components["schemas"]["WorkflowFinding"];
 
 /** The wizard, as the service serves it. Each method takes the client last; tests pass one. */
 export const onboarding = {
@@ -97,6 +121,39 @@ export const onboarding = {
    */
   async skip(repo: string, client: ApiClient = api()): Promise<OnboardingSkip> {
     return unwrap(await client.POST("/api/v1/onboarding/skip", { params: { query: { repo } } }));
+  },
+
+  /**
+   * Step 3's tiles, each tier's gate evaluated against the workspace's merged loops.
+   *
+   * @param repo The repository.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @param signal Aborts the read — the poll's deadline.
+   * @returns The tiles in tile order, the active choice, the count and the studio's root.
+   * @throws {ApiError} `422 validation_failed` for a malformed repository.
+   */
+  async templates(repo: string, client: ApiClient = api(), signal?: AbortSignal): Promise<OnboardingTemplateTiles> {
+    return unwrap(await client.GET("/api/v1/onboarding/templates", { params: { query: { repo } }, signal }));
+  },
+
+  /**
+   * Select a template — instantiate a published workflow from it (or reuse the live one already
+   * made from it) and make it the repository's choice. Owner or admin.
+   *
+   * @param repo The repository.
+   * @param slug The template.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The workflow behind the choice, every other instantiated workflow kept, the wizard.
+   * @throws {ApiError} `409 onboarding_template_locked`, `422 onboarding_template_invalid` with the
+   *   gate's `details.findings`, `403` below admin.
+   */
+  async selectTemplate(repo: string, slug: string, client: ApiClient = api()): Promise<OnboardingTemplateSelection> {
+    return unwrap(
+      await client.POST("/api/v1/onboarding/select-template", {
+        params: { query: { repo } },
+        body: { slug },
+      }),
+    );
   },
 
   /**
