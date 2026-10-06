@@ -1450,6 +1450,22 @@
 > `custom:copilot-chat-promoted` (promoted, never cut earlier than the chat tier) through
 > `copilot_sessions_sweep()`; the application role cannot delete either table.
 >
+> `V108` ([#609](https://github.com/NobuData/ouroboros/issues/609), CK.2) is the Research domain's
+> **citation ledger** (decision **V3**, *every claim cited*). `source_records` archives what an
+> investigation read: the adapter (`tool_slug`), `kind`
+> (`web|competitor_diff|code|ticket|telemetry|doc`), `title`, a **`locator` validated per kind**
+> (an `http(s)` URL, or `issue-index://<index>/<key>`, `git://<repo>@<sha>/<path>#L<n>`,
+> `telemetry://<metric>/<window>`), `retrieved_at`, a `sha256:` `content_hash`, a bounded `excerpt`
+> and `meta`. `cite_no` (`[07]`) is **dense and stable** — drawn from a per-investigation counter row
+> (`source_cite_counters`) at write, never changed (records are never updated) — and `cite_key`
+> (`[git]`) is an optional symbolic alias beside it. Archival caps: 4 KiB per excerpt, 8 KiB of
+> `meta`, 1 000 records and 2 MiB of excerpts per investigation. `briefs` are versioned (1, 2, …,
+> highest current) with a structured `body` of paragraphs and claim spans and `deliverables` refs;
+> `brief_claims` are `finding | open_question`; `brief_claim_sources` links a claim to sources of
+> the same investigation, many to many. Two deferred constraint triggers hold at commit: **a
+> `finding` has at least one citation** (`brief_claims_finding_cited`), and an investigation is
+> `brief_ready`/`issues_filed` only with a brief (`investigations_brief_exists`).
+>
 > [#484](https://github.com/NobuData/ouroboros/issues/484) (BQ.5) seeds mockup 17 from those rows:
 > [`R__dev_seed_workspace_settings.sql`](migrations/R__dev_seed_workspace_settings.sql) — see
 > [Who may do what, and where the record goes](#who-may-do-what-and-where-the-record-goes). Its
@@ -2250,6 +2266,24 @@ Every age is relative to the load, and every answer is clamped to today (UTC) or
 stat card is right on any day — on a Monday the week's answers land on today too. The stop on #1844
 is an intervention (V079), so mockup 15 reads **8 / 5 / 4 / 2 / 2** and the stored rollup is brought
 to match; and the four canonical tickets the refs need move mockup 09's counts to `46 open`.
+
+#### What it found out, and from where
+
+[`R__dev_seed_research.sql`](migrations/R__dev_seed_research.sql)
+([#609](https://github.com/NobuData/ouroboros/issues/609)) is mockup 22's featured investigation
+for `acme-robotics`: **RS-127**, a finished deep-dive gap analysis, with its citation ledger and
+its brief.
+
+| The page | From the rows |
+|---|---|
+| `RS-127 — Autonomous docking vs. the field` · `44 sources · deep dive` · `✓ brief ready` | the `investigations` row (`seq` 127, gap_analysis, `brief_ready`); `44` is the count of its `source_records` |
+| `SOURCES — 44 CITED`: `[07]` `[12]` `[19]` `[31]` `[git]` | five `source_records` verbatim — the card drops the `https://` scheme and renders `git://helios-firmware@8c1b2e4/src/dock/dock_ctrl.c#L214` as `helios-firmware @ 8c1b2e4 · src/dock/dock_ctrl.c`; `[git]` is source 44 with `cite_key` `git` |
+| The brief's markers `[07]` · `[12][31]` · `[git]` · `[19]` | brief v1's four `finding` claims and their `brief_claim_sources` links |
+
+Cite numbers are dense by rule, so `[07]`…`[31]` exist only with the numbers around them: the
+other **39 sources are placeholders that say so in their titles**, until
+[#613](https://github.com/NobuData/ouroboros/issues/613) (CK.6) seeds the full ledger. It sorts
+after the base seed, which is all it reads.
 
 ### The bundled price catalog
 
@@ -3210,6 +3244,7 @@ ouroboros-db/
 │   ├── V105__onboarding_protected_paths_edited.sql  # onboarding_state.protected_paths_edited_at — a saved protected-path list stops scan suggestions — #391
 │   ├── V106__investigations.sql      # research_tools, investigation_kinds (versioned playbooks), investigations (RS-###) — #608
 │   ├── V107__copilot_sessions_messages.sql # copilot_sessions (one active per draft), copilot_messages (seq, choices, tool_trace, cost) — #555
+│   ├── V108__citation_ledger.sql     # source_records (dense [cite_no], validated locators), briefs, brief_claims, citation links — #609
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -3217,6 +3252,7 @@ ouroboros-db/
 │   ├── R__dev_seed_intake.sql        # mockup 03's backlog and its estimates, dev only — #103 (sorts after the above)
 │   ├── R__dev_seed_onboarding.sql    # mockup 13 mid-wizard, in its own workspace acme-onboarding, dev only — #383 (sorts after intake)
 │   ├── R__dev_seed_providers.sql     # mockup 07's connections and meters, dev only — #221
+│   ├── R__dev_seed_research.sql      # mockup 22 — RS-127, its 44-source ledger (five featured verbatim) and brief v1, dev only — #609
 │   ├── R__dev_seed_routing.sql       # mockup 06 as rows, and mockup 21's registry over them, dev only — #192, #582 (sorts after the above)
 │   ├── R__dev_seed_run_console.sql   # mockup 10 — run #482 mid-flight, transcript and cards, dev only — #302 (sorts after dashboard and farm)
 │   ├── R__dev_seed_sources.sql       # the two trackers acme-robotics ingests from, dev only — #138 (sorts after the above)

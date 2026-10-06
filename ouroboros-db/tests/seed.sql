@@ -6962,6 +6962,75 @@ select pg_temp.must_hold(
   'one expired item, and one answer that came in by email');
 
 -- ===========================================================================
+-- R__dev_seed_research.sql — RS-127's citation ledger and brief (#609, CK.2)
+-- ===========================================================================
+--
+-- Mockup 22's sources card and brief, read back from the rows: `44 sources` counted, the five
+-- featured citations verbatim as the card prints them (scheme dropped; the git locator rendered
+-- `repo @ sha · path`), the numbers dense, and every finding of the brief cited.
+select pg_temp.must_hold(
+  (select inv.display_id = 'RS-127' and inv.status = 'brief_ready' and inv.depth = 'deep_dive'
+          and kind.slug = 'gap_analysis'
+          and (select count(*) from ouroboros.source_records s where s.investigation_id = inv.id) = 44
+     from ouroboros.investigations inv
+     join ouroboros.investigation_kinds kind on kind.id = inv.kind_id
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'
+    where inv.seq = 127),
+  'RS-127 is acme-robotics'' finished deep-dive gap analysis — 44 sources, counted');
+
+select pg_temp.must_hold(
+  (select array_agg(coalesce('[' || s.cite_key || ']', '[' || lpad(s.cite_no::text, 2, '0') || ']')
+                    || '  ' || s.title || '  '
+                    || case when s.kind = 'code'
+                            then regexp_replace(s.locator, '^git://([^@]+)@([0-9a-f]+)/([^#]+)(#.*)?$', '\1 @ \2 · \3')
+                            else regexp_replace(s.locator, '^https?://', '') end
+                    order by s.cite_no)
+          = array['[07]  Skylink S4 docking module — teardown & sensor BOM  droneanalysts.example.com/s4-teardown',
+                  '[12]  Skylink firmware 6.2 release notes — "gust-adaptive final approach"  skylink.example.com/releases/6.2',
+                  '[19]  Churn interviews Q2 — 9 of 14 cite docking reliability  issue-index://support/churn-2026-q2',
+                  '[31]  "MPC for precision landing in turbulent flow" — conf. paper  arxiv.example.org/abs/2605.11423',
+                  '[git]  dock_ctrl.c blame — gains last tuned 14 months ago  helios-firmware @ 8c1b2e4 · src/dock/dock_ctrl.c']
+     from ouroboros.source_records s
+     join ouroboros.investigations inv on inv.id = s.investigation_id and inv.seq = 127
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'
+    where s.cite_no in (7, 12, 19, 31) or s.cite_key = 'git'),
+  'the sources card reproduces mockup 22''s five citations verbatim, the two internal URIs included');
+
+select pg_temp.must_hold(
+  (select array_agg(s.cite_no order by s.cite_no) = array(select generate_series(1, 44))
+          and bool_and(ouroboros.source_locator_valid(s.kind, s.locator))
+          and bool_and(s.content_hash = 'sha256:' || encode(sha256(convert_to(s.excerpt, 'UTF8')), 'hex'))
+     from ouroboros.source_records s
+     join ouroboros.investigations inv on inv.id = s.investigation_id and inv.seq = 127
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'),
+  'RS-127''s cite numbers are dense, 1…44, and every seeded locator and hash is well-formed');
+
+select pg_temp.must_hold(
+  (select array_agg(c.span_ref || ':' || (select string_agg(coalesce('[' || s.cite_key || ']',
+                                                                      '[' || lpad(s.cite_no::text, 2, '0') || ']'),
+                                                             '' order by s.cite_no)
+                                             from ouroboros.brief_claim_sources l
+                                             join ouroboros.source_records s on s.id = l.source_id
+                                            where l.claim_id = c.id)
+                    order by array_position(ouroboros.brief_body_claim_refs(b.body), c.span_ref))
+          = array['sensors-match:[07]', 'control-mpc:[12][31]', 'pid-fixed-gains:[git]', 'abort-gives-up:[19]']
+          and bool_and(c.claim_type = 'finding')
+          and max(b.version) = 1
+     from ouroboros.brief_claims c
+     join ouroboros.briefs b on b.id = c.brief_id
+     join ouroboros.investigations inv on inv.id = b.investigation_id and inv.seq = 127
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'),
+  'the brief''s findings carry the mockup''s markers in reading order: [07] · [12][31] · [git] · [19]');
+
+-- The discipline, asked of every seeded row rather than trusted to the commit-time trigger: a seed
+-- that bypassed it would leave an uncited finding here.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.brief_claims c
+    where c.claim_type = 'finding'
+      and not exists (select 1 from ouroboros.brief_claim_sources l where l.claim_id = c.id)),
+  'no seeded finding claim is uncited');
+
+-- ===========================================================================
 -- Copilot messages carry no fabricated cost (#555, CC.1)
 -- ===========================================================================
 --

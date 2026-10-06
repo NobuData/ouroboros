@@ -14525,6 +14525,8 @@ select pg_temp.must_hold(
    -- `copilot_messages_allocate_seq()`, so a copilot message's seq is drawn from a counter the
    -- writer cannot set, and `copilot_sessions_sweep()`, so the chat retention sweep can remove
    -- closed transcripts while the writer still cannot delete one — asserted in V107's section.
+   -- #609 added `source_records_allocate_cite_no()`, so a source's [cite number] is drawn from a
+   -- counter the writer cannot set — asserted in V108's section.
    and (select array_agg(proname::text order by proname) = array['audit_events_purge',
                                                                  'copilot_messages_allocate_seq',
                                                                  'copilot_sessions_sweep',
@@ -14539,10 +14541,11 @@ select pg_temp.must_hold(
                                                                  'run_controls_audit',
                                                                  'run_events_append',
                                                                  'run_events_sweep',
+                                                                 'source_records_allocate_cite_no',
                                                                  'sync_intervention_events']
           from pg_proc
          where pronamespace = 'ouroboros'::regnamespace and prosecdef),
-  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks, #457''s decision ref resolver, #459''s TTL settings reader, #482''s transcript sweep, #486''s audit purge, #608''s RS allocator and #555''s copilot seq allocator and chat sweep are the only functions in the schema that run as the owner at all');
+  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks, #457''s decision ref resolver, #459''s TTL settings reader, #482''s transcript sweep, #486''s audit purge, #608''s RS allocator and #555''s copilot seq allocator and chat sweep and #609''s cite allocator are the only functions in the schema that run as the owner at all');
 
 -- --- the cascades ----------------------------------------------------------------
 delete from ouroboros.runs where id = 'a6100000-0000-0000-0000-000000000484';
@@ -35467,6 +35470,507 @@ select pg_temp.must_hold(
 delete from ouroboros."user" where "id" = 'a1070000-0000-0000-0000-00000000000a';
 
 -- ===========================================================================
+-- V108 — the citation ledger: sources, briefs, claims and their links (#609, CK.2)
+-- ===========================================================================
+--
+-- Mockup 22's brief and sources card as rows: cite numbers dense and stable with symbolic keys
+-- beside them, locators validated per kind, excerpts and the per-investigation archive bounded,
+-- briefs versioned and structured, a claim citing several sources and a source backing several
+-- claims, a finding that cannot commit uncited, and a brief_ready investigation that cannot
+-- commit without a brief. The two deferred rules are forced by name with `set constraints`,
+-- never `all`, so events other sections left pending stay pending.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v108', 'Citation Works', 'citation-works-v108', now());
+
+insert into ouroboros.investigations (id, organization_id, kind_id, question, depth, tools_enabled,
+                                      status, provenance)
+select v.id, 'org-v108', k.id, v.question, 'deep_dive', '["web", "competitor", "code", "tickets", "telemetry"]',
+       'running', '{"researcher": "loop-v1", "alias": "researcher-long-ctx", "resolution_ref": null}'
+  from ouroboros.investigation_kinds k,
+       (values ('a1080000-0000-0000-0000-000000000001'::uuid, 'Where are we behind Skylink on docking?'),
+               ('a1080000-0000-0000-0000-000000000002'::uuid, 'A second investigation'))
+         as v(id, question)
+ where k.organization_id = 'org-v108' and k.slug = 'gap_analysis';
+
+-- pg_temp.v108_source(investigation, kind, tool, locator[, cite_no]) — one well-formed source
+-- insert, as a statement, so the refusals below can each vary one thing.
+create function pg_temp.v108_source(investigation text, kind text, tool text, locator text,
+                                    cite_no text default 'null', excerpt text default '''archived''')
+returns text language sql as $$
+  select format($f$insert into ouroboros.source_records
+                     (investigation_id, tool_slug, kind, title, locator, retrieved_at, content_hash,
+                      excerpt, cite_no)
+                   values ('%s', '%s', '%s', 'A source', '%s', now(), 'sha256:%s', %s, %s)$f$,
+                investigation, tool, kind, locator, repeat('0', 64), excerpt, cite_no);
+$$;
+
+-- --- cite numbers ----------------------------------------------------------------------
+
+insert into ouroboros.source_records (id, investigation_id, tool_slug, kind, title, locator,
+                                      retrieved_at, content_hash, excerpt, meta) values
+  ('a1080000-0000-0000-0000-000000000101', 'a1080000-0000-0000-0000-000000000001', 'web', 'web',
+   'Skylink S4 docking module — teardown & sensor BOM', 'https://droneanalysts.example.com/s4-teardown',
+   now() - interval '3 days', 'sha256:' || encode(sha256('teardown'::bytea), 'hex'),
+   'IMU and rangefinder match the Helios spec sheet.', '{"query": "skylink s4 teardown"}'),
+  ('a1080000-0000-0000-0000-000000000102', 'a1080000-0000-0000-0000-000000000001', 'competitor', 'web',
+   'Skylink firmware 6.2 release notes', 'https://skylink.example.com/releases/6.2',
+   now() - interval '3 days', 'sha256:' || encode(sha256('notes'::bytea), 'hex'),
+   'Gust-adaptive final approach.', '{}');
+
+select pg_temp.must_hold(
+  (select array_agg(cite_no order by created_at, cite_no) = array[1, 2]
+     from ouroboros.source_records where investigation_id = 'a1080000-0000-0000-0000-000000000001'),
+  'cite numbers are allocated 1, 2, … per investigation');
+
+-- A supplied number is accepted only when it is the next one…
+do $x$ begin execute pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'ticket', 'tickets',
+                            'issue-index://support/churn-2026-q2', '3'); end $x$;
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'https://a.example.com/x', '7'),
+  'a cite number may not skip ahead — numbers are dense', 'source_records_cite_no_dense');
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'https://a.example.com/x', '2'),
+  'nor be reused', 'source_records_cite_no_dense');
+
+-- …and a refused write gives its number back: the next source is [04].
+insert into ouroboros.source_records (id, investigation_id, tool_slug, kind, title, locator,
+                                      retrieved_at, content_hash, excerpt, cite_key) values
+  ('a1080000-0000-0000-0000-000000000104', 'a1080000-0000-0000-0000-000000000001', 'code', 'code',
+   'dock_ctrl.c blame — gains last tuned 14 months ago',
+   'git://helios-firmware@8c1b2e4/src/dock/dock_ctrl.c#L214', now() - interval '3 days',
+   'sha256:' || encode(sha256('blame'::bytea), 'hex'), 'kp = 1.8f; /* 2025-08 */', 'git');
+
+select pg_temp.must_hold(
+  (select cite_no = 4 and cite_key = 'git'
+     from ouroboros.source_records where id = 'a1080000-0000-0000-0000-000000000104'),
+  'a refused write leaves no gap, and a symbolic key sits beside its number');
+
+-- Another investigation counts from 1 on its own.
+do $x$ begin execute pg_temp.v108_source('a1080000-0000-0000-0000-000000000002', 'web', 'web', 'https://b.example.com/'); end $x$;
+select pg_temp.must_hold(
+  (select cite_no = 1 from ouroboros.source_records
+    where investigation_id = 'a1080000-0000-0000-0000-000000000002'),
+  'every investigation numbers its own sources from [01]');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.source_records (investigation_id, tool_slug, kind, title, locator,
+                                          retrieved_at, content_hash, excerpt, cite_key)
+    values ('a1080000-0000-0000-0000-000000000001', 'code', 'code', 'Again',
+            'git://helios-firmware@8c1b2e4/src/dock/dock_ctrl.c', now(),
+            'sha256:' || repeat('1', 64), 'x', 'git')$$,
+  'a symbolic key names one source per investigation', 'source_records_investigation_cite_key_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.source_records (investigation_id, tool_slug, kind, title, locator,
+                                          retrieved_at, content_hash, excerpt, cite_key)
+    values ('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'Numeric key',
+            'https://a.example.com/', now(), 'sha256:' || repeat('1', 64), 'x', '07')$$,
+  'a symbolic key never reads as a number', 'source_records_cite_key_format');
+
+-- Stable: a record is never edited, so [04] cannot be renumbered or re-pointed.
+select pg_temp.must_reject(
+  $$update ouroboros.source_records set cite_no = 9 where id = 'a1080000-0000-0000-0000-000000000104'$$,
+  'a cite number never changes', 'source_records_immutable');
+select pg_temp.must_reject(
+  $$update ouroboros.source_records set excerpt = 'edited' where id = 'a1080000-0000-0000-0000-000000000104'$$,
+  'an archived excerpt is never edited', 'source_records_immutable');
+
+-- --- locators --------------------------------------------------------------------------
+
+select pg_temp.must_hold(
+  ouroboros.source_locator_valid('web', 'https://droneanalysts.example.com/s4-teardown')
+  and ouroboros.source_locator_valid('doc', 'https://arxiv.example.org/abs/2605.11423')
+  and ouroboros.source_locator_valid('competitor_diff', 'https://skylink.example.com/releases/6.2')
+  and ouroboros.source_locator_valid('ticket', 'issue-index://support/churn-2026-q2')
+  and ouroboros.source_locator_valid('ticket', 'https://github.com/acme/helios-firmware/issues/482')
+  and ouroboros.source_locator_valid('code', 'git://helios-firmware@8c1b2e4/src/dock/dock_ctrl.c#L214')
+  and ouroboros.source_locator_valid('code', 'git://acme/helios-firmware@8c1b2e4f00/src/dock/dock_ctrl.c#L200-L230')
+  and ouroboros.source_locator_valid('code', 'git://helios-firmware@8c1b2e4')
+  and ouroboros.source_locator_valid('telemetry', 'telemetry://dock.success_rate/30d')
+  and ouroboros.source_locator_valid('telemetry', 'telemetry://hil/dock.abort_count/2026-08-01..2026-09-01')
+  and ouroboros.source_locator_valid('telemetry', 'telemetry://build.duration/2026-09-01T00:00Z..2026-09-02T00:00Z'),
+  'the mockup''s locators, external and internal, are well-formed for their kinds');
+
+select pg_temp.must_hold(
+  not ouroboros.source_locator_valid('code', 'git://helios-firmware/src/dock/dock_ctrl.c')
+  and not ouroboros.source_locator_valid('code', 'git://helios-firmware@main/src/dock/dock_ctrl.c')
+  and not ouroboros.source_locator_valid('code', 'git://helios-firmware@8c1b2e4/src/../etc/passwd')
+  and not ouroboros.source_locator_valid('code', 'git://helios-firmware@8c1b2e4/src//dock.c')
+  and not ouroboros.source_locator_valid('code', 'git://helios-firmware@8c1b2e4/src/dock.c#L0')
+  and not ouroboros.source_locator_valid('code', 'https://github.com/acme/helios-firmware')
+  and not ouroboros.source_locator_valid('telemetry', 'telemetry://dock.success_rate')
+  and not ouroboros.source_locator_valid('telemetry', 'telemetry://dock.success_rate/last-month')
+  and not ouroboros.source_locator_valid('telemetry', 'telemetry:///30d')
+  and not ouroboros.source_locator_valid('ticket', 'issue-index://support')
+  and not ouroboros.source_locator_valid('web', 'javascript:alert(1)')
+  and not ouroboros.source_locator_valid('web', 'issue-index://support/churn-2026-q2')
+  and not ouroboros.source_locator_valid('web', 'https://a.example.com/with space')
+  and not ouroboros.source_locator_valid('nonsense', 'https://a.example.com/')
+  and not ouroboros.source_locator_valid('web', null),
+  'malformed git://, telemetry:// and issue-index:// locators, and a locator of the wrong kind, are not');
+
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'code', 'code', 'git://helios-firmware/src/dock/dock_ctrl.c'),
+  'a git:// locator without a commit is refused', 'source_records_locator_valid');
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'telemetry', 'telemetry', 'telemetry://dock.success_rate'),
+  'a telemetry:// locator without a window is refused', 'source_records_locator_valid');
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'git://helios-firmware@8c1b2e4/x.c'),
+  'an internal URI does not stand in for a web source', 'source_records_locator_valid');
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'video', 'web', 'https://a.example.com/'),
+  'a source kind is one of the six', 'source_records_kind');
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'web', 'crystal-ball', 'https://a.example.com/'),
+  'a source names a registered tool', 'source_records_tool_slug_fkey');
+
+-- --- archival bounds --------------------------------------------------------------------
+
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'https://a.example.com/',
+                      'null', format('%L', repeat('x', 4097))),
+  'an excerpt is at most 4096 bytes', 'source_records_excerpt_bounded');
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'https://a.example.com/',
+                      'null', format('%L', repeat('é', 2049))),
+  'counted in bytes, not characters', 'source_records_excerpt_bounded');
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'https://a.example.com/',
+                      'null', $$'   '$$),
+  'an excerpt archives something', 'source_records_excerpt_bounded');
+
+do $x$ begin execute pg_temp.v108_source('a1080000-0000-0000-0000-000000000002', 'web', 'web', 'https://b.example.com/max',
+                            'null', format('%L', repeat('x', 4096))); end $x$;
+select pg_temp.must_hold(
+  (select excerpt_bytes = 4096 + length('archived')
+     from ouroboros.source_cite_counters where investigation_id = 'a1080000-0000-0000-0000-000000000002'),
+  'a 4096-byte excerpt is accepted, and the archive total counts it');
+
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       update ouroboros.source_cite_counters set excerpt_bytes = 2097152 - 4
+        where investigation_id = 'a1080000-0000-0000-0000-000000000002';
+       execute pg_temp.v108_source('a1080000-0000-0000-0000-000000000002', 'web', 'web', 'https://b.example.com/y');
+     end $x$ $q$,
+  'an investigation archives at most 2 MiB of excerpts', 'source_records_investigation_cap');
+
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       update ouroboros.source_cite_counters set last_cite_no = 1000
+        where investigation_id = 'a1080000-0000-0000-0000-000000000002';
+       execute pg_temp.v108_source('a1080000-0000-0000-0000-000000000002', 'web', 'web', 'https://b.example.com/z');
+     end $x$ $q$,
+  'and at most 1000 sources', 'source_records_investigation_cap');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.source_records (investigation_id, tool_slug, kind, title, locator,
+                                          retrieved_at, content_hash, excerpt, meta)
+    values ('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'x', 'https://a.example.com/',
+            now(), 'sha256:' || repeat('1', 64), 'x', '["not", "an", "object"]')$$,
+  'meta is an object', 'source_records_meta_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.source_records (investigation_id, tool_slug, kind, title, locator,
+                                          retrieved_at, content_hash, excerpt, meta)
+    values ('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'x', 'https://a.example.com/',
+            now(), 'sha256:' || repeat('1', 64), 'x', jsonb_build_object('page', repeat('x', 8200)))$$,
+  'meta is bounded too — the ledger is not a page cache', 'source_records_meta_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.source_records (investigation_id, tool_slug, kind, title, locator,
+                                          retrieved_at, content_hash, excerpt)
+    values ('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'x', 'https://a.example.com/',
+            now(), 'md5:abc', 'x')$$,
+  'a content hash is sha256:<hex>', 'source_records_content_hash_format');
+
+-- --- briefs -----------------------------------------------------------------------------
+
+insert into ouroboros.briefs (id, investigation_id, version, body) values
+  ('a1080000-0000-0000-0000-000000000201', 'a1080000-0000-0000-0000-000000000001', 1,
+   '{"paragraphs": [{"spans": [
+       {"text": "The docking gap is not sensors: our IMU and rangefinder match Skylink''s published spec.", "claim": "sensors-match"},
+       {"text": " It is control — Skylink runs a wind-feedforward MPC in the final 2 m,", "claim": "control-mpc"},
+       {"text": " while ours is PID with fixed gains.", "claim": "pid-fixed-gains"},
+       {"text": " Estimated closure: one epic, 5 tickets."}]},
+     {"spans": [{"text": "Rivals will ship this by Q1.", "claim": "rivals-q1"}]}]}');
+
+select pg_temp.must_hold(
+  ouroboros.brief_body_claim_refs((select body from ouroboros.briefs where id = 'a1080000-0000-0000-0000-000000000201'))
+    = array['sensors-match', 'control-mpc', 'pid-fixed-gains', 'rivals-q1'],
+  'a brief body names its claim spans in reading order');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.briefs (investigation_id, version, body) values
+    ('a1080000-0000-0000-0000-000000000001', 3, '{"paragraphs": [{"spans": [{"text": "x"}]}]}')$$,
+  'a brief version is the next one, with no gap', 'briefs_version_next');
+select pg_temp.must_reject(
+  $$insert into ouroboros.briefs (investigation_id, version, body) values
+    ('a1080000-0000-0000-0000-000000000001', 2, '{"markdown": "# the gap is control"}')$$,
+  'a brief body is structured, not free markdown', 'briefs_body_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.briefs (investigation_id, version, body) values
+    ('a1080000-0000-0000-0000-000000000001', 2,
+     '{"paragraphs": [{"spans": [{"text": "a", "claim": "c1"}, {"text": "b", "claim": "c1"}]}]}')$$,
+  'a claim span ref is used once per body', 'briefs_body_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.briefs (investigation_id, version, body) values
+    ('a1080000-0000-0000-0000-000000000001', 2, '{"paragraphs": [{"spans": [{"text": " "}]}]}')$$,
+  'a span says something', 'briefs_body_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.briefs (investigation_id, version, body, deliverables) values
+    ('a1080000-0000-0000-0000-000000000001', 2, '{"paragraphs": [{"spans": [{"text": "x"}]}]}',
+     '{"slides": "deck-1"}')$$,
+  'deliverables name what a playbook produces', 'briefs_deliverables_shape');
+
+insert into ouroboros.briefs (id, investigation_id, version, body, deliverables) values
+  ('a1080000-0000-0000-0000-000000000202', 'a1080000-0000-0000-0000-000000000001', 2,
+   '{"paragraphs": [{"spans": [{"text": "Revised.", "claim": "sensors-match"}]}]}',
+   '{"matrix": "matrix-rs-127", "draft_batch": "batch-dock"}');
+
+select pg_temp.must_hold(
+  (select array_agg(version order by version) = array[1, 2]
+          and (array_agg(id order by version desc))[1] = 'a1080000-0000-0000-0000-000000000202'
+     from ouroboros.briefs where investigation_id = 'a1080000-0000-0000-0000-000000000001'),
+  'a revised brief is a new version; the highest is current and the first is kept as history');
+
+select pg_temp.must_reject(
+  $$update ouroboros.briefs set body = '{"paragraphs": [{"spans": [{"text": "rewritten"}]}]}'
+     where id = 'a1080000-0000-0000-0000-000000000201'$$,
+  'a brief version is never rewritten', 'briefs_immutable');
+
+-- --- claims and citations ----------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.brief_claims (investigation_id, brief_id, span_ref, claim_type, text) values
+    ('a1080000-0000-0000-0000-000000000002', 'a1080000-0000-0000-0000-000000000201', 'control-mpc',
+     'open_question', 'x')$$,
+  'a claim belongs to a brief of its own investigation', 'brief_claims_brief_fk');
+
+insert into ouroboros.brief_claims (id, investigation_id, brief_id, span_ref, claim_type, text) values
+  ('a1080000-0000-0000-0000-000000000301', 'a1080000-0000-0000-0000-000000000001',
+   'a1080000-0000-0000-0000-000000000201', 'sensors-match', 'finding', 'The docking gap is not sensors.'),
+  ('a1080000-0000-0000-0000-000000000302', 'a1080000-0000-0000-0000-000000000001',
+   'a1080000-0000-0000-0000-000000000201', 'control-mpc', 'finding', 'Skylink runs wind-feedforward MPC.'),
+  ('a1080000-0000-0000-0000-000000000303', 'a1080000-0000-0000-0000-000000000001',
+   'a1080000-0000-0000-0000-000000000201', 'pid-fixed-gains', 'finding', 'Ours is PID with fixed gains.'),
+  ('a1080000-0000-0000-0000-000000000304', 'a1080000-0000-0000-0000-000000000001',
+   'a1080000-0000-0000-0000-000000000201', 'rivals-q1', 'open_question', 'Rivals will ship this by Q1.');
+
+-- One claim cites several sources ([01][02]); one source backs several claims ([02]).
+insert into ouroboros.brief_claim_sources (investigation_id, claim_id, source_id) values
+  ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000301', 'a1080000-0000-0000-0000-000000000101'),
+  ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000302', 'a1080000-0000-0000-0000-000000000102'),
+  ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000302', 'a1080000-0000-0000-0000-000000000101'),
+  ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000303', 'a1080000-0000-0000-0000-000000000104'),
+  ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000303', 'a1080000-0000-0000-0000-000000000102');
+
+-- The commit-time rule holds for every finding written so far, and the open question needs none.
+set constraints ouroboros.brief_claims_finding_cited immediate;
+set constraints ouroboros.brief_claims_finding_cited deferred;
+
+select pg_temp.must_hold(
+  (select array_agg(c.span_ref || ':' || coalesce((select string_agg(coalesce('[' || s.cite_key || ']',
+                                                                      '[' || lpad(s.cite_no::text, 2, '0') || ']'),
+                                                             '' order by s.cite_no)
+                                             from ouroboros.brief_claim_sources l
+                                             join ouroboros.source_records s on s.id = l.source_id
+                                            where l.claim_id = c.id), '') order by c.span_ref)
+          = array['control-mpc:[01][02]', 'pid-fixed-gains:[02][git]', 'rivals-q1:', 'sensors-match:[01]']
+     from ouroboros.brief_claims c where c.brief_id = 'a1080000-0000-0000-0000-000000000201'),
+  'claims render their markers from stored numbers: one claim cites several sources, one source backs several claims');
+
+select pg_temp.must_hold(
+  (select count(distinct l.claim_id) = 2 from ouroboros.brief_claim_sources l
+    where l.source_id = 'a1080000-0000-0000-0000-000000000102'),
+  'source [02] backs two claims');
+
+-- Re-rendering is stable: a new source lands after the existing ones and moves no number.
+do $x$ begin execute pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'telemetry', 'telemetry',
+                            'telemetry://dock.success_rate/30d'); end $x$;
+select pg_temp.must_hold(
+  (select array_agg(cite_no order by cite_no) = array[1, 2, 3, 4, 5]
+          and bool_and(cite_no = case id when 'a1080000-0000-0000-0000-000000000101' then 1
+                                         when 'a1080000-0000-0000-0000-000000000102' then 2
+                                         when 'a1080000-0000-0000-0000-000000000104' then 4
+                                         else cite_no end)
+     from ouroboros.source_records where investigation_id = 'a1080000-0000-0000-0000-000000000001'),
+  'a source added later takes the next number and renumbers nothing — [01]…[05], dense');
+
+-- An uncited finding cannot commit.
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       insert into ouroboros.brief_claims (investigation_id, brief_id, span_ref, claim_type, text)
+       values ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000202',
+               'sensors-match', 'finding', 'Rivals will ship this by Q1.');
+       set constraints ouroboros.brief_claims_finding_cited immediate;
+     end $x$ $q$,
+  'a finding claim with no citation fails the write', 'brief_claims_finding_cited');
+
+-- The same claim as an open question is fine — the demotion path.
+do $x$ begin
+  insert into ouroboros.brief_claims (investigation_id, brief_id, span_ref, claim_type, text)
+  values ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000202',
+          'sensors-match', 'open_question', 'Rivals will ship this by Q1.');
+  set constraints ouroboros.brief_claims_finding_cited immediate;
+  set constraints ouroboros.brief_claims_finding_cited deferred;
+end $x$;
+
+-- Removing a finding's last citation cannot commit either.
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       delete from ouroboros.brief_claim_sources where claim_id = 'a1080000-0000-0000-0000-000000000301';
+       set constraints ouroboros.brief_claim_sources_finding_cited immediate;
+     end $x$ $q$,
+  'a finding''s last citation cannot be removed', 'brief_claims_finding_cited');
+
+-- Removing one of two keeps the finding cited.
+do $x$ begin
+  delete from ouroboros.brief_claim_sources
+   where claim_id = 'a1080000-0000-0000-0000-000000000302'
+     and source_id = 'a1080000-0000-0000-0000-000000000101';
+  set constraints ouroboros.brief_claim_sources_finding_cited immediate;
+  set constraints ouroboros.brief_claim_sources_finding_cited deferred;
+end $x$;
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.brief_claims (investigation_id, brief_id, span_ref, claim_type, text) values
+    ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000201', 'no-such-span',
+     'open_question', 'x')$$,
+  'a claim describes a span its brief names', 'brief_claims_span_in_body');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.brief_claims (investigation_id, brief_id, span_ref, claim_type, text) values
+    ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000201', 'control-mpc',
+     'open_question', 'again')$$,
+  'a span is described by one claim', 'brief_claims_brief_span_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.brief_claims (investigation_id, brief_id, span_ref, claim_type, text) values
+    ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000202', 'sensors-match',
+     'hunch', 'x')$$,
+  'a claim is a finding or an open question', 'brief_claims_claim_type');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.brief_claim_sources (investigation_id, claim_id, source_id)
+    select 'a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000304', id
+      from ouroboros.source_records where investigation_id = 'a1080000-0000-0000-0000-000000000002' limit 1$$,
+  'a claim cites only its own investigation''s sources', 'brief_claim_sources_source_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.brief_claim_sources (investigation_id, claim_id, source_id) values
+    ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000301',
+     'a1080000-0000-0000-0000-000000000101')$$,
+  'a claim cites a source once', 'brief_claim_sources_pkey');
+
+select pg_temp.must_reject(
+  $$update ouroboros.brief_claims set claim_type = 'finding' where id = 'a1080000-0000-0000-0000-000000000304'$$,
+  'a claim is never re-typed after it is written', 'brief_claims_immutable');
+
+select pg_temp.must_reject(
+  $$update ouroboros.brief_claim_sources set source_id = 'a1080000-0000-0000-0000-000000000104'
+     where claim_id = 'a1080000-0000-0000-0000-000000000301'$$,
+  'a citation link is never re-pointed', 'brief_claim_sources_immutable');
+
+-- --- brief_ready needs a brief ---------------------------------------------------------
+
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       update ouroboros.investigations
+          set status = 'brief_ready', actuals = '{"sources_used": 1, "spend_cents": null, "duration_ms": 1000}'
+        where id = 'a1080000-0000-0000-0000-000000000002';
+       set constraints ouroboros.investigations_brief_exists immediate;
+     end $x$ $q$,
+  'an investigation is brief_ready only with a brief', 'investigations_brief_exists');
+
+do $x$ begin
+  update ouroboros.investigations
+     set status = 'brief_ready', actuals = '{"sources_used": 5, "spend_cents": 612, "duration_ms": 1000}'
+   where id = 'a1080000-0000-0000-0000-000000000001';
+  set constraints ouroboros.investigations_brief_exists immediate;
+  set constraints ouroboros.investigations_brief_exists deferred;
+end $x$;
+
+select pg_temp.must_hold(
+  (select status = 'brief_ready' from ouroboros.investigations where id = 'a1080000-0000-0000-0000-000000000001'),
+  'with a brief, it is');
+
+-- --- indexes ----------------------------------------------------------------------------
+
+analyze ouroboros.source_records;
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select * from ouroboros.source_records
+     where investigation_id = 'a1080000-0000-0000-0000-000000000001' order by cite_no$$,
+  'source_records_investigation_cite_no_key');
+select pg_temp.must_use_index(
+  $$select * from ouroboros.source_records
+     where investigation_id = 'a1080000-0000-0000-0000-000000000001' and kind = 'code'$$,
+  'source_records_investigation_kind_idx');
+select pg_temp.must_use_index(
+  $$select * from ouroboros.source_records where content_hash = 'sha256:' || repeat('0', 64)$$,
+  'source_records_content_hash_idx');
+set local enable_seqscan = on;
+
+-- --- the application role ----------------------------------------------------------------
+set local role ouroboros_app;
+
+select pg_temp.must_hold(
+  (select current_user = 'ouroboros_app'),
+  'the assertions below really are the application role''s');
+
+insert into ouroboros.source_records (id, investigation_id, tool_slug, kind, title, locator,
+                                      retrieved_at, content_hash, excerpt) values
+  ('a1080000-0000-0000-0000-000000000106', 'a1080000-0000-0000-0000-000000000001', 'docs', 'doc',
+   '"MPC for precision landing in turbulent flow" — conf. paper', 'https://arxiv.example.org/abs/2605.11423',
+   now(), 'sha256:' || repeat('a', 64), 'Feedforward cuts touchdown error by 60%.');
+
+select pg_temp.must_raise(
+  $$update ouroboros.source_records set title = 'x' where id = 'a1080000-0000-0000-0000-000000000106'$$,
+  '42501', 'the application role cannot edit a source');
+select pg_temp.must_raise(
+  $$delete from ouroboros.source_records where id = 'a1080000-0000-0000-0000-000000000106'$$,
+  '42501', 'the application role cannot delete a source');
+select pg_temp.must_raise(
+  $$delete from ouroboros.brief_claim_sources$$,
+  '42501', 'the application role cannot remove a citation');
+select pg_temp.must_raise(
+  $$update ouroboros.source_cite_counters set last_cite_no = 1$$,
+  '42501', 'the application role cannot move the cite counter');
+select pg_temp.must_raise(
+  $$select ouroboros.source_records_allocate_cite_no()$$,
+  '42501', 'the allocator is not callable outside its trigger');
+
+reset role;
+
+select pg_temp.must_hold(
+  (select cite_no = 6 from ouroboros.source_records where id = 'a1080000-0000-0000-0000-000000000106'),
+  'a source written by the application role is numbered by the allocator');
+
+select pg_temp.must_hold(
+  (select prosecdef
+          and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+          and not has_function_privilege('public', oid, 'execute')
+     from pg_proc
+    where proname = 'source_records_allocate_cite_no' and pronamespace = 'ouroboros'::regnamespace)
+   and not has_table_privilege('ouroboros_app', 'ouroboros.source_cite_counters', 'select'),
+  'the cite allocator runs as its owner with search_path pinned and execute revoked from public, and the counter has no grant to the application');
+
+-- --- the workspace takes everything with it -----------------------------------------------
+
+delete from ouroboros.organization where "id" = 'org-v108';
+set constraints ouroboros.brief_claims_finding_cited, ouroboros.brief_claim_sources_finding_cited,
+                ouroboros.investigations_brief_exists immediate;
+set constraints ouroboros.brief_claims_finding_cited, ouroboros.brief_claim_sources_finding_cited,
+                ouroboros.investigations_brief_exists deferred;
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.source_records
+    where investigation_id in ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000002'))
+   and (select count(*) = 0 from ouroboros.briefs
+         where investigation_id = 'a1080000-0000-0000-0000-000000000001')
+   and (select count(*) = 0 from ouroboros.source_cite_counters
+         where investigation_id in ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000002')),
+  'deleting a workspace deletes its ledger, briefs and counters — and the deferred rules have nothing left to object to');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --
@@ -35530,6 +36034,7 @@ analyze ouroboros.tickets;
 analyze ouroboros.ticket_sources;
 analyze ouroboros.investigations;
 analyze ouroboros.copilot_messages;
+analyze ouroboros.source_records;
 
 \o
 \echo 'constraints.sql: all assertions passed'
