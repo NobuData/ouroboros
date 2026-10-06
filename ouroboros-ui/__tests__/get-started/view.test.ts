@@ -24,7 +24,7 @@ import {
 } from "@/app/get-started/view";
 import { DASHBOARD_PATH, SOURCES_PATH } from "@/app/paths";
 
-import { REPO, launchReceipt, readyToRun, regressed, step, wizard } from "../helpers/onboarding";
+import { ISSUE_488, REPO, launchReceipt, readyToRun, regressed, step, wizard } from "../helpers/onboarding";
 
 /**
  * The Get Started frame's pure rules (BC.1, #390): the head's approved promise, which repository
@@ -141,7 +141,22 @@ describe("the primary action", () => {
   });
 
   it("runs the first loop on step 4 once an issue is picked", () => {
-    expect(primaryAction(readyToRun(), 4, MEMBER)).toEqual({ kind: "launch", label: LAUNCH_LABEL, blocked: null });
+    expect(primaryAction(readyToRun(), 4, MEMBER)).toEqual({ kind: "launch", label: LAUNCH_LABEL, blocked: null, pickIssueId: null });
+  });
+
+  it("runs step 4 on the picker's suggestion while nothing is stored — the press stores it first (#393)", () => {
+    const unpicked = wizard({ steps: readyToRun().steps });
+
+    expect(primaryAction(unpicked, 4, MEMBER, { suggestedIssueId: ISSUE_488 })).toEqual({
+      kind: "launch",
+      label: LAUNCH_LABEL,
+      blocked: null,
+      pickIssueId: ISSUE_488,
+    });
+    // A stored pick is the pick: the suggestion is not stored over it.
+    expect(primaryAction(readyToRun(), 4, MEMBER, { suggestedIssueId: ISSUE_488 }).pickIssueId).toBeNull();
+    // A viewer is refused before the suggestion matters.
+    expect(primaryAction(unpicked, 4, VIEWER, { suggestedIssueId: ISSUE_488 }).blocked).toBe(VIEWER_REASON);
   });
 
   it("refuses step 4 with the service's reason while nothing is picked, and a fallback when it gave none", () => {

@@ -1,13 +1,19 @@
 import type { RepoDetection, RepoDetectionProgress, RepoDetectionRow } from "@/app/api/detection";
 import type {
+  FirstIssueCard,
   Onboarding,
+  OnboardingFirstIssue,
+  OnboardingFirstIssueAlternatives,
+  OnboardingFirstIssueCandidate,
   OnboardingInstantiatedWorkflow,
   OnboardingLaunchReceipt,
   OnboardingStep,
   OnboardingTemplateSelection,
   OnboardingTemplateTile,
   OnboardingTemplateTiles,
+  PlanningReestimationStatus,
 } from "@/app/api/onboarding";
+import type { DryRunPolicy } from "@/app/api/policies";
 
 /**
  * The Get Started wizard as BB.2 (#385) serves it — the onboarding seed's `acme-robotics/helios-firmware`,
@@ -88,6 +94,7 @@ export function readyToRun(): Onboarding {
       completedAt: null,
       bypassedAt: null,
     },
+    refs: { detectionScan: null, templates: [], pickedTicket: pickedTicket() },
   });
 }
 
@@ -358,3 +365,292 @@ export function templateSelection(overrides: Partial<OnboardingTemplateSelection
   };
 }
 
+
+/* ------------------------------------------------------------------ the first-issue card (#393) */
+
+/** The seeded `#488`'s `github_issues.id`, and `#491`'s and `#485`'s. */
+export const ISSUE_488 = "5eed004e-0000-4000-8000-000000000488";
+export const ISSUE_491 = "5eed004e-0000-4000-8000-000000000491";
+export const ISSUE_485 = "5eed004e-0000-4000-8000-000000000485";
+
+/** The instant the card's fixtures are read at — the estimator's last run ten hours before. */
+export const FIRST_ISSUE_READ_AT = Date.parse("2026-10-05T12:14:00.000Z");
+
+/**
+ * The seeded `#488` as the picker scores it (BB.4, #387): XS, docs-loop, no code paths, active a
+ * day ago — 99.4 under `safety-v1` — on an unpriced model, so **no cost**. Mockup 13's pick row,
+ * minus the `est. $0.03` the seed cannot back.
+ *
+ * @param overrides What to change.
+ * @returns The candidate.
+ */
+export function candidate(overrides: Partial<OnboardingFirstIssueCandidate> = {}): OnboardingFirstIssueCandidate {
+  return {
+    issueId: ISSUE_488,
+    number: 488,
+    title: "Typo sweep in operator manual + pairing guide",
+    url: "https://github.com/acme-robotics/helios-firmware/issues/488",
+    effort: "xs",
+    suggestedWorkflow: "docs-loop",
+    score: 99.4,
+    clearsBar: true,
+    estimate: { version: 1, routedModel: "ollama/qwen3-coder", cycleMin: 3, cycleMax: 6, loopMinutes: 4, estTokens: 25000 },
+    reasoning: {
+      line: "no code paths touched · est. 4 min",
+      fragments: [
+        { source: "paths", text: "no code paths touched" },
+        { source: "estimate", text: "est. 4 min" },
+      ],
+      components: [
+        { key: "effort", signal: "xs", points: 35, maxPoints: 35, label: "XS effort" },
+        { key: "workflow", signal: "docs-loop", points: 30, maxPoints: 30, label: "docs-loop workflow" },
+        { key: "paths", signal: "no_code", points: 25, maxPoints: 25, label: "no code paths touched" },
+        { key: "freshness", signal: "1", points: 9.4, maxPoints: 10, label: "active 1d ago" },
+      ],
+    },
+    ...overrides,
+  };
+}
+
+/**
+ * The seeded `#491` — S, standard-fix, two code paths, active today: 49.9, just over the bar.
+ *
+ * @returns The candidate.
+ */
+export function candidate491(): OnboardingFirstIssueCandidate {
+  return candidate({
+    issueId: ISSUE_491,
+    number: 491,
+    title: "Add CRC32 to config persistence layer",
+    url: "https://github.com/acme-robotics/helios-firmware/issues/491",
+    effort: "s",
+    suggestedWorkflow: "standard-fix",
+    score: 49.9,
+    estimate: { version: 1, routedModel: "copilot/gpt-5-codex", cycleMin: 8, cycleMax: 14, loopMinutes: 11, estTokens: 90000 },
+    reasoning: {
+      line: "2 code paths touched · est. 11 min",
+      fragments: [
+        { source: "paths", text: "2 code paths touched" },
+        { source: "estimate", text: "est. 11 min" },
+      ],
+      components: [
+        { key: "effort", signal: "s", points: 20, maxPoints: 35, label: "S effort" },
+        { key: "workflow", signal: "standard-fix", points: 15, maxPoints: 30, label: "standard-fix workflow" },
+        { key: "paths", signal: "code", points: 5, maxPoints: 25, label: "2 code paths touched" },
+        { key: "freshness", signal: "0", points: 9.9, maxPoints: 10, label: "active today" },
+      ],
+    },
+  });
+}
+
+/**
+ * The seeded `#485` — M, standard-fix, three code paths: 34.9, below the bar.
+ *
+ * @returns The candidate.
+ */
+export function candidate485(): OnboardingFirstIssueCandidate {
+  return candidate({
+    issueId: ISSUE_485,
+    number: 485,
+    title: "Watchdog reset on I²C bus lockup",
+    url: "https://github.com/acme-robotics/helios-firmware/issues/485",
+    effort: "m",
+    suggestedWorkflow: "standard-fix",
+    score: 34.9,
+    clearsBar: false,
+    estimate: { version: 1, routedModel: "claude-fable-5", cycleMin: 12, cycleMax: 18, loopMinutes: 15, estTokens: 180000 },
+    reasoning: {
+      line: "3 code paths touched · est. 15 min",
+      fragments: [
+        { source: "paths", text: "3 code paths touched" },
+        { source: "estimate", text: "est. 15 min" },
+      ],
+      components: [
+        { key: "effort", signal: "m", points: 5, maxPoints: 35, label: "M effort" },
+        { key: "workflow", signal: "standard-fix", points: 15, maxPoints: 30, label: "standard-fix workflow" },
+        { key: "paths", signal: "code", points: 5, maxPoints: 25, label: "3 code paths touched" },
+        { key: "freshness", signal: "0", points: 9.9, maxPoints: 10, label: "active today" },
+      ],
+    },
+  });
+}
+
+/**
+ * A candidate on a priced model — the mockup's `est. $0.03`, as the service answers it.
+ *
+ * @param base The candidate to price.
+ * @returns The same candidate with a cost and its fragment.
+ */
+export function priced(base: OnboardingFirstIssueCandidate = candidate()): OnboardingFirstIssueCandidate {
+  return {
+    ...base,
+    cost: { cents: 3, display: "$0.03" },
+    reasoning: {
+      ...base.reasoning,
+      line: `${base.reasoning.line} · est. $0.03`,
+      fragments: [...base.reasoning.fragments, { source: "cost", text: "est. $0.03" }],
+    },
+  };
+}
+
+/**
+ * The nightly estimator's status (AL.5, #281): a run that succeeded at 02:14 UTC today.
+ *
+ * @param overrides What to change.
+ * @returns The status.
+ */
+export function estimatorStatus(overrides: Partial<PlanningReestimationStatus> = {}): PlanningReestimationStatus {
+  return {
+    schedule: { hourUtc: 2, jitterMinutes: 30, batchLimit: 200 },
+    lastRun: {
+      startedAt: "2026-10-05T02:14:00.000Z",
+      finishedAt: "2026-10-05T02:20:00.000Z",
+      status: "succeeded",
+      found: 4,
+      queued: 4,
+      inFlight: 0,
+    },
+    ...overrides,
+  };
+}
+
+/**
+ * The seeded ranking — `#488`, `#491` and `#485`, safest first; the two L issues set aside.
+ *
+ * @param overrides What to change.
+ * @returns The alternatives.
+ */
+export function seededAlternatives(overrides: Partial<OnboardingFirstIssueAlternatives> = {}): OnboardingFirstIssueAlternatives {
+  return {
+    repo: REPO,
+    weightsVersion: "safety-v1",
+    safetyBar: 45,
+    candidates: [candidate(), candidate491(), candidate485()],
+    excluded: { protectedPath: 0, tooLarge: 2, belowBar: 1 },
+    ...overrides,
+  };
+}
+
+/**
+ * The picker's seeded answer: `#488` picked over the seeded backlog, one issue still being sized
+ * so the estimator's status travels with it.
+ *
+ * @param overrides What to change.
+ * @returns The answer.
+ */
+export function seededFirstIssue(overrides: Partial<OnboardingFirstIssue> = {}): OnboardingFirstIssue {
+  return {
+    repo: REPO,
+    weightsVersion: "safety-v1",
+    safetyBar: 45,
+    state: "picked",
+    backlog: { open: 9, sized: 7, sizing: 1, needsHuman: 1 },
+    pick: candidate(),
+    estimator: estimatorStatus(),
+    planning: null,
+    excluded: { protectedPath: 0, tooLarge: 2, belowBar: 1 },
+    ...overrides,
+  };
+}
+
+/**
+ * A backlog with open issues and none sized yet — most brand-new workspaces.
+ *
+ * @returns The answer.
+ */
+export function sizingFirstIssue(): OnboardingFirstIssue {
+  return seededFirstIssue({
+    state: "sizing",
+    backlog: { open: 3, sized: 0, sizing: 3, needsHuman: 0 },
+    pick: null,
+    excluded: { protectedPath: 0, tooLarge: 0, belowBar: 0 },
+  });
+}
+
+/**
+ * A repository with no open issues.
+ *
+ * @returns The answer, with the planning pointer.
+ */
+export function emptyFirstIssue(): OnboardingFirstIssue {
+  return seededFirstIssue({
+    state: "empty",
+    backlog: { open: 0, sized: 0, sizing: 0, needsHuman: 0 },
+    pick: null,
+    estimator: null,
+    planning: { path: "/planning" },
+    excluded: { protectedPath: 0, tooLarge: 0, belowBar: 0 },
+  });
+}
+
+/**
+ * Sized issues, none clearing the bar — one disqualified each way, `#485` below the bar.
+ *
+ * @returns The answer.
+ */
+export function noneSafeFirstIssue(): OnboardingFirstIssue {
+  return seededFirstIssue({
+    state: "none_safe",
+    backlog: { open: 4, sized: 3, sizing: 1, needsHuman: 0 },
+    pick: null,
+    excluded: { protectedPath: 1, tooLarge: 1, belowBar: 1 },
+  });
+}
+
+/**
+ * The dry-run policy, on — the onboarding seed's default, which no person chose.
+ *
+ * @returns The policy.
+ */
+export function dryRunOn(): DryRunPolicy {
+  return { dryRun: true, explicit: true, reason: "dry-run policy active", updatedAt: "2026-10-01T09:00:00.000Z", updatedBy: null };
+}
+
+/**
+ * The dry-run policy, flipped off by a person.
+ *
+ * @returns The policy.
+ */
+export function dryRunOff(): DryRunPolicy {
+  return { dryRun: false, explicit: true, reason: null, updatedAt: "2026-10-05T11:00:00.000Z", updatedBy: "5eed0003-0000-4000-8000-000000000001" };
+}
+
+/**
+ * The dry-run policy of a workspace that never answered.
+ *
+ * @returns The policy.
+ */
+export function dryRunUnset(): DryRunPolicy {
+  return { dryRun: false, explicit: false, reason: null, updatedAt: null, updatedBy: null };
+}
+
+/**
+ * The card's one read over the seed: `#488` picked, the ranking, dry-run on.
+ *
+ * @param overrides What to change.
+ * @returns The card.
+ */
+export function firstIssueCard(overrides: Partial<FirstIssueCard> = {}): FirstIssueCard {
+  return {
+    firstIssue: seededFirstIssue(),
+    alternatives: seededAlternatives(),
+    dryRun: { ok: true, value: dryRunOn() },
+    ...overrides,
+  };
+}
+
+/**
+ * The wizard's stored pick as its rail read references it — the seed's `#488`.
+ *
+ * @param overrides What to change.
+ * @returns The reference.
+ */
+export function pickedTicket(overrides: Partial<NonNullable<Onboarding["refs"]["pickedTicket"]>> = {}): NonNullable<Onboarding["refs"]["pickedTicket"]> {
+  return {
+    id: "5eed0080-0000-4000-8000-000000000488",
+    externalKey: "#488",
+    title: "Typo sweep in operator manual + pairing guide",
+    source: "github",
+    ...overrides,
+  };
+}

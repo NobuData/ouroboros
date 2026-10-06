@@ -4,10 +4,11 @@ import { describe, expect, it } from "vitest";
 
 /**
  * `app/get-started/get-started.css`'s agreements (#390; the detection card's `detect*` classes
- * since #391, the template tiles' `tile*` classes since #392): the sheet and the components name the
- * same classes; every length is a token, a rem, a `ch` or a hairline, so the 125 % font-scale
- * step scales the frame; every hue is a token, so both themes come from `app/tokens.css`; and only
- * the step content scrolls. jsdom applies no stylesheet, so these are asserted on the source.
+ * since #391, the template tiles' `tile*` classes since #392, the first-issue card's `pick-*` and
+ * `safety*` classes since #393): the sheet and the components name the same classes; every length
+ * is a token, a rem, a `ch` or a hairline, so the 125 % font-scale step scales the frame; every
+ * hue is a token, so both themes come from `app/tokens.css`; and only the step content scrolls.
+ * jsdom applies no stylesheet, so these are asserted on the source.
  */
 
 const DIR = join(import.meta.dirname, "..", "..", "app", "get-started");
@@ -19,11 +20,15 @@ const COMPONENTS = readdirSync(DIR)
   .join("\n");
 
 /** Every page class the sheet declares. */
-const DECLARED = new Set([...CODE.matchAll(/\.((?:wizard|offer-banner|detect|tiles?)[a-z0-9_-]*)/g)].map((match) => match[1]!));
+const DECLARED = new Set(
+  [...CODE.matchAll(/\.((?:wizard|offer-banner|detect|tiles?|pick-|safety)[a-z0-9_-]*)/g)].map((match) => match[1]!),
+);
 
 /** Every page class a component renders — a quoted string of page classes. */
 const RENDERED = new Set(
-  [...COMPONENTS.matchAll(/"((?:(?:wizard|offer-banner|detect|tiles?)[a-z0-9_-]*\s*)+)"/g)].flatMap((match) => match[1]!.trim().split(/\s+/)),
+  [...COMPONENTS.matchAll(/"((?:(?:wizard|offer-banner|detect|tiles?|pick-|safety)[a-z0-9_-]*\s*)+)"/g)].flatMap((match) =>
+    match[1]!.trim().split(/\s+/),
+  ),
 );
 
 /** One rule's declarations. */

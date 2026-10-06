@@ -13,10 +13,19 @@
  * gate against the workspace's merged loops, and `selectTemplate` **creates a real workflow**
  * (decision O4) through the studio's own publish gate — owner or admin.
  *
+ * Step 4's safe pick (BB.4, [#387](https://github.com/NobuData/ouroboros/issues/387)) rides here
+ * as well, read by the Get Started first-issue card (BC.4,
+ * [#393](https://github.com/NobuData/ouroboros/issues/393)): `firstIssue` is the scored pick with
+ * its reasoning and the cold states, `firstIssueAlternatives` the safety-ranked backlog behind
+ * *or pick your own*, and {@link readFirstIssueCard} is the card's one read — both, with the
+ * dry-run policy its safety rows state.
+ *
  * Server-side only, by way of `app/api/server.ts`.
  */
 
 import { type ApiClient, unwrap } from "@/app/api/client";
+import { type DryRunPolicy, dryRunPolicy } from "@/app/api/policies";
+import { type Reading, attempt } from "@/app/api/reading";
 import type { components } from "@/app/api/schema";
 import { api } from "@/app/api/server";
 
@@ -55,6 +64,43 @@ export type OnboardingTemplateSelection = components["schemas"]["OnboardingTempl
 
 /** One finding of the publish gate — what a refused template's definition got wrong. */
 export type WorkflowFinding = components["schemas"]["WorkflowFinding"];
+
+/** Step 4's *Your first issue* card: the picker's state, its pick and the cold-state pointers. */
+export type OnboardingFirstIssue = components["schemas"]["OnboardingFirstIssue"];
+
+/** A scored candidate with its reasoning — the pick, or one row of the safety-ranked backlog. */
+export type OnboardingFirstIssueCandidate = components["schemas"]["OnboardingFirstIssueCandidate"];
+
+/** One term of the safety score — what the detail affordance prints. */
+export type OnboardingFirstIssueComponent = components["schemas"]["OnboardingFirstIssueComponent"];
+
+/** One piece of the reasoning line, and the component or estimate it came from. */
+export type OnboardingFirstIssueFragment = components["schemas"]["OnboardingFirstIssueFragment"];
+
+/** *Or pick your own* — the backlog's qualifying candidates, safest first. */
+export type OnboardingFirstIssueAlternatives = components["schemas"]["OnboardingFirstIssueAlternatives"];
+
+/** The nightly estimator's schedule and latest run (AL.5, #281), as the picker passes it through. */
+export type PlanningReestimationStatus = components["schemas"]["PlanningReestimationStatus"];
+
+/**
+ * The first-issue card's one read (BC.4, #393): the pick, the safety-ranked backlog behind
+ * *↻ another* and *or pick your own*, and the dry-run policy the safety rows state.
+ *
+ * The policy travels as a {@link Reading} rather than a value: a safety row that could not read
+ * the policy says so, and never guesses that the PR will open as a draft.
+ */
+export interface FirstIssueCard {
+  /** The picker's answer: its state, the pick, the backlog counts and the cold-state pointers. */
+  readonly firstIssue: OnboardingFirstIssue;
+  /** The qualifying candidates, safest first, each with its own reasoning. */
+  readonly alternatives: OnboardingFirstIssueAlternatives;
+  /** The dry-run policy, or why it could not be read. */
+  readonly dryRun: Reading<DryRunPolicy>;
+}
+
+/** How many alternatives the card reads — the service's most, so the sheet is the whole ranking. */
+export const ALTERNATIVES_LIMIT = 50;
 
 /** The wizard, as the service serves it. Each method takes the client last; tests pass one. */
 export const onboarding = {
@@ -167,4 +213,71 @@ export const onboarding = {
   async launch(repo: string, client: ApiClient = api()): Promise<OnboardingLaunchReceipt> {
     return unwrap(await client.POST("/api/v1/onboarding/launch", { params: { query: { repo } } }));
   },
+
+  /**
+   * Step 4's safe pick — the picker's deterministic, explained answer over the sized backlog.
+   *
+   * @param repo The repository.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @param signal Aborts the read — the poll's deadline.
+   * @returns The state (`picked`, `sizing`, `empty`, `none_safe`), the pick with its reasoning,
+   *   the backlog counts, the estimator's status and the planning pointer.
+   * @throws {ApiError} `422 validation_failed` for a malformed repository.
+   */
+  async firstIssue(repo: string, client: ApiClient = api(), signal?: AbortSignal): Promise<OnboardingFirstIssue> {
+    return unwrap(await client.GET("/api/v1/onboarding/first-issue", { params: { query: { repo } }, signal }));
+  },
+
+  /**
+   * *Or pick your own* — the backlog's qualifying candidates, safest first, each with its own
+   * reasoning and whether it clears the safety bar.
+   *
+   * @param repo The repository.
+   * @param limit The most candidates to return, 1–50.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @param signal Aborts the read — the poll's deadline.
+   * @returns The ranked candidates and what was set aside.
+   * @throws {ApiError} `422 validation_failed` for a malformed repository or limit.
+   */
+  async firstIssueAlternatives(
+    repo: string,
+    limit: number,
+    client: ApiClient = api(),
+    signal?: AbortSignal,
+  ): Promise<OnboardingFirstIssueAlternatives> {
+    return unwrap(
+      await client.GET("/api/v1/onboarding/first-issue/alternatives", {
+        params: { query: { repo, limit } },
+        signal,
+      }),
+    );
+  },
 };
+
+/**
+ * The first-issue card's one read: the pick, the whole safety-ranked backlog, and the dry-run
+ * policy — three calls in parallel, so the card is one poll rather than three.
+ *
+ * The pick and the backlog are what the card *is*, so either failing fails the read; the policy
+ * is kept as a {@link Reading}, because a safety row that could not read it has something to say
+ * (that it could not) and the pick row should still draw.
+ *
+ * @param repo The repository.
+ * @param client The client to call through. Defaults to the server-side one.
+ * @param signal Aborts every read — the poll's deadline.
+ * @returns The card.
+ * @throws {ApiError} What the picker answered, when it refused.
+ */
+export async function readFirstIssueCard(
+  repo: string,
+  client: ApiClient = api(),
+  signal?: AbortSignal,
+): Promise<FirstIssueCard> {
+  const [firstIssue, alternatives, dryRun] = await Promise.all([
+    onboarding.firstIssue(repo, client, signal),
+    onboarding.firstIssueAlternatives(repo, ALTERNATIVES_LIMIT, client, signal),
+    attempt(() => dryRunPolicy.read(client, signal)),
+  ]);
+
+  return { firstIssue, alternatives, dryRun };
+}

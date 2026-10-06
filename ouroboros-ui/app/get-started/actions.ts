@@ -25,6 +25,7 @@ import { repos } from "@/app/api/repos";
 import { GLOBS_MAX, type GlobPreview } from "@/app/globs/glob";
 
 import { DETECTION_WRITE_FAILED } from "./detection-view";
+import { NOT_AN_ISSUE, isIssueId } from "./first-issue-view";
 import { NOT_A_TEMPLATE, type TemplateFinding, findingsOf, isTemplateSlug } from "./templates-view";
 import { NOT_A_REPOSITORY, STEP_COUNT, WIZARD_WRITE_FAILED, parseRepo } from "./view";
 
@@ -92,11 +93,43 @@ export async function continueStep(repo: string, step: number): Promise<WizardWr
 /**
  * *Run my first loop →* — queue the picked issue under the instantiated workflow (BB.5).
  *
+ * With nothing stored yet, the first-issue card's suggestion is **stored first** (BC.4, #393 —
+ * the user's decision on the ticket): the picker only suggests, the wizard stores a pick, and the
+ * press is where the person commits to it. A refused store is the press's refusal; nothing is
+ * launched.
+ *
  * @param repo The repository.
+ * @param pickIssueId The picker's `issueId` to store before launching, or null when a pick is
+ *   stored already.
  * @returns The receipt, or the launch's stated refusal.
  */
-export async function launchFirstLoop(repo: string): Promise<WizardWrite<OnboardingLaunchReceipt>> {
-  return guarded(repo, (valid) => onboarding.launch(valid));
+export async function launchFirstLoop(
+  repo: string,
+  pickIssueId: string | null = null,
+): Promise<WizardWrite<OnboardingLaunchReceipt>> {
+  if (pickIssueId !== null && !isIssueId(pickIssueId)) return { ok: false, reason: NOT_AN_ISSUE };
+
+  return guarded(repo, async (valid) => {
+    if (pickIssueId !== null) await onboarding.update(valid, { pickedIssueId: pickIssueId });
+
+    return onboarding.launch(valid);
+  });
+}
+
+/**
+ * The first-issue card's *↻ another* and *or pick your own* (BC.4, #393) — store a candidate as
+ * the wizard's pick, named by the picker's `issueId`, which the service resolves to the issue's
+ * canonical ticket (BB.5). Any contributor; the service refuses a viewer and an issue outside
+ * this repository's backlog in its own words.
+ *
+ * @param repo The repository.
+ * @param issueId The candidate's `issueId`.
+ * @returns The wizard re-derived with the pick, or why not.
+ */
+export async function pickFirstIssue(repo: string, issueId: string): Promise<WizardWrite<Onboarding>> {
+  if (!isIssueId(issueId)) return { ok: false, reason: NOT_AN_ISSUE };
+
+  return guarded(repo, (valid) => onboarding.update(valid, { pickedIssueId: issueId }));
 }
 
 /**

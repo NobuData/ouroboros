@@ -821,6 +821,369 @@
   margin-top: var(--sp-2);
 }
 
+/* ---------- the first-issue card (BC.4, #393) ---------- */
+
+/*
+ * Mockup 13's "Your first issue": the pick row — mono key, title, effort chip, workflow tag and
+ * the mono reasoning line (the mockup's 11.5px is 0.71875rem) — the two quiet affordances under
+ * it, a divider, and the three safety rows. Every row's mark is a hue from the tokens, so a row
+ * that does not hold reads in the warn hue in both themes.
+ */
+
+.pick-card {
+  flex: none;
+}
+
+.pick-card > .ou-card__head {
+  flex-wrap: wrap;
+  row-gap: var(--sp-4);
+}
+
+/* The mockup's .card-link: the backlog, in the head's corner. */
+.pick-card__browse {
+  color: var(--accent);
+  font-size: var(--t-sm);
+  white-space: nowrap;
+}
+
+.pick-card__browse:hover,
+.pick-cold__link:hover,
+.safety__link:hover {
+  text-decoration: underline;
+}
+
+.pick-card__line {
+  max-width: 70ch;
+  margin: 0 0 var(--sp-5);
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* The mockup's .issue-pick: an inset row whose parts wrap on a narrow screen. */
+.pick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+  align-items: center;
+  padding: var(--sp-7) var(--sp-8);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+.pick-row__key {
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+}
+
+.pick-row__title {
+  flex: 1;
+  min-width: 12.5rem;
+  color: var(--ink);
+  line-height: var(--lh-body);
+}
+
+.pick-row__why {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: 0.71875rem;
+}
+
+/* A pick nothing scored says so where its reasoning would be. */
+.pick-row__note {
+  flex-basis: 100%;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.pick-row--unranked .pick-row__key {
+  color: var(--ink-dim);
+}
+
+/* ---------- the score's breakdown ---------- */
+
+.pick-score {
+  flex: none;
+}
+
+/* Quiet and mono, like the evidence control — a way to check the work, not a call to action. */
+.pick-score__toggle {
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  text-decoration: underline dotted;
+  cursor: pointer;
+}
+
+.pick-score__toggle:hover,
+.pick-score__toggle[aria-expanded="true"] {
+  color: var(--accent);
+}
+
+.pick-score__panel {
+  flex-basis: 100%;
+  margin-top: var(--sp-4);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--ground);
+  font-size: var(--t-xs);
+}
+
+.pick-score:has(.pick-score__panel) {
+  flex-basis: 100%;
+  order: 1;
+}
+
+.pick-score__rows {
+  margin: 0;
+  padding-left: var(--sp-8);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  line-height: var(--lh-body);
+}
+
+.pick-score__component {
+  overflow-wrap: anywhere;
+}
+
+.pick-score__total {
+  margin: var(--sp-3) 0 0;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+}
+
+/* ---------- the affordances under the pick ---------- */
+
+.pick-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  align-items: center;
+  margin: var(--sp-5) 0 0;
+}
+
+.pick-card__status {
+  margin: 0 0 0 var(--sp-2);
+  color: var(--ok);
+  font-size: var(--t-xs);
+}
+
+.pick-card__status--refused {
+  color: var(--err);
+}
+
+/* ---------- the cold states ---------- */
+
+.pick-cold {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4) 0;
+}
+
+.pick-cold__title {
+  margin: 0;
+  font-size: var(--t-md);
+}
+
+.pick-cold__line {
+  max-width: 70ch;
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* The estimator's real status — mono, like every job line in the product. */
+.pick-cold__estimator {
+  max-width: 70ch;
+  margin: 0;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.pick-cold__link {
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+}
+
+/* ---------- the safety rows ---------- */
+
+.pick-card__divider {
+  margin: var(--sp-7) 0 var(--sp-3);
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.safety {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The mockup's .safety-row: mark · sentence, each row its own line. */
+.safety__row {
+  display: flex;
+  gap: var(--sp-5);
+  align-items: baseline;
+  padding: var(--sp-3) 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.safety__mark {
+  flex: none;
+  width: 1rem;
+  text-align: center;
+}
+
+.safety__row--ok .safety__mark {
+  color: var(--ok);
+}
+
+.safety__row--warn .safety__mark,
+.safety__row--warn .safety__text {
+  color: var(--warn);
+}
+
+.safety__row--pending .safety__mark,
+.safety__row--unknown .safety__mark {
+  color: var(--ink-faint);
+}
+
+.safety__text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.safety__term {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.safety__link {
+  color: var(--accent);
+}
+
+/* ---------- the own-pick sheet ---------- */
+
+.pick-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.pick-sheet__refusal,
+.pick-sheet__empty {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.pick-sheet__empty {
+  color: var(--ink-mut);
+}
+
+.pick-sheet__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pick-sheet__row {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+.pick-sheet__row:hover {
+  border-color: var(--line-strong);
+}
+
+.pick-sheet__row--current {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+
+/* A candidate below the bar is listed, marked and dimmed — never hidden, never promoted. */
+.pick-sheet__row--below {
+  color: var(--ink-mut);
+}
+
+/* The whole row is the control: a plain button over the row's box, reached by keyboard. */
+.pick-sheet__select {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--sp-6) var(--sp-7);
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pick-sheet__select[aria-disabled="true"] {
+  cursor: progress;
+}
+
+.pick-sheet__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  align-items: baseline;
+}
+
+.pick-sheet__key {
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+}
+
+.pick-sheet__title {
+  color: var(--ink);
+  line-height: var(--lh-body);
+}
+
+.pick-sheet__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+.pick-sheet__why {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: 0.71875rem;
+  overflow-wrap: anywhere;
+}
+
+.pick-sheet__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
 /* ---------- action bar (glow) ---------- */
 
 .wizard-bar {
