@@ -320,7 +320,7 @@ issue assigned. Complexity chips: **XS · S · M · L**.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CK.1 | #608 ✅ | 🟢 Done | ouroboros-db: [CK.1] Investigations & kind registry schema | RS-### entities: kind, depth, tools, status, provenance, spend | mvp, research, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
-| CK.2 | #609 | 🟡 Open | ouroboros-db: [CK.2] Citation ledger — source records & claims | Archived sources (external+internal URIs), claim→citation links | mvp, research, db | N (after CK.1) | Y | M | ouroboros-db |
+| CK.2 | #609 ✅ | 🟢 Done | ouroboros-db: [CK.2] Citation ledger — source records & claims | Archived sources (external+internal URIs), claim→citation links | mvp, research, db | N (after CK.1) | Y | M | ouroboros-db |
 | CK.3 | #610 | 🟡 Open | ouroboros-db: [CK.3] Capability matrices & competitor watch schema | Matrix cells with citations; rival registry, watched sources, diffs | mvp, research, db | N (after CK.2) | Y | M | ouroboros-db |
 | CK.4 | #611 | 🟡 Open | ouroboros-db: [CK.4] Regression baselines & watch items | Release baselines, metric windows, drift states, bisect results | mvp, research, db | N (after CK.1, AS.1) | Y | M | ouroboros-db |
 | CK.5 | #612 | 🟡 Open | ouroboros-db: [CK.5] Roadmap docs & suggested changes | Versioned doc entities, projection state, writeback refs, suggestions | mvp, research, db | N (after CK.1, AK.1) | Y | M | ouroboros-db |
@@ -365,7 +365,9 @@ investigations{RS-127, gap_analysis, deep_dive, tools:[web,competitor,code,ticke
 
 ### Issue CK.2 — ouroboros-db: [CK.2] Citation ledger — source records & claims
 
-> **GitHub issue:** #609 · **Status:** 🟡 Open · **Parent epic:** #603
+> **GitHub issue:** #609 ✅ · **Status:** 🟢 Done · **Parent epic:** #603
+>
+> **Delivered (#609, `V108__citation_ledger.sql` + `R__dev_seed_research.sql` — no REST/UI change):** `source_records` — investigation FK, `tool_slug` (FK to `research_tools`), `kind` `web|competitor_diff|code|ticket|telemetry|doc`, `title`, `locator` validated per kind by `source_locator_valid()` (`http(s)` URLs for web/competitor_diff/doc; `issue-index://<index>/<key>` or a URL for ticket; `git://<repo>[/<repo>]@<sha 7–40>[/<path>][#L<n>[-L<m>]]` for code, no `.`/`..`/empty segments; `telemetry://<metric>/<window>` with `<n>h|d|w` or `<date>..<date>`), `retrieved_at`, `content_hash` (`sha256:<hex>`), `excerpt` (≤ 4 KiB, non-blank), `meta` (object ≤ 8 KiB), **`cite_no` dense per investigation** — allocated by the definer `source_records_allocate_cite_no()` from a `source_cite_counters` row (a supplied number must be exactly the next; rollbacks leave no gap) — and `cite_key` (symbolic, letter-first, unique per investigation); records are never updated, so numbers are stable. Per-investigation caps: 1 000 records, 2 MiB of excerpts. Indexes: (investigation, cite_no) unique, (investigation, kind), content_hash. `briefs` — versioned with no gap (`briefs_version_next`), structured `body` `{paragraphs: [{spans: [{text} | {text, claim}]}]}`, `deliverables` `{matrix|draft_batch|roadmap_doc|fix_draft: ref}`. `brief_claims` — span ref present in the brief body, `finding|open_question`, text. `brief_claim_sources` — many-to-many, composite keys keep a claim, its brief and its sources in one investigation. All four are append-only (no update/delete for the app; update refused for anyone). **Discipline as deferred constraint triggers:** `brief_claims_finding_cited` (a finding needs ≥ 1 link at commit; removing the last link fails too) and `investigations_brief_exists` (CK.1's *brief_ready requires a brief*). The seed writes RS-127 (acme-robotics, gap analysis, deep dive, `brief_ready`) with a dense 1…44 ledger — the five featured citations verbatim (`[git]` = #44 with `cite_key` `git`), the other 39 labelled placeholders for CK.6 — and brief v1's four findings cited `[07]` · `[12][31]` · `[git]` · `[19]`. Tests: `constraints.sql` V108 section; `seed.sql` reads the panel back verbatim; `seed.test.sh` registers the seed. CK.6's ci/db probe for the discipline builds on the trigger.
 
 - **Problem Statement:** "Every claim cited" needs storage where citations
   are archived facts, stable while the web moves — and where a brief's
@@ -1456,7 +1458,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    BE.1 (#405); WF-Q store (#138/#139); AS/AT (#324/#326) + AJ.4 (#266) +
    BI.2/BJ.1 (#433/#437); AH dispatch (#253); #19/#24/#41/#46/#54;
    BA-B.3/C.3/D.5 (unfiled).
-2. **Phase 1 — Domain:** CK.1 (#608) ✅ → { CK.2 (#609) ⊕ CK.4 (#611) ⊕
+2. **Phase 1 — Domain:** CK.1 (#608) ✅ → { CK.2 (#609) ✅ ⊕ CK.4 (#611) ⊕
    CK.5 (#612) } → CK.3 (#610) → CK.6 (#613)
 3. **Phase 2 — Tools:** CL.1 (#614) → { CL.2 (#615) ⊕ CL.3 (#616) ⊕
    CL.4 (#617) ⊕ CL.5 (#618) ⊕ CL.6 (#619) }
