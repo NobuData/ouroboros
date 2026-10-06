@@ -35,6 +35,50 @@ export const OPEN_TIMEOUT_MS = 60 * 1000;
 /** The line the CLI prints on stderr once the run is open (`ouroboros_simulator/cli.py`). */
 const OPENED = /opened simulated run ([0-9a-f-]{36}) \(Loop #(\d+), #(\d+)\)/;
 
+/**
+ * What a run is opened for, when it is not the seeded `#482` under `standard-fix` v14 — the
+ * driver's `--ticket-source`, `--ticket`, `--repository`, `--workflow` and `--workflow-version`
+ * ([#395](https://github.com/NobuData/ouroboros/issues/395): the wizard's first loop is a ticket
+ * the leg filed, under the `quick-fixes` workflow the wizard's tile created).
+ *
+ * Every field is optional and an omitted one keeps the driver's default, so a leg names only
+ * what differs. The scenario has to be scripted on the pinned workflow's own stage keys —
+ * `first-loop` on `quick-fixes`, every other scenario on `standard-fix` — because the control
+ * plane refuses a stage key the pinned document lacks.
+ */
+export interface SimulationTarget {
+  /** `ticket_sources.id` — the source the ticket's `external_key` is resolved in. */
+  readonly ticketSource?: string;
+  /** `tickets.external_key` — `#11000`. */
+  readonly ticket?: string;
+  /** `github_repos.id` — the repository the run's branch lives in. */
+  readonly repository?: string;
+  /** `workflows.slug`. */
+  readonly workflow?: string;
+  /** The published version to pin. */
+  readonly workflowVersion?: number;
+}
+
+/**
+ * The target as CLI arguments, in the driver's own spelling.
+ *
+ * @param target - What differs from the default, if anything.
+ * @returns The arguments to append.
+ */
+function targetArguments(target: SimulationTarget | undefined): string[] {
+  if (target === undefined) return [];
+
+  return [
+    ...(target.ticketSource === undefined ? [] : ["--ticket-source", target.ticketSource]),
+    ...(target.ticket === undefined ? [] : ["--ticket", target.ticket]),
+    ...(target.repository === undefined ? [] : ["--repository", target.repository]),
+    ...(target.workflow === undefined ? [] : ["--workflow", target.workflow]),
+    ...(target.workflowVersion === undefined
+      ? []
+      : ["--workflow-version", String(target.workflowVersion)]),
+  ];
+}
+
 /** A simulation in flight. */
 export interface Simulation {
   /** The run it opened. */
@@ -58,7 +102,11 @@ export interface Simulation {
  * @throws {Error} If the driver exits, or does not open a run within {@link OPEN_TIMEOUT_MS},
  *   with everything it printed.
  */
-export function startSimulation(scenario: string, speed: number): Promise<Simulation> {
+export function startSimulation(
+  scenario: string,
+  speed: number,
+  target?: SimulationTarget,
+): Promise<Simulation> {
   const child: ChildProcess = spawn(
     "uv",
     [
@@ -71,6 +119,7 @@ export function startSimulation(scenario: string, speed: number): Promise<Simula
       scenario,
       "--speed",
       String(speed),
+      ...targetArguments(target),
     ],
     {
       cwd: ENGINE_DIR,

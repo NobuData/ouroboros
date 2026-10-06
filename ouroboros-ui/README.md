@@ -7466,5 +7466,42 @@ it from quietly lying:
   the poll keeping the column true: a dry-run flip in Settings reaches the merge row and the
   draft-only claim without a reload.
 
-Steps 1–2's embedded flows, completion and the e2e leg (the select → Studio round trip among its
-assertions) arrive with BC.6 (#395).
+The states the mockup cannot draw ([#395](https://github.com/NobuData/ouroboros/issues/395), BC.6 —
+the onboarding roadmap's MVP gate) complete the wizard — **without a second implementation of
+anything that already exists**:
+
+- **Step 1 before it is done** is `app/sources`' own machinery in the wizard's frame
+  ([`connect-panel.tsx`](app/get-started/connect-panel.tsx)): the same add-source dialog
+  (`AddSourceFlow` — catalog → the provider's own form → done) and the same source rows with their
+  Test / Sync / **Pause / Resume** controls that Settings → Sources draws, read through
+  `readSources` on the first paint. The wizard adds the framing — *step 1 · you are here*, what
+  comes next — and keeps the Settings link as the return path.
+- **Step 2 before it is done** is the login screen's enablement switch over the tenancy API
+  ([`repo-picker.tsx`](app/get-started/repo-picker.tsx)): one `EnablementSwitch` per repository
+  the connected GitHub sources name, with what the mirror says of each (*enabled*, *off*, *not
+  recorded yet — switching on records it*). Switching one on (`setRepositoryEnabled`, and the
+  bar's *Enable {repo} →* through the same `turnOnRepository`) records the account when the
+  mirror lacks it (`orgs.record`), enables both flags (`repos.setEnabled` — the API's upsert, which
+  is also how a repository first comes to be known), and **starts the detection scan**. Only a
+  repository a GitHub source names can be switched on here — the detector's `coversRepo` rule,
+  restated — so the wizard enables what a source can read and nothing else. Both surfaces draw at
+  once for a workspace that has mirrored nothing, so a workspace starts from zero on this page.
+- **A regressed step leads somewhere**: each banner row ends in *Fix step N →*, which puts on
+  screen the step whose surface owns the problem — the paused source's own *Resume* for step 1.
+- **Completion** ([`receipt-card.tsx`](app/get-started/receipt-card.tsx), rules in `receiptView`)
+  leads the step content once the first loop is queued: fresh from the press, the launch's receipt
+  — `#488 queued under quick-fixes@v1 · queue position 13`, the service's dry-run note — and the
+  dashboard, queue and run-console links the service sent (the console said in words, with the
+  Runs page, until a loop claims the issue); after a reload, the rail's own evidence (`#488 ·
+  queued`, then `run started` live on the poll) and no position or note the service did not
+  answer. *Set up another repository* re-enters the wizard for each other mirrored repository.
+- **Dismissal** needs nothing new: the dashboard banner's *Dismiss* is the service's fact and the
+  wizard stays reachable by URL — asserted in the e2e leg.
+- **Loading** ([`get-started-skeleton.tsx`](app/get-started/get-started-skeleton.tsx), the route's
+  `loading.tsx`) reserves the frame's geometry with the real head and bars where the reads land,
+  ticking nothing and naming no step.
+
+Verified end to end by `tests/e2e/specs/wizard.spec.ts` (leg 27): the shell assertions standalone,
+both palettes, dismissal, and the whole chain on a never-onboarded repository — connect → pick →
+real detection rows → *Quick fixes* found in the Studio → pick → launch → the dashboard's queue and
+dry-run really on → the simulated driver's watermarked `first-loop` run → the regression leg.

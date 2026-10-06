@@ -1700,7 +1700,7 @@ the blockquote above that records what it did and what it did differently.
 | 394 | **BC.3** | ✅ [#392](https://github.com/NobuData/ouroboros/issues/392) | Template tiles | ouroboros-ui | M | BB.3, BC.1 |
 | 395 | **BC.4** | ✅ [#393](https://github.com/NobuData/ouroboros/issues/393) | First-issue & safety card | ouroboros-ui | M | BA.3, BB.4, BC.1 |
 | 396 | **BC.5** | ✅ [#394](https://github.com/NobuData/ouroboros/issues/394) | Defaults, timeline & reassure cards | ouroboros-ui | M | BB.5, BC.1 |
-| 397 | **BC.6** | [#395](https://github.com/NobuData/ouroboros/issues/395) | Wizard states & e2e leg | ouroboros-ui, .github | M | BC.2, BC.5 |
+| 397 | **BC.6** | ✅ [#395](https://github.com/NobuData/ouroboros/issues/395) | Wizard states & e2e leg | ouroboros-ui, .github | M | BC.2, BC.5 |
 
 ## P16 — Intelligence — Research & Workflow Copilot
 

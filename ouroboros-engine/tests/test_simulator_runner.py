@@ -208,6 +208,7 @@ def test_list_prints_every_scenario(capsys: pytest.CaptureFixture[str]) -> None:
         "correction-round",
         "failing-hil",
         "protected-path-allow-once",
+        "first-loop",
     ):
         assert name in out
 

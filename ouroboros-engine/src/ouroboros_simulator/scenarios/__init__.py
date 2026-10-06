@@ -9,17 +9,20 @@
 | ``correction-round`` | Tests fail, the loop holds, a Mark & Route correction round starts attempt 2 |
 | ``failing-hil`` | Mockup 11: rig builds fail 14 then 2 of 63, a correction round, Build 3 green |
 | ``protected-path-allow-once`` | A protected ``boot/**`` edit fails ``allowed_paths``; the loop holds for Allow once, resumes, merges |
+| ``first-loop`` | The Get Started wizard's first run on ``quick-fixes`` v1: a docs-only typo sweep, two Markdown files, a draft PR under dry-run |
 
 Each is a plain function over :class:`~ouroboros_simulator.session.RunSession`, so a script
-reads as the story it tells. Every control is honoured in all seven; ``control-responsive``
+reads as the story it tells. Every control is honoured in all eight; ``control-responsive``
 is the one built to be pressed, and ``protected-path-allow-once`` the one that waits for a
-decision's ``resume``.
+decision's ``resume``. Seven run ``standard-fix`` v14; ``first-loop`` alone is scripted on
+``quick-fixes`` v1's node ids and has to be opened pinned to it.
 """
 
 from ouroboros_simulator.scenarios import (
     control_responsive,
     correction_round,
     failing_hil,
+    first_loop,
     gate_return,
     guardrail_violation,
     happy_path,
@@ -38,6 +41,7 @@ SCENARIOS: dict[str, Scenario] = {
         correction_round.SCENARIO,
         failing_hil.SCENARIO,
         protected_path_allow_once.SCENARIO,
+        first_loop.SCENARIO,
     )
 }
 

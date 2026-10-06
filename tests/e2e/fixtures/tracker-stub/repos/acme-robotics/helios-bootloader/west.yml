@@ -1,0 +1,19 @@
+# The Helios bootloader's west manifest. Zephyr is pinned to a release tag so a build is the
+# same on every machine; `west update` fetches it and the three modules allowed below.
+manifest:
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: v4.1.0
+      import:
+        name-allowlist:
+          - cmsis
+          - hal_nordic
+          - mbedtls
+
+  self:
+    path: helios-bootloader

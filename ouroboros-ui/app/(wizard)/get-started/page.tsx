@@ -25,10 +25,12 @@ export default async function Page({
       abilities={readings.abilities}
       defaults={readings.defaults}
       detection={readings.detection}
+      enablement={readings.enablement}
       firstIssue={readings.firstIssue}
       templates={readings.templates}
       reposFailure={readings.reposFailure}
       repo={readings.repo}
+      sources={readings.sources}
       wizard={readings.wizard}
     />
   );

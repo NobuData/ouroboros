@@ -39,6 +39,34 @@ export type OrgListQuery = NonNullable<operations["listGithubOrgs"]["parameters"
  */
 export const orgs = {
   /**
+   * Record a GitHub organisation in this workspace — the row a repository is then switched on
+   * under. The Get Started wizard's step 2 (BC.6, #395) is the first surface to need it: a
+   * workspace whose GitHub source names an account nobody has recorded yet.
+   *
+   * @param tenantId The workspace's uuid.
+   * @param login The organisation's GitHub login; the service lower-cases it.
+   * @param enabled Whether Ouroboros may operate in it from the start. The contract defaults to
+   *   `false` — failing closed — so the wizard, whose press means *yes*, passes `true`.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The stored organisation.
+   * @throws {ApiError} What the service answered — `403 insufficient_role` below admin, `409`
+   *   for a login this workspace already records.
+   */
+  async record(
+    tenantId: string,
+    login: string,
+    enabled: boolean,
+    client: ApiClient = api(),
+  ): Promise<Org> {
+    return unwrap(
+      await client.POST("/api/v1/orgs/{orgId}/github-orgs", {
+        params: { path: { orgId: tenantId } },
+        body: { login, enabled },
+      }),
+    );
+  },
+
+  /**
    * One page of the workspace's organisations, by login — **including the disabled ones**,
    * because the screen has to render the switch that is off.
    *

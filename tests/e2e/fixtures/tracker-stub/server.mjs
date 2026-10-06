@@ -17,6 +17,7 @@
  * GET    /repos/{o}/{r}/issues/{n}/sub_issues · POST                the epic parent link
  * GET    /repos/{o}/{r}/contents/{path}                    one file — a rules-file import's read
  * GET    /repos/{o}/{r}/git/trees/{sha}?recursive=1        the tree — the repo-map generator's read
+ * GET    /repos/{o}/{r}/languages                          bytes per language — the detection scan's `languages` probe
  * GET    /repos/{o}/{r}/pulls/{n}                          the merge executor's re-check; a PR sync
  * GET    /repos/{o}/{r}/pulls/{n}/files                    a PR sync whose head moved
  * PUT    /repos/{o}/{r}/pulls/{n}/merge                    the merge itself
@@ -100,6 +101,20 @@
  * The files are the fixture's and not the leg's: `/__sandbox/reset` empties the issues and
  * leaves them, exactly as resetting a tracker would not delete a repository's source.
  *
+ * **The fifth repository is a whole small project**
+ * ([#395](https://github.com/NobuData/ouroboros/issues/395), BC.6). The Get Started leg's
+ * subject is the wizard's detection scan, and a scan is only as real as the repository it
+ * reads: `ouroboros-rest`'s rule packs (`detection/packs/*.pack.ts`) ask the host for the
+ * languages, the tree, and a handful of files, and conclude a card row each from what comes
+ * back. `helios-bootloader` holds a Zephyr bootloader with the files those conclusions need —
+ * a `west.yml` pinning a release, a devcontainer, a twister suite, `boot/` and `keys/`
+ * directories, two operator documents with typos in them for the first loop to sweep, and no
+ * `CONTRIBUTING.md`. The languages route is here for the same reason as the tree: it is a
+ * question the scan asks, answered from the held files by extension as linguist would — `.c`
+ * and `.h` are C, `CMakeLists.txt` is CMake, and YAML, JSON, Markdown and a `.pem` are not a
+ * language at all. A repository with no files answers `{}`, which is GitHub's answer for an
+ * empty one, with a `200` where the tree says `409`.
+ *
  * ---------------------------------------------------------------------------
  * **It holds pull requests too** ([#470](https://github.com/NobuData/ouroboros/issues/470),
  * BO.5), so the inbox's action chains can finish against a host rather than stop at one. Approving
@@ -136,16 +151,24 @@ const PORT = 8080;
 /**
  * The repositories this tracker holds, as `owner/repo`.
  *
- * The four `R__dev_seed.sql` enables for `acme-robotics` and the four the seeded GitHub ticket
- * source lists in its `config.repos` — the same four, which is the point: both syncs walk this
- * list, and a repository missing from it would be a `404` the suite would have to explain.
- * `helios-firmware` is first, so it is `pushTarget`'s answer and where every push lands.
+ * The first four are the four `R__dev_seed.sql` enables for `acme-robotics` and the four the
+ * seeded GitHub ticket source lists in its `config.repos` — the same four, which is the point:
+ * both syncs walk this list, and a repository missing from it would be a `404` the suite would
+ * have to explain. `helios-firmware` is first, so it is `pushTarget`'s answer and where every
+ * push lands.
+ *
+ * The fifth, `helios-bootloader`, is the Get Started leg's (#395): the repository the wizard's
+ * detection scan reads, held with the project under `./repos/` that gives every rule pack
+ * something to conclude — see the module note. It is **last** so the four seeded ranges stay
+ * where the planning and knowledge legs' assertions were written: its issue numbers begin at
+ * 11000, {@link NUMBER_RANGE} past `atlas-scheduler`'s.
  */
 const SEEDED_REPOS = [
   "acme-robotics/helios-firmware",
   "acme-robotics/helios-console",
   "acme-robotics/helios-telemetry",
   "acme-robotics/atlas-scheduler",
+  "acme-robotics/helios-bootloader",
 ];
 
 /**
@@ -164,6 +187,25 @@ const FILES_ROOT = join(dirname(fileURLToPath(import.meta.url)), "repos");
 
 /** GitHub wraps a contents response's base64 at sixty characters; clients must tolerate it. */
 const BASE64_LINE = 60;
+
+/**
+ * What the languages route calls a file, by its name — the slice of linguist a Zephyr project
+ * and the product's other ecosystems need, first match wins.
+ *
+ * `CMakeLists.txt` is tested before the extensions because it has none that says CMake. A file
+ * matching nothing is not a language — YAML, JSON, Markdown, a devicetree source, a `.conf`, a
+ * `.pem` — which is what linguist says of them too, so the byte shares the detection scan
+ * computes are the shares GitHub would report for the same tree.
+ */
+const LANGUAGES = [
+  [/(^|\/)CMakeLists\.txt$|\.cmake$/, "CMake"],
+  [/\.[ch]$/, "C"],
+  [/\.py$/, "Python"],
+  [/\.[cm]?js$/, "JavaScript"],
+  [/\.tsx?$/, "TypeScript"],
+  [/\.go$/, "Go"],
+  [/\.rs$/, "Rust"],
+];
 
 /**
  * The host the `html_url`s claim.
@@ -583,6 +625,31 @@ function treePayload(held) {
 }
 
 /**
+ * A repository's languages, in the shape GitHub's languages route documents: language name to
+ * the bytes its files hold, largest first — GitHub orders them so — and `{}` for a repository
+ * with no files, which is GitHub's `200` for an empty repository where the tree is a `409`.
+ *
+ * Bytes are the files' sizes, as linguist counts them; nothing is parsed. `language.pack.ts`
+ * reads the largest as the card's language and the shares as its percentage.
+ *
+ * @param {Map<string, Buffer>} held The repository's files.
+ * @returns {Record<string, number>} The payload.
+ */
+function languagesPayload(held) {
+  const bytes = new Map();
+
+  for (const [path, contents] of held) {
+    const language = LANGUAGES.find(([pattern]) => pattern.test(path))?.[1];
+
+    if (language !== undefined) {
+      bytes.set(language, (bytes.get(language) ?? 0) + contents.length);
+    }
+  }
+
+  return Object.fromEntries([...bytes].sort((left, right) => right[1] - left[1]));
+}
+
+/**
  * One PR, in the shape GitHub's pulls route documents it.
  *
  * The fields `github.pr.ts`'s `pullPayload` reads, and the merge fields GitHub answers beside
@@ -853,6 +920,14 @@ async function handle(request, response) {
     }
 
     json(response, 200, treePayload(held));
+    return;
+  }
+
+  // GET /repos/{o}/{r}/languages — bytes per language, from the held files' names: the detection
+  // scan's `languages` probe (`language.pack.ts`). A repository with no files is `{}`, as GitHub
+  // answers for an empty one — a 200, unlike the tree.
+  if (rest[0] === "languages" && rest.length === 1 && method === "GET") {
+    json(response, 200, languagesPayload(held));
     return;
   }
 

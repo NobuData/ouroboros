@@ -6,6 +6,7 @@ import { NOT_A_REPOSITORY, WIZARD_WRITE_FAILED } from "@/app/get-started/view";
 
 import { membership } from "../helpers/login";
 import { ISSUE_488, ISSUE_491, REPO, launchReceipt, scanProgress, seededCard, templateSelection, wizard } from "../helpers/onboarding";
+import { source, sourcePage } from "../helpers/sources";
 
 /** The wizard's writes (#390): each guarded by the service, a refusal carried in its words. */
 
@@ -41,8 +42,21 @@ vi.mock("@/app/api/detection", () => ({
 }));
 vi.mock("@/app/api/org-policy", () => ({ orgPolicy: { pathPreview: (globs: readonly string[]) => pathPreview(globs) } }));
 vi.mock("@/app/api/enablement", () => ({ readEnablement: (tenant: string) => readEnablement(tenant) }));
-vi.mock("@/app/api/orgs", () => ({ orgs: { setEnabled: (...args: unknown[]) => setOrg(...args) } }));
+vi.mock("@/app/api/orgs", () => ({
+  orgs: { setEnabled: (...args: unknown[]) => setOrg(...args), record: (...args: unknown[]) => recordOrg(...args) },
+}));
 vi.mock("@/app/api/repos", () => ({ repos: { setEnabled: (...args: unknown[]) => setRepo(...args) } }));
+vi.mock("@/app/api/sources", () => ({ sources: { list: () => listSources() } }));
+vi.mock("next/navigation", () => ({
+  redirect: (path: string) => {
+    redirect(path);
+    throw new Error(`NEXT_REDIRECT:${path}`);
+  },
+}));
+
+const recordOrg = vi.fn();
+const listSources = vi.fn();
+const redirect = vi.fn();
 
 const {
   continueStep,
@@ -54,6 +68,7 @@ const {
   rescanRepository,
   saveProtectedPaths,
   selectTemplate,
+  setRepositoryEnabled,
   skipWizard,
 } = await import("@/app/get-started/actions");
 
@@ -95,6 +110,10 @@ beforeEach(() => {
   read.mockResolvedValue(wizard());
   setOrg.mockResolvedValue({});
   setRepo.mockResolvedValue({});
+  for (const mock of [recordOrg, listSources, redirect]) mock.mockReset();
+  recordOrg.mockResolvedValue({});
+  listSources.mockResolvedValue(sourcePage([source()]));
+  scan.mockResolvedValue(scanProgress());
 });
 
 describe("the wizard's writes", () => {
@@ -198,12 +217,14 @@ describe("the first-issue card's writes (#393)", () => {
 });
 
 describe("enabling the repository (step 2)", () => {
-  it("turns on the repository — and its account when that is off too — then re-reads the wizard", async () => {
+  it("turns on the repository — and its account when that is off too — starts the scan, then re-reads the wizard", async () => {
     readEnablement.mockResolvedValue(enablement(false, false));
 
     expect(await enableRepository(REPO)).toEqual({ ok: true, value: wizard() });
     expect(setOrg).toHaveBeenCalledWith(membership().id, "acme-robotics", true);
     expect(setRepo).toHaveBeenCalledWith(membership().id, "acme-robotics", "helios-firmware", true);
+    expect(scan).toHaveBeenCalledWith(REPO);
+    expect(recordOrg).not.toHaveBeenCalled();
   });
 
   it("writes only what is off", async () => {
@@ -215,14 +236,35 @@ describe("enabling the repository (step 2)", () => {
     expect(setRepo).toHaveBeenCalledOnce();
   });
 
-  it("refuses a repository this workspace does not mirror, in the service's sentence, writing nothing", async () => {
+  it("records the account and the repository first when the mirror does not hold them yet (#395)", async () => {
+    readEnablement.mockResolvedValue({ orgTotal: 0, orgs: [] });
+
+    expect(await enableRepository(REPO)).toEqual({ ok: true, value: wizard() });
+    expect(recordOrg).toHaveBeenCalledWith(membership().id, "acme-robotics", true);
+    expect(setOrg).not.toHaveBeenCalled();
+    // The tenancy API's upsert: a repository comes to be known by being switched on.
+    expect(setRepo).toHaveBeenCalledWith(membership().id, "acme-robotics", "helios-firmware", true);
+    expect(scan).toHaveBeenCalledWith(REPO);
+  });
+
+  it("refuses a repository no GitHub source names, saying what to do first, writing nothing (#395)", async () => {
     readEnablement.mockResolvedValue(enablement(true, true));
 
     expect(await enableRepository("acme-robotics/nowhere")).toEqual({
       ok: false,
-      reason: "acme-robotics/nowhere is not a repository of this workspace's GitHub accounts.",
+      reason: "No GitHub source names acme-robotics/nowhere — connect one that does first.",
     });
+    expect(recordOrg).not.toHaveBeenCalled();
     expect(setRepo).not.toHaveBeenCalled();
+    expect(scan).not.toHaveBeenCalled();
+  });
+
+  it("lets the scan's own refusals through — a debounce undoes no enablement (#395)", async () => {
+    readEnablement.mockResolvedValue(enablement(true, false));
+    scan.mockRejectedValue(new ApiError(409, "detection_rescan_too_soon", "A scan ran 10 seconds ago."));
+
+    expect(await enableRepository(REPO)).toEqual({ ok: true, value: wizard() });
+    expect(setRepo).toHaveBeenCalledOnce();
   });
 
   it("carries the service's refusal of a person who may not enable", async () => {
@@ -230,6 +272,43 @@ describe("enabling the repository (step 2)", () => {
     setRepo.mockRejectedValue(new ApiError(403, "insufficient_role", "Only an owner or admin can change this."));
 
     expect(await enableRepository(REPO)).toEqual({ ok: false, reason: "Only an owner or admin can change this." });
+  });
+});
+
+describe("the picker's switch (#395)", () => {
+  /** A submitted switch form. */
+  function form(repo: string | null, enabled: string | null): FormData {
+    const data = new FormData();
+
+    if (repo !== null) data.set("repo", repo);
+    if (enabled !== null) data.set("enabled", enabled);
+
+    return data;
+  }
+
+  it("switches a repository on — recording it when needed — and renders its wizard afresh", async () => {
+    readEnablement.mockResolvedValue({ orgTotal: 0, orgs: [] });
+
+    await expect(setRepositoryEnabled(form(REPO, "true"))).rejects.toThrow(`NEXT_REDIRECT:/get-started?repo=${encodeURIComponent(REPO)}`);
+    expect(recordOrg).toHaveBeenCalledWith(membership().id, "acme-robotics", true);
+    expect(setRepo).toHaveBeenCalledWith(membership().id, "acme-robotics", "helios-firmware", true);
+    expect(scan).toHaveBeenCalledWith(REPO);
+  });
+
+  it("switches a repository off — its own flag only, the account untouched", async () => {
+    readEnablement.mockResolvedValue(enablement(true, true));
+
+    await expect(setRepositoryEnabled(form(REPO, "false"))).rejects.toThrow("NEXT_REDIRECT:/get-started?repo=");
+    expect(setRepo).toHaveBeenCalledWith(membership().id, "acme-robotics", "helios-firmware", false);
+    expect(setOrg).not.toHaveBeenCalled();
+    expect(scan).not.toHaveBeenCalled();
+  });
+
+  it("sends a malformed repository back to the wizard, and refuses a flag that is not a flag", async () => {
+    await expect(setRepositoryEnabled(form("not a repo", "true"))).rejects.toThrow("NEXT_REDIRECT:/get-started");
+    await expect(setRepositoryEnabled(form(REPO, "yes"))).rejects.toThrow('must be exactly "true" or "false"');
+    expect(readEnablement).not.toHaveBeenCalled();
+    expect(setRepo).not.toHaveBeenCalled();
   });
 });
 

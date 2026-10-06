@@ -4,19 +4,24 @@ import { useRouter } from "next/navigation";
 import { Fragment, useId, useState } from "react";
 
 import type { RepoDetection } from "@/app/api/detection";
+import type { Enablement } from "@/app/api/enablement";
 import type {
   FirstIssueCard as FirstIssueCardRead,
   Onboarding,
   OnboardingDefaults,
+  OnboardingLaunchReceipt,
   OnboardingTemplateTiles,
 } from "@/app/api/onboarding";
 import type { Reading } from "@/app/api/reading";
+import type { TicketSource } from "@/app/api/sources";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
 import { SOURCES_PATH } from "@/app/paths";
+import type { SourcesReadings } from "@/app/sources/data";
 import { Button, Eyebrow } from "@/app/ui";
 import { cx } from "@/app/ui/class-names";
 
 import { continueStep, enableRepository, launchFirstLoop, skipWizard } from "./actions";
+import { ConnectPanel } from "./connect-panel";
 import { DefaultsColumn } from "./defaults-column";
 import type { DefaultsPollOptions } from "./defaults-poll";
 import { COLUMN_LABEL } from "./defaults-view";
@@ -25,6 +30,8 @@ import type { DetectionPollOptions } from "./detection-poll";
 import { FirstIssueCard } from "./first-issue-card";
 import type { FirstIssuePollOptions } from "./first-issue-poll";
 import { type OnboardingPollOptions, createOnboardingPoll, onboardingEndpoint } from "./poll";
+import { ReceiptCard } from "./receipt-card";
+import { RepoPicker } from "./repo-picker";
 import { TemplatesCard } from "./templates-card";
 import type { TemplatesPollOptions } from "./templates-poll";
 import {
@@ -48,9 +55,12 @@ import {
   WORKING,
   type Abilities,
   type PrimaryAction,
+  isComplete,
   openingStep,
   primaryAction,
   receiptLine,
+  receiptView,
+  regressionFixLabel,
   regressionLine,
   regressionsOf,
   stepCounter,
@@ -72,6 +82,16 @@ export interface GetStartedScreenProps {
   readonly firstIssue?: Reading<FirstIssueCardRead> | null;
   /** The first paint's read of its right column (BC.5, #394), or null when there is no repository. */
   readonly defaults?: Reading<OnboardingDefaults> | null;
+  /**
+   * The first paint's read of the workspace's ticket sources — step 1's embedded flow (BC.6,
+   * #395). Null draws the flow's loading state.
+   */
+  readonly sources?: Reading<SourcesReadings> | null;
+  /**
+   * The first paint's read of the workspace's GitHub mirror — step 2's picker and the completion
+   * card's re-enter list (BC.6, #395). Null draws the picker's loading state.
+   */
+  readonly enablement?: Reading<Enablement> | null;
   /** Why the repository list could not be read, when that is why there is no repository. */
   readonly reposFailure: string | null;
   /** What the person may do. */
@@ -303,6 +323,14 @@ function ActionBar({
  * then whichever the person picks on the rail or reaches with Back and Continue. What the step
  * *is* stays the service's.
  *
+ * **Steps 1 and 2 before they are done** (BC.6, [#395](https://github.com/NobuData/ouroboros/issues/395))
+ * are the existing surfaces in the wizard's frame: `ConnectPanel` mounts `app/sources`' add-source
+ * dialog and source rows for step 1, `RepoPicker` the login screen's enablement switch over the
+ * tenancy API for step 2 — on their step, and both at once when the workspace has mirrored
+ * nothing yet, so a workspace starts from zero here. A regressed step's banner row leads to the
+ * step whose surface fixes it. Once the first loop is queued, `ReceiptCard` leads the content:
+ * the launch's receipt while the press is fresh, the rail's own evidence after a reload.
+ *
  * @param props See {@link GetStartedScreenProps}.
  * @returns The screen.
  */
@@ -313,6 +341,8 @@ export function GetStartedScreen({
   templates = null,
   firstIssue = null,
   defaults = null,
+  sources = null,
+  enablement = null,
   reposFailure,
   abilities,
   poll,
@@ -331,6 +361,7 @@ export function GetStartedScreen({
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ tone: "ok" | "refused"; text: string } | null>(null);
   const [suggested, setSuggested] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<OnboardingLaunchReceipt | null>(null);
   const content = useId();
 
   const step = viewed ?? (wizard === null ? 1 : openingStep(wizard));
@@ -340,6 +371,14 @@ export function GetStartedScreen({
       : primaryAction(wizard, step, abilities, { suggestedIssueId: suggested });
   const regressions = wizard === null ? [] : regressionsOf(wizard);
   const onScreen = wizard?.steps.find((one) => one.step === step);
+  const stepDone = (number: number): boolean => wizard?.steps.find((one) => one.step === number)?.status === "done";
+  // The sources, flattened for the picker: the listing's failure is the one it has to say.
+  const sourceList: Reading<readonly TicketSource[]> | null =
+    sources === null ? null : sources.ok ? sources.value.sources : sources;
+  // Steps 1–2's surfaces draw on their step — and both when nothing is mirrored yet.
+  const showConnect = repo === null || step === 1;
+  const showPicker = repo === null || step === 2;
+  const complete = wizard !== null && (receipt !== null || isComplete(wizard));
 
   /** Run the primary action — continue, enable or launch — and say what the service answered. */
   function press(): void {
@@ -369,7 +408,10 @@ export function GetStartedScreen({
       case "launch":
         void launchFirstLoop(repo, action.pickIssueId ?? null).then((outcome) =>
           done(outcome, () => {
-            if (outcome.ok) setStatus({ tone: "ok", text: receiptLine(outcome.value) });
+            if (outcome.ok) {
+              setStatus({ tone: "ok", text: receiptLine(outcome.value) });
+              setReceipt(outcome.value);
+            }
           }),
         );
         break;
@@ -388,11 +430,17 @@ export function GetStartedScreen({
             <h2 className="wizard-regress__title">{REGRESSION_TITLE}</h2>
             <ul className="wizard-regress__rows">
               {regressions.map((regression) => (
-                <li key={regression.step}>{regressionLine(regression)}</li>
+                <li className="wizard-regress__row" key={regression.step}>
+                  <span>{regressionLine(regression)}</span>{" "}
+                  <button className="wizard-regress__fix" onClick={() => setViewed(regression.step)} type="button">
+                    {regressionFixLabel(regression)}
+                  </button>
+                </li>
               ))}
             </ul>
           </section>
         )}
+        {complete && wizard !== null && <ReceiptCard view={receiptView(receipt, wizard, enablement?.ok === true ? enablement.value : null)} />}
         {wizard === null ? (
           <section className="wizard-panel">
             <h2 className="wizard-panel__title" id={content}>
@@ -418,6 +466,10 @@ export function GetStartedScreen({
             )}
             <p className="wizard-panel__repo">{wizard.repo}</p>
           </section>
+        )}
+        {showConnect && <ConnectPanel abilities={abilities} sources={sources} stepDone={stepDone(1)} />}
+        {showPicker && (
+          <RepoPicker abilities={abilities} enablement={enablement} repo={repo} sources={sourceList} stepDone={stepDone(2)} />
         )}
         {repo !== null && (
           // The mockup's two columns: the step cards, and beside them the right column (BC.5, #394).

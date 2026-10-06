@@ -9,8 +9,10 @@
  * ({@link regressionsOf}), never silently un-ticked.
  */
 
+import type { Enablement } from "@/app/api/enablement";
 import type { Onboarding, OnboardingLaunchReceipt, OnboardingStep } from "@/app/api/onboarding";
-import { DASHBOARD_PATH, SOURCES_PATH } from "@/app/paths";
+import type { TicketSource } from "@/app/api/sources";
+import { DASHBOARD_PATH, DASHBOARD_QUEUE_HASH, RUNS_PATH, SOURCES_PATH } from "@/app/paths";
 
 /** The wizard's route. */
 export const GET_STARTED_PATH = "/get-started";
@@ -371,3 +373,302 @@ export const LAUNCH_OUTCOMES: Readonly<Record<OnboardingLaunchReceipt["outcome"]
 export function receiptLine(receipt: Pick<OnboardingLaunchReceipt, "issue" | "outcome" | "workflow" | "dryRun">): string {
   return `#${String(receipt.issue.number)} ${LAUNCH_OUTCOMES[receipt.outcome]} under ${receipt.workflow.slug}. ${receipt.dryRun.note}`;
 }
+
+/* ------------------------------------------------------------ the states the mockup cannot show (BC.6, #395) */
+
+/**
+ * Step 1's embedded flow — the words. The flow itself is `app/sources`' add-source dialog and
+ * source rows, mounted in the wizard's frame: the wizard adds the context (where you are, what
+ * comes next) and never a second way of connecting GitHub.
+ */
+export const CONNECT_TITLE = "Connect GitHub";
+export const CONNECT_PILL_DONE = "✓ step 1 done";
+export const CONNECT_PILL_ACTIVE = "step 1 · you are here";
+export const CONNECT_LINE =
+  "Ouroboros reads a repository through a GitHub ticket source — the same connection Settings → Sources manages. Add one here, or manage the ones you have.";
+export const CONNECT_NEXT = "Next: switch on the repository, and detection scans it.";
+export const CONNECT_NONE = "No GitHub source is connected yet.";
+export const CONNECT_SETTINGS_LABEL = "Manage in Settings → Sources ↗";
+export const CONNECT_LOADING = "Reading the ticket sources…";
+/** The accessible name of the list of connected GitHub sources. */
+export const CONNECT_LIST_LABEL = "Connected GitHub sources";
+
+/**
+ * Step 2's embedded flow — the words. The control is the login screen's enablement switch over
+ * the tenancy API: switching a repository on records it under its account (the API's upsert),
+ * enables both flags, and starts the detection scan.
+ */
+export const PICKER_TITLE = "Pick a repo";
+export const PICKER_PILL_DONE = "✓ step 2 done";
+export const PICKER_PILL_ACTIVE = "step 2 · you are here";
+export const PICKER_LINE =
+  "Switch on the repository Ouroboros may work in. Switching one on records it under its account, enables both, and starts the scan below.";
+export const PICKER_EMPTY = "The connected GitHub source names no repository yet — add one to its settings.";
+export const PICKER_NO_SOURCE = "Connect GitHub first: the repositories offered here are the ones a source names.";
+export const PICKER_LIST_LABEL = "Repositories the connected sources name";
+export const PICKER_ON = "enabled";
+export const PICKER_OFF = "off";
+export const PICKER_NOT_RECORDED = "not recorded yet — switching on records it";
+export const PICKER_CURRENT = "this wizard";
+export const PICKER_LOADING = "Reading the repositories…";
+
+/** What the picker's write says when the repository is named by no GitHub source. */
+export function notCoveredReason(repo: string): string {
+  return `No GitHub source names ${repo} — connect one that does first.`;
+}
+
+/** The repositories one GitHub source is configured to read, as its public config names them. */
+export interface SourceRepos {
+  /** The source. */
+  readonly source: TicketSource;
+  /** `config.login`, lower-cased. */
+  readonly login: string;
+  /** `config.repos`, lower-cased, in the source's order. */
+  readonly repos: readonly string[];
+}
+
+/**
+ * The workspace's GitHub sources.
+ *
+ * @param sources Every source the workspace lists.
+ * @returns The `github` ones, in listing order.
+ */
+export function githubSources(sources: readonly TicketSource[]): TicketSource[] {
+  return sources.filter((source) => source.kind === "github");
+}
+
+/**
+ * What a GitHub source reads, read defensively out of its public config — `login` and `repos`
+ * are the provider's own fields, but the config is an open object to this layer.
+ *
+ * @param source The source.
+ * @returns The account and repositories, or null when the config does not carry them.
+ */
+export function sourceRepos(source: TicketSource): SourceRepos | null {
+  const { login, repos } = source.config as { login?: unknown; repos?: unknown };
+
+  if (typeof login !== "string" || login.length === 0 || !Array.isArray(repos)) return null;
+
+  return {
+    source,
+    login: login.toLowerCase(),
+    repos: repos.filter((name): name is string => typeof name === "string" && name.length > 0).map((name) => name.toLowerCase()),
+  };
+}
+
+/**
+ * Whether a GitHub source of the workspace names a repository — the picker's own guard, so the
+ * wizard only ever enables what a source can read (the detector's `coversRepo` rule, restated).
+ *
+ * @param sources Every source the workspace lists.
+ * @param repo `owner/name`.
+ * @returns True when some GitHub source's `login` is the owner and its `repos` hold the name.
+ */
+export function coveredBy(sources: readonly TicketSource[], repo: string): boolean {
+  const [owner, name] = repo.toLowerCase().split("/") as [string, string];
+
+  return githubSources(sources).some((source) => {
+    const read = sourceRepos(source);
+
+    return read !== null && read.login === owner && read.repos.includes(name);
+  });
+}
+
+/** One row of the repository picker. */
+export interface PickerRow {
+  /** `owner/name`, lower-case. */
+  readonly repo: string;
+  readonly login: string;
+  readonly name: string;
+  /** Whether the tenancy mirror holds a row for it yet. */
+  readonly recorded: boolean;
+  /** Whether it is enabled **and** its account is — the derivation's own rule for step 2. */
+  readonly enabled: boolean;
+  /** Whether it is the repository this wizard is for. */
+  readonly current: boolean;
+}
+
+/**
+ * The picker's rows: every repository the workspace's GitHub sources name, joined with the
+ * tenancy mirror's two switches — once per repository, by name.
+ *
+ * @param sources Every source the workspace lists.
+ * @param enablement The mirror, or null when it could not be read (every row reads unrecorded).
+ * @param current The repository this wizard is for, or null.
+ * @returns The rows, the current one first and then by name.
+ */
+export function pickerRows(
+  sources: readonly TicketSource[],
+  enablement: Enablement | null,
+  current: string | null,
+): PickerRow[] {
+  const seen = new Map<string, PickerRow>();
+
+  for (const source of githubSources(sources)) {
+    const read = sourceRepos(source);
+
+    if (read === null) continue;
+
+    for (const name of read.repos) {
+      const repo = `${read.login}/${name}`;
+
+      if (seen.has(repo)) continue;
+
+      const account = enablement?.orgs.find(({ org }) => org.login.toLowerCase() === read.login);
+      const mirrored = account?.repos.find((one) => one.name.toLowerCase() === name);
+
+      seen.set(repo, {
+        repo,
+        login: read.login,
+        name,
+        recorded: mirrored !== undefined,
+        enabled: mirrored?.enabled === true && account?.org.enabled === true,
+        current: current !== null && current.toLowerCase() === repo,
+      });
+    }
+  }
+
+  return [...seen.values()].sort(
+    (left, right) => Number(right.current) - Number(left.current) || left.repo.localeCompare(right.repo),
+  );
+}
+
+/**
+ * The note beside a picker row — what its switches say.
+ *
+ * @param row The row.
+ * @returns `enabled`, `off`, or the not-recorded note.
+ */
+export function pickerRowNote(row: PickerRow): string {
+  if (!row.recorded) return PICKER_NOT_RECORDED;
+
+  return row.enabled ? PICKER_ON : PICKER_OFF;
+}
+
+/**
+ * A picker switch's accessible name — what pressing it does, as the login's switches say it.
+ *
+ * @param row The row.
+ * @returns `Enable Ouroboros in owner/name`, or `Disable …`.
+ */
+export function switchLabel(row: PickerRow): string {
+  return `${row.enabled ? "Disable" : "Enable"} Ouroboros in ${row.repo}`;
+}
+
+/**
+ * The regression banner's fix — the step to put on screen, where the subsystem that owns the
+ * step draws its controls: the source rows for step 1, the picker for step 2, the tiles and the
+ * first-issue card after.
+ *
+ * @param regression The regression.
+ * @returns The control's label.
+ */
+export function regressionFixLabel(regression: Pick<Regression, "step">): string {
+  return `Fix step ${String(regression.step)} →`;
+}
+
+/* ------------------------------------------------------------------------ the completion state */
+
+export const RECEIPT_TITLE = "Your first loop is queued";
+export const RECEIPT_PILL = "✓ step 4 done";
+export const RECEIPT_LINKS_LABEL = "Where to go next";
+export const RECEIPT_DASHBOARD_LABEL = "Open the dashboard →";
+export const RECEIPT_QUEUE_LABEL = "See it in the queue →";
+export const RECEIPT_CONSOLE_LABEL = "Open the run console →";
+export const RECEIPT_RUNS_LABEL = "Runs →";
+export const RECEIPT_CONSOLE_PENDING =
+  "The run console opens once a loop claims the issue; until then the queue is where it waits.";
+export const RECEIPT_REENTER_TITLE = "Set up another repository";
+export const RECEIPT_REENTER_LINE = "This wizard is per repository — each one below opens on a rail of its own.";
+export const RECEIPT_REENTER_NONE = "Every repository this workspace mirrors is this one.";
+export const RECEIPT_REENTER_MORE = "Connect more in Settings → Sources ↗";
+
+/** The completion card, decided. */
+export interface ReceiptView {
+  /** `#488 queued under quick-fixes@v1` — or the rail's own evidence after a reload. */
+  readonly headline: string;
+  /** The issue's place in the queue, when the launch just answered it; null after a reload. */
+  readonly position: number | null;
+  /** The service's dry-run note, when the launch just answered it. */
+  readonly dryRunNote: string | null;
+  readonly dashboardHref: string;
+  readonly queueHref: string;
+  /** The run console, once a run exists; null until then. */
+  readonly consoleHref: string | null;
+  /** Where the console's link points while there is no run — the Runs page. */
+  readonly runsHref: string;
+  /** The workspace's other mirrored repositories, each a wizard of its own. */
+  readonly others: readonly { readonly repo: string; readonly href: string }[];
+}
+
+/**
+ * Whether the wizard is complete — step 4 done, or its completion stamped.
+ *
+ * @param wizard The wizard.
+ * @returns True once the first loop is queued or running.
+ */
+export function isComplete(wizard: Pick<Onboarding, "steps" | "choices">): boolean {
+  return wizard.choices.completedAt !== null || wizard.steps.some((step) => step.step === STEP_COUNT && step.status === "done");
+}
+
+/**
+ * The queue position in words.
+ *
+ * @param position The position, `1` is next.
+ * @returns `next in the queue`, or `queue position 13`.
+ */
+export function positionLine(position: number): string {
+  return position === 1 ? "next in the queue" : `queue position ${String(position)}`;
+}
+
+/**
+ * Decide the completion card from what is known: the launch's receipt while the press is fresh,
+ * the rail's derived evidence after a reload — never a position or a note the service did not
+ * answer.
+ *
+ * @param receipt The launch's receipt, or null after a reload.
+ * @param wizard The wizard.
+ * @param enablement The mirror, for the re-enter list; null when it could not be read.
+ * @returns The card.
+ */
+export function receiptView(
+  receipt: Pick<OnboardingLaunchReceipt, "issue" | "outcome" | "workflow" | "dryRun" | "queue" | "links" | "run"> | null,
+  wizard: Pick<Onboarding, "repo" | "steps" | "refs">,
+  enablement: Enablement | null,
+): ReceiptView {
+  const last = wizard.steps.find((step) => step.step === STEP_COUNT);
+  const others = (enablement?.orgs ?? [])
+    .flatMap(({ org, repos }) => repos.map((one) => `${org.login}/${one.name}`.toLowerCase()))
+    .filter((repo) => repo !== wizard.repo.toLowerCase())
+    .sort()
+    .map((repo) => ({ repo, href: getStartedPath(repo) }));
+
+  if (receipt === null) {
+    return {
+      headline: last?.evidence ?? wizard.refs.pickedTicket?.externalKey ?? RECEIPT_TITLE,
+      position: null,
+      dryRunNote: null,
+      dashboardHref: DASHBOARD_PATH,
+      queueHref: `${DASHBOARD_PATH}#${DASHBOARD_QUEUE_HASH}`,
+      consoleHref: null,
+      runsHref: RUNS_PATH,
+      others,
+    };
+  }
+
+  const version = receipt.workflow.version === null ? "" : `@v${String(receipt.workflow.version)}`;
+
+  return {
+    headline: `#${String(receipt.issue.number)} ${LAUNCH_OUTCOMES[receipt.outcome]} under ${receipt.workflow.slug}${version}`,
+    position: receipt.queue?.position ?? null,
+    dryRunNote: receipt.dryRun.note,
+    dashboardHref: receipt.links.dashboard,
+    queueHref: receipt.links.queue,
+    consoleHref: receipt.links.console ?? receipt.run?.path ?? null,
+    runsHref: RUNS_PATH,
+    others,
+  };
+}
+
+/** What the route's loading state is named while the first read is in flight. */
+export const SKELETON_LABEL = "Loading Get Started";
