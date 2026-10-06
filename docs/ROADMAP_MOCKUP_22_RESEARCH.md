@@ -319,7 +319,7 @@ issue assigned. Complexity chips: **XS · S · M · L**.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CK.1 | #608 | 🟡 Open | ouroboros-db: [CK.1] Investigations & kind registry schema | RS-### entities: kind, depth, tools, status, provenance, spend | mvp, research, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
+| CK.1 | #608 ✅ | 🟢 Done | ouroboros-db: [CK.1] Investigations & kind registry schema | RS-### entities: kind, depth, tools, status, provenance, spend | mvp, research, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
 | CK.2 | #609 | 🟡 Open | ouroboros-db: [CK.2] Citation ledger — source records & claims | Archived sources (external+internal URIs), claim→citation links | mvp, research, db | N (after CK.1) | Y | M | ouroboros-db |
 | CK.3 | #610 | 🟡 Open | ouroboros-db: [CK.3] Capability matrices & competitor watch schema | Matrix cells with citations; rival registry, watched sources, diffs | mvp, research, db | N (after CK.2) | Y | M | ouroboros-db |
 | CK.4 | #611 | 🟡 Open | ouroboros-db: [CK.4] Regression baselines & watch items | Release baselines, metric windows, drift states, bisect results | mvp, research, db | N (after CK.1, AS.1) | Y | M | ouroboros-db |
@@ -328,7 +328,9 @@ issue assigned. Complexity chips: **XS · S · M · L**.
 
 ### Issue CK.1 — ouroboros-db: [CK.1] Investigations & kind registry schema
 
-> **GitHub issue:** #608 · **Status:** 🟡 Open · **Parent epic:** #603
+> **GitHub issue:** #608 ✅ · **Status:** 🟢 Done · **Parent epic:** #603
+>
+> **Delivered (#608, `V106__investigations.sql` — no REST/UI change):** `research_tools` registers the six adapter slugs (`web`, `competitor`, `code`, `tickets`, `telemetry`, `docs`) installation-wide, so an unknown slug in `tools_enabled` or a playbook's `default_tools` is refused at write (and a slug still in use cannot be deleted or renamed); CL.1's SPI registers further adapters as rows. `investigation_kinds` is per workspace — `slug`, `display_name`, `tint_key` (`bug`/`reg`/`road`/`gap`, the mockup's chip classes) and a `playbook` of exactly `{version, default_tools, synthesis_template, deliverables}` (deliverables ⊆ `brief|matrix|roadmap_doc|fix_draft`, always with `brief`), whose version must rise with any change; an `after insert` trigger on `organization` seeds the four built-ins into every workspace, and the migration back-fills existing ones. `investigations` carries `seq` + generated `display_id` (`RS-001`…, wider past 999), the kind by composite key (same workspace), `question`, `depth`, `tools_enabled` (non-empty), `status` with transitions enforced by `investigations_status_transition` (workspace, seq, kind and origin immutable), `estimate` `{sources, cost_cents|null}` and `actuals` `{sources_used, spend_cents|null, duration_ms}` independently nullable, `provenance` `{researcher, alias, resolution_ref}` required from `running` and `actuals` from `brief_ready`, `origin`, `engine_task_ref`, `created_by`, and the three indexes. **Sequence mechanism: a per-workspace counter row** (`investigation_seq_counters`) bumped by `insert … on conflict do update` — concurrent creates serialise on it, a rollback returns its number, a deleted number is never reused; a supplied `seq` (CK.6's seed) is kept and raises the counter. Proven by `tests/verify-investigation-seq.sh` (new `ci/db` step: serialise, rollback, a lock-free `max + 1` probe that must collide, cross-workspace, and a 6×10 burst with rollbacks committing exactly 1…42); single-session rules in `constraints.sql`'s V106 section. *"`brief_ready` requires a brief"* stays with CK.2 (#609).
 
 - **Problem Statement:** Everything on the page hangs off an investigation
   entity that doesn't exist — with a per-org human id (`RS-127`), a kind, a
@@ -1454,7 +1456,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    BE.1 (#405); WF-Q store (#138/#139); AS/AT (#324/#326) + AJ.4 (#266) +
    BI.2/BJ.1 (#433/#437); AH dispatch (#253); #19/#24/#41/#46/#54;
    BA-B.3/C.3/D.5 (unfiled).
-2. **Phase 1 — Domain:** CK.1 (#608) → { CK.2 (#609) ⊕ CK.4 (#611) ⊕
+2. **Phase 1 — Domain:** CK.1 (#608) ✅ → { CK.2 (#609) ⊕ CK.4 (#611) ⊕
    CK.5 (#612) } → CK.3 (#610) → CK.6 (#613)
 3. **Phase 2 — Tools:** CL.1 (#614) → { CL.2 (#615) ⊕ CL.3 (#616) ⊕
    CL.4 (#617) ⊕ CL.5 (#618) ⊕ CL.6 (#619) }

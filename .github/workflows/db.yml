@@ -334,6 +334,15 @@ jobs:
       - name: Assert one running analysis per repository under concurrency
         run: ouroboros-db/tests/verify-analysis-run-guard.sh --runner docker
 
+      # Research's RS-### numbers (#608): *"gapless under concurrent creation — proven by a
+      # concurrency test, not by inspection"*. Five interleavings against a database of its own:
+      # concurrent creates serialise on the workspace's counter row, a rollback returns its
+      # number, two workspaces never wait on each other, and a burst of clients with rollbacks
+      # commits exactly 1…N. The third swaps in a lock-free `max + 1` and must collide, which is
+      # what proves the counter row — not something else — is doing the serialising.
+      - name: Assert gapless investigation numbers under concurrency
+        run: ouroboros-db/tests/verify-investigation-seq.sh --runner docker
+
       # ---------------------------------------------------------------------------
       # The drift check (#710). Everything above asks what the applied schema enforces;
       # this asks whether it is still the schema BetterAuth expects. Decision A3 makes

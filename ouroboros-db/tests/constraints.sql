@@ -9915,6 +9915,7 @@ select pg_temp.must_hold(
 -- in-place half of what it writes is repaired at the foot of the file.
 analyze ouroboros.tickets;
 analyze ouroboros.ticket_sources;
+analyze ouroboros.investigations;
 
 set local enable_seqscan = off;
 
@@ -14519,12 +14520,15 @@ select pg_temp.must_hold(
    -- remove a finished run's entries while the writer still cannot delete one — asserted in
    -- V101's section. #486 added `audit_events_purge()`, so the audit retention purge can remove
    -- expired events while the writer still cannot delete one — asserted in V102's section.
+   -- #608 added `investigations_allocate_seq()`, so an investigation's RS number is drawn from a
+   -- counter the writer cannot set — asserted in V106's section.
    and (select array_agg(proname::text order by proname) = array['audit_events_purge',
                                                                  'decision_ref_resolves',
                                                                  'decision_ttl_settings',
                                                                  'fact_transitions_record',
                                                                  'failure_classifications_routed_valid',
                                                                  'intervention_hook_classification',
+                                                                 'investigations_allocate_seq',
                                                                  'pr_gate_evidence_ref_resolves',
                                                                  'record_intervention_event',
                                                                  'run_controls_audit',
@@ -14533,7 +14537,7 @@ select pg_temp.must_hold(
                                                                  'sync_intervention_events']
           from pg_proc
          where pronamespace = 'ouroboros'::regnamespace and prosecdef),
-  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks, #457''s decision ref resolver, #459''s TTL settings reader, #482''s transcript sweep and #486''s audit purge are the only functions in the schema that run as the owner at all');
+  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks, #457''s decision ref resolver, #459''s TTL settings reader, #482''s transcript sweep, #486''s audit purge and #608''s RS allocator are the only functions in the schema that run as the owner at all');
 
 -- --- the cascades ----------------------------------------------------------------
 delete from ouroboros.runs where id = 'a6100000-0000-0000-0000-000000000484';
@@ -34403,6 +34407,472 @@ select pg_temp.must_hold(
   'an unfinished tombstone records progress, then completes once');
 
 -- ===========================================================================
+-- V106 — investigations, the kind registry and research-tool slugs (#608, CK.1)
+-- ===========================================================================
+--
+-- Mockup 22's investigations card and composer as rows: every workspace gets the four kinds, a
+-- playbook round-trips and bumps, RS-### is per workspace and never reused, tool slugs are
+-- registered, the lifecycle is constrained, origin is closed, and estimate and actuals are
+-- independent. The race half of the sequence criterion needs two sessions and lives in
+-- tests/verify-investigation-seq.sh; what is asserted here is the single-session behaviour.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v106',  'Research Works', 'research-works-v106', now()),
+  ('org-v106b', 'Research Two',   'research-two-v106',   now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a1060000-0000-0000-0000-00000000000a', 'Rae Researcher', 'rae@research-works.example', true);
+
+-- --- the kind registry -------------------------------------------------------
+
+select pg_temp.must_hold(
+  (select array_agg(slug order by slug) = array['bug_root_cause', 'gap_analysis',
+                                                'regression_forensics', 'roadmap_improvements']
+     from ouroboros.investigation_kinds where organization_id = 'org-v106')
+   and (select count(*) = 4 from ouroboros.investigation_kinds where organization_id = 'org-v106b'),
+  'a new workspace is given the four built-in investigation kinds');
+
+select pg_temp.must_hold(
+  (select display_name = 'Gap analysis' and tint_key = 'gap'
+          and playbook = '{"version": 1, "default_tools": ["web", "competitor", "code", "tickets", "telemetry"],
+                           "synthesis_template": "gap_analysis@1", "deliverables": ["brief", "matrix"]}'::jsonb
+     from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis'),
+  'the gap_analysis playbook round-trips exactly as seeded');
+
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.investigation_kinds
+    where organization_id = 'org-v106'
+      and ouroboros.investigation_playbook_valid(playbook)
+      and playbook -> 'deliverables' ? 'brief'),
+  'every seeded playbook is well-formed and ends in a brief');
+
+-- Seeding again is a no-op, so a backfill can be re-run.
+select ouroboros.investigation_kinds_seed('org-v106');
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.investigation_kinds where organization_id = 'org-v106'),
+  'investigation_kinds_seed is idempotent');
+
+-- A version bump is representable…
+update ouroboros.investigation_kinds
+   set playbook = jsonb_set(jsonb_set(playbook, '{version}', '2'),
+                            '{default_tools}', '["web", "competitor", "code", "tickets", "telemetry", "docs"]')
+ where organization_id = 'org-v106' and slug = 'gap_analysis';
+select pg_temp.must_hold(
+  (select (playbook ->> 'version')::int = 2 and playbook -> 'default_tools' ? 'docs'
+     from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis'),
+  'a playbook version bump round-trips');
+
+-- …and a change without one is refused.
+select pg_temp.must_reject(
+  $$update ouroboros.investigation_kinds
+       set playbook = jsonb_set(playbook, '{synthesis_template}', '"gap_analysis@2"')
+     where organization_id = 'org-v106' and slug = 'gap_analysis'$$,
+  'a playbook change must raise its version', 'investigation_kinds_playbook_version');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_kinds (organization_id, slug, display_name, tint_key, playbook)
+    values ('org-v106', 'gap_analysis', 'Again', 'gap',
+            '{"version": 1, "default_tools": [], "synthesis_template": "x", "deliverables": ["brief"]}')$$,
+  'a kind slug is unique per workspace', 'investigation_kinds_organization_slug_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_kinds (organization_id, slug, display_name, tint_key, playbook)
+    values ('org-v106', 'Bad Slug', 'Bad', 'gap',
+            '{"version": 1, "default_tools": [], "synthesis_template": "x", "deliverables": ["brief"]}')$$,
+  'a kind slug is snake_case', 'investigation_kinds_slug_format');
+
+-- A fifth kind is a row, not a migration.
+insert into ouroboros.investigation_kinds (organization_id, slug, display_name, tint_key, playbook)
+values ('org-v106', 'security_review', 'Security review', 'sec',
+        '{"version": 1, "default_tools": ["code"], "synthesis_template": "security_review@1",
+          "deliverables": ["brief"]}');
+
+-- Playbook shape: each break refused by the one CHECK.
+select pg_temp.must_reject(
+  format($$insert into ouroboros.investigation_kinds (organization_id, slug, display_name, tint_key, playbook)
+           values ('org-v106', 'bad_playbook', 'Bad', 'gap', %L)$$, bad.playbook),
+  'a malformed playbook is refused — ' || bad.why, 'investigation_kinds_playbook_shape')
+from (values
+  ('{"default_tools": [], "synthesis_template": "x", "deliverables": ["brief"]}', 'no version'),
+  ('{"version": 0, "default_tools": [], "synthesis_template": "x", "deliverables": ["brief"]}', 'version 0'),
+  ('{"version": 1.5, "default_tools": [], "synthesis_template": "x", "deliverables": ["brief"]}', 'fractional version'),
+  ('{"version": 1, "default_tools": ["web", "web"], "synthesis_template": "x", "deliverables": ["brief"]}', 'duplicate tool'),
+  ('{"version": 1, "default_tools": "web", "synthesis_template": "x", "deliverables": ["brief"]}', 'tools not an array'),
+  ('{"version": 1, "default_tools": [], "synthesis_template": " ", "deliverables": ["brief"]}', 'blank template'),
+  ('{"version": 1, "default_tools": [], "synthesis_template": "x", "deliverables": ["matrix"]}', 'no brief'),
+  ('{"version": 1, "default_tools": [], "synthesis_template": "x", "deliverables": ["brief", "poem"]}', 'unknown deliverable'),
+  ('{"version": 1, "default_tools": [], "synthesis_template": "x", "deliverables": ["brief", "brief"]}', 'duplicate deliverable'),
+  ('{"version": 1, "default_tools": [], "synthesis_template": "x", "deliverables": "brief"}', 'deliverables not an array'),
+  ('{"version": 1, "default_tools": [], "synthesis_template": "x", "deliverables": ["brief"], "extra": 1}', 'unknown key'),
+  ('[]', 'not an object')
+) as bad(playbook, why);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_kinds (organization_id, slug, display_name, tint_key, playbook)
+    values ('org-v106', 'ghost_kind', 'Ghost', 'gap',
+            '{"version": 1, "default_tools": ["web", "crystal_ball"], "synthesis_template": "x",
+              "deliverables": ["brief"]}')$$,
+  'a playbook naming an unregistered tool is refused at write', 'investigation_kinds_tools_registered');
+
+-- --- RS-### -------------------------------------------------------------------
+
+insert into ouroboros.investigations
+    (id, organization_id, kind_id, question, depth, tools_enabled, estimate, created_by)
+select v.id::uuid, v.org, k.id, v.question, 'deep_dive', '["web", "competitor"]',
+       '{"sources": {"min": 40, "max": 60}, "cost_cents": {"min": 500, "max": 700}}',
+       'a1060000-0000-0000-0000-00000000000a'
+  from (values ('a1061000-0000-0000-0000-000000000001', 'org-v106',  'First'),
+               ('a1061000-0000-0000-0000-000000000002', 'org-v106',  'Second'),
+               ('a1061000-0000-0000-0000-000000000003', 'org-v106b', 'Other workspace')) v(id, org, question)
+  join ouroboros.investigation_kinds k on k.organization_id = v.org and k.slug = 'gap_analysis';
+
+select pg_temp.must_hold(
+  (select array_agg(seq order by seq) = array[1, 2]
+          and array_agg(display_id order by seq) = array['RS-001', 'RS-002']
+     from ouroboros.investigations where organization_id = 'org-v106')
+   and (select seq = 1 from ouroboros.investigations
+         where id = 'a1061000-0000-0000-0000-000000000003'),
+  'seq is allocated per workspace from 1 and rendered RS-###');
+
+select pg_temp.must_hold(
+  (select status = 'queued' and origin = 'user' and actuals is null and provenance is null
+          and estimate is not null
+     from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000001'),
+  'an investigation that never ran has an estimate and no actuals; it starts queued and user-opened');
+
+-- A rolled-back create leaves no gap: its increment goes with it.
+savepoint v106_rollback;
+insert into ouroboros.investigations (organization_id, kind_id, question, depth, tools_enabled)
+select 'org-v106', id, 'Rolled back', 'quick', '["web"]'
+  from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'bug_root_cause';
+rollback to savepoint v106_rollback;
+
+insert into ouroboros.investigations (id, organization_id, kind_id, question, depth, tools_enabled)
+select 'a1061000-0000-0000-0000-000000000004', 'org-v106', id, 'After the rollback', 'quick', '["web"]'
+  from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'bug_root_cause';
+
+select pg_temp.must_hold(
+  (select seq = 3 from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000004'),
+  'a rolled-back create returns its number — the next create takes it, so the sequence has no gap');
+
+-- A deleted investigation's number is spent, never handed out again.
+delete from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000004';
+insert into ouroboros.investigations (id, organization_id, kind_id, question, depth, tools_enabled)
+select 'a1061000-0000-0000-0000-000000000005', 'org-v106', id, 'After the delete', 'quick', '["web"]'
+  from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'bug_root_cause';
+select pg_temp.must_hold(
+  (select seq = 4 from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000005'),
+  'deleting the newest investigation does not give its number to the next one');
+
+-- A supplied number is kept, and allocation continues past it.
+insert into ouroboros.investigations (id, organization_id, seq, kind_id, question, depth, tools_enabled)
+select 'a1061000-0000-0000-0000-000000000127', 'org-v106', 127, id, 'Docking gap', 'deep_dive', '["web"]'
+  from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis';
+insert into ouroboros.investigations (id, organization_id, kind_id, question, depth, tools_enabled)
+select 'a1061000-0000-0000-0000-000000000128', 'org-v106', id, 'Next', 'quick', '["web"]'
+  from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis';
+select pg_temp.must_hold(
+  (select display_id = 'RS-127' from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000127')
+   and (select seq = 128 from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000128')
+   and (select last_seq = 128 from ouroboros.investigation_seq_counters where organization_id = 'org-v106'),
+  'a supplied seq is kept and the counter continues past it');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigations (organization_id, seq, kind_id, question, depth, tools_enabled)
+    select 'org-v106', 127, id, 'Duplicate', 'quick', '["web"]'
+      from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis'$$,
+  'an RS number is unique within its workspace', 'investigations_organization_seq_key');
+
+select pg_temp.must_hold(
+  (select display_id = 'RS-1000'
+     from (select 'RS-' || case when s < 1000 then lpad(s::text, 3, '0') else s::text end display_id
+             from (values (1000)) v(s)) d),
+  'display ids widen past three digits rather than truncating');
+
+select pg_temp.must_reject(
+  $$update ouroboros.investigations set seq = 900 where id = 'a1061000-0000-0000-0000-000000000001'$$,
+  'an investigation keeps its number', 'investigations_status_transition');
+
+-- --- kind is of the same workspace ------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigations (organization_id, kind_id, question, depth, tools_enabled)
+    select 'org-v106', id, 'Borrowed kind', 'quick', '["web"]'
+      from ouroboros.investigation_kinds where organization_id = 'org-v106b' and slug = 'gap_analysis'$$,
+  'an investigation''s kind belongs to its own workspace', 'investigations_kind_fk');
+
+select pg_temp.must_reject(
+  $$delete from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis'$$,
+  'a kind with investigations cannot be deleted', 'investigations_kind_fk');
+
+-- --- tool slugs ----------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigations (organization_id, kind_id, question, depth, tools_enabled)
+    select 'org-v106', id, 'Unknown tool', 'quick', '["web", "crystal_ball"]'
+      from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis'$$,
+  'an unknown tool slug in tools_enabled is rejected at write', 'investigations_tools_registered');
+
+select pg_temp.must_reject(
+  $$update ouroboros.investigations set tools_enabled = '["crystal_ball"]'
+     where id = 'a1061000-0000-0000-0000-000000000001'$$,
+  'an unknown tool slug is rejected on update too', 'investigations_tools_registered');
+
+select pg_temp.must_reject(
+  format($$insert into ouroboros.investigations (organization_id, kind_id, question, depth, tools_enabled)
+           select 'org-v106', id, 'Bad tools', 'quick', %L
+             from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis'$$,
+         bad.tools),
+  'a malformed tool selection is refused — ' || bad.why, 'investigations_tools_enabled_shape')
+from (values ('[]', 'empty'), ('["web", "web"]', 'duplicate'), ('"web"', 'not an array'),
+             ('[1]', 'not a string'), ('["Web"]', 'not a slug')) as bad(tools, why);
+
+-- A newly registered adapter is usable at once; a registered slug in use cannot be removed.
+insert into ouroboros.research_tools (slug, display_name) values ('wiki', 'Internal wiki');
+update ouroboros.investigations set tools_enabled = '["web", "wiki"]'
+ where id = 'a1061000-0000-0000-0000-000000000002';
+
+select pg_temp.must_reject(
+  $$delete from ouroboros.research_tools where slug = 'wiki'$$,
+  'a tool slug an investigation names cannot be deleted', 'research_tools_in_use');
+
+select pg_temp.must_reject(
+  $$update ouroboros.research_tools set slug = 'web2' where slug = 'web'$$,
+  'a tool slug a kind playbook names cannot be renamed', 'research_tools_in_use');
+
+select pg_temp.must_hold(
+  (select array_agg(slug order by slug) = array['code', 'competitor', 'docs', 'telemetry', 'tickets', 'web', 'wiki']
+     from ouroboros.research_tools),
+  'the six mockup tools are registered');
+
+-- --- vocabularies ----------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.investigations set depth = 'bottomless' where id = 'a1061000-0000-0000-0000-000000000001'$$,
+  'depth is quick | standard | deep_dive', 'investigations_depth');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigations (organization_id, kind_id, question, depth, tools_enabled, origin)
+    select 'org-v106', id, 'Who opened me', 'quick', '["web"]', 'cron'
+      from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis'$$,
+  'origin is user | regression_watch | scheduled', 'investigations_origin');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigations
+        (organization_id, kind_id, question, depth, tools_enabled, status, provenance, actuals)
+    select 'org-v106', id, 'Paused', 'quick', '["web"]', 'paused',
+           '{"researcher": "loop-v1", "alias": "researcher-long-ctx", "resolution_ref": null}',
+           '{"sources_used": 1, "spend_cents": null, "duration_ms": 1}'
+      from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis'$$,
+  'status is a closed vocabulary', 'investigations_status');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigations (organization_id, kind_id, question, depth, tools_enabled)
+    select 'org-v106', id, '   ', 'quick', '["web"]'
+      from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis'$$,
+  'a question cannot be blank', 'investigations_question_present');
+
+-- origin tells the watch's investigations from people's.
+insert into ouroboros.investigations (id, organization_id, kind_id, question, depth, tools_enabled, origin)
+select 'a1061000-0000-0000-0000-000000000121', 'org-v106', id, 'Motor PID overshoot', 'standard',
+       '["code", "telemetry"]', 'regression_watch'
+  from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'regression_forensics';
+select pg_temp.must_hold(
+  (select origin = 'regression_watch' and created_by is null
+     from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000121')
+   and (select origin = 'user' and created_by = 'a1060000-0000-0000-0000-00000000000a'
+          from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000001'),
+  'origin distinguishes watch-opened from user-started investigations');
+
+select pg_temp.must_reject(
+  $$update ouroboros.investigations set origin = 'user' where id = 'a1061000-0000-0000-0000-000000000121'$$,
+  'an investigation keeps its origin', 'investigations_status_transition');
+
+-- --- estimate, actuals, provenance shapes ---------------------------------------
+
+select pg_temp.must_reject(
+  format($$update ouroboros.investigations set estimate = %L where id = 'a1061000-0000-0000-0000-000000000001'$$,
+         bad.v),
+  'a malformed estimate is refused — ' || bad.why, 'investigations_estimate_shape')
+from (values
+  ('{"sources": {"min": 60, "max": 40}, "cost_cents": null}', 'min above max'),
+  ('{"sources": {"min": -1, "max": 40}, "cost_cents": null}', 'negative'),
+  ('{"sources": {"min": 40, "max": 60}}', 'cost_cents missing'),
+  ('{"sources": {"min": 40, "max": 60}, "cost_cents": 600}', 'cost not a range'),
+  ('{"sources": "40-60", "cost_cents": null}', 'sources not a range')
+) as bad(v, why);
+
+-- An unpriced alias: a source range and no dollar figure.
+update ouroboros.investigations
+   set estimate = '{"sources": {"min": 40, "max": 60}, "cost_cents": null}'
+ where id = 'a1061000-0000-0000-0000-000000000002';
+
+select pg_temp.must_reject(
+  format($$update ouroboros.investigations set actuals = %L where id = 'a1061000-0000-0000-0000-000000000001'$$,
+         bad.v),
+  'malformed actuals are refused — ' || bad.why, 'investigations_actuals_shape')
+from (values
+  ('{"sources_used": 44, "spend_cents": 612}', 'duration missing'),
+  ('{"sources_used": -1, "spend_cents": 612, "duration_ms": 1}', 'negative sources'),
+  ('{"sources_used": 44, "spend_cents": "612", "duration_ms": 1}', 'spend not a number'),
+  ('[]', 'not an object')
+) as bad(v, why);
+
+select pg_temp.must_reject(
+  format($$update ouroboros.investigations set provenance = %L where id = 'a1061000-0000-0000-0000-000000000001'$$,
+         bad.v),
+  'malformed provenance is refused — ' || bad.why, 'investigations_provenance_shape')
+from (values
+  ('{"researcher": "loop-v1", "alias": "researcher-long-ctx"}', 'resolution_ref missing'),
+  ('{"researcher": "", "alias": "researcher-long-ctx", "resolution_ref": null}', 'blank researcher'),
+  ('{"researcher": "loop-v1", "alias": 7, "resolution_ref": null}', 'alias not text')
+) as bad(v, why);
+
+-- --- the lifecycle -----------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.investigations set status = 'running' where id = 'a1061000-0000-0000-0000-000000000001'$$,
+  'a running investigation carries its provenance', 'investigations_running_provenance');
+
+update ouroboros.investigations
+   set status = 'running',
+       provenance = '{"researcher": "loop-v1", "alias": "researcher-long-ctx", "resolution_ref": null}'
+ where id = 'a1061000-0000-0000-0000-000000000001';
+
+select pg_temp.must_reject(
+  $$update ouroboros.investigations set status = 'brief_ready' where id = 'a1061000-0000-0000-0000-000000000001'$$,
+  'a finished investigation carries its actuals', 'investigations_finished_actuals');
+
+update ouroboros.investigations
+   set status = 'brief_ready',
+       actuals = '{"sources_used": 44, "spend_cents": 612, "duration_ms": 2400000}'
+ where id = 'a1061000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select estimate -> 'cost_cents' ->> 'max' = '700' and actuals ->> 'spend_cents' = '612'
+          and updated_at >= created_at
+     from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000001'),
+  'estimate and actuals are both stored, side by side, and reconcilable');
+
+update ouroboros.investigations set status = 'issues_filed'
+ where id = 'a1061000-0000-0000-0000-000000000001';
+
+-- Every transition outside the state machine is refused. From each status, every target the
+-- graph does not allow.
+create temporary table v106_moves (from_status text, to_status text) on commit drop;
+insert into v106_moves
+select f, t
+  from unnest(array['queued', 'running', 'brief_ready', 'issues_filed', 'failed', 'cancelled']) f,
+       unnest(array['queued', 'running', 'brief_ready', 'issues_filed', 'failed', 'cancelled']) t
+ where f <> t
+   and (f, t) not in (('queued', 'running'), ('queued', 'failed'), ('queued', 'cancelled'),
+                      ('running', 'brief_ready'), ('running', 'failed'), ('running', 'cancelled'),
+                      ('brief_ready', 'issues_filed'));
+
+-- One investigation per source status, each carrying what every status needs, so the only rule
+-- that can refuse a move is the transition trigger.
+insert into ouroboros.investigations
+    (organization_id, kind_id, question, depth, tools_enabled, status, provenance, actuals)
+select 'org-v106', k.id, 'Lifecycle from ' || f, 'quick', '["web"]', f,
+       '{"researcher": "loop-v1", "alias": "researcher-long-ctx", "resolution_ref": null}',
+       '{"sources_used": 1, "spend_cents": null, "duration_ms": 1}'
+  from (select distinct from_status f from v106_moves) s
+  join ouroboros.investigation_kinds k on k.organization_id = 'org-v106' and k.slug = 'bug_root_cause';
+
+select pg_temp.must_hold(
+  (select count(*) = 23 from v106_moves),
+  'the state machine allows seven of the thirty moves between six statuses');
+
+select pg_temp.must_reject(
+  format($$update ouroboros.investigations set status = %L
+            where organization_id = 'org-v106' and question = %L$$,
+         m.to_status, 'Lifecycle from ' || m.from_status),
+  format('an investigation cannot go from %s to %s', m.from_status, m.to_status),
+  'investigations_status_transition')
+from v106_moves m;
+
+-- And the allowed ones go through.
+update ouroboros.investigations set status = 'cancelled'
+ where organization_id = 'org-v106' and question = 'Lifecycle from queued';
+update ouroboros.investigations set status = 'failed'
+ where organization_id = 'org-v106' and question = 'Lifecycle from running';
+
+-- --- indexes --------------------------------------------------------------------
+
+-- Analyzed first: without statistics the planner cannot tell (organization_id, status) from the
+-- unique (organization_id, seq) key, which also leads with the workspace. The rollback's repair
+-- at the end of this file re-measures the table. The quarter counted is one no fixture was
+-- created in, so the range is selective and the created_at index is the cheaper path.
+analyze ouroboros.investigations;
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select * from ouroboros.investigations where organization_id = 'org-v106' and status = 'running'$$,
+  'investigations_organization_status_idx');
+select pg_temp.must_use_index(
+  $$select count(*) from ouroboros.investigations
+     where organization_id = 'org-v106'
+       and created_at >= '2020-01-01' and created_at < '2020-04-01'$$,
+  'investigations_organization_created_at_idx');
+select pg_temp.must_use_index(
+  $$select * from ouroboros.investigations where kind_id = '00000000-0000-0000-0000-000000000000'$$,
+  'investigations_kind_idx');
+set local enable_seqscan = on;
+
+-- --- the application role ------------------------------------------------------
+--
+-- ouroboros_app creates and moves investigations but never touches the counter: the allocator
+-- is security definer, so a create through the application still gets its number.
+set local role ouroboros_app;
+
+select pg_temp.must_hold(
+  (select current_user = 'ouroboros_app'),
+  'the assertions below really are the application role''s');
+
+insert into ouroboros.investigations (id, organization_id, kind_id, question, depth, tools_enabled)
+select 'a1061000-0000-0000-0000-000000000200', 'org-v106', id, 'Created by the application', 'quick', '["web"]'
+  from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'bug_root_cause';
+
+select pg_temp.must_raise(
+  $$update ouroboros.investigation_seq_counters set last_seq = 1 where organization_id = 'org-v106'$$,
+  '42501', 'the application role cannot move the RS counter');
+
+select pg_temp.must_raise(
+  $$delete from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000200'$$,
+  '42501', 'the application role cannot delete an investigation');
+
+select pg_temp.must_raise(
+  $$select ouroboros.investigations_allocate_seq()$$,
+  '42501', 'the allocator is not callable outside its trigger');
+
+reset role;
+
+select pg_temp.must_hold(
+  (select i.seq = c.last_seq and i.seq > 128
+     from ouroboros.investigations i
+     join ouroboros.investigation_seq_counters c using (organization_id)
+    where i.id = 'a1061000-0000-0000-0000-000000000200'),
+  'an investigation created by the application role is numbered by the allocator');
+
+select pg_temp.must_hold(
+  (select prosecdef
+          and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+          and not has_function_privilege('public', oid, 'execute')
+     from pg_proc
+    where proname = 'investigations_allocate_seq' and pronamespace = 'ouroboros'::regnamespace)
+   and not has_table_privilege('ouroboros_app', 'ouroboros.investigation_seq_counters', 'select')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.investigation_seq_counters', 'update'),
+  'the RS allocator runs as its owner with its search_path pinned and execute revoked from public, and the counter has no grant to the application');
+
+-- --- the workspace takes everything with it -------------------------------------
+
+delete from ouroboros.organization where "id" in ('org-v106', 'org-v106b');
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.investigations where organization_id in ('org-v106', 'org-v106b'))
+   and (select count(*) = 0 from ouroboros.investigation_kinds where organization_id in ('org-v106', 'org-v106b'))
+   and (select count(*) = 0 from ouroboros.investigation_seq_counters where organization_id in ('org-v106', 'org-v106b')),
+  'deleting a workspace deletes its investigations, kinds and counter');
+delete from ouroboros."user" where "id" = 'a1060000-0000-0000-0000-00000000000a';
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --
@@ -34464,6 +34934,7 @@ analyze ouroboros.model_aliases;
 analyze ouroboros.provider_connections;
 analyze ouroboros.tickets;
 analyze ouroboros.ticket_sources;
+analyze ouroboros.investigations;
 
 \o
 \echo 'constraints.sql: all assertions passed'
