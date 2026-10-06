@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 /**
  * `app/get-started/get-started.css`'s agreements (#390; the detection card's `detect*` classes
  * since #391, the template tiles' `tile*` classes since #392, the first-issue card's `pick-*` and
- * `safety*` classes since #393): the sheet and the components name the same classes; every length
+ * `safety*` classes since #393, the right column's `defaults*`, `timeline*` and `reassure*`
+ * classes since #394): the sheet and the components name the same classes; every length
  * is a token, a rem, a `ch` or a hairline, so the 125 % font-scale step scales the frame; every
  * hue is a token, so both themes come from `app/tokens.css`; and only the step content scrolls.
  * jsdom applies no stylesheet, so these are asserted on the source.
@@ -21,14 +22,16 @@ const COMPONENTS = readdirSync(DIR)
 
 /** Every page class the sheet declares. */
 const DECLARED = new Set(
-  [...CODE.matchAll(/\.((?:wizard|offer-banner|detect|tiles?|pick-|safety)[a-z0-9_-]*)/g)].map((match) => match[1]!),
+  [...CODE.matchAll(/\.((?:wizard|offer-banner|detect|tiles?|pick-|safety|defaults|timeline|reassure)[a-z0-9_-]*)/g)].map(
+    (match) => match[1]!,
+  ),
 );
 
 /** Every page class a component renders — a quoted string of page classes. */
 const RENDERED = new Set(
-  [...COMPONENTS.matchAll(/"((?:(?:wizard|offer-banner|detect|tiles?|pick-|safety)[a-z0-9_-]*\s*)+)"/g)].flatMap((match) =>
-    match[1]!.trim().split(/\s+/),
-  ),
+  [
+    ...COMPONENTS.matchAll(/"((?:(?:wizard|offer-banner|detect|tiles?|pick-|safety|defaults|timeline|reassure)[a-z0-9_-]*\s*)+)"/g),
+  ].flatMap((match) => match[1]!.trim().split(/\s+/)),
 );
 
 /** One rule's declarations. */
@@ -63,6 +66,11 @@ describe("the get-started sheet", () => {
     expect(rule(".wizard__content")).toMatch(/min-height:\s*0/);
     for (const fixed of [".wizard__head", ".wizard-rail", ".wizard-bar"]) expect(rule(fixed)).toMatch(/flex:\s*none/);
     expect(CODE).not.toMatch(/position:\s*(fixed|sticky)/);
+  });
+
+  it("lays the right column beside the step cards inside the scrolling region, and drops it beneath them at the mockup's break (#394)", () => {
+    expect(rule(".wizard__columns")).toMatch(/grid-template-columns:\s*minmax\(0, 2fr\) minmax\(0, 1fr\)/);
+    expect(CODE).toMatch(/@media \(max-width: 68\.75rem\)\s*\{\s*\.wizard__columns\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/);
   });
 
   it("collapses the rail two by two at the mockup's break", () => {

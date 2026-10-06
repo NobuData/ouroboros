@@ -7429,6 +7429,42 @@ BB.3's tiles (#386), first painted with the page and then on its own I.8 poll
   digit or a percent sign, and the suite scans the module's own copy and the seeded fixture for a
   `%` — the mockup's *"92% of teams start here"* never renders.
 
-The remaining step cards (first issue, defaults) arrive with BC.4–BC.5 (#393–#394); steps 1–2's
-embedded flows, completion and the e2e leg (the select → Studio round trip among its assertions)
-with BC.6 (#395).
+### The defaults, timeline and reassure cards
+
+The wizard's right column ([#394](https://github.com/NobuData/ouroboros/issues/394), BC.5 —
+[`defaults-column.tsx`](app/get-started/defaults-column.tsx), rules in
+[`defaults-view.ts`](app/get-started/defaults-view.ts)) sits beside the step cards — the mockup's
+two columns, collapsing beneath them at its 1100px break — over BB.5's one read (#388), first
+painted with the page and then on its own I.8 poll (`GET /api/onboarding/defaults?repo=` —
+[`defaults-poll.ts`](app/get-started/defaults-poll.ts)). Three cards, each with a rule that keeps
+it from quietly lying:
+
+- **Smart Defaults draws the rows the service selected, and only those** (**O6**). A self-hosted
+  install reads *Models: bring your own keys → Providers* and *Build: enroll a runner → Build
+  Farm*, in the same reassuring register, and carries no trial-credit or hosted-runner copy at
+  all — asserted; a deployment that declares a pool gets the managed rows as sent (forward-compatible
+  with #397). The estimator row's affix is the **real** nightly job's last run and schedule — *last
+  run 10h ago ✓ · nightly at 02:00 UTC*, or *not run yet* — and the Slack row is dim, optional,
+  says *arrives with ChatOps* and links only what the service sends (nothing, until the ChatOps
+  surface exists, #541). The `zero config` tag's tooltip says why these rows.
+- **What Happens Next is a projection, labelled on every row** (**O7**): the mono timeline with
+  `0:00` and the picked issue's own `~4 min` — nothing else is timed — the *you review* row in the
+  warn treatment and the *merge* row in the end's, its words the service's, so under dry-run it
+  reads *only when you say so; dry-run never merges* rather than an inevitability. A line under
+  the rows says where the one number comes from. The card carries the **live-upgrade slot** for
+  BD.1 (#396): `TimelineCard`'s `live` rows print their measured time and drop the label.
+- **No average-time or percentage claim renders anywhere** (**O8**, a review gate): the mockup's
+  *"Average first-loop time across teams: 4m 10s"* has no counterpart, `FABRICATED_AGGREGATE` is
+  the shape of such a claim, and the suite scans the module's copy, the fixtures and the rendered
+  column for it.
+- **Each reassure claim links the surface that proves it** (**O9**): the strip renders the claims
+  the service found a mechanism for — draft-only ← the dry-run policy, pause/uninstall ← Settings →
+  Sources, the vault ← Providers — with the mechanism and its issue named for the tooltip and the
+  screen reader. A claim without a mechanism in this deployment is absent; an empty set draws no
+  strip.
+- **States** — skeletons while the first read is in flight, a failure stated once as an alert, and
+  the poll keeping the column true: a dry-run flip in Settings reaches the merge row and the
+  draft-only claim without a reload.
+
+Steps 1–2's embedded flows, completion and the e2e leg (the select → Studio round trip among its
+assertions) arrive with BC.6 (#395).

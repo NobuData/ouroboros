@@ -11,11 +11,12 @@ import {
   seededAlternatives,
   seededFirstIssue,
   seededTiles,
+  selfHostedDefaults,
   templateSelection,
   wizard,
 } from "../helpers/onboarding";
 
-/** The wizard's service calls (#385, #388) and the `/get-started` poll's hop (#390). */
+/** The wizard's service calls (#385, #388), the `/get-started` poll's hop (#390) and the cards' reads (#392–#394). */
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({
@@ -232,5 +233,17 @@ describe("the first-issue card's service calls (#393)", () => {
     }));
 
     await expect(readFirstIssueCard("nope", client)).rejects.toMatchObject({ status: 422 });
+  });
+});
+
+describe("the right column's service call (#394)", () => {
+  it("reads one repository's defaults, claims and projection, naming it in the query, with the poll's deadline", async () => {
+    const { client, requests } = answering(selfHostedDefaults());
+    const controller = new AbortController();
+
+    expect(await onboarding.defaults(REPO, client, controller.signal)).toEqual(selfHostedDefaults());
+    expect(await asked(requests)).toEqual([
+      { call: "GET /api/v1/onboarding/defaults?repo=acme-robotics%2Fhelios-firmware", body: null },
+    ]);
   });
 });

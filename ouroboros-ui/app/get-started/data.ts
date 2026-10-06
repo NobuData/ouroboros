@@ -5,7 +5,8 @@ import "server-only";
  * which repository the wizard is for, its rail as BB.2 (#385) derives it, its detection card as
  * BB.1 (#384) stored it (BC.2, #391), its template tiles as BB.3 (#386) evaluates them (BC.3,
  * #392), its first-issue card as BB.4 (#387) scores it with the dry-run policy (BA.3, #382) its
- * safety rows state (BC.4, #393), and what the person may do.
+ * safety rows state (BC.4, #393), its right column as BB.5 (#388) selects it for this deployment
+ * (BC.5, #394), and what the person may do.
  *
  * **Which repository.** The request names it (`?repo=owner/name`); otherwise the wizard opens on
  * the workspace's first mirrored repository — an enabled one first ({@link defaultRepo}). With
@@ -20,6 +21,7 @@ import { mayAdminister, mayContribute } from "@/app/api/membership";
 import {
   type FirstIssueCard,
   type Onboarding,
+  type OnboardingDefaults,
   type OnboardingTemplateTiles,
   onboarding,
   readFirstIssueCard,
@@ -40,6 +42,8 @@ export interface GetStartedReadings {
   readonly templates: Reading<OnboardingTemplateTiles> | null;
   /** Its first-issue card (BC.4, #393), or null when there is no repository. */
   readonly firstIssue: Reading<FirstIssueCard> | null;
+  /** Its right column — defaults, timeline, reassure (BC.5, #394) — or null when there is no repository. */
+  readonly defaults: Reading<OnboardingDefaults> | null;
   /** Why the repository list could not be read, when the request named none and it failed. */
   readonly reposFailure: string | null;
   /** What the person may do. */
@@ -89,25 +93,36 @@ export async function readGetStarted(access: Workspace, asked: string | string[]
       detection: null,
       templates: null,
       firstIssue: null,
+      defaults: null,
       reposFailure: chosen.reason,
       abilities,
     };
   }
 
   if (chosen.value === null) {
-    return { repo: null, wizard: null, detection: null, templates: null, firstIssue: null, reposFailure: null, abilities };
+    return {
+      repo: null,
+      wizard: null,
+      detection: null,
+      templates: null,
+      firstIssue: null,
+      defaults: null,
+      reposFailure: null,
+      abilities,
+    };
   }
 
   const repo = chosen.value;
 
-  const [wizard, card, templates, firstIssue] = await Promise.all([
+  const [wizard, card, templates, firstIssue, defaults] = await Promise.all([
     attempt(() => onboarding.read(repo)),
     attempt(() => detection.read(repo)),
     attempt(() => onboarding.templates(repo)),
     attempt(() => readFirstIssueCard(repo)),
+    attempt(() => onboarding.defaults(repo)),
   ]);
 
-  return { repo, wizard, detection: card, templates, firstIssue, reposFailure: null, abilities };
+  return { repo, wizard, detection: card, templates, firstIssue, defaults, reposFailure: null, abilities };
 }
 
 /**

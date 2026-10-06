@@ -20,6 +20,13 @@
  * *or pick your own*, and {@link readFirstIssueCard} is the card's one read — both, with the
  * dry-run policy its safety rows state.
  *
+ * The right column (BB.5, [#388](https://github.com/NobuData/ouroboros/issues/388)) rides here
+ * last, read by the Get Started defaults, timeline and reassure cards (BC.5,
+ * [#394](https://github.com/NobuData/ouroboros/issues/394)): `defaults` is the *Smart Defaults*
+ * rows selected by the deployment's declared capabilities (decision O6), the reassure claims
+ * limited to the mechanisms this workspace has (O9), and the *What Happens Next* projection,
+ * labelled as one on every row (O7) and carrying no aggregate statistic (O8).
+ *
  * Server-side only, by way of `app/api/server.ts`.
  */
 
@@ -82,6 +89,21 @@ export type OnboardingFirstIssueAlternatives = components["schemas"]["Onboarding
 
 /** The nightly estimator's schedule and latest run (AL.5, #281), as the picker passes it through. */
 export type PlanningReestimationStatus = components["schemas"]["PlanningReestimationStatus"];
+
+/** The wizard's right column: the defaults rows, the reassure claims and the projected timeline (#388). */
+export type OnboardingDefaults = components["schemas"]["OnboardingDefaults"];
+
+/** One row of the *Smart Defaults* card — selected for this deployment, never greyed out. */
+export type OnboardingDefaultRow = components["schemas"]["OnboardingDefaultRow"];
+
+/** One claim of the reassure strip, with the mechanism that makes it true. */
+export type OnboardingReassureClaim = components["schemas"]["OnboardingReassureClaim"];
+
+/** The *What Happens Next* projection — `kind: "projected"` on the card and on every row. */
+export type OnboardingTimeline = components["schemas"]["OnboardingTimeline"];
+
+/** One row of the projection. */
+export type OnboardingTimelineRow = components["schemas"]["OnboardingTimelineRow"];
 
 /**
  * The first-issue card's one read (BC.4, #393): the pick, the safety-ranked backlog behind
@@ -251,6 +273,20 @@ export const onboarding = {
         signal,
       }),
     );
+  },
+
+  /**
+   * The right column — the *Smart Defaults* rows this deployment can honour, the reassure claims
+   * this workspace has a mechanism for, and the projected *What Happens Next* timeline.
+   *
+   * @param repo The repository.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @param signal Aborts the read — the poll's deadline.
+   * @returns The rows in card order, the claims in strip order, and the projection.
+   * @throws {ApiError} `422 validation_failed` for a malformed repository.
+   */
+  async defaults(repo: string, client: ApiClient = api(), signal?: AbortSignal): Promise<OnboardingDefaults> {
+    return unwrap(await client.GET("/api/v1/onboarding/defaults", { params: { query: { repo } }, signal }));
   },
 };
 

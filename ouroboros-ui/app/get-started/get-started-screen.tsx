@@ -4,7 +4,12 @@ import { useRouter } from "next/navigation";
 import { Fragment, useId, useState } from "react";
 
 import type { RepoDetection } from "@/app/api/detection";
-import type { FirstIssueCard as FirstIssueCardRead, Onboarding, OnboardingTemplateTiles } from "@/app/api/onboarding";
+import type {
+  FirstIssueCard as FirstIssueCardRead,
+  Onboarding,
+  OnboardingDefaults,
+  OnboardingTemplateTiles,
+} from "@/app/api/onboarding";
 import type { Reading } from "@/app/api/reading";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
 import { SOURCES_PATH } from "@/app/paths";
@@ -12,6 +17,9 @@ import { Button, Eyebrow } from "@/app/ui";
 import { cx } from "@/app/ui/class-names";
 
 import { continueStep, enableRepository, launchFirstLoop, skipWizard } from "./actions";
+import { DefaultsColumn } from "./defaults-column";
+import type { DefaultsPollOptions } from "./defaults-poll";
+import { COLUMN_LABEL } from "./defaults-view";
 import { DetectionCard } from "./detection-card";
 import type { DetectionPollOptions } from "./detection-poll";
 import { FirstIssueCard } from "./first-issue-card";
@@ -62,6 +70,8 @@ export interface GetStartedScreenProps {
   readonly templates?: Reading<OnboardingTemplateTiles> | null;
   /** The first paint's read of its first-issue card (BC.4, #393), or null when there is no repository. */
   readonly firstIssue?: Reading<FirstIssueCardRead> | null;
+  /** The first paint's read of its right column (BC.5, #394), or null when there is no repository. */
+  readonly defaults?: Reading<OnboardingDefaults> | null;
   /** Why the repository list could not be read, when that is why there is no repository. */
   readonly reposFailure: string | null;
   /** What the person may do. */
@@ -74,7 +84,9 @@ export interface GetStartedScreenProps {
   readonly templatesPoll?: TemplatesPollOptions;
   /** Test seams for the first-issue card's poll. */
   readonly firstIssuePoll?: FirstIssuePollOptions;
-  /** The detection and first-issue cards' clock — a test seam. */
+  /** Test seams for the right column's poll. */
+  readonly defaultsPoll?: DefaultsPollOptions;
+  /** The detection, first-issue and defaults cards' clock — a test seam. */
   readonly now?: () => number;
 }
 
@@ -300,12 +312,14 @@ export function GetStartedScreen({
   detection = null,
   templates = null,
   firstIssue = null,
+  defaults = null,
   reposFailure,
   abilities,
   poll,
   detectionPoll,
   templatesPoll,
   firstIssuePoll,
+  defaultsPoll,
   now,
 }: GetStartedScreenProps) {
   const { snapshot, refresh } = useKeyedPoll(repo === null ? null : onboardingEndpoint(repo), (endpoint) =>
@@ -406,37 +420,41 @@ export function GetStartedScreen({
           </section>
         )}
         {repo !== null && (
-          <DetectionCard
-            abilities={abilities}
-            initial={detection}
-            now={now}
-            poll={detectionPoll}
-            repo={repo}
-            stepDone={wizard?.steps.find((one) => one.step === 2)?.status === "done"}
-          />
-        )}
-        {repo !== null && (
-          <TemplatesCard
-            abilities={abilities}
-            initial={templates}
-            onChanged={refresh}
-            poll={templatesPoll}
-            repo={repo}
-            stepStatus={wizard?.steps.find((one) => one.step === 3)?.status ?? null}
-          />
-        )}
-        {repo !== null && (
-          <FirstIssueCard
-            abilities={abilities}
-            initial={firstIssue}
-            now={now}
-            onChanged={refresh}
-            onSuggestion={setSuggested}
-            pickedTicket={wizard?.refs.pickedTicket ?? null}
-            poll={firstIssuePoll}
-            repo={repo}
-            stepStatus={wizard?.steps.find((one) => one.step === 4)?.status ?? null}
-          />
+          // The mockup's two columns: the step cards, and beside them the right column (BC.5, #394).
+          <div className="wizard__columns">
+            <div className="wizard__main">
+              <DetectionCard
+                abilities={abilities}
+                initial={detection}
+                now={now}
+                poll={detectionPoll}
+                repo={repo}
+                stepDone={wizard?.steps.find((one) => one.step === 2)?.status === "done"}
+              />
+              <TemplatesCard
+                abilities={abilities}
+                initial={templates}
+                onChanged={refresh}
+                poll={templatesPoll}
+                repo={repo}
+                stepStatus={wizard?.steps.find((one) => one.step === 3)?.status ?? null}
+              />
+              <FirstIssueCard
+                abilities={abilities}
+                initial={firstIssue}
+                now={now}
+                onChanged={refresh}
+                onSuggestion={setSuggested}
+                pickedTicket={wizard?.refs.pickedTicket ?? null}
+                poll={firstIssuePoll}
+                repo={repo}
+                stepStatus={wizard?.steps.find((one) => one.step === 4)?.status ?? null}
+              />
+            </div>
+            <aside aria-label={COLUMN_LABEL} className="wizard__aside">
+              <DefaultsColumn initial={defaults} now={now} poll={defaultsPoll} repo={repo} />
+            </aside>
+          </div>
         )}
       </main>
       <ActionBar
