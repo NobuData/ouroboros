@@ -3771,6 +3771,25 @@ export interface WorkflowsTable {
   template_slug: string | null;
   /** The template version copied at instantiation — the `3` of `quick-fixes@v3`. Null with `template_slug`. */
   template_version: number | null;
+  /**
+   * The N of the draft's `v{current_version or 0}.N` (V110,
+   * [#556](https://github.com/NobuData/ouroboros/issues/556)) — operation batches applied since
+   * the draft's base. Written only by `ouroboros.apply_draft_batch()`; back to 0 on publish.
+   */
+  draft_rev: ColumnType<number, never, never>;
+  /**
+   * Batches each actor applied to the current draft (V110) — the dry-run footer's
+   * `2 copilot edits applied` is `copilot`. Written only by `apply_draft_batch()`.
+   */
+  provenance_summary: ColumnType<DraftProvenanceSummary, never, never>;
+}
+
+/** `workflows.provenance_summary` — operation batches per actor on the current draft (V110, #556). */
+export interface DraftProvenanceSummary {
+  readonly canvas: number;
+  readonly code: number;
+  readonly copilot: number;
+  readonly suggestion: number;
 }
 
 /**
@@ -7460,6 +7479,8 @@ export const TABLE_COLUMNS = {
     "updated_at",
     "template_slug",
     "template_version",
+    "draft_rev",
+    "provenance_summary",
   ],
   workflow_versions: [
     "id",

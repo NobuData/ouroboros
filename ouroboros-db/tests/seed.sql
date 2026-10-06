@@ -7093,5 +7093,23 @@ select pg_temp.must_hold(
       and (role <> 'copilot' or tokens_in is null or tokens_out is null)),
   'no seeded copilot message carries a cost for an exchange nothing was metered for');
 
+-- ===========================================================================
+-- Every seeded draft agrees with its operation log (#556, CC.2)
+-- ===========================================================================
+--
+-- The consistency probe over the seeded database: any workflow whose draft carries an operation
+-- log must replay to it exactly. CC.4 (#558) seeds mockup 20's v0.3 draft and its batches; until
+-- then no seed applies an operation, so every workflow is at revision 0 with nothing counted.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.workflow_draft_replay_mismatches),
+  'every seeded draft with an operation log replays from its base to exactly the stored draft');
+
+select pg_temp.must_hold(
+  (select bool_and(w.draft_rev = 0
+                   and w.provenance_summary = '{"canvas": 0, "code": 0, "copilot": 0, "suggestion": 0}')
+     from ouroboros.workflows w)
+   and (select count(*) = 0 from ouroboros.draft_operations),
+  'no seed applies a draft operation yet — every workflow is at revision 0 with nothing counted');
+
 \o
 \echo 'seed.sql: all assertions passed'

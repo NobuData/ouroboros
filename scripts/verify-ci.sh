@@ -246,6 +246,11 @@ check_route ouroboros-rest/package.json 'db.yml rest.yml'
 # then holds a scripted build of the seeded docs-loop to the published schema.
 check_route schemas/workflow-dsl/v1.json 'db.yml engine.yml rest.yml ui.yml'
 
+# #556 (CC.2): the draft-operation schema and its fixtures are ci/db's parity check — every stored
+# operation is held to them — and reach engine and rest through their schemas/workflow-dsl/** filters.
+check_route schemas/workflow-dsl/operations-v1.json 'db.yml engine.yml rest.yml'
+check_route schemas/workflow-dsl/operations/fixtures/valid/add-stage.json 'db.yml engine.yml rest.yml'
+
 # #480 (BQ.1): the org-policy document's schema and fixtures are ci/db's alone until BQ.2 (#481)
 # gives ouroboros-rest a writer that validates against them.
 check_route schemas/org-policy/v1.json 'db.yml'

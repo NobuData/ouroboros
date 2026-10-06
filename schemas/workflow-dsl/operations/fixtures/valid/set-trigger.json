@@ -1,0 +1,4 @@
+{
+  "kind": "set_trigger",
+  "params": { "trigger": { "event": "ticket_queued", "conditions": { "labels": ["security"] } } }
+}

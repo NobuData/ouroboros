@@ -1,0 +1,12 @@
+{
+  "kind": "add_stage",
+  "params": {
+    "node": {
+      "id": "review",
+      "type": "llm",
+      "title": "Review",
+      "position": { "x": 0, "y": 0 },
+      "config": {}
+    }
+  }
+}

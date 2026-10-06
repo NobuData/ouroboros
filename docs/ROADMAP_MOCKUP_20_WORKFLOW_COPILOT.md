@@ -246,7 +246,7 @@ chips: **XS · S · M · L**.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CC.1 | #555 ✅ | 🟢 Done | ouroboros-db: [CC.1] Copilot sessions & messages | Typed conversation records: bubbles, chips, tool traces | mvp, copilot, db | N (after WF-P.1) | Y | M | ouroboros-db |
-| CC.2 | #556 | 🟡 Open | ouroboros-db: [CC.2] Draft-operation provenance | Applied ops per draft: actor, source, versions (`v0.3`) | mvp, copilot, db | N (after CC.1, WF-P.1) | Y | S | ouroboros-db |
+| CC.2 | #556 ✅ | 🟢 Done | ouroboros-db: [CC.2] Draft-operation provenance | Applied ops per draft: actor, source, versions (`v0.3`) | mvp, copilot, db | N (after CC.1, WF-P.1) | Y | S | ouroboros-db |
 | CC.3 | #557 | 🟡 Open | ouroboros-db: [CC.3] Dry-run records | Per-stage results, overlay diffs, costs, history — own domain (W4) | mvp, copilot, db | N (after CC.1) | Y | M | ouroboros-db |
 | CC.4 | #558 | 🟡 Open | ouroboros-db: [CC.4] Suggestions & seeds — mockup-20 parity | Rule/LLM suggestion rows; the full seeded exchange; ci probes | mvp, copilot, db, ci | N (after CC.2/CC.3, #24) | Y | M | ouroboros-db, .github |
 
@@ -293,7 +293,9 @@ erDiagram
 
 ### Issue CC.2 — ouroboros-db: [CC.2] Draft-operation provenance
 
-> **GitHub issue:** #556 · **Status:** 🟡 Open · **Parent epic:** #551
+> **GitHub issue:** #556 ✅ · **Status:** 🟢 Done · **Parent epic:** #551
+>
+> **Delivered (#556, `V110__draft_operations.sql` — no REST/UI behaviour change):** `draft_operations` records every typed operation on a workflow's shared draft — `add_stage{node}`, `set_stage{node}` (the roadmap's `set_stage_config` widened to the whole node), `remove_stage{id}`, `add_edge{edge}`, `remove_edge{from,to}`, `set_trigger{trigger}`, carrying DSL v1 objects — with `batch_id`/`seq`, the `draft_rev` the batch produced, the `base_version` it was applied over, `actor` (`canvas|code|copilot|suggestion`), `actor_user_id`, `session_id` (copilot/suggestion; set null when a session is swept) and `suggestion_id` (suggestion only; FK with CC.4), `applied_at`, and an index on `(workflow_id, draft_rev)`; append-only. **`set_guard` is deferred**: DSL v1 has no guard construct, so the mockup's `$5/run` spend guard cannot be stored in a validated shape — it joins the vocabulary with the DSL minor that adds guards. **WF-P.1 amendment:** `workflows.draft_rev` (the `v0.N`) and `workflows.provenance_summary` (batches per actor), both reset when `current_version` moves. The one writer is `apply_draft_batch(org, workflow, actor, user, session, suggestion, ops)` (security definer): it locks the workflow, applies the batch to the stored draft, records it and moves the counters atomically. `workflow_draft_node_provenance` gives each stage `copilot`/`suggestion` until a canvas or code operation touches it (`human`), or `published` when inherited. **Consistency probe:** `workflow_draft_replay()` replays the log over the draft's base (published version, or the empty document) and `workflow_draft_replay_mismatches` lists any draft that differs. **Parity probe:** `scripts/draft-ops-parity.mjs` holds every stored operation to `schemas/workflow-dsl/operations-v1.json` (which `$ref`s `v1.json`) in a new ci/db step; `tests/draft-ops-parity.test.sh` proves a DSL tightening turns recorded history red. The `v0.3 · 2 copilot edits` draft is proven in `constraints.sql`'s V110 section; mockup 20's seeded draft is CC.4's (#558).
 
 - **Problem Statement:** `draft v0.3 (2 copilot edits applied)` and the
   `added by copilot` pill need per-op provenance on the shared draft
@@ -914,7 +916,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    BF.5 (#414), BF.1 (#410), WF-P.1/P.2/P.3 (#132/#133/#134), R.2 (#144),
    R.3 (#145), S.1 (#147) + U/V (#165–#169), AH.1 (#249) / BI.2 (#433),
    INTAKE (#138), #41/#46/#16, BA-D.5 (unfiled).
-2. **Phase 1 — Domain:** CC.1 (#555) ✅ → { CC.2 (#556) ⊕ CC.3 (#557) } →
+2. **Phase 1 — Domain:** CC.1 (#555) ✅ → { CC.2 (#556) ✅ ⊕ CC.3 (#557) } →
    CC.4 (#558)
 3. **Phase 2 — Services:** { CD.1 (#559) ⊕ CD.2 (#560) ⊕ CD.3 (#561) } →
    CD.4 (#562) → CD.5 (#563) → CD.6 (#564)
