@@ -7274,6 +7274,7 @@ ouroboros-rest/
 │       │                   #   stats.*     — $/run avg, p50, the 30d spend card · #198
 │       │                   #   {matrix,persistence,isolation,honesty}.integration-spec · #199
 │       ├── research/       # POST /research/estimates — sources & cost, researcher pill · #622
+│       │   └── tools/      # ResearchToolAdapter SPI, registry, conformance kit, POST /internal/research/tools/:slug/:op · #614
 │       │                   #   estimate.calibration.ts — the versioned constants
 │       ├── providers/     # the ModelProviderAdapter SPI, registry, kit   · #216
 │       │                   #   adapters/anthropic.adapter.ts — the first real one · #217

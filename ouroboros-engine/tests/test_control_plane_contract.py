@@ -35,6 +35,7 @@ from ouroboros_engine.control_plane.contract import (
     PROVIDERS,
     PROXIED_PROVIDERS,
     RUN_CONTROL_ACK_PATH,
+    RESEARCH_TOOL_PATH,
     RUN_CONTROLS_FETCH_PATH,
     ControlAck,
     DeltaEvent,
@@ -87,7 +88,7 @@ def test_every_path_the_document_describes_is_one_this_package_mirrors() -> None
     controls = {RUN_CONTROLS_FETCH_PATH, RUN_CONTROL_ACK_PATH}
 
     assert set(_document()["paths"]) == (
-        set(INGEST_PATHS) | _openapi(controls) | {LEASE_PATH, INVOKE_PATH}
+        set(INGEST_PATHS) | _openapi(controls) | {LEASE_PATH, INVOKE_PATH, RESEARCH_TOOL_PATH}
     )
 
 
@@ -101,6 +102,11 @@ def _openapi(paths: set[str]) -> set[str]:
         The same paths with the document's ``camelCase`` parameter names.
     """
     return {path.replace("{control_id}", "{controlId}") for path in paths}
+
+
+def test_the_research_tool_path_is_the_one_the_control_plane_serves() -> None:
+    """CL.1 (#614): the one path the investigation loop reaches every research tool through."""
+    assert RESEARCH_TOOL_PATH in _document()["paths"]
 
 
 def test_the_control_queue_paths_are_the_ones_the_control_plane_serves() -> None:
