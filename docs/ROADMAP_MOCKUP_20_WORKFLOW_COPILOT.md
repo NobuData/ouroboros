@@ -248,7 +248,7 @@ chips: **XS · S · M · L**.
 | CC.1 | #555 ✅ | 🟢 Done | ouroboros-db: [CC.1] Copilot sessions & messages | Typed conversation records: bubbles, chips, tool traces | mvp, copilot, db | N (after WF-P.1) | Y | M | ouroboros-db |
 | CC.2 | #556 ✅ | 🟢 Done | ouroboros-db: [CC.2] Draft-operation provenance | Applied ops per draft: actor, source, versions (`v0.3`) | mvp, copilot, db | N (after CC.1, WF-P.1) | Y | S | ouroboros-db |
 | CC.3 | #557 ✅ | 🟢 Done | ouroboros-db: [CC.3] Dry-run records | Per-stage results, overlay diffs, costs, history — own domain (W4) | mvp, copilot, db | N (after CC.1) | Y | M | ouroboros-db |
-| CC.4 | #558 | 🟡 Open | ouroboros-db: [CC.4] Suggestions & seeds — mockup-20 parity | Rule/LLM suggestion rows; the full seeded exchange; ci probes | mvp, copilot, db, ci | N (after CC.2/CC.3, #24) | Y | M | ouroboros-db, .github |
+| CC.4 | #558 ✅ | 🟢 Done | ouroboros-db: [CC.4] Suggestions & seeds — mockup-20 parity | Rule/LLM suggestion rows; the full seeded exchange; ci probes | mvp, copilot, db, ci | N (after CC.2/CC.3, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue CC.1 — ouroboros-db: [CC.1] Copilot sessions & messages
 
@@ -360,7 +360,9 @@ dry_run{#489, sha: b7e…, 2m41s, $0.31, guards: clean}
 
 ### Issue CC.4 — ouroboros-db: [CC.4] Suggestions & seeds — mockup-20 parity
 
-> **GitHub issue:** #558 · **Status:** 🟡 Open · **Parent epic:** #551
+> **GitHub issue:** #558 ✅ · **Status:** 🟢 Done · **Parent epic:** #551
+>
+> **Delivered (#558, `V114__dry_run_suggestions.sql` + `R__dev_seed_workspace_copilot.sql` — no REST/UI change):** `dry_run_suggestions` — dry-run FK, `source` `rule|llm` with `rule_id`/`rule_version` for a rule, `title`, `body`, `evidence` (object), `proposed_ops` (1–50 V110 draft operations), `confidence` 0–100 that cannot be stored without a `{method, inputs}` `confidence_basis`, `status` `open → applied | ignored` (applied names a suggestion-actor `apply_draft_batch()` batch of it; settled once; never edited), `dry_run_suggestion_preview()`; `review_replay_pairs` (CF.5's data, seeded as history); `draft_operations.suggestion_id` gets its deferred FK. **Seeds:** `#489`'s canonical twin copied from the intake mirror (mockup 09 now 47 open / 40 sized); the `security-patch` workflow with the six-message session (chips answered, tool traces, one bounced-then-corrected edge, the `$5/run` guard as a *proposed* `set_guard`, per-reply costs); draft v0.3 from three batches (Ken's canvas draft + two copilot batches — only exploit-verify reads `added by copilot`), ten nodes / nine rows, W7's unresolved `skill:advisory-db` and `exploit-verify` task; the completed dry run (seven rows, `+41 −9` diff, 2m 41s, $0.31, guards clean); the 93% `deterministic-skip` suggestion (a `has-cve` decision node on the `cve` label — DSL v1 has no `issue.cve` predicate) and the 81% `replay-disagreement` suggestion whose basis equals the ten seeded replays (6 style). **ci/db:** `copilot-invariants.sql` (vocabularies, confidence basis, non-empty evidence, ops apply, replay basis real, refs resolve, W7 present) with `verify-copilot-invariants.sh` proving each red; the parity step validates every `proposed_ops` against the DSL and the seeded-definitions step the drafts they produce.
 
 - **Problem Statement:** Suggestion rows with rule/LLM provenance, and
   the full seeded page state over the shared universe.

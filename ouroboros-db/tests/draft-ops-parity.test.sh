@@ -167,7 +167,9 @@ printf '\nThe query and the step\n'
 
 check_exists "$QUERY" 'tests/lib/draft-operations.sql exists'
 check_contains "$QUERY" 'from ouroboros\.draft_operations' 'and reads the stored operations'
-check_contains "$QUERY" "'op', +o\\.op" 'and emits each op'
+check_contains "$QUERY" "'op', +e\\.op" 'and emits each op'
+check_contains "$QUERY" 'jsonb_array_elements\(s\.proposed_ops\)' \
+  'and each operation a dry-run suggestion proposes, so Apply is held to the DSL before it runs (#558)'
 check_absent "$QUERY" '^ *(insert|update|delete)' 'and writes nothing'
 check_contains "$WORKFLOW" 'tests/lib/draft-operations\.sql' 'ci/db runs the query against the seeded database'
 check_contains "$WORKFLOW" 'ouroboros-db/scripts/draft-ops-parity\.mjs' 'and pipes it into the verb'

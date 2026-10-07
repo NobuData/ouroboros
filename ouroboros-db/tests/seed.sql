@@ -2839,9 +2839,10 @@ select pg_temp.must_hold(
                   '7 stages · auto-merge',
                   '5 stages · needs review',
                   '4 stages · auto-merge',
-                  '5 stages · paused']
+                  '5 stages · paused',
+                  'not published']
      from rail),
-  'the rail reads what P.4 computes from these rows — the mockup''s four captions exactly, and 12 stages where the mockup wrote 6');
+  'the rail reads what P.4 computes from these rows — the mockup''s four captions exactly, 12 stages where the mockup wrote 6, and mockup 20''s unpublished security-patch draft (#558) last');
 
 -- The insights seed's (#436) nine graded loops merged inside the same thirty days, four of them on
 -- `standard-fix`, so the share is 26 of 62 — the same 42%.
@@ -3018,25 +3019,25 @@ select pg_temp.must_hold(
 -- ---------------------------------------------------------------------------
 -- Tracker Sync and Backlog Health — `42 open`, `38/42`, `4`, `6` on mockup 09; 46 and 39/46 since
 -- #460 filed the canonical twins of #465, #479, #486 and #490 (open; #486 sized) for the inbox's
--- ticket refs.
+-- ticket refs; 47 and 40/47 since #558 filed #489's (open, sized) for mockup 20's dry run.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
-  (select count(*) = 46
+  (select count(*) = 47
      from ouroboros.tickets t
      join ouroboros.ticket_sources src on src.id = t.source_id
      join ouroboros.organization org on org."id" = t.organization_id
     where org."slug" = 'acme-robotics'
       and src.kind = 'github'
       and t.state = 'open'),
-  'the GitHub source holds 46 open tickets — the sync row''s count and the health card''s tag');
+  'the GitHub source holds 47 open tickets — the sync row''s count and the health card''s tag');
 
 select pg_temp.must_hold(
-  (select count(*) filter (where t.sizing_status = 'sized') = 39 and count(*) = 46
+  (select count(*) filter (where t.sizing_status = 'sized') = 40 and count(*) = 47
      from ouroboros.tickets t
      join ouroboros.organization org on org."id" = t.organization_id
     where org."slug" = 'acme-robotics'
       and t.state = 'open'),
-  'Sized computes to 39 of 46 open tickets');
+  'Sized computes to 40 of 47 open tickets');
 
 -- Over the planning seed's own rows: `#482` (below) is a closed, sized ticket of the same
 -- workspace, so counting the whole workspace reads 49 of 53 and would say nothing about this
@@ -7086,7 +7087,7 @@ select pg_temp.must_hold(
 -- carries a fabricated cost."* V107's CHECKs refuse a cost on a user message or on an exchange
 -- with no token counts; this asks the same of every row a seed left, so a seed that bypassed the
 -- constraints — or a later one that copies a demo figure in — fails here by name. CC.4 (#558)
--- seeds mockup 20's exchange; until then the table is empty and the probe is vacuously green.
+-- seeds mockup 20's exchange, so the probe reads its three costed replies.
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.copilot_messages
     where cost_cents is not null
@@ -7098,8 +7099,8 @@ select pg_temp.must_hold(
 -- ===========================================================================
 --
 -- The consistency probe over the seeded database: any workflow whose draft carries an operation
--- log must replay to it exactly. CC.4 (#558) seeds mockup 20's v0.3 draft and its batches; until
--- then no seed applies an operation, so every workflow is at revision 0 with nothing counted.
+-- log must replay to it exactly. CC.4 (#558) seeds mockup 20's v0.3 draft and its batches, and
+-- it is the only seeded draft with a log.
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.workflow_draft_replay_mismatches),
   'every seeded draft with an operation log replays from its base to exactly the stored draft');
@@ -7107,9 +7108,98 @@ select pg_temp.must_hold(
 select pg_temp.must_hold(
   (select bool_and(w.draft_rev = 0
                    and w.provenance_summary = '{"canvas": 0, "code": 0, "copilot": 0, "suggestion": 0}')
-     from ouroboros.workflows w)
-   and (select count(*) = 0 from ouroboros.draft_operations),
-  'no seed applies a draft operation yet — every workflow is at revision 0 with nothing counted');
+     from ouroboros.workflows w
+    where w.slug <> 'security-patch' or w.organization_id <> (select "id" from ouroboros.organization where "slug" = 'acme-robotics'))
+   and (select w.draft_rev = 3
+               and w.provenance_summary = '{"canvas": 1, "code": 0, "copilot": 2, "suggestion": 0}'
+          from ouroboros.workflows w
+          join ouroboros.organization org on org."id" = w.organization_id and org."slug" = 'acme-robotics'
+         where w.slug = 'security-patch'),
+  'only mockup 20''s security-patch draft carries a log — v0.3, the author''s batch and two copilot batches (#558)');
+
+-- ===========================================================================
+-- R__dev_seed_workspace_copilot.sql — mockup 20 from the rows (#558, CC.4)
+-- ===========================================================================
+--
+-- The page renders from seeds alone: the conversation, the stage list, the dry-run card, the
+-- suggestions and the history line — each read back from what the rows hold, never a literal.
+
+-- The conversation: six messages, both chips answered, one bounced operation, every reply costed.
+select pg_temp.must_hold(
+  (select array_agg(m.role || ':' || left(m.body, 24) order by m.seq)
+          = array['user:Create a workflow for se', 'copilot:Drafted security-patch —',
+                  'user:label security. yes. als', 'copilot:Added a $5/run spend gua',
+                  'user:dry run #489', 'copilot:Dry run finished — 2m 41']
+          and (select array_agg(q ->> 'selected' order by o)
+                 from ouroboros.copilot_messages c,
+                      jsonb_array_elements(c.choices) with ordinality as x(q, o)
+                where c.session_id = s.id and c.seq = 2) = array['label:security', 'Yes']
+          and (select count(*) = 1 from ouroboros.copilot_messages c,
+                      jsonb_array_elements(c.tool_trace -> 'operations') op
+                where c.session_id = s.id and op ->> 'outcome' = 'bounced')
+          and bool_and(m.role = 'user' or m.cost_cents is not null)
+     from ouroboros.copilot_sessions s
+     join ouroboros.copilot_messages m on m.session_id = s.id
+     join ouroboros.workflows wf on wf.id = s.workflow_id and wf.slug = 'security-patch'
+     join ouroboros.organization org on org."id" = s.organization_id and org."slug" = 'acme-robotics'
+    group by s.id),
+  'the conversation reads as mockup 20 draws it — six messages, both chips answered, one bounced edge, every reply costed');
+
+-- The stage list: ten nodes, nine rows (review ×2), exploit-verify alone added by copilot, and the
+-- history line's v0.3 · 2 copilot edits.
+select pg_temp.must_hold(
+  (select count(*) = 10 and count(distinct n ->> 'title') = 9
+          and (select array_agg(p.node_id) from ouroboros.workflow_draft_node_provenance p
+                where p.workflow_id = wf.id and p.provenance = 'copilot') = array['exploit-verify']
+          and 'v' || coalesce(wf.current_version, 0) || '.' || wf.draft_rev = 'v0.3'
+          and (wf.provenance_summary ->> 'copilot')::int = 2
+     from ouroboros.workflows wf
+     join ouroboros.organization org on org."id" = wf.organization_id and org."slug" = 'acme-robotics'
+     join ouroboros.workflow_versions v on v.workflow_id = wf.id and v.version is null,
+          jsonb_array_elements(v.definition -> 'nodes') n
+    where wf.slug = 'security-patch'
+    group by wf.id, wf.current_version, wf.draft_rev, wf.provenance_summary),
+  'the draft is v0.3 (2 copilot edits applied): nine rows over ten stages, exploit-verify the copilot''s');
+
+-- The dry-run card: #489 from the shared universe, seven rows with their how labels, the diff,
+-- 2m 41s, $0.31, guards clean, and the history line's one dry run.
+select pg_temp.must_hold(
+  (select t.external_key = '#489' and t.title = mirror.title
+          and r.status = 'complete' and r.duration_ms = 161000 and r.cost_cents = 31 and r.guards_clean
+          and (select array_agg(st.display_name || ':' || st.verdict || ':'
+                                || coalesce(ouroboros.dry_run_stage_how_label(st.how, st.metrics), st.how) order by st.seq)
+                 from ouroboros.dry_run_stages st where st.dry_run_id = r.id)
+              = array['analyze:ok:llm', 'plan:ok:llm', 'implement:ok:simulated',
+                      'build:ok:replayed from history', 'exploit-verify:skipped:skipped',
+                      'review ×2:ok:llm', 'open PR:not_reached:deterministic']
+          and (select a.path_summary = '[{"path": "drivers/can/arbitration.c", "added": 41, "removed": 9}]'
+                 from ouroboros.dry_run_artifacts a where a.dry_run_id = r.id and a.kind = 'overlay_diff')
+          and (select count(*) = 1 from ouroboros.dry_runs h where h.workflow_id = r.workflow_id)
+     from ouroboros.dry_runs r
+     join ouroboros.tickets t on t.id = r.ticket_id
+     join ouroboros.github_issues mirror on mirror.organization_id = t.organization_id and mirror.number = 489
+                                        and mirror.title = t.title
+     join ouroboros.workflows wf on wf.id = r.workflow_id and wf.slug = 'security-patch'),
+  'the dry-run card reads #489''s run as mockup 20 draws it — rows, diff, 2m 41s, $0.31, guards clean, history: 1 dry run');
+
+-- The suggestions: 93% and 81%, both rules, both with a basis; the 81% basis equals the replays.
+select pg_temp.must_hold(
+  (select array_agg(s.rule_id || ':' || s.confidence order by s.confidence desc)
+          = array['deterministic-skip:93', 'replay-disagreement:81']
+          and bool_and(s.source = 'rule' and s.status = 'open'
+                       and ouroboros.dry_run_confidence_basis_valid(s.confidence_basis))
+     from ouroboros.dry_run_suggestions s
+     join ouroboros.dry_runs r on r.id = s.dry_run_id
+     join ouroboros.workflows wf on wf.id = r.workflow_id and wf.slug = 'security-patch')
+   and (select (s.confidence_basis #>> '{inputs,pairs}')::int = count(p.*)
+               and (s.confidence_basis #>> '{inputs,style_disagreements}')::int
+                   = count(p.*) filter (where p.disagreement_class = 'style')
+          from ouroboros.dry_run_suggestions s
+          join ouroboros.review_replay_pairs p
+            on p.replay_set = (s.confidence_basis #>> '{inputs,replay_set}')::uuid
+         where s.rule_id = 'replay-disagreement'
+         group by s.id, s.confidence_basis),
+  'both suggestions are rules with a confidence basis, and the 81% basis is the seeded replays — 6 of 10');
 
 -- ===========================================================================
 -- Dry runs stay out of the run plane, and say what they rest on (#557, CC.3)

@@ -47,6 +47,22 @@ select coalesce(
           join ouroboros.workflows wf on wf.id = v.workflow_id
           join ouroboros.organization org on org."id" = wf.organization_id
          where v.id::text like '5eed001c-%'
+        -- CC.4 (#558): mockup 20's copilot draft, and that draft with each suggestion's
+        -- proposed operations applied — what Apply would store must be a valid workflow too.
+        union all
+        select org."slug" || '/' || wf.slug, null, v.definition
+          from ouroboros.workflow_versions v
+          join ouroboros.workflows wf on wf.id = v.workflow_id
+          join ouroboros.organization org on org."id" = wf.organization_id
+         where wf.id::text like '5eed0089-%' and v.version is null
+        union all
+        select org."slug" || '/' || wf.slug || '+' || s.rule_id, null,
+               ouroboros.dry_run_suggestion_preview(s.id)
+          from ouroboros.dry_run_suggestions s
+          join ouroboros.dry_runs r on r.id = s.dry_run_id
+          join ouroboros.workflows wf on wf.id = r.workflow_id
+          join ouroboros.organization org on org."id" = wf.organization_id
+         where s.id::text like '5eed008c-%'
         union all
         select 'template/' || t.slug, t.version, t.definition
           from ouroboros.workflow_templates t
