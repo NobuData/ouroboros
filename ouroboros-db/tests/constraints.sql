@@ -38011,6 +38011,258 @@ select pg_temp.must_hold(
   'deleting a workspace deletes its roadmaps, their versions and suggestions');
 
 -- ===========================================================================
+-- V114 — dry-run suggestions with a basis, and the review replays behind them (#558, CC.4)
+-- ===========================================================================
+--
+-- A suggestion is a record: a rule (with its id and version) or the LLM, evidence, typed
+-- operations Apply executes, and a confidence never without its basis. It is written open and
+-- settled once — applied with the batch an Apply produced, or ignored — and nothing about it is
+-- edited. Its operations fold over the draft (`dry_run_suggestion_preview`); the review replays
+-- hold their agreement classes; draft_operations.suggestion_id is a foreign key now, cleared when
+-- a swept dry run takes its suggestion.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v114', 'Suggestion Works', 'suggestion-works-v114', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v114', 'Ken Suggests', 'ken@suggestion-works-v114.dev', true);
+
+insert into ouroboros.workflows (id, organization_id, slug, name) values
+  ('a1140000-0000-0000-0000-000000000001', 'org-v114', 'security-patch', 'Security patch');
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('a1140000-0000-0000-0000-00000000000a', 'org-v114', 'github', 'GitHub · suggestion works');
+
+insert into ouroboros.tickets (id, organization_id, source_id, external_id, external_key, external_url, title,
+                               state, source_created_at, source_updated_at) values
+  ('a1140000-0000-0000-0000-000000000489', 'org-v114', 'a1140000-0000-0000-0000-00000000000a', '489', '#489',
+   'https://github.com/suggestion-works-v114/helios-firmware/issues/489',
+   'CAN arbitration-lost storm under full telemetry load', 'open', now(), now());
+
+-- A draft for the suggestions to apply to: trigger → test → exploit-verify → review.
+select count(*) from ouroboros.apply_draft_batch('org-v114', 'a1140000-0000-0000-0000-000000000001',
+  'code', 'user-v114', null, null, '[
+    {"kind": "set_trigger", "params": {"trigger": {"event": "ticket_queued", "conditions": {"labels": ["security"]}}}},
+    {"kind": "add_stage", "params": {"node": {"id": "trigger", "type": "trigger", "title": "trigger", "position": {"x": 0, "y": 0}, "config": {}}}},
+    {"kind": "add_stage", "params": {"node": {"id": "test", "type": "infra", "title": "test", "position": {"x": 0, "y": 100}, "config": {}}}},
+    {"kind": "add_stage", "params": {"node": {"id": "exploit-verify", "type": "llm", "title": "exploit-verify", "position": {"x": 0, "y": 200},
+      "config": {"mode": "prompt", "prompt_template": "Re-run the PoC.", "routing": {"inherit_task": "exploit-verify"},
+                 "limits": {"max_retries": 0, "token_budget": 100000}, "permissions": {"push_fixup": false, "touch_ci": false}}}}},
+    {"kind": "add_stage", "params": {"node": {"id": "review", "type": "llm", "title": "review", "position": {"x": 0, "y": 300},
+      "config": {"mode": "prompt", "prompt_template": "Review.", "routing": {"inherit_task": "review"},
+                 "limits": {"max_retries": 0, "token_budget": 100000}, "permissions": {"push_fixup": false, "touch_ci": false}}}}},
+    {"kind": "add_edge", "params": {"edge": {"from": "trigger", "to": "test", "kind": "default"}}},
+    {"kind": "add_edge", "params": {"edge": {"from": "test", "to": "exploit-verify", "kind": "default"}}},
+    {"kind": "add_edge", "params": {"edge": {"from": "exploit-verify", "to": "review", "kind": "default"}}}
+  ]'::jsonb);
+
+insert into ouroboros.dry_runs (id, organization_id, workflow_id, draft_rev, ticket_id, pinned_sha, status,
+                                precheck_findings) values
+  ('a1140000-0000-0000-0000-000000000101', 'org-v114', 'a1140000-0000-0000-0000-000000000001', 1,
+   'a1140000-0000-0000-0000-000000000489', repeat('a', 40), 'running', '[]');
+
+-- pg_temp.v114_suggestion(source, rule, basis, ops, evidence) — one suggestion insert, as a
+-- statement, so each refusal below can vary one thing.
+create function pg_temp.v114_suggestion(source text, rule text, basis text, ops text,
+                                        evidence text default '''{"stage_key": "exploit-verify"}''')
+returns text language sql as $$
+  select format($f$insert into ouroboros.dry_run_suggestions
+                     (organization_id, dry_run_id, source, rule_id, rule_version, title, body,
+                      evidence, proposed_ops, confidence, confidence_basis)
+                   values ('org-v114', 'a1140000-0000-0000-0000-000000000101', '%s', %s, %s,
+                           'Make exploit-verify conditional', 'It had nothing to do.',
+                           %s, %s, 93, %s)$f$,
+                source, rule, case when rule = 'null' then 'null' else '1' end, evidence, ops, basis);
+$$;
+
+-- The pieces the refusals vary.
+create temp table v114 (name text primary key, value text) on commit drop;
+insert into v114 values
+  ('basis', $$'{"method": "rule_strength", "inputs": {"rule": "deterministic-skip", "base": 95}}'$$),
+  ('ops', $$'[{"kind": "remove_edge", "params": {"from": "exploit-verify", "to": "review"}},
+              {"kind": "add_edge", "params": {"edge": {"from": "test", "to": "review", "kind": "default"}}}]'$$);
+
+create function pg_temp.v114(p_name text) returns text language sql as $$
+  select value from pg_temp.v114 where name = p_name
+$$;
+
+-- --- shape --------------------------------------------------------------------------------
+
+select pg_temp.must_reject(
+  pg_temp.v114_suggestion('heuristic', 'null', pg_temp.v114('basis'), pg_temp.v114('ops')),
+  'a suggestion is a rule''s or the LLM''s', 'dry_run_suggestions_source');
+select pg_temp.must_reject(
+  pg_temp.v114_suggestion('rule', 'null', pg_temp.v114('basis'), pg_temp.v114('ops')),
+  'a rule suggestion names its rule and version', 'dry_run_suggestions_rule_named');
+select pg_temp.must_reject(
+  pg_temp.v114_suggestion('llm', '''deterministic-skip''', pg_temp.v114('basis'), pg_temp.v114('ops')),
+  'an LLM suggestion names no rule', 'dry_run_suggestions_rule_named');
+select pg_temp.must_reject(
+  pg_temp.v114_suggestion('rule', '''deterministic-skip''', $$'{"method": "rule_strength", "inputs": {}}'$$, pg_temp.v114('ops')),
+  'a confidence without the inputs that produced it is refused', 'dry_run_suggestions_confidence_basis');
+select pg_temp.must_reject(
+  pg_temp.v114_suggestion('rule', '''deterministic-skip''', $$'{"inputs": {"base": 95}}'$$, pg_temp.v114('ops')),
+  'and so is one that does not say how it was scored', 'dry_run_suggestions_confidence_basis');
+select pg_temp.must_reject(
+  pg_temp.v114_suggestion('rule', '''deterministic-skip''', pg_temp.v114('basis'), $$'[]'$$),
+  'a suggestion proposes at least one operation', 'dry_run_suggestions_proposed_ops_shape');
+select pg_temp.must_reject(
+  pg_temp.v114_suggestion('rule', '''deterministic-skip''', pg_temp.v114('basis'), $$'[{"kind": "add exploit-verify conditional"}]'$$),
+  'a proposed operation is a typed draft operation, not prose', 'dry_run_suggestions_proposed_ops_shape');
+select pg_temp.must_reject(
+  pg_temp.v114_suggestion('rule', '''deterministic-skip''', pg_temp.v114('basis'), pg_temp.v114('ops'), $$'["stage"]'$$),
+  'evidence is an object', 'dry_run_suggestions_evidence_shape');
+
+select pg_temp.must_hold(
+  ouroboros.dry_run_confidence_basis_valid('{"method": "replay_statistics", "inputs": {"pairs": 10, "style_disagreements": 6}}')
+  and not ouroboros.dry_run_confidence_basis_valid('{"method": " ", "inputs": {"pairs": 10}}')
+  and not ouroboros.dry_run_confidence_basis_valid(null),
+  'a basis names a method and its inputs');
+
+do $x$ begin execute pg_temp.v114_suggestion('rule', '''deterministic-skip''', pg_temp.v114('basis'), pg_temp.v114('ops')); end $x$;
+do $x$ begin execute pg_temp.v114_suggestion('llm', 'null', $$'{"method": "llm_self_report", "inputs": {"model": "claude-fable-5"}}'$$, pg_temp.v114('ops')); end $x$;
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_suggestions (organization_id, dry_run_id, source, rule_id, rule_version, title, body,
+                                               evidence, proposed_ops, confidence, confidence_basis, status, resolved_at)
+    select organization_id, dry_run_id, source, rule_id, rule_version, title, body, evidence, proposed_ops,
+           confidence, confidence_basis, 'ignored', now()
+      from ouroboros.dry_run_suggestions where source = 'rule' and dry_run_id = 'a1140000-0000-0000-0000-000000000101'$$,
+  'a suggestion is written open', 'dry_run_suggestions_transition');
+
+-- --- what Apply would store ------------------------------------------------------------------
+
+select pg_temp.must_hold(
+  (select ouroboros.dry_run_suggestion_preview(s.id) -> 'edges'
+          @> '[{"from": "test", "to": "review", "kind": "default"}]'::jsonb
+          and not (ouroboros.dry_run_suggestion_preview(s.id) -> 'edges'
+                   @> '[{"from": "exploit-verify", "to": "review"}]'::jsonb)
+     from ouroboros.dry_run_suggestions s where s.source = 'rule' and s.dry_run_id = 'a1140000-0000-0000-0000-000000000101'),
+  'the preview folds the proposed operations over the current draft');
+
+select pg_temp.must_raise(
+  $$select ouroboros.workflow_draft_apply_op(
+      ouroboros.dry_run_suggestion_preview(s.id),
+      '{"kind": "remove_edge", "params": {"from": "exploit-verify", "to": "review"}}')
+      from ouroboros.dry_run_suggestions s where s.source = 'rule' and s.dry_run_id = 'a1140000-0000-0000-0000-000000000101'$$,
+  '23514', 'an operation that no longer applies raises rather than previewing something else');
+
+-- --- settling ---------------------------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_run_suggestions set body = 'Rewritten.' where source = 'rule' and dry_run_id = 'a1140000-0000-0000-0000-000000000101'$$,
+  'a suggestion is a record — its text is never edited', 'dry_run_suggestions_transition');
+select pg_temp.must_reject(
+  $$update ouroboros.dry_run_suggestions set status = 'applied', applied_op_batch_id = gen_random_uuid(), resolved_at = now(),
+                                            resolved_by = 'user-v114'
+     where source = 'rule' and dry_run_id = 'a1140000-0000-0000-0000-000000000101'$$,
+  'Apply names a batch that is an Apply of this suggestion', 'dry_run_suggestions_transition');
+select pg_temp.must_reject(
+  $$update ouroboros.dry_run_suggestions set status = 'applied', resolved_at = now()
+     where source = 'rule' and dry_run_id = 'a1140000-0000-0000-0000-000000000101'$$,
+  'an applied suggestion records its batch', 'dry_run_suggestions_resolution_coherent');
+
+-- Apply: the batch through V110's writer, as the suggestion actor, then the resolution.
+create temp table v114_batch on commit drop as
+select b.batch_id, s.id as suggestion_id
+  from ouroboros.dry_run_suggestions s
+  cross join lateral ouroboros.apply_draft_batch('org-v114', 'a1140000-0000-0000-0000-000000000001',
+                                                 'suggestion', 'user-v114', null, s.id, s.proposed_ops) b
+ where s.source = 'rule' and s.dry_run_id = 'a1140000-0000-0000-0000-000000000101';
+
+update ouroboros.dry_run_suggestions s
+   set status = 'applied', applied_op_batch_id = b.batch_id, resolved_at = now(), resolved_by = 'user-v114'
+  from pg_temp.v114_batch b
+ where s.id = b.suggestion_id;
+
+select pg_temp.must_hold(
+  (select s.status = 'applied' and w.draft_rev = 2 and (w.provenance_summary ->> 'suggestion')::int = 1
+          and exists (select 1 from ouroboros.draft_operations o
+                       where o.batch_id = s.applied_op_batch_id and o.suggestion_id = s.id and o.actor = 'suggestion')
+     from ouroboros.dry_run_suggestions s
+     join ouroboros.workflows w on w.id = 'a1140000-0000-0000-0000-000000000001'
+    where s.source = 'rule' and s.dry_run_id = 'a1140000-0000-0000-0000-000000000101'),
+  'open → applied: Apply is a suggestion-actor batch through apply_draft_batch(), and the suggestion records it');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_run_suggestions set status = 'ignored', applied_op_batch_id = null
+     where source = 'rule' and dry_run_id = 'a1140000-0000-0000-0000-000000000101'$$,
+  'an applied suggestion stays applied', 'dry_run_suggestions_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_run_suggestions set status = 'ignored'
+     where source = 'llm' and dry_run_id = 'a1140000-0000-0000-0000-000000000101'$$,
+  'an ignored suggestion records when', 'dry_run_suggestions_resolution_coherent');
+update ouroboros.dry_run_suggestions set status = 'ignored', resolved_at = now(), resolved_by = 'user-v114'
+ where source = 'llm' and dry_run_id = 'a1140000-0000-0000-0000-000000000101';
+
+select pg_temp.must_hold(
+  (select array_agg(source || ':' || status order by source) = array['llm:ignored', 'rule:applied']
+     from ouroboros.dry_run_suggestions where dry_run_id = 'a1140000-0000-0000-0000-000000000101'),
+  'open → ignored, with when and by whom');
+
+-- --- review replays ---------------------------------------------------------------------------
+
+insert into ouroboros.review_replay_pairs (organization_id, workflow_id, replay_set, sample_ref, reviewer_stages,
+                                           agreed, disagreement_class, replayed_at) values
+  ('org-v114', 'a1140000-0000-0000-0000-000000000001', 'a1140000-0000-0000-0000-000000000201', '#541',
+   array['review-primary', 'review-second'], false, 'style', now()),
+  ('org-v114', 'a1140000-0000-0000-0000-000000000001', 'a1140000-0000-0000-0000-000000000201', '#542',
+   array['review-primary', 'review-second'], true, null, now());
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.review_replay_pairs (organization_id, workflow_id, replay_set, sample_ref, reviewer_stages, agreed, replayed_at)
+    values ('org-v114', 'a1140000-0000-0000-0000-000000000001', gen_random_uuid(), '#543',
+            array['review-primary', 'review-second'], false, now())$$,
+  'a disagreement says what it was about', 'review_replay_pairs_class_when_disagreed');
+select pg_temp.must_reject(
+  $$insert into ouroboros.review_replay_pairs (organization_id, workflow_id, replay_set, sample_ref, reviewer_stages, agreed,
+                                               disagreement_class, replayed_at)
+    values ('org-v114', 'a1140000-0000-0000-0000-000000000001', gen_random_uuid(), '#543',
+            array['review-primary', 'review-second'], false, 'tone', now())$$,
+  'a disagreement is on style or substance', 'review_replay_pairs_disagreement_class');
+select pg_temp.must_reject(
+  $$insert into ouroboros.review_replay_pairs (organization_id, workflow_id, replay_set, sample_ref, reviewer_stages, agreed, replayed_at)
+    values ('org-v114', 'a1140000-0000-0000-0000-000000000001', gen_random_uuid(), '#543',
+            array['review-primary', 'review-primary'], true, now())$$,
+  'a pair is two different reviewers', 'review_replay_pairs_reviewer_stages');
+select pg_temp.must_reject(
+  $$insert into ouroboros.review_replay_pairs (organization_id, workflow_id, replay_set, sample_ref, reviewer_stages, agreed, replayed_at)
+    values ('org-v114', 'a1140000-0000-0000-0000-000000000001', 'a1140000-0000-0000-0000-000000000201', '#541',
+            array['review-primary', 'review-second'], true, now())$$,
+  'a replay set samples a change once', 'review_replay_pairs_set_sample_key');
+
+-- --- the application role ---------------------------------------------------------------------
+set local role ouroboros_app;
+
+select pg_temp.must_raise(
+  $$delete from ouroboros.dry_run_suggestions$$,
+  '42501', 'the application role cannot delete a suggestion');
+select pg_temp.must_raise(
+  $$update ouroboros.review_replay_pairs set agreed = true$$,
+  '42501', 'the application role cannot rewrite a replay');
+
+reset role;
+
+-- --- a swept dry run clears the operation's suggestion reference --------------------------------
+
+delete from ouroboros.dry_runs where id = 'a1140000-0000-0000-0000-000000000101';
+set constraints ouroboros.draft_operations_suggestion_fk immediate;
+set constraints ouroboros.draft_operations_suggestion_fk deferred;
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.dry_run_suggestions
+    where dry_run_id = 'a1140000-0000-0000-0000-000000000101')
+   and (select bool_and(o.suggestion_id is null) and count(*) = 2
+          from ouroboros.draft_operations o
+         where o.workflow_id = 'a1140000-0000-0000-0000-000000000001' and o.actor = 'suggestion'),
+  'deleting a dry run takes its suggestions, and the Apply''s operations keep their history with the reference cleared');
+
+delete from ouroboros.organization where "id" = 'org-v114';
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.review_replay_pairs where organization_id = 'org-v114'),
+  'deleting a workspace deletes its review replays');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

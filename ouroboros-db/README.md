@@ -1568,6 +1568,33 @@
 > version the re-run produced and who applied it) or `open → dismissed` (who and when), terminal
 > and never edited; indexed by `(doc_id, status)`.
 >
+> `V114` ([#558](https://github.com/NobuData/ouroboros/issues/558), CC.4) makes a dry run's
+> improvement suggestions **records with a basis**. `dry_run_suggestions` holds one per suggestion:
+> `source` `rule|llm` (a rule names `rule_id` and `rule_version`), the rendered `title` and `body`,
+> the `evidence` the rule computed, the **`proposed_ops`** Apply executes — V110 draft operations,
+> computed when the suggestion is made so Apply never re-derives intent from prose — and a
+> `confidence` (0–100) that cannot be stored without its `confidence_basis` (`{method, inputs}`).
+> `status` `open → applied | ignored`, settled once; an applied suggestion names the
+> `applied_op_batch_id`, which must be a `suggestion`-actor batch of it through
+> `apply_draft_batch()`; the suggestion itself is never edited. `dry_run_suggestion_preview()` folds
+> its operations over the current draft — what Apply would store. `review_replay_pairs` are
+> reviewer-pair replays over historical changes (`agreed`, `disagreement_class` `style|substance`),
+> the basis the reviewer-disagreement suggestion's confidence is computed from — CF.5
+> ([#574](https://github.com/NobuData/ouroboros/issues/574)) produces them for real.
+> `draft_operations.suggestion_id` gains its foreign key (deferred, set null when a swept dry run
+> takes its suggestion, which V110's append-only trigger now allows). ci/db's parity step holds
+> every suggestion's `proposed_ops` to the DSL, and the seeded-definitions step the draft each one
+> produces.
+>
+> [#558](https://github.com/NobuData/ouroboros/issues/558) seeds mockup 20 from those rows:
+> [`R__dev_seed_workspace_copilot.sql`](migrations/R__dev_seed_workspace_copilot.sql) — see
+> [What the copilot drafted, and what its dry run said](#what-the-copilot-drafted-and-what-its-dry-run-said).
+> Its probes, [`tests/copilot-invariants.sql`](tests/copilot-invariants.sql), and
+> [`tests/verify-copilot-invariants.sh`](tests/verify-copilot-invariants.sh), which proves each goes
+> red, cover the suggestion vocabularies, every confidence with its basis, non-empty evidence,
+> operations that apply, the replay-backed 81% basis, references into the shared universe and W7's
+> unresolved references.
+>
 > [#484](https://github.com/NobuData/ouroboros/issues/484) (BQ.5) seeds mockup 17 from those rows:
 > [`R__dev_seed_workspace_settings.sql`](migrations/R__dev_seed_workspace_settings.sql) — see
 > [Who may do what, and where the record goes](#who-may-do-what-and-where-the-record-goes). Its
@@ -2387,6 +2414,27 @@ Cite numbers are dense by rule, so `[07]`…`[31]` exist only with the numbers a
 other **39 sources are placeholders that say so in their titles**, until
 [#613](https://github.com/NobuData/ouroboros/issues/613) (CK.6) seeds the full ledger. It sorts
 after the base seed, which is all it reads.
+
+#### What the copilot drafted, and what its dry run said
+
+[`R__dev_seed_workspace_copilot.sql`](migrations/R__dev_seed_workspace_copilot.sql)
+([#558](https://github.com/NobuData/ouroboros/issues/558)) is mockup 20 for `acme-robotics`: the
+security-patch conversation, its draft, the dry run on `#489` and the two suggestions.
+
+| The page | From the rows |
+|---|---|
+| The six-message conversation, `label:security ✓` and `Yes ✓` | `copilot_messages` 1–6 of the session; the second carries both chip questions answered, and tool traces record the applied operations, one bounced-then-corrected edge and the `$5/run` guard as a *proposed* `set_guard` (DSL v1 has no guard construct) |
+| The nine-row stage list, `added by copilot` on exploit-verify | the draft's ten DSL nodes (`review ×2` is `review-primary` · `coder-max` and `review-second` · `second-opinion`); `workflow_draft_node_provenance` gives `copilot` to exploit-verify alone |
+| W7's warnings on `skill:advisory-db` and `exploit-verify` | `analyze` loads skill `advisory-db`, which no skill names; `exploit-verify` routes by the task `exploit-verify`, which no task kind names |
+| `history: 1 dry run · draft v0.3 (2 copilot edits applied)` | three `apply_draft_batch()` batches — Ken's canvas draft, then two copilot batches — and one `dry_runs` row |
+| `DRY RUN — #489 …` · `2m 41s · $0.31`, seven rows, the diff | the dry run on `#489`'s canonical twin (copied from the intake mirror), seven `dry_run_stages` with their `how`, the `overlay_diff` (`drivers/can/arbitration.c +41 −9`), a clean guard audit |
+| The 93% and 81% callouts | two `dry_run_suggestions`, both `source: rule` with typed `proposed_ops`; the 81% basis is the ten seeded `review_replay_pairs` (6 style disagreements) |
+
+The conditional exploit-verify is a `has-cve` decision node on the `cve` label, routing around the
+stage: DSL v1 has no `issue.cve` predicate. `#489`'s twin moves mockup 09's GitHub counts to 47
+open, 40 sized — the same move [#460](https://github.com/NobuData/ouroboros/issues/460)'s twins
+made — and `security-patch` joins the studio rail as `not published`. It sorts after
+`dev_seed_intake`, `dev_seed_routing` and `dev_seed_workflows`, which it reads.
 
 ### The bundled price catalog
 
@@ -3353,6 +3401,7 @@ ouroboros-db/
 │   ├── V111__dry_run_records.sql     # dry_runs, dry_run_stages (verdict/how), dry_run_artifacts (bounded), W4 isolation probe, dry_runs_sweep() — #557
 │   ├── V112__capability_matrices_competitor_watches.sql # competitors, watches, snapshot chain + diffs, competitor_diff → snapshot, matrices/rows/cells (cited, complete), tracker sub-line view — #610
 │   ├── V113__roadmap_docs_suggestions.sql # roadmap_docs, immutable roadmap_doc_versions (structure, markdown projection, repo projection state machine), doc_suggestions (user|ai, applied@vN|dismissed) — #612
+│   ├── V114__dry_run_suggestions.sql  # dry_run_suggestions (rule|llm, evidence, proposed_ops, confidence + basis, open→applied|ignored), review_replay_pairs, draft_operations.suggestion_id FK — #558
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -3373,6 +3422,7 @@ ouroboros-db/
 │   ├── R__dev_seed_workspace_metrics.sql # mockup 15 — ninety days of metric_daily from components, nine graded merges, dev only — #436
 │   ├── R__dev_seed_workspace_metrics_analyzer.sql # mockup 18 — the corpus, two analysis runs, findings, suggestions, measurements, dev only — #509
 │   ├── R__dev_seed_workspace_settings.sql # mockup 17 — policy v1–v7, members, today's audit lines, retention, webhooks, routes, dev only — #484
+│   ├── R__dev_seed_workspace_copilot.sql # mockup 20 — the security-patch conversation, draft v0.3 with W7 warnings, the dry run on #489, two suggestions, dev only — #558
 │   ├── R__dev_seed_workspace_triage_inbox.sql # mockup 16 — three open cards, the week's eleven answers, PR #504, dev only — #460 (sorts last)
 │   └── R__model_price_catalog.sql    # the bundled price snapshot, every environment — #580 (generated)
 └── tests/
@@ -3385,6 +3435,7 @@ ouroboros-db/
     │   ├── analyzer-invariants.sql   # the Build Analyzer invariants mockup 18 trusts, named — #509
     │   ├── settings-invariants.sql   # the Settings invariants mockup 17 trusts, named — #484
     │   ├── inbox-invariants.sql      # the Needs-You inbox invariants mockup 16 trusts, named — #460
+    │   ├── copilot-invariants.sql    # the copilot seed's invariants mockup 20 trusts, named — #558
     │   ├── analyzer-corpus.sql       # the seeded corpus as the engine's Corpus JSON — #509
     │   ├── rediscover.py             # runs the change-point analyzer over it and compares — #509
     │   ├── dependency-cycles.sql     # the recursive-CTE walk that finds a stored cycle — #276
@@ -3418,6 +3469,9 @@ ouroboros-db/
     ├── inbox-invariants.test.sh      # the inbox verifier's usage, and that its pieces agree — #460
     ├── inbox-invariants.sql          # the Needs-You inbox invariants against the seeded rows — #460
     ├── verify-inbox-invariants.sh    # that they go red when a rule is broken, naming it — #460
+    ├── copilot-invariants.test.sh    # the copilot verifier's usage, and that its pieces agree — #558
+    ├── copilot-invariants.sql        # the copilot invariants against the seeded rows — #558
+    ├── verify-copilot-invariants.sh  # that they go red when a rule is broken, naming it — #558
     ├── verify-analysis-run-guard.sh  # one running analysis per repo, under a two-session race — #506
     ├── verify-investigation-seq.sh   # gapless RS-### numbers under concurrent creates — #608
     ├── verify-copilot-sessions.sh    # one active copilot session per draft, ordered appends — #555
@@ -3608,6 +3662,8 @@ outside this module alters it.
 | `roadmap_docs` | `V113` | A roadmap document ([#612](https://github.com/NobuData/ouroboros/issues/612), CK.5, decision **V8**) — `investigation_id`, `title`, `current_version` | investigation of the same workspace, nullable and set null when deleted, one doc per investigation; `current_version` follows each new version (deferred FK to it); cascades with the workspace; `ouroboros_app` may select, insert and update |
 | `roadmap_doc_versions` | `V113` | A roadmap version ([#612](https://github.com/NobuData/ouroboros/issues/612), CK.5) — `version`, `structure`, `markdown`, `generated_by`, `repo_projection` | dense from 1 (`roadmap_doc_versions_version_next`); `structure` shape-checked, item draft/ticket refs of the doc's workspace with `ticket_key` the ticket's own (`roadmap_doc_versions_refs_valid`); immutable but for `repo_projection` (`roadmap_doc_versions_no_update`), whose state moves only along `roadmap_doc_versions_projection_transition`; `ouroboros_app` may select, insert and update `repo_projection` only |
 | `doc_suggestions` | `V113` | A suggested change ([#612](https://github.com/NobuData/ouroboros/issues/612), CK.5) — `author_kind`, `author_user_id`/`author_agent`, `text`, `hint`, `status`, `applied_version`/`applied_at`/`applied_by`, `dismissed_at`/`dismissed_by` | `author_kind` `user\|ai` with the matching author; `status` `open → applied \| dismissed`, written open, terminal, recorded with actor and time, the applied version written after the suggestion; never edited (a person's deletion may clear an actor); `(doc_id, status)` index; `ouroboros_app` may select, insert and update |
+| `dry_run_suggestions` | `V114` | A dry run's suggestion ([#558](https://github.com/NobuData/ouroboros/issues/558), CC.4, decision **W5**) — `source`, `rule_id`/`rule_version`, `title`, `body`, `evidence`, `proposed_ops`, `confidence`, `confidence_basis`, `status`, `applied_op_batch_id`, `resolved_by`/`resolved_at` | `source` `rule\|llm` (a rule names itself, an LLM suggestion names none); `proposed_ops` 1–50 V110 operations; `confidence` 0–100 with a `{method, inputs}` basis; `status` `open → applied \| ignored`, written open, settled once, the applied batch a suggestion-actor Apply of it; never edited; cascades with the dry run; `ouroboros_app` may select, insert and update |
+| `review_replay_pairs` | `V114` | A reviewer-pair replay over a historical change ([#558](https://github.com/NobuData/ouroboros/issues/558), CC.4; CF.5 #574) — `replay_set`, `sample_ref`, `reviewer_stages`, `agreed`, `disagreement_class`, `replayed_at` | two different reviewer stages; `disagreement_class` `style\|substance` exactly when they disagreed; one sample per replay set; cascades with the workflow; `ouroboros_app` may select and insert |
 
 Two **functions**, both `V012`'s and both documented in
 [The bundled price catalog](#the-bundled-price-catalog).

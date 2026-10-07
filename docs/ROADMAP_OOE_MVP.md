@@ -1727,7 +1727,7 @@ the blockquote above that records what it did and what it did differently.
 | 404 | **CK.3** | ✅ [#610](https://github.com/NobuData/ouroboros/issues/610) | Capability matrices & competitor watch schema | ouroboros-db | M | CK.2 |
 | 405 | **CK.5** | ✅ [#612](https://github.com/NobuData/ouroboros/issues/612) | Roadmap docs & suggested changes | ouroboros-db | M | AK.1, CK.1 |
 | 406 | **CL.1** | ✅ [#614](https://github.com/NobuData/ouroboros/issues/614) | ResearchToolAdapter SPI & conformance kit | ouroboros-rest | L | CK.2 |
-| 407 | **CC.4** | [#558](https://github.com/NobuData/ouroboros/issues/558) | Suggestions & seeds — mockup-20 parity | ouroboros-db, .github | M | 3.6, CC.2, CC.3 |
+| 407 | **CC.4** | ✅ [#558](https://github.com/NobuData/ouroboros/issues/558) | Suggestions & seeds — mockup-20 parity | ouroboros-db, .github | M | 3.6, CC.2, CC.3 |
 | 408 | **CD.1** | [#559](https://github.com/NobuData/ouroboros/issues/559) | Copilot conversation service | ouroboros-engine, ouroboros-rest | L | P.2, CC.2 |
 | 409 | **CK.4** | [#611](https://github.com/NobuData/ouroboros/issues/611) | Regression baselines & watch items | ouroboros-db | M | AS.1, CK.1 |
 | 410 | **CK.6** | [#613](https://github.com/NobuData/ouroboros/issues/613) | Research dev seeds — mockup-22 parity + probes | ouroboros-db, .github | M | 3.6, CK.2, CK.5 |
