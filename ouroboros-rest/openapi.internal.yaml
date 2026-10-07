@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.40.7"
+  version: "0.40.8"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -210,6 +210,18 @@ tags:
 
       Apply fetched controls in the order given, which is oldest first. Poll at the executor's
       own safe points: a fetch that finds nothing is cheap.
+
+  - name: research
+    description: |-
+      **The research tool surface — CL.1
+      ([#614](https://github.com/NobuData/ouroboros/issues/614)), decisions **V2** and **V3**.**
+
+      The investigation loop (#620) reaches every research tool — web search, the competitor
+      tracker, code mining, the issue index, telemetry, documents — through one operation here,
+      so adapters and their credentials stay in the control plane. **Citations are the return
+      type**: every operation answers its payload *and* the source records it read, already
+      archived in the investigation's citation ledger with their cite numbers. An answer with a
+      payload and no sources is refused as a contract violation, never passed on.
 
 paths:
   /internal/credentials/lease:
@@ -1249,6 +1261,205 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "500":
+          description: "`internal_error` — the service itself failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /internal/research/tools/{slug}/{op}:
+    post:
+      tags: [research]
+      summary: Run one research tool operation and archive its sources
+      description: |-
+        Run `search`, `fetch` or `query` on one tool for one investigation. The workspace — and
+        so the tool's settings and credential — is **resolved from the investigation**, never
+        named by the caller; neither ever appears in an answer.
+
+        The checks, in this order:
+
+        1. **`404 investigation_not_found`** — no such investigation.
+        2. **`409 investigation_not_running`** — only a running investigation calls tools.
+        3. **`403 research_tool_not_enabled`** — the investigation did not enable this tool.
+        4. **`501 research_tool_not_registered`** — this build has no adapter for the slug.
+        5. **`422 research_tool_operation_unsupported`** — the tool does not declare the
+           operation, or the `input` is not what it takes (`details.reason`).
+        6. **`409 research_budget_exhausted`** — `budget.operations` is 0, or `budget.tokens` is 0.
+        7. **`409 research_tool_not_configured`** — the workspace has not configured a tool
+           whose settings are required.
+
+        Then the operation runs. **`502 research_tool_failed`** carries the classified failure
+        (`details.errorClass`: `auth`, `network`, `robots_denied`, `rate_limited`, `upstream`,
+        `unsupported`), its designed `surfaceState`, whether a retry can help and how long the
+        upstream asked to wait. **`502 research_tool_contract_violation`** means the tool
+        answered outside the citation contract — a payload with no sources, a source the ledger
+        would refuse, more tokens than `budget.tokens` allowed, or an unclassified exception —
+        and nothing was archived.
+
+        **Budgets are the caller's.** Send what the investigation has left; the adapter is
+        handed the remaining tokens as its ceiling, and the answer says what is left after this
+        call. A `null` `payload` with no sources is the empty answer — a search that found
+        nothing.
+
+        `200` rather than `201`: the ledger rows are the investigation's, not a resource at a URL.
+      operationId: runResearchToolOperation
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: "A `research_tools` slug — `web`, `competitor`, `code`, `tickets`, `telemetry`, `docs`."
+          schema:
+            type: string
+        - name: op
+          in: path
+          required: true
+          description: The operation.
+          schema:
+            type: string
+            enum: [search, fetch, query]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToolInvocationRequest"
+            example:
+              investigation: 5eed0084-0000-4000-8000-000000000127
+              input:
+                query: skylink gust-adaptive final approach
+                limit: 10
+              budget:
+                operations: 40
+                tokens: 200000
+      responses:
+        "200":
+          description: The payload, the archived sources with their cite numbers, and the budget left.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToolInvocation"
+              example:
+                tool: competitor
+                operation: search
+                investigation: RS-127
+                payload:
+                  hits:
+                    - title: Skylink firmware 6.2 release notes
+                      locator: https://skylink.example.com/releases/6.2
+                sources:
+                  - id: 5eed0085-0000-4000-8000-000000000012
+                    citeNo: 12
+                    deduplicated: false
+                    kind: web
+                    title: Skylink firmware 6.2 release notes — "gust-adaptive final approach"
+                    locator: https://skylink.example.com/releases/6.2
+                    retrievedAt: "2026-10-04T10:00:00.000Z"
+                    contentHash: sha256:9f2c4a0e7d1b3c5a8e6f0d2b4c6a8e0f1d3b5c7a9e1f3d5b7c9a1e3f5d7b9c1a
+                    excerpt: "Gust-adaptive final approach: wind feedforward is applied over the last 2 m of descent."
+                    meta:
+                      query: skylink gust-adaptive final approach
+                usage:
+                  operations: 1
+                  tokens: 0
+                budget:
+                  operations: 39
+                  tokens: 200000
+        "401":
+          description: "`unauthenticated` — no `X-Ouro-Internal-Key`, or a value matching neither principal."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`research_tool_not_enabled` — the investigation did not enable this tool."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: research_tool_not_enabled
+                message: This investigation did not enable that research tool.
+                details:
+                  tool: docs
+                  investigation: RS-127
+                  enabled: [web, competitor, code, tickets, telemetry]
+        "404":
+          description: "`investigation_not_found` — no such investigation."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: investigation_not_found
+                message: This workspace has no such investigation.
+                details:
+                  investigationId: 5eed0084-0000-4000-8000-000000000999
+        "409":
+          description: |-
+            `investigation_not_running`, `research_budget_exhausted` (no operations or tokens
+            left), or `research_tool_not_configured` (the workspace has not configured the tool).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: research_budget_exhausted
+                message: The investigation's research budget is spent.
+                details:
+                  investigation: RS-127
+                  operations: 0
+                  tokens: 51200
+        "422":
+          description: |-
+            `research_tool_operation_unsupported` — the tool does not declare the operation, or
+            the input is not one it takes (`details.reason`) — or `validation_failed` for a body
+            that is not `{investigation, input, budget}`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: research_tool_operation_unsupported
+                message: That research tool does not support this operation with this input.
+                details:
+                  tool: web
+                  operation: search
+                  supported: [search, fetch]
+                  reason: "search takes {query, limit?}; unexpected: q"
+        "501":
+          description: "`research_tool_not_registered` — this build has no adapter for the slug."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: research_tool_not_registered
+                message: This build has no adapter for that research tool.
+                details:
+                  tool: docs
+                  registered: []
+        "502":
+          description: |-
+            `research_tool_failed` — the tool failed, classified (`details.errorClass`,
+            `details.surfaceState`, `details.retryable`, `details.retryAfterSeconds`) — or
+            `research_tool_contract_violation` — it answered outside the citation contract
+            (`details.violations`). Nothing is archived either way.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: research_tool_failed
+                message: The research tool failed.
+                details:
+                  tool: web
+                  operation: fetch
+                  errorClass: robots_denied
+                  surfaceState: skipped_source
+                  retryable: false
+                  retryAfterSeconds: null
+                  detail: robots.txt disallows /releases
         "500":
           description: "`internal_error` — the service itself failed."
           content:
@@ -2551,3 +2762,113 @@ components:
         retryStage:
           type: boolean
           description: A correction round (#332). Always false for the other kinds.
+
+    ToolInvocationRequest:
+      type: object
+      title: ToolInvocationRequest
+      description: One research tool operation, for one investigation.
+      additionalProperties: false
+      required: [investigation, input, budget]
+      properties:
+        investigation:
+          type: string
+          format: uuid
+          description: "`investigations.id`. The workspace is resolved from it."
+        input:
+          type: object
+          description: "`{query, limit?}` for search (limit 1–50, default 10), `{locator}` for fetch, the tool's structured query for query."
+          additionalProperties: true
+        budget:
+          $ref: "#/components/schemas/ToolBudget"
+
+    ToolBudget:
+      type: object
+      title: ToolBudget
+      description: What the investigation has left, as the loop counts it.
+      additionalProperties: false
+      required: [operations]
+      properties:
+        operations:
+          type: integer
+          minimum: 0
+        tokens:
+          type: [integer, "null"]
+          minimum: 0
+          description: Tokens left; null or absent when the investigation sets no token budget.
+
+    ToolSource:
+      type: object
+      title: ToolSource
+      description: One source an operation read, archived in the citation ledger (V108).
+      additionalProperties: false
+      required: [id, citeNo, deduplicated, kind, title, locator, retrievedAt, contentHash, excerpt, meta]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "`source_records.id`."
+        citeNo:
+          type: integer
+          minimum: 1
+          description: The `[07]` — dense and stable per investigation.
+        deduplicated:
+          type: boolean
+          description: The ledger already had this locator read to this content hash.
+        kind:
+          type: string
+          enum: [web, competitor_diff, code, ticket, telemetry, doc]
+        title:
+          type: string
+        locator:
+          type: string
+          description: An http(s) URL, or an internal `issue-index://`, `git://` or `telemetry://` URI.
+        retrievedAt:
+          type: string
+          format: date-time
+        contentHash:
+          type: string
+          pattern: "^sha256:[0-9a-f]{64}$"
+        excerpt:
+          type: string
+        meta:
+          type: object
+          additionalProperties: true
+        snapshotId:
+          type: string
+          format: uuid
+          description: The competitor snapshot a `competitor_diff` source cites (V112).
+
+    ToolInvocation:
+      type: object
+      title: ToolInvocation
+      description: What one operation answered.
+      additionalProperties: false
+      required: [tool, operation, investigation, payload, sources, usage, budget]
+      properties:
+        tool:
+          type: string
+        operation:
+          type: string
+          enum: [search, fetch, query]
+        investigation:
+          type: string
+          description: The investigation's display id — `RS-127`.
+        payload:
+          description: The operation's answer; null for an empty answer, which has no sources.
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ToolSource"
+        usage:
+          type: object
+          additionalProperties: false
+          required: [operations, tokens]
+          properties:
+            operations:
+              type: integer
+              const: 1
+            tokens:
+              type: integer
+              minimum: 0
+        budget:
+          $ref: "#/components/schemas/ToolBudget"

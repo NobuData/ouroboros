@@ -62,6 +62,11 @@ RUN_CONTROLS_FETCH_PATH = "/internal/runs/{id}/controls/fetch"
 #: run and ``{control_id}`` the control, as the fetch handed it over.
 RUN_CONTROL_ACK_PATH = "/internal/runs/{id}/controls/{control_id}/ack"
 
+#: ``POST`` — run one research tool operation for an investigation and archive its sources
+#: (CL.1, `#614 <https://github.com/NobuData/ouroboros/issues/614>`_). ``{slug}`` is the tool and
+#: ``{op}`` one of ``search``, ``fetch``, ``query``. The investigation loop (#620) calls it.
+RESEARCH_TOOL_PATH = "/internal/research/tools/{slug}/{op}"
+
 #: The four controls a person can send a run, and what an executor must do with each:
 #:
 #: ``pause``

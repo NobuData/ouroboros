@@ -5928,6 +5928,41 @@ export interface InvestigationsTable {
   updated_at: Stamped;
 }
 
+/** A ledger row's kind (V108's `source_records_kind` CHECK). */
+export type SourceRecordKindColumn =
+  "web" | "competitor_diff" | "code" | "ticket" | "telemetry" | "doc";
+
+/**
+ * `ouroboros.source_records` — the citation ledger (V108,
+ * [#609](https://github.com/NobuData/ouroboros/issues/609); V112's `snapshot_id`,
+ * [#610](https://github.com/NobuData/ouroboros/issues/610)). Written by CL.1's internal tool
+ * surface ([#614](https://github.com/NobuData/ouroboros/issues/614)) as each operation's sources
+ * arrive. Never updated: every column but the insert is `never` on update.
+ */
+export interface SourceRecordsTable {
+  id: ColumnType<string, string | undefined, never>;
+  investigation_id: ColumnType<string, string, never>;
+  /** The `research_tools` slug of the adapter that produced it. */
+  tool_slug: ColumnType<string, string, never>;
+  kind: ColumnType<SourceRecordKindColumn, SourceRecordKindColumn, never>;
+  title: ColumnType<string, string, never>;
+  /** A URL or internal URI, validated per kind by `source_locator_valid()`. */
+  locator: ColumnType<string, string, never>;
+  retrieved_at: ColumnType<Date, Date | string, never>;
+  /** `sha256:<hex>` of everything that was read. */
+  content_hash: ColumnType<string, string, never>;
+  excerpt: ColumnType<string, string, never>;
+  /** Written as JSON text. */
+  meta: ColumnType<Record<string, unknown>, string | undefined, never>;
+  /** The `[07]` — allocated by `source_records_allocate_cite_no()` when omitted. */
+  cite_no: ColumnType<number, number | undefined, never>;
+  /** A symbolic alias — `[git]`. */
+  cite_key: ColumnType<string | null, string | null | undefined, never>;
+  /** The competitor snapshot a `competitor_diff` source cites (V112). */
+  snapshot_id: ColumnType<string | null, string | null | undefined, never>;
+  created_at: Stamped;
+}
+
 /**
  * `ouroboros.investigation_estimate_outcomes` — estimate vs actuals, one row per investigation
  * (V109, [#622](https://github.com/NobuData/ouroboros/issues/622)). Written only by
@@ -6897,6 +6932,7 @@ export interface Database {
   investigation_kinds: InvestigationKindsTable;
   investigations: InvestigationsTable;
   investigation_estimate_outcomes: InvestigationEstimateOutcomesTable;
+  source_records: SourceRecordsTable;
   metric_definitions: MetricDefinitionsTable;
   metric_daily: MetricDailyTable;
   metric_rollup_state: MetricRollupStateTable;
@@ -8124,6 +8160,22 @@ export const TABLE_COLUMNS = {
     "sources_within_estimate",
     "cost_within_estimate",
     "recorded_at",
+  ],
+  source_records: [
+    "id",
+    "investigation_id",
+    "tool_slug",
+    "kind",
+    "title",
+    "locator",
+    "retrieved_at",
+    "content_hash",
+    "excerpt",
+    "meta",
+    "cite_no",
+    "cite_key",
+    "snapshot_id",
+    "created_at",
   ],
   metric_definitions: [
     "metric_id",

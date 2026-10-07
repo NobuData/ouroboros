@@ -547,7 +547,7 @@ seeds: 4 kinds · RS-118/121/124/127 · ledger(44 + 312 compact) · matrix 5×4
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CL.1 | #614 | 🟡 Open | ouroboros-rest: [CL.1] ResearchToolAdapter SPI & conformance kit | Interface, capability/config schemas, source-record contract, registry, lint | mvp, research, rest | N (after CK.2) | Y | L | ouroboros-rest |
+| CL.1 | #614 ✅ | 🟢 Done | ouroboros-rest: [CL.1] ResearchToolAdapter SPI & conformance kit | Interface, capability/config schemas, source-record contract, registry, lint | mvp, research, rest | N (after CK.2) | Y | L | ouroboros-rest |
 | CL.2 | #615 | 🟡 Open | ouroboros-rest: [CL.2] Web search & page reader tool | SearXNG default + Brave/Tavily/Firecrawl configs; robots-aware fetch/extract/archive | mvp, research, rest | N (after CL.1) | Y | L | ouroboros-rest |
 | CL.3 | #616 | 🟡 Open | ouroboros-rest: [CL.3] Competitor tracker tool | Rival registry CRUD, scheduled snapshots+diffs, citable change feed | mvp, research, rest | N (after CL.1, CK.3) | Y | M | ouroboros-rest |
 | CL.4 | #617 | 🟡 Open | ouroboros-engine: [CL.4] Codebase & git mining tool | Blame/log/dep-graph queries over repo clones; bisect execution primitive | mvp, research, engine | N (after CL.1, #54) | Y | M | ouroboros-engine, ouroboros-rest |
@@ -556,7 +556,9 @@ seeds: 4 kinds · RS-118/121/124/127 · ledger(44 + 312 compact) · matrix 5×4
 
 ### Issue CL.1 — ouroboros-rest: [CL.1] ResearchToolAdapter SPI & conformance kit
 
-> **GitHub issue:** #614 · **Status:** 🟡 Open · **Parent epic:** #604
+> **GitHub issue:** #614 ✅ · **Status:** 🟢 Done · **Parent epic:** #604
+>
+> **Delivered (#614 — `ouroboros-rest` 0.40.8, `ouroboros-engine` 0.7.17, `docs/RESEARCH_TOOLS.md`):** `src/modules/research/tools/` — `ResearchToolAdapter` (`slug`, `displayMeta()` with a `{slot}` sub-line template, `counts()`, `configSchema()` in the ticket-source form dialect, `capabilities()` `{search, fetch, query, watch}`, `healthCheck()`), operations gated by capability sub-interfaces and each returning `{payload, sources: SourceRecord[], usage}` in V108's shape (`snapshotId` for `competitor_diff`, V112). Citation contract in `research-tool.citations.ts` (locators validated as `source_locator_valid()`, byte bounds, jsonb-text meta size); **a non-null payload with no sources fails** — in the kit and at run time. Error taxonomy `auth|network|robots_denied|rate_limited|upstream|unsupported` → surface states `reconnect|retrying|skipped_source|backing_off|retrying|not_supported`. Health `healthy|degraded|down|not_configured` → dots `ok|warn|err|idle` 1:1. Registry by slug (`RESEARCH_TOOL_ADAPTERS`, refuses duplicate slugs and flag/member mismatches at boot), ships **empty** (`501 research_tool_not_registered` until CL.2–CL.6). Two dependency-cruiser rules (`research-tool-core-imports-the-spi-only`, `research-tool-core-tests-run-on-the-fake`) with a boundary spec that watches them fail. Conformance kit + in-memory fake (green) + a kit spec proving every rule refuses a broken adapter. **Internal surface** `POST /internal/research/tools/:slug/:op` `{investigation, input, budget}`: workspace resolved from the investigation, checks investigation → running → tool enabled → registered → operation/input → budget → configured, settings/credential via the `ResearchToolSettings` seam (none until #629), result held to the contract, sources archived into `source_records` (dedup on locator + hash) and answered with cite numbers and the budget left; covered by the `no-secret-in-internal-response` lint; published in `openapi.internal.yaml` and mirrored in the engine's `control_plane.RESEARCH_TOOL_PATH`.
 
 - **Problem Statement:** Six tools ship across MVP+v2 and orgs will want
   more (internal wikis, vendor portals, data lakes); pluggability must be
@@ -1466,7 +1468,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    BA-B.3/C.3/D.5 (unfiled).
 2. **Phase 1 — Domain:** CK.1 (#608) ✅ → { CK.2 (#609) ✅ ⊕ CK.4 (#611) ⊕
    CK.5 (#612) ✅ } → CK.3 (#610) ✅ → CK.6 (#613)
-3. **Phase 2 — Tools:** CL.1 (#614) → { CL.2 (#615) ⊕ CL.3 (#616) ⊕
+3. **Phase 2 — Tools:** CL.1 (#614) ✅ → { CL.2 (#615) ⊕ CL.3 (#616) ⊕
    CL.4 (#617) ⊕ CL.5 (#618) ⊕ CL.6 (#619) }
 4. **Phase 3 — Engine & pipeline:** CM.3 (#622) ✅ → CM.1 (#620) →
    { CM.2 (#621) ⊕ CM.4 (#623) ⊕ CM.6 (#625) } → CM.5 (#624) → CM.7 (#626)

@@ -112,6 +112,19 @@ export const INTERNAL_RUN_CONTROLS_FETCH_PATH = `/${RUNS_PATH}/${CONTROLS_FETCH_
 export const INTERNAL_RUN_CONTROL_ACK_PATH = `/${RUNS_PATH}/${CONTROL_ACK_ROUTE}`;
 
 /**
+ * The research tool surface's controller path (CL.1,
+ * [#614](https://github.com/NobuData/ouroboros/issues/614)): the engine's investigation loop
+ * reaches every research tool here, so adapters and their credentials stay in the control plane.
+ */
+export const RESEARCH_TOOLS_PATH = `${INTERNAL_PATH}/research/tools`;
+
+/** Route segment of one tool operation, relative to {@link RESEARCH_TOOLS_PATH}. */
+export const RESEARCH_TOOL_OPERATION_ROUTE = ":slug/:op";
+
+/** One tool operation: `/internal/research/tools/:slug/:op`. */
+export const INTERNAL_RESEARCH_TOOL_PATH = `/${RESEARCH_TOOLS_PATH}/${RESEARCH_TOOL_OPERATION_ROUTE}`;
+
+/**
  * Every internal path.
  *
  * The list `src/application.ts` adds to `setGlobalPrefix`'s exclusions, and the list the
@@ -136,6 +149,7 @@ export const INTERNAL_PATHS = [
   INTERNAL_RUN_RESOURCES_PATH,
   INTERNAL_RUN_CONTROLS_FETCH_PATH,
   INTERNAL_RUN_CONTROL_ACK_PATH,
+  INTERNAL_RESEARCH_TOOL_PATH,
 ] as const;
 
 /**
