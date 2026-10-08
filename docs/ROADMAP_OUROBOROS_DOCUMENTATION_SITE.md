@@ -236,7 +236,7 @@ its own criteria, referred to below as **[STD]**:
 |---|---|---|---|---|---|---|---|---|---|
 | CY.1 | #1164 ✅ | 🟢 Done | ouroboros-docs: [CY.1] Scaffold the ouroboros-docs module | Docusaurus 3.10 TS module, not a workspace, README, repo verbs and verify scripts | mvp, docs-site, documentation, infra | N (first) | Y | M | ouroboros-docs, package.json, scripts, docs, README.md |
 | CY.2 | #1165 ✅ | 🟢 Done | ouroboros-docs: [CY.2] Information architecture — three sections, navbar & footer | User Guide / Administration / CLI sidebars, landing, footer copyright, page template | mvp, docs-site, documentation | N (after CY.1) | Y | M | ouroboros-docs |
-| CY.3 | #1166 | 🟡 Open | ouroboros-docs: [CY.3] Brand theme, light/dark & logos | tokens.css → Infima, brand assets, favicons, no hard-coded colours | mvp, docs-site, design | Y (after CY.1, ∥ CY.2) | Y | S | ouroboros-docs |
+| CY.3 | #1166 ✅ | 🟢 Done | ouroboros-docs: [CY.3] Brand theme, light/dark & logos | tokens.css → Infima, brand assets, favicons, no hard-coded colours | mvp, docs-site, design | Y (after CY.1, ∥ CY.2) | Y | S | ouroboros-docs |
 | CY.4 | #1167 | 🟡 Open | ouroboros-docs: [CY.4] Search, Mermaid & shared MDX components | Local search, Mermaid, `<EnvVar>`, `<UiPath>`, `<Since>`, admonition conventions | mvp, docs-site, documentation | Y (after CY.2) | Y | M | ouroboros-docs |
 | CY.5 | #1168 | 🟡 Open | ouroboros-docs: [CY.5] ci/docs — lint, typecheck, tests & strict build | docs.yml check job, strict links, copyright test, verify-ci routing | mvp, docs-site, ci | N (after CY.2) | Y | M | ouroboros-docs, .github, scripts |
 | CY.6 | #1169 | 🟡 Open | ouroboros-docs: [CY.6] Landing page & "What is Ouroboros" | Home with three section cards, product overview, quick links | mvp, docs-site, documentation | Y (after CY.2, CZ.2) | Y | S | ouroboros-docs |
@@ -344,6 +344,10 @@ flowchart TB
 ```
 
 ### Issue CY.3 (#1166) — ouroboros-docs: [CY.3] Brand theme, light/dark & logos
+
+> **GitHub issue:** #1166 ✅ · **Status:** 🟢 Done · **Parent epic:** #1156
+>
+> **Delivered (#1166):** `scripts/sync-brand.mjs` keeps 13 byte-identical copies — `docs/design/tokens.css` → `src/css/tokens.css`, the six `docs/brand/` PNGs and the two `docs/mockups/assets/logo-*.png` → `static/img/brand/`, and ouroboros-ui's `favicon.ico`, light/dark 32 px tab icons and `apple-touch-icon.png` → `static/img/brand/favicon/` (reused rather than generated twice). Yarn 4 runs no `pre*` scripts, so `dev` and `build` call the sync first; `yarn check:brand` (also asserted by `yarn test`) fails on drift, and outside the repository a plain sync keeps the committed copies. `src/css/custom.css` maps the tokens onto Infima with `:root, html[data-theme=…]` selectors (Infima's dark block is `html[data-theme='dark']`, so plain `[data-theme]` would lose); the tokens switch on the same attribute the toggle stamps, so one mapping serves both themes. Stylelint 17 (`yarn lint`) refuses hex, named and functional colours everywhere but the token copy. Navbar logo is the **icon** pair (`src`/`srcDark`), not the glyph — the navbar draws 32 px and `BRAND.md` puts the glyph's minimum at 96 px. `docs/BRAND.md` has no typography section, so type follows the tokens' three families, self-hosted via pinned `@fontsource/*` at ouroboros-ui's weights. Footer switched to `style: "light"` so the brand mapping colours it in both themes. Also fixed CY.2's stub admonitions: `future.v4` drops MDX 1 compatibility, so `:::info Being written` rendered as text — now `:::info[Being written]`, with a test refusing the old form. `DESIGN_TOKENS.md` and `BRAND.md` name the docs copies. Module 0.1.2.
 
 **Problem Statement.** The docs must look like Ouroboros, in both themes, without
 duplicating colour values that already live in `docs/design/tokens.css`.

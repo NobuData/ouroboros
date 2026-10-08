@@ -27,6 +27,13 @@ literal in its own stylesheet, which the application's placeholder page cannot y
 to exercise. The application's copy is held byte-identical to this one by
 `scripts/verify-tokens.sh`; edit the palette here, not there.
 
+The documentation site is a third consumer
+([#1166](https://github.com/NobuData/ouroboros/issues/1166)): `ouroboros-docs` keeps a
+byte-identical copy at [`../ouroboros-docs/src/css/tokens.css`](../ouroboros-docs/src/css/tokens.css)
+and maps it onto Docusaurus' Infima variables. After a palette edit, run
+`yarn sync:brand` in `ouroboros-docs` (its `yarn build` and `yarn dev` do it too); its
+`yarn check:brand`, and so its tests, fail while the copy lags.
+
 The mockups in [`mockups/`](mockups) keep their own frozen dark-only stylesheet
 and are not retrofitted: they are the design source of truth for page anatomy, not for
 colour.

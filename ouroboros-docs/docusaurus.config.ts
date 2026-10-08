@@ -5,6 +5,7 @@ import type { FooterColumnItem } from "@docusaurus/theme-common";
 
 import {
   COPYRIGHT,
+  BRAND_ASSETS,
   DEFAULT_SITE_URL,
   EDIT_URL,
   MARKETING_URL,
@@ -64,12 +65,48 @@ const FOOTER_LINKS: FooterColumnItem[] = [
  * User Guide, Administration, CLI — are folders under `docs/`, each with its own sidebar
  * (`sidebars.ts`) and navbar item, and `docs/index.md` is the home page at `/`. Every kind
  * of broken reference — link, Markdown link, anchor, duplicate route — fails the build.
- * Brand colours and logos arrive with CY.3 (#1166), search with CY.4 (#1167). The
- * scaffold's blog is switched off rather than left empty, so no `/blog` route exists.
+ * The brand (CY.3, #1166) is the product's own: `src/css/tokens.css` (a synced copy of
+ * `docs/design/tokens.css`) mapped onto Infima by `src/css/custom.css`, the light/dark logo
+ * pair and the favicon set. Search arrives with CY.4 (#1167). The scaffold's blog is
+ * switched off rather than left empty, so no `/blog` route exists.
  */
 const config: Config = {
   title: "Ouroboros Docs",
   tagline: "Infinity in Autonomy",
+  favicon: BRAND_ASSETS.faviconIco,
+
+  // The tab icon follows the browser chrome, as in ouroboros-ui: a transparent pair chosen
+  // by prefers-color-scheme, the opaque .ico above as the fallback, and the home-screen icon.
+  headTags: [
+    {
+      tagName: "link",
+      attributes: {
+        rel: "icon",
+        type: "image/png",
+        sizes: "32x32",
+        media: "(prefers-color-scheme: light)",
+        href: `/${BRAND_ASSETS.favicon32Light}`,
+      },
+    },
+    {
+      tagName: "link",
+      attributes: {
+        rel: "icon",
+        type: "image/png",
+        sizes: "32x32",
+        media: "(prefers-color-scheme: dark)",
+        href: `/${BRAND_ASSETS.favicon32Dark}`,
+      },
+    },
+    {
+      tagName: "link",
+      attributes: {
+        rel: "apple-touch-icon",
+        sizes: "180x180",
+        href: `/${BRAND_ASSETS.appleTouchIcon}`,
+      },
+    },
+  ],
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
   future: {
@@ -113,7 +150,8 @@ const config: Config = {
         },
         blog: false,
         theme: {
-          customCss: "./src/css/custom.css",
+          // The tokens first, so the Infima mapping can read them.
+          customCss: ["./src/css/tokens.css", "./src/css/custom.css"],
         },
       } satisfies Preset.Options,
     ],
@@ -125,6 +163,15 @@ const config: Config = {
     },
     navbar: {
       title: "Ouroboros Docs",
+      // The icon, not the glyph: the navbar draws it at 32 px, and docs/BRAND.md puts the
+      // glyph's minimum at 96 px wide. Each theme takes the treatment for its own surface.
+      logo: {
+        alt: "Ouroboros",
+        src: BRAND_ASSETS.logoLight,
+        srcDark: BRAND_ASSETS.logoDark,
+        width: 32,
+        height: 32,
+      },
       items: [
         // The sections, in order; each item is active while a page of its sidebar is open.
         ...SECTIONS.map((section) => ({
@@ -138,7 +185,9 @@ const config: Config = {
       ],
     },
     footer: {
-      style: "dark",
+      // "light" leaves the footer's colours to the brand mapping, which follows the theme;
+      // "dark" would pin Infima's own charcoal in both.
+      style: "light",
       links: FOOTER_LINKS,
       copyright: COPYRIGHT,
     },

@@ -69,7 +69,7 @@ const PLANNED_PAGES: Record<string, number> = {
 };
 
 /** The marker every stub page carries until its content issue replaces it. */
-const STUB_MARKER = ":::info Being written";
+const STUB_MARKER = ":::info[Being written]";
 
 /**
  * Lists every file under a directory, recursively.
@@ -126,6 +126,19 @@ describe("the planned pages", () => {
     const body = readFileSync(join(DOCS_DIR, page), "utf8");
     if (!body.includes(STUB_MARKER)) return;
     expect(body).toContain(`(https://github.com/NobuData/ouroboros/issues/${issue})`);
+  });
+});
+
+describe("admonitions", () => {
+  it("use the MDX 3 title syntax on every page", () => {
+    // `future.v4` turns off MDX 1 compatibility, so `:::info Title` renders as plain text;
+    // only `:::info[Title]` becomes an admonition.
+    const legacy = pages.filter((page) =>
+      /^:::(note|tip|info|warning|danger|caution)[ \t]+\S/m.test(
+        readFileSync(join(DOCS_DIR, page), "utf8"),
+      ),
+    );
+    expect(legacy).toEqual([]);
   });
 });
 

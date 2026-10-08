@@ -24,6 +24,20 @@ export const EDIT_URL = `${REPO_URL}/edit/main/ouroboros-docs/`;
 /** The product's marketing site, linked from the footer's "More" column. */
 export const MARKETING_URL = "https://ouroboros.build";
 
+/**
+ * The brand files the config references, relative to `static/` (each is a synced copy —
+ * see `scripts/sync-brand.mjs`). The navbar logo is the icon pair; the favicons are the set
+ * `scripts/build-favicons.py` derives for ouroboros-ui.
+ */
+export const BRAND_ASSETS = {
+  logoLight: "img/brand/icon-light.png",
+  logoDark: "img/brand/icon-dark.png",
+  faviconIco: "img/brand/favicon/favicon.ico",
+  favicon32Light: "img/brand/favicon/favicon-32-light.png",
+  favicon32Dark: "img/brand/favicon/favicon-32-dark.png",
+  appleTouchIcon: "img/brand/favicon/apple-touch-icon.png",
+} as const;
+
 /** One of the site's three sections (roadmap decision D2). */
 export interface Section {
   /** The sidebar's id in `sidebars.ts`, and the navbar item's `sidebarId`. */
