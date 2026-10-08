@@ -1,0 +1,251 @@
+/* ============================================================
+   OUROBOROS — design tokens
+   Issue #16 · documented in docs/DESIGN_TOKENS.md
+   Adopted by ouroboros-ui in #40; switched at runtime by #17.
+
+   Every colour the product uses is one of these custom properties, so a theme
+   change is a redefinition rather than a restyle. Three blocks, in this order:
+
+     :root                                  the light palette + everything
+                                            theme-independent (type, spacing,
+                                            shape). The base.
+     :root[data-theme="dark"]               the dark palette. An explicit
+                                            choice, so it wins over the OS.
+     @media (prefers-color-scheme: dark)
+       :root:not([data-theme="light"])      the same dark palette for the
+                                            unset case — the OS preference
+                                            applies until a choice is stamped,
+                                            and an explicit light choice still
+                                            wins.
+
+   The two dark blocks are identical by construction and asserted identical by
+   scripts/verify-tokens.sh, because a palette that drifts between "the user
+   asked for dark" and "the OS is dark" is a bug nobody sees until they toggle.
+
+   Nothing here styles an element. Colour literals belong in these three blocks
+   and nowhere else in the codebase.
+   ============================================================ */
+
+:root {
+  /* --------------------------------------------------------
+     Light palette — derived from the brand sheet's light half
+     (docs/BRAND.md: ground #f5fafb, ink #022b57, mark #32b1e5).
+     Every text pair clears WCAG AA 4.5:1 and every control
+     boundary 3:1 — the measured table is in DESIGN_TOKENS.md.
+     -------------------------------------------------------- */
+
+  color-scheme: light;
+
+  /* surfaces, page outward */
+  --ground-deep: #e6edf1;   /* behind the page: gutters, backdrops */
+  --ground: #f5f8fa;        /* the page */
+  --surface: #ffffff;       /* cards, menus, the raised plane */
+  --raised: #e9f1f5;        /* chips, default buttons, hover on a card */
+  --inset: #eff4f7;         /* wells: inputs, code, canvas */
+  --scrim: rgba(245, 248, 250, 0.88);  /* sticky chrome over scrolled content */
+
+  /* hairlines and boundaries */
+  --line: #d4dee5;          /* separators — decorative */
+  --line-strong: #bccad3;   /* chip and button hairlines — decorative */
+  --line-control: #788894;  /* the boundary of an interactive control — 3:1 */
+
+  /* ink, brightest to faintest */
+  --ink: #16232b;           /* body text, headings */
+  --ink-dim: #33454f;       /* secondary text, field labels */
+  --ink-mut: #4e626d;       /* muted prose, idle navigation */
+  --ink-faint: #5c6f7a;     /* hints, placeholders, table heads */
+
+  /* accent — the brand cyan, deepened until it can carry text on white */
+  --accent: #07708e;        /* links, active state, primary fill */
+  --accent-lift: #097693;   /* the fill's light stop, hover */
+  --accent-deep: #055872;   /* the fill's deep stop, meter fill, switch track */
+  --accent-ink: #f4fbfd;    /* text and icons on an accent fill */
+  --accent-panel: #06506a;  /* a deep accent panel: avatar, banner */
+  --accent-panel-ink: #eaf7fd;  /* text on that panel, and the switch knob */
+  --accent-line: rgba(7, 112, 142, 0.35);   /* accent-bordered chip */
+  --accent-tint: rgba(7, 112, 142, 0.10);   /* accent-filled chip */
+  --accent-wash: rgba(7, 112, 142, 0.05);   /* row hover */
+  --accent-select: rgba(7, 112, 142, 0.18); /* ::selection */
+  --accent-glow: rgba(7, 112, 142, 0.28);   /* the glow reserved for live things */
+
+  /* status — each hue as text-capable ink, a 35% border, a 10% fill */
+  --ok: #0b7048;
+  --ok-line: rgba(11, 112, 72, 0.35);
+  --ok-tint: rgba(11, 112, 72, 0.10);
+  --warn: #7a4c00;
+  --warn-line: rgba(122, 76, 0, 0.35);
+  --warn-tint: rgba(122, 76, 0, 0.10);
+  --err: #b52121;
+  --err-line: rgba(181, 33, 33, 0.35);
+  --err-tint: rgba(181, 33, 33, 0.10);
+  --model: #5b34c4;         /* the LLM / model-routing hue */
+  --model-line: rgba(91, 52, 196, 0.35);
+  --model-tint: rgba(91, 52, 196, 0.10);
+
+  /* texture */
+  --grid-dot: rgba(78, 98, 109, 0.05);  /* the page's dot grid */
+
+  /* --------------------------------------------------------
+     Type — families, then a rem scale. Sizes are rem so the
+     five-step font-size preference (DESIGN_SYSTEM_APP_SHELL.md
+     §4) scales every surface from one root change; px font
+     sizes are banned by convention.
+     -------------------------------------------------------- */
+
+  --f-disp: "Chakra Petch", "Trebuchet MS", sans-serif;
+  --f-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --t-2xs: 0.6875rem;  /* 11px — eyebrows, table heads, tags, kbd */
+  --t-xs: 0.75rem;     /* 12px — pills, hints, small print */
+  --t-sm: 0.8125rem;   /* 13px — buttons, navigation, table body */
+  --t-md: 0.875rem;    /* 14px — body, inputs */
+  --t-lg: 0.9375rem;   /* 15px — section headings */
+  --t-xl: 1.125rem;    /* 18px — card headings */
+  --t-2xl: 1.625rem;   /* 26px — page title */
+  --t-3xl: 1.875rem;   /* 30px — stat values */
+
+  --lh-tight: 1.1;     /* display numbers */
+  --lh-snug: 1.35;     /* headings */
+  --lh-body: 1.5;      /* body copy */
+  --lh-loose: 1.65;    /* code blocks */
+
+  --tr-tight: 0.01em;  /* display headings */
+  --tr-wide: 0.05em;   /* card titles, effort chips */
+  --tr-wider: 0.14em;  /* the wordmark, uppercase labels */
+  --tr-widest: 0.18em; /* eyebrows */
+
+  /* --------------------------------------------------------
+     Spacing — one rem scale, 2px granularity where the design
+     is dense and coarser above it. Layouts snap to a step
+     rather than inventing a value.
+     -------------------------------------------------------- */
+
+  --sp-1: 0.125rem;    /* 2px */
+  --sp-2: 0.25rem;     /* 4px */
+  --sp-3: 0.375rem;    /* 6px */
+  --sp-4: 0.5rem;      /* 8px */
+  --sp-5: 0.625rem;    /* 10px */
+  --sp-6: 0.75rem;     /* 12px */
+  --sp-7: 0.875rem;    /* 14px */
+  --sp-8: 1rem;        /* 16px */
+  --sp-9: 1.25rem;     /* 20px */
+  --sp-10: 1.5rem;     /* 24px */
+  --sp-11: 2rem;       /* 32px */
+  --sp-12: 4rem;       /* 64px */
+
+  /* --------------------------------------------------------
+     Shape — radii in rem so they scale with the type, plus the
+     two shapes that are ratios rather than lengths.
+     -------------------------------------------------------- */
+
+  --r-xs: 0.25rem;     /* 4px — focus rings, tight chips */
+  --r-sm: 0.375rem;    /* 6px — small buttons, tags */
+  --r-md: 0.625rem;    /* 10px — buttons, inputs, nav items */
+  --r-lg: 0.875rem;    /* 14px — cards */
+  --r-pill: 999px;     /* fully rounded ends */
+  --r-round: 50%;      /* circles: dots, avatars */
+}
+
+/* The dark palette, chosen explicitly. Committed identity, extracted from
+   docs/mockups/assets/ouroboros.css. Only colour is redefined — type, spacing
+   and shape are theme-independent and stay on :root. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --ground-deep: #0d1216;
+  --ground: #12181d;
+  --surface: #171f26;
+  --raised: #1e2831;
+  --inset: #0f1519;
+  --scrim: rgba(13, 18, 22, 0.88);
+
+  --line: #253039;
+  --line-strong: #32404c;
+  --line-control: #62727e;
+
+  --ink: #e9f2f6;
+  --ink-dim: #b9c8d2;
+  --ink-mut: #8b9da9;
+  --ink-faint: #7e9099;
+
+  --accent: #3dd6f5;
+  --accent-lift: #46dcf8;
+  --accent-deep: #1793c4;
+  --accent-ink: #06222c;
+  --accent-panel: #0f4a63;
+  --accent-panel-ink: #dff7fe;
+  --accent-line: rgba(61, 214, 245, 0.35);
+  --accent-tint: rgba(61, 214, 245, 0.12);
+  --accent-wash: rgba(61, 214, 245, 0.04);
+  --accent-select: rgba(61, 214, 245, 0.25);
+  --accent-glow: rgba(61, 214, 245, 0.45);
+
+  --ok: #3edc97;
+  --ok-line: rgba(62, 220, 151, 0.35);
+  --ok-tint: rgba(62, 220, 151, 0.12);
+  --warn: #f5b83d;
+  --warn-line: rgba(245, 184, 61, 0.35);
+  --warn-tint: rgba(245, 184, 61, 0.12);
+  --err: #ff6b6b;
+  --err-line: rgba(255, 107, 107, 0.35);
+  --err-tint: rgba(255, 107, 107, 0.12);
+  --model: #a78bfa;
+  --model-line: rgba(167, 139, 250, 0.35);
+  --model-tint: rgba(167, 139, 250, 0.12);
+
+  --grid-dot: rgba(139, 157, 169, 0.055);
+}
+
+/* The same dark palette for the unset case: no data-theme stamped yet and the
+   OS asks for dark. :not([data-theme="light"]) keeps an explicit light choice
+   winning over the OS. Kept identical to the block above — verify-tokens.sh
+   fails the build if the two ever diverge. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --ground-deep: #0d1216;
+    --ground: #12181d;
+    --surface: #171f26;
+    --raised: #1e2831;
+    --inset: #0f1519;
+    --scrim: rgba(13, 18, 22, 0.88);
+
+    --line: #253039;
+    --line-strong: #32404c;
+    --line-control: #62727e;
+
+    --ink: #e9f2f6;
+    --ink-dim: #b9c8d2;
+    --ink-mut: #8b9da9;
+    --ink-faint: #7e9099;
+
+    --accent: #3dd6f5;
+    --accent-lift: #46dcf8;
+    --accent-deep: #1793c4;
+    --accent-ink: #06222c;
+    --accent-panel: #0f4a63;
+    --accent-panel-ink: #dff7fe;
+    --accent-line: rgba(61, 214, 245, 0.35);
+    --accent-tint: rgba(61, 214, 245, 0.12);
+    --accent-wash: rgba(61, 214, 245, 0.04);
+    --accent-select: rgba(61, 214, 245, 0.25);
+    --accent-glow: rgba(61, 214, 245, 0.45);
+
+    --ok: #3edc97;
+    --ok-line: rgba(62, 220, 151, 0.35);
+    --ok-tint: rgba(62, 220, 151, 0.12);
+    --warn: #f5b83d;
+    --warn-line: rgba(245, 184, 61, 0.35);
+    --warn-tint: rgba(245, 184, 61, 0.12);
+    --err: #ff6b6b;
+    --err-line: rgba(255, 107, 107, 0.35);
+    --err-tint: rgba(255, 107, 107, 0.12);
+    --model: #a78bfa;
+    --model-line: rgba(167, 139, 250, 0.35);
+    --model-tint: rgba(167, 139, 250, 0.12);
+
+    --grid-dot: rgba(139, 157, 169, 0.055);
+  }
+}

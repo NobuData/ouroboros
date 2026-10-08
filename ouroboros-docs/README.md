@@ -28,7 +28,8 @@ its React and Docusaurus resolution never enters the product's lockfile.
 | Language | TypeScript 5 |
 | Package manager | Yarn 4.18.0 via corepack, `nodeLinker: node-modules`, own lockfile |
 | Runtime | Node 24 |
-| Checks | ESLint 9 + typescript-eslint, Prettier, Vitest |
+| Fonts | Chakra Petch, IBM Plex Sans, IBM Plex Mono — self-hosted from `@fontsource/*` (pinned), the weights `ouroboros-ui` ships |
+| Checks | ESLint 9 + typescript-eslint, Stylelint 17 (no colour literals), Prettier, Vitest |
 
 ## Run
 
@@ -38,11 +39,14 @@ yarn dev:docs                 # http://localhost:3100
 
 # Or from this directory:
 yarn install --immutable
-yarn dev                      # docusaurus start --port 3100, live reload
-yarn build                    # static site into build/; a broken link or anchor fails the build
+yarn dev                      # sync the brand, then docusaurus start --port 3100, live reload
+yarn build                    # sync the brand, then the static site into build/;
+                              # a broken link or anchor fails the build
 yarn serve                    # serve build/ on http://localhost:3100
 yarn clear                    # drop the .docusaurus/ cache and build/
-yarn lint                     # ESLint
+yarn lint                     # ESLint, then Stylelint over src/**/*.css
+yarn sync:brand               # copy the tokens, logos and favicons in from the repo
+yarn check:brand              # fail if a copy differs from its source (yarn test runs it too)
 yarn typecheck                # tsc
 yarn test                     # Vitest — the config and module contract
 yarn format:check             # Prettier over the code and config (yarn format fixes);
@@ -72,14 +76,17 @@ ouroboros-docs/
 │   ├── user-guide/         # User Guide      → /user-guide      (sidebar userGuide)
 │   ├── administration/     # Administration  → /administration  (sidebar administration)
 │   └── cli/                # CLI             → /cli             (sidebar cli)
-├── src/css/custom.css      # global styles (brand tokens arrive with CY.3)
+├── src/css/
+│   ├── tokens.css          # synced copy of docs/design/tokens.css — never edit it here
+│   └── custom.css          # the tokens mapped onto Infima, fonts, chrome tweaks
 ├── static/                 # files copied verbatim into the build
-├── scripts/                # module tooling (the screenshots placeholder)
-├── tests/                  # Vitest — the config, sidebars, planned pages and module contract
+│   └── img/brand/          # synced copies: brand PNGs, mockup logos, favicon/
+├── scripts/                # sync-brand.mjs, the screenshots placeholder
+├── tests/                  # Vitest — config, sidebars, planned pages, brand and module contract
 ├── docusaurus.config.ts    # the site config: one docs instance at /, navbar, footer, strict links
 ├── site.constants.ts       # site URL default, copyright line, repo/edit URLs, the three sections
 ├── sidebars.ts             # one sidebar per section, generated from its folder
-├── eslint.config.mjs · .prettierrc.json · vitest.config.mts · tsconfig.json
+├── eslint.config.mjs · stylelint.config.mjs · .prettierrc.json · vitest.config.mts · tsconfig.json
 └── package.json · yarn.lock · .yarnrc.yml · .gitignore · .dockerignore
 ```
 
@@ -88,6 +95,38 @@ navbar lists the sections in the order User Guide, Administration, CLI, with a G
 and the colour-mode toggle on the right (search joins with CY.4). The footer has a link
 column per section, a "More" column (GitHub, ouroboros.build) and the copyright line
 `Copyright © 2025-2026 NobuData LLC`, which a test holds exactly.
+
+## Brand and theme
+
+The site wears the product's brand ([#1166](https://github.com/NobuData/ouroboros/issues/1166))
+without owning any of it. Every brand file has one home elsewhere in the repository, and
+the site keeps byte-identical copies so it builds from its own directory:
+
+| Copy | Source | Used for |
+|---|---|---|
+| `src/css/tokens.css` | [`docs/design/tokens.css`](../docs/design/tokens.css) | Every colour, the three type families, radii and line heights |
+| `static/img/brand/{icon,glyph,lockup-tagline}-{light,dark}.png` | [`docs/brand/`](../docs/brand) | The navbar logo (the icon pair) and later pages |
+| `static/img/brand/logo-{lockup,mark}.png` | [`docs/mockups/assets/`](../docs/mockups/assets) | The mockups' older crops, for pages that show them |
+| `static/img/brand/favicon/*` | [`ouroboros-ui/public/`](../ouroboros-ui/public) | `favicon.ico`, the light/dark 32 px tab icons, the home-screen icon |
+
+**Never edit a copy.** Change the source and run `yarn sync:brand`; `yarn dev` and
+`yarn build` sync first anyway. `yarn check:brand` — run by `yarn test` as well — fails
+when a copy differs from its source, so a hand edit or a forgotten sync cannot merge.
+Outside the repository (the module copied on its own, as an image build does) a plain
+sync keeps the committed copies; `--check` refuses, since it has nothing to compare with.
+
+`src/css/custom.css` maps the tokens onto Infima — accent stops, status hues, surfaces,
+ink, lines, navigation, type and radii. The tokens switch palettes on `<html data-theme>`,
+the attribute the colour-mode toggle stamps, so one mapping serves both themes; the site
+follows the OS scheme until the reader picks one. **It holds no colours**: Stylelint
+refuses hex, named and functional colours (`rgb()`, `hsl()`, …) in every sheet except the
+token copy. Need a colour? Use a token — `var(--accent)`, `var(--ink-dim)`, `var(--line)`.
+
+The navbar logo is the icon pair, not the glyph: the navbar draws it at 32 px and
+[`docs/BRAND.md`](../docs/BRAND.md) puts the glyph's minimum at 96 px. The light treatment
+shows in the light theme and the dark in the dark, because the variant follows the surface.
+Headings use the display face (Chakra Petch), prose the UI face (IBM Plex Sans) and code
+the mono face (IBM Plex Mono), all served from the site itself.
 
 The finished shape — `docs/{user-guide,administration,cli}/`, `src/{components,pages,theme}/`,
 `static/img/{brand,screenshots}/`, the `screenshots/` Playwright project and the
@@ -147,13 +186,17 @@ description: "Answering the decisions blocked loops wait on."
 
 Answering the decisions blocked loops wait on.
 
-:::info Being written
+:::info[Being written]
 
 This page is being written in
 [#1185](https://github.com/NobuData/ouroboros/issues/1185).
 
 :::
 ```
+
+Admonitions take their title in brackets — `:::info[Being written]`, `:::caution[Write-back]`.
+The site runs with Docusaurus' v4 flags, which drop MDX 1 compatibility, so the older
+`:::info Being written` form renders as plain text; a test refuses it.
 
 `tests/pages.test.ts` lists every planned page with its issue and checks it exists, has
 all four front matter fields, and — while it is still a stub — links that issue.
@@ -173,6 +216,6 @@ all four front matter fields, and — while it is still a stub — links that is
 
 - [#1164](https://github.com/NobuData/ouroboros/issues/1164) — CY.1 scaffold (this module)
 - [#1165](https://github.com/NobuData/ouroboros/issues/1165) — CY.2 three sections, navbar, footer & stub pages
-- [#1166](https://github.com/NobuData/ouroboros/issues/1166) — CY.3 brand theme, light/dark & logos
+- [#1166](https://github.com/NobuData/ouroboros/issues/1166) — CY.3 brand theme, light/dark & logos (this module's theme)
 - [#1170](https://github.com/NobuData/ouroboros/issues/1170) — CZ.1 screenshot capture harness
 - [#1156](https://github.com/NobuData/ouroboros/issues/1156) — Epic CY · Docs Site Foundation

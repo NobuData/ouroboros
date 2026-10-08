@@ -4,3 +4,6 @@ node_modules/
 screenshots/test-results/
 yarn.lock
 .yarn/
+
+# A synced copy of docs/design/tokens.css (scripts/sync-brand.mjs), kept byte-identical.
+src/css/tokens.css

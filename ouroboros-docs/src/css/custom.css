@@ -1,7 +1,111 @@
 /**
- * Global styles for the documentation site.
+ * Global styles for the documentation site: the brand tokens mapped onto Infima (CY.3, #1166).
  *
- * Empty in the scaffold: the classic theme's Infima defaults apply until CY.3 (#1166) maps
- * the brand tokens from docs/design/tokens.css onto Infima's variables. No colour values
- * are written here by hand (roadmap decision D7).
+ * Every colour comes from `tokens.css` — a byte-identical copy of `docs/design/tokens.css`,
+ * kept in step by `yarn sync:brand` and loaded just before this sheet. Nothing here names a
+ * colour: stylelint refuses hex, named and functional colours in every sheet but the token
+ * copy (roadmap decision D7). The tokens switch palettes on `<html data-theme>` themselves,
+ * which is the same attribute Docusaurus' colour-mode toggle stamps, so one mapping serves
+ * both themes.
+ *
+ * The selectors match Infima's own `html[data-theme='dark']` block in specificity and come
+ * after it, so the brand wins in both themes.
  */
+
+/* The three faces the tokens name (`--f-disp`, `--f-ui`, `--f-mono`), self-hosted so no
+   request leaves for a font service. Weights are the ones ouroboros-ui ships. */
+@import "@fontsource/chakra-petch/500.css";
+@import "@fontsource/chakra-petch/600.css";
+@import "@fontsource/chakra-petch/700.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
+:root,
+html[data-theme="light"],
+html[data-theme="dark"] {
+  /* Accent — links, the active item, primary buttons. Infima's lighter and darker stops
+     map onto the token's lift and deep stops. */
+  --ifm-color-primary: var(--accent);
+  --ifm-color-primary-light: var(--accent-lift);
+  --ifm-color-primary-lighter: var(--accent-lift);
+  --ifm-color-primary-lightest: var(--accent-lift);
+  --ifm-color-primary-dark: var(--accent-deep);
+  --ifm-color-primary-darker: var(--accent-deep);
+  --ifm-color-primary-darkest: var(--accent-deep);
+  --ifm-link-color: var(--accent);
+
+  /* Status hues — admonitions and alerts. */
+  --ifm-color-info: var(--accent);
+  --ifm-color-success: var(--ok);
+  --ifm-color-warning: var(--warn);
+  --ifm-color-danger: var(--err);
+
+  /* Surfaces, page outward. */
+  --ifm-background-color: var(--ground);
+  --ifm-background-surface-color: var(--surface);
+  --ifm-navbar-background-color: var(--surface);
+  --ifm-footer-background-color: var(--ground-deep);
+  --ifm-code-background: var(--inset);
+  --ifm-hover-overlay: var(--accent-wash);
+
+  /* Ink and lines. */
+  --ifm-color-content: var(--ink);
+  --ifm-color-content-secondary: var(--ink-dim);
+  --ifm-heading-color: var(--ink);
+  --ifm-hr-background-color: var(--line);
+  --ifm-table-border-color: var(--line);
+  --ifm-toc-border-color: var(--line);
+  --ifm-footer-color: var(--ink-mut);
+  --ifm-footer-link-color: var(--ink-dim);
+  --ifm-footer-link-hover-color: var(--accent);
+  --ifm-footer-title-color: var(--ink);
+
+  /* Navigation. */
+  --ifm-navbar-link-color: var(--ink-mut);
+  --ifm-navbar-link-hover-color: var(--accent);
+  --ifm-menu-color: var(--ink-mut);
+  --ifm-menu-color-active: var(--accent);
+  --ifm-menu-color-background-active: var(--accent-tint);
+  --ifm-menu-color-background-hover: var(--accent-wash);
+
+  /* Type — the UI face for prose, the display face for headings, the mono face for code. */
+  --ifm-font-family-base: var(--f-ui);
+  --ifm-heading-font-family: var(--f-disp);
+  --ifm-font-family-monospace: var(--f-mono);
+  --ifm-line-height-base: var(--lh-body);
+  --ifm-heading-line-height: var(--lh-snug);
+  --ifm-pre-line-height: var(--lh-loose);
+
+  /* Shape. */
+  --ifm-global-radius: var(--r-md);
+  --ifm-code-border-radius: var(--r-xs);
+  --ifm-card-border-radius: var(--r-lg);
+  --ifm-pagination-nav-border-radius: var(--r-lg);
+
+  /* Docusaurus' own highlight for `{1,3}` lines in code blocks. */
+  --docusaurus-highlighted-code-line-bg: var(--accent-tint);
+}
+
+::selection {
+  background-color: var(--accent-select);
+}
+
+/* The site title beside the logo is set like the product's wordmark. */
+.navbar__title {
+  font-family: var(--f-disp);
+  letter-spacing: var(--tr-wide);
+}
+
+/* The navbar's bottom edge is a hairline rather than Infima's drop shadow. */
+.navbar {
+  border-bottom: 1px solid var(--line);
+  box-shadow: none;
+}
+
+/* The footer is the page's deepest ground, separated by the same hairline. */
+.footer {
+  border-top: 1px solid var(--line);
+}

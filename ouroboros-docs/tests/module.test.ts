@@ -41,13 +41,26 @@ describe("package.json", () => {
       "test",
       "format:check",
       "screenshots",
+      "sync:brand",
+      "check:brand",
     ]) {
       expect(manifest.scripts, verb).toHaveProperty(verb);
     }
   });
 
   it("serves the dev site on port 3100, clear of the UI and web on 3000", () => {
-    expect(manifest.scripts.dev).toBe("docusaurus start --port 3100");
+    expect(manifest.scripts.dev).toMatch(/docusaurus start --port 3100$/);
+  });
+
+  it("syncs the brand before every dev server and build", () => {
+    for (const verb of ["dev", "build"]) {
+      expect(manifest.scripts[verb], verb).toMatch(/^node scripts\/sync-brand\.mjs && /);
+    }
+    expect(manifest.scripts["check:brand"]).toBe("node scripts/sync-brand.mjs --check");
+  });
+
+  it("lints the stylesheets as well as the code", () => {
+    expect(manifest.scripts.lint).toContain("stylelint");
   });
 
   it("pins every @docusaurus package to one exact 3.10 patch", () => {

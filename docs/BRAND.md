@@ -166,6 +166,11 @@ uv run --with Pillow scripts/build-favicons.py    # rewrite ouroboros-ui/public/
 scripts/verify-favicons.sh                        # files ↔ manifest ↔ documents
 ```
 
+The documentation site keeps copies of the six assets, the two mockup logos and the tab
+and home-screen icons ([#1166](https://github.com/NobuData/ouroboros/issues/1166)); refresh
+them in the same pull request with `cd ouroboros-docs && yarn sync:brand`. Its
+`yarn check:brand` fails while a copy differs from its source.
+
 ## The favicon and manifest set
 
 The icon pair is a source as well as an asset: it is what the browser and home-screen
