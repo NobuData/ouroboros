@@ -10,11 +10,27 @@
       "masks": [
         ".dash-runs td.ou-table__cell--mono.ou-table__cell--end"
       ],
-      "caption": "Mission Control — live loops, the queue, the build farm and what needs you, at a glance.",
+      "caption": "Mission Control \u2014 live loops, the queue, the build farm and what needs you, at a glance.",
       "alt": "The Ouroboros Mission Control dashboard for the Acme Robotics workspace, showing active loops, the queue and farm status.",
       "capturedAt": "2026-10-08T17:52:11.794Z",
       "uiVersion": "0.144.1",
       "seedRef": "a8b81e884b74691df850d40e33c7bf5e845c192f"
+    },
+    {
+      "id": "user-guide.concepts.loop-in-app",
+      "route": "/runs/5eed0009-0000-4000-8000-000000000482?from=dashboard",
+      "workspace": "acme-robotics",
+      "ready": ".run-entry",
+      "clip": "page",
+      "masks": [
+        ".run-head__elapsed",
+        ".run-transcript__list > li:nth-last-child(-n+5) .run-entry__time"
+      ],
+      "caption": "One loop in the run console: its stage timeline, the agent's transcript and the changes so far.",
+      "alt": "The run console for a loop fixing a flaky CAN-bus telemetry test: the stage timeline with three stages done and Implementing on attempt 2 of 3, the agent transcript, and three changed files.",
+      "capturedAt": "2026-10-08T20:38:18.053Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "7bc35ec67cea14bf6d8e66197513397670cf9d15"
     }
   ]
 }

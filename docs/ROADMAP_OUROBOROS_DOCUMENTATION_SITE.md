@@ -562,7 +562,7 @@ dev seeds (e.g. acme-robotics; `acme-onboarding` for the wizard).
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |---|---|---|---|---|---|---|---|---|---|
-| DA.1 | #1173 | 🟡 Open | ouroboros-docs: [DA.1] User Guide overview, concepts & glossary | The loop, workspaces, issues→runs→PRs, decisions; glossary | mvp, docs-site, documentation | Y | Y | M | ouroboros-docs |
+| DA.1 | #1173 ✅ | 🟢 Done | ouroboros-docs: [DA.1] User Guide overview, concepts & glossary | The loop, workspaces, issues→runs→PRs, decisions; glossary | mvp, docs-site, documentation | Y | Y | M | ouroboros-docs |
 | DA.2 | #1174 | 🟡 Open | ouroboros-docs: [DA.2] Getting started — sign in, workspace & the Get Started wizard | Login, recovery, wizard cards, dry-run first loop | mvp, docs-site, documentation, onboarding | Y | Y | M | ouroboros-docs |
 | DA.3 | #1175 | 🟡 Open | ouroboros-docs: [DA.3] Finding your way — app shell, navigation & command palette | Sidebar, header, ⌘K, themes, keyboard | mvp, docs-site, documentation, shell | Y | Y | S | ouroboros-docs |
 | DA.4 | #1176 | 🟡 Open | ouroboros-docs: [DA.4] Mission Control dashboard | Reading the dashboard and acting from it | mvp, docs-site, documentation, dashboard | Y | Y | S | ouroboros-docs |
@@ -580,6 +580,10 @@ dev seeds (e.g. acme-robotics; `acme-onboarding` for the wizard).
 | DA.16 | #1188 | 🟡 Open | ouroboros-docs: [DA.16] Knowledge | Skills, learned facts, playbooks, repo profile | mvp, docs-site, documentation, knowledge | Y | Y | S | ouroboros-docs |
 
 ### Issue DA.1 (#1173) — ouroboros-docs: [DA.1] User Guide overview, concepts & glossary
+
+> **GitHub issue:** #1173 ✅ · **Status:** 🟢 Done · **Parent epic:** #1158
+>
+> **Delivered (#1173):** `user-guide/index.mdx` (audience, what Ouroboros does, the reading path through every User Guide page, D12 note), `user-guide/concepts.mdx` (workspace; the loop as a Mermaid flowchart plus seven steps; where you decide — Needs You decision cards, PR verification, run-console controls, Autonomy policies; dry-run policy vs a Studio workflow dry run vs a simulated run; what can go wrong) and `user-guide/glossary.mdx` (40 alphabetical terms, each linking to an existing page; `tests/glossary.test.ts` holds order, the issue's seven core words and every link). Labels checked against `main`'s UI source and the running seeded stack. **Screenshot deviation:** no completed seeded run has stages, transcript or guardrails (only the live #482/#479/#476 do), so `user-guide.concepts.loop-in-app` captures live loop #482 "Fix flaky CAN-bus telemetry test" (Loop #1847) — agreed with the maintainer; it carries the "Simulated run" banner, which the page explains. Masks: `.run-head__elapsed` and only the last five transcript entries' `.run-entry__time` — the shell scrolls inside `main`, so Playwright paints masks of entries clipped by the transcript's scroll box over the page above it. Recapture byte-identical. No `docs-coverage.json` entries: DE.4 (#1212) has not created the file, and these three pages map to no UI route. Module 0.1.9.
 
 **Problem Statement.** New users meet a vocabulary (loop, run, workflow, gate, decision,
 pool, workspace) before they meet a screen.

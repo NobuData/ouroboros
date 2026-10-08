@@ -5,11 +5,50 @@ sidebar_position: 1
 description: "Who the User Guide is for and the path through it."
 ---
 
-Who the User Guide is for and the path through it.
+The User Guide is for the people who **use** Ouroboros day to day: you queue issues, shape
+the workflows that work on them, watch loops run, answer the questions they raise, and
+merge what they produce. You need a workspace to sign in to — if you are setting one up,
+deploying the stack or enrolling build-farm runners, start with the
+[Administration](../administration/index.mdx) section instead, and come back here once you
+can sign in.
 
-:::info[Being written]
+## What Ouroboros does
 
-This page is being written in
-[#1173](https://github.com/NobuData/ouroboros/issues/1173).
+Ouroboros is an autonomous software delivery loop: **issues in, verified pull requests
+out**. It picks up an issue from your tracker, sizes it, works it through a workflow you
+control, builds and tests the change on your own build farm, checks that the pull request
+does what the issue asked, and merges it — stopping to ask you whenever a decision is
+yours to make. What it learns along the way feeds the next loop.
 
-:::
+## The path through this guide
+
+Read it in order the first time; after that, jump to the screen you are on.
+
+1. **[Concepts](./concepts.mdx)** — the loop from issue to merged pull request, where you
+   decide, and what dry-run means. Read this first: every other page uses its words.
+2. **[Getting started](./getting-started/sign-in.mdx)** — sign in, run the Get Started
+   wizard and watch [your first loop](./getting-started/first-loop.mdx).
+3. **[Finding your way](./finding-your-way.mdx)** — the sidebar, the workspace switcher and
+   the header.
+4. **Feeding the loop** — the [Mission Control dashboard](./dashboard.mdx),
+   [Issues](./issues.mdx) (intake, sizing and queuing) and [Planning](./planning.mdx)
+   (turning prose into tickets).
+5. **Shaping the work** — [Workflows](./workflows/studio.mdx) on the canvas or
+   [as code](./workflows/code.mdx), and [Models](./models.mdx) (which model does which kind
+   of work).
+6. **Following a loop** — the [run console](./runs/console.mdx),
+   [test results](./runs/tests.mdx) and
+   [pull request verification](./pull-requests.mdx).
+7. **Deciding** — the [Needs-you inbox](./inbox.mdx), where every question a loop is
+   blocked on waits for your answer.
+8. **Getting better** — [Insights](./insights.mdx), the [Build Analyzer](./analyzer.mdx)
+   and [Knowledge](./knowledge.mdx) (skills, learned facts and playbooks).
+
+Meet a word you do not know? The [Glossary](./glossary.mdx) lists every term with a link to
+the page that explains it.
+
+## What this guide covers
+
+Every page describes what Ouroboros does **today**. Where the app shows a surface that has
+not arrived yet — a sidebar row marked **soon**, or a note saying a feature "arrives with"
+a later release — the page says so in one line and does not describe it as working.
