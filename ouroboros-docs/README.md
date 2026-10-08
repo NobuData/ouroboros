@@ -230,7 +230,8 @@ selector in the message; the rest are still captured, and the run exits non-zero
 |---|---|
 | `id` | `<section>.<slug>` — `home`, `user-guide`, `administration` or `cli`, then a kebab-case slug (dots allowed). The section is the image's folder |
 | `route` | The app route, from the UI's root |
-| `workspace` | The seeded workspace's slug the page is shown in (`acme-robotics`, `kensuenobu`, …) |
+| `workspace` | The seeded workspace's slug the page is shown in (`acme-robotics`, `kensuenobu`, …). Required, except on a `signedOut` entry |
+| `signedOut` | `true` to capture the page signed out — the capture's cookies are cleared first — for the sign-in page. Such an entry names no `workspace` |
 | `ready` | A Playwright selector that must be visible before the capture — CSS, `text=…`, `role=…`. Pick something only the *loaded* page has: seeded data, not a heading the skeleton already draws |
 | `clip` | `page` (the 1440×900 viewport), `fullPage`, or a selector whose element is captured alone |
 | `masks` | Selectors painted over in the app's own raised-surface colour — anything that changes between runs: relative times rendered on the server, live sparklines, generated ids |

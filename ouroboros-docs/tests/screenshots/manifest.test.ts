@@ -12,6 +12,7 @@ import {
   publicPath,
   readyTimeoutMessage,
   selectEntries,
+  signInRedirectError,
   validateManifest,
   type Entry,
   type Manifest,
@@ -178,5 +179,48 @@ describe("publicPath", () => {
     expect(publicPath("user-guide.wizard.step-2", "dark")).toBe(
       "img/screenshots/user-guide/wizard.step-2.dark.png",
     );
+  });
+});
+
+describe("signed-out entries", () => {
+  /** A signed-out entry: the sign-in page, with no workspace. */
+  const rest: Entry = { ...ENTRY };
+  delete rest.workspace;
+  const SIGNED_OUT: Entry = { ...rest, id: "user-guide.sign-in", route: "/login", signedOut: true };
+
+  it("validates without a workspace", () => {
+    expect(() => validateManifest(manifestOf(SIGNED_OUT))).not.toThrow();
+  });
+
+  it("refuses a signed-out entry that also names a workspace", () => {
+    expect(() =>
+      validateManifest(manifestOf({ ...SIGNED_OUT, workspace: "acme-robotics" })),
+    ).toThrow(/entries\/0/);
+  });
+
+  it("still requires a workspace of every signed-in entry", () => {
+    expect(() => validateManifest(manifestOf(rest as Entry))).toThrow(/workspace/);
+  });
+
+  it("refuses signedOut: false — leave the field out instead", () => {
+    expect(() =>
+      validateManifest(manifestOf({ ...ENTRY, signedOut: false as unknown as true })),
+    ).toThrow(/signedOut/);
+  });
+});
+
+describe("signInRedirectError", () => {
+  it("fails a signed-in entry that lands on sign-in, naming the entry and route", () => {
+    expect(signInRedirectError(ENTRY, "/login")).toBe(
+      "home.dashboard: /dashboard redirected to sign-in — the session was refused",
+    );
+  });
+
+  it("lets a signed-in entry go on anywhere else", () => {
+    expect(signInRedirectError(ENTRY, "/dashboard")).toBeUndefined();
+  });
+
+  it("lets a signed-out entry capture the sign-in page", () => {
+    expect(signInRedirectError({ ...ENTRY, signedOut: true }, "/login")).toBeUndefined();
   });
 });

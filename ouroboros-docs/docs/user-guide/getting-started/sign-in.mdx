@@ -2,14 +2,79 @@
 title: "Sign in"
 sidebar_label: "Sign in"
 sidebar_position: 1
-description: "Signing in with GitHub, what email and password mean outside production, and recovering a workspace."
+description: "Signing in with GitHub or SSO, choosing a workspace, and the workspace recovery screen."
 ---
 
-Signing in with GitHub, what email and password mean outside production, and recovering a workspace.
+You sign in to Ouroboros at `/login`, in two steps: who you are, then which workspace you
+work in. Any page you open while signed out sends you here first; once you have chosen a
+workspace on this browser before, signing in takes you straight back to that page.
 
-:::info[Being written]
+<Screenshot id="user-guide.sign-in" />
 
-This page is being written in
-[#1174](https://github.com/NobuData/ouroboros/issues/1174).
+## Step 1 — sign in
+
+Choose one:
+
+- **Continue with GitHub** — sign in with your GitHub account. This is the usual way in.
+- **Continue with SSO** — if your company signs in through its own identity provider (SAML
+  2.0 or OIDC — Okta, Entra ID, Google Workspace), type your **Company domain**, for example
+  `acme.ouroboros.dev`, and continue. Each domain is its own isolated tenant.
+
+Once you are in, the card reads **Signed in** and shows your name and email.
+
+:::note[Email and password]
+
+On a development build you also see a **development sign-in** form with **Email** and
+**Password** fields. It is for local development and demonstration data only: a production
+Ouroboros refuses email and password sign-in, whatever a browser sends, so on your team's
+deployment you sign in with GitHub or SSO.
 
 :::
+
+## Step 2 — choose where the loop runs
+
+**Choose where the loop runs** lists every workspace you are a member of, with how many of
+its repositories Ouroboros may work in. Pick one and choose **Enter mission control →** to
+open its [dashboard](../dashboard.mdx). Ouroboros remembers the choice, so next time you go
+straight to the dashboard; you switch workspaces later from the workspace chip in the
+header — see [Finding your way](../finding-your-way.mdx).
+
+Each row also has a switch that enables or disables the workspace's GitHub organisations
+for Ouroboros. Only an owner or admin can change it; everyone else sees
+"Only an owner or admin can change what Ouroboros may work in." Ouroboros works through a
+GitHub App with least-privilege scopes — contents, issues and pull requests on the
+repositories you enable, nothing else.
+
+If you have no workspace yet, step 2 reads **No workspace yet**: ask an owner of your
+team's workspace to invite you. Setting up sign-in itself — registering the GitHub OAuth app
+and configuring SSO — is an administrator's job; see
+[Sign-in and workspace](../../administration/sign-in-and-workspace.mdx).
+
+## A workspace scheduled for deletion
+
+When an owner deletes a workspace, it is not destroyed at once: it waits out a 30-day
+recovery window. Open it in that time and you land on `/workspace-recovery` instead of its
+pages, under the heading ***Workspace* is scheduled for deletion**:
+
+- A countdown shows how long is left to recover it.
+- **While it is pending deletion**, every page of the workspace is frozen behind this
+  screen, nothing is dispatched — no loop starts, no stage advances, no build is offered —
+  and everyone who is not an owner was signed out of it.
+- An **owner** can choose **Restore workspace** to return it to active; loops may start
+  again and everyone can sign back in. Anyone else sees that only an owner can restore it —
+  ask one before the window closes.
+- **Go elsewhere** opens your other workspaces, or **Sign out**.
+
+When the window closes, the workspace and its data are destroyed.
+
+## What can go wrong
+
+- **"Could not reach the sign-in service. Check your connection."** — Ouroboros could not
+  be reached; check your network, then try again.
+- **"Sign-in was refused"** — GitHub or the service turned the sign-in down. Try again; if
+  it keeps happening, ask your administrator to check the sign-in configuration.
+- **"domain must be a company domain, such as acme.ouroboros.dev"** — the SSO field needs
+  your company's domain, not an email address.
+- **You land back on sign-in from a page you had open** — your session ended. Sign in
+  again; if this browser already remembers your workspace, you return to that page,
+  otherwise you choose the workspace and start at the dashboard.

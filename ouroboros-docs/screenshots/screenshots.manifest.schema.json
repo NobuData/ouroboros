@@ -66,7 +66,10 @@
     "entry": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "route", "workspace", "ready", "clip", "caption", "alt"],
+      "required": ["id", "route", "ready", "clip", "caption", "alt"],
+      "if": { "required": ["signedOut"] },
+      "then": { "not": { "required": ["workspace"] } },
+      "else": { "required": ["workspace"] },
       "properties": {
         "id": {
           "description": "`<section>.<slug>` — the section is where the image is used and the folder it is written to.",
@@ -79,9 +82,13 @@
           "pattern": "^/"
         },
         "workspace": {
-          "description": "The seeded workspace's slug the page is shown in: `acme-robotics`.",
+          "description": "The seeded workspace's slug the page is shown in: `acme-robotics`. Required unless the entry is `signedOut`.",
           "type": "string",
           "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "signedOut": {
+          "description": "Capture the page signed out — the session's cookies are cleared first — for the sign-in page. Such an entry names no `workspace`.",
+          "const": true
         },
         "ready": {
           "$ref": "#/$defs/selector",

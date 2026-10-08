@@ -49,8 +49,10 @@ export interface Entry {
   id: string;
   /** The app route, from the UI's root. */
   route: string;
-  /** The seeded workspace's slug. */
-  workspace: string;
+  /** The seeded workspace's slug; absent on a `signedOut` entry. */
+  workspace?: string;
+  /** Capture signed out (the sign-in page), with no workspace. */
+  signedOut?: true;
   /** A Playwright selector that must match before the capture. */
   ready: string;
   /** `page`, `fullPage`, or a selector. */
@@ -210,4 +212,17 @@ export function readyTimeoutMessage(entry: Entry, theme: Theme, timeoutMs: numbe
     `${entry.id} (${theme}): ready selector ${JSON.stringify(entry.ready)} did not appear ` +
     `on ${entry.route} within ${timeoutMs} ms`
   );
+}
+
+/**
+ * Why a capture must stop because the app sent it to sign-in. A signed-in entry that lands
+ * on `/login` means the session was refused; a `signedOut` entry is meant to be there.
+ *
+ * @param entry the entry.
+ * @param pathname the path the page ended up on.
+ * @returns the failure message, or `undefined` when the capture may go on.
+ */
+export function signInRedirectError(entry: Entry, pathname: string): string | undefined {
+  if (entry.signedOut || !pathname.startsWith("/login")) return undefined;
+  return `${entry.id}: ${entry.route} redirected to sign-in — the session was refused`;
 }

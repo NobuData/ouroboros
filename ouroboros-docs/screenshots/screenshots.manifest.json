@@ -10,7 +10,7 @@
       "masks": [
         ".dash-runs td.ou-table__cell--mono.ou-table__cell--end"
       ],
-      "caption": "Mission Control \u2014 live loops, the queue, the build farm and what needs you, at a glance.",
+      "caption": "Mission Control — live loops, the queue, the build farm and what needs you, at a glance.",
       "alt": "The Ouroboros Mission Control dashboard for the Acme Robotics workspace, showing active loops, the queue and farm status.",
       "capturedAt": "2026-10-08T17:52:11.794Z",
       "uiVersion": "0.144.1",
@@ -31,6 +31,93 @@
       "capturedAt": "2026-10-08T20:38:18.053Z",
       "uiVersion": "0.144.1",
       "seedRef": "7bc35ec67cea14bf6d8e66197513397670cf9d15"
+    },
+    {
+      "id": "user-guide.sign-in",
+      "route": "/login",
+      "signedOut": true,
+      "ready": "text=Continue with GitHub",
+      "clip": "page",
+      "caption": "The sign-in page: continue with GitHub or your company's single sign-on.",
+      "alt": "The Ouroboros sign-in page, with the brand panel on the left and, on the right, Step 1 Sign in with Continue with GitHub and an enterprise SSO domain field, and a Step 2 preview of choosing where the loop runs.",
+      "capturedAt": "2026-10-08T21:13:42.748Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "010fb287e1c459cdc1d703473959cc3bb408a31f"
+    },
+    {
+      "id": "user-guide.wizard.detection",
+      "route": "/get-started?repo=acme-robotics/helios-firmware",
+      "workspace": "acme-onboarding",
+      "ready": "section.detect .detect-row",
+      "clip": "section.detect",
+      "caption": "The detection card: what Ouroboros found in the repository, with the evidence for each finding.",
+      "alt": "The We already figured this out card, listing the repository's language, build, devcontainer, tests, suggested protected paths and conventions.",
+      "capturedAt": "2026-10-08T21:13:42.748Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "010fb287e1c459cdc1d703473959cc3bb408a31f"
+    },
+    {
+      "id": "user-guide.wizard.templates",
+      "route": "/get-started?repo=acme-robotics/helios-firmware",
+      "workspace": "acme-onboarding",
+      "ready": "section.tiles .tile",
+      "clip": "section.tiles",
+      "caption": "Starting workflow templates — pick one, then edit it later in the Workflow Studio.",
+      "alt": "The Choose a starting workflow card with four template tiles: Quick fixes, Feature builder, Docs & chores and Deep refactor.",
+      "capturedAt": "2026-10-08T21:13:42.748Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "010fb287e1c459cdc1d703473959cc3bb408a31f"
+    },
+    {
+      "id": "user-guide.wizard.first-issue",
+      "route": "/get-started?repo=acme-robotics/helios-firmware",
+      "workspace": "acme-onboarding",
+      "ready": "section.pick-card .pick-row",
+      "clip": "section.pick-card",
+      "caption": "Your first issue: the safe one Ouroboros picked, with its estimate, and what keeps the first loop safe.",
+      "alt": "The Your first issue card showing the picked issue with its effort, workflow and estimated minutes, the buttons to pick another, and the safety list.",
+      "capturedAt": "2026-10-08T21:13:42.748Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "010fb287e1c459cdc1d703473959cc3bb408a31f"
+    },
+    {
+      "id": "user-guide.wizard.defaults",
+      "route": "/get-started?repo=acme-robotics/helios-firmware",
+      "workspace": "acme-onboarding",
+      "ready": "section.defaults-card .defaults__row",
+      "clip": "section.defaults-card",
+      "masks": [
+        "[data-key=estimator] .defaults__affix"
+      ],
+      "caption": "Smart defaults: what is already set up for you, and what you can add later.",
+      "alt": "The Smart defaults card, listing models through your own keys, builds on an enrolled runner, the nightly estimator and Slack after your first pull request.",
+      "capturedAt": "2026-10-08T21:14:45.631Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "010fb287e1c459cdc1d703473959cc3bb408a31f"
+    },
+    {
+      "id": "user-guide.wizard.dry-run",
+      "route": "/get-started?repo=acme-robotics/helios-firmware",
+      "workspace": "acme-onboarding",
+      "ready": "ul.safety .safety__row",
+      "clip": "ul.safety",
+      "caption": "What keeps the first loop safe: dry-run opens a draft pull request and never merges.",
+      "alt": "The safety list under the first issue: dry-run opens a draft PR and never merges, decisions wait in the Needs-you inbox, and auto-merge can be turned on in Settings, Policies.",
+      "capturedAt": "2026-10-08T21:13:42.748Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "010fb287e1c459cdc1d703473959cc3bb408a31f"
+    },
+    {
+      "id": "user-guide.dashboard-banner",
+      "route": "/dashboard",
+      "workspace": "kensuenobu",
+      "ready": "section.offer-banner",
+      "clip": "page",
+      "caption": "A new workspace's dashboard offers the Get Started wizard until you run a first loop or dismiss it.",
+      "alt": "The Mission Control dashboard of a new workspace, with a banner reading New workspace — your first loop in about 4 minutes, and Get started and Dismiss buttons.",
+      "capturedAt": "2026-10-08T21:13:42.748Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "010fb287e1c459cdc1d703473959cc3bb408a31f"
     }
   ]
 }
