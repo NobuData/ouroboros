@@ -2,10 +2,10 @@
 #
 # verify-layout.sh — assert the monorepo layout matches the documented conventions.
 #
-# Checks the structural contract established by issue #8: that every application module
-# has a home and a README covering purpose, stack and run instructions; that the root
-# README maps the modules and points at the architecture doc; and that .editorconfig
-# covers all five languages in the repo.
+# Checks the structural contract established by issue #8 (extended to ouroboros-docs by
+# #1164): that every application module has a home and a README covering purpose, stack
+# and run instructions; that the root README maps the modules and points at the
+# architecture doc; and that .editorconfig covers all five languages in the repo.
 #
 # Deliberately dependency-free POSIX shell so it runs identically on a developer's
 # machine, in a container, and in CI (#11) without an install step.
@@ -33,9 +33,12 @@ cd "$ROOT"
 # with the build farm (#243) and answers to the same structural contract: a README with
 # purpose, stack and run instructions, and a row in the root README's module map.
 #
+# ouroboros-docs, the documentation site (#1164), postdates them and is held to the whole of
+# CONVENTIONS.md § 2 from its first commit — see the extra checks below.
+#
 # ouroboros-web is intentionally excluded: it is the marketing site and predates these
 # conventions.
-MODULES="ouroboros-ui ouroboros-rest ouroboros-engine ouroboros-db ouroboros-runner"
+MODULES="ouroboros-ui ouroboros-rest ouroboros-engine ouroboros-db ouroboros-runner ouroboros-docs"
 
 # The assertion harness (pass/fail/check_*/check_summary) is shared with the repo's
 # other verify-* scripts.
@@ -59,6 +62,17 @@ for module in $MODULES; do
   check_contains "$module/README.md" '^## Stack' "$module README documents the stack"
   check_contains "$module/README.md" '^## Run' "$module README documents how to run it"
 done
+
+printf '\nouroboros-docs\n'
+# The documentation site is the first module scaffolded after the README structure was
+# written down, so it carries all six sections rather than the three the older modules are
+# checked for, and the module-local files § 2 requires of a directory that can be lifted out
+# of the repository. Its Dockerfile is DD.1's, so it is not asked for here.
+for section in Configuration Layout 'Related issues'; do
+  check_contains ouroboros-docs/README.md "^## $section" "ouroboros-docs README documents $section"
+done
+check_exists ouroboros-docs/.gitignore 'ouroboros-docs/.gitignore exists'
+check_exists ouroboros-docs/.dockerignore 'ouroboros-docs/.dockerignore exists'
 
 printf '\nRoot README module map\n'
 for module in $MODULES ouroboros-web; do

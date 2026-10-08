@@ -6,7 +6,7 @@
 # Yarn 4 workspaces, with four limits on it and one cache boundary that is not obvious.
 # A decision doc goes stale the moment the repository stops matching it, so this asserts
 # the parts of it a checkout can prove — that the roster of workspaces is the one the
-# document names, that ouroboros-web is still outside it, that every repo-level verb
+# document names, that ouroboros-web and ouroboros-docs are still outside it, that every repo-level verb
 # reaches the graph, that nothing long-running or Docker-facing is cached, and that a
 # task whose command reads files above its own package says so in its inputs.
 #
@@ -188,6 +188,20 @@ check_exists ouroboros-web/.yarnrc.yml 'ouroboros-web keeps its own Yarn configu
 # `yarn dev` must not start it: it wants the same port 3000 the product UI does.
 check_matches "$(json_value package.json scripts 'dev:web')" 'ouroboros-web' \
   'ouroboros-web has its own start verb'
+
+printf '\nouroboros-docs stays outside\n'
+# Limit 6 of the decision (#1164): the documentation site is not a workspace either. Its
+# React and Docusaurus resolution has no place in the product's lockfile, and a static site
+# has no place in `yarn dev`'s task graph. Checked the same way as the marketing site.
+if printf '%s\n' "$workspaces" | grep -qw 'ouroboros-docs'; then
+  fail 'ouroboros-docs is not a workspace (it is listed in the roster)'
+else
+  pass 'ouroboros-docs is not a workspace'
+fi
+check_exists ouroboros-docs/yarn.lock 'ouroboros-docs keeps its own lockfile'
+check_exists ouroboros-docs/.yarnrc.yml 'ouroboros-docs keeps its own Yarn configuration'
+check_matches "$(json_value package.json scripts 'dev:docs')" 'cd ouroboros-docs' \
+  'ouroboros-docs has its own start verb'
 
 printf '\ntests/e2e stays outside\n'
 # Limit 2 of the decision, and the one with teeth: the smoke suite (#56) runs against a

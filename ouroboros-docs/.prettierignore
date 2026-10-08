@@ -1,0 +1,6 @@
+build/
+.docusaurus/
+node_modules/
+screenshots/test-results/
+yarn.lock
+.yarn/

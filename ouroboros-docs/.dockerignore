@@ -1,0 +1,16 @@
+# Keeps the build context small and secrets out (CONVENTIONS.md § 2). The Dockerfile
+# itself arrives with DD.1; this file exists from the scaffold so the module never has a
+# window in which a stray .env or node_modules could be sent to a daemon.
+.git
+node_modules
+.yarn/cache
+.yarn/install-state.gz
+build
+.docusaurus
+screenshots/test-results
+npm-debug.log*
+yarn-error.log*
+README.md
+Dockerfile
+.dockerignore
+.env*

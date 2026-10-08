@@ -17,6 +17,7 @@ the plan that produced them is
 ouroboros/
 ├── docs/              # mockups, roadmaps, architecture, conventions, brand
 ├── ouroboros-web/     # marketing site — ouroboros.build (already live)
+├── ouroboros-docs/    # Docusaurus documentation site · epic #1156
 ├── ouroboros-ui/      # Next.js product UI            · epic #5
 ├── ouroboros-rest/    # NestJS communications layer   · epic #4
 ├── ouroboros-engine/  # Python/FastAPI backend        · epic #6
@@ -52,7 +53,7 @@ migrations, and only then brings up `ouroboros-rest` and `ouroboros-engine` and
 paragraph of a README nobody re-reads. `yarn build`, `yarn lint`, `yarn typecheck` and
 `yarn test` run their verb across every module that has one.
 
-Five limits on it are deliberate:
+Six limits on it are deliberate:
 
 1. **`ouroboros-web` is not a workspace.** It is the marketing site, it deploys on its
    own pipeline, and it wants the same port 3000 the product UI does, so it keeps its own
@@ -79,6 +80,11 @@ Five limits on it are deliberate:
    to the roster would put Go in the task graph, and `yarn test` at the root would then
    need a Go toolchain to pass. `ouroboros-runner/Makefile` is how it is run, and it
    exposes the same verbs everything else does (§ 3).
+6. **`ouroboros-docs` is not a workspace.** It is the documentation site — a static
+   Docusaurus build with its own React and Docusaurus resolution, its own image and its
+   own pipeline — so, like `ouroboros-web`, it keeps its own lockfile and `.yarnrc.yml`
+   and `yarn dev` never starts it. `yarn dev:docs` does, on port 3100
+   ([#1164](https://github.com/NobuData/ouroboros/issues/1164)).
 
 **Directory names are kebab-case and prefixed `ouroboros-`.** A module directory is
 never nested inside another module.
@@ -119,7 +125,7 @@ is the work, not an oversight to be papered over with a wildcard.
 | `Dockerfile` | yes, once scaffolded — see the exception below | Every module ships as a container |
 | `.dockerignore` | yes, with the Dockerfile | Keeps build context small and secrets out |
 | `.gitignore` | yes | Module-local artefacts, so the directory is portable |
-| Lockfile | see below | `uv.lock` (Python) and `ouroboros-web/yarn.lock` are module-local; the workspace modules share the root `yarn.lock`; `ouroboros-runner` has none, because it has no dependencies |
+| Lockfile | see below | `uv.lock` (Python), `ouroboros-web/yarn.lock` and `ouroboros-docs/yarn.lock` are module-local; the workspace modules share the root `yarn.lock`; `ouroboros-runner` has none, because it has no dependencies |
 
 **`ouroboros-runner` ships no container**, and that is the one exception to the Dockerfile
 row. Its artefact is a **binary** that runs on the customer's machine, so a container image
@@ -136,8 +142,8 @@ installs are still immutable — `yarn install --immutable` from inside either m
 resolves it, because Yarn finds the workspace root from anywhere inside it. The rule that
 did not survive is that a module directory can be lifted out of the repo and still
 install; for those two that now takes the root `package.json`, `yarn.lock` and
-`.yarnrc.yml` with it. `ouroboros-web` is untouched by this and remains genuinely
-self-contained.
+`.yarnrc.yml` with it. `ouroboros-web` and `ouroboros-docs` are untouched by this and
+remain genuinely self-contained.
 
 The repo-root [`.gitignore`](../.gitignore) covers artefacts any module can produce;
 module-level `.gitignore` files add what only that toolchain emits. Both exist on
@@ -156,6 +162,7 @@ Module READMEs follow the same five sections so they are skimmable side by side:
 | `ouroboros-ui` | TypeScript | Yarn 4 via corepack | Node 24 |
 | `ouroboros-rest` | TypeScript | Yarn 4 via corepack | Node 24 |
 | `ouroboros-web` | TypeScript | Yarn 4 via corepack | Node 24 |
+| `ouroboros-docs` | TypeScript | Yarn 4 via corepack | Node 24 |
 | `ouroboros-engine` | Python 3.12 | [uv](https://docs.astral.sh/uv/) | Python 3.12 |
 | `ouroboros-db` | SQL | — (Flyway container) | PostgreSQL 17 |
 | `ouroboros-runner` | Go 1.24 | — (no dependencies) | Go 1.24 (a floor, not a pin) |
@@ -164,7 +171,7 @@ Module READMEs follow the same five sections so they are skimmable side by side:
 `packageManager` field, with `nodeLinker: node-modules` in `.yarnrc.yml`. Both of those
 now live in the repo-root `package.json` and `.yarnrc.yml`, once, for every workspace —
 a module that carried its own copy could drift from the version the lockfile was written
-by. `ouroboros-web` is not a workspace and keeps both files itself. CI and Docker builds
+by. `ouroboros-web` and `ouroboros-docs` are not workspaces and keep both files themselves. CI and Docker builds
 run `yarn install --immutable`; a lockfile that does not match the manifests it resolves
 fails the build rather than silently updating.
 
@@ -311,9 +318,11 @@ configuration logging.
 | `ouroboros-rest` | 4000 |
 | `ouroboros-engine` | 8000 |
 | `ouroboros-db` (PostgreSQL) | 5432 |
+| `ouroboros-docs` | 3100 |
 
 `ouroboros-web` also defaults to 3000; it is the marketing site and is not part of the
-application compose stack, so the two are never up at once.
+application compose stack, so the two are never up at once. `ouroboros-docs` takes 3100
+precisely so it can run beside either.
 
 ## 5. Containers
 

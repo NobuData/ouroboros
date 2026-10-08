@@ -34,6 +34,7 @@ describing:
 | [`ouroboros-ui`](../ouroboros-ui) | **Running** — the App Router skeleton builds and serves | Scaffolded by [#39](https://github.com/NobuData/ouroboros/issues/39) → epic [#5](https://github.com/NobuData/ouroboros/issues/5) |
 | [`ouroboros-engine`](../ouroboros-engine) | **Running** — the FastAPI service serves liveness and a key-guarded `/v0` | Scaffolded by [#50](https://github.com/NobuData/ouroboros/issues/50), guarded by [#51](https://github.com/NobuData/ouroboros/issues/51) → epic [#6](https://github.com/NobuData/ouroboros/issues/6) |
 | [`ouroboros-web`](../ouroboros-web) | **Running** — the marketing site, outside the application stack | — |
+| [`ouroboros-docs`](../ouroboros-docs) | **Scaffolded** — an empty documentation site, outside the application stack | [#1164](https://github.com/NobuData/ouroboros/issues/1164) → epic [#1156](https://github.com/NobuData/ouroboros/issues/1156) |
 
 Keeping the document true as those scaffolds land is a maintenance obligation, and part
 of it is mechanical: [`scripts/verify-architecture.sh`](../scripts/verify-architecture.sh)
@@ -86,6 +87,7 @@ re-implemented differently.
 | `ouroboros-db` (PostgreSQL) | 5432 | `127.0.0.1` only | **no** |
 | `ouroboros-runner` | — none | n/a — it listens on nothing | **no** |
 | mailpit (development mail catcher) | 1025 · 8025 | `127.0.0.1` only | the inbox, at 8025 |
+| `ouroboros-docs` (documentation site) | 3100 | n/a — `yarn dev:docs`, not a compose service | yes |
 
 Every service reads its listen port from the unprefixed `PORT`, because that is what
 container platforms set. `ouroboros-web` also defaults to 3000; it is the marketing site,
@@ -346,6 +348,16 @@ What it means for the invariants in § 8 is nothing: the runner reaches
 `ouroboros-rest` and only `ouroboros-rest`, so the boundary that keeps tenancy enforcement in
 one place is unchanged. It is a **fourth trust boundary** rather than an exception to the
 third — see § 9.
+
+### 2.7 `ouroboros-docs` — the documentation site
+
+**Scaffolded** ([#1164](https://github.com/NobuData/ouroboros/issues/1164), epic
+[#1156](https://github.com/NobuData/ouroboros/issues/1156)), and outside everything above for
+the same reason `ouroboros-web` is. It is a Docusaurus static site for the people who use,
+administer and script Ouroboros — no API, no database, no session; it describes the system
+and calls none of it. It is not a workspace, keeps its own lockfile, and runs on port 3100
+through `yarn dev:docs`. The plan for its content, screenshots and image is
+[`ROADMAP_OUROBOROS_DOCUMENTATION_SITE.md`](ROADMAP_OUROBOROS_DOCUMENTATION_SITE.md).
 
 ## 3. Request paths
 
