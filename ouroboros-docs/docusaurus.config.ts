@@ -2,6 +2,7 @@ import { themes as prismThemes } from "prism-react-renderer";
 import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
 import type { FooterColumnItem } from "@docusaurus/theme-common";
+import type { PluginOptions } from "@easyops-cn/docusaurus-search-local";
 
 import {
   COPYRIGHT,
@@ -59,6 +60,24 @@ const FOOTER_LINKS: FooterColumnItem[] = [
 ];
 
 /**
+ * Options for `@easyops-cn/docusaurus-search-local` (roadmap decision D5).
+ *
+ * One docs instance served from `/` holds all three sections, so one index covers every
+ * sidebar. `explicitSearchResultPath` prints each hit's path — the active navbar item (its
+ * section: User Guide, Administration or CLI), the sidebar group, then the page — so a
+ * reader sees which section a result lives in. `hashed` busts the browser's cached index
+ * whenever the docs change.
+ */
+const SEARCH_OPTIONS = {
+  indexDocs: true,
+  indexBlog: false,
+  indexPages: false,
+  docsRouteBasePath: "/",
+  hashed: true,
+  explicitSearchResultPath: true,
+} satisfies PluginOptions;
+
+/**
  * The Ouroboros documentation site.
  *
  * One docs instance served from the site root (roadmap decision D2): the three sections —
@@ -67,8 +86,9 @@ const FOOTER_LINKS: FooterColumnItem[] = [
  * of broken reference — link, Markdown link, anchor, duplicate route — fails the build.
  * The brand (CY.3, #1166) is the product's own: `src/css/tokens.css` (a synced copy of
  * `docs/design/tokens.css`) mapped onto Infima by `src/css/custom.css`, the light/dark logo
- * pair and the favicon set. Search arrives with CY.4 (#1167). The scaffold's blog is
- * switched off rather than left empty, so no `/blog` route exists.
+ * pair and the favicon set. Search is local and Mermaid diagrams take the brand tokens
+ * (CY.4, #1167). The scaffold's blog is switched off rather than left empty, so no `/blog`
+ * route exists.
  */
 const config: Config = {
   title: "Ouroboros Docs",
@@ -127,6 +147,8 @@ const config: Config = {
   onDuplicateRoutes: "throw",
 
   markdown: {
+    // ```mermaid code blocks render as diagrams (roadmap decision D5).
+    mermaid: true,
     hooks: {
       onBrokenMarkdownLinks: "throw",
     },
@@ -157,7 +179,19 @@ const config: Config = {
     ],
   ],
 
+  themes: [
+    // Diagrams. src/theme/Mermaid wraps the theme's renderer to feed it the brand tokens.
+    "@docusaurus/theme-mermaid",
+    // Local search (D5): the index is built into the site, so no third-party service.
+    ["@easyops-cn/docusaurus-search-local", SEARCH_OPTIONS],
+  ],
+
   themeConfig: {
+    // Mermaid's "base" theme is the one built to be recoloured; the colours themselves are
+    // read from the tokens at render time (src/theme/Mermaid/brandTheme.ts).
+    mermaid: {
+      theme: { light: "base", dark: "base" },
+    },
     colorMode: {
       respectPrefersColorScheme: true,
     },
@@ -180,7 +214,8 @@ const config: Config = {
           label: section.label,
           position: "left" as const,
         })),
-        // Search joins the right side with CY.4; the colour-mode toggle is the theme's own.
+        // Right side: search, GitHub, then the theme's own colour-mode toggle.
+        { type: "search", position: "right" },
         { href: REPO_URL, label: "GitHub", position: "right" },
       ],
     },

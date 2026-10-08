@@ -1,0 +1,14 @@
+/* A path through the app's navigation: steps in the UI face, set apart from prose. */
+.uiPath {
+  font-family: var(--f-ui);
+  white-space: nowrap;
+}
+
+.step {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.separator {
+  color: var(--ink-faint);
+}

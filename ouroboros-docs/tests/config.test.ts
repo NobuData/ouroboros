@@ -87,6 +87,42 @@ describe("docusaurus.config.ts", () => {
     expect(items).toContainEqual({ href: REPO_URL, label: "GitHub", position: "right" });
   });
 
+  it("puts search on the right, before GitHub", async () => {
+    const { default: config } = await loadConfig();
+    const items = (config.themeConfig as Preset.ThemeConfig).navbar?.items ?? [];
+    const search = items.findIndex((item) => item.type === "search");
+    const github = items.findIndex((item) => item.href === REPO_URL);
+    expect(items[search]).toMatchObject({ position: "right" });
+    expect(search).toBeLessThan(github);
+  });
+
+  it("indexes the one docs instance at / for local search, and no blog", async () => {
+    const { default: config } = await loadConfig();
+    const search = config.themes?.find(
+      (theme): theme is [string, Record<string, unknown>] =>
+        Array.isArray(theme) && theme[0] === "@easyops-cn/docusaurus-search-local",
+    );
+    expect(search?.[1]).toMatchObject({
+      indexDocs: true,
+      indexBlog: false,
+      docsRouteBasePath: "/",
+      hashed: true,
+      // Prints each hit's path, which starts with its section's navbar label.
+      explicitSearchResultPath: true,
+    });
+    // One index across all three sections: per-path contexts would split them.
+    expect(search?.[1]).not.toHaveProperty("searchContextByPaths");
+  });
+
+  it("renders Mermaid code blocks with the recolourable base theme in both modes", async () => {
+    const { default: config } = await loadConfig();
+    expect(config.markdown?.mermaid).toBe(true);
+    expect(config.themes).toContain("@docusaurus/theme-mermaid");
+    expect((config.themeConfig as { mermaid?: unknown }).mermaid).toEqual({
+      theme: { light: "base", dark: "base" },
+    });
+  });
+
   it("keeps the colour-mode toggle", async () => {
     const { default: config } = await loadConfig();
     const theme = config.themeConfig as Preset.ThemeConfig;

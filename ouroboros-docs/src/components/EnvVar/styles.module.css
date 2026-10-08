@@ -1,0 +1,12 @@
+/* The variable keeps its code styling; the link shows only in its colour. */
+.envVar code {
+  color: var(--accent);
+}
+
+.envVar:hover {
+  text-decoration: none;
+}
+
+.envVar:hover code {
+  border-color: var(--accent-line);
+}
