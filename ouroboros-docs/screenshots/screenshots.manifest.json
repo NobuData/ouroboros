@@ -226,6 +226,57 @@
       "capturedAt": "2026-10-08T23:21:09.051Z",
       "uiVersion": "0.144.1",
       "seedRef": "a7119ac42d1bf8fafd2a0211bb433d3d6448a6e6"
+    },
+    {
+      "id": "user-guide.planning",
+      "route": "/planning",
+      "workspace": "acme-robotics",
+      "ready": ".planning-sync li",
+      "clip": "page",
+      "masks": [
+        ".planning-gen__milestone .ou-field__hint"
+      ],
+      "caption": "Planning: describe the work and draft tickets, with the trackers and the backlog's health beside it.",
+      "alt": "The Planning screen headed Describe the work. Ouroboros writes the tickets., with Import from Jira marked soon and New roadmap buttons; the Generate tickets card with its description box, structured outline, tracker choice of GitHub Issues, Jira and Linear, milestone select, the Auto-size with estimator and Queue XS/S tickets immediately switches and the Draft tickets button; and the Tracker sync and Backlog health cards.",
+      "capturedAt": "2026-10-08T23:32:45.667Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "3ec63a74c0d952aaa15b01a3a180d40eb12b9caa"
+    },
+    {
+      "id": "user-guide.planning.tickets",
+      "route": "/planning?batch=5eed0021-0000-4000-8000-000000000001",
+      "workspace": "acme-robotics",
+      "ready": ".planning-draft",
+      "clip": ".planning-gen__drafts",
+      "caption": "A drafted batch under review: six tickets, sized and wired with dependencies. Nothing reaches the tracker until you push.",
+      "alt": "The Draft — 6 tickets list marked all sized: six ticked drafts OTA-1 to OTA-6, each with its title, the tickets it blocks, an effort chip, a suggested workflow and an Edit button, above the estimated total, Regenerate and Push 6 tickets to GitHub.",
+      "capturedAt": "2026-10-08T23:33:11.973Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "3ec63a74c0d952aaa15b01a3a180d40eb12b9caa"
+    },
+    {
+      "id": "user-guide.planning.timeline",
+      "route": "/planning",
+      "workspace": "acme-robotics",
+      "ready": ".planning-gantt__bar",
+      "clip": "section:has(.planning-gantt)",
+      "caption": "The roadmap: one lane per epic across the months, with progress and today's date.",
+      "alt": "The Roadmap — Helios 2.1 card, Q3 2026 to Q1 2027, with Share marked soon: a month grid from July 2026 to March 2027 with bars for OTA hardening (12 issues, 8 done), BLE provisioning v2 (9, 2), Motor control refactor (14, 0), Fleet telemetry dashboard (7, 0) and a dashed unscoped Zephyr 4.2 migration marked proposed, a TODAY line, and an Add epic button.",
+      "capturedAt": "2026-10-08T23:32:51.315Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "3ec63a74c0d952aaa15b01a3a180d40eb12b9caa"
+    },
+    {
+      "id": "user-guide.planning.write-back",
+      "route": "/planning?batch=5eed0021-0000-4000-8000-000000000001",
+      "workspace": "acme-robotics",
+      "ready": ".planning-gen__footer",
+      "clip": ".planning-gen__footer",
+      "caption": "The push: one press writes every ticked draft to the tracker, blockers first.",
+      "alt": "The foot of a drafted batch: est. total ~3 days of loop time · $14 est. spend, a Regenerate button and the Push 6 tickets to GitHub button.",
+      "capturedAt": "2026-10-08T23:33:14.943Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "3ec63a74c0d952aaa15b01a3a180d40eb12b9caa"
     }
   ]
 }
