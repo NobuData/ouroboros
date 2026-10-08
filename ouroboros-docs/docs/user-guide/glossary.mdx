@@ -5,11 +5,128 @@ sidebar_position: 16
 description: "Every Ouroboros term, alphabetically, linked to the page that explains it."
 ---
 
-Every Ouroboros term, alphabetically, linked to the page that explains it.
+Every term the app and this guide use, alphabetically. Each links to the page that
+explains it; [Concepts](./concepts.mdx) puts them in the order the work happens.
 
-:::info[Being written]
+**Acceptance criteria** — The claims a pull request must satisfy for its issue, listed on
+its verification page under "Does the PR do what the ticket says?", each verified with
+evidence or waived. See [Pull requests](./pull-requests.mdx).
 
-This page is being written in
-[#1173](https://github.com/NobuData/ouroboros/issues/1173).
+**Allow once** — A one-time pass a person grants from a decision card when a loop needs to
+touch a protected path. See [Needs-you inbox](./inbox.mdx).
 
-:::
+**Auto-merge** — Merging a pull request without a person once every gate is green and your
+policies allow it. See [Pull requests](./pull-requests.mdx).
+
+**Autonomy policies** — The workspace rules that decide how much a loop may do on its own:
+auto-merge, human review, protected paths, spend guard and dry-run for new repos. See
+[Policies](../administration/policies.mdx).
+
+**Build Analyzer** — The screen that mines your build history for what slows builds down and
+suggests changes. See [Build Analyzer](./analyzer.mdx).
+
+**Build farm** — The runners your workspace builds and tests on, on your own hardware. See
+[Build farm](../administration/build-farm.mdx).
+
+**Decision** — A question a loop is blocked on, answered on its card in Needs You. See
+[Needs-you inbox](./inbox.mdx).
+
+**Dry run (workflow)** — A rehearsal of a workflow against a sized issue in the Workflow
+Studio: no model is called, nothing runs and nothing is recorded. See
+[Workflows](./workflows/studio.mdx).
+
+**Dry-run policy** — The workspace setting under which pull requests open as drafts and
+nothing merges. See [Concepts](./concepts.mdx#dry-run-and-live).
+
+**Evidence** — What backs an acceptance criterion: a test result, a log, a measurement. See
+[Pull requests](./pull-requests.mdx).
+
+**Gate** — A check a loop must pass to go on: a gate stage in a workflow, or a verification
+gate on a pull request. See [Workflows](./workflows/studio.mdx) and
+[Pull requests](./pull-requests.mdx).
+
+**Guardrails** — The rules a run is held to — allowed paths, untouched CI config, a clean
+secrets scan — shown on its run console. See [The run console](./runs/console.mdx).
+
+**Insights** — Merge rate, cycle time, cost and where loops still need people, over a
+period you choose. See [Insights](./insights.mdx).
+
+**Issue** — A unit of work from your tracker, the input to a loop. See
+[Issues](./issues.mdx).
+
+**Knowledge** — What the loop knows about your repositories: skills, learned facts and
+playbooks. See [Knowledge](./knowledge.mdx).
+
+**Learned fact** — Something a loop learned about your code, kept once you confirm it. See
+[Knowledge](./knowledge.mdx).
+
+**Live** — A loop with dry-run off: a pull request that passes its gates and your policies
+merges without a person. See [Concepts](./concepts.mdx#dry-run-and-live).
+
+**Loop** — The cycle from issue to merged pull request, and the name a run carries in the
+app (**Loop #*N***). See [Concepts](./concepts.mdx).
+
+**Mission Control** — The dashboard: live loops, the queue, the build farm and what needs
+you. See [Mission Control dashboard](./dashboard.mdx).
+
+**Model registry** — The models your workspace allows, each under a name that routing refers
+to. See [Models](./models.mdx).
+
+**Model routing** — Which model does which kind of work, with fallbacks. See
+[Models](./models.mdx).
+
+**Needs You** — The inbox of decisions waiting for a person; its count is in the sidebar and
+the header. See [Needs-you inbox](./inbox.mdx).
+
+**Playbook** — A reusable approach you can aim at any issue. See
+[Knowledge](./knowledge.mdx).
+
+**Pool** — A group of build-farm runners that work is sent to. See
+[Build farm](../administration/build-farm.mdx).
+
+**PR verification** — The page that checks a pull request against its gates and acceptance
+criteria before it merges. See [Pull requests](./pull-requests.mdx).
+
+**Provider** — A service that runs models — with the keys your workspace uses for it. See
+[Providers](../administration/providers.mdx).
+
+**Queue** — The issues waiting for a loop, in order. See [Issues](./issues.mdx).
+
+**Role** — What a member may do in a workspace: owner, admin, member or viewer. See
+[Roles](../administration/roles.mdx).
+
+**Run** — One pass of the loop over one issue, followed in the run console. See
+[The run console](./runs/console.mdx).
+
+**Run console** — The page for one run: stage timeline, agent transcript, changes,
+resources and guardrails. See [The run console](./runs/console.mdx).
+
+**Runner** — The agent you install on a build machine; it dials out to Ouroboros and runs
+builds and tests. See [Build farm](../administration/build-farm.mdx).
+
+**Simulated run** — A run opened by the simulated-run driver for demonstration: no executor,
+repository or model did its work. See [Concepts](./concepts.mdx#dry-run-and-live).
+
+**Sizing** — The effort estimate, XS to XL, Ouroboros gives each issue. See
+[Issues](./issues.mdx).
+
+**Skill** — Instructions you write once for the loop to follow on every run. See
+[Knowledge](./knowledge.mdx).
+
+**Stage** — One step of a workflow — analyze, plan, implement, build, test, review — shown on
+a run's stage timeline. See [Workflows](./workflows/studio.mdx).
+
+**Steer** — A note you send a live loop from its run console to change its course. See
+[The run console](./runs/console.mdx).
+
+**Test results** — A run's test outcomes, flaky tests and triage. See
+[Test results](./runs/tests.mdx).
+
+**Ticket source** — A tracker your workspace pulls issues from. See
+[Sources](../administration/sources.mdx).
+
+**Workflow** — The stages a loop follows, edited on the Studio canvas or as code. See
+[Workflows](./workflows/studio.mdx).
+
+**Workspace** — Your team's tenancy: members, repositories, sources, policies and build farm.
+See [Finding your way](./finding-your-way.mdx).
