@@ -90,7 +90,7 @@ ouroboros-docs/
 │   └── cli/                # CLI             → /cli             (sidebar cli)
 ├── src/
 │   ├── pages/index.tsx     # the home page, served at /: hero, section cards, quick links
-│   ├── components/         # UiPath, EnvVar, Since, SectionCards — usable in any page
+│   ├── components/         # UiPath, EnvVar, Since, SectionCards, Screenshot — usable in any page
 │   ├── theme/              # MDXComponents (registers them), Mermaid (brand colours)
 │   └── css/
 │       ├── tokens.css      # synced copy of docs/design/tokens.css — never edit it here
@@ -100,6 +100,7 @@ ouroboros-docs/
 │       ├── brand/          # synced copies: brand PNGs, mockup logos, favicon/
 │       └── screenshots/    # captured by yarn screenshots: <section>/<slug>.<theme>.png
 ├── screenshots/            # the capture harness (Playwright) — see "Recapturing screenshots"
+├── plugins/screenshots.ts  # reads the manifest and image sizes at build time for <Screenshot>
 ├── scripts/                # sync-brand.mjs
 ├── tests/                  # Vitest — config, sidebars, pages, brand, components, theme, module
 │   └── support/            # stand-ins for Docusaurus client modules, the jsdom setup
@@ -114,13 +115,9 @@ ouroboros-docs/
 Every page in `docs/` belongs to exactly one section. The home page is not a doc: it is
 the React page `src/pages/index.tsx` ([#1169](https://github.com/NobuData/ouroboros/issues/1169))
 — the brand lockup and tagline, one paragraph on what Ouroboros does, the three sections as
-`<SectionCards>`, and quick links to getting started, deploying and enrolling a runner. Its
-copy follows the root `README.md`, not the marketing site. A dashboard screenshot
-(`home.dashboard`) joins it once the capture harness
-([#1170](https://github.com/NobuData/ouroboros/issues/1170)) and `<Screenshot>`
-([#1171](https://github.com/NobuData/ouroboros/issues/1171)) land; the slot is marked in the
-page. The
-navbar lists the sections in the order User Guide, Administration, CLI, with a GitHub link
+`<SectionCards>`, quick links to getting started, deploying and enrolling a runner, and the
+dashboard as `<Screenshot id="home.dashboard" />`. Its copy follows the root `README.md`,
+not the marketing site. The navbar lists the sections in the order User Guide, Administration, CLI, with a GitHub link
 and the colour-mode toggle on the right, after the search box. The footer has a link
 column per section, a "More" column (GitHub, ouroboros.build) and the copyright line
 `Copyright © 2025-2026 NobuData LLC`, which a test holds exactly.
@@ -236,6 +233,31 @@ selector in the message; the rest are still captured, and the run exits non-zero
 | `actions` | Steps before the capture, in order: `{"click": sel}`, `{"hover": sel}`, `{"fill": sel, "value": "…"}`, `{"press": "Escape"}` or `{"press": "Enter", "on": sel}` |
 | `caption`, `alt` | The caption under the image and its alternative text; both required |
 
+### Showing a screenshot
+
+Put a captured entry on a page with its id ([#1171](https://github.com/NobuData/ouroboros/issues/1171)):
+
+```mdx
+<Screenshot id="user-guide.inbox" />
+<Screenshot id="user-guide.inbox" caption="The inbox after a snooze." />
+<Screenshot id="user-guide.inbox" alt="The inbox, empty." caption="" />
+```
+
+- **Text.** The alt text and caption are the manifest entry's; `alt` and `caption` replace
+  them on one page. `caption=""` leaves the caption out; alt text can never be blank.
+- **Theme.** Both captures are on the page and `ThemedImage` shows the one for the reader's
+  theme, switching with the colour-mode toggle.
+- **Size.** `plugins/screenshots.ts` reads the manifest (checking it against the schema) and
+  each PNG's header at build time, so the image carries its intrinsic `width`/`height` and the
+  page does not shift when it loads. It loads lazily and scales down to the column.
+- **Zoom.** Clicking the image opens it at full size in a dialog; a click, *Close* or
+  <kbd>Esc</kbd> closes it.
+
+These fail `yarn build` (and `yarn dev` shows the error): an id the manifest does not list,
+blank alt text, a manifest that fails its schema, an entry missing either theme's file, or
+light and dark files of different sizes. `yarn dev` rebuilds when the manifest or an image
+changes.
+
 ### What keeps captures identical
 
 Run twice against the same seeded stack, the harness writes byte-identical files:
@@ -345,7 +367,7 @@ Four kinds, each for one job, so a reader learns what a box means at a glance:
 
 ### Components
 
-Four components are available in every page without an import (registered in
+Five components are available in every page without an import (registered in
 `src/theme/MDXComponents.tsx`). Each refuses bad input by throwing, so a mistake fails
 `yarn build` instead of rendering something wrong:
 
@@ -355,13 +377,13 @@ Four components are available in every page without an import (registered in
 | `<EnvVar name="…" />` | A variable in the code face, linked to its entry in the [configuration reference](docs/administration/configuration/index.mdx) | `<EnvVar name="OURO_SMTP_URL" />` |
 | `<Since version="…" module="…" />` | A small badge: the release a feature arrived in (`module` optional) | `<Since version="0.7.16" module="ouroboros-rest" />` |
 | `<SectionCards />` | A grid of linked cards — the three sections by default, or your own `cards={[{ title, description, to }]}` | `<SectionCards />` on an overview page |
+| `<Screenshot id="…" />` | A captured screen in the reader's theme, framed and captioned, click to enlarge (`alt`, `caption` optional overrides) — see [Showing a screenshot](#showing-a-screenshot) | `<Screenshot id="home.dashboard" />` |
 
 `<EnvVar>` links to `/administration/configuration#<name in lower case>` — the heading the
 reference gives each variable. That anchor is checked at build time, so a variable the
 reference does not list fails the build. Until the generated reference lands
 ([#1191](https://github.com/NobuData/ouroboros/issues/1191)) no variable is listed, so
-`<EnvVar>` cannot be used yet; write the name in backticks meanwhile. Screenshots get their
-component with [#1171](https://github.com/NobuData/ouroboros/issues/1171).
+`<EnvVar>` cannot be used yet; write the name in backticks meanwhile.
 
 Component styles are CSS modules beside each component and, like the rest of the site's
 CSS, use tokens only. Each component has a Vitest + Testing Library test in

@@ -73,3 +73,9 @@ export const SECTIONS: readonly Section[] = [
     description: "Command-line tools: the runner installer and agent, stack verbs, the REST API.",
   },
 ];
+
+/**
+ * The local plugin that reads the screenshot manifest at build time (`plugins/screenshots.ts`)
+ * — the name `<Screenshot>` reads its global data under.
+ */
+export const SCREENSHOTS_PLUGIN = "ouroboros-screenshots";

@@ -387,7 +387,7 @@ consistent components so pages read the same.
 - Components in `src/components/` (each with a vitest + Testing Library test):
   `<UiPath>` (renders `Settings › Members` breadcrumb style), `<EnvVar name>` (mono name,
   links to its row in DB.3's reference), `<Since version module>` (small badge),
-  `<SectionCards>` (landing/overview cards). `<Screenshot>` lands in CZ.2.
+  `<SectionCards>` (landing/overview cards). `<Screenshot>` landed in CZ.2 (#1171 ✅).
 - Admonition conventions in the README: `note` (context), `tip`, `caution` (data loss /
   security), `info` "Not available yet" (D12).
 
@@ -453,7 +453,7 @@ horizontal scroll; Lighthouse accessibility ≥ 95 locally.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |---|---|---|---|---|---|---|---|---|---|
 | CZ.1 | #1170 ✅ | 🟢 Done | ouroboros-docs: [CZ.1] Screenshot capture harness | Playwright project capturing manifest entries from the seeded stack, both themes | mvp, docs-site, documentation | Y (after CY.1) | Y | L | ouroboros-docs |
-| CZ.2 | #1171 | 🟡 Open | ouroboros-docs: [CZ.2] `<Screenshot>` component | Theme-aware image with required alt, caption, zoom | mvp, docs-site | Y (after CY.2) | Y | S | ouroboros-docs |
+| CZ.2 | #1171 ✅ | 🟢 Done | ouroboros-docs: [CZ.2] `<Screenshot>` component | Theme-aware image with required alt, caption, zoom | mvp, docs-site | Y (after CY.2) | Y | S | ouroboros-docs |
 | CZ.3 | #1172 | 🟡 Open | ouroboros-docs: [CZ.3] Screenshot integrity & budget checks | Manifest ↔ files ↔ MDX usage, size budgets, staleness report | mvp, docs-site, ci | N (after CZ.1, CZ.2, CY.5) | Y | S | ouroboros-docs |
 
 ### Issue CZ.1 (#1170) — ouroboros-docs: [CZ.1] Screenshot capture harness
@@ -513,7 +513,11 @@ sequenceDiagram
 
 ### Issue CZ.2 (#1171) — ouroboros-docs: [CZ.2] `<Screenshot>` component
 
-> **Carried from CY.6 (#1169):** when this lands, fill the marked slot in `src/pages/index.tsx` with `<Screenshot id="home.dashboard" />` (and its manifest entry, via CZ.1).
+> **GitHub issue:** #1171 ✅ · **Status:** 🟢 Done · **Parent epic:** #1157
+>
+> **Delivered (#1171):** `src/components/Screenshot` — `<Screenshot id alt? caption?>` in a `<figure>`: a `ThemedImage` pair (`loading="lazy"`, `decoding="async"`, intrinsic `width`/`height`, `height: auto`) inside a token-bordered button that opens a native modal `<dialog>` at full size (a click inside, *Close* or Esc closes it) — no `medium-zoom` dependency. "Reads the manifest at build time" is a local plugin, `plugins/screenshots.ts`: `loadContent` validates the manifest with CZ.1's `loadManifest` (ajv), reads each theme's PNG IHDR for its size (no sharp at build), and refuses a missing/non-PNG file or light/dark size mismatch; `setGlobalData` hands the index to the component via `usePluginData`. Unknown id or blank alt (manifest or override) throws during SSG → `yarn build` fails (verified). `caption=""` drops the caption. `publicPath` joins CZ.1's manifest lib; `SCREENSHOTS_PLUGIN` lives in `site.constants.ts` so the client never imports the Node plugin. Carried from CY.6: `src/pages/index.tsx` shows `<Screenshot id="home.dashboard" />` below the quick links. Tests: component (theme swap, alt required, unknown id, overrides, no layout shift, zoom), plugin (PNG header, index, failures, watch paths), Home. README § *Recapturing screenshots → Showing a screenshot*, components table. Module 0.1.7.
+
+> **Carried from CY.6 (#1169):** when this lands, fill the marked slot in `src/pages/index.tsx` with `<Screenshot id="home.dashboard" />` (and its manifest entry, via CZ.1). Done in #1171.
 
 **Problem Statement.** Pages need one way to show a screenshot that matches the reader's theme.
 

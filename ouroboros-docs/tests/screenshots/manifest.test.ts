@@ -9,6 +9,7 @@ import {
   idMatcher,
   loadManifest,
   outputPath,
+  publicPath,
   readyTimeoutMessage,
   selectEntries,
   validateManifest,
@@ -167,6 +168,15 @@ describe("readyTimeoutMessage", () => {
   it("names the entry, theme, route and selector", () => {
     expect(readyTimeoutMessage(ENTRY, "dark", 20_000)).toBe(
       'home.dashboard (dark): ready selector "text=Mission Control" did not appear on /dashboard within 20000 ms',
+    );
+  });
+});
+
+describe("publicPath", () => {
+  it("is the output path as the site serves it", () => {
+    expect(publicPath("home.dashboard", "light")).toBe("img/screenshots/home/dashboard.light.png");
+    expect(publicPath("user-guide.wizard.step-2", "dark")).toBe(
+      "img/screenshots/user-guide/wizard.step-2.dark.png",
     );
   });
 });

@@ -60,6 +60,18 @@ describe("the home page", () => {
     ]);
   });
 
+  it("shows the dashboard screenshot from the manifest, in both themes", () => {
+    render(<Home />);
+    const shots = screen
+      .getAllByAltText(/Mission Control dashboard/)
+      .filter((image) => !image.closest("dialog"));
+    expect(shots.map((image) => image.getAttribute("src"))).toEqual([
+      "/img/screenshots/home/dashboard.light.png",
+      "/img/screenshots/home/dashboard.dark.png",
+    ]);
+    expect(screen.getByRole("figure")).toHaveTextContent(/^Mission Control/);
+  });
+
   it("names no internal ticket references in its copy", () => {
     const { container } = render(<Home />);
     expect(container.textContent).not.toMatch(/\[[A-Z]{1,2}\.\d+\]|#\d{2,}/);

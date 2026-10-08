@@ -13,6 +13,7 @@ import {
   REPO_URL,
   SECTIONS,
 } from "./site.constants";
+import screenshotsPlugin from "./plugins/screenshots";
 
 // This runs in Node.js — no browser APIs or JSX here.
 
@@ -87,7 +88,8 @@ const SEARCH_OPTIONS = {
  * The brand (CY.3, #1166) is the product's own: `src/css/tokens.css` (a synced copy of
  * `docs/design/tokens.css`) mapped onto Infima by `src/css/custom.css`, the light/dark logo
  * pair and the favicon set. Search is local and Mermaid diagrams take the brand tokens
- * (CY.4, #1167). The scaffold's blog is switched off rather than left empty, so no `/blog`
+ * (CY.4, #1167); screenshots come from the capture manifest through `plugins/screenshots.ts`
+ * (CZ.2, #1171). The scaffold's blog is switched off rather than left empty, so no `/blog`
  * route exists.
  */
 const config: Config = {
@@ -178,6 +180,9 @@ const config: Config = {
       } satisfies Preset.Options,
     ],
   ],
+
+  // <Screenshot> (CZ.2, #1171): the manifest and each capture's size, read at build time.
+  plugins: [screenshotsPlugin],
 
   themes: [
     // Diagrams. src/theme/Mermaid wraps the theme's renderer to feed it the brand tokens.

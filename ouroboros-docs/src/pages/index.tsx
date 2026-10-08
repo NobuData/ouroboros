@@ -4,17 +4,15 @@ import Link from "@docusaurus/Link";
 import ThemedImage from "@theme/ThemedImage";
 import useBaseUrl from "@docusaurus/useBaseUrl";
 
+import Screenshot from "../components/Screenshot";
 import SectionCards from "../components/SectionCards";
 import { BRAND_ASSETS } from "../../site.constants";
 import styles from "./index.module.css";
 
 /**
  * The site's home page at `/` (CY.6, #1169): what Ouroboros is, which section to open, and
- * the three things most visitors come to do.
- *
- * A dashboard screenshot (`home.dashboard`) belongs below the quick links. It arrives once
- * the capture harness (CZ.1, #1170) and the `<Screenshot>` component (CZ.2, #1171) exist,
- * as `<Screenshot id="home.dashboard" />` in the slot marked below.
+ * the three things most visitors come to do, then the dashboard as the app shows it
+ * (`home.dashboard`, CZ.2 #1171).
  */
 
 /** The page's `<title>` suffix and meta description. */
@@ -125,7 +123,9 @@ export default function Home(): ReactNode {
           <SectionCards />
         </section>
         <QuickLinks />
-        {/* home.dashboard — <Screenshot id="home.dashboard" /> once CZ.1/CZ.2 land. */}
+        <section className={styles.section}>
+          <Screenshot id="home.dashboard" />
+        </section>
       </main>
     </Layout>
   );
