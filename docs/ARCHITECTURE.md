@@ -34,7 +34,7 @@ describing:
 | [`ouroboros-ui`](../ouroboros-ui) | **Running** — the App Router skeleton builds and serves | Scaffolded by [#39](https://github.com/NobuData/ouroboros/issues/39) → epic [#5](https://github.com/NobuData/ouroboros/issues/5) |
 | [`ouroboros-engine`](../ouroboros-engine) | **Running** — the FastAPI service serves liveness and a key-guarded `/v0` | Scaffolded by [#50](https://github.com/NobuData/ouroboros/issues/50), guarded by [#51](https://github.com/NobuData/ouroboros/issues/51) → epic [#6](https://github.com/NobuData/ouroboros/issues/6) |
 | [`ouroboros-web`](../ouroboros-web) | **Running** — the marketing site, outside the application stack | — |
-| [`ouroboros-docs`](../ouroboros-docs) | **Scaffolded** — an empty documentation site, outside the application stack | [#1164](https://github.com/NobuData/ouroboros/issues/1164) → epic [#1156](https://github.com/NobuData/ouroboros/issues/1156) |
+| [`ouroboros-docs`](../ouroboros-docs) | **Scaffolded** — a documentation site with its three sections and stub pages, outside the application stack | [#1164](https://github.com/NobuData/ouroboros/issues/1164) → epic [#1156](https://github.com/NobuData/ouroboros/issues/1156) |
 
 Keeping the document true as those scaffolds land is a maintenance obligation, and part
 of it is mechanical: [`scripts/verify-architecture.sh`](../scripts/verify-architecture.sh)
@@ -356,7 +356,9 @@ third — see § 9.
 the same reason `ouroboros-web` is. It is a Docusaurus static site for the people who use,
 administer and script Ouroboros — no API, no database, no session; it describes the system
 and calls none of it. It is not a workspace, keeps its own lockfile, and runs on port 3100
-through `yarn dev:docs`. The plan for its content, screenshots and image is
+through `yarn dev:docs`. Its pages are in three sections — User Guide (`/user-guide`),
+Administration (`/administration`) and CLI (`/cli`), each with its own sidebar
+([#1165](https://github.com/NobuData/ouroboros/issues/1165)). The plan for its content, screenshots and image is
 [`ROADMAP_OUROBOROS_DOCUMENTATION_SITE.md`](ROADMAP_OUROBOROS_DOCUMENTATION_SITE.md).
 
 ## 3. Request paths

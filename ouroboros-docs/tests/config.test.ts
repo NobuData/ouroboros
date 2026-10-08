@@ -2,7 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
 
-import { COPYRIGHT, DEFAULT_SITE_URL } from "../site.constants";
+import {
+  COPYRIGHT,
+  DEFAULT_SITE_URL,
+  EDIT_URL,
+  MARKETING_URL,
+  REPO_URL,
+  SECTIONS,
+} from "../site.constants";
 
 /**
  * Loads `docusaurus.config.ts` afresh, so a test can set `DOCS_SITE_URL` before the module
@@ -45,9 +52,61 @@ describe("docusaurus.config.ts", () => {
     expect(docs).toMatchObject({ routeBasePath: "/", sidebarPath: "./sidebars.ts" });
   });
 
-  it("refuses broken links", async () => {
+  it("refuses broken links, Markdown links and anchors, and duplicate routes", async () => {
     const { default: config } = await loadConfig();
     expect(config.onBrokenLinks).toBe("throw");
+    expect(config.onBrokenAnchors).toBe("throw");
+    expect(config.onDuplicateRoutes).toBe("throw");
+    expect(config.markdown?.hooks?.onBrokenMarkdownLinks).toBe("throw");
+  });
+
+  it("serves paths without a trailing slash", async () => {
+    const { default: config } = await loadConfig();
+    expect(config.trailingSlash).toBe(false);
+  });
+
+  it("points Edit this page at the module on main", async () => {
+    const { default: config } = await loadConfig();
+    expect(EDIT_URL).toBe("https://github.com/NobuData/ouroboros/edit/main/ouroboros-docs/");
+    expect(classicOptions(config).docs).toMatchObject({ editUrl: EDIT_URL });
+  });
+
+  it("lists the three sections in the navbar, in order, then GitHub on the right", async () => {
+    const { default: config } = await loadConfig();
+    const items = (config.themeConfig as Preset.ThemeConfig).navbar?.items ?? [];
+    expect(items.slice(0, 3)).toEqual([
+      { type: "docSidebar", sidebarId: "userGuide", label: "User Guide", position: "left" },
+      {
+        type: "docSidebar",
+        sidebarId: "administration",
+        label: "Administration",
+        position: "left",
+      },
+      { type: "docSidebar", sidebarId: "cli", label: "CLI", position: "left" },
+    ]);
+    expect(items).toContainEqual({ href: REPO_URL, label: "GitHub", position: "right" });
+  });
+
+  it("keeps the colour-mode toggle", async () => {
+    const { default: config } = await loadConfig();
+    const theme = config.themeConfig as Preset.ThemeConfig;
+    expect(theme.colorMode?.disableSwitch).not.toBe(true);
+  });
+
+  it("has a footer column per section, then More with GitHub and ouroboros.build", async () => {
+    const { default: config } = await loadConfig();
+    const footer = (config.themeConfig as Preset.ThemeConfig).footer;
+    const columns = (footer?.links ?? []) as { title: string; items: Record<string, string>[] }[];
+    expect(columns.map((column) => column.title)).toEqual([
+      ...SECTIONS.map((section) => section.label),
+      "More",
+    ]);
+    SECTIONS.forEach((section, index) => {
+      const targets = columns[index].items.map((item) => item.to);
+      expect(targets[0], section.label).toBe(`/${section.dir}`);
+      for (const target of targets) expect(target).toMatch(new RegExp(`^/${section.dir}(/|$)`));
+    });
+    expect(columns[3].items.map((item) => item.href)).toEqual([REPO_URL, MARKETING_URL]);
   });
 
   it("builds for docs.ouroboros.build by default", async () => {

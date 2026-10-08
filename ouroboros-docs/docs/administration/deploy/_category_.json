@@ -1,0 +1,8 @@
+{
+  "label": "Deploying",
+  "position": 3,
+  "link": {
+    "type": "doc",
+    "id": "administration/deploy/overview"
+  }
+}

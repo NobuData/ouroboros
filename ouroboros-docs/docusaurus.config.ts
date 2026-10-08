@@ -1,19 +1,71 @@
 import { themes as prismThemes } from "prism-react-renderer";
 import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
+import type { FooterColumnItem } from "@docusaurus/theme-common";
 
-import { COPYRIGHT, DEFAULT_SITE_URL } from "./site.constants";
+import {
+  COPYRIGHT,
+  DEFAULT_SITE_URL,
+  EDIT_URL,
+  MARKETING_URL,
+  REPO_URL,
+  SECTIONS,
+} from "./site.constants";
 
 // This runs in Node.js — no browser APIs or JSX here.
 
 /**
- * The Ouroboros documentation site — scaffold (CY.1, #1164).
+ * The footer's link columns: one per section, then "More".
  *
- * Deliberately empty: one docs instance served from the site root, holding only the
- * placeholder home page (`docs/index.md`, which Docusaurus needs at least one of). The
- * three sections, their sidebars, the navbar and the footer columns arrive with CY.2
- * (#1165); brand colours and logos with CY.3 (#1166). The scaffold's blog is switched off
- * rather than left empty, so no `/blog` route is generated at all.
+ * Each section column links the section overview and its most-used pages. Every `to` is a
+ * site route, so a renamed page fails the build instead of leaving a dead footer link.
+ */
+const FOOTER_LINKS: FooterColumnItem[] = [
+  {
+    title: "User Guide",
+    items: [
+      { label: "Overview", to: "/user-guide" },
+      { label: "Concepts", to: "/user-guide/concepts" },
+      { label: "Getting started", to: "/user-guide/getting-started" },
+      { label: "Glossary", to: "/user-guide/glossary" },
+    ],
+  },
+  {
+    title: "Administration",
+    items: [
+      { label: "Overview", to: "/administration" },
+      { label: "Deploying", to: "/administration/deploy/overview" },
+      { label: "Configuration reference", to: "/administration/configuration" },
+      { label: "Operations", to: "/administration/operations" },
+    ],
+  },
+  {
+    title: "CLI",
+    items: [
+      { label: "Overview", to: "/cli" },
+      { label: "install.sh", to: "/cli/install-sh" },
+      { label: "ouroboros-runner", to: "/cli/runner" },
+      { label: "REST API from the shell", to: "/cli/rest-api" },
+    ],
+  },
+  {
+    title: "More",
+    items: [
+      { label: "GitHub", href: REPO_URL },
+      { label: "ouroboros.build", href: MARKETING_URL },
+    ],
+  },
+];
+
+/**
+ * The Ouroboros documentation site.
+ *
+ * One docs instance served from the site root (roadmap decision D2): the three sections —
+ * User Guide, Administration, CLI — are folders under `docs/`, each with its own sidebar
+ * (`sidebars.ts`) and navbar item, and `docs/index.md` is the home page at `/`. Every kind
+ * of broken reference — link, Markdown link, anchor, duplicate route — fails the build.
+ * Brand colours and logos arrive with CY.3 (#1166), search with CY.4 (#1167). The
+ * scaffold's blog is switched off rather than left empty, so no `/blog` route exists.
  */
 const config: Config = {
   title: "Ouroboros Docs",
@@ -30,7 +82,18 @@ const config: Config = {
   organizationName: "NobuData",
   projectName: "ouroboros",
 
+  // Paths are served without a trailing slash: /user-guide, not /user-guide/.
+  trailingSlash: false,
+
   onBrokenLinks: "throw",
+  onBrokenAnchors: "throw",
+  onDuplicateRoutes: "throw",
+
+  markdown: {
+    hooks: {
+      onBrokenMarkdownLinks: "throw",
+    },
+  },
 
   i18n: {
     defaultLocale: "en",
@@ -42,10 +105,11 @@ const config: Config = {
       "classic",
       {
         docs: {
-          // One instance, served from the root: the sections become /user-guide,
-          // /administration and /cli (roadmap decision D2) once CY.2 adds them.
+          // One instance, served from the root: the sections are /user-guide,
+          // /administration and /cli (roadmap decision D2).
           routeBasePath: "/",
           sidebarPath: "./sidebars.ts",
+          editUrl: EDIT_URL,
         },
         blog: false,
         theme: {
@@ -61,10 +125,21 @@ const config: Config = {
     },
     navbar: {
       title: "Ouroboros Docs",
-      items: [],
+      items: [
+        // The sections, in order; each item is active while a page of its sidebar is open.
+        ...SECTIONS.map((section) => ({
+          type: "docSidebar" as const,
+          sidebarId: section.sidebarId,
+          label: section.label,
+          position: "left" as const,
+        })),
+        // Search joins the right side with CY.4; the colour-mode toggle is the theme's own.
+        { href: REPO_URL, label: "GitHub", position: "right" },
+      ],
     },
     footer: {
       style: "dark",
+      links: FOOTER_LINKS,
       copyright: COPYRIGHT,
     },
     prism: {

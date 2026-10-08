@@ -11,3 +11,32 @@ export const DEFAULT_SITE_URL = "https://docs.ouroboros.build";
 
 /** The footer copyright, exactly as roadmap decision D3 states it. */
 export const COPYRIGHT = "Copyright © 2025-2026 NobuData LLC";
+
+/** The repository the site's sources live in — the navbar and footer GitHub links. */
+export const REPO_URL = "https://github.com/NobuData/ouroboros";
+
+/**
+ * Where a page's "Edit this page" link points. Docusaurus appends the page's path relative
+ * to the site (`docs/user-guide/…`), so this ends at the module directory.
+ */
+export const EDIT_URL = `${REPO_URL}/edit/main/ouroboros-docs/`;
+
+/** The product's marketing site, linked from the footer's "More" column. */
+export const MARKETING_URL = "https://ouroboros.build";
+
+/** One of the site's three sections (roadmap decision D2). */
+export interface Section {
+  /** The sidebar's id in `sidebars.ts`, and the navbar item's `sidebarId`. */
+  sidebarId: string;
+  /** The folder under `docs/` holding the section's pages; also its route, `/<dir>`. */
+  dir: string;
+  /** The navbar label and the footer column title. */
+  label: string;
+}
+
+/** The three sections, in navbar order: User Guide, Administration, CLI. */
+export const SECTIONS: readonly Section[] = [
+  { sidebarId: "userGuide", dir: "user-guide", label: "User Guide" },
+  { sidebarId: "administration", dir: "administration", label: "Administration" },
+  { sidebarId: "cli", dir: "cli", label: "CLI" },
+];
