@@ -2,14 +2,135 @@
 title: "The Get Started wizard"
 sidebar_label: "Get Started wizard"
 sidebar_position: 2
-description: "Each card of the Get Started wizard, from picking a repository to the dry-run policy."
+description: "Getting a repository from connected to its first loop with the Get Started wizard."
 ---
 
-Each card of the Get Started wizard, from picking a repository to the dry-run policy.
+The Get Started wizard at `/get-started` takes one repository from connected to its first
+loop — **Your first loop in about 4 minutes.** It starts you in dry-run: the first loop
+opens a draft pull request and never merges, and nothing in the wizard is irreversible.
 
-:::info[Being written]
+## When you use it
 
-This page is being written in
-[#1174](https://github.com/NobuData/ouroboros/issues/1174).
+A new workspace's [dashboard](../dashboard.mdx) offers the wizard in a banner —
+**New workspace — your first loop in about 4 minutes.** — until the workspace has run a
+loop. Choose **Get started →** to open it, or **Dismiss** to hide the offer for good. You
+can also open `/get-started` yourself at any time, once per repository you want to set up.
 
-:::
+<Screenshot id="user-guide.dashboard-banner" />
+
+Already know your way around? **I've done this before — set it up in Settings ↗** skips the
+wizard and takes you to Settings; the dashboard stops offering it.
+
+## Choosing the repository
+
+The wizard works on one repository at a time, named in the address:
+`/get-started?repo=acme-robotics/helios-firmware`. Without `?repo=` it opens the first
+enabled repository, alphabetically. To set up another one, change the `repo` in the
+address, or use **Set up another repository** once a first loop is queued.
+
+If no repository is connected yet, the wizard says **No repository is connected yet**:
+connect GitHub and choose which repositories Ouroboros may read, and the steps follow from
+that.
+
+## The four steps
+
+The rail at the top shows where you are — ✓ done, ● you are here, ○ still to do — and the
+bar at the bottom moves you on (**Back**, and the step's own button). You can click a step in
+the rail to look at it again; that changes nothing.
+
+### 1. Connect GitHub
+
+Ouroboros needs a GitHub ticket source that covers the repository. If there is none, choose
+**Connect GitHub →**, which opens <UiPath path="Settings > Sources" />. Connecting a source
+is usually an owner's or admin's job — see [Sources](../../administration/sources.mdx).
+
+### 2. Pick a repo
+
+Switch the repository on so Ouroboros may work in it (**Enable *repository* →**). Ouroboros
+then scans it and shows what it found in the detection card, **We already figured this
+out**: language, build, devcontainer, tests, protected paths and conventions, each with its
+**evidence** a click away. **Re-scan** scans again.
+
+<Screenshot id="user-guide.wizard.detection" />
+
+**Protected paths** are the parts of the repository a loop must not change — `boot/` and
+`keys/` in the example. Ouroboros suggests some; choose **edit** to change the list and
+**Save protected paths** to keep it. These paths are refused by run guardrails: a loop whose
+change touches one fails its allowed-paths check. Once you save, the list is yours and later
+scans stop suggesting.
+
+### 3. Choose a starting workflow
+
+Pick the template your first workflow starts from. Each tile says what it is for, the
+stages it runs and the issue sizes it suits; **Quick fixes** is the recommended first
+workflow. A template that is not available yet shows why — **Deep refactor** waits until the
+loop has merged enough work in the repository. Choosing a tile creates your workflow from
+it; choose **Continue →** to go on.
+
+<Screenshot id="user-guide.wizard.templates" />
+
+Picked one and changed your mind? Choose another tile: Ouroboros asks **Switch to
+*template*?** before replacing the workflow it created (**Keep the current choice** leaves it
+as it is). Every template stays editable later in the
+[Workflow Studio](../workflows/studio.mdx), visually or as code.
+
+### 4. Run your first loop
+
+**Your first issue** shows the safe issue Ouroboros picked for a first loop: its number and
+title, its size, the workflow it will run and why it is safe, with an estimate —
+"no code paths touched · est. 4 min" in the example. **how it scored** shows the reasoning.
+
+<Screenshot id="user-guide.wizard.first-issue" />
+
+Want a different one? **↻ another** picks another safe issue; **or pick your own ▾**
+lets you choose from the backlog (**Keep the current pick** closes the list unchanged).
+
+Under the issue, the card lists what keeps this first loop safe:
+
+<Screenshot id="user-guide.wizard.dry-run" />
+
+- **Dry-run** — the loop opens a **draft** pull request and never merges. If the
+  workspace's dry-run policy has not been set yet, running your first loop turns it on.
+  If an owner or admin has turned it off, the card warns you instead: pull requests open
+  ready for review, and a workflow that auto-merges will merge without a person.
+- Decisions that need you wait in the [Needs-you inbox](../inbox.mdx).
+- You flip to auto-merge when you are ready, under <UiPath path="Settings > Policies" />.
+
+While dry-run is on, Ouroboros forces every pull request to open as a draft and refuses to
+arm or perform a merge — it checks again at the moment of merging, so nothing slips through.
+[Concepts](../concepts.mdx#dry-run-and-live) explains dry-run and live.
+
+When you are ready, choose **Run my first loop →**. Ouroboros queues the issue and the
+wizard confirms it: **Your first loop is queued**, with links to **Open the dashboard →**,
+**See it in the queue →** and, once a loop has claimed the issue,
+**Open the run console →**. [Your first loop](./first-loop.mdx) follows it from there.
+
+## The right-hand column
+
+Beside the steps, three cards say what is set up and what comes next:
+
+- **Smart defaults** — what is already in place: models through your own keys
+  ([Providers](../../administration/providers.mdx)), builds on a runner you enroll
+  ([Build farm](../../administration/build-farm.mdx)), the estimator that sizes your backlog
+  overnight. Connecting Slack after your first pull request is listed but not available yet:
+  it arrives with ChatOps.
+- **What happens next** — the projected timeline of the first loop: the loop starts, a
+  draft plan is posted to the issue, the draft pull request opens, you review, and it merges
+  only when you say so. The times come from the picked issue's own estimate.
+- **Why this is safe to try** — nothing is written to `main`, the GitHub connection can be
+  paused in one click, and your keys stay sealed in the workspace vault.
+
+<Screenshot id="user-guide.wizard.defaults" />
+
+## What can go wrong
+
+- **The step's button is disabled** — it says why: the step before is not done yet, for
+  example "Step 3 first: …". Finish that step.
+- **A step that was done is not any more** — something it relied on changed since. The
+  wizard says which step; choose **Fix step *N* →** to put it right.
+- **"No open issues to pick from"** — the repository has no open issues; add some, or
+  draft them in [Planning](../planning.mdx).
+- **"Nothing in the backlog is safe enough for a first loop"** — every open issue touches
+  code or is too large; pick your own with **or pick your own ▾**, or add a small one.
+- **"We're sizing your backlog"** — the estimator has not sized the issues yet; wait a
+  moment.

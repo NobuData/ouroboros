@@ -563,7 +563,7 @@ dev seeds (e.g. acme-robotics; `acme-onboarding` for the wizard).
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |---|---|---|---|---|---|---|---|---|---|
 | DA.1 | #1173 ✅ | 🟢 Done | ouroboros-docs: [DA.1] User Guide overview, concepts & glossary | The loop, workspaces, issues→runs→PRs, decisions; glossary | mvp, docs-site, documentation | Y | Y | M | ouroboros-docs |
-| DA.2 | #1174 | 🟡 Open | ouroboros-docs: [DA.2] Getting started — sign in, workspace & the Get Started wizard | Login, recovery, wizard cards, dry-run first loop | mvp, docs-site, documentation, onboarding | Y | Y | M | ouroboros-docs |
+| DA.2 | #1174 ✅ | 🟢 Done | ouroboros-docs: [DA.2] Getting started — sign in, workspace & the Get Started wizard | Login, recovery, wizard cards, dry-run first loop | mvp, docs-site, documentation, onboarding | Y | Y | M | ouroboros-docs |
 | DA.3 | #1175 | 🟡 Open | ouroboros-docs: [DA.3] Finding your way — app shell, navigation & command palette | Sidebar, header, ⌘K, themes, keyboard | mvp, docs-site, documentation, shell | Y | Y | S | ouroboros-docs |
 | DA.4 | #1176 | 🟡 Open | ouroboros-docs: [DA.4] Mission Control dashboard | Reading the dashboard and acting from it | mvp, docs-site, documentation, dashboard | Y | Y | S | ouroboros-docs |
 | DA.5 | #1177 | 🟡 Open | ouroboros-docs: [DA.5] Issues — intake, sizing & queuing | Backlog sync view, estimates, queue a loop | mvp, docs-site, documentation, intake | Y | Y | M | ouroboros-docs |
@@ -605,6 +605,10 @@ flowchart LR
 ```
 
 ### Issue DA.2 (#1174) — ouroboros-docs: [DA.2] Getting started — sign in, workspace & the Get Started wizard
+
+> **GitHub issue:** #1174 ✅ · **Status:** 🟢 Done · **Parent epic:** #1158
+>
+> **Delivered (#1174):** `getting-started/sign-in.mdx` (GitHub and SSO, the development email/password form and why production refuses it, step 2 "Choose where the loop runs" and **Enter mission control →**, the `/workspace-recovery` pending-deletion screen, errors), `getting-started/wizard.mdx` (the dashboard offer banner, `?repo=` and the default repository, the four rail steps, detection and **Save protected paths**, template tiles and the switch dialog, the first-issue card with **↻ another** / **or pick your own ▾** and "est. N min", the safety list and what dry-run blocks, **Run my first loop →** and the receipt, the Smart defaults / What happens next / Why this is safe to try column, errors) and `getting-started/first-loop.mdx` (queue → Active loops → run console → draft PR → recently closed; no tour exists). **Harness:** manifest entries gain `signedOut: true` (schema `if/then/else`: such an entry names no `workspace`, every other entry still must; the spec clears the test context's cookies instead of switching workspace; `signInRedirectError` holds the `/login` guard) for `user-guide.sign-in`. **Screenshots** (seed state, deviations agreed with the maintainer): the wizard shots use `acme-onboarding` at `?repo=acme-robotics/helios-firmware` (opens on step 3; element clips, no clicks — every wizard control writes); `wizard.defaults` clips the Smart defaults card (the whole column overlaps the sticky rail and action bar) with the estimator's relative affix masked; `user-guide.dashboard-banner` uses `kensuenobu`, the only seeded workspace with no runs — `acme-onboarding` has three, so it never shows the offer; **`user-guide.workspace-recovery` is not captured** — no seed has a pending-deletion workspace (the screen redirects to `/dashboard` otherwise), so the page documents it from its copy and a follow-up should seed one. The production UI build hides the development sign-in form, so the sign-in shot does not show it. No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.10.
 
 **Problem Statement.** The first session decides whether a user stays: signing in, choosing
 a workspace, and getting a first loop through the `/get-started` wizard.

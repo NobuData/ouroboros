@@ -2,14 +2,50 @@
 title: "Your first loop"
 sidebar_label: "Your first loop"
 sidebar_position: 3
-description: "Watching the first run and finding it again afterwards."
+description: "Watching the first run: where it appears and what to look for."
 ---
 
-Watching the first run and finding it again afterwards.
+You chose **Run my first loop →** in the [Get Started wizard](./wizard.mdx). This page
+follows that loop from the queue to its draft pull request.
 
-:::info[Being written]
+## Where it appears
 
-This page is being written in
-[#1174](https://github.com/NobuData/ouroboros/issues/1174).
+1. **In the queue.** The issue waits in **Up next in queue** on the
+   [dashboard](../dashboard.mdx) — the wizard's **See it in the queue →** takes you there —
+   until a loop picks it up.
+2. **In Active loops.** Once a loop claims it, it moves to **Active loops** on the
+   dashboard, and the header's live-loop count goes up. Open the row — or the wizard's
+   **Open the run console →** — to watch it in the [run console](../runs/console.mdx).
+3. **In the run console.** The stage timeline shows each stage as it starts and finishes;
+   the agent transcript shows what the loop is reading, planning and changing; the side
+   column shows the changes so far, the resources used and the guardrails, including the
+   protected paths you saved in the wizard.
+4. **As a draft pull request.** When the work passes its build and tests, the loop opens a
+   **draft** pull request. Its verification page shows the gates it passed and the
+   acceptance criteria it was checked against — see
+   [Pull requests](../pull-requests.mdx).
+5. **In the recently closed list.** When the loop finishes, the dashboard lists it among the
+   work recently closed by the loop.
 
-:::
+There is no separate tour: the wizard's receipt card, the dashboard and the run console are
+where you follow it.
+
+## What to do while it runs
+
+- **Answer it if it asks.** If the loop needs a decision, it waits in
+  [Needs You](../inbox.mdx), with a count in the sidebar and the header.
+- **Steer it.** In the run console you can send the loop a note with **Steer the loop**.
+- **Review the draft.** Dry-run keeps the pull request a draft and Ouroboros refuses to
+  merge it — read it to judge the loop's work. When you trust the loop to merge, an owner or
+  admin turns dry-run off under <UiPath path="Settings > Policies" /> — see
+  [Concepts](../concepts.mdx#dry-run-and-live).
+
+## What can go wrong
+
+- **The issue stays in the queue** — no loop has picked it up yet; issues ahead of it in
+  **Up next in queue** go first. The wizard's receipt says so until a loop claims it.
+- **The loop stops and waits** — it needs a decision; open [Needs You](../inbox.mdx).
+- **The loop goes back to an earlier stage** — a build or test failed and it is trying
+  again; the stage timeline shows the attempt, and [test results](../runs/tests.mdx) show
+  why.
+- **The pull request never merges** — that is dry-run working as intended.

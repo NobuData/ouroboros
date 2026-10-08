@@ -10,6 +10,7 @@ import {
   outputPath,
   readyTimeoutMessage,
   selectEntries,
+  signInRedirectError,
   type Entry,
   type Theme,
 } from "./lib/manifest.ts";
@@ -41,6 +42,7 @@ const instant = captureInstant(manifest);
  * @throws {Error} naming the workspace when the switch is refused.
  */
 async function enterWorkspace(page: Page, entry: Entry): Promise<void> {
+  if (!entry.workspace) throw new Error(`${entry.id}: names no workspace`);
   const response = await page.request.post("/api/auth/organization/set-active", {
     data: { organizationSlug: entry.workspace },
   });
@@ -114,17 +116,16 @@ for (const entry of entries) {
     const theme = info.project.name as Theme;
 
     await page.clock.setFixedTime(instant);
-    await enterWorkspace(page, entry);
+    // Each test has its own context, so clearing its cookies signs out this capture only.
+    if (entry.signedOut) await page.context().clearCookies();
+    else await enterWorkspace(page, entry);
 
     const response = await page.goto(entry.route);
     if (response && response.status() >= 400) {
       throw new Error(`${entry.id}: ${entry.route} answered ${response.status()}`);
     }
-    if (new URL(page.url()).pathname.startsWith("/login")) {
-      throw new Error(
-        `${entry.id}: ${entry.route} redirected to sign-in — the session was refused`,
-      );
-    }
+    const redirected = signInRedirectError(entry, new URL(page.url()).pathname);
+    if (redirected) throw new Error(redirected);
 
     await page.addStyleTag({ content: FREEZE_CSS });
     await runActions(page, entry.actions);
