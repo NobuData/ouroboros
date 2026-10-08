@@ -16,6 +16,13 @@ export default defineConfig({
   resolve: {
     alias: {
       "@docusaurus/Link": fileURLToPath(new URL("./tests/support/Link.tsx", import.meta.url)),
+      "@docusaurus/useBaseUrl": fileURLToPath(
+        new URL("./tests/support/useBaseUrl.ts", import.meta.url),
+      ),
+      "@theme/Layout": fileURLToPath(new URL("./tests/support/Layout.tsx", import.meta.url)),
+      "@theme/ThemedImage": fileURLToPath(
+        new URL("./tests/support/ThemedImage.tsx", import.meta.url),
+      ),
       "@theme-original/MDXComponents": fileURLToPath(
         new URL("./tests/support/MDXComponents.ts", import.meta.url),
       ),

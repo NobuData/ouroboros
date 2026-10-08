@@ -1,0 +1,88 @@
+/* The home page: one centred column, as wide as a docs page, that narrows with the window. */
+.page {
+  width: 100%;
+  max-width: var(--ifm-container-width);
+  margin: 0 auto;
+  padding: var(--sp-11) var(--ifm-spacing-horizontal) var(--sp-12);
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding-bottom: var(--sp-11);
+  border-bottom: 1px solid var(--line);
+}
+
+/* The lockup at its working size, scaling down on narrow screens; docs/BRAND.md asks for
+   clear space of a quarter of its height, which the bottom margin gives. */
+.lockup {
+  width: 20rem;
+  max-width: 100%;
+  height: auto;
+  margin-bottom: var(--sp-10);
+}
+
+.title {
+  margin-bottom: var(--sp-3);
+  font-size: var(--t-3xl);
+}
+
+.tagline {
+  margin-bottom: var(--sp-10);
+  color: var(--accent);
+  font-family: var(--f-disp);
+  font-size: var(--t-xl);
+  letter-spacing: var(--tr-wide);
+}
+
+.lead {
+  max-width: 42rem;
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-lg);
+}
+
+.section {
+  margin-top: var(--sp-11);
+}
+
+.sectionTitle {
+  font-size: var(--t-2xl);
+}
+
+.quickLinks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--sp-8);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.quickLink {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  height: 100%;
+  padding: var(--sp-8) var(--sp-9);
+  border-left: 3px solid var(--accent-line);
+  border-radius: var(--r-sm);
+  background: var(--inset);
+}
+
+.quickLink:hover {
+  border-left-color: var(--accent);
+  text-decoration: none;
+}
+
+.quickLinkLabel {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.quickLinkDescription {
+  color: var(--ink-dim);
+  font-size: var(--t-md);
+}

@@ -83,11 +83,11 @@ it, and it never reaches a running service — it is a build input of a static s
 ```
 ouroboros-docs/
 ├── docs/
-│   ├── index.md            # the home page, served at /
 │   ├── user-guide/         # User Guide      → /user-guide      (sidebar userGuide)
 │   ├── administration/     # Administration  → /administration  (sidebar administration)
 │   └── cli/                # CLI             → /cli             (sidebar cli)
 ├── src/
+│   ├── pages/index.tsx     # the home page, served at /: hero, section cards, quick links
 │   ├── components/         # UiPath, EnvVar, Since, SectionCards — usable in any page
 │   ├── theme/              # MDXComponents (registers them), Mermaid (brand colours)
 │   └── css/
@@ -106,7 +106,15 @@ ouroboros-docs/
 └── package.json · yarn.lock · .yarnrc.yml · .gitignore · .dockerignore
 ```
 
-Every page belongs to exactly one section; only the home page sits outside them. The
+Every page in `docs/` belongs to exactly one section. The home page is not a doc: it is
+the React page `src/pages/index.tsx` ([#1169](https://github.com/NobuData/ouroboros/issues/1169))
+— the brand lockup and tagline, one paragraph on what Ouroboros does, the three sections as
+`<SectionCards>`, and quick links to getting started, deploying and enrolling a runner. Its
+copy follows the root `README.md`, not the marketing site. A dashboard screenshot
+(`home.dashboard`) joins it once the capture harness
+([#1170](https://github.com/NobuData/ouroboros/issues/1170)) and `<Screenshot>`
+([#1171](https://github.com/NobuData/ouroboros/issues/1171)) land; the slot is marked in the
+page. The
 navbar lists the sections in the order User Guide, Administration, CLI, with a GitHub link
 and the colour-mode toggle on the right, after the search box. The footer has a link
 column per section, a "More" column (GitHub, ouroboros.build) and the copyright line
@@ -294,5 +302,6 @@ page's title, headings, description and text are indexed. Build the site
 - [#1164](https://github.com/NobuData/ouroboros/issues/1164) — CY.1 scaffold (this module)
 - [#1165](https://github.com/NobuData/ouroboros/issues/1165) — CY.2 three sections, navbar, footer & stub pages
 - [#1166](https://github.com/NobuData/ouroboros/issues/1166) — CY.3 brand theme, light/dark & logos (this module's theme)
+- [#1169](https://github.com/NobuData/ouroboros/issues/1169) — CY.6 landing page
 - [#1170](https://github.com/NobuData/ouroboros/issues/1170) — CZ.1 screenshot capture harness
 - [#1156](https://github.com/NobuData/ouroboros/issues/1156) — Epic CY · Docs Site Foundation

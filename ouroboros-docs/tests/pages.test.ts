@@ -143,11 +143,10 @@ describe("admonitions", () => {
 });
 
 describe("the docs folder", () => {
-  it("keeps every page but the home page inside one of the three sections", () => {
+  it("keeps every page inside one of the three sections", () => {
+    // The home page is src/pages/index.tsx, not a doc, so nothing sits outside them.
     const sectionDirs = SECTIONS.map((section) => `${section.dir}/`);
-    const outside = pages.filter(
-      (page) => page !== "index.md" && !sectionDirs.some((dir) => page.startsWith(dir)),
-    );
+    const outside = pages.filter((page) => !sectionDirs.some((dir) => page.startsWith(dir)));
     expect(outside).toEqual([]);
   });
 

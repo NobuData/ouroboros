@@ -25,13 +25,15 @@ export const EDIT_URL = `${REPO_URL}/edit/main/ouroboros-docs/`;
 export const MARKETING_URL = "https://ouroboros.build";
 
 /**
- * The brand files the config references, relative to `static/` (each is a synced copy —
+ * The brand files the config and pages reference, relative to `static/` (each is a synced copy —
  * see `scripts/sync-brand.mjs`). The navbar logo is the icon pair; the favicons are the set
  * `scripts/build-favicons.py` derives for ouroboros-ui.
  */
 export const BRAND_ASSETS = {
   logoLight: "img/brand/icon-light.png",
   logoDark: "img/brand/icon-dark.png",
+  lockupLight: "img/brand/lockup-tagline-light.png",
+  lockupDark: "img/brand/lockup-tagline-dark.png",
   faviconIco: "img/brand/favicon/favicon.ico",
   favicon32Light: "img/brand/favicon/favicon-32-light.png",
   favicon32Dark: "img/brand/favicon/favicon-32-dark.png",
@@ -56,18 +58,18 @@ export const SECTIONS: readonly Section[] = [
     sidebarId: "userGuide",
     dir: "user-guide",
     label: "User Guide",
-    description: "Working in the app: issues, workflows, runs, pull requests and the inbox.",
+    description: "Use the app: issues, workflows, runs, pull requests and the inbox.",
   },
   {
     sidebarId: "administration",
     dir: "administration",
     label: "Administration",
-    description: "Deploying, configuring and looking after Ouroboros and its workspaces.",
+    description: "Run and configure it: deployment, settings, members, sources and the farm.",
   },
   {
     sidebarId: "cli",
     dir: "cli",
     label: "CLI",
-    description: "The runner installer, the runner agent, stack commands and the REST API.",
+    description: "Command-line tools: the runner installer and agent, stack verbs, the REST API.",
   },
 ];
