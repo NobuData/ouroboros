@@ -238,7 +238,7 @@ its own criteria, referred to below as **[STD]**:
 | CY.2 | #1165 ✅ | 🟢 Done | ouroboros-docs: [CY.2] Information architecture — three sections, navbar & footer | User Guide / Administration / CLI sidebars, landing, footer copyright, page template | mvp, docs-site, documentation | N (after CY.1) | Y | M | ouroboros-docs |
 | CY.3 | #1166 ✅ | 🟢 Done | ouroboros-docs: [CY.3] Brand theme, light/dark & logos | tokens.css → Infima, brand assets, favicons, no hard-coded colours | mvp, docs-site, design | Y (after CY.1, ∥ CY.2) | Y | S | ouroboros-docs |
 | CY.4 | #1167 ✅ | 🟢 Done | ouroboros-docs: [CY.4] Search, Mermaid & shared MDX components | Local search, Mermaid, `<EnvVar>`, `<UiPath>`, `<Since>`, admonition conventions | mvp, docs-site, documentation | Y (after CY.2) | Y | M | ouroboros-docs |
-| CY.5 | #1168 | 🟡 Open | ouroboros-docs: [CY.5] ci/docs — lint, typecheck, tests & strict build | docs.yml check job, strict links, copyright test, verify-ci routing | mvp, docs-site, ci | N (after CY.2) | Y | M | ouroboros-docs, .github, scripts |
+| CY.5 | #1168 ✅ | 🟢 Done | ouroboros-docs: [CY.5] ci/docs — lint, typecheck, tests & strict build | docs.yml check job, strict links, copyright test, verify-ci routing | mvp, docs-site, ci | N (after CY.2) | Y | M | ouroboros-docs, .github, scripts |
 | CY.6 | #1169 | 🟡 Open | ouroboros-docs: [CY.6] Landing page & "What is Ouroboros" | Home with three section cards, product overview, quick links | mvp, docs-site, documentation | Y (after CY.2, CZ.2) | Y | S | ouroboros-docs |
 
 ### Issue CY.1 (#1164) — ouroboros-docs: [CY.1] Scaffold the ouroboros-docs module
@@ -399,6 +399,10 @@ block renders in both themes; component tests pass.
 **Technical Stack.** easyops search-local, theme-mermaid, vitest.
 
 ### Issue CY.5 (#1168) — ouroboros-docs: [CY.5] ci/docs — lint, typecheck, tests & strict build
+
+> **GitHub issue:** #1168 ✅ · **Status:** 🟢 Done · **Parent epic:** #1156
+>
+> **Delivered (#1168):** `.github/workflows/docs.yml`, job **`ci/docs`**, runs the shared `./.github/actions/node-module` pipeline over `ouroboros-docs` (corepack → `yarn install --immutable` → `lint` → `typecheck` → `test` → `build`), so Node stays pinned in one place (§ 9 rule 2) — which makes the two shared actions inputs too. `yarn lint` is now ESLint + Stylelint + **markdownlint-cli2** over `docs/**/*.{md,mdx}` (defaults less MD013 line length and MD033 inline HTML; it caught `docs/index.md`'s duplicate H1, now removed). Path filter (both events): the issue's list, plus the other brand-copy sources CY.3 added after this issue was written — the two mockup logos and ouroboros-ui's four tab/home-screen icons, **named file by file**, so a change to the rest of `ouroboros-ui/` still never queues it (asserted with `public/manifest.webmanifest → ui.yml`). Not a workspace, so no root workspace files. Config tests: the copyright and navbar order already existed; added that the navbar's `docSidebar` ids equal `sidebars.ts`'s exports. `verify-ci.sh` (344 checks): `docs` joins `MODULES` (status name, permissions, concurrency, filters, self-watch, CONVENTIONS mention), the shared-pipeline and Node-pin loops, new routes (`ouroboros-docs/**`, tokens, brand, mockup logo, favicon, `.env.example`, `main.go`, `install.sh`, shared actions), `docker-publish.yml` not watching the docs, the docs lint covering pages, and no workspace files in `docs.yml`; `verify-ci.test.sh` gains the docs fixture and ten mutation cases. `CONVENTIONS.md` § 9 diagram gains `ci/docs` / `publish/docs` and the input lines; root README's CI table gains both rows. Module 0.1.4.
 
 **Problem Statement.** Docs rot silently unless every PR builds them strictly.
 

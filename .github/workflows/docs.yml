@@ -1,0 +1,88 @@
+name: ouroboros-docs · ci
+
+# The documentation site (#1168). Docs rot silently unless every change that can break them
+# builds them strictly, so this runs the module's own checks — lint (ESLint, Stylelint and
+# markdownlint over the pages), typecheck, the Vitest suite, and the build, in which a broken
+# link, Markdown link or anchor fails — whenever one of their inputs changes. A pull request
+# that touches only another module never queues it.
+#
+# The inputs outside ouroboros-docs/ are the files the site's checks read:
+#
+# - docs/design/tokens.css, docs/brand/**, the mockups' two logo crops and ouroboros-ui's
+#   four tab and home-screen icons are the sources of the brand copies the site keeps
+#   (scripts/sync-brand.mjs, #1166). Its suite fails when a copy has drifted, so an edit to a
+#   source has to run it — otherwise the drift surfaces on the next docs change instead of on
+#   the change that caused it. The icons are named file by file: the rest of ouroboros-ui is
+#   no input of this site.
+# - .env.example, the runner's main.go and its install.sh feed the generated configuration
+#   reference (#1191), the CLI flag drift check (#1203) and the docs coverage gate (#1212).
+#   They are watched from the start so those checks are routed the day they land.
+#
+# The site is not a Yarn workspace (docs/CONVENTIONS.md § 1, limit 6): it installs from its
+# own ouroboros-docs/yarn.lock, so the root workspace files are not inputs either.
+#
+# The checks run through the shared TypeScript pipeline, which is where the Node version is
+# pinned (§ 9) — so the two actions it is made of are inputs too.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "ouroboros-docs/**"
+      - "docs/design/tokens.css"
+      - "docs/brand/**"
+      - "docs/mockups/assets/logo-lockup.png"
+      - "docs/mockups/assets/logo-mark.png"
+      - "ouroboros-ui/public/favicon.ico"
+      - "ouroboros-ui/public/favicon-32-light.png"
+      - "ouroboros-ui/public/favicon-32-dark.png"
+      - "ouroboros-ui/public/apple-touch-icon.png"
+      - ".env.example"
+      - "ouroboros-runner/cmd/ouroboros-runner/main.go"
+      - "ouroboros-runner/install.sh"
+      - ".github/actions/node-module/**"
+      - ".github/actions/scaffold-gate/**"
+      - ".github/workflows/docs.yml"
+  push:
+    branches: [main]
+    paths:
+      - "ouroboros-docs/**"
+      - "docs/design/tokens.css"
+      - "docs/brand/**"
+      - "docs/mockups/assets/logo-lockup.png"
+      - "docs/mockups/assets/logo-mark.png"
+      - "ouroboros-ui/public/favicon.ico"
+      - "ouroboros-ui/public/favicon-32-light.png"
+      - "ouroboros-ui/public/favicon-32-dark.png"
+      - "ouroboros-ui/public/apple-touch-icon.png"
+      - ".env.example"
+      - "ouroboros-runner/cmd/ouroboros-runner/main.go"
+      - "ouroboros-runner/install.sh"
+      - ".github/actions/node-module/**"
+      - ".github/actions/scaffold-gate/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The job name is the status check name — `ci/docs`, matching `ci/ui`, `ci/rest` and the
+  # rest. Renaming it renames what branch protection is configured against. The image and
+  # its `publish/docs` job join this file with DD.2 (#1207), behind `needs: ci`.
+  ci:
+    name: ci/docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # corepack → yarn install --immutable → lint → typecheck → test → build, from inside
+      # ouroboros-docs/, against its own lockfile and scripts.
+      - uses: ./.github/actions/node-module
+        with:
+          module: ouroboros-docs
+          scaffolded-by: "#1164"

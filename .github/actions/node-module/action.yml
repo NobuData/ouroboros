@@ -3,15 +3,16 @@ description: >-
   Install and check one TypeScript module — lint, typecheck, test, build — on the Node
   version every TypeScript module in this repository is pinned to.
 
-# ouroboros-ui and ouroboros-rest run the identical pipeline over different directories,
-# so it lives here once rather than twice in .github/workflows. This is also the single
-# place the Node version is written down: neither caller passes `node-version`, so
-# moving the default below moves both modules' CI at once.
+# ouroboros-ui, ouroboros-rest and ouroboros-docs run the identical pipeline over different
+# directories, so it lives here once rather than three times in .github/workflows. This is
+# also the single place the Node version is written down: no caller passes `node-version`,
+# so moving the default below moves every module's CI at once.
 #
 # Every command runs from inside the module directory, against the module's own scripts.
 # Since #13 those modules are Yarn workspaces, so the lockfile the install below resolves
 # is the repository root's — Yarn finds the workspace root from any directory inside it,
-# which is why this needs no path of its own. That is deliberate: `ci/ui` proves the
+# which is why this needs no path of its own. ouroboros-docs is not a workspace (#1164) and
+# keeps its own yarn.lock, which the same install finds from inside that directory. That is deliberate: `ci/ui` proves the
 # module builds the way a developer builds it, not the way `turbo run` orchestrates it,
 # so a break in the task graph can never be what makes a module's checks pass.
 

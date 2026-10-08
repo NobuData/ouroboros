@@ -1,0 +1,15 @@
+// markdownlint-cli2 config for ouroboros-docs (CY.5, #1168) — run by `yarn lint`.
+//
+// It lints the site's pages (docs/**), which are what readers see; the module README and
+// the repository's engineering documents are not part of the site. markdownlint's default
+// rules apply, less the ones that do not fit MDX pages:
+{
+  "globs": ["docs/**/*.{md,mdx}"],
+  "config": {
+    "default": true,
+    // Prose is wrapped by the editor, not at a column, and tables run long.
+    "MD013": false,
+    // Pages use JSX components (<UiPath>, <SectionCards>, …) — MDX's whole point.
+    "MD033": false
+  }
+}

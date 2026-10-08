@@ -46,15 +46,24 @@ yarn build                    # sync the brand, then the static site into build/
                               # a broken link or anchor fails the build
 yarn serve                    # serve build/ on http://localhost:3100
 yarn clear                    # drop the .docusaurus/ cache and build/
-yarn lint                     # ESLint, then Stylelint over src/**/*.css
+yarn lint                     # ESLint, Stylelint over src/**/*.css, markdownlint over docs/**
 yarn sync:brand               # copy the tokens, logos and favicons in from the repo
 yarn check:brand              # fail if a copy differs from its source (yarn test runs it too)
 yarn typecheck                # tsc
-yarn test                     # Vitest — the config and module contract
+yarn test                     # Vitest — config, pages, brand, components, module contract
 yarn format:check             # Prettier over the code and config (yarn format fixes);
                               # Markdown is content and keeps the repo's compact tables
 yarn screenshots              # placeholder: fails until the capture harness lands (CZ.1)
 ```
+
+**CI.** [`ci/docs`](../.github/workflows/docs.yml) runs `yarn install --immutable`, `lint`,
+`typecheck`, `test` and `build` — exactly the commands above — on every pull request that
+touches this module or one of its inputs: the brand sources it copies, `.env.example`, and the
+runner's `main.go` and `install.sh` ([#1168](https://github.com/NobuData/ouroboros/issues/1168)).
+A broken link, a lint error or a changed copyright line fails it. markdownlint reads
+[`.markdownlint-cli2.jsonc`](.markdownlint-cli2.jsonc): the default rules, less line length
+and inline HTML (MDX pages use components); a page's front matter `title` is its H1, so a
+page carries no `#` heading of its own.
 
 Port **3100** is the docs site's alone: `ouroboros-ui` and `ouroboros-web` both use 3000
 ([`CONVENTIONS.md`](../docs/CONVENTIONS.md) § 4 port map), so the docs can run beside the
@@ -92,7 +101,8 @@ ouroboros-docs/
 ├── docusaurus.config.ts    # the site config: one docs instance at /, navbar, footer, strict links
 ├── site.constants.ts       # site URL default, copyright line, repo/edit URLs, the three sections
 ├── sidebars.ts             # one sidebar per section, generated from its folder
-├── eslint.config.mjs · stylelint.config.mjs · .prettierrc.json · vitest.config.mts · tsconfig.json
+├── eslint.config.mjs · stylelint.config.mjs · .markdownlint-cli2.jsonc · .prettierrc.json
+├── vitest.config.mts · tsconfig.json
 └── package.json · yarn.lock · .yarnrc.yml · .gitignore · .dockerignore
 ```
 
