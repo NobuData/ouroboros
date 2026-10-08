@@ -5,11 +5,200 @@ sidebar_position: 7
 description: "Turning goals into tickets and a timeline, and writing tickets back to the tracker."
 ---
 
-Turning goals into tickets and a timeline, and writing tickets back to the tracker.
+**Planning** at `/planning` turns a description of the work into tickets. You describe the
+outcome, Ouroboros drafts the tickets with their sizes and dependencies, you review them, and
+then you **push** them to your tracker, where the loop can pick them up. The same screen holds
+your workspace's **roadmap**: the epics you are working towards, laid out by month.
 
-:::info[Being written]
+<Screenshot id="user-guide.planning" />
 
-This page is being written in
-[#1178](https://github.com/NobuData/ouroboros/issues/1178).
+The screen has four cards:
+
+- **Generate tickets** — describe the work, draft tickets, review them and push them.
+- **Tracker sync** — each connected tracker, how it syncs (**two-way sync**, **read sync**,
+  **not syncing** or **not connected**) and how many issues it holds.
+- **Backlog health** — how much of the backlog is **Sized**, **Blocked** or **Stale > 30d**.
+- **Roadmap** — the timeline of epics; see [The roadmap](#the-roadmap).
+
+## Drafting tickets
+
+Drafting is open to owners, admins and members; a viewer can read the plan but not draft.
+
+1. In **Describe the outcome, not the tasks**, write what you want to be true when the work
+   is done.
+2. Open **Structured outline (optional)** and list the tickets: one ticket per top-level
+   bullet, with indented lines becoming its body. See [Dependencies](#dependencies) for how
+   to wire tickets together, and add a workflow in brackets — `[docs-loop]` — to suggest
+   one.
+3. Choose the tracker the tickets are for. **GitHub Issues** is the tracker you can draft
+   for today. **Jira** and **Linear** say why they cannot be chosen — not connected, or not
+   available in this build.
+4. Optionally choose a **Milestone**: **No milestone**, one the tracker already has, or
+   **New milestone…** with a name. A new milestone is created in the tracker when you push.
+5. Leave **Auto-size with estimator** on to size every draft as it is created. Turn on
+   **Queue XS/S tickets immediately** to send the smallest tickets to the queue as soon as
+   they are pushed — once the backlog has mirrored and sized them; anything not ready yet is
+   reported rather than queued.
+6. Choose **Draft tickets ⟳**.
+
+Today Ouroboros drafts from the **outline**: each bullet becomes one ticket. A description
+with no outline becomes a single ticket, and the drafts carry a note suggesting you add an
+outline to split it. Drafting tickets from the description alone is not available yet.
+
+The address changes to `/planning?batch=…`, so you can come back to the same batch, or share
+it, later.
+
+## Reviewing the drafts
+
+<Screenshot id="user-guide.planning.tickets" />
+
+The batch is listed under **Draft — N tickets**. Each row shows:
+
+- the ticket's key (`OTA-1`) and title;
+- what it blocks — **blocks OTA-3**;
+- its size, **XS** to **XL**, or **sizing…** while the estimator works — the same sizes as on
+  [Issues](./issues.mdx#reading-a-size-and-estimate). Sizing runs in a shared queue, so a
+  draft can wait behind other work; the chip fills in when its answer lands, and the head of
+  the list shows **✓ all sized** when every draft is done;
+- the suggested workflow;
+- **Edit**, to change its title and body before you push. **Save** keeps the change.
+
+Below the list, **est. total** adds up the loop time and the estimated spend of the ticked
+drafts.
+
+**Choose what goes to the tracker** with the tick box on each row. Every draft starts ticked;
+untick the ones you do not want. There is no separate accept or reject — a ticked draft is
+pushed, an unticked one is not. Your ticks and edits are saved as you make them.
+
+**Regenerate** drafts the batch again from the same description and outline, replacing every
+draft that has not been pushed. Your ticks are kept; edits to unpushed drafts are not. To
+change the outline itself, edit it and choose **Draft tickets ⟳** for a new batch.
+
+Drafts the [Build Analyzer](./analyzer.mdx) wrote from its findings open here too. They have
+no description to regenerate from, so **Regenerate** is greyed out for them; edit or untick
+them instead.
+
+## Dependencies
+
+You wire dependencies in the outline, before drafting:
+
+- `blocks: OTA-3` on a bullet — this ticket must be done before `OTA-3`.
+- `after: OTA-1` — this ticket waits for `OTA-1`.
+- A **numbered** list is a sequence: each ticket depends on the one before it. Use `-`
+  bullets for work that can run in parallel.
+
+Each draft shows the tickets it blocks. Dependencies cannot be edited after drafting; change
+the outline and draft a new batch. If the outline's dependencies form a cycle, the batch is
+still drafted, with a note saying so, but it cannot be pushed until you remove one of the
+links. An annotation naming a key that is not in the batch is ignored, and the note lists
+it.
+
+## Pushing tickets to the tracker
+
+<Screenshot id="user-guide.planning.write-back" />
+
+Choose **Push N tickets to GitHub →** to write every ticked draft to the tracker. Only owners
+and admins can push.
+
+:::caution[Pushing writes to your tracker at once]
+
+There is no confirmation: one press creates real issues in GitHub that everyone with access
+to the repository can see. Ouroboros never deletes or closes an issue it created, so
+undoing a push is done by hand in GitHub. Review the ticked drafts, their titles, bodies and
+milestone before you press it.
 
 :::
+
+### What is written
+
+For a GitHub tracker, the push writes to the first repository enabled for that tracker:
+
+- **One issue per ticked draft**, in dependency order — blockers first. The issue has the
+  draft's title, its body followed by a **Filed by Ouroboros** footer and a hidden marker
+  linking it to its draft, and the milestone you chose. No labels are added.
+- **The milestone**, created if the tracker does not have it yet.
+- **Dependencies**, as GitHub's own *blocked by* links. On a GitHub server without them, the
+  link is recorded as a hidden marker in the issue's body instead. A dependency on a draft
+  you did not tick is not sent.
+- **The epic**, when the batch is filed under one: a parent tracking issue for the epic is
+  created the first time, and each new issue is added to it as a sub-issue.
+
+While the push runs, the button reads **Pushing…** and each row changes to **pushing…**,
+then **pushed ✓ #612** — a link to the new issue — or **failed** with the reason. The result
+is summed up below the list, for example **Pushed 6 tickets to GitHub.**
+
+### Pushing twice is safe
+
+- A draft that has been pushed is never pushed again, and it can no longer be edited here —
+  **Pushed — edit it in the tracker.** Later edits in Ouroboros never overwrite the issue.
+- If some drafts did not land, the button becomes **Resume push**, which retries only those.
+  Before it creates an issue, Ouroboros looks for one carrying the draft's marker, so an
+  issue that was created but not recorded is found rather than duplicated.
+- If GitHub is rate limiting, the push stops and tells you the time, in UTC, after which to
+  choose **Resume push**.
+- A draft whose blocker did not land waits — **waiting on OTA-3, which has not been pushed** —
+  and goes with **Resume push** once its blocker is in.
+
+### Undoing a push
+
+Ouroboros keeps the drafts it pushed marked as pushed, and it has no unpush. To undo:
+
+1. In GitHub, close or delete the issues the push created — each one ends with **Filed by
+   Ouroboros**, and the **pushed ✓ #…** links on the drafts take you to them.
+2. Remove the milestone and the epic's parent tracking issue if the push created them and
+   you no longer want them.
+3. To file the work again, draft a new batch; the old one stays pushed.
+
+## The roadmap
+
+<Screenshot id="user-guide.planning.timeline" />
+
+Your workspace has one roadmap, named after its epics — **Roadmap — Helios 2.1**, with its
+window, for example **Q3 2026–Q1 2027**, beside it. Each **bar** is an epic: a named piece of
+work across a range of months.
+
+- The bar's chip counts the tickets linked to the epic and how many are done —
+  **12 issues · 8 done** — and the bar fills as they close.
+- A dashed bar is **unscoped**: an epic with no months yet. **proposed** and **done** appear
+  after an epic's name.
+- **TODAY** marks today's date on the grid.
+- The timeline shows epics only. Tickets and their dependencies are not drawn on it, and
+  nothing on it is scheduled for you: each epic's months are the ones you set.
+
+**Creating a roadmap.** **New roadmap** asks for a **Roadmap name**, an optional **Window**,
+the **First epic**, and optionally its **First month** and **Last month** — leave both empty
+for an unscoped epic. **Create roadmap** saves it. A workspace that already has a roadmap
+adds the new epic to it.
+
+**Changing the roadmap** is for owners and admins:
+
+- Drag a bar, or its ends, to change its months; the **start**, **move** and **end** arrows
+  under it do the same a month at a time. With a bar focused, **←** **→** move it a month,
+  **Shift + ← →** move its end, **Alt + ← →** move its start, and **Enter** opens it.
+  Each change is saved at once.
+- Open a bar to edit its name, tint, status (**Active**, **Proposed**, **Done** or
+  **Unscoped**) and months, and to **Link** or **Unlink** tickets. Only linked tickets
+  count towards the chip.
+- **Add epic** adds a lane at the bottom.
+
+Others can open an epic to read it. **Share ↗** and **Import from Jira** are marked **soon**
+and are not available yet.
+
+## What can go wrong
+
+- **"Connect a tracker to draft".** No tracker is connected, so there is nothing to draft
+  for. An owner or admin chooses **Open settings** and connects one — see
+  [Ticket sources & repositories](../administration/sources.mdx).
+- **The milestone list does not load.** Ouroboros could not read the tracker's milestones,
+  usually because its token cannot be used. Choose **No milestone**, or ask an owner or admin
+  to check the tracker's connection.
+- **"This batch's dependencies form a cycle (…), so no ticket of it can go first."** Remove
+  one of the links in the outline and draft a new batch.
+- **A row shows "failed — …".** The reason names the step that failed, such as
+  **creating the ticket failed** or **linking a dependency failed**. Fix the cause, then
+  choose **Resume push**.
+- **"Every selected draft is already in GitHub."** There is nothing left to push.
+- **"Select at least one draft to push."** Tick at least one draft.
+- **A queued ticket is reported "not queued — not mirrored yet".** The backlog has not
+  mirrored the new issue yet. Queue it from [Issues](./issues.mdx) once it appears there and
+  is sized.

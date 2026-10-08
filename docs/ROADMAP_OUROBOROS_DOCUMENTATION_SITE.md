@@ -567,7 +567,7 @@ dev seeds (e.g. acme-robotics; `acme-onboarding` for the wizard).
 | DA.3 | #1175 ✅ | 🟢 Done | ouroboros-docs: [DA.3] Finding your way — app shell, navigation & command palette | Sidebar, header, ⌘K, themes, keyboard | mvp, docs-site, documentation, shell | Y | Y | S | ouroboros-docs |
 | DA.4 | #1176 | 🟡 Open | ouroboros-docs: [DA.4] Mission Control dashboard | Reading the dashboard and acting from it | mvp, docs-site, documentation, dashboard | Y | Y | S | ouroboros-docs |
 | DA.5 | #1177 ✅ | 🟢 Done | ouroboros-docs: [DA.5] Issues — intake, sizing & queuing | Backlog sync view, estimates, queue a loop | mvp, docs-site, documentation, intake | Y | Y | M | ouroboros-docs |
-| DA.6 | #1178 | 🟡 Open | ouroboros-docs: [DA.6] Planning — roadmaps, generated tickets & timeline | Plans, ticket generation, gantt, tracker write-back | mvp, docs-site, documentation, planning | Y | Y | M | ouroboros-docs |
+| DA.6 | #1178 ✅ | 🟢 Done | ouroboros-docs: [DA.6] Planning — roadmaps, generated tickets & timeline | Plans, ticket generation, gantt, tracker write-back | mvp, docs-site, documentation, planning | Y | Y | M | ouroboros-docs |
 | DA.7 | #1179 | 🟡 Open | ouroboros-docs: [DA.7] Workflows — Studio canvas | Build/edit/publish workflows visually | mvp, docs-site, documentation, workflow | Y | Y | M | ouroboros-docs |
 | DA.8 | #1180 | 🟡 Open | ouroboros-docs: [DA.8] Workflows as code | TS-DSL editor, completions, round-trip with the canvas | mvp, docs-site, documentation, code-view | Y | Y | M | ouroboros-docs |
 | DA.9 | #1181 | 🟡 Open | ouroboros-docs: [DA.9] Models — routing & the model registry | Routes, aliases, escalation; browsing models | mvp, docs-site, documentation, routing, registry | Y | Y | M | ouroboros-docs |
@@ -662,6 +662,33 @@ behaviour (canonical tickets — connecting a tracker is DB.6).
 `.issues.queue-dialog`.
 
 ### Issue DA.6 (#1178) — ouroboros-docs: [DA.6] Planning — roadmaps, generated tickets & timeline
+
+> **GitHub issue:** #1178 ✅ · **Status:** 🟢 Done · **Parent epic:** #1158
+>
+> **Delivered (#1178):** `user-guide/planning.mdx`, written to what `main` ships rather than the issue's plan/list wording. A workspace has **one roadmap** (no plan list or plan route), generated tickets are **drafts** in a **batch** (`/planning?batch=…`), and write-back is the **push**. The page covers:
+> - Drafting from the description + structured outline. `outline-v0` drafts from the outline; a description alone becomes one draft, so drafting from the description is described as not available yet (D12).
+> - The tracker choice and milestone.
+> - **Auto-size with estimator** and **Queue XS/S tickets immediately**.
+> - Reviewing: ticking is the accept/reject, plus **Edit**, est. total, and **Regenerate** (re-plans from the stored description and outline, replaces unpushed drafts, keeps ticks; inert for analyzer batches).
+> - Dependencies, authored only in the outline (`blocks:`, `after:`, numbered sequence), not editable afterwards, and cycles block the push.
+> - The push, with a `caution` admonition: no confirmation; Ouroboros never deletes or closes.
+>   - What is written: one issue per ticked draft, blockers first, in the source's first enabled repository, with the Filed by Ouroboros footer and a hidden push-key marker, the milestone (created if missing), no labels, native blocked-by links or a body marker, and an epic parent issue with sub-issues.
+>   - Idempotency: pushed drafts are never re-pushed or overwritten; **Resume push** retries only the failed ones; an existing issue is found by its marker; rate limiting is handled.
+>   - Undoing by hand in GitHub.
+> - The roadmap: bars are epics × months with linked-ticket chips, unscoped dashed bars, **TODAY**, nothing scheduled, **New roadmap**, drag/stepper/keyboard edits and the epic sheet, all owner/admin; Share and Import from Jira are **soon**.
+> - What can go wrong.
+>
+> `tests/planning.test.ts` checks the page against `generator.ts` / `view.ts` / `create.ts` / `gantt.ts` label constants and `epic-draft.ts`'s status options, and requires the caution admonition.
+>
+> **Screenshots** (`acme-robotics`; nothing pushed, since a push would create GitHub issues the product cannot undo):
+> - `user-guide.planning` — the screen.
+> - `user-guide.planning.tickets` — the seeded OTA batch's draft list at `?batch=5eed0021-…-000000000001`; the whole generator card is taller than the viewport, so it is clipped to the list.
+> - `user-guide.planning.timeline` — the Roadmap card.
+> - `user-guide.planning.write-back` — the batch footer with **Push 6 tickets to GitHub →**; the push has no dialog to show.
+>
+> The milestone select's hint is **masked**: the dev seed's GitHub credential deliberately opens nothing, so on the seeded stack the milestone list answers *"The service failed to handle this request."*
+>
+> No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.13.
 
 **Problem Statement.** Planning turns goals into tickets and a timeline; its write-back to
 trackers has consequences users must understand.
