@@ -88,7 +88,13 @@ describe("module files", () => {
   });
 
   it("keeps none of the scaffold's samples", () => {
-    for (const sample of ["blog", "docs/intro.mdx", "docs/tutorial-basics", "src/components"]) {
+    for (const sample of [
+      "blog",
+      "docs/intro.mdx",
+      "docs/tutorial-basics",
+      "src/components/HomepageFeatures",
+      "src/pages/index.tsx",
+    ]) {
       expect(existsSync(join(MODULE_DIR, sample)), sample).toBe(false);
     }
   });

@@ -1,0 +1,15 @@
+/* An accent-bordered chip, the tokens' "accent-bordered chip" pairing. */
+.since {
+  display: inline-block;
+  padding: var(--sp-1) var(--sp-4);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-pill);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  line-height: var(--lh-snug);
+  vertical-align: middle;
+  white-space: nowrap;
+}

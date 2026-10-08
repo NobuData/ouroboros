@@ -29,7 +29,9 @@ its React and Docusaurus resolution never enters the product's lockfile.
 | Package manager | Yarn 4.18.0 via corepack, `nodeLinker: node-modules`, own lockfile |
 | Runtime | Node 24 |
 | Fonts | Chakra Petch, IBM Plex Sans, IBM Plex Mono — self-hosted from `@fontsource/*` (pinned), the weights `ouroboros-ui` ships |
-| Checks | ESLint 9 + typescript-eslint, Stylelint 17 (no colour literals), Prettier, Vitest |
+| Search | [`@easyops-cn/docusaurus-search-local`](https://github.com/easyops-cn/docusaurus-search-local) 0.55 — the index is built into the site, no external service |
+| Diagrams | `@docusaurus/theme-mermaid` 3.10.2, coloured from the brand tokens |
+| Checks | ESLint 9 + typescript-eslint, Stylelint 17 (no colour literals), Prettier, Vitest + Testing Library (jsdom) for components |
 
 ## Run
 
@@ -76,13 +78,17 @@ ouroboros-docs/
 │   ├── user-guide/         # User Guide      → /user-guide      (sidebar userGuide)
 │   ├── administration/     # Administration  → /administration  (sidebar administration)
 │   └── cli/                # CLI             → /cli             (sidebar cli)
-├── src/css/
-│   ├── tokens.css          # synced copy of docs/design/tokens.css — never edit it here
-│   └── custom.css          # the tokens mapped onto Infima, fonts, chrome tweaks
+├── src/
+│   ├── components/         # UiPath, EnvVar, Since, SectionCards — usable in any page
+│   ├── theme/              # MDXComponents (registers them), Mermaid (brand colours)
+│   └── css/
+│       ├── tokens.css      # synced copy of docs/design/tokens.css — never edit it here
+│       └── custom.css      # the tokens mapped onto Infima, fonts, chrome tweaks
 ├── static/                 # files copied verbatim into the build
 │   └── img/brand/          # synced copies: brand PNGs, mockup logos, favicon/
 ├── scripts/                # sync-brand.mjs, the screenshots placeholder
-├── tests/                  # Vitest — config, sidebars, planned pages, brand and module contract
+├── tests/                  # Vitest — config, sidebars, pages, brand, components, theme, module
+│   └── support/            # stand-ins for Docusaurus client modules, the jsdom setup
 ├── docusaurus.config.ts    # the site config: one docs instance at /, navbar, footer, strict links
 ├── site.constants.ts       # site URL default, copyright line, repo/edit URLs, the three sections
 ├── sidebars.ts             # one sidebar per section, generated from its folder
@@ -92,7 +98,7 @@ ouroboros-docs/
 
 Every page belongs to exactly one section; only the home page sits outside them. The
 navbar lists the sections in the order User Guide, Administration, CLI, with a GitHub link
-and the colour-mode toggle on the right (search joins with CY.4). The footer has a link
+and the colour-mode toggle on the right, after the search box. The footer has a link
 column per section, a "More" column (GitHub, ouroboros.build) and the copyright line
 `Copyright © 2025-2026 NobuData LLC`, which a test holds exactly.
 
@@ -200,6 +206,67 @@ The site runs with Docusaurus' v4 flags, which drop MDX 1 compatibility, so the 
 
 `tests/pages.test.ts` lists every planned page with its issue and checks it exists, has
 all four front matter fields, and — while it is still a stub — links that issue.
+
+### Admonitions
+
+Four kinds, each for one job, so a reader learns what a box means at a glance:
+
+| Kind | For | Example |
+|---|---|---|
+| `:::note` | Context — background that helps but can be skipped | Why sources sync on a cadence rather than live |
+| `:::tip` | A faster or better way to do what the page describes | The ⌘K action that skips three clicks |
+| `:::caution` | **Data loss or security** — read before acting | Write-back edits the tracker; an API token is shown once |
+| `:::info[Not available yet]` | A surface the UI shows but that is not delivered (roadmap decision D12) — one line, never described as working | "Slack and Teams channels arrive with Chat Ops." |
+
+`:::danger` is kept for the irreversible — purging a workspace — and nothing else.
+`:::info[Being written]` marks a stub (above) and is removed when the page is written.
+
+### Components
+
+Four components are available in every page without an import (registered in
+`src/theme/MDXComponents.tsx`). Each refuses bad input by throwing, so a mistake fails
+`yarn build` instead of rendering something wrong:
+
+| Component | Renders | Example |
+|---|---|---|
+| `<UiPath path="…" />` | A place in the app, the way its navigation reads | `<UiPath path="Settings > Members" />` → **Settings › Members** |
+| `<EnvVar name="…" />` | A variable in the code face, linked to its entry in the [configuration reference](docs/administration/configuration/index.mdx) | `<EnvVar name="OURO_SMTP_URL" />` |
+| `<Since version="…" module="…" />` | A small badge: the release a feature arrived in (`module` optional) | `<Since version="0.7.16" module="ouroboros-rest" />` |
+| `<SectionCards />` | A grid of linked cards — the three sections by default, or your own `cards={[{ title, description, to }]}` | `<SectionCards />` on an overview page |
+
+`<EnvVar>` links to `/administration/configuration#<name in lower case>` — the heading the
+reference gives each variable. That anchor is checked at build time, so a variable the
+reference does not list fails the build. Until the generated reference lands
+([#1191](https://github.com/NobuData/ouroboros/issues/1191)) no variable is listed, so
+`<EnvVar>` cannot be used yet; write the name in backticks meanwhile. Screenshots get their
+component with [#1171](https://github.com/NobuData/ouroboros/issues/1171).
+
+Component styles are CSS modules beside each component and, like the rest of the site's
+CSS, use tokens only. Each component has a Vitest + Testing Library test in
+`tests/components/`.
+
+### Diagrams
+
+Fence a diagram as `mermaid` and it renders as SVG:
+
+````md
+```mermaid
+flowchart LR
+    I[Issue] --> R[Run] --> P[Pull request]
+```
+````
+
+Diagrams take their colours from the brand tokens in both themes:
+`src/theme/Mermaid/` wraps the theme's renderer, reads the tokens off the page whenever the
+theme changes, and hands them to Mermaid's `base` theme. Do not set colours in a diagram
+(`style`, `classDef … fill:`) — they would not follow the theme.
+
+### Search
+
+The search box indexes every page in all three sections; each result shows its section,
+group and page (`CLI › ouroboros-runner`). There is nothing to configure per page — a
+page's title, headings, description and text are indexed. Build the site
+(`yarn build && yarn serve`) to try it: the dev server has no index.
 
 ### Links
 

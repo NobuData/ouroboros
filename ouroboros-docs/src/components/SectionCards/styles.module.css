@@ -1,0 +1,43 @@
+/* Cards fill the row, as many as fit at a readable width. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--sp-8);
+  margin-bottom: var(--ifm-leading);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-9);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: var(--ink-dim);
+  transition: border-color var(--ifm-transition-fast);
+}
+
+.card:hover {
+  border-color: var(--accent-line);
+  background: var(--accent-wash);
+  color: var(--ink-dim);
+  text-decoration: none;
+}
+
+.title {
+  color: var(--ink);
+  font-family: var(--f-disp);
+  font-size: var(--t-xl);
+  font-weight: 600;
+  line-height: var(--lh-snug);
+}
+
+.card:hover .title {
+  color: var(--accent);
+}
+
+.description {
+  font-size: var(--t-md);
+  line-height: var(--lh-body);
+}

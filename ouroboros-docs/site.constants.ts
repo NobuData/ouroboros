@@ -46,11 +46,28 @@ export interface Section {
   dir: string;
   /** The navbar label and the footer column title. */
   label: string;
+  /** One sentence on who the section is for — the section's card on overview pages. */
+  description: string;
 }
 
 /** The three sections, in navbar order: User Guide, Administration, CLI. */
 export const SECTIONS: readonly Section[] = [
-  { sidebarId: "userGuide", dir: "user-guide", label: "User Guide" },
-  { sidebarId: "administration", dir: "administration", label: "Administration" },
-  { sidebarId: "cli", dir: "cli", label: "CLI" },
+  {
+    sidebarId: "userGuide",
+    dir: "user-guide",
+    label: "User Guide",
+    description: "Working in the app: issues, workflows, runs, pull requests and the inbox.",
+  },
+  {
+    sidebarId: "administration",
+    dir: "administration",
+    label: "Administration",
+    description: "Deploying, configuring and looking after Ouroboros and its workspaces.",
+  },
+  {
+    sidebarId: "cli",
+    dir: "cli",
+    label: "CLI",
+    description: "The runner installer, the runner agent, stack commands and the REST API.",
+  },
 ];
