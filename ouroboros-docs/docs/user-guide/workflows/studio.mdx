@@ -5,11 +5,211 @@ sidebar_position: 1
 description: "Building, editing, validating and publishing workflows on the canvas."
 ---
 
-Building, editing, validating and publishing workflows on the canvas.
+A **workflow** is what a loop does with an issue: the stages it goes through — understanding
+the issue, planning, writing the change, building, testing, reviewing — and the decisions
+that route it between them. The **Workflow Studio** at `/workflows` is where you read and
+change workflows, on a canvas. Every issue a loop works on runs under one workflow, at one
+published version.
 
-:::info[Being written]
+<Screenshot id="user-guide.workflows" />
 
-This page is being written in
-[#1179](https://github.com/NobuData/ouroboros/issues/1179).
+## The Studio at a glance
 
-:::
+- **The rail** on the left lists every workflow in the workspace, each with a caption:
+  how many stages it has and how it ends — **12 stages · auto-merge**,
+  **5 stages · needs review** — or **paused**, or **not published** for a workflow that has
+  never been published. Choose one to open it at `/workflows/<slug>`; `/workflows` opens the
+  first.
+- **The page head** names the workflow and says, in one line, when it runs (for example
+  **Runs when a sized issue with effort ≤ M is queued.**), when it was last edited, the
+  version in force (**v14**), **draft edits** when the draft differs from that version, and
+  how many runs use it.
+- **Visual** and **Code** switch between the canvas and the workflow as code — see
+  [Workflows as code](./code.mdx). **Copilot** is marked **soon** and is not available yet.
+- **Dry run** and **Publish vN** act on the open workflow; see [Dry runs](#dry-runs) and
+  [Publishing a version](#publishing-a-version).
+- **Browse templates** is not available yet; the template library has not arrived.
+
+Owners and admins create, edit and publish workflows. Everyone else sees the Studio
+read-only, with a note saying so — you can read every stage and run a dry run, but nothing
+can be changed.
+
+### Creating a workflow
+
+Choose **+ New workflow** at the foot of the rail. Give it a **Name** and a **Slug** —
+lower-case words joined by hyphens, like `standard-fix`, unique in the workspace — and choose
+**Create workflow**. It starts as a blank draft: nothing runs it until you publish it. The
+slug is what queued issues are tagged with, and it cannot be changed afterwards.
+
+## The canvas
+
+<Screenshot id="user-guide.workflow.canvas" />
+
+Each card on the canvas is a **stage**; each arrow is an **edge** a run follows from one stage
+to the next. A run starts at the trigger and follows edges until it reaches a terminal.
+
+### Stage kinds
+
+| Kind | On the canvas | What it does |
+| --- | --- | --- |
+| **Trigger** | ▸ | Where a run starts. A workflow has exactly one; its condition (such as `effort ≤ M`) is the workflow's own trigger, described in the page head |
+| **Model stage** | ◆ | A model does the work — analyse, plan, implement, review — from a prompt or a skill, on a routed or pinned model |
+| **Build or test** | ▣ | A command run on your build farm, on a runner pool — building, or running the test suite |
+| **Decision or gate** | ◇ | Chooses the next edge from a condition: effort, labels, source, paths, or whether checks passed |
+| **Terminal** | ● | Where a run ends: open a pull request and auto-merge it, hand it over for review, or send the issue back to the queue |
+
+The chips on a card summarise its settings: the skill or prompt template, the model or
+**routed by task**, the runner pool and command, or the condition.
+
+### Edges
+
+- A **default** edge is always taken.
+- A **branch** edge is one outcome of a decision, and carries a condition — the label beside
+  it, such as `≤ M ↓`, `> M ↘` or `pass →`.
+- A **loop** edge, drawn dashed, goes back up the graph — such as `fail ↺` from a failed check
+  back to the stage that writes the change. How many times a loop can come round is the
+  retry bound of the stage it returns to.
+
+### Editing the canvas
+
+Owners and admins edit the canvas directly:
+
+- **Add stage ▾** adds a stage of any kind; options that cannot be added say why — **A
+  workflow can only have one trigger.**
+- Drag from the side of one stage to another to connect them. Double-click an edge to insert
+  a stage in the middle of it.
+- Drag a stage to move it, or Tab to it and use the arrow keys. **Delete** removes the
+  selection, after asking.
+- **Auto-layout** tidies the graph; **−**, the percentage and **+** zoom; hold **⌥** (Alt) or
+  Space and drag to pan.
+- **Undo** and **Redo** — or **⌘/Ctrl+Z** and **⌘/Ctrl+Shift+Z** — step through your edits.
+
+**Your changes save themselves.** Each edit is saved to the workflow's **draft** a moment
+later — the toolbar says **Edited — saving shortly.**, then **All changes saved.** The draft
+is not what runs: runs use the latest **published** version until you publish again.
+
+## The inspector
+
+Select a stage or an edge — click it, or Tab to it and press Enter — and the **inspector**
+beside the canvas shows its settings.
+
+<Screenshot id="user-guide.workflow.inspector" />
+
+For a **model stage**:
+
+- **Mode** — **Direct prompt** (the stage's own prompt) or **Skill** (a skill from
+  [Knowledge](../knowledge.mdx) loaded into context before the prompt).
+- **Prompt template** — what the model is asked. **Insert a variable** adds placeholders such
+  as `{{issue.title}}`, `{{issue.body}}`, `{{diff}}` and the output of earlier stages.
+- **Model routing** — **Inherit route for task "…" (recommended)** uses the model your
+  workspace routes that kind of task to (see [Models](../models.mdx)), and shows which one
+  that is; **Pin model** fixes a model alias for this stage.
+- **Limits** — **Max retries** and **Token budget** (shorthand works: `400k`, `1.5m`).
+- **Permissions** — **May push fixup commits** and **May touch CI config**. These are
+  declared now but not yet enforced when a run executes.
+
+A **build or test** stage takes a **Runner pool** and a **Command**; a **decision or gate**
+takes its **Kind** and the condition it tests; a **terminal** takes its **Action** and, for
+merging, the merge method. An **edge** takes its **Kind**, a **Label** printed beside it (never
+evaluated), and — for a branch — its **Condition**. Settings that the form does not cover say
+**Edit this value in the code view.**
+
+Changes in the inspector are yours alone until you choose **Apply** — the footer says
+**Unapplied changes** until then. Apply puts them on the canvas, and the draft saves them
+like any other edit.
+
+## Validation
+
+Ouroboros checks a workflow at three moments.
+
+**As you fill in a field**, the inspector marks a value it cannot accept, and **Apply** stays
+off — **Fix the fields marked in red before applying.**
+
+<Screenshot id="user-guide.workflow.validation-error" />
+
+**As you edit the canvas**, an edit that would break the graph is refused on the spot, with
+the reason: **A stage cannot connect to itself.**, **Nothing can arrive at the trigger — it is
+where a run starts.**, **Nothing can leave a terminal — it is where a run ends.**,
+**A branch edge needs a condition — choose what it tests.**, or **A loop edge must return
+upstream — to a stage that leads back to where the loop starts.**
+
+**When you publish or dry-run**, the whole draft is checked against the workflow rules, the
+model registry and the engine. Each finding names its source — **DSL**, **Registry** or
+**Engine** — and a **Select …** button that takes you to the stage it is about. The structural
+rules are:
+
+| Rule | Message |
+| --- | --- |
+| One trigger | **A workflow needs exactly one trigger node; this one has none.** |
+| A way to finish | **A workflow needs at least one terminal node; no path through this one ends.** |
+| Every stage reachable | **No path of edges reaches this stage from the trigger.** |
+| Branches decide | **A branch edge needs a condition; nothing decides whether this one is taken.** |
+| Defaults do not | **A default edge is always taken, so its condition would never be read. Make it a branch edge, or drop the condition.** |
+| Loops go back | A loop edge must go back up the graph to a stage that leads to it |
+| No duplicates | **An earlier edge already joins these two stages.** |
+
+A model stage that pins an alias the [model registry](../models.mdx) does not have is
+refused too — with a suggestion when the name is close to one that exists. A stage that names
+a skill or a task route that does not exist yet gets a warning in the inspector, which does
+not stop a publish.
+
+## Dry runs
+
+**Dry run** walks the draft as if one of your issues had been queued under it — without
+calling a model, running anything or recording anything. Anyone in the workspace can run
+one.
+
+1. Choose **Dry run**, pick a sized issue from the backlog — for example
+   `#485 · Watchdog reset on I²C bus lockup · effort M` — and choose **Run dry run**.
+2. The inspector shows **Dry run with issue #485**: each stage the walk reached, marked
+   **Trigger fires**, **Reached**, **Halts here** or **Ends here**, and each edge **Taken** or
+   **Not taken**. The path it took is highlighted on the canvas.
+3. Loops are reported, not walked: **Loops back at most N times — the retry bound of the
+   stage it returns to.** Gates that test checks assume them, since a dry run has no check
+   results.
+
+If the draft does not validate, nothing is walked and the findings are listed instead.
+The walk describes the draft as it was; edit the graph and it clears. **Close dry run**
+returns to the inspector.
+
+## Publishing a version
+
+Publishing freezes the draft as the next version — the one runs use.
+
+<Screenshot id="user-guide.workflow.publish" />
+
+1. Choose **Publish vN** — the button names the version you are about to create, such as
+   **Publish v15**.
+2. Optionally write a **Change note**: what changed, in your words. It is kept with the
+   version.
+3. Choose **Publish vN**. The draft is checked; if it passes, it becomes the new version and
+   you see **Published v15. Runs queued from now on use it.** The draft stays open for your
+   next edit.
+
+If the check finds problems, nothing is published and the dialog lists the findings — choose
+one to go to its stage. Only owners and admins can publish.
+
+### Which version runs
+
+- An issue is pinned to the workflow's published version **when it is queued**. Runs queued
+  after you publish use the new version; issues already queued or running keep the version
+  they were queued with. The [run console](../runs/console.mdx) shows the pin, for example
+  **standard-fix v14**.
+- A workflow that has never been published runs nothing.
+- Versions count up from v1 and are never edited. There is no version history or roll-back
+  in the Studio yet: to go back, change the draft and publish it as a new version.
+
+## What can go wrong
+
+- **"Autosave paused — this draft changed elsewhere. Reload to keep editing."** Someone else —
+  or you, in another tab or in the code view — changed the draft. Choose
+  **Reload the draft**; your unsaved edit is not kept, and nothing was overwritten.
+- **"Not saved — …"** The last edit could not be saved; the next edit tries again. Until it saves,
+  **Publish** and **Dry run** refuse, so they never act on an older draft.
+- **"This definition cannot be published yet."** The draft has findings; select each one and
+  fix its stage.
+- **"The draft changed while it was being published, so nothing was published."** Reload and
+  publish again.
+- **A run used the old version.** It was queued before you published. Only issues queued
+  after the publish use the new version.
+- **The Publish button is missing.** You are not an owner or admin of the workspace.
