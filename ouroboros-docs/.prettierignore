@@ -7,3 +7,7 @@ yarn.lock
 
 # A synced copy of docs/design/tokens.css (scripts/sync-brand.mjs), kept byte-identical.
 src/css/tokens.css
+
+# Written by `yarn screenshots` (CZ.1), which stamps it after every capture.
+screenshots/screenshots.manifest.json
+screenshots/test-results/

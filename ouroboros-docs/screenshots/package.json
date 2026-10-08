@@ -1,0 +1,5 @@
+{
+  "//": "screenshots/ is ES modules under Node's own TypeScript support (CZ.1, #1170); not a package.",
+  "type": "module",
+  "private": true
+}
