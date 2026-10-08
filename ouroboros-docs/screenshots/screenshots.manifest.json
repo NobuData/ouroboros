@@ -118,6 +118,55 @@
       "capturedAt": "2026-10-08T21:13:42.748Z",
       "uiVersion": "0.144.1",
       "seedRef": "010fb287e1c459cdc1d703473959cc3bb408a31f"
+    },
+    {
+      "id": "user-guide.shell",
+      "route": "/dashboard",
+      "workspace": "acme-robotics",
+      "ready": "nav#shell-sidebar a[aria-current=\"page\"]",
+      "clip": "page",
+      "masks": [
+        ".dash-runs td.ou-table__cell--mono.ou-table__cell--end"
+      ],
+      "caption": "The app shell: the sidebar on the left, the header across the top, and the screen you are on in between.",
+      "alt": "The Ouroboros app on the Mission Control dashboard: the sidebar listing Dashboard to Insights with Needs You and Settings at its foot, and the header with the workspace chip, Search, the live-loop and Needs you pills, the bell and the account avatar.",
+      "capturedAt": "2026-10-08T21:31:01.981Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "918e4c4ea5693566ae2f575c4ee5d9b243a71a23"
+    },
+    {
+      "id": "user-guide.command-palette",
+      "route": "/dashboard",
+      "workspace": "acme-robotics",
+      "actions": [
+        {
+          "click": ".shell-search"
+        }
+      ],
+      "ready": ".shell-palette__input",
+      "clip": "[role=\"dialog\"][aria-label=\"Search\"]",
+      "caption": "The search palette: type to find a screen or a command, then press Enter.",
+      "alt": "The search palette open, with the Search screens and commands field, the Navigation group of Go to commands and the Actions group with Toggle theme and Sign out.",
+      "capturedAt": "2026-10-08T21:31:05.367Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "918e4c4ea5693566ae2f575c4ee5d9b243a71a23"
+    },
+    {
+      "id": "user-guide.appearance",
+      "route": "/dashboard",
+      "workspace": "acme-robotics",
+      "actions": [
+        {
+          "click": ".shell-avatar"
+        }
+      ],
+      "ready": "[role=\"group\"][aria-label=\"Theme\"]",
+      "clip": ".shell-menu:not(.shell-menu--start) > .shell-menu__panel",
+      "caption": "The account menu: font size, theme, workspace settings, keyboard shortcuts and sign out.",
+      "alt": "The account menu open under the avatar, showing your name and email, the Font size stepper, the Theme choices Light, Dark and System, and the Workspace settings, Keyboard shortcuts and Sign out items.",
+      "capturedAt": "2026-10-08T21:31:08.279Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "918e4c4ea5693566ae2f575c4ee5d9b243a71a23"
     }
   ]
 }

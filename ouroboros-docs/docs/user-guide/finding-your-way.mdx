@@ -5,11 +5,139 @@ sidebar_position: 4
 description: "The app shell, navigation, the command palette, appearance and keyboard shortcuts."
 ---
 
-The app shell, navigation, the command palette, appearance and keyboard shortcuts.
+Every screen in Ouroboros sits in the same frame: the **sidebar** on the left, the
+**header** across the top, and the screen you are on in between. Learn the frame once and
+every task guide after this one reads the same way.
 
-:::info[Being written]
+<Screenshot id="user-guide.shell" />
 
-This page is being written in
-[#1175](https://github.com/NobuData/ouroboros/issues/1175).
+## The sidebar
 
-:::
+The sidebar lists the screens, in the order the work flows:
+
+| Entry | What lives there |
+| --- | --- |
+| **Dashboard** | Mission Control — live loops, the queue, the build farm and what needs you. See [Mission Control dashboard](./dashboard.mdx). |
+| **Issues** | Intake, sizing and queuing. See [Issues](./issues.mdx). |
+| **Workflows** | The Workflow Studio. See [Workflows](./workflows/studio.mdx). |
+| **Models** | Routing, the model registry and providers. See [Models](./models.mdx). |
+| **Build Farm** | Runners and pools. The Build Analyzer opens from here. See [Build farm](../administration/build-farm.mdx) and [Build Analyzer](./analyzer.mdx). |
+| **Knowledge** | Skills, learned facts and playbooks. See [Knowledge](./knowledge.mdx). |
+| **Planning** | Roadmaps and drafted tickets. See [Planning](./planning.mdx). |
+| **Research** | Not available yet — the row is marked **soon** and opens nothing. |
+| **Insights** | How the loop is doing over time. See [Insights](./insights.mdx). |
+
+At the foot, below a rule:
+
+- **Needs You** — the [inbox](./inbox.mdx) of decisions waiting for a person. The number
+  beside it is how many are open; it disappears when there are none.
+- **Settings** — workspace settings: members, policies, integrations and more.
+
+The entry for the screen you are on is lit. Some screens have no entry of their own — a
+run's console, a pull request's verification page, a run's test results — and keep lit the
+entry you opened them from: open a run from the dashboard and **Dashboard** stays lit, so
+you know where you came back to.
+
+**Collapse** the sidebar to a rail of icons with the chevron at its foot (**Collapse
+sidebar** / **Expand sidebar**); hover an icon for its name. Ouroboros remembers the choice
+in your browser. On a narrow screen the sidebar starts as the rail; on a phone-sized screen
+it is hidden behind the **Open navigation** button in the header and closes when you pick
+an entry or press <kbd>Esc</kbd>.
+
+## The header
+
+From left to right:
+
+- **The Ouroboros logo** — back to the dashboard.
+- **The workspace chip** — *workspace* / *repository*, for example
+  `acme-robotics / All repos`. Open it to:
+  - **Switch workspace** — when you belong to more than one, pick another; the page
+    reloads in it.
+  - **Focus repository** — narrow the screens to one repository, or **All repos**. The
+    focus is remembered per workspace in your browser.
+  - **Workspace settings** — open Settings.
+- **Search** — opens the [command palette](#the-command-palette).
+- ***N* loops live** — how many loops are running right now.
+- **Needs you · *N*** — runs that stopped for a person in the last seven days; it opens
+  the [inbox](./inbox.mdx).
+- **The bell** — not available yet: notifications arrive with a later release, and the bell
+  does nothing today.
+- **Your avatar** — the account menu: [appearance](#appearance), workspace switching,
+  **Workspace settings**, **Keyboard shortcuts** and **Sign out**.
+
+The live-loop and Needs-you pills are hidden while their count is zero.
+
+## The command palette
+
+Press <kbd>Ctrl</kbd>+<kbd>K</kbd> — <kbd>⌘</kbd>+<kbd>K</kbd> on a Mac — anywhere, or
+click **Search** in the header. Type part of a name to filter, move with <kbd>↑</kbd> and
+<kbd>↓</kbd>, and press <kbd>Enter</kbd> to run the highlighted entry; <kbd>Esc</kbd> or a
+click outside closes it.
+
+<Screenshot id="user-guide.command-palette" />
+
+The palette finds **screens and commands**:
+
+- **Navigation** — **Go to Dashboard**, **Go to Issues**, **Go to Workflows**,
+  **Go to Models**, **Go to Build Farm**, **Go to Knowledge**, **Go to Planning**,
+  **Go to Insights**, **Go to Needs You** and **Go to Settings**. **Go to Research** is
+  listed but greyed out until Research arrives.
+- **Actions** — **Toggle theme** switches between light and dark, and **Sign out** signs
+  you out.
+
+Searching issues, runs and the queue from the palette is not available yet; use the
+[Issues](./issues.mdx) screen and the [dashboard](./dashboard.mdx) for those.
+
+## Appearance
+
+The account menu — your avatar, top right — holds the two appearance settings:
+
+<Screenshot id="user-guide.appearance" />
+
+- **Theme** — **Light**, **Dark** or **System**. System follows your operating system and
+  changes when it does; it is the default. The choice is saved in this browser only, so
+  another browser starts on System. **Toggle theme** in the palette does the same.
+- **Font size** — **A−** and **A+** step the whole interface smaller or larger, in five
+  steps. Use it on a high-resolution display where text runs small. Unlike the theme, the
+  font size is saved to your account and follows you to every browser you sign in on.
+
+The same two settings, with a preview sentence, are on the **Appearance** card of the
+**Settings** page, below **Members & roles**, where the font size reads as a percentage —
+87.5%, 100%, 112.5%, 125% or 150%.
+
+Animations follow your operating system's reduced-motion setting; there is no separate
+switch in Ouroboros.
+
+## Keyboard shortcuts
+
+Open the full list from the account menu, **Keyboard shortcuts**.
+
+| Where | Keys | Does |
+| --- | --- | --- |
+| Anywhere | <kbd>Ctrl</kbd>+<kbd>K</kbd> (<kbd>⌘</kbd>+<kbd>K</kbd> on a Mac) | Open search |
+| Anywhere | <kbd>Esc</kbd> | Close a menu, drawer or dialog |
+| Search palette | <kbd>↑</kbd> <kbd>↓</kbd> | Move between actions, wrapping at the ends |
+| Search palette | <kbd>↵</kbd> | Run the highlighted action |
+| Sidebar | <kbd>↑</kbd> <kbd>↓</kbd> | Move between entries, wrapping at the ends |
+| Sidebar | <kbd>Home</kbd> <kbd>End</kbd> | Jump to the first or last entry |
+| Sidebar | <kbd>Enter</kbd> | Open the entry |
+| Account menu | <kbd>↑</kbd> <kbd>↓</kbd> | Move between items |
+| Account menu | <kbd>→</kbd> <kbd>←</kbd> | Enter or leave the workspace submenu |
+| Account menu | <kbd>Enter</kbd> | Activate the item |
+| Account menu | <kbd>Tab</kbd> | Leave the menu |
+
+Keyboard users can also jump past the sidebar and header with **Skip to content**, the
+first thing <kbd>Tab</kbd> reaches on every page.
+
+## What can go wrong
+
+- **"That workspace could not be opened."** — switching workspace failed; try again, or
+  sign out and choose the workspace on the sign-in page.
+- **A screen shows less than you expected** — check the workspace chip: a focus
+  repository narrows what you see. Choose **All repos** to see everything.
+- **"Leave without saving?"** — you have unsaved changes in Settings. **Stay on this page**
+  and save them, or **Discard changes and leave**.
+- **The theme changed back** — the theme is saved per browser; set it again in each
+  browser you use, or leave it on System.
+- **Back returns you to the same place** — that is on purpose: Back and Forward restore
+  how far you had scrolled.

@@ -564,7 +564,7 @@ dev seeds (e.g. acme-robotics; `acme-onboarding` for the wizard).
 |---|---|---|---|---|---|---|---|---|---|
 | DA.1 | #1173 ✅ | 🟢 Done | ouroboros-docs: [DA.1] User Guide overview, concepts & glossary | The loop, workspaces, issues→runs→PRs, decisions; glossary | mvp, docs-site, documentation | Y | Y | M | ouroboros-docs |
 | DA.2 | #1174 ✅ | 🟢 Done | ouroboros-docs: [DA.2] Getting started — sign in, workspace & the Get Started wizard | Login, recovery, wizard cards, dry-run first loop | mvp, docs-site, documentation, onboarding | Y | Y | M | ouroboros-docs |
-| DA.3 | #1175 | 🟡 Open | ouroboros-docs: [DA.3] Finding your way — app shell, navigation & command palette | Sidebar, header, ⌘K, themes, keyboard | mvp, docs-site, documentation, shell | Y | Y | S | ouroboros-docs |
+| DA.3 | #1175 ✅ | 🟢 Done | ouroboros-docs: [DA.3] Finding your way — app shell, navigation & command palette | Sidebar, header, ⌘K, themes, keyboard | mvp, docs-site, documentation, shell | Y | Y | S | ouroboros-docs |
 | DA.4 | #1176 | 🟡 Open | ouroboros-docs: [DA.4] Mission Control dashboard | Reading the dashboard and acting from it | mvp, docs-site, documentation, dashboard | Y | Y | S | ouroboros-docs |
 | DA.5 | #1177 | 🟡 Open | ouroboros-docs: [DA.5] Issues — intake, sizing & queuing | Backlog sync view, estimates, queue a loop | mvp, docs-site, documentation, intake | Y | Y | M | ouroboros-docs |
 | DA.6 | #1178 | 🟡 Open | ouroboros-docs: [DA.6] Planning — roadmaps, generated tickets & timeline | Plans, ticket generation, gantt, tracker write-back | mvp, docs-site, documentation, planning | Y | Y | M | ouroboros-docs |
@@ -626,6 +626,10 @@ sources) link to DB.4/DB.6.
 `user-guide.dashboard-banner` (seed `acme-onboarding`).
 
 ### Issue DA.3 (#1175) — ouroboros-docs: [DA.3] Finding your way — app shell, navigation & command palette
+
+> **GitHub issue:** #1175 ✅ · **Status:** 🟢 Done · **Parent epic:** #1158
+>
+> **Delivered (#1175):** `user-guide/finding-your-way.mdx` — the sidebar (every entry and what lives there, Research as **soon**, the Needs You count, origin-lit entries for runs/PRs/tests, collapse to a rail remembered per browser, the narrow-screen drawer), the header left to right (workspace chip with **Switch workspace** / **Focus repository** / **Workspace settings**, Search, the live-loop and Needs-you pills, the bell as not yet available, the account menu), the command palette (Ctrl/⌘+K or Search; Navigation and Actions groups; issues/runs search described as not yet available), appearance (Theme Light/Dark/System saved per browser; Font size saved to the account; the Settings **Appearance** card's percentages; reduced motion follows the OS) and the keyboard shortcuts table copied from the shell's shortcuts sheet — the only registry: there is no `?` shortcut, the sheet opens from the account menu. Screenshots `user-guide.shell` (dashboard, elapsed cells masked), `user-guide.command-palette` (click `.shell-search`, clip the dialog) and `user-guide.appearance` (click `.shell-avatar`, clip the account menu); no clicked control writes, recaptures byte-identical. No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.11.
 
 **Solution / Scope.** Sidebar groups and what lives where, header (workspace switcher, inbox
 badge, user menu), the ⌘K palette and its actions, light/dark/system appearance, keyboard
