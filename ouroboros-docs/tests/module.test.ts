@@ -98,7 +98,7 @@ describe("module files", () => {
       "docs/intro.mdx",
       "docs/tutorial-basics",
       "src/components/HomepageFeatures",
-      "src/pages/index.tsx",
+      "src/pages/markdown-page.md",
     ]) {
       expect(existsSync(join(MODULE_DIR, sample)), sample).toBe(false);
     }

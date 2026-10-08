@@ -239,7 +239,7 @@ its own criteria, referred to below as **[STD]**:
 | CY.3 | #1166 ✅ | 🟢 Done | ouroboros-docs: [CY.3] Brand theme, light/dark & logos | tokens.css → Infima, brand assets, favicons, no hard-coded colours | mvp, docs-site, design | Y (after CY.1, ∥ CY.2) | Y | S | ouroboros-docs |
 | CY.4 | #1167 ✅ | 🟢 Done | ouroboros-docs: [CY.4] Search, Mermaid & shared MDX components | Local search, Mermaid, `<EnvVar>`, `<UiPath>`, `<Since>`, admonition conventions | mvp, docs-site, documentation | Y (after CY.2) | Y | M | ouroboros-docs |
 | CY.5 | #1168 ✅ | 🟢 Done | ouroboros-docs: [CY.5] ci/docs — lint, typecheck, tests & strict build | docs.yml check job, strict links, copyright test, verify-ci routing | mvp, docs-site, ci | N (after CY.2) | Y | M | ouroboros-docs, .github, scripts |
-| CY.6 | #1169 | 🟡 Open | ouroboros-docs: [CY.6] Landing page & "What is Ouroboros" | Home with three section cards, product overview, quick links | mvp, docs-site, documentation | Y (after CY.2, CZ.2) | Y | S | ouroboros-docs |
+| CY.6 | #1169 ✅ | 🟢 Done | ouroboros-docs: [CY.6] Landing page & "What is Ouroboros" | Home with three section cards, product overview, quick links | mvp, docs-site, documentation | Y (after CY.2, CZ.2) | Y | S | ouroboros-docs |
 
 ### Issue CY.1 (#1164) — ouroboros-docs: [CY.1] Scaffold the ouroboros-docs module
 
@@ -428,6 +428,10 @@ fails `ci/docs`; a PR touching only `ouroboros-ui/` does not queue it; `verify-c
 
 ### Issue CY.6 (#1169) — ouroboros-docs: [CY.6] Landing page & "What is Ouroboros"
 
+> **GitHub issue:** #1169 ✅ · **Status:** 🟢 Done · **Parent epic:** #1156
+>
+> **Delivered (#1169):** `src/pages/index.tsx` replaces `docs/index.md` at `/` (both would claim the route, and duplicate routes throw): hero with the `lockup-tagline` pair through `ThemedImage` at its 320 px working size, an `<h1>`, the tagline *Infinity in Autonomy* and one paragraph on the loop adapted from `README.md`; "Find your way" — the default `<SectionCards>`, whose `SECTIONS` descriptions now open *Use the app* / *Run and configure it* / *Command-line tools*; quick links Get started (`/user-guide/getting-started`), Deploy (`/administration/deploy/overview`), Enrol a runner (`/cli/runner/enroll`), all build-checked `Link`s. CSS module on tokens only. Verified: both themes, no horizontal scroll at 375 px, Lighthouse accessibility **100** light and dark. **Deferred by decision (2026-10-08):** the `home.dashboard` screenshot needs CZ.1 (#1170) and CZ.2 (#1171), both open — the slot is marked in the page and fills with `<Screenshot id="home.dashboard" />` when they land. The [STD] items for doc pages (sidebar front matter, docs-coverage entries) do not apply to a React page. Module 0.1.5.
+
 **Problem Statement.** Visitors need to know what Ouroboros is and which section to open.
 
 **Solution / Scope.** `src/pages/index.tsx`: hero (lockup, tagline *Infinity in Autonomy*,
@@ -504,6 +508,8 @@ sequenceDiagram
 ```
 
 ### Issue CZ.2 (#1171) — ouroboros-docs: [CZ.2] `<Screenshot>` component
+
+> **Carried from CY.6 (#1169):** when this lands, fill the marked slot in `src/pages/index.tsx` with `<Screenshot id="home.dashboard" />` (and its manifest entry, via CZ.1).
 
 **Problem Statement.** Pages need one way to show a screenshot that matches the reader's theme.
 
