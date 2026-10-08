@@ -26,10 +26,13 @@ modules, the boundaries between them, the request paths, and the `OURO_*` regist
 | [`ouroboros-db/`](ouroboros-db) | Tenancy schema and migrations | PostgreSQL 17, Flyway 13, SQL | 5432 | [#3](https://github.com/NobuData/ouroboros/issues/3) |
 | [`ouroboros-runner/`](ouroboros-runner) | Build farm agent — runs on the customer's own hardware | Go 1.24 | — | [#239](https://github.com/NobuData/ouroboros/issues/239) |
 | [`ouroboros-web/`](ouroboros-web) | Marketing site — [ouroboros.build](https://ouroboros.build) | Next.js, TypeScript, Yarn | 3000 | — |
+| [`ouroboros-docs/`](ouroboros-docs) | Documentation site — User Guide, Administration, CLI | Docusaurus 3.10, TypeScript, Yarn | 3100 | [#1156](https://github.com/NobuData/ouroboros/issues/1156) |
 | [`docs/`](docs) | Mockups, design system, brand assets, roadmaps, architecture | Markdown, HTML | — | — |
 
 `ouroboros-web` is the public marketing site and is **not** part of the application
-stack — it ships and deploys on its own. `ouroboros-runner` is not part of it either, and
+stack — it ships and deploys on its own. `ouroboros-docs`, the documentation site, is the
+same kind of thing: a static site with its own lockfile, started by `yarn dev:docs`.
+`ouroboros-runner` is not part of it either, and
 for a stronger reason: it is a binary that runs on **the customer's** machines, dialling out
 to the farm gateway, so it is not a workspace, not a compose service, and has no port at all
 ([#243](https://github.com/NobuData/ouroboros/issues/243)).
@@ -70,6 +73,7 @@ place. The full set of invariants is in
 ouroboros/
 ├── docs/              # mockups, design system, brand assets, roadmaps, conventions
 ├── ouroboros-web/     # marketing site (deployed at ouroboros.build)
+├── ouroboros-docs/    # Docusaurus documentation site — not a workspace
 ├── ouroboros-ui/      # Next.js product UI
 ├── ouroboros-rest/    # NestJS communications layer
 ├── ouroboros-engine/  # Python/FastAPI backend

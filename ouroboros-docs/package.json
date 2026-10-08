@@ -1,0 +1,60 @@
+{
+  "name": "ouroboros-docs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Ouroboros documentation site — User Guide, Administration and CLI, built with Docusaurus. Not a workspace (CONVENTIONS.md § 1, limit 6).",
+  "license": "Apache-2.0",
+  "packageManager": "yarn@4.18.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "docusaurus": "docusaurus",
+    "dev": "docusaurus start --port 3100",
+    "build": "docusaurus build",
+    "serve": "docusaurus serve --port 3100",
+    "clear": "docusaurus clear",
+    "lint": "eslint .",
+    "typecheck": "tsc",
+    "test": "vitest run",
+    "format": "prettier --write \"**/*.{ts,tsx,mjs,json,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,mjs,json,css}\"",
+    "screenshots": "node scripts/screenshots-placeholder.mjs"
+  },
+  "dependencies": {
+    "@docusaurus/core": "3.10.2",
+    "@docusaurus/faster": "3.10.2",
+    "@docusaurus/preset-classic": "3.10.2",
+    "@mdx-js/react": "3.1.1",
+    "clsx": "2.1.1",
+    "prism-react-renderer": "2.4.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@docusaurus/module-type-aliases": "3.10.2",
+    "@docusaurus/tsconfig": "3.10.2",
+    "@docusaurus/types": "3.10.2",
+    "@eslint/js": "^9",
+    "@types/node": "^24",
+    "@types/react": "^19",
+    "eslint": "^9",
+    "globals": "^17",
+    "prettier": "^3",
+    "typescript": "^5",
+    "typescript-eslint": "^8",
+    "vitest": "^4"
+  },
+  "browserslist": {
+    "production": [
+      ">0.5%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 3 chrome version",
+      "last 3 firefox version",
+      "last 5 safari version"
+    ]
+  }
+}

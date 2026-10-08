@@ -20,6 +20,7 @@
     "dev:stop": "docker compose stop",
     "dev:reset": "docker compose down -v",
     "dev:web": "cd ouroboros-web && yarn install --immutable && yarn dev",
+    "dev:docs": "cd ouroboros-docs && yarn install --immutable && yarn dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",

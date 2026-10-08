@@ -30,11 +30,12 @@ trap 'rm -rf "$work"' EXIT HUP INT TERM
 #
 # Four modules, of which one (rest) is deliberately unscaffolded, mirroring this
 # repository: the roster names it, the gate finds no package.json, and that is a pass
-# rather than a failure. ouroboros-web and tests/e2e sit beside them, each with its own
-# lockfile — the two directories the decision deliberately keeps out of the roster.
+# rather than a failure. ouroboros-web, ouroboros-docs and tests/e2e sit beside them, each
+# with its own lockfile — the directories the decision deliberately keeps out of the roster.
 make_fixture() {
   fixture=$1
-  mkdir -p "$fixture/docs" "$fixture/scripts" "$fixture/ouroboros-web" "$fixture/tests/e2e"
+  mkdir -p "$fixture/docs" "$fixture/scripts" "$fixture/ouroboros-web" "$fixture/ouroboros-docs" \
+    "$fixture/tests/e2e"
   for module in ouroboros-db ouroboros-engine ouroboros-rest ouroboros-ui; do
     mkdir -p "$fixture/$module"
   done
@@ -48,6 +49,7 @@ make_fixture() {
   "scripts": {
     "dev": "turbo run dev",
     "dev:web": "cd ouroboros-web && yarn dev",
+    "dev:docs": "cd ouroboros-docs && yarn dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
@@ -118,6 +120,9 @@ JSON
 
   printf '# marketing site lockfile\n' > "$fixture/ouroboros-web/yarn.lock"
   printf 'nodeLinker: node-modules\n' > "$fixture/ouroboros-web/.yarnrc.yml"
+
+  printf '# documentation site lockfile\n' > "$fixture/ouroboros-docs/yarn.lock"
+  printf 'nodeLinker: node-modules\n' > "$fixture/ouroboros-docs/.yarnrc.yml"
 
   printf '# e2e suite lockfile\n' > "$fixture/tests/e2e/yarn.lock"
   printf 'nodeLinker: node-modules\n' > "$fixture/tests/e2e/.yarnrc.yml"
@@ -246,6 +251,9 @@ check_broken 'a module missing from the roster fails' \
 check_broken 'the marketing site joining the roster fails' \
   'ouroboros-web is not a workspace' \
   "sed -i 's/\"ouroboros-ui\"/\"ouroboros-ui\", \"ouroboros-web\"/' package.json"
+check_broken 'the documentation site joining the roster fails' \
+  'ouroboros-docs is not a workspace' \
+  "sed -i 's/\"ouroboros-ui\"\\]/\"ouroboros-ui\", \"ouroboros-docs\"]/' package.json"
 # The one that would put a Docker daemon on the critical path of `yarn test` (#56).
 check_broken 'the e2e suite joining the roster fails' \
   'tests/e2e is not a workspace' \
@@ -273,6 +281,15 @@ check_broken 'a workspace named for something other than its directory fails' \
 check_broken 'the marketing site losing its own lockfile fails' \
   'ouroboros-web keeps its own lockfile' \
   'rm ouroboros-web/yarn.lock'
+check_broken 'the documentation site losing its own lockfile fails' \
+  'ouroboros-docs keeps its own lockfile' \
+  'rm ouroboros-docs/yarn.lock'
+check_broken 'the documentation site losing its own Yarn configuration fails' \
+  'ouroboros-docs keeps its own Yarn configuration' \
+  'rm ouroboros-docs/.yarnrc.yml'
+check_broken 'the documentation site with no root verb fails' \
+  'ouroboros-docs has its own start verb' \
+  "sed -i '/dev:docs/d' package.json"
 check_broken 'the e2e suite losing its own lockfile fails' \
   'tests/e2e keeps its own lockfile' \
   'rm tests/e2e/yarn.lock'

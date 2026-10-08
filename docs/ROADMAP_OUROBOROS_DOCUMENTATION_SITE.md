@@ -234,7 +234,7 @@ its own criteria, referred to below as **[STD]**:
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |---|---|---|---|---|---|---|---|---|---|
-| CY.1 | #1164 | 🟡 Open | ouroboros-docs: [CY.1] Scaffold the ouroboros-docs module | Docusaurus 3.10 TS module, not a workspace, README, repo verbs and verify scripts | mvp, docs-site, documentation, infra | N (first) | Y | M | ouroboros-docs, package.json, scripts, docs, README.md |
+| CY.1 | #1164 ✅ | 🟢 Done | ouroboros-docs: [CY.1] Scaffold the ouroboros-docs module | Docusaurus 3.10 TS module, not a workspace, README, repo verbs and verify scripts | mvp, docs-site, documentation, infra | N (first) | Y | M | ouroboros-docs, package.json, scripts, docs, README.md |
 | CY.2 | #1165 | 🟡 Open | ouroboros-docs: [CY.2] Information architecture — three sections, navbar & footer | User Guide / Administration / CLI sidebars, landing, footer copyright, page template | mvp, docs-site, documentation | N (after CY.1) | Y | M | ouroboros-docs |
 | CY.3 | #1166 | 🟡 Open | ouroboros-docs: [CY.3] Brand theme, light/dark & logos | tokens.css → Infima, brand assets, favicons, no hard-coded colours | mvp, docs-site, design | Y (after CY.1, ∥ CY.2) | Y | S | ouroboros-docs |
 | CY.4 | #1167 | 🟡 Open | ouroboros-docs: [CY.4] Search, Mermaid & shared MDX components | Local search, Mermaid, `<EnvVar>`, `<UiPath>`, `<Since>`, admonition conventions | mvp, docs-site, documentation | Y (after CY.2) | Y | M | ouroboros-docs |
@@ -242,6 +242,10 @@ its own criteria, referred to below as **[STD]**:
 | CY.6 | #1169 | 🟡 Open | ouroboros-docs: [CY.6] Landing page & "What is Ouroboros" | Home with three section cards, product overview, quick links | mvp, docs-site, documentation | Y (after CY.2, CZ.2) | Y | S | ouroboros-docs |
 
 ### Issue CY.1 (#1164) — ouroboros-docs: [CY.1] Scaffold the ouroboros-docs module
+
+> **GitHub issue:** #1164 ✅ · **Status:** 🟢 Done · **Parent epic:** #1156
+>
+> **Delivered (#1164):** `ouroboros-docs/` on **Docusaurus 3.10.2** (every `@docusaurus/*` pinned to it) with **React 19** (3.10's peer range is `^18 || ^19`); not a workspace — own `package.json` 0.1.0, `yarn.lock`, `.yarnrc.yml`. The scaffold's blog is switched off (`blog: false`, so no `/blog` route) and its tutorial docs, components and sample images are gone; Docusaurus refuses a docs instance with no docs, so `docs/index.md` (`slug: /`) is the placeholder home and CY.2 replaces it. `url` reads `DOCS_SITE_URL` (default `https://docs.ouroboros.build`, D10) and the footer already carries D3's copyright line, both from `site.constants.ts` (Docusaurus rejects extra exports of its config). `yarn screenshots` exits 1 naming CZ.1 rather than succeeding silently. `format:check` covers code and config, not Markdown content. Repo wiring: root `dev:docs`; `CONVENTIONS.md` limit 6, lockfile row, toolchain row and the port map (it lives in § 4, not § 3); `README.md` and `ARCHITECTURE.md` (§ 1 port map, new § 2.7); `verify-layout.sh` holds the module to all six README sections plus `.gitignore`/`.dockerignore`, and `verify-workspace.sh` (with test cases) to staying outside the roster, owning its lockfile and Yarn config, and having `dev:docs`.
 
 **Problem Statement.** There is no home for user documentation. The description requires a
 Docusaurus site named `ouroboros-docs`, and the repo's conventions (§ 1–2, 8, 9) require

@@ -1,0 +1,10 @@
+// Not used by `docusaurus start/build`; it serves the editor and `yarn typecheck`.
+{
+  "extends": "@docusaurus/tsconfig",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "strict": true,
+    "noEmit": true
+  },
+  "exclude": [".docusaurus", "build", "node_modules"]
+}
