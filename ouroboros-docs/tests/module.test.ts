@@ -40,6 +40,7 @@ describe("package.json", () => {
       "test",
       "format:check",
       "screenshots",
+      "check:screenshots",
       "sync:brand",
       "check:brand",
     ]) {
@@ -118,6 +119,10 @@ describe("yarn screenshots", () => {
     expect(major(manifest.devDependencies["@playwright/test"])).toBe(
       major(e2e.devDependencies["@playwright/test"]),
     );
+  });
+
+  it("checks screenshot integrity under Node's own TypeScript support", () => {
+    expect(manifest.scripts["check:screenshots"]).toBe("node screenshots/check.ts");
   });
 
   it("keeps the saved session out of git", () => {

@@ -454,7 +454,7 @@ horizontal scroll; Lighthouse accessibility ≥ 95 locally.
 |---|---|---|---|---|---|---|---|---|---|
 | CZ.1 | #1170 ✅ | 🟢 Done | ouroboros-docs: [CZ.1] Screenshot capture harness | Playwright project capturing manifest entries from the seeded stack, both themes | mvp, docs-site, documentation | Y (after CY.1) | Y | L | ouroboros-docs |
 | CZ.2 | #1171 ✅ | 🟢 Done | ouroboros-docs: [CZ.2] `<Screenshot>` component | Theme-aware image with required alt, caption, zoom | mvp, docs-site | Y (after CY.2) | Y | S | ouroboros-docs |
-| CZ.3 | #1172 | 🟡 Open | ouroboros-docs: [CZ.3] Screenshot integrity & budget checks | Manifest ↔ files ↔ MDX usage, size budgets, staleness report | mvp, docs-site, ci | N (after CZ.1, CZ.2, CY.5) | Y | S | ouroboros-docs |
+| CZ.3 | #1172 ✅ | 🟢 Done | ouroboros-docs: [CZ.3] Screenshot integrity & budget checks | Manifest ↔ files ↔ MDX usage, size budgets, staleness report | mvp, docs-site, ci | N (after CZ.1, CZ.2, CY.5) | Y | S | ouroboros-docs |
 
 ### Issue CZ.1 (#1170) — ouroboros-docs: [CZ.1] Screenshot capture harness
 
@@ -533,6 +533,10 @@ renders without layout shift.
 **Parallelism / Dependencies.** After CY.2; parallel to CZ.1.
 
 ### Issue CZ.3 (#1172) — ouroboros-docs: [CZ.3] Screenshot integrity & budget checks
+
+> **GitHub issue:** #1172 ✅ · **Status:** 🟢 Done · **Parent epic:** #1157
+>
+> **Delivered (#1172):** `yarn check:screenshots` is `node screenshots/check.ts` over the pure rules in `screenshots/lib/integrity.ts`, run as a `Screenshot integrity` step of `ci/docs` after the shared pipeline (`scripts/verify-ci.sh` holds it). Named errors, every one reported, exit 1: `invalid-manifest`, `missing-image`, `unknown-screenshot-id` (file:line; usages read from `docs/**/*.{md,mdx}` and `src/pages/**/*.{md,mdx,tsx}`, Markdown code samples skipped), `orphan-image` (any file under `static/img/screenshots/`), `image-over-budget` (> 350 KiB), `total-over-budget` (> 40 MiB). Staleness: entries whose `uiVersion` major/minor is behind `ouroboros-ui/package.json` (patches ignored) or unstamped, printed as an aligned `id / uiVersion / capturedAt` table, exit 0; skipped when the UI is not beside the module. README § *Recapturing screenshots → Checking screenshots*. Module 0.1.8.
 
 **Problem Statement.** Screenshots referenced but never captured, or captured and never
 used, or too heavy, must be caught in CI — CI cannot capture, but it can check.

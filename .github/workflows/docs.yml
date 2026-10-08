@@ -86,3 +86,10 @@ jobs:
         with:
           module: ouroboros-docs
           scaffolded-by: "#1164"
+
+      # Screenshots cannot be captured in CI, but they can be checked (#1172): every manifest
+      # entry has both theme files, every <Screenshot id> on a page is in the manifest, no
+      # image belongs to no entry, and D6's budgets hold. Stale captures are only reported.
+      - name: Screenshot integrity
+        working-directory: ouroboros-docs
+        run: yarn check:screenshots

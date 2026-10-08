@@ -55,10 +55,13 @@ yarn format:check             # Prettier over the code and config (yarn format f
                               # Markdown is content and keeps the repo's compact tables
 yarn screenshots              # recapture the manifest's screenshots from a seeded stack —
                               # see "Recapturing screenshots" below
+yarn check:screenshots        # manifest ↔ files ↔ pages, size budgets, staleness report —
+                              # see "Checking screenshots" below
 ```
 
 **CI.** [`ci/docs`](../.github/workflows/docs.yml) runs `yarn install --immutable`, `lint`,
-`typecheck`, `test` and `build` — exactly the commands above — on every pull request that
+`typecheck`, `test` and `build` — exactly the commands above — then `yarn check:screenshots`
+(see "Checking screenshots"), on every pull request that
 touches this module or one of its inputs: the brand sources it copies, `.env.example`, and the
 runner's `main.go` and `install.sh` ([#1168](https://github.com/NobuData/ouroboros/issues/1168)).
 A broken link, a lint error or a changed copyright line fails it. markdownlint reads
@@ -175,8 +178,9 @@ screenshots/
 ├── global-setup.ts                   # signs in once; the session is reused (.auth/, gitignored)
 ├── capture.spec.ts                   # one test per entry, per theme
 ├── run.ts                            # yarn screenshots
+├── check.ts                          # yarn check:screenshots (see "Checking screenshots")
 ├── settings.ts                       # base URL, the seeded user, timeouts
-└── lib/                              # manifest rules, actions, the image step, stamping
+└── lib/                              # manifest rules, actions, the image step, stamping, integrity
 ```
 
 ### Run it
@@ -257,6 +261,32 @@ These fail `yarn build` (and `yarn dev` shows the error): an id the manifest doe
 blank alt text, a manifest that fails its schema, an entry missing either theme's file, or
 light and dark files of different sizes. `yarn dev` rebuilds when the manifest or an image
 changes.
+
+### Checking screenshots
+
+CI cannot capture, but it can check ([#1172](https://github.com/NobuData/ouroboros/issues/1172)).
+`yarn check:screenshots` — a step of `ci/docs` after the build — reads the manifest, every
+file under `static/img/screenshots/` and every `<Screenshot id>` in `docs/**/*.{md,mdx}` and
+`src/pages/**/*.{md,mdx,tsx}`, and fails (exit 1) with one line per problem, each named:
+
+| Error | Means | Fix |
+|---|---|---|
+| `invalid-manifest` | The manifest is not JSON, fails its schema, or repeats an id | Fix the entry the message points at |
+| `missing-image` | An entry lacks its `light` or `dark` file | `yarn screenshots --only <id>` |
+| `unknown-screenshot-id` | A page uses an id the manifest does not list (file and line given) | Add the entry, or correct the id |
+| `orphan-image` | A file under `static/img/screenshots/` belongs to no entry — any file, not only PNGs | Delete it, or add its entry |
+| `image-over-budget` | One file is over 350 KiB (D6) | Clip tighter (`clip` a selector) or simplify the page |
+| `total-over-budget` | Everything under `static/img/screenshots/` is over 40 MiB (D6) | Retire unused entries; clip tighter |
+
+Every problem is reported, not just the first. Code samples in Markdown (fenced blocks and
+inline code) are skipped, so a page can *show* `<Screenshot id="…">` without using it; write
+ids there as plain strings, since a template-literal id (`` id={`…`} ``) is skipped too.
+
+It then prints a **staleness report** — never a failure, exit 0 — of entries whose
+`uiVersion` is a minor (or major) behind `ouroboros-ui/package.json`'s, or that were never
+stamped, with each entry's `uiVersion` and `capturedAt`. Patch releases do not count. Recapture
+those when convenient. Outside the repository, where there is no `ouroboros-ui` beside the
+module, the report is skipped.
 
 ### What keeps captures identical
 
