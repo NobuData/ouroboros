@@ -397,9 +397,11 @@ only the checks it can affect:
 | `ouroboros-engine/**` | `ci/engine` → `publish/engine` | `uv sync --locked` → `ruff check` → `ruff format --check` → `pytest` |
 | `ouroboros-db/**` | `ci/db` → `publish/db` | the migration and data-tier contract, then the module's tooling tests, then a live migration pass |
 | `ouroboros-runner/**` | `ci/runner` → `cross/runner` → `package/runner` → `release/runner` | `make install` → format → lint (with shellcheck over `install.sh`) → typecheck → test → the protocol contract → build, then a cross-compile of all three target architectures; `make release` and its checksums on every event, published as the GitHub release `ouroboros-runner-v<VERSION>` from `main` only ([#248](https://github.com/NobuData/ouroboros/issues/248)) |
+| `ouroboros-docs/**` | `ci/docs` | the same pipeline, against the documentation site's own lockfile — lint (ESLint, Stylelint, markdownlint over the pages) → typecheck → test → a build in which a broken link or anchor fails ([#1168](https://github.com/NobuData/ouroboros/issues/1168)) |
 | `ouroboros-web/**` | `ouroboros-web · build & publish` | the marketing site's own build and image push |
 | `package.json`, `yarn.lock`, `turbo.json`, `.yarnrc.yml` | `ci/ui` + `ci/rest` | the workspace both TypeScript modules resolve through |
 | `schemas/runner-protocol/**`, `docs/RUNNER_PROTOCOL.md` | `ci/runner` | the wire contract the Go agent and the TypeScript gateway both implement |
+| `docs/design/tokens.css`, `docs/brand/**`, the mockup logos, ouroboros-ui's tab icons, `.env.example`, the runner's `main.go` and `install.sh` | `ci/docs` | the sources of the site's brand copies and of its reference checks |
 
 Each `publish/<module>` job builds that module's image on every run — so a Dockerfile that
 stops building fails the pull request that broke it — and pushes it as
@@ -408,7 +410,7 @@ on `main`. `ouroboros-runner` has no such job: it ships a **binary** rather than
 and the tagged release with a checksum per architecture arrives with
 [#248](https://github.com/NobuData/ouroboros/issues/248).
 
-A change to `docs/` or to `scripts/` queues none of them; a change to the pipeline the
+A change to `docs/` or to `scripts/` queues none of them, save the brand sources above; a change to the pipeline the
 TypeScript modules share queues both of the modules that run it, and so does a change to
 the workspace root they install from.
 

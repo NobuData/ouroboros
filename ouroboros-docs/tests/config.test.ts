@@ -123,6 +123,14 @@ describe("docusaurus.config.ts", () => {
     });
   });
 
+  it("links the navbar's three section items to exactly the sidebars sidebars.ts exports", async () => {
+    const { default: config } = await loadConfig();
+    const { default: sidebars } = await import("../sidebars");
+    const items = (config.themeConfig as Preset.ThemeConfig).navbar?.items ?? [];
+    const sidebarItems = items.filter((item) => item.type === "docSidebar");
+    expect(sidebarItems.map((item) => item.sidebarId)).toEqual(Object.keys(sidebars));
+  });
+
   it("keeps the colour-mode toggle", async () => {
     const { default: config } = await loadConfig();
     const theme = config.themeConfig as Preset.ThemeConfig;

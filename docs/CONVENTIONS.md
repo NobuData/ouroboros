@@ -588,6 +588,8 @@ ouroboros-runner/** ─▶ ci/runner  make install · format · lint · typechec
                     ─▶ cross/runner   linux/x86_64 · linux/arm64 · darwin/arm64, build only
                     ─▶ package/runner make release · sha256sum -c, every event
                     ─▶ release/runner ouroboros-runner-v<VERSION>, pushed from main
+ouroboros-docs/**   ─▶ ci/docs    lint (eslint · stylelint · markdownlint) · typecheck · test · build
+                    ─▶ publish/docs   the documentation site image, pushed from main (DD.2)
 
 package.json        ─▶ ci/ui + ci/rest   the workspace both resolve through
 yarn.lock
@@ -599,6 +601,11 @@ schemas/plan/**
 
 schemas/runner-protocol/**  ─▶ ci/runner   the wire contract the agent implements
 docs/RUNNER_PROTOCOL.md
+
+docs/design/tokens.css · docs/brand/**   ─▶ ci/docs   the brand copies the site checks for drift
+mockup logos · ouroboros-ui's tab icons
+.env.example                             ─▶ ci/docs   the sources its reference checks read
+ouroboros-runner/{cmd/…/main.go,install.sh}
 ```
 
 Those four are the one filter that is not a directory. Since the TypeScript modules
@@ -620,6 +627,13 @@ Python, so a blanket filter queued two suites for a change they cannot be affect
 is the *opposite* of what path filtering is for. The cost is that a new contract reaches no
 workflow until its readers name it, and § 1 argues that is the right cost.
 
+The documentation site's filter is the widest of the non-directory ones, and for the same
+reason ([#1168](https://github.com/NobuData/ouroboros/issues/1168)): `ci/docs` holds the site's
+brand copies byte-identical to their sources, and its reference checks read `.env.example` and
+the runner's usage text. An edit to any of those can break the site without touching
+`ouroboros-docs/`. ouroboros-ui's tab and home-screen icons are named file by file, so a change
+to the rest of the product UI never queues the docs.
+
 `docs/RUNNER_PROTOCOL.md` is the other unusual entry, and the second document in this table
 after mockup 05: it is not documentation *about* the code, it is half of a contract, and
 `ci/runner` asserts that it still agrees with the schema and the fixtures. An edit to it that
@@ -630,15 +644,16 @@ One file per module — [`ui.yml`](../.github/workflows/ui.yml),
 [`rest.yml`](../.github/workflows/rest.yml),
 [`engine.yml`](../.github/workflows/engine.yml),
 [`db.yml`](../.github/workflows/db.yml),
-[`runner.yml`](../.github/workflows/runner.yml) — each watching its own directory and its own
+[`runner.yml`](../.github/workflows/runner.yml),
+[`docs.yml`](../.github/workflows/docs.yml) — each watching its own directory and its own
 definition. Four rules keep them interchangeable:
 
-1. **The job name is the status check name.** `ci/ui`, `ci/rest`, `ci/engine`, `ci/db` and
-   `ci/runner` are what GitHub names the check runs and therefore what branch protection is
+1. **The job name is the status check name.** `ci/ui`, `ci/rest`, `ci/engine`, `ci/db`,
+   `ci/runner` and `ci/docs` are what GitHub names the check runs and therefore what branch protection is
    configured against; renaming a job silently un-requires the check.
 2. **A version is pinned once.** Node lives in the `node-version` default of
    [`.github/actions/node-module`](../.github/actions/node-module/action.yml), the
-   pipeline `ouroboros-ui` and `ouroboros-rest` share; Python lives in `engine.yml`'s
+   pipeline `ouroboros-ui`, `ouroboros-rest` and `ouroboros-docs` share; Python lives in `engine.yml`'s
    `PYTHON_VERSION`; **Go 1.24** lives in `runner.yml`'s `GO_VERSION`, beside the
    `GOLANGCI_LINT_VERSION` that pins the linter to an exact release. No workflow carries a pin
    of its own.

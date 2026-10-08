@@ -737,6 +737,57 @@ jobs:
       - uses: actions/checkout@v4
 YAML
 
+  # The documentation site (#1168): the shared TypeScript pipeline over ouroboros-docs, watching
+  # its own directory, the brand sources it keeps copies of, the files its reference checks
+  # read, and the pipeline it runs — but not the Yarn workspace, which it is not part of.
+  for event in pull_request push; do
+    printf '  %s:\n    branches: [main]\n    paths:\n' "$event"
+    for path in "ouroboros-docs/**" "docs/design/tokens.css" "docs/brand/**" \
+      "docs/mockups/assets/logo-lockup.png" "docs/mockups/assets/logo-mark.png" \
+      "ouroboros-ui/public/favicon.ico" "ouroboros-ui/public/favicon-32-light.png" \
+      "ouroboros-ui/public/favicon-32-dark.png" "ouroboros-ui/public/apple-touch-icon.png" \
+      ".env.example" "ouroboros-runner/cmd/ouroboros-runner/main.go" \
+      "ouroboros-runner/install.sh" ".github/actions/node-module/**" \
+      ".github/actions/scaffold-gate/**" ".github/workflows/docs.yml"; do
+      printf '      - "%s"\n' "$path"
+    done
+  done > "$work/docs-paths"
+  {
+    printf 'name: ouroboros-docs · ci\n\non:\n'
+    cat "$work/docs-paths"
+    cat <<'YAML'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: ci/docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/node-module
+        with:
+          module: ouroboros-docs
+          scaffolded-by: "#1164"
+YAML
+  } > "$fixture/.github/workflows/docs.yml"
+  mkdir -p "$fixture/ouroboros-docs"
+  cat > "$fixture/ouroboros-docs/package.json" <<'JSON'
+{
+  "name": "ouroboros-docs",
+  "scripts": {
+    "lint": "eslint . && stylelint \"src/**/*.css\" && markdownlint-cli2"
+  }
+}
+JSON
+
   cat > "$fixture/.github/actions/node-module/action.yml" <<'YAML'
 name: TypeScript module checks
 description: Install and check one TypeScript module.
@@ -856,6 +907,7 @@ ouroboros-rest/**   ─▶ ci/rest
 ouroboros-engine/** ─▶ ci/engine
 ouroboros-db/**     ─▶ ci/db
 ouroboros-runner/** ─▶ ci/runner
+ouroboros-docs/**   ─▶ ci/docs
 ```
 DOC
 
@@ -916,7 +968,7 @@ check_matches "$out" 'CI workflows' 'the report names what it checked'
 
 printf '\nMissing workflows\n'
 
-for module in ui rest engine db runner; do
+for module in ui rest engine db runner docs; do
   check_break "a missing $module workflow is reported" \
     "workflows/$module\.yml exists" \
     "rm \"\$root/.github/workflows/$module.yml\""
@@ -986,8 +1038,45 @@ check_break 'a module workflow triggered by documentation is reported' \
   'sed -i "s|      - \"ouroboros-ui/\*\*\"|      - \"ouroboros-ui/**\"\n      - \"docs/**\"|" "$root/.github/workflows/ui.yml"'
 
 check_break 'a shared pipeline only one module watches is reported' \
-  'node-module/action\.yml runs rest\.yml ui\.yml' \
+  'node-module/action\.yml runs docs\.yml rest\.yml ui\.yml' \
   'sed -i "/actions\/node-module\/\*\*/d" "$root/.github/workflows/rest.yml"'
+
+# #1168: ci/docs and what feeds it.
+check_break 'a docs workflow that stops watching the tokens it copies is reported' \
+  'docs/design/tokens\.css runs docs\.yml' \
+  'sed -i "/docs\/design\/tokens\.css/d" "$root/.github/workflows/docs.yml"'
+
+check_break 'a docs workflow watching all of ouroboros-ui is reported' \
+  'manifest\.webmanifest runs ui\.yml' \
+  'sed -i "s|      - \"ouroboros-docs/\*\*\"|      - \"ouroboros-docs/**\"\n      - \"ouroboros-ui/**\"|" "$root/.github/workflows/docs.yml"'
+
+check_break 'a docs workflow that stops watching .env.example is reported' \
+  '\.env\.example runs db\.yml docs\.yml' \
+  'sed -i "/\.env\.example/d" "$root/.github/workflows/docs.yml"'
+
+check_break 'a docs workflow that stops watching the runner installer is reported' \
+  'install\.sh runs docs\.yml runner\.yml' \
+  'sed -i "/ouroboros-runner\/install\.sh/d" "$root/.github/workflows/docs.yml"'
+
+check_break 'the web pipeline watching the docs is reported' \
+  'docker-publish\.yml does not watch the docs' \
+  'sed -i "s|      - \"ouroboros-web/\*\*\"|      - \"ouroboros-web/**\"\n      - \"ouroboros-docs/**\"|" "$root/.github/workflows/docker-publish.yml"'
+
+check_break 'a docs workflow watching the workspace it is not part of is reported' \
+  'does not watch the workspace.s yarn\.lock' \
+  'sed -i "s|      - \".env.example\"|      - \".env.example\"\n      - \"yarn.lock\"|" "$root/.github/workflows/docs.yml"'
+
+check_break 'a docs lint that skips the pages is reported' \
+  'lints its code, stylesheets and pages' \
+  'sed -i "s| \&\& markdownlint-cli2||" "$root/ouroboros-docs/package.json"'
+
+check_break 'a docs workflow that leaves the shared pipeline is reported' \
+  'docs\.yml runs the shared TypeScript pipeline' \
+  'sed -i "s|uses: ./.github/actions/node-module|uses: actions/setup-node@v4|" "$root/.github/workflows/docs.yml"'
+
+check_break 'a docs workflow with a Node pin of its own is reported' \
+  'docs\.yml takes the shared Node pin' \
+  'sed -i "s|          module: ouroboros-docs|          module: ouroboros-docs\n          node-version: \"22\"|" "$root/.github/workflows/docs.yml"'
 
 # #37: ouroboros-rest's integration harness migrates with ouroboros-db's Flyway project,
 # so a module that stops watching it tests against a schema its own pull requests never
@@ -1601,6 +1690,10 @@ printf '\nDocumentation violations\n'
 check_break 'a status check the conventions never mention is reported' \
   'documents the ci/engine check' \
   'sed -i "/ci\/engine/d" "$root/docs/CONVENTIONS.md"'
+
+check_break 'conventions that never mention ci/docs are reported' \
+  'documents the ci/docs check' \
+  'sed -i "/ci\/docs/d" "$root/docs/CONVENTIONS.md"'
 
 check_break 'a README that never names the checks is reported' \
   'README\.md names the status checks' \

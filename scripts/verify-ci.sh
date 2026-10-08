@@ -3,10 +3,10 @@
 # verify-ci.sh — assert the per-module CI contract established by issue #11.
 #
 # Checks that every application module has a workflow; that each one reports under the
-# agreed status-check name (`ci/ui`, `ci/rest`, `ci/engine`, `ci/db`); that the path
-# filters route a change to exactly the workflows that can be affected by it and to no
-# others; that the Node and Python versions are pinned in one place rather than per
-# workflow; that a module whose scaffold has not landed yet is skipped deliberately
+# agreed status-check name (`ci/ui`, `ci/rest`, `ci/engine`, `ci/db`, `ci/runner`,
+# `ci/docs`); that the path filters route a change to exactly the workflows that can be
+# affected by it and to no others; that the Node and Python versions are pinned in one
+# place rather than per workflow; that a module whose scaffold has not landed yet is skipped deliberately
 # instead of failing; that each pipeline runs the verbs docs/CONVENTIONS.md § 3 promises
 # for its toolchain; that `ci/db` still carries the live migration pass (#24) against
 # the PostgreSQL the development stack pins; that `ci/runner` still builds the Go agent for
@@ -44,7 +44,7 @@ while [ $# -gt 0 ]; do
       shift 2
       ;;
     -h | --help)
-      sed -n '2,26p' "$0" | cut -c 3-
+      sed -n '2,28p' "$0" | cut -c 3-
       exit 0
       ;;
     *)
@@ -67,8 +67,10 @@ PARSER="$SCRIPT_DIR/lib/parse-workflow-paths.awk"
 
 # Every module with a `ci/<module>` workflow, and the name each one reports under.
 # ouroboros-web is not among them: it is the marketing site, and docker-publish.yml is its
-# own pipeline.
-MODULES="ui rest engine db runner"
+# own pipeline. ouroboros-docs is (#1168): the documentation site is not part of the
+# application stack, but its pages can break on any change that feeds them, so it is
+# checked like a module.
+MODULES="ui rest engine db runner docs"
 
 # The subset that ships a CONTAINER IMAGE, and therefore carries a `publish/<module>` job
 # (§ 9). ouroboros-runner is the one module outside it: it ships a BINARY to machines
@@ -337,7 +339,7 @@ check_route ouroboros-rest/src/modules/health/health.controller.ts 'rest.yml'
 # is the second implementation held to them, and its parity suite runs there — the same way
 # #133 added the workflow DSL. The prose stays ci/runner's alone, because the check that holds
 # the document to the fixtures is verify-runner-protocol.sh, which only that workflow runs.
-check_route ouroboros-runner/cmd/ouroboros-runner/main.go 'runner.yml'
+check_route ouroboros-runner/cmd/ouroboros-runner/main.go 'docs.yml runner.yml'
 check_route ouroboros-runner/internal/conn/protocol.go 'runner.yml'
 check_route schemas/runner-protocol/v1.json 'rest.yml runner.yml'
 check_route schemas/runner-protocol/fixtures/expected.json 'rest.yml runner.yml'
@@ -354,9 +356,9 @@ check_route README.md ''
 check_route scripts/verify-ci.sh ''
 
 # Shared pipeline code is the deliberate exception: it belongs to every module that
-# runs it, so editing it has to run all of them.
-check_route "$NODE_ACTION" 'rest.yml ui.yml'
-check_route "$GATE_ACTION" 'engine.yml rest.yml ui.yml'
+# runs it, so editing it has to run all of them — ci/docs included since #1168.
+check_route "$NODE_ACTION" 'docs.yml rest.yml ui.yml'
+check_route "$GATE_ACTION" 'docs.yml engine.yml rest.yml ui.yml'
 
 # The workspace root is the other exception, and it exists for the same reason (#13).
 # Both TypeScript modules are Yarn workspaces: they resolve from one lockfile, against
@@ -373,9 +375,30 @@ done
 # docker-compose.yml reaches ci/rest as well, for the reason above: it is where the
 # PostgreSQL and Flyway images are pinned, and ouroboros-rest's unit suite fails when the
 # harness's copy of those pins stops matching (#37). .env.example does not — nothing in
-# ouroboros-rest reads it.
+# ouroboros-rest reads it. It reaches ci/docs instead (#1168), whose generated configuration
+# reference (#1191) is built from it.
 check_route docker-compose.yml 'db.yml rest.yml'
-check_route .env.example 'db.yml'
+check_route .env.example 'db.yml docs.yml'
+
+# The documentation site (#1168). Its own directory runs ci/docs and nothing else — not even
+# docker-publish.yml, which is ouroboros-web's pipeline and must stay blind to the docs.
+check_route ouroboros-docs/docs/index.md 'docs.yml'
+check_route ouroboros-docs/docusaurus.config.ts 'docs.yml'
+check_absent "$WORKFLOWS/docker-publish.yml" 'ouroboros-docs' \
+  'docker-publish.yml does not watch the docs'
+# The sources of the brand copies the site holds itself to (#1166): an edit to one has to run
+# the drift check, or the copy goes stale with every suite green. The tokens and the icon set
+# keep reaching nothing else — ci/ui's suite does not read its own public/ icons.
+check_route docs/design/tokens.css 'docs.yml'
+check_route docs/brand/icon-light.png 'docs.yml'
+check_route docs/mockups/assets/logo-mark.png 'docs.yml'
+check_route ouroboros-ui/public/favicon-32-dark.png 'docs.yml ui.yml'
+# …named file by file, so the rest of ouroboros-ui stays ci/ui's alone — the acceptance
+# criterion that a UI-only change does not queue the docs.
+check_route ouroboros-ui/public/manifest.webmanifest 'ui.yml'
+# The two runner files the CLI reference's flag drift check reads (#1203); main.go is routed
+# above. The rest of the module stays ci/runner's.
+check_route ouroboros-runner/install.sh 'docs.yml runner.yml'
 
 # ---------------------------------------------------------------------------
 # Toolchain pins
@@ -384,7 +407,7 @@ check_route .env.example 'db.yml'
 printf '\nToolchain pins\n'
 # One Node version for both TypeScript modules, written where they share it.
 check_contains "$NODE_ACTION" '^    default: "24"$' 'the TypeScript pipeline pins Node 24'
-for module in ui rest; do
+for module in ui rest docs; do
   check_absent "$WORKFLOWS/$module.yml" 'node-version' \
     "$module.yml takes the shared Node pin rather than one of its own"
 done
@@ -503,11 +526,21 @@ printf '\nModule pipelines\n'
 for step in 'yarn install --immutable' 'yarn lint' 'yarn typecheck' 'yarn test' 'yarn build'; do
   check_contains "$NODE_ACTION" "^      run: $step\$" "the TypeScript pipeline runs $step"
 done
-for module in ui rest; do
+for module in ui rest docs; do
   check_contains "$WORKFLOWS/$module.yml" '^      - uses: \./\.github/actions/node-module$' \
     "$module.yml runs the shared TypeScript pipeline"
   check_contains "$WORKFLOWS/$module.yml" "^          module: ouroboros-$module\$" \
     "$module.yml points that pipeline at ouroboros-$module"
+done
+# The docs' `yarn lint` is what makes the pipeline's lint step cover the pages: ESLint, then
+# Stylelint over the stylesheets, then markdownlint over docs/** (#1168).
+check_contains ouroboros-docs/package.json '"lint": "eslint \. && stylelint .* && markdownlint-cli2"' \
+  'ouroboros-docs lints its code, stylesheets and pages'
+# Not a workspace (§ 1, limit 6): it installs from its own lockfile, so the root workspace
+# files are no input of ci/docs.
+for workspace_file in $WORKSPACE_FILES; do
+  check_absent "$WORKFLOWS/docs.yml" "^      - \"$workspace_file\"\$" \
+    "docs.yml does not watch the workspace's $workspace_file"
 done
 
 for step in 'uv sync --locked' 'uv run ruff check \.' 'uv run ruff format --check \.' 'uv run pytest'; do

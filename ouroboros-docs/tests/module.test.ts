@@ -59,8 +59,13 @@ describe("package.json", () => {
     expect(manifest.scripts["check:brand"]).toBe("node scripts/sync-brand.mjs --check");
   });
 
-  it("lints the stylesheets as well as the code", () => {
-    expect(manifest.scripts.lint).toContain("stylelint");
+  it("lints the code, the stylesheets and the pages — ci/docs runs exactly this", () => {
+    expect(manifest.scripts.lint).toBe('eslint . && stylelint "src/**/*.css" && markdownlint-cli2');
+  });
+
+  it("points markdownlint at the site's pages", () => {
+    const config = readFileSync(join(MODULE_DIR, ".markdownlint-cli2.jsonc"), "utf8");
+    expect(config).toContain('"globs": ["docs/**/*.{md,mdx}"]');
   });
 
   it("pins every @docusaurus package to one exact 3.10 patch", () => {

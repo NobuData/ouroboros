@@ -4,8 +4,6 @@ title: Ouroboros documentation
 description: Guides for using, administering and scripting Ouroboros.
 ---
 
-# Ouroboros documentation
-
 Ouroboros documentation is organised in three sections:
 
 - **[User Guide](/user-guide)** — working in the Ouroboros app: issues, workflows, runs,
