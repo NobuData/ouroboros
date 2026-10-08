@@ -16,6 +16,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "@docusaurus/Link": fileURLToPath(new URL("./tests/support/Link.tsx", import.meta.url)),
+      "@docusaurus/useGlobalData": fileURLToPath(
+        new URL("./tests/support/useGlobalData.ts", import.meta.url),
+      ),
       "@docusaurus/useBaseUrl": fileURLToPath(
         new URL("./tests/support/useBaseUrl.ts", import.meta.url),
       ),

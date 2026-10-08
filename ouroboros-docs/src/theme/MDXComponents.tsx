@@ -1,6 +1,7 @@
 import MDXComponents from "@theme-original/MDXComponents";
 
 import EnvVar from "../components/EnvVar";
+import Screenshot from "../components/Screenshot";
 import SectionCards from "../components/SectionCards";
 import Since from "../components/Since";
 import UiPath from "../components/UiPath";
@@ -12,6 +13,7 @@ import UiPath from "../components/UiPath";
 export default {
   ...MDXComponents,
   EnvVar,
+  Screenshot,
   SectionCards,
   Since,
   UiPath,

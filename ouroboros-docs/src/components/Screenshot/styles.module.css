@@ -1,0 +1,74 @@
+/* A captured screen, framed like a card so it reads as the app rather than the page. */
+.screenshot {
+  margin: 0 0 var(--ifm-leading);
+}
+
+/* The whole image is the zoom control; it keeps the image's own box, so nothing shifts. */
+.zoom {
+  display: block;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  cursor: zoom-in;
+}
+
+.zoom:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: var(--sp-1);
+}
+
+/* The width/height attributes give the box its aspect ratio before the file arrives. */
+.image {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+}
+
+.caption {
+  margin-top: var(--sp-4);
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  text-align: center;
+}
+
+/* The enlarged view: the image at up to its full size, over a scrim. */
+.dialog {
+  max-width: calc(100vw - var(--sp-11));
+  max-height: calc(100vh - var(--sp-11));
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  cursor: zoom-out;
+}
+
+.dialog::backdrop {
+  background: var(--scrim);
+}
+
+.zoomed {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Clicking anywhere closes the view; the button is there to be found and focused. */
+.close {
+  position: absolute;
+  top: var(--sp-4);
+  right: var(--sp-4);
+  padding: var(--sp-2) var(--sp-6);
+  border: 1px solid var(--line-control);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  color: var(--ink);
+  font-family: var(--f-ui);
+  font-size: var(--t-sm);
+  cursor: pointer;
+}

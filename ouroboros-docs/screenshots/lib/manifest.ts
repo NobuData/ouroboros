@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
@@ -26,6 +26,9 @@ export const SCHEMA_PATH = join(SCREENSHOTS_DIR, "screenshots.manifest.schema.js
 
 /** Where captured images are written: `static/img/screenshots/<section>/<slug>.<theme>.png`. */
 export const OUTPUT_DIR = join(MODULE_DIR, "static", "img", "screenshots");
+
+/** The same directory as the site serves it: a path relative to `static/`. */
+export const PUBLIC_DIR = "img/screenshots";
 
 /** The two palettes every entry is captured in — one Playwright project each. */
 export const THEMES = ["light", "dark"] as const;
@@ -163,6 +166,19 @@ export function selectEntries(manifest: Manifest, only?: string): Entry[] {
 export function outputPath(id: string, theme: Theme, outputDir: string = OUTPUT_DIR): string {
   const [section, ...slug] = id.split(".");
   return join(outputDir, section, `${slug.join(".")}.${theme}.png`);
+}
+
+/**
+ * Where the site serves an entry's image for one theme — {@link outputPath} as a URL path.
+ *
+ * @param id the entry's `<section>.<slug>`.
+ * @param theme the palette.
+ * @returns e.g. `img/screenshots/home/dashboard.light.png`, relative to `static/` (pass it
+ *   through `useBaseUrl`).
+ */
+export function publicPath(id: string, theme: Theme): string {
+  const [section, ...slug] = id.split(".");
+  return posix.join(PUBLIC_DIR, section, `${slug.join(".")}.${theme}.png`);
 }
 
 /**
