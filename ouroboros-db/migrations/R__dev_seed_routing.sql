@@ -55,6 +55,33 @@
 -- have to work from.
 --
 -- ---------------------------------------------------------------------------
+-- Amended by issue #622 (CM.3) — the `research` task-kind family, so mockup 22's pill resolves.
+-- ---------------------------------------------------------------------------
+--
+-- Mockup 22's composer prints `researcher: <alias>` and `est. 40–60 sources · ~$6`, and both
+-- have to come out of routing: the pill is what `route.task("research")` resolves to (Z.1,
+-- #194), and the dollar half of the estimate is that alias's price (CH.3, #586). The roadmap's
+-- amendment to Y.2/Y.4 (docs/ROADMAP_MOCKUP_22_RESEARCH.md) puts the rows *here*, beside the
+-- other eight kinds, for the reason #582 put its alias here: one universe of routes and
+-- aliases, or two pages that disagree about it.
+--
+--   | Row                                  | What it is                                      |
+--   |--------------------------------------|-------------------------------------------------|
+--   | task kind 9 `research-plan`          | the cheap planning / sizing kind                |
+--   | task kind 10 `research`              | synthesis — what the composer's pill resolves   |
+--   | route `researchplan-primary`         | `sizer` → `local-free`                          |
+--   | route `research-primary`             | `researcher-long-ctx` → `coder-std`             |
+--   | alias 9 `researcher-long-ctx`        | Anthropic, `claude-sonnet-4-6` — 1M context     |
+--
+-- `claude-sonnet-4-6` is bound because the vendored catalog prices it at 300¢ · 1500¢ per 1M
+-- tokens — the `$3 · $15` the issue's estimate is drawn against — with the million-token context
+-- a long-context researcher is named for. The price is the catalog's, not this file's.
+--
+-- **The two kinds carry no usage.** Nothing has researched yet, so the matrix's `$/run avg` and
+-- `p50` cells for them are M7's em-dash — no data, never a fabricated figure — and the token
+-- ledger and every aggregate the table below computes are unchanged.
+--
+-- ---------------------------------------------------------------------------
 -- Decision M7, which is the whole reason this file is as long as it is.
 -- ---------------------------------------------------------------------------
 --
@@ -192,10 +219,10 @@
 --
 --   | Rows                        | Id                                                  |
 --   |-----------------------------|-----------------------------------------------------|
---   | `model_aliases` (8)         | `5eed000f-0000-4000-8000-` + ordinal 1–8            |
---   | `task_kinds` (8)            | `5eed0010-0000-4000-8000-` + matrix position 1–8    |
---   | `routes` (8)                | `5eed0011-0000-4000-8000-` + its kind's position    |
---   | `route_hops` (17)           | `5eed0012-0000-4000-8000-` + ordinal 1–17           |
+--   | `model_aliases` (9)         | `5eed000f-0000-4000-8000-` + ordinal 1–9            |
+--   | `task_kinds` (10)           | `5eed0010-0000-4000-8000-` + matrix position 1–10   |
+--   | `routes` (10)               | `5eed0011-0000-4000-8000-` + its kind's position    |
+--   | `route_hops` (21)           | `5eed0012-0000-4000-8000-` + ordinal 1–21           |
 --   | `escalation_rules` (3)      | `5eed0013-0000-4000-8000-` + card position 1–3      |
 --   | `token_usage` (370)         | `5eed0014-0000-4000-8000-` + ordinal 1–370          |
 --   | `model_prices` (1)          | `5eed0016-0000-4000-8000-` + 1                      |
@@ -227,7 +254,7 @@
 -- CI.6 (#596) renders its guidance against.
 --
 -- ---------------------------------------------------------------------------
--- The eight aliases — the only place a raw model string is allowed to live.
+-- The nine aliases — the only place a raw model string is allowed to live.
 --
 -- Decision M1: routes name aliases, aliases name models, and `model_aliases.model_id` is the
 -- one column in this schema where `claude-fable-5` may appear. Every hop below therefore
@@ -241,7 +268,8 @@
 -- a name created ahead of its key, bound to no connection, naming `gpt-5.2-preview`, and
 -- `enabled = false` — which V019 requires of an unbound row rather than defaults, so the seed
 -- says it. It is the registry's `✗ no key — connect a provider` fixture, and nothing routes
--- through it: its `0 routes` is a left join over `alias_references` that finds nothing.
+-- through it: its `0 routes` is a left join over `alias_references` that finds nothing. The
+-- ninth is `researcher-long-ctx` (#622), the research route's primary — see the header.
 --
 -- **`params` and `restrictions` are mockup 21's chips, as structure** (V019, decision R3).
 -- The registry draws `(max thinking)(400k budget)` beside `coder-max`, `(std thinking)`
@@ -292,7 +320,9 @@ select ('5eed000f-0000-4000-8000-' || lpad(seed.n::text, 12, '0'))::uuid,
          (7, 'second-opinion',   'cursor',            'Cursor',
           'composer-2',       '{}',                   '{"review_vote_only": true}', true),
          (8, 'gpt5-experiments', null,                null,
-          'gpt-5.2-preview',  '{}',                                          '{}', false)
+          'gpt-5.2-preview',  '{}',                                          '{}', false),
+         (9, 'researcher-long-ctx', 'anthropic',      'Anthropic Claude',
+          'claude-sonnet-4-6', '{"thinking": "std"}',                        '{}', true)
        ) as seed (n, alias, kind, display_name, model_id, params, restrictions, enabled)
   join ouroboros.organization org on org."slug" = 'acme-robotics'
   join ouroboros."user" person on person."email" = 'ken@acme-robotics.dev'
@@ -305,12 +335,13 @@ select ('5eed000f-0000-4000-8000-' || lpad(seed.n::text, 12, '0'))::uuid,
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
--- The eight task kinds — the matrix's rows, in the matrix's order.
+-- The ten task kinds — the matrix's rows, in the matrix's order.
 --
 -- `name` is the mono label the row prints and `description` is the grey line under it,
 -- verbatim. `sort_order` is the order the mockup draws them in, which is the loop's own
 -- order of operations: read the issue, size it, plan it, write it, test it, review it,
--- document it, commit it.
+-- document it, commit it. Then the research family (#622): plan an investigation, then
+-- synthesize it.
 --
 -- Stored rather than derived because it is a *workspace's* list: a team that never generates
 -- tests deletes that row, and a team with a `triage` step adds one. Nothing here is a
@@ -327,14 +358,16 @@ select ('5eed0010-0000-4000-8000-' || lpad(seed.sort_order::text, 12, '0'))::uui
          (5, 'test-gen',   'Generate unit and regression tests for the diff'),
          (6, 'review',     'Self-review the PR against the acceptance criteria'),
          (7, 'docs',       'Update READMEs, changelogs, operator manual'),
-         (8, 'commit-msg', 'Conventional-commit message from the staged diff')
+         (8, 'commit-msg', 'Conventional-commit message from the staged diff'),
+         (9, 'research-plan', 'Plan an investigation and size its source budget'),
+         (10, 'research',  'Synthesize cited findings into a research brief')
        ) as seed (sort_order, name, description)
   join ouroboros.organization org on org."slug" = 'acme-robotics'
  where ${ouro_dev_seed}
 on conflict (id) do nothing;
 
 -- ---------------------------------------------------------------------------
--- The eight routes — one per kind, and the inspector's three policies.
+-- The ten routes — one per kind, and the inspector's three policies.
 --
 -- `tag` is the name the matrix prints as a pill and the inspector's title —
 -- `implement-primary`. V016 makes it unique per workspace, so it is what a URL and an
@@ -342,7 +375,7 @@ on conflict (id) do nothing;
 --
 -- **Only `implement-primary` carries a cost cap**, because it is the only route the mockup
 -- opens: its inspector reads *Max cost per run* `$2.50`, which is `max_cost_cents_per_run =
--- 250`. The other seven are null — *no cap configured* — rather than 250 repeated eight
+-- 250`. The other nine are null — *no cap configured* — rather than 250 repeated ten
 -- times, because a policy nobody set is not a policy, and a seed that quietly applies one
 -- everywhere would make the inspector's field look like a display of a default.
 --
@@ -367,7 +400,9 @@ select ('5eed0011-0000-4000-8000-' || lpad(seed.sort_order::text, 12, '0'))::uui
          (5, 'test-gen',   'testgen-primary',    null),
          (6, 'review',     'review-primary',     null),
          (7, 'docs',       'docs-primary',       null),
-         (8, 'commit-msg', 'commitmsg-primary',  null)
+         (8, 'commit-msg', 'commitmsg-primary',  null),
+         (9, 'research-plan', 'researchplan-primary', null),
+         (10, 'research',  'research-primary',   null)
        ) as seed (sort_order, kind_name, tag, max_cost_cents)
   join ouroboros.organization org on org."slug" = 'acme-robotics'
   join ouroboros.task_kinds kind
@@ -377,11 +412,11 @@ select ('5eed0011-0000-4000-8000-' || lpad(seed.sort_order::text, 12, '0'))::uui
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
--- The seventeen hops — the chains, in order.
+-- The twenty-one hops — the chains, in order.
 --
 -- The matrix shows a route's first two hops as its *Primary model* and *Fallback* columns;
 -- the inspector shows the whole chain, which is why `implement-primary` has three and the
--- other seven have two. `position` is dense from 1 within each route, which V016 makes a
+-- other nine have two. `position` is dense from 1 within each route, which V016 makes a
 -- correctness rule rather than a convention — `floor_hop_index` is a statement about a hop
 -- *number*, and a chain numbered 1, 2, 5 makes *"fail instead of degrading below fallback
 -- 2"* mean nothing.
@@ -394,7 +429,7 @@ on conflict do nothing;
 -- `health.latency_ms` measured minutes ago. Storing that sentence would freeze a latency
 -- into a note and make the chip and the hop disagree the first time a check ran.
 --
--- The other seven routes have no notes at all, which is the ordinary state — V016 made the
+-- The other nine routes have no notes at all, which is the ordinary state — V016 made the
 -- column nullable for it, and a seed that invented a sentence per hop would be putting words
 -- in an operator's mouth.
 -- ---------------------------------------------------------------------------
@@ -420,7 +455,11 @@ select ('5eed0012-0000-4000-8000-' || lpad(seed.n::text, 12, '0'))::uuid,
          (14, 'docs-primary',      1, 'local-docs',     null),
          (15, 'docs-primary',      2, 'sizer',          null),
          (16, 'commitmsg-primary', 1, 'local-free',     null),
-         (17, 'commitmsg-primary', 2, 'sizer',          null)
+         (17, 'commitmsg-primary', 2, 'sizer',          null),
+         (18, 'researchplan-primary', 1, 'sizer',       null),
+         (19, 'researchplan-primary', 2, 'local-free',  null),
+         (20, 'research-primary',  1, 'researcher-long-ctx', null),
+         (21, 'research-primary',  2, 'coder-std',      null)
        ) as seed (n, tag, position, alias, note)
   join ouroboros.organization org on org."slug" = 'acme-robotics'
   join ouroboros.routes route
@@ -572,7 +611,8 @@ on conflict do nothing;
 --
 -- Mockup 21's `$ per 1M in·out` column is `model_prices` (V012) read through
 -- `ouroboros.model_price()`, and seven of its eight cells come out of the **bundled** catalog
--- without this file's help: the Anthropic trio are token rows, `copilot/*` is `seat`,
+-- without this file's help (eight of nine since #622's `researcher-long-ctx`, a fourth Anthropic
+-- token row): the Anthropic trio are token rows, `copilot/*` is `seat`,
 -- `cursor/*` is `usage` and `ollama/*` is `free`. The eighth priced cell is the one the
 -- catalog deliberately does not carry. `openai_compatible` fronts a self-hosted vLLM *and*
 -- `api.openai.com`, so a bundled `free` row for that kind would price every uncovered OpenAI

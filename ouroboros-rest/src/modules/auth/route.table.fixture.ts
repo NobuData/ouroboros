@@ -55,6 +55,7 @@ import {
   INTERNAL_RUN_CONTROLS_FETCH_PATH,
   INTERNAL_RUN_CONTROL_ACK_PATH,
   INTERNAL_RUN_STAGE_TRANSITIONS_PATH,
+  INTERNAL_RESEARCH_TOOL_PATH,
   isInternalPath,
 } from "../internal/internal.paths";
 import { ALLOW_ANONYMOUS } from "./anonymous";
@@ -169,6 +170,10 @@ export const INTERNAL_SURFACE: readonly string[] = [
   // could swallow an abort before the executor ever saw it.
   `POST ${INTERNAL_RUN_CONTROLS_FETCH_PATH}`,
   `POST ${INTERNAL_RUN_CONTROL_ACK_PATH}`,
+  // The research tool surface (CL.1, #614, decision V2): every research tool operation the
+  // engine's investigation loop makes. A stranger who could reach it could spend a workspace's
+  // tool credentials and write into its citation ledger.
+  `POST ${INTERNAL_RESEARCH_TOOL_PATH}`,
 ].sort();
 
 /** One route, as the enumeration sees it. */

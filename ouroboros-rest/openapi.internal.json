@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest (internal)",
-    "version": "0.40.6",
+    "version": "0.40.8",
     "summary": "What ouroboros-engine may ask the control plane for — and what it is never given.",
     "description": "The **engine-facing** surface of\n[Ouroboros](https://github.com/NobuData/ouroboros)' communications layer. Two\noperations, one caller, and one idea holding both of them together — roadmap decision\n**P3**, [#224](https://github.com/NobuData/ouroboros/issues/224):\n\n> **A worker never holds a provider credential.**\n\nMockup 07's page subline promises something weaker — *\"keys never leave the control\nplane — workers only ever see short-lived tokens\"* — and this document is where the\nfirst clause is made literal and the second is **improved on**. There is no token. A\nfifteen-minute credential is still a credential: it genuinely reaches the worker,\nrevocation is bounded only by its TTL, and the audit surface widens to every process\nthat ever held one. It is also, for most LLM providers, fiction — almost none support\nderiving short-lived scoped keys, so such a token would in practice be a full API key\nwith a timer bolted on by us.\n\nSo the two operations divide the world:\n\n| Operation | For | Hands over |\n|---|---|---|\n| `POST /internal/llm/invoke` | every **cloud** provider | nothing — the control plane makes the call and streams back the answer |\n| `POST /internal/credentials/lease` | **local** providers only | an address, TTL-bounded and audited |\n\nThe exception is narrow and is not a compromise. An engine worker calling an Ollama\ndaemon on the same box gains nothing from proxying its traffic through this service,\nbecause there is no key on that path to protect — so it is told the address and nothing\nelse, and a lease naming a cloud provider is a `403` by policy, enforced here rather\nthan trusted to the caller.\n\n**What is built and what is specified.** The lease is implemented. The proxy is\n*specified* by this document and implemented by AF.2\n([#235](https://github.com/NobuData/ouroboros/issues/235)); calling it today answers\n`501` with `code: \"invocation_not_implemented\"`, deliberately rather than `404`, so an\nexecutor being written against this contract can tell *the path is right and the other\nhalf is not built yet* from *I have the URL wrong*. The contract exists first because\nAF.1 ([#234](https://github.com/NobuData/ouroboros/issues/234)) has to choose an\nexecutor **against** it — a decision recorded afterwards is a description of whatever\ngot built.\n\n**Authentication is the #51 pattern, in the other direction.** Every operation requires\n`X-Ouro-Internal-Key`, carrying `OURO_ENGINE_SHARED_SECRET` — the same header and the\nsame variable `ouroboros-rest` sends when *it* calls the engine\n([#51](https://github.com/NobuData/ouroboros/issues/51)). The comparison is constant\ntime, a missing header takes the same path as a wrong one, and the rejection is one\nconstant body: `401` with `code: \"unauthenticated\"` and nothing else. A session cookie\nis not accepted here, whoever it belongs to.\n\n**These paths are outside `/api`, and unversioned.** `/api` is the browser's boundary;\nthe only caller of these two is deployed alongside this service and upgraded with it, so\na version in the path would be one nobody could ever be on a different side of. That is\nthe same argument `/health/live` and `ouroboros-engine`'s `/healthz` are written under.\n\n**Every error has the shape every other error in this system has** — `{code, message,\ndetails}`, `docs/ARCHITECTURE.md` § 5.3 — so a worker parses one envelope whether it\nwas refused at the boundary or inside a handler.\n\n**The naming convention changes at this boundary, once.** This service writes\n`camelCase` in its contracts and `ouroboros-engine` writes `snake_case` in its own; each\nside translates in exactly one file — `src/modules/engine/engine.contract.ts` here,\n`ouroboros_engine/control_plane/contract.py` there — so no code on either side carries\nthe other's spelling.",
     "license": {
@@ -41,6 +41,10 @@
     {
       "name": "controls",
       "description": "**The control queue's executor half — AP.4\n([#306](https://github.com/NobuData/ouroboros/issues/306)), decision **R6**.**\n\n*Pause loop*, *Abort run* and the steering box are rows on a durable queue, because the\nmoment somebody needs *Abort* is the moment the executor is busy or wedged, which is when\na synchronous call fails. An executor **fetches** what is pending for its run (the fetch is\nthe delivery), applies it, and **acknowledges** each control with the effect it had.\nA control nobody acknowledges before its `expiresAt` is expired, and the console says so.\n\n**What each kind means, and every executor honours it:**\n\n* **`pause`**: stop at the next safe boundary (between tool calls, or between stages),\n  never mid-write. Acknowledge once the loop has actually stopped.\n* **`resume`**: continue a paused loop from where it stopped.\n* **`abort`**: terminate the run and **preserve its branch**. Nothing is reverted or\n  deleted. The acknowledgment closes the run as `canceled`.\n* **`steer`**: append `payload` to the **current attempt's** context and keep going.\n  **Do not pause.** Acknowledge with the attempt it landed on (`attempt: 2` gives\n  *\"steering applied to attempt 2\"*), so the person who typed it knows it reached the\n  attempt they were watching. `remember` is for the knowledge pipeline, not the executor.\n* **`steer` with `retryStage: true`** — a **correction round** from the Mark & Route card\n  ([#332](https://github.com/NobuData/ouroboros/issues/332)): append `payload` to the\n  planning context, then **start the current stage's next attempt** with it. Acknowledge\n  with an `effect` naming that attempt (*\"correction round queued: implement attempt 2\"*).\n\nApply fetched controls in the order given, which is oldest first. Poll at the executor's\nown safe points: a fetch that finds nothing is cheap."
+    },
+    {
+      "name": "research",
+      "description": "**The research tool surface — CL.1\n([#614](https://github.com/NobuData/ouroboros/issues/614)), decisions **V2** and **V3**.**\n\nThe investigation loop (#620) reaches every research tool — web search, the competitor\ntracker, code mining, the issue index, telemetry, documents — through one operation here,\nso adapters and their credentials stay in the control plane. **Citations are the return\ntype**: every operation answers its payload *and* the source records it read, already\narchived in the investigation's citation ledger with their cite numbers. An answer with a\npayload and no sources is refused as a contract violation, never passed on."
     }
   ],
   "paths": {
@@ -1252,6 +1256,256 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/research/tools/{slug}/{op}": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Run one research tool operation and archive its sources",
+        "description": "Run `search`, `fetch` or `query` on one tool for one investigation. The workspace — and\nso the tool's settings and credential — is **resolved from the investigation**, never\nnamed by the caller; neither ever appears in an answer.\n\nThe checks, in this order:\n\n1. **`404 investigation_not_found`** — no such investigation.\n2. **`409 investigation_not_running`** — only a running investigation calls tools.\n3. **`403 research_tool_not_enabled`** — the investigation did not enable this tool.\n4. **`501 research_tool_not_registered`** — this build has no adapter for the slug.\n5. **`422 research_tool_operation_unsupported`** — the tool does not declare the\n   operation, or the `input` is not what it takes (`details.reason`).\n6. **`409 research_budget_exhausted`** — `budget.operations` is 0, or `budget.tokens` is 0.\n7. **`409 research_tool_not_configured`** — the workspace has not configured a tool\n   whose settings are required.\n\nThen the operation runs. **`502 research_tool_failed`** carries the classified failure\n(`details.errorClass`: `auth`, `network`, `robots_denied`, `rate_limited`, `upstream`,\n`unsupported`), its designed `surfaceState`, whether a retry can help and how long the\nupstream asked to wait. **`502 research_tool_contract_violation`** means the tool\nanswered outside the citation contract — a payload with no sources, a source the ledger\nwould refuse, more tokens than `budget.tokens` allowed, or an unclassified exception —\nand nothing was archived.\n\n**Budgets are the caller's.** Send what the investigation has left; the adapter is\nhanded the remaining tokens as its ceiling, and the answer says what is left after this\ncall. A `null` `payload` with no sources is the empty answer — a search that found\nnothing.\n\n`200` rather than `201`: the ledger rows are the investigation's, not a resource at a URL.",
+        "operationId": "runResearchToolOperation",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "description": "A `research_tools` slug — `web`, `competitor`, `code`, `tickets`, `telemetry`, `docs`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "op",
+            "in": "path",
+            "required": true,
+            "description": "The operation.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "search",
+                "fetch",
+                "query"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolInvocationRequest"
+              },
+              "example": {
+                "investigation": "5eed0084-0000-4000-8000-000000000127",
+                "input": {
+                  "query": "skylink gust-adaptive final approach",
+                  "limit": 10
+                },
+                "budget": {
+                  "operations": 40,
+                  "tokens": 200000
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The payload, the archived sources with their cite numbers, and the budget left.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolInvocation"
+                },
+                "example": {
+                  "tool": "competitor",
+                  "operation": "search",
+                  "investigation": "RS-127",
+                  "payload": {
+                    "hits": [
+                      {
+                        "title": "Skylink firmware 6.2 release notes",
+                        "locator": "https://skylink.example.com/releases/6.2"
+                      }
+                    ]
+                  },
+                  "sources": [
+                    {
+                      "id": "5eed0085-0000-4000-8000-000000000012",
+                      "citeNo": 12,
+                      "deduplicated": false,
+                      "kind": "web",
+                      "title": "Skylink firmware 6.2 release notes — \"gust-adaptive final approach\"",
+                      "locator": "https://skylink.example.com/releases/6.2",
+                      "retrievedAt": "2026-10-04T10:00:00.000Z",
+                      "contentHash": "sha256:9f2c4a0e7d1b3c5a8e6f0d2b4c6a8e0f1d3b5c7a9e1f3d5b7c9a1e3f5d7b9c1a",
+                      "excerpt": "Gust-adaptive final approach: wind feedforward is applied over the last 2 m of descent.",
+                      "meta": {
+                        "query": "skylink gust-adaptive final approach"
+                      }
+                    }
+                  ],
+                  "usage": {
+                    "operations": 1,
+                    "tokens": 0
+                  },
+                  "budget": {
+                    "operations": 39,
+                    "tokens": 200000
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — no `X-Ouro-Internal-Key`, or a value matching neither principal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`research_tool_not_enabled` — the investigation did not enable this tool.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "research_tool_not_enabled",
+                  "message": "This investigation did not enable that research tool.",
+                  "details": {
+                    "tool": "docs",
+                    "investigation": "RS-127",
+                    "enabled": [
+                      "web",
+                      "competitor",
+                      "code",
+                      "tickets",
+                      "telemetry"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`investigation_not_found` — no such investigation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "investigation_not_found",
+                  "message": "This workspace has no such investigation.",
+                  "details": {
+                    "investigationId": "5eed0084-0000-4000-8000-000000000999"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`investigation_not_running`, `research_budget_exhausted` (no operations or tokens\nleft), or `research_tool_not_configured` (the workspace has not configured the tool).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "research_budget_exhausted",
+                  "message": "The investigation's research budget is spent.",
+                  "details": {
+                    "investigation": "RS-127",
+                    "operations": 0,
+                    "tokens": 51200
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`research_tool_operation_unsupported` — the tool does not declare the operation, or\nthe input is not one it takes (`details.reason`) — or `validation_failed` for a body\nthat is not `{investigation, input, budget}`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "research_tool_operation_unsupported",
+                  "message": "That research tool does not support this operation with this input.",
+                  "details": {
+                    "tool": "web",
+                    "operation": "search",
+                    "supported": [
+                      "search",
+                      "fetch"
+                    ],
+                    "reason": "search takes {query, limit?}; unexpected: q"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`research_tool_not_registered` — this build has no adapter for the slug.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "research_tool_not_registered",
+                  "message": "This build has no adapter for that research tool.",
+                  "details": {
+                    "tool": "docs",
+                    "registered": []
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`research_tool_failed` — the tool failed, classified (`details.errorClass`,\n`details.surfaceState`, `details.retryable`, `details.retryAfterSeconds`) — or\n`research_tool_contract_violation` — it answered outside the citation contract\n(`details.violations`). Nothing is archived either way.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "research_tool_failed",
+                  "message": "The research tool failed.",
+                  "details": {
+                    "tool": "web",
+                    "operation": "fetch",
+                    "errorClass": "robots_denied",
+                    "surfaceState": "skipped_source",
+                    "retryable": false,
+                    "retryAfterSeconds": null,
+                    "detail": "robots.txt disallows /releases"
+                  }
                 }
               }
             }
@@ -2803,6 +3057,189 @@
           "retryStage": {
             "type": "boolean",
             "description": "A correction round (#332). Always false for the other kinds."
+          }
+        }
+      },
+      "ToolInvocationRequest": {
+        "type": "object",
+        "title": "ToolInvocationRequest",
+        "description": "One research tool operation, for one investigation.",
+        "additionalProperties": false,
+        "required": [
+          "investigation",
+          "input",
+          "budget"
+        ],
+        "properties": {
+          "investigation": {
+            "type": "string",
+            "format": "uuid",
+            "description": "`investigations.id`. The workspace is resolved from it."
+          },
+          "input": {
+            "type": "object",
+            "description": "`{query, limit?}` for search (limit 1–50, default 10), `{locator}` for fetch, the tool's structured query for query.",
+            "additionalProperties": true
+          },
+          "budget": {
+            "$ref": "#/components/schemas/ToolBudget"
+          }
+        }
+      },
+      "ToolBudget": {
+        "type": "object",
+        "title": "ToolBudget",
+        "description": "What the investigation has left, as the loop counts it.",
+        "additionalProperties": false,
+        "required": [
+          "operations"
+        ],
+        "properties": {
+          "operations": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Tokens left; null or absent when the investigation sets no token budget."
+          }
+        }
+      },
+      "ToolSource": {
+        "type": "object",
+        "title": "ToolSource",
+        "description": "One source an operation read, archived in the citation ledger (V108).",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "citeNo",
+          "deduplicated",
+          "kind",
+          "title",
+          "locator",
+          "retrievedAt",
+          "contentHash",
+          "excerpt",
+          "meta"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "`source_records.id`."
+          },
+          "citeNo": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The `[07]` — dense and stable per investigation."
+          },
+          "deduplicated": {
+            "type": "boolean",
+            "description": "The ledger already had this locator read to this content hash."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "web",
+              "competitor_diff",
+              "code",
+              "ticket",
+              "telemetry",
+              "doc"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "locator": {
+            "type": "string",
+            "description": "An http(s) URL, or an internal `issue-index://`, `git://` or `telemetry://` URI."
+          },
+          "retrievedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "contentHash": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "excerpt": {
+            "type": "string"
+          },
+          "meta": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "snapshotId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The competitor snapshot a `competitor_diff` source cites (V112)."
+          }
+        }
+      },
+      "ToolInvocation": {
+        "type": "object",
+        "title": "ToolInvocation",
+        "description": "What one operation answered.",
+        "additionalProperties": false,
+        "required": [
+          "tool",
+          "operation",
+          "investigation",
+          "payload",
+          "sources",
+          "usage",
+          "budget"
+        ],
+        "properties": {
+          "tool": {
+            "type": "string"
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "search",
+              "fetch",
+              "query"
+            ]
+          },
+          "investigation": {
+            "type": "string",
+            "description": "The investigation's display id — `RS-127`."
+          },
+          "payload": {
+            "description": "The operation's answer; null for an empty answer, which has no sources."
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolSource"
+            }
+          },
+          "usage": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "operations",
+              "tokens"
+            ],
+            "properties": {
+              "operations": {
+                "type": "integer",
+                "const": 1
+              },
+              "tokens": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "budget": {
+            "$ref": "#/components/schemas/ToolBudget"
           }
         }
       }

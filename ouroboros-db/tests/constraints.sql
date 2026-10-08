@@ -9915,6 +9915,7 @@ select pg_temp.must_hold(
 -- in-place half of what it writes is repaired at the foot of the file.
 analyze ouroboros.tickets;
 analyze ouroboros.ticket_sources;
+analyze ouroboros.investigations;
 
 set local enable_seqscan = off;
 
@@ -14519,21 +14520,37 @@ select pg_temp.must_hold(
    -- remove a finished run's entries while the writer still cannot delete one — asserted in
    -- V101's section. #486 added `audit_events_purge()`, so the audit retention purge can remove
    -- expired events while the writer still cannot delete one — asserted in V102's section.
-   and (select array_agg(proname::text order by proname) = array['audit_events_purge',
+   -- #608 added `investigations_allocate_seq()`, so an investigation's RS number is drawn from a
+   -- counter the writer cannot set — asserted in V106's section. #555 added
+   -- `copilot_messages_allocate_seq()`, so a copilot message's seq is drawn from a counter the
+   -- writer cannot set, and `copilot_sessions_sweep()`, so the chat retention sweep can remove
+   -- closed transcripts while the writer still cannot delete one — asserted in V107's section.
+   -- #609 added `source_records_allocate_cite_no()`, so a source's [cite number] is drawn from a
+   -- counter the writer cannot set — asserted in V108's section. #556 added `apply_draft_batch()`,
+   -- so a draft operation is recorded only with the draft it changed — asserted in V110's section.
+   -- #557 added `dry_runs_sweep()`, so the dry-run retention sweep can remove finished dry runs
+   -- and their artifacts while the writer still cannot delete one — asserted in V111's section.
+   and (select array_agg(proname::text order by proname) = array['apply_draft_batch',
+                                                                 'audit_events_purge',
+                                                                 'copilot_messages_allocate_seq',
+                                                                 'copilot_sessions_sweep',
                                                                  'decision_ref_resolves',
                                                                  'decision_ttl_settings',
+                                                                 'dry_runs_sweep',
                                                                  'fact_transitions_record',
                                                                  'failure_classifications_routed_valid',
                                                                  'intervention_hook_classification',
+                                                                 'investigations_allocate_seq',
                                                                  'pr_gate_evidence_ref_resolves',
                                                                  'record_intervention_event',
                                                                  'run_controls_audit',
                                                                  'run_events_append',
                                                                  'run_events_sweep',
+                                                                 'source_records_allocate_cite_no',
                                                                  'sync_intervention_events']
           from pg_proc
          where pronamespace = 'ouroboros'::regnamespace and prosecdef),
-  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks, #457''s decision ref resolver, #459''s TTL settings reader, #482''s transcript sweep and #486''s audit purge are the only functions in the schema that run as the owner at all');
+  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks, #457''s decision ref resolver, #459''s TTL settings reader, #482''s transcript sweep, #486''s audit purge, #608''s RS allocator and #555''s copilot seq allocator and chat sweep and #609''s cite allocator and #556''s draft batch writer and #557''s dry-run sweep are the only functions in the schema that run as the owner at all');
 
 -- --- the cascades ----------------------------------------------------------------
 delete from ouroboros.runs where id = 'a6100000-0000-0000-0000-000000000484';
@@ -34403,6 +34420,3849 @@ select pg_temp.must_hold(
   'an unfinished tombstone records progress, then completes once');
 
 -- ===========================================================================
+-- V106 — investigations, the kind registry and research-tool slugs (#608, CK.1)
+-- ===========================================================================
+--
+-- Mockup 22's investigations card and composer as rows: every workspace gets the four kinds, a
+-- playbook round-trips and bumps, RS-### is per workspace and never reused, tool slugs are
+-- registered, the lifecycle is constrained, origin is closed, and estimate and actuals are
+-- independent. The race half of the sequence criterion needs two sessions and lives in
+-- tests/verify-investigation-seq.sh; what is asserted here is the single-session behaviour.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v106',  'Research Works', 'research-works-v106', now()),
+  ('org-v106b', 'Research Two',   'research-two-v106',   now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a1060000-0000-0000-0000-00000000000a', 'Rae Researcher', 'rae@research-works.example', true);
+
+-- --- the kind registry -------------------------------------------------------
+
+select pg_temp.must_hold(
+  (select array_agg(slug order by slug) = array['bug_root_cause', 'gap_analysis',
+                                                'regression_forensics', 'roadmap_improvements']
+     from ouroboros.investigation_kinds where organization_id = 'org-v106')
+   and (select count(*) = 4 from ouroboros.investigation_kinds where organization_id = 'org-v106b'),
+  'a new workspace is given the four built-in investigation kinds');
+
+select pg_temp.must_hold(
+  (select display_name = 'Gap analysis' and tint_key = 'gap'
+          and playbook = '{"version": 1, "default_tools": ["web", "competitor", "code", "tickets", "telemetry"],
+                           "synthesis_template": "gap_analysis@1", "deliverables": ["brief", "matrix"]}'::jsonb
+     from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis'),
+  'the gap_analysis playbook round-trips exactly as seeded');
+
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.investigation_kinds
+    where organization_id = 'org-v106'
+      and ouroboros.investigation_playbook_valid(playbook)
+      and playbook -> 'deliverables' ? 'brief'),
+  'every seeded playbook is well-formed and ends in a brief');
+
+-- Seeding again is a no-op, so a backfill can be re-run.
+select ouroboros.investigation_kinds_seed('org-v106');
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.investigation_kinds where organization_id = 'org-v106'),
+  'investigation_kinds_seed is idempotent');
+
+-- A version bump is representable…
+update ouroboros.investigation_kinds
+   set playbook = jsonb_set(jsonb_set(playbook, '{version}', '2'),
+                            '{default_tools}', '["web", "competitor", "code", "tickets", "telemetry", "docs"]')
+ where organization_id = 'org-v106' and slug = 'gap_analysis';
+select pg_temp.must_hold(
+  (select (playbook ->> 'version')::int = 2 and playbook -> 'default_tools' ? 'docs'
+     from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis'),
+  'a playbook version bump round-trips');
+
+-- …and a change without one is refused.
+select pg_temp.must_reject(
+  $$update ouroboros.investigation_kinds
+       set playbook = jsonb_set(playbook, '{synthesis_template}', '"gap_analysis@2"')
+     where organization_id = 'org-v106' and slug = 'gap_analysis'$$,
+  'a playbook change must raise its version', 'investigation_kinds_playbook_version');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_kinds (organization_id, slug, display_name, tint_key, playbook)
+    values ('org-v106', 'gap_analysis', 'Again', 'gap',
+            '{"version": 1, "default_tools": [], "synthesis_template": "x", "deliverables": ["brief"]}')$$,
+  'a kind slug is unique per workspace', 'investigation_kinds_organization_slug_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_kinds (organization_id, slug, display_name, tint_key, playbook)
+    values ('org-v106', 'Bad Slug', 'Bad', 'gap',
+            '{"version": 1, "default_tools": [], "synthesis_template": "x", "deliverables": ["brief"]}')$$,
+  'a kind slug is snake_case', 'investigation_kinds_slug_format');
+
+-- A fifth kind is a row, not a migration.
+insert into ouroboros.investigation_kinds (organization_id, slug, display_name, tint_key, playbook)
+values ('org-v106', 'security_review', 'Security review', 'sec',
+        '{"version": 1, "default_tools": ["code"], "synthesis_template": "security_review@1",
+          "deliverables": ["brief"]}');
+
+-- Playbook shape: each break refused by the one CHECK.
+select pg_temp.must_reject(
+  format($$insert into ouroboros.investigation_kinds (organization_id, slug, display_name, tint_key, playbook)
+           values ('org-v106', 'bad_playbook', 'Bad', 'gap', %L)$$, bad.playbook),
+  'a malformed playbook is refused — ' || bad.why, 'investigation_kinds_playbook_shape')
+from (values
+  ('{"default_tools": [], "synthesis_template": "x", "deliverables": ["brief"]}', 'no version'),
+  ('{"version": 0, "default_tools": [], "synthesis_template": "x", "deliverables": ["brief"]}', 'version 0'),
+  ('{"version": 1.5, "default_tools": [], "synthesis_template": "x", "deliverables": ["brief"]}', 'fractional version'),
+  ('{"version": 1, "default_tools": ["web", "web"], "synthesis_template": "x", "deliverables": ["brief"]}', 'duplicate tool'),
+  ('{"version": 1, "default_tools": "web", "synthesis_template": "x", "deliverables": ["brief"]}', 'tools not an array'),
+  ('{"version": 1, "default_tools": [], "synthesis_template": " ", "deliverables": ["brief"]}', 'blank template'),
+  ('{"version": 1, "default_tools": [], "synthesis_template": "x", "deliverables": ["matrix"]}', 'no brief'),
+  ('{"version": 1, "default_tools": [], "synthesis_template": "x", "deliverables": ["brief", "poem"]}', 'unknown deliverable'),
+  ('{"version": 1, "default_tools": [], "synthesis_template": "x", "deliverables": ["brief", "brief"]}', 'duplicate deliverable'),
+  ('{"version": 1, "default_tools": [], "synthesis_template": "x", "deliverables": "brief"}', 'deliverables not an array'),
+  ('{"version": 1, "default_tools": [], "synthesis_template": "x", "deliverables": ["brief"], "extra": 1}', 'unknown key'),
+  ('[]', 'not an object')
+) as bad(playbook, why);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_kinds (organization_id, slug, display_name, tint_key, playbook)
+    values ('org-v106', 'ghost_kind', 'Ghost', 'gap',
+            '{"version": 1, "default_tools": ["web", "crystal_ball"], "synthesis_template": "x",
+              "deliverables": ["brief"]}')$$,
+  'a playbook naming an unregistered tool is refused at write', 'investigation_kinds_tools_registered');
+
+-- --- RS-### -------------------------------------------------------------------
+
+insert into ouroboros.investigations
+    (id, organization_id, kind_id, question, depth, tools_enabled, estimate,
+     estimate_calibration_version, created_by)
+select v.id::uuid, v.org, k.id, v.question, 'deep_dive', '["web", "competitor"]',
+       '{"sources": {"min": 40, "max": 60}, "cost_cents": {"min": 500, "max": 700}}', 1,
+       'a1060000-0000-0000-0000-00000000000a'
+  from (values ('a1061000-0000-0000-0000-000000000001', 'org-v106',  'First'),
+               ('a1061000-0000-0000-0000-000000000002', 'org-v106',  'Second'),
+               ('a1061000-0000-0000-0000-000000000003', 'org-v106b', 'Other workspace')) v(id, org, question)
+  join ouroboros.investigation_kinds k on k.organization_id = v.org and k.slug = 'gap_analysis';
+
+select pg_temp.must_hold(
+  (select array_agg(seq order by seq) = array[1, 2]
+          and array_agg(display_id order by seq) = array['RS-001', 'RS-002']
+     from ouroboros.investigations where organization_id = 'org-v106')
+   and (select seq = 1 from ouroboros.investigations
+         where id = 'a1061000-0000-0000-0000-000000000003'),
+  'seq is allocated per workspace from 1 and rendered RS-###');
+
+select pg_temp.must_hold(
+  (select status = 'queued' and origin = 'user' and actuals is null and provenance is null
+          and estimate is not null
+     from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000001'),
+  'an investigation that never ran has an estimate and no actuals; it starts queued and user-opened');
+
+-- A rolled-back create leaves no gap: its increment goes with it.
+savepoint v106_rollback;
+insert into ouroboros.investigations (organization_id, kind_id, question, depth, tools_enabled)
+select 'org-v106', id, 'Rolled back', 'quick', '["web"]'
+  from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'bug_root_cause';
+rollback to savepoint v106_rollback;
+
+insert into ouroboros.investigations (id, organization_id, kind_id, question, depth, tools_enabled)
+select 'a1061000-0000-0000-0000-000000000004', 'org-v106', id, 'After the rollback', 'quick', '["web"]'
+  from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'bug_root_cause';
+
+select pg_temp.must_hold(
+  (select seq = 3 from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000004'),
+  'a rolled-back create returns its number — the next create takes it, so the sequence has no gap');
+
+-- A deleted investigation's number is spent, never handed out again.
+delete from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000004';
+insert into ouroboros.investigations (id, organization_id, kind_id, question, depth, tools_enabled)
+select 'a1061000-0000-0000-0000-000000000005', 'org-v106', id, 'After the delete', 'quick', '["web"]'
+  from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'bug_root_cause';
+select pg_temp.must_hold(
+  (select seq = 4 from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000005'),
+  'deleting the newest investigation does not give its number to the next one');
+
+-- A supplied number is kept, and allocation continues past it.
+insert into ouroboros.investigations (id, organization_id, seq, kind_id, question, depth, tools_enabled)
+select 'a1061000-0000-0000-0000-000000000127', 'org-v106', 127, id, 'Docking gap', 'deep_dive', '["web"]'
+  from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis';
+insert into ouroboros.investigations (id, organization_id, kind_id, question, depth, tools_enabled)
+select 'a1061000-0000-0000-0000-000000000128', 'org-v106', id, 'Next', 'quick', '["web"]'
+  from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis';
+select pg_temp.must_hold(
+  (select display_id = 'RS-127' from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000127')
+   and (select seq = 128 from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000128')
+   and (select last_seq = 128 from ouroboros.investigation_seq_counters where organization_id = 'org-v106'),
+  'a supplied seq is kept and the counter continues past it');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigations (organization_id, seq, kind_id, question, depth, tools_enabled)
+    select 'org-v106', 127, id, 'Duplicate', 'quick', '["web"]'
+      from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis'$$,
+  'an RS number is unique within its workspace', 'investigations_organization_seq_key');
+
+select pg_temp.must_hold(
+  (select display_id = 'RS-1000'
+     from (select 'RS-' || case when s < 1000 then lpad(s::text, 3, '0') else s::text end display_id
+             from (values (1000)) v(s)) d),
+  'display ids widen past three digits rather than truncating');
+
+select pg_temp.must_reject(
+  $$update ouroboros.investigations set seq = 900 where id = 'a1061000-0000-0000-0000-000000000001'$$,
+  'an investigation keeps its number', 'investigations_status_transition');
+
+-- --- kind is of the same workspace ------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigations (organization_id, kind_id, question, depth, tools_enabled)
+    select 'org-v106', id, 'Borrowed kind', 'quick', '["web"]'
+      from ouroboros.investigation_kinds where organization_id = 'org-v106b' and slug = 'gap_analysis'$$,
+  'an investigation''s kind belongs to its own workspace', 'investigations_kind_fk');
+
+select pg_temp.must_reject(
+  $$delete from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis'$$,
+  'a kind with investigations cannot be deleted', 'investigations_kind_fk');
+
+-- --- tool slugs ----------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigations (organization_id, kind_id, question, depth, tools_enabled)
+    select 'org-v106', id, 'Unknown tool', 'quick', '["web", "crystal_ball"]'
+      from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis'$$,
+  'an unknown tool slug in tools_enabled is rejected at write', 'investigations_tools_registered');
+
+select pg_temp.must_reject(
+  $$update ouroboros.investigations set tools_enabled = '["crystal_ball"]'
+     where id = 'a1061000-0000-0000-0000-000000000001'$$,
+  'an unknown tool slug is rejected on update too', 'investigations_tools_registered');
+
+select pg_temp.must_reject(
+  format($$insert into ouroboros.investigations (organization_id, kind_id, question, depth, tools_enabled)
+           select 'org-v106', id, 'Bad tools', 'quick', %L
+             from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis'$$,
+         bad.tools),
+  'a malformed tool selection is refused — ' || bad.why, 'investigations_tools_enabled_shape')
+from (values ('[]', 'empty'), ('["web", "web"]', 'duplicate'), ('"web"', 'not an array'),
+             ('[1]', 'not a string'), ('["Web"]', 'not a slug')) as bad(tools, why);
+
+-- A newly registered adapter is usable at once; a registered slug in use cannot be removed.
+insert into ouroboros.research_tools (slug, display_name) values ('wiki', 'Internal wiki');
+update ouroboros.investigations set tools_enabled = '["web", "wiki"]'
+ where id = 'a1061000-0000-0000-0000-000000000002';
+
+select pg_temp.must_reject(
+  $$delete from ouroboros.research_tools where slug = 'wiki'$$,
+  'a tool slug an investigation names cannot be deleted', 'research_tools_in_use');
+
+select pg_temp.must_reject(
+  $$update ouroboros.research_tools set slug = 'web2' where slug = 'web'$$,
+  'a tool slug a kind playbook names cannot be renamed', 'research_tools_in_use');
+
+select pg_temp.must_hold(
+  (select array_agg(slug order by slug) = array['code', 'competitor', 'docs', 'telemetry', 'tickets', 'web', 'wiki']
+     from ouroboros.research_tools),
+  'the six mockup tools are registered');
+
+-- --- vocabularies ----------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.investigations set depth = 'bottomless' where id = 'a1061000-0000-0000-0000-000000000001'$$,
+  'depth is quick | standard | deep_dive', 'investigations_depth');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigations (organization_id, kind_id, question, depth, tools_enabled, origin)
+    select 'org-v106', id, 'Who opened me', 'quick', '["web"]', 'cron'
+      from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis'$$,
+  'origin is user | regression_watch | scheduled', 'investigations_origin');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigations
+        (organization_id, kind_id, question, depth, tools_enabled, status, provenance, actuals)
+    select 'org-v106', id, 'Paused', 'quick', '["web"]', 'paused',
+           '{"researcher": "loop-v1", "alias": "researcher-long-ctx", "resolution_ref": null}',
+           '{"sources_used": 1, "spend_cents": null, "duration_ms": 1}'
+      from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis'$$,
+  'status is a closed vocabulary', 'investigations_status');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigations (organization_id, kind_id, question, depth, tools_enabled)
+    select 'org-v106', id, '   ', 'quick', '["web"]'
+      from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'gap_analysis'$$,
+  'a question cannot be blank', 'investigations_question_present');
+
+-- origin tells the watch's investigations from people's.
+insert into ouroboros.investigations (id, organization_id, kind_id, question, depth, tools_enabled, origin)
+select 'a1061000-0000-0000-0000-000000000121', 'org-v106', id, 'Motor PID overshoot', 'standard',
+       '["code", "telemetry"]', 'regression_watch'
+  from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'regression_forensics';
+select pg_temp.must_hold(
+  (select origin = 'regression_watch' and created_by is null
+     from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000121')
+   and (select origin = 'user' and created_by = 'a1060000-0000-0000-0000-00000000000a'
+          from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000001'),
+  'origin distinguishes watch-opened from user-started investigations');
+
+select pg_temp.must_reject(
+  $$update ouroboros.investigations set origin = 'user' where id = 'a1061000-0000-0000-0000-000000000121'$$,
+  'an investigation keeps its origin', 'investigations_status_transition');
+
+-- --- estimate, actuals, provenance shapes ---------------------------------------
+
+select pg_temp.must_reject(
+  format($$update ouroboros.investigations set estimate = %L where id = 'a1061000-0000-0000-0000-000000000001'$$,
+         bad.v),
+  'a malformed estimate is refused — ' || bad.why, 'investigations_estimate_shape')
+from (values
+  ('{"sources": {"min": 60, "max": 40}, "cost_cents": null}', 'min above max'),
+  ('{"sources": {"min": -1, "max": 40}, "cost_cents": null}', 'negative'),
+  ('{"sources": {"min": 40, "max": 60}}', 'cost_cents missing'),
+  ('{"sources": {"min": 40, "max": 60}, "cost_cents": 600}', 'cost not a range'),
+  ('{"sources": "40-60", "cost_cents": null}', 'sources not a range')
+) as bad(v, why);
+
+-- An unpriced alias: a source range and no dollar figure.
+update ouroboros.investigations
+   set estimate = '{"sources": {"min": 40, "max": 60}, "cost_cents": null}'
+ where id = 'a1061000-0000-0000-0000-000000000002';
+
+select pg_temp.must_reject(
+  format($$update ouroboros.investigations set actuals = %L where id = 'a1061000-0000-0000-0000-000000000001'$$,
+         bad.v),
+  'malformed actuals are refused — ' || bad.why, 'investigations_actuals_shape')
+from (values
+  ('{"sources_used": 44, "spend_cents": 612}', 'duration missing'),
+  ('{"sources_used": -1, "spend_cents": 612, "duration_ms": 1}', 'negative sources'),
+  ('{"sources_used": 44, "spend_cents": "612", "duration_ms": 1}', 'spend not a number'),
+  ('[]', 'not an object')
+) as bad(v, why);
+
+select pg_temp.must_reject(
+  format($$update ouroboros.investigations set provenance = %L where id = 'a1061000-0000-0000-0000-000000000001'$$,
+         bad.v),
+  'malformed provenance is refused — ' || bad.why, 'investigations_provenance_shape')
+from (values
+  ('{"researcher": "loop-v1", "alias": "researcher-long-ctx"}', 'resolution_ref missing'),
+  ('{"researcher": "", "alias": "researcher-long-ctx", "resolution_ref": null}', 'blank researcher'),
+  ('{"researcher": "loop-v1", "alias": 7, "resolution_ref": null}', 'alias not text')
+) as bad(v, why);
+
+-- --- the lifecycle -----------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.investigations set status = 'running' where id = 'a1061000-0000-0000-0000-000000000001'$$,
+  'a running investigation carries its provenance', 'investigations_running_provenance');
+
+update ouroboros.investigations
+   set status = 'running',
+       provenance = '{"researcher": "loop-v1", "alias": "researcher-long-ctx", "resolution_ref": null}'
+ where id = 'a1061000-0000-0000-0000-000000000001';
+
+select pg_temp.must_reject(
+  $$update ouroboros.investigations set status = 'brief_ready' where id = 'a1061000-0000-0000-0000-000000000001'$$,
+  'a finished investigation carries its actuals', 'investigations_finished_actuals');
+
+update ouroboros.investigations
+   set status = 'brief_ready',
+       actuals = '{"sources_used": 44, "spend_cents": 612, "duration_ms": 2400000}'
+ where id = 'a1061000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select estimate -> 'cost_cents' ->> 'max' = '700' and actuals ->> 'spend_cents' = '612'
+          and updated_at >= created_at
+     from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000001'),
+  'estimate and actuals are both stored, side by side, and reconcilable');
+
+update ouroboros.investigations set status = 'issues_filed'
+ where id = 'a1061000-0000-0000-0000-000000000001';
+
+-- Every transition outside the state machine is refused. From each status, every target the
+-- graph does not allow.
+create temporary table v106_moves (from_status text, to_status text) on commit drop;
+insert into v106_moves
+select f, t
+  from unnest(array['queued', 'running', 'brief_ready', 'issues_filed', 'failed', 'cancelled']) f,
+       unnest(array['queued', 'running', 'brief_ready', 'issues_filed', 'failed', 'cancelled']) t
+ where f <> t
+   and (f, t) not in (('queued', 'running'), ('queued', 'failed'), ('queued', 'cancelled'),
+                      ('running', 'brief_ready'), ('running', 'failed'), ('running', 'cancelled'),
+                      ('brief_ready', 'issues_filed'));
+
+-- One investigation per source status, each carrying what every status needs, so the only rule
+-- that can refuse a move is the transition trigger.
+insert into ouroboros.investigations
+    (organization_id, kind_id, question, depth, tools_enabled, status, provenance, actuals)
+select 'org-v106', k.id, 'Lifecycle from ' || f, 'quick', '["web"]', f,
+       '{"researcher": "loop-v1", "alias": "researcher-long-ctx", "resolution_ref": null}',
+       '{"sources_used": 1, "spend_cents": null, "duration_ms": 1}'
+  from (select distinct from_status f from v106_moves) s
+  join ouroboros.investigation_kinds k on k.organization_id = 'org-v106' and k.slug = 'bug_root_cause';
+
+select pg_temp.must_hold(
+  (select count(*) = 23 from v106_moves),
+  'the state machine allows seven of the thirty moves between six statuses');
+
+select pg_temp.must_reject(
+  format($$update ouroboros.investigations set status = %L
+            where organization_id = 'org-v106' and question = %L$$,
+         m.to_status, 'Lifecycle from ' || m.from_status),
+  format('an investigation cannot go from %s to %s', m.from_status, m.to_status),
+  'investigations_status_transition')
+from v106_moves m;
+
+-- And the allowed ones go through.
+update ouroboros.investigations set status = 'cancelled'
+ where organization_id = 'org-v106' and question = 'Lifecycle from queued';
+update ouroboros.investigations set status = 'failed'
+ where organization_id = 'org-v106' and question = 'Lifecycle from running';
+
+-- --- indexes --------------------------------------------------------------------
+
+-- Analyzed first: without statistics the planner cannot tell (organization_id, status) from the
+-- unique (organization_id, seq) key, which also leads with the workspace. The rollback's repair
+-- at the end of this file re-measures the table. The quarter counted is one no fixture was
+-- created in, so the range is selective and the created_at index is the cheaper path.
+analyze ouroboros.investigations;
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select * from ouroboros.investigations where organization_id = 'org-v106' and status = 'running'$$,
+  'investigations_organization_status_idx');
+select pg_temp.must_use_index(
+  $$select count(*) from ouroboros.investigations
+     where organization_id = 'org-v106'
+       and created_at >= '2020-01-01' and created_at < '2020-04-01'$$,
+  'investigations_organization_created_at_idx');
+select pg_temp.must_use_index(
+  $$select * from ouroboros.investigations where kind_id = '00000000-0000-0000-0000-000000000000'$$,
+  'investigations_kind_idx');
+set local enable_seqscan = on;
+
+-- --- the application role ------------------------------------------------------
+--
+-- ouroboros_app creates and moves investigations but never touches the counter: the allocator
+-- is security definer, so a create through the application still gets its number.
+set local role ouroboros_app;
+
+select pg_temp.must_hold(
+  (select current_user = 'ouroboros_app'),
+  'the assertions below really are the application role''s');
+
+insert into ouroboros.investigations (id, organization_id, kind_id, question, depth, tools_enabled)
+select 'a1061000-0000-0000-0000-000000000200', 'org-v106', id, 'Created by the application', 'quick', '["web"]'
+  from ouroboros.investigation_kinds where organization_id = 'org-v106' and slug = 'bug_root_cause';
+
+select pg_temp.must_raise(
+  $$update ouroboros.investigation_seq_counters set last_seq = 1 where organization_id = 'org-v106'$$,
+  '42501', 'the application role cannot move the RS counter');
+
+select pg_temp.must_raise(
+  $$delete from ouroboros.investigations where id = 'a1061000-0000-0000-0000-000000000200'$$,
+  '42501', 'the application role cannot delete an investigation');
+
+select pg_temp.must_raise(
+  $$select ouroboros.investigations_allocate_seq()$$,
+  '42501', 'the allocator is not callable outside its trigger');
+
+reset role;
+
+select pg_temp.must_hold(
+  (select i.seq = c.last_seq and i.seq > 128
+     from ouroboros.investigations i
+     join ouroboros.investigation_seq_counters c using (organization_id)
+    where i.id = 'a1061000-0000-0000-0000-000000000200'),
+  'an investigation created by the application role is numbered by the allocator');
+
+select pg_temp.must_hold(
+  (select prosecdef
+          and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+          and not has_function_privilege('public', oid, 'execute')
+     from pg_proc
+    where proname = 'investigations_allocate_seq' and pronamespace = 'ouroboros'::regnamespace)
+   and not has_table_privilege('ouroboros_app', 'ouroboros.investigation_seq_counters', 'select')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.investigation_seq_counters', 'update'),
+  'the RS allocator runs as its owner with its search_path pinned and execute revoked from public, and the counter has no grant to the application');
+
+-- --- the workspace takes everything with it -------------------------------------
+
+delete from ouroboros.organization where "id" in ('org-v106', 'org-v106b');
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.investigations where organization_id in ('org-v106', 'org-v106b'))
+   and (select count(*) = 0 from ouroboros.investigation_kinds where organization_id in ('org-v106', 'org-v106b'))
+   and (select count(*) = 0 from ouroboros.investigation_seq_counters where organization_id in ('org-v106', 'org-v106b')),
+  'deleting a workspace deletes its investigations, kinds and counter');
+delete from ouroboros."user" where "id" = 'a1060000-0000-0000-0000-00000000000a';
+
+-- ===========================================================================
+-- V107 — copilot sessions & messages (#555, CC.1)
+-- ===========================================================================
+--
+-- Mockup 20's conversation card as rows: the six-message exchange in order with both choice
+-- questions and their selections, a tool trace that tells proposed, applied and bounced apart,
+-- a cost that is null rather than a fabricated zero, one active session per draft, closing
+-- without deleting, seq allocated in order, and the chat retention sweep. The race half of the
+-- one-active and seq criteria needs two sessions and lives in tests/verify-copilot-sessions.sh;
+-- what is asserted here is the single-session behaviour.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v107',  'Copilot Works', 'copilot-works-v107', now()),
+  ('org-v107b', 'Copilot Two',   'copilot-two-v107',   now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a1070000-0000-0000-0000-00000000000a', 'Ken Copilot', 'ken@copilot-works.example', true);
+
+insert into ouroboros.workflows (id, organization_id, slug, name) values
+  ('a1070000-0000-0000-0000-000000000101', 'org-v107',  'security-patch', 'Security patch'),
+  ('a1070000-0000-0000-0000-000000000102', 'org-v107',  'standard-fix',   'Standard fix'),
+  ('a1070000-0000-0000-0000-000000000103', 'org-v107b', 'security-patch', 'Security patch');
+
+insert into ouroboros.copilot_sessions (id, organization_id, workflow_id, draft_name, created_by)
+values ('a1070000-0000-0000-0000-000000000201', 'org-v107', 'a1070000-0000-0000-0000-000000000101',
+        'security-patch', 'a1070000-0000-0000-0000-00000000000a');
+
+select pg_temp.must_hold(
+  (select status = 'active' and closed_at is null and model_provenance = '[]' and last_seq = 0
+     from ouroboros.copilot_sessions where id = 'a1070000-0000-0000-0000-000000000201'),
+  'a new copilot session is active, open, with no provenance and no messages yet');
+
+-- --- the mockup's six-message exchange ---------------------------------------------
+
+-- ① Ken's brief.
+insert into ouroboros.copilot_messages (organization_id, session_id, role, body) values
+  ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'user',
+   'security patches: always a second model''s review, never auto-merge, prove the CVE is actually fixed');
+
+-- ② The copilot's draft, streamed: it starts empty, grows, and completes with two open questions.
+insert into ouroboros.copilot_messages (id, organization_id, session_id, role, status) values
+  ('a1070000-0000-0000-0000-000000000302', 'org-v107', 'a1070000-0000-0000-0000-000000000201',
+   'copilot', 'streaming');
+
+update ouroboros.copilot_messages set body = 'Drafted security-patch' where id = 'a1070000-0000-0000-0000-000000000302';
+
+update ouroboros.copilot_messages
+   set body = 'Drafted security-patch. I invented an exploit-verify stage: it reruns the CVE PoC in a sandbox, so "fixed" is proven rather than claimed.',
+       choices = '[{"prompt": "What triggers it?", "options": ["label:security", "CVE pattern in title"],
+                    "selected": null, "answered_at": null},
+                   {"prompt": "May it read the GitHub Advisory DB?", "options": ["Yes", "No"],
+                    "selected": null, "answered_at": null}]',
+       tool_trace = '{"operations": [{"op": {"kind": "set_trigger", "label": "security"}, "outcome": "proposed"},
+                                     {"op": {"kind": "add_stage", "id": "exploit-verify"}, "outcome": "applied"},
+                                     {"op": {"kind": "add_edge", "from": "test", "to": "exploit-verify"}, "outcome": "applied"},
+                                     {"op": {"kind": "set_stage_config", "stage": "review", "count": 0}, "outcome": "bounced",
+                                      "validator_message": "review.count must be at least 1"}],
+                      "reads": [{"tool": "catalog"}, {"tool": "current_draft"}],
+                      "dry_run_proposals": []}',
+       tokens_in = 4210, tokens_out = 912, cost_cents = 4,
+       status = 'complete'
+ where id = 'a1070000-0000-0000-0000-000000000302';
+
+update ouroboros.copilot_sessions
+   set model_provenance = '[{"seq": 2, "alias": "coder-max", "model_id": "claude-opus-5-5"}]'
+ where id = 'a1070000-0000-0000-0000-000000000201';
+
+-- Ken answers both chips: label:security ✓, Yes ✓.
+update ouroboros.copilot_messages
+   set choices = '[{"prompt": "What triggers it?", "options": ["label:security", "CVE pattern in title"],
+                    "selected": "label:security", "answered_at": "2026-10-06T09:14:00Z"},
+                   {"prompt": "May it read the GitHub Advisory DB?", "options": ["Yes", "No"],
+                    "selected": "Yes", "answered_at": "2026-10-06T09:14:00Z"}]'
+ where id = 'a1070000-0000-0000-0000-000000000302';
+
+-- ③ Ken's refinement.
+insert into ouroboros.copilot_messages (organization_id, session_id, role, body) values
+  ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'user',
+   'label security. yes. also cap spend at $5 a run.');
+
+-- ④ The spend guard, and a proposed dry run on #489. Not priced: cost_cents stays null.
+insert into ouroboros.copilot_messages (id, organization_id, session_id, role, body, tool_trace,
+                                        tokens_in, tokens_out) values
+  ('a1070000-0000-0000-0000-000000000304', 'org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot',
+   'Added the spend guard ($5/run). Want to dry-run it on #489? No CVE there — a useful edge case.',
+   '{"operations": [{"op": {"kind": "set_guard", "spend_cap_cents": 500}, "outcome": "applied"}],
+     "reads": [], "dry_run_proposals": [{"ticket": "#489", "reason": "no CVE — a useful edge case"}]}',
+   3020, 240);
+
+-- ⑤ dry run #489.
+insert into ouroboros.copilot_messages (organization_id, session_id, role, body) values
+  ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'user', 'dry run #489');
+
+-- ⑥ The result.
+insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tokens_in, tokens_out, cost_cents) values
+  ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot',
+   '2m 41s, $0.31, zero side effects — two improvement suggestions below the results →', 1800, 120, 1);
+
+update ouroboros.copilot_sessions
+   set model_provenance = model_provenance
+                          || '[{"seq": 4, "alias": "coder-max", "model_id": "claude-opus-5-5"},
+                               {"seq": 6, "alias": "coder-max", "model_id": "claude-opus-5-5"}]'
+ where id = 'a1070000-0000-0000-0000-000000000201';
+
+select pg_temp.must_hold(
+  (select array_agg(role || ':' || left(body, 12) order by seq)
+          = array['user:security pat',
+                  'copilot:Drafted secu',
+                  'user:label securi',
+                  'copilot:Added the sp',
+                  'user:dry run #489',
+                  'copilot:2m 41s, $0.3']
+          and array_agg(seq order by seq) = array[1, 2, 3, 4, 5, 6]
+     from ouroboros.copilot_messages where session_id = 'a1070000-0000-0000-0000-000000000201'),
+  'the mockup''s six-message exchange reads back in order, numbered 1…6');
+
+select pg_temp.must_hold(
+  (select jsonb_path_query_array(choices, '$[*].prompt')
+            = '["What triggers it?", "May it read the GitHub Advisory DB?"]'
+          and jsonb_path_query_array(choices, '$[*].options')
+            = '[["label:security", "CVE pattern in title"], ["Yes", "No"]]'
+          and jsonb_path_query_array(choices, '$[*].selected') = '["label:security", "Yes"]'
+     from ouroboros.copilot_messages where id = 'a1070000-0000-0000-0000-000000000302'),
+  'both choice questions keep their prompts, options and selections');
+
+select pg_temp.must_hold(
+  (select last_seq = 6 and jsonb_array_length(model_provenance) = 3
+          and model_provenance -> -1 ->> 'alias' = 'coder-max'
+     from ouroboros.copilot_sessions where id = 'a1070000-0000-0000-0000-000000000201'),
+  'the session counts six messages and records the resolved alias per copilot exchange');
+
+-- --- the tool trace ------------------------------------------------------------------
+
+select pg_temp.must_hold(
+  (select jsonb_path_query_array(tool_trace, '$.operations[*] ? (@.outcome == "applied").op.kind')
+            = '["add_stage", "add_edge"]'
+          and jsonb_path_query_array(tool_trace, '$.operations[*] ? (@.outcome == "proposed").op.kind')
+            = '["set_trigger"]'
+          and jsonb_path_query_array(tool_trace, '$.operations[*] ? (@.outcome == "bounced").validator_message')
+            = '["review.count must be at least 1"]'
+     from ouroboros.copilot_messages where id = 'a1070000-0000-0000-0000-000000000302'),
+  'a tool trace tells proposed, applied and bounced operations apart, with the validator''s message on a bounce');
+
+select pg_temp.must_hold(
+  (select tool_trace -> 'dry_run_proposals' -> 0 ->> 'ticket' = '#489'
+     from ouroboros.copilot_messages where id = 'a1070000-0000-0000-0000-000000000304'),
+  'a proposed dry run is recorded in the trace');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tool_trace) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '{"operations": [{"op": {"kind": "add_stage"}, "outcome": "bounced"}], "reads": [], "dry_run_proposals": []}')$$,
+  'a bounced operation carries the validator''s message', 'copilot_messages_tool_trace_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tool_trace) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '{"operations": [{"op": {"kind": "add_stage"}, "outcome": "applied", "validator_message": "ok"}],
+       "reads": [], "dry_run_proposals": []}')$$,
+  'only a bounce carries a validator message', 'copilot_messages_tool_trace_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tool_trace) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '{"operations": [{"op": {"kind": "add_stage"}, "outcome": "rejected"}], "reads": [], "dry_run_proposals": []}')$$,
+  'an operation outcome is proposed, applied or bounced', 'copilot_messages_tool_trace_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tool_trace) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '{"operations": [{"op": "add_stage", "outcome": "applied"}], "reads": [], "dry_run_proposals": []}')$$,
+  'an operation is a typed op object with a kind', 'copilot_messages_tool_trace_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tool_trace) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '{"operations": [7], "reads": [], "dry_run_proposals": []}')$$,
+  'a non-object operation is refused by the shape check, not an error', 'copilot_messages_tool_trace_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tool_trace) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '{"operations": [], "reads": [{}], "dry_run_proposals": [{"ticket": ""}]}')$$,
+  'a read names its tool and a dry-run proposal its ticket', 'copilot_messages_tool_trace_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tool_trace) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x', '{"operations": []}')$$,
+  'a trace has operations, reads and dry-run proposals', 'copilot_messages_tool_trace_shape');
+
+-- --- choices -------------------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, choices) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '[{"prompt": "Q?", "options": ["Yes", "No"], "selected": "Maybe", "answered_at": "2026-10-06T09:14:00Z"}]')$$,
+  'a selection is one of the options', 'copilot_messages_choices_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, choices) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '[{"prompt": "Q?", "options": ["Yes", "No"], "selected": "Yes", "answered_at": null}]')$$,
+  'a selection carries when it was answered', 'copilot_messages_choices_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, choices) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '[{"prompt": "Q?", "options": ["Yes"], "selected": null, "answered_at": null}]')$$,
+  'a question offers at least two options', 'copilot_messages_choices_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, choices) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x',
+     '[{"prompt": "Q?", "options": ["Yes", "Yes"], "selected": null, "answered_at": null}]')$$,
+  'a question''s options are distinct', 'copilot_messages_choices_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, choices) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x', '[]')$$,
+  'choices, when present, ask something', 'copilot_messages_choices_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, choices) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'user', 'x',
+     '[{"prompt": "Q?", "options": ["Yes", "No"], "selected": null, "answered_at": null}]')$$,
+  'only the copilot asks choice questions', 'copilot_messages_user_plain');
+
+-- An answered question stays answered, and the questions themselves are the record.
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_messages
+       set choices = jsonb_set(choices, '{0,selected}', '"CVE pattern in title"')
+     where id = 'a1070000-0000-0000-0000-000000000302'$$,
+  'an answer already given cannot be changed', 'copilot_messages_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_messages
+       set choices = jsonb_set(choices, '{1,prompt}', '"May it read anything?"')
+     where id = 'a1070000-0000-0000-0000-000000000302'$$,
+  'a finished reply''s questions cannot be reworded', 'copilot_messages_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_messages set choices = null
+     where id = 'a1070000-0000-0000-0000-000000000302'$$,
+  'a finished reply''s questions cannot be removed', 'copilot_messages_transition');
+
+-- --- cost: null when unpriced, never fabricated --------------------------------------
+
+select pg_temp.must_hold(
+  (select cost_cents is null and tokens_in = 3020
+     from ouroboros.copilot_messages where id = 'a1070000-0000-0000-0000-000000000304'),
+  'an exchange that was metered but not priced keeps a null cost');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.copilot_messages
+    where cost_cents is not null and (role <> 'copilot' or tokens_in is null or tokens_out is null)),
+  'no message in the database carries a cost for an exchange nothing was metered for');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, cost_cents) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x', 0)$$,
+  'a cost on an unmetered exchange is a fabricated cost', 'copilot_messages_cost_metered');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tokens_in) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x', 10)$$,
+  'token counts are metered together', 'copilot_messages_tokens_paired');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tokens_in, tokens_out, cost_cents) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'user', 'x', 1, 1, 1)$$,
+  'a user message carries no tokens or cost', 'copilot_messages_user_plain');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, tokens_in, tokens_out, cost_cents) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', 'x', 1, 1, -1)$$,
+  'a cost is not negative', 'copilot_messages_cost_nonnegative');
+
+-- A price may arrive after the reply, once; then it is the record.
+update ouroboros.copilot_messages set cost_cents = 3 where id = 'a1070000-0000-0000-0000-000000000304';
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_messages set cost_cents = 0 where id = 'a1070000-0000-0000-0000-000000000304'$$,
+  'a recorded cost is not rewritten', 'copilot_messages_transition');
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_messages set tokens_in = 1 where id = 'a1070000-0000-0000-0000-000000000304'$$,
+  'a recorded token count is not rewritten', 'copilot_messages_transition');
+
+-- --- streaming -----------------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_messages set body = 'rewritten' where id = 'a1070000-0000-0000-0000-000000000302'$$,
+  'a finished reply''s text is final', 'copilot_messages_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_messages set tool_trace = '{"operations": [], "reads": [], "dry_run_proposals": []}'
+     where id = 'a1070000-0000-0000-0000-000000000302'$$,
+  'a finished reply''s tool trace is final', 'copilot_messages_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_messages set status = 'streaming' where id = 'a1070000-0000-0000-0000-000000000302'$$,
+  'a finished reply does not resume streaming', 'copilot_messages_transition');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, status) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'copilot', '', 'complete')$$,
+  'a finished bubble says something', 'copilot_messages_body_when_complete');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body, status) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'user', 'hi', 'streaming')$$,
+  'what a person types arrives whole', 'copilot_messages_user_plain');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'system', 'x')$$,
+  'a role is user or copilot', 'copilot_messages_role');
+
+-- --- seq -----------------------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, seq, role, body) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 99, 'user', 'x')$$,
+  'a seq is allocated, never supplied', 'copilot_messages_seq_allocated');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_messages set seq = 99 where id = 'a1070000-0000-0000-0000-000000000302'$$,
+  'a message keeps its place', 'copilot_messages_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions set last_seq = 1 where id = 'a1070000-0000-0000-0000-000000000201'$$,
+  'the session''s counter never moves back', 'copilot_sessions_transition');
+
+-- The refusals above rolled back their allocations: the next message is 7, no gap.
+insert into ouroboros.copilot_messages (id, organization_id, session_id, role, body) values
+  ('a1070000-0000-0000-0000-000000000307', 'org-v107', 'a1070000-0000-0000-0000-000000000201', 'user', 'thanks');
+select pg_temp.must_hold(
+  (select seq = 7 from ouroboros.copilot_messages where id = 'a1070000-0000-0000-0000-000000000307'),
+  'a refused append leaves no gap in seq');
+
+-- --- workspace isolation ---------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body) values
+    ('org-v107b', 'a1070000-0000-0000-0000-000000000201', 'user', 'x')$$,
+  'a message belongs to a session of its own workspace', 'copilot_messages_session_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body) values
+    ('org-v107', '00000000-0000-0000-0000-000000000000', 'user', 'x')$$,
+  'a message belongs to a session that exists', 'copilot_messages_session_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_sessions (organization_id, workflow_id, draft_name) values
+    ('org-v107b', 'a1070000-0000-0000-0000-000000000102', 'standard-fix')$$,
+  'a session edits a workflow of its own workspace', 'copilot_sessions_workflow_fk');
+
+-- --- one active session per draft ------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_sessions (organization_id, workflow_id, draft_name) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000101', 'security-patch')$$,
+  'a draft has at most one active conversation', 'copilot_sessions_one_active');
+
+-- Another draft, and the same slug in another workspace, are unaffected.
+insert into ouroboros.copilot_sessions (id, organization_id, workflow_id, draft_name) values
+  ('a1070000-0000-0000-0000-000000000202', 'org-v107',  'a1070000-0000-0000-0000-000000000102', 'standard-fix'),
+  ('a1070000-0000-0000-0000-000000000203', 'org-v107b', 'a1070000-0000-0000-0000-000000000103', 'security-patch');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_sessions (organization_id, workflow_id, draft_name) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000102', 'Standard Fix')$$,
+  'a draft name is spelt like a workflow slug', 'copilot_sessions_draft_name_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_sessions (organization_id, workflow_id, draft_name, status, closed_at) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000102', 'standard-fix', 'paused', now())$$,
+  'a session is active, promoted or discarded', 'copilot_sessions_status');
+
+-- --- model provenance ----------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions
+       set model_provenance = jsonb_set(model_provenance, '{0,alias}', '"cheap-fast"')
+     where id = 'a1070000-0000-0000-0000-000000000201'$$,
+  'a recorded alias is never rewritten', 'copilot_sessions_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions set model_provenance = '[]'
+     where id = 'a1070000-0000-0000-0000-000000000201'$$,
+  'recorded provenance is never removed', 'copilot_sessions_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions
+       set model_provenance = model_provenance || '[{"seq": 5, "alias": "coder-max", "model_id": "m"}]'
+     where id = 'a1070000-0000-0000-0000-000000000201'$$,
+  'provenance entries rise in seq', 'copilot_sessions_model_provenance_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions set model_provenance = '[{"seq": 1, "alias": "coder-max"}]'
+     where id = 'a1070000-0000-0000-0000-000000000202'$$,
+  'a provenance entry names the alias and the model it resolved to', 'copilot_sessions_model_provenance_shape');
+
+-- --- closing keeps the transcript ------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions set status = 'promoted'
+     where id = 'a1070000-0000-0000-0000-000000000201'$$,
+  'a closed session records when it closed', 'copilot_sessions_closed_when_not_active');
+
+update ouroboros.copilot_sessions set status = 'promoted', closed_at = now()
+ where id = 'a1070000-0000-0000-0000-000000000201';
+
+select pg_temp.must_hold(
+  (select count(*) = 7 from ouroboros.copilot_messages where session_id = 'a1070000-0000-0000-0000-000000000201'),
+  'promoting a session keeps its whole transcript');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.copilot_messages (organization_id, session_id, role, body) values
+    ('org-v107', 'a1070000-0000-0000-0000-000000000201', 'user', 'one more thing')$$,
+  'a closed session takes no new messages', 'copilot_messages_session_active');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions set status = 'discarded'
+     where id = 'a1070000-0000-0000-0000-000000000201'$$,
+  'promoted is terminal', 'copilot_sessions_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions set status = 'active', closed_at = null
+     where id = 'a1070000-0000-0000-0000-000000000201'$$,
+  'a closed session is not reopened', 'copilot_sessions_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions set closed_at = closed_at + interval '1 day'
+     where id = 'a1070000-0000-0000-0000-000000000201'$$,
+  'when a session closed is not moved', 'copilot_sessions_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.copilot_sessions set workflow_id = 'a1070000-0000-0000-0000-000000000102'
+     where id = 'a1070000-0000-0000-0000-000000000201'$$,
+  'a session keeps its draft', 'copilot_sessions_transition');
+
+-- With the first conversation closed, the draft may have a new one.
+insert into ouroboros.copilot_sessions (id, organization_id, workflow_id, draft_name) values
+  ('a1070000-0000-0000-0000-000000000204', 'org-v107', 'a1070000-0000-0000-0000-000000000101', 'security-patch');
+
+update ouroboros.copilot_sessions set status = 'discarded', closed_at = now()
+ where id = 'a1070000-0000-0000-0000-000000000204';
+
+select pg_temp.must_hold(
+  (select array_agg(status order by created_at, id) = array['promoted', 'discarded']
+     from ouroboros.copilot_sessions where workflow_id = 'a1070000-0000-0000-0000-000000000101'),
+  'a draft''s closed conversations remain, promoted and discarded alike');
+
+-- --- indexes -------------------------------------------------------------------------
+
+analyze ouroboros.copilot_messages;
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select * from ouroboros.copilot_messages
+     where session_id = 'a1070000-0000-0000-0000-000000000201' and seq < 5 order by seq desc limit 2$$,
+  'copilot_messages_session_seq_key');
+set local enable_seqscan = on;
+
+-- History pages by seq: two pages of three, then the rest, with nothing repeated or skipped.
+select pg_temp.must_hold(
+  (select array_agg(seq order by seq desc) = array[7, 6, 5]
+     from (select seq from ouroboros.copilot_messages
+            where session_id = 'a1070000-0000-0000-0000-000000000201'
+            order by seq desc limit 3) page)
+   and (select array_agg(seq order by seq desc) = array[4, 3, 2]
+          from (select seq from ouroboros.copilot_messages
+                 where session_id = 'a1070000-0000-0000-0000-000000000201' and seq < 5
+                 order by seq desc limit 3) page),
+  'history pages by seq without repeating or skipping a message');
+
+-- --- the chat retention sweep ----------------------------------------------------------
+
+-- Two long-closed sessions in the second workspace: one discarded, one promoted.
+insert into ouroboros.workflows (id, organization_id, slug, name) values
+  ('a1070000-0000-0000-0000-000000000104', 'org-v107b', 'old-one', 'Old one'),
+  ('a1070000-0000-0000-0000-000000000105', 'org-v107b', 'old-two', 'Old two');
+insert into ouroboros.copilot_sessions (id, organization_id, workflow_id, draft_name, created_at) values
+  ('a1070000-0000-0000-0000-000000000205', 'org-v107b', 'a1070000-0000-0000-0000-000000000104', 'old-one', '2020-01-01'),
+  ('a1070000-0000-0000-0000-000000000206', 'org-v107b', 'a1070000-0000-0000-0000-000000000105', 'old-two', '2020-01-01');
+insert into ouroboros.copilot_messages (organization_id, session_id, role, body) values
+  ('org-v107b', 'a1070000-0000-0000-0000-000000000205', 'user', 'discard me'),
+  ('org-v107b', 'a1070000-0000-0000-0000-000000000205', 'user', 'really'),
+  ('org-v107b', 'a1070000-0000-0000-0000-000000000206', 'user', 'publish me');
+update ouroboros.copilot_sessions set status = 'discarded', closed_at = '2020-02-01'
+ where id = 'a1070000-0000-0000-0000-000000000205';
+update ouroboros.copilot_sessions set status = 'promoted', closed_at = '2020-02-01'
+ where id = 'a1070000-0000-0000-0000-000000000206';
+
+select pg_temp.must_reject(
+  $$select ouroboros.copilot_sessions_sweep('org-v107b', now() - interval '1 day', now() - interval '30 days', 100)$$,
+  'a chat cutoff inside the 7-day floor is refused', 'copilot_sessions_sweep_cutoff_floor');
+
+select pg_temp.must_reject(
+  $$select ouroboros.copilot_sessions_sweep('org-v107b', now() - interval '30 days', now() - interval '30 days', 0)$$,
+  'a sweep removes at least one session per call', 'copilot_sessions_sweep_limit');
+
+-- The chat tier has passed both; the promoted tier has passed neither. Only the discarded one goes.
+select pg_temp.must_hold(
+  (select sessions = 1 and messages = 2
+     from ouroboros.copilot_sessions_sweep('org-v107b', '2021-01-01', '2019-01-01', 100)),
+  'the sweep removes a discarded session past the chat cutoff, with its messages');
+
+select pg_temp.must_hold(
+  (select array_agg(id::text order by id) = array['a1070000-0000-0000-0000-000000000203',
+                                                  'a1070000-0000-0000-0000-000000000206']
+     from ouroboros.copilot_sessions where organization_id = 'org-v107b')
+   and (select count(*) = 0 from ouroboros.copilot_messages
+         where session_id = 'a1070000-0000-0000-0000-000000000205'),
+  'a promoted transcript inside its own tier is kept, and the active session is never swept');
+
+-- A promoted tier set shorter than the chat tier is held to it: promoted is never kept less.
+select pg_temp.must_hold(
+  (select sessions = 0 from ouroboros.copilot_sessions_sweep('org-v107b', '2020-01-15', '2021-01-01', 100)),
+  'a promoted transcript is never swept before a discarded one would be');
+
+select pg_temp.must_hold(
+  (select sessions = 1 and messages = 1
+     from ouroboros.copilot_sessions_sweep('org-v107b', '2021-01-01', '2021-01-01', 100)),
+  'once past both cutoffs a promoted transcript is swept too');
+
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.copilot_sessions where organization_id = 'org-v107'),
+  'a sweep of one workspace leaves every other workspace''s sessions alone');
+
+-- --- the application role ------------------------------------------------------------
+set local role ouroboros_app;
+
+select pg_temp.must_hold(
+  (select current_user = 'ouroboros_app'),
+  'the assertions below really are the application role''s');
+
+insert into ouroboros.copilot_messages (id, organization_id, session_id, role, body) values
+  ('a1070000-0000-0000-0000-000000000308', 'org-v107', 'a1070000-0000-0000-0000-000000000202', 'user',
+   'make it run nightly');
+
+update ouroboros.copilot_messages set body = body where id = 'a1070000-0000-0000-0000-000000000308';
+
+select pg_temp.must_raise(
+  $$update ouroboros.copilot_sessions set last_seq = 100 where id = 'a1070000-0000-0000-0000-000000000202'$$,
+  '42501', 'the application role cannot move a session''s message counter');
+
+select pg_temp.must_raise(
+  $$update ouroboros.copilot_messages set seq = 100 where id = 'a1070000-0000-0000-0000-000000000308'$$,
+  '42501', 'the application role cannot renumber a message');
+
+select pg_temp.must_raise(
+  $$delete from ouroboros.copilot_messages where id = 'a1070000-0000-0000-0000-000000000308'$$,
+  '42501', 'the application role cannot delete a message');
+
+select pg_temp.must_raise(
+  $$delete from ouroboros.copilot_sessions where id = 'a1070000-0000-0000-0000-000000000202'$$,
+  '42501', 'the application role cannot delete a session');
+
+select pg_temp.must_raise(
+  $$select ouroboros.copilot_messages_allocate_seq()$$,
+  '42501', 'the allocator is not callable outside its trigger');
+
+select count(*) from ouroboros.copilot_sessions_sweep('org-v107', '2019-01-01', '2019-01-01', 1);
+
+reset role;
+
+select pg_temp.must_hold(
+  (select seq = 1 from ouroboros.copilot_messages where id = 'a1070000-0000-0000-0000-000000000308'),
+  'a message appended by the application role is numbered by the allocator');
+
+select pg_temp.must_hold(
+  (select bool_and(prosecdef
+                   and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+                   and not has_function_privilege('public', oid, 'execute'))
+     from pg_proc
+    where proname in ('copilot_messages_allocate_seq', 'copilot_sessions_sweep')
+      and pronamespace = 'ouroboros'::regnamespace)
+   and not has_column_privilege('ouroboros_app', 'ouroboros.copilot_sessions', 'last_seq', 'update')
+   and not has_column_privilege('ouroboros_app', 'ouroboros.copilot_sessions', 'last_seq', 'insert')
+   and not has_column_privilege('ouroboros_app', 'ouroboros.copilot_messages', 'seq', 'insert'),
+  'the copilot allocator and sweep run as their owner with search_path pinned and execute revoked from public, and the counters have no grant to the application');
+
+-- --- the workspace takes everything with it ----------------------------------------------
+
+delete from ouroboros.organization where "id" in ('org-v107', 'org-v107b');
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.copilot_sessions where organization_id in ('org-v107', 'org-v107b'))
+   and (select count(*) = 0 from ouroboros.copilot_messages where organization_id in ('org-v107', 'org-v107b')),
+  'deleting a workspace deletes its copilot sessions and messages');
+delete from ouroboros."user" where "id" = 'a1070000-0000-0000-0000-00000000000a';
+
+-- ===========================================================================
+-- V108 — the citation ledger: sources, briefs, claims and their links (#609, CK.2)
+-- ===========================================================================
+--
+-- Mockup 22's brief and sources card as rows: cite numbers dense and stable with symbolic keys
+-- beside them, locators validated per kind, excerpts and the per-investigation archive bounded,
+-- briefs versioned and structured, a claim citing several sources and a source backing several
+-- claims, a finding that cannot commit uncited, and a brief_ready investigation that cannot
+-- commit without a brief. The two deferred rules are forced by name with `set constraints`,
+-- never `all`, so events other sections left pending stay pending.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v108', 'Citation Works', 'citation-works-v108', now());
+
+insert into ouroboros.investigations (id, organization_id, kind_id, question, depth, tools_enabled,
+                                      status, provenance)
+select v.id, 'org-v108', k.id, v.question, 'deep_dive', '["web", "competitor", "code", "tickets", "telemetry"]',
+       'running', '{"researcher": "loop-v1", "alias": "researcher-long-ctx", "resolution_ref": null}'
+  from ouroboros.investigation_kinds k,
+       (values ('a1080000-0000-0000-0000-000000000001'::uuid, 'Where are we behind Skylink on docking?'),
+               ('a1080000-0000-0000-0000-000000000002'::uuid, 'A second investigation'))
+         as v(id, question)
+ where k.organization_id = 'org-v108' and k.slug = 'gap_analysis';
+
+-- pg_temp.v108_source(investigation, kind, tool, locator[, cite_no]) — one well-formed source
+-- insert, as a statement, so the refusals below can each vary one thing.
+create function pg_temp.v108_source(investigation text, kind text, tool text, locator text,
+                                    cite_no text default 'null', excerpt text default '''archived''')
+returns text language sql as $$
+  select format($f$insert into ouroboros.source_records
+                     (investigation_id, tool_slug, kind, title, locator, retrieved_at, content_hash,
+                      excerpt, cite_no)
+                   values ('%s', '%s', '%s', 'A source', '%s', now(), 'sha256:%s', %s, %s)$f$,
+                investigation, tool, kind, locator, repeat('0', 64), excerpt, cite_no);
+$$;
+
+-- --- cite numbers ----------------------------------------------------------------------
+
+insert into ouroboros.source_records (id, investigation_id, tool_slug, kind, title, locator,
+                                      retrieved_at, content_hash, excerpt, meta) values
+  ('a1080000-0000-0000-0000-000000000101', 'a1080000-0000-0000-0000-000000000001', 'web', 'web',
+   'Skylink S4 docking module — teardown & sensor BOM', 'https://droneanalysts.example.com/s4-teardown',
+   now() - interval '3 days', 'sha256:' || encode(sha256('teardown'::bytea), 'hex'),
+   'IMU and rangefinder match the Helios spec sheet.', '{"query": "skylink s4 teardown"}'),
+  ('a1080000-0000-0000-0000-000000000102', 'a1080000-0000-0000-0000-000000000001', 'competitor', 'web',
+   'Skylink firmware 6.2 release notes', 'https://skylink.example.com/releases/6.2',
+   now() - interval '3 days', 'sha256:' || encode(sha256('notes'::bytea), 'hex'),
+   'Gust-adaptive final approach.', '{}');
+
+select pg_temp.must_hold(
+  (select array_agg(cite_no order by created_at, cite_no) = array[1, 2]
+     from ouroboros.source_records where investigation_id = 'a1080000-0000-0000-0000-000000000001'),
+  'cite numbers are allocated 1, 2, … per investigation');
+
+-- A supplied number is accepted only when it is the next one…
+do $x$ begin execute pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'ticket', 'tickets',
+                            'issue-index://support/churn-2026-q2', '3'); end $x$;
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'https://a.example.com/x', '7'),
+  'a cite number may not skip ahead — numbers are dense', 'source_records_cite_no_dense');
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'https://a.example.com/x', '2'),
+  'nor be reused', 'source_records_cite_no_dense');
+
+-- …and a refused write gives its number back: the next source is [04].
+insert into ouroboros.source_records (id, investigation_id, tool_slug, kind, title, locator,
+                                      retrieved_at, content_hash, excerpt, cite_key) values
+  ('a1080000-0000-0000-0000-000000000104', 'a1080000-0000-0000-0000-000000000001', 'code', 'code',
+   'dock_ctrl.c blame — gains last tuned 14 months ago',
+   'git://helios-firmware@8c1b2e4/src/dock/dock_ctrl.c#L214', now() - interval '3 days',
+   'sha256:' || encode(sha256('blame'::bytea), 'hex'), 'kp = 1.8f; /* 2025-08 */', 'git');
+
+select pg_temp.must_hold(
+  (select cite_no = 4 and cite_key = 'git'
+     from ouroboros.source_records where id = 'a1080000-0000-0000-0000-000000000104'),
+  'a refused write leaves no gap, and a symbolic key sits beside its number');
+
+-- Another investigation counts from 1 on its own.
+do $x$ begin execute pg_temp.v108_source('a1080000-0000-0000-0000-000000000002', 'web', 'web', 'https://b.example.com/'); end $x$;
+select pg_temp.must_hold(
+  (select cite_no = 1 from ouroboros.source_records
+    where investigation_id = 'a1080000-0000-0000-0000-000000000002'),
+  'every investigation numbers its own sources from [01]');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.source_records (investigation_id, tool_slug, kind, title, locator,
+                                          retrieved_at, content_hash, excerpt, cite_key)
+    values ('a1080000-0000-0000-0000-000000000001', 'code', 'code', 'Again',
+            'git://helios-firmware@8c1b2e4/src/dock/dock_ctrl.c', now(),
+            'sha256:' || repeat('1', 64), 'x', 'git')$$,
+  'a symbolic key names one source per investigation', 'source_records_investigation_cite_key_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.source_records (investigation_id, tool_slug, kind, title, locator,
+                                          retrieved_at, content_hash, excerpt, cite_key)
+    values ('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'Numeric key',
+            'https://a.example.com/', now(), 'sha256:' || repeat('1', 64), 'x', '07')$$,
+  'a symbolic key never reads as a number', 'source_records_cite_key_format');
+
+-- Stable: a record is never edited, so [04] cannot be renumbered or re-pointed.
+select pg_temp.must_reject(
+  $$update ouroboros.source_records set cite_no = 9 where id = 'a1080000-0000-0000-0000-000000000104'$$,
+  'a cite number never changes', 'source_records_immutable');
+select pg_temp.must_reject(
+  $$update ouroboros.source_records set excerpt = 'edited' where id = 'a1080000-0000-0000-0000-000000000104'$$,
+  'an archived excerpt is never edited', 'source_records_immutable');
+
+-- --- locators --------------------------------------------------------------------------
+
+select pg_temp.must_hold(
+  ouroboros.source_locator_valid('web', 'https://droneanalysts.example.com/s4-teardown')
+  and ouroboros.source_locator_valid('doc', 'https://arxiv.example.org/abs/2605.11423')
+  and ouroboros.source_locator_valid('competitor_diff', 'https://skylink.example.com/releases/6.2')
+  and ouroboros.source_locator_valid('ticket', 'issue-index://support/churn-2026-q2')
+  and ouroboros.source_locator_valid('ticket', 'https://github.com/acme/helios-firmware/issues/482')
+  and ouroboros.source_locator_valid('code', 'git://helios-firmware@8c1b2e4/src/dock/dock_ctrl.c#L214')
+  and ouroboros.source_locator_valid('code', 'git://acme/helios-firmware@8c1b2e4f00/src/dock/dock_ctrl.c#L200-L230')
+  and ouroboros.source_locator_valid('code', 'git://helios-firmware@8c1b2e4')
+  and ouroboros.source_locator_valid('telemetry', 'telemetry://dock.success_rate/30d')
+  and ouroboros.source_locator_valid('telemetry', 'telemetry://hil/dock.abort_count/2026-08-01..2026-09-01')
+  and ouroboros.source_locator_valid('telemetry', 'telemetry://build.duration/2026-09-01T00:00Z..2026-09-02T00:00Z'),
+  'the mockup''s locators, external and internal, are well-formed for their kinds');
+
+select pg_temp.must_hold(
+  not ouroboros.source_locator_valid('code', 'git://helios-firmware/src/dock/dock_ctrl.c')
+  and not ouroboros.source_locator_valid('code', 'git://helios-firmware@main/src/dock/dock_ctrl.c')
+  and not ouroboros.source_locator_valid('code', 'git://helios-firmware@8c1b2e4/src/../etc/passwd')
+  and not ouroboros.source_locator_valid('code', 'git://helios-firmware@8c1b2e4/src//dock.c')
+  and not ouroboros.source_locator_valid('code', 'git://helios-firmware@8c1b2e4/src/dock.c#L0')
+  and not ouroboros.source_locator_valid('code', 'https://github.com/acme/helios-firmware')
+  and not ouroboros.source_locator_valid('telemetry', 'telemetry://dock.success_rate')
+  and not ouroboros.source_locator_valid('telemetry', 'telemetry://dock.success_rate/last-month')
+  and not ouroboros.source_locator_valid('telemetry', 'telemetry:///30d')
+  and not ouroboros.source_locator_valid('ticket', 'issue-index://support')
+  and not ouroboros.source_locator_valid('web', 'javascript:alert(1)')
+  and not ouroboros.source_locator_valid('web', 'issue-index://support/churn-2026-q2')
+  and not ouroboros.source_locator_valid('web', 'https://a.example.com/with space')
+  and not ouroboros.source_locator_valid('nonsense', 'https://a.example.com/')
+  and not ouroboros.source_locator_valid('web', null),
+  'malformed git://, telemetry:// and issue-index:// locators, and a locator of the wrong kind, are not');
+
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'code', 'code', 'git://helios-firmware/src/dock/dock_ctrl.c'),
+  'a git:// locator without a commit is refused', 'source_records_locator_valid');
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'telemetry', 'telemetry', 'telemetry://dock.success_rate'),
+  'a telemetry:// locator without a window is refused', 'source_records_locator_valid');
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'git://helios-firmware@8c1b2e4/x.c'),
+  'an internal URI does not stand in for a web source', 'source_records_locator_valid');
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'video', 'web', 'https://a.example.com/'),
+  'a source kind is one of the six', 'source_records_kind');
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'web', 'crystal-ball', 'https://a.example.com/'),
+  'a source names a registered tool', 'source_records_tool_slug_fkey');
+
+-- --- archival bounds --------------------------------------------------------------------
+
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'https://a.example.com/',
+                      'null', format('%L', repeat('x', 4097))),
+  'an excerpt is at most 4096 bytes', 'source_records_excerpt_bounded');
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'https://a.example.com/',
+                      'null', format('%L', repeat('é', 2049))),
+  'counted in bytes, not characters', 'source_records_excerpt_bounded');
+select pg_temp.must_reject(
+  pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'https://a.example.com/',
+                      'null', $$'   '$$),
+  'an excerpt archives something', 'source_records_excerpt_bounded');
+
+do $x$ begin execute pg_temp.v108_source('a1080000-0000-0000-0000-000000000002', 'web', 'web', 'https://b.example.com/max',
+                            'null', format('%L', repeat('x', 4096))); end $x$;
+select pg_temp.must_hold(
+  (select excerpt_bytes = 4096 + length('archived')
+     from ouroboros.source_cite_counters where investigation_id = 'a1080000-0000-0000-0000-000000000002'),
+  'a 4096-byte excerpt is accepted, and the archive total counts it');
+
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       update ouroboros.source_cite_counters set excerpt_bytes = 2097152 - 4
+        where investigation_id = 'a1080000-0000-0000-0000-000000000002';
+       execute pg_temp.v108_source('a1080000-0000-0000-0000-000000000002', 'web', 'web', 'https://b.example.com/y');
+     end $x$ $q$,
+  'an investigation archives at most 2 MiB of excerpts', 'source_records_investigation_cap');
+
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       update ouroboros.source_cite_counters set last_cite_no = 1000
+        where investigation_id = 'a1080000-0000-0000-0000-000000000002';
+       execute pg_temp.v108_source('a1080000-0000-0000-0000-000000000002', 'web', 'web', 'https://b.example.com/z');
+     end $x$ $q$,
+  'and at most 1000 sources', 'source_records_investigation_cap');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.source_records (investigation_id, tool_slug, kind, title, locator,
+                                          retrieved_at, content_hash, excerpt, meta)
+    values ('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'x', 'https://a.example.com/',
+            now(), 'sha256:' || repeat('1', 64), 'x', '["not", "an", "object"]')$$,
+  'meta is an object', 'source_records_meta_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.source_records (investigation_id, tool_slug, kind, title, locator,
+                                          retrieved_at, content_hash, excerpt, meta)
+    values ('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'x', 'https://a.example.com/',
+            now(), 'sha256:' || repeat('1', 64), 'x', jsonb_build_object('page', repeat('x', 8200)))$$,
+  'meta is bounded too — the ledger is not a page cache', 'source_records_meta_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.source_records (investigation_id, tool_slug, kind, title, locator,
+                                          retrieved_at, content_hash, excerpt)
+    values ('a1080000-0000-0000-0000-000000000001', 'web', 'web', 'x', 'https://a.example.com/',
+            now(), 'md5:abc', 'x')$$,
+  'a content hash is sha256:<hex>', 'source_records_content_hash_format');
+
+-- --- briefs -----------------------------------------------------------------------------
+
+insert into ouroboros.briefs (id, investigation_id, version, body) values
+  ('a1080000-0000-0000-0000-000000000201', 'a1080000-0000-0000-0000-000000000001', 1,
+   '{"paragraphs": [{"spans": [
+       {"text": "The docking gap is not sensors: our IMU and rangefinder match Skylink''s published spec.", "claim": "sensors-match"},
+       {"text": " It is control — Skylink runs a wind-feedforward MPC in the final 2 m,", "claim": "control-mpc"},
+       {"text": " while ours is PID with fixed gains.", "claim": "pid-fixed-gains"},
+       {"text": " Estimated closure: one epic, 5 tickets."}]},
+     {"spans": [{"text": "Rivals will ship this by Q1.", "claim": "rivals-q1"}]}]}');
+
+select pg_temp.must_hold(
+  ouroboros.brief_body_claim_refs((select body from ouroboros.briefs where id = 'a1080000-0000-0000-0000-000000000201'))
+    = array['sensors-match', 'control-mpc', 'pid-fixed-gains', 'rivals-q1'],
+  'a brief body names its claim spans in reading order');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.briefs (investigation_id, version, body) values
+    ('a1080000-0000-0000-0000-000000000001', 3, '{"paragraphs": [{"spans": [{"text": "x"}]}]}')$$,
+  'a brief version is the next one, with no gap', 'briefs_version_next');
+select pg_temp.must_reject(
+  $$insert into ouroboros.briefs (investigation_id, version, body) values
+    ('a1080000-0000-0000-0000-000000000001', 2, '{"markdown": "# the gap is control"}')$$,
+  'a brief body is structured, not free markdown', 'briefs_body_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.briefs (investigation_id, version, body) values
+    ('a1080000-0000-0000-0000-000000000001', 2,
+     '{"paragraphs": [{"spans": [{"text": "a", "claim": "c1"}, {"text": "b", "claim": "c1"}]}]}')$$,
+  'a claim span ref is used once per body', 'briefs_body_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.briefs (investigation_id, version, body) values
+    ('a1080000-0000-0000-0000-000000000001', 2, '{"paragraphs": [{"spans": [{"text": " "}]}]}')$$,
+  'a span says something', 'briefs_body_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.briefs (investigation_id, version, body, deliverables) values
+    ('a1080000-0000-0000-0000-000000000001', 2, '{"paragraphs": [{"spans": [{"text": "x"}]}]}',
+     '{"slides": "deck-1"}')$$,
+  'deliverables name what a playbook produces', 'briefs_deliverables_shape');
+
+insert into ouroboros.briefs (id, investigation_id, version, body, deliverables) values
+  ('a1080000-0000-0000-0000-000000000202', 'a1080000-0000-0000-0000-000000000001', 2,
+   '{"paragraphs": [{"spans": [{"text": "Revised.", "claim": "sensors-match"}]}]}',
+   '{"matrix": "matrix-rs-127", "draft_batch": "batch-dock"}');
+
+select pg_temp.must_hold(
+  (select array_agg(version order by version) = array[1, 2]
+          and (array_agg(id order by version desc))[1] = 'a1080000-0000-0000-0000-000000000202'
+     from ouroboros.briefs where investigation_id = 'a1080000-0000-0000-0000-000000000001'),
+  'a revised brief is a new version; the highest is current and the first is kept as history');
+
+select pg_temp.must_reject(
+  $$update ouroboros.briefs set body = '{"paragraphs": [{"spans": [{"text": "rewritten"}]}]}'
+     where id = 'a1080000-0000-0000-0000-000000000201'$$,
+  'a brief version is never rewritten', 'briefs_immutable');
+
+-- --- claims and citations ----------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.brief_claims (investigation_id, brief_id, span_ref, claim_type, text) values
+    ('a1080000-0000-0000-0000-000000000002', 'a1080000-0000-0000-0000-000000000201', 'control-mpc',
+     'open_question', 'x')$$,
+  'a claim belongs to a brief of its own investigation', 'brief_claims_brief_fk');
+
+insert into ouroboros.brief_claims (id, investigation_id, brief_id, span_ref, claim_type, text) values
+  ('a1080000-0000-0000-0000-000000000301', 'a1080000-0000-0000-0000-000000000001',
+   'a1080000-0000-0000-0000-000000000201', 'sensors-match', 'finding', 'The docking gap is not sensors.'),
+  ('a1080000-0000-0000-0000-000000000302', 'a1080000-0000-0000-0000-000000000001',
+   'a1080000-0000-0000-0000-000000000201', 'control-mpc', 'finding', 'Skylink runs wind-feedforward MPC.'),
+  ('a1080000-0000-0000-0000-000000000303', 'a1080000-0000-0000-0000-000000000001',
+   'a1080000-0000-0000-0000-000000000201', 'pid-fixed-gains', 'finding', 'Ours is PID with fixed gains.'),
+  ('a1080000-0000-0000-0000-000000000304', 'a1080000-0000-0000-0000-000000000001',
+   'a1080000-0000-0000-0000-000000000201', 'rivals-q1', 'open_question', 'Rivals will ship this by Q1.');
+
+-- One claim cites several sources ([01][02]); one source backs several claims ([02]).
+insert into ouroboros.brief_claim_sources (investigation_id, claim_id, source_id) values
+  ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000301', 'a1080000-0000-0000-0000-000000000101'),
+  ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000302', 'a1080000-0000-0000-0000-000000000102'),
+  ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000302', 'a1080000-0000-0000-0000-000000000101'),
+  ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000303', 'a1080000-0000-0000-0000-000000000104'),
+  ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000303', 'a1080000-0000-0000-0000-000000000102');
+
+-- The commit-time rule holds for every finding written so far, and the open question needs none.
+set constraints ouroboros.brief_claims_finding_cited immediate;
+set constraints ouroboros.brief_claims_finding_cited deferred;
+
+select pg_temp.must_hold(
+  (select array_agg(c.span_ref || ':' || coalesce((select string_agg(coalesce('[' || s.cite_key || ']',
+                                                                      '[' || lpad(s.cite_no::text, 2, '0') || ']'),
+                                                             '' order by s.cite_no)
+                                             from ouroboros.brief_claim_sources l
+                                             join ouroboros.source_records s on s.id = l.source_id
+                                            where l.claim_id = c.id), '') order by c.span_ref)
+          = array['control-mpc:[01][02]', 'pid-fixed-gains:[02][git]', 'rivals-q1:', 'sensors-match:[01]']
+     from ouroboros.brief_claims c where c.brief_id = 'a1080000-0000-0000-0000-000000000201'),
+  'claims render their markers from stored numbers: one claim cites several sources, one source backs several claims');
+
+select pg_temp.must_hold(
+  (select count(distinct l.claim_id) = 2 from ouroboros.brief_claim_sources l
+    where l.source_id = 'a1080000-0000-0000-0000-000000000102'),
+  'source [02] backs two claims');
+
+-- Re-rendering is stable: a new source lands after the existing ones and moves no number.
+do $x$ begin execute pg_temp.v108_source('a1080000-0000-0000-0000-000000000001', 'telemetry', 'telemetry',
+                            'telemetry://dock.success_rate/30d'); end $x$;
+select pg_temp.must_hold(
+  (select array_agg(cite_no order by cite_no) = array[1, 2, 3, 4, 5]
+          and bool_and(cite_no = case id when 'a1080000-0000-0000-0000-000000000101' then 1
+                                         when 'a1080000-0000-0000-0000-000000000102' then 2
+                                         when 'a1080000-0000-0000-0000-000000000104' then 4
+                                         else cite_no end)
+     from ouroboros.source_records where investigation_id = 'a1080000-0000-0000-0000-000000000001'),
+  'a source added later takes the next number and renumbers nothing — [01]…[05], dense');
+
+-- An uncited finding cannot commit.
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       insert into ouroboros.brief_claims (investigation_id, brief_id, span_ref, claim_type, text)
+       values ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000202',
+               'sensors-match', 'finding', 'Rivals will ship this by Q1.');
+       set constraints ouroboros.brief_claims_finding_cited immediate;
+     end $x$ $q$,
+  'a finding claim with no citation fails the write', 'brief_claims_finding_cited');
+
+-- The same claim as an open question is fine — the demotion path.
+do $x$ begin
+  insert into ouroboros.brief_claims (investigation_id, brief_id, span_ref, claim_type, text)
+  values ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000202',
+          'sensors-match', 'open_question', 'Rivals will ship this by Q1.');
+  set constraints ouroboros.brief_claims_finding_cited immediate;
+  set constraints ouroboros.brief_claims_finding_cited deferred;
+end $x$;
+
+-- Removing a finding's last citation cannot commit either.
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       delete from ouroboros.brief_claim_sources where claim_id = 'a1080000-0000-0000-0000-000000000301';
+       set constraints ouroboros.brief_claim_sources_finding_cited immediate;
+     end $x$ $q$,
+  'a finding''s last citation cannot be removed', 'brief_claims_finding_cited');
+
+-- Removing one of two keeps the finding cited.
+do $x$ begin
+  delete from ouroboros.brief_claim_sources
+   where claim_id = 'a1080000-0000-0000-0000-000000000302'
+     and source_id = 'a1080000-0000-0000-0000-000000000101';
+  set constraints ouroboros.brief_claim_sources_finding_cited immediate;
+  set constraints ouroboros.brief_claim_sources_finding_cited deferred;
+end $x$;
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.brief_claims (investigation_id, brief_id, span_ref, claim_type, text) values
+    ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000201', 'no-such-span',
+     'open_question', 'x')$$,
+  'a claim describes a span its brief names', 'brief_claims_span_in_body');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.brief_claims (investigation_id, brief_id, span_ref, claim_type, text) values
+    ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000201', 'control-mpc',
+     'open_question', 'again')$$,
+  'a span is described by one claim', 'brief_claims_brief_span_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.brief_claims (investigation_id, brief_id, span_ref, claim_type, text) values
+    ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000202', 'sensors-match',
+     'hunch', 'x')$$,
+  'a claim is a finding or an open question', 'brief_claims_claim_type');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.brief_claim_sources (investigation_id, claim_id, source_id)
+    select 'a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000304', id
+      from ouroboros.source_records where investigation_id = 'a1080000-0000-0000-0000-000000000002' limit 1$$,
+  'a claim cites only its own investigation''s sources', 'brief_claim_sources_source_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.brief_claim_sources (investigation_id, claim_id, source_id) values
+    ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000301',
+     'a1080000-0000-0000-0000-000000000101')$$,
+  'a claim cites a source once', 'brief_claim_sources_pkey');
+
+select pg_temp.must_reject(
+  $$update ouroboros.brief_claims set claim_type = 'finding' where id = 'a1080000-0000-0000-0000-000000000304'$$,
+  'a claim is never re-typed after it is written', 'brief_claims_immutable');
+
+select pg_temp.must_reject(
+  $$update ouroboros.brief_claim_sources set source_id = 'a1080000-0000-0000-0000-000000000104'
+     where claim_id = 'a1080000-0000-0000-0000-000000000301'$$,
+  'a citation link is never re-pointed', 'brief_claim_sources_immutable');
+
+-- --- brief_ready needs a brief ---------------------------------------------------------
+
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       update ouroboros.investigations
+          set status = 'brief_ready', actuals = '{"sources_used": 1, "spend_cents": null, "duration_ms": 1000}'
+        where id = 'a1080000-0000-0000-0000-000000000002';
+       set constraints ouroboros.investigations_brief_exists immediate;
+     end $x$ $q$,
+  'an investigation is brief_ready only with a brief', 'investigations_brief_exists');
+
+do $x$ begin
+  update ouroboros.investigations
+     set status = 'brief_ready', actuals = '{"sources_used": 5, "spend_cents": 612, "duration_ms": 1000}'
+   where id = 'a1080000-0000-0000-0000-000000000001';
+  set constraints ouroboros.investigations_brief_exists immediate;
+  set constraints ouroboros.investigations_brief_exists deferred;
+end $x$;
+
+select pg_temp.must_hold(
+  (select status = 'brief_ready' from ouroboros.investigations where id = 'a1080000-0000-0000-0000-000000000001'),
+  'with a brief, it is');
+
+-- --- indexes ----------------------------------------------------------------------------
+
+analyze ouroboros.source_records;
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select * from ouroboros.source_records
+     where investigation_id = 'a1080000-0000-0000-0000-000000000001' order by cite_no$$,
+  'source_records_investigation_cite_no_key');
+select pg_temp.must_use_index(
+  $$select * from ouroboros.source_records
+     where investigation_id = 'a1080000-0000-0000-0000-000000000001' and kind = 'code'$$,
+  'source_records_investigation_kind_idx');
+select pg_temp.must_use_index(
+  $$select * from ouroboros.source_records where content_hash = 'sha256:' || repeat('0', 64)$$,
+  'source_records_content_hash_idx');
+set local enable_seqscan = on;
+
+-- --- the application role ----------------------------------------------------------------
+set local role ouroboros_app;
+
+select pg_temp.must_hold(
+  (select current_user = 'ouroboros_app'),
+  'the assertions below really are the application role''s');
+
+insert into ouroboros.source_records (id, investigation_id, tool_slug, kind, title, locator,
+                                      retrieved_at, content_hash, excerpt) values
+  ('a1080000-0000-0000-0000-000000000106', 'a1080000-0000-0000-0000-000000000001', 'docs', 'doc',
+   '"MPC for precision landing in turbulent flow" — conf. paper', 'https://arxiv.example.org/abs/2605.11423',
+   now(), 'sha256:' || repeat('a', 64), 'Feedforward cuts touchdown error by 60%.');
+
+select pg_temp.must_raise(
+  $$update ouroboros.source_records set title = 'x' where id = 'a1080000-0000-0000-0000-000000000106'$$,
+  '42501', 'the application role cannot edit a source');
+select pg_temp.must_raise(
+  $$delete from ouroboros.source_records where id = 'a1080000-0000-0000-0000-000000000106'$$,
+  '42501', 'the application role cannot delete a source');
+select pg_temp.must_raise(
+  $$delete from ouroboros.brief_claim_sources$$,
+  '42501', 'the application role cannot remove a citation');
+select pg_temp.must_raise(
+  $$update ouroboros.source_cite_counters set last_cite_no = 1$$,
+  '42501', 'the application role cannot move the cite counter');
+select pg_temp.must_raise(
+  $$select ouroboros.source_records_allocate_cite_no()$$,
+  '42501', 'the allocator is not callable outside its trigger');
+
+reset role;
+
+select pg_temp.must_hold(
+  (select cite_no = 6 from ouroboros.source_records where id = 'a1080000-0000-0000-0000-000000000106'),
+  'a source written by the application role is numbered by the allocator');
+
+select pg_temp.must_hold(
+  (select prosecdef
+          and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+          and not has_function_privilege('public', oid, 'execute')
+     from pg_proc
+    where proname = 'source_records_allocate_cite_no' and pronamespace = 'ouroboros'::regnamespace)
+   and not has_table_privilege('ouroboros_app', 'ouroboros.source_cite_counters', 'select'),
+  'the cite allocator runs as its owner with search_path pinned and execute revoked from public, and the counter has no grant to the application');
+
+-- --- the workspace takes everything with it -----------------------------------------------
+
+delete from ouroboros.organization where "id" = 'org-v108';
+set constraints ouroboros.brief_claims_finding_cited, ouroboros.brief_claim_sources_finding_cited,
+                ouroboros.investigations_brief_exists immediate;
+set constraints ouroboros.brief_claims_finding_cited, ouroboros.brief_claim_sources_finding_cited,
+                ouroboros.investigations_brief_exists deferred;
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.source_records
+    where investigation_id in ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000002'))
+   and (select count(*) = 0 from ouroboros.briefs
+         where investigation_id = 'a1080000-0000-0000-0000-000000000001')
+   and (select count(*) = 0 from ouroboros.source_cite_counters
+         where investigation_id in ('a1080000-0000-0000-0000-000000000001', 'a1080000-0000-0000-0000-000000000002')),
+  'deleting a workspace deletes its ledger, briefs and counters — and the deferred rules have nothing left to object to');
+
+-- ===========================================================================
+-- V109 — the estimate's calibration, and estimate vs actuals recorded (#622, CM.3)
+-- ===========================================================================
+--
+-- The composer's `est. 40–60 sources · ~$6` is stored with the calibration version that computed
+-- it, and after the run record_investigation_estimate_outcome() records the comparison: one row
+-- per investigation, the estimate and actuals copied, two generated verdicts. A null cost on
+-- either side — an unpriced alias, an unpriced run — is a null verdict, never a miss.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v109',  'Estimate Works', 'estimate-works-v109', now()),
+  ('org-v109b', 'Estimate Two',   'estimate-two-v109',   now());
+
+-- --- the calibration version travels with the estimate ---------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigations (organization_id, kind_id, question, depth, tools_enabled, estimate)
+    select 'org-v109', id, 'Unversioned', 'deep_dive', '["web"]',
+           '{"sources": {"min": 40, "max": 60}, "cost_cents": null}'
+      from ouroboros.investigation_kinds where organization_id = 'org-v109' and slug = 'gap_analysis'$$,
+  'an estimate without the calibration version that computed it is refused',
+  'investigations_estimate_calibration_version_paired');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigations (organization_id, kind_id, question, depth, tools_enabled,
+                                          estimate_calibration_version)
+    select 'org-v109', id, 'Version alone', 'deep_dive', '["web"]', 1
+      from ouroboros.investigation_kinds where organization_id = 'org-v109' and slug = 'gap_analysis'$$,
+  'a calibration version with no estimate is refused',
+  'investigations_estimate_calibration_version_paired');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigations (organization_id, kind_id, question, depth, tools_enabled,
+                                          estimate, estimate_calibration_version)
+    select 'org-v109', id, 'Version zero', 'deep_dive', '["web"]',
+           '{"sources": {"min": 40, "max": 60}, "cost_cents": null}', 0
+      from ouroboros.investigation_kinds where organization_id = 'org-v109' and slug = 'gap_analysis'$$,
+  'a calibration version is a positive number',
+  'investigations_estimate_calibration_version_positive');
+
+-- Four investigations: priced and run, unpriced and run, priced and not yet run, and one with no
+-- estimate at all. Queued throughout — actuals are independent of the lifecycle (V106), and
+-- staying queued keeps V108's deferred brief rule out of this section.
+insert into ouroboros.investigations (id, organization_id, kind_id, question, depth, tools_enabled,
+                                      estimate, estimate_calibration_version, actuals, provenance)
+select v.id::uuid, 'org-v109', k.id, v.question, 'deep_dive',
+       '["web", "competitor", "code", "tickets", "telemetry"]',
+       v.estimate::jsonb, v.version, v.actuals::jsonb, v.provenance::jsonb
+  from (values
+    ('a1090000-0000-0000-0000-000000000001', 'Priced and run',
+     '{"sources": {"min": 40, "max": 60}, "cost_cents": {"min": 522, "max": 687}}', 1,
+     '{"sources_used": 44, "spend_cents": 612, "duration_ms": 1860000}',
+     '{"researcher": "loop-v1", "alias": "researcher-long-ctx", "resolution_ref": null}'),
+    ('a1090000-0000-0000-0000-000000000002', 'Unpriced and run',
+     '{"sources": {"min": 40, "max": 60}, "cost_cents": null}', 1,
+     '{"sources_used": 61, "spend_cents": 300, "duration_ms": 1}', null),
+    ('a1090000-0000-0000-0000-000000000003', 'Not yet run',
+     '{"sources": {"min": 10, "max": 15}, "cost_cents": {"min": 100, "max": 150}}', 1, null, null),
+    ('a1090000-0000-0000-0000-000000000004', 'Never estimated',
+     null, null, '{"sources_used": 5, "spend_cents": null, "duration_ms": 1}', null)
+  ) as v(id, question, estimate, version, actuals, provenance)
+  join ouroboros.investigation_kinds k on k.organization_id = 'org-v109' and k.slug = 'gap_analysis';
+
+-- --- reconciliation ---------------------------------------------------------------
+
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(o.calibration_version = 1 and o.depth = 'deep_dive'
+          and o.alias = 'researcher-long-ctx'
+          and (o.estimated_sources_min, o.estimated_sources_max) = (40, 60)
+          and (o.estimated_cost_cents_min, o.estimated_cost_cents_max) = (522, 687)
+          and (o.actual_sources, o.actual_spend_cents) = (44, 612)
+          and o.sources_within_estimate and o.cost_within_estimate)
+     from ouroboros.record_investigation_estimate_outcome('org-v109', 'a1090000-0000-0000-0000-000000000001') o),
+  'a priced, finished investigation reconciles to one row: 44 of 40–60 and 612¢ of 522–687¢, both within');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(o.estimated_cost_cents_min is null and o.alias is null
+          and not o.sources_within_estimate and o.cost_within_estimate is null)
+     from ouroboros.record_investigation_estimate_outcome('org-v109', 'a1090000-0000-0000-0000-000000000002') o),
+  'an unpriced estimate grades its sources and leaves the cost verdict null — no dollars were estimated, so none were missed');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.record_investigation_estimate_outcome('org-v109', 'a1090000-0000-0000-0000-000000000003'))
+   and (select count(*) = 0 from ouroboros.record_investigation_estimate_outcome('org-v109', 'a1090000-0000-0000-0000-000000000004'))
+   and (select count(*) = 0 from ouroboros.record_investigation_estimate_outcome('org-v109b', 'a1090000-0000-0000-0000-000000000001'))
+   and (select count(*) = 2 from ouroboros.investigation_estimate_outcomes where organization_id = 'org-v109'),
+  'nothing is recorded without actuals, without an estimate, or for another workspace''s investigation');
+
+-- Idempotent: a replay re-derives the same row, and a correction to the actuals moves it.
+select ouroboros.record_investigation_estimate_outcome('org-v109', 'a1090000-0000-0000-0000-000000000001');
+update ouroboros.investigations
+   set actuals = '{"sources_used": 70, "spend_cents": null, "duration_ms": 1}'
+ where id = 'a1090000-0000-0000-0000-000000000001';
+select ouroboros.record_investigation_estimate_outcome('org-v109', 'a1090000-0000-0000-0000-000000000001');
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(o.actual_sources = 70 and o.actual_spend_cents is null
+          and not o.sources_within_estimate and o.cost_within_estimate is null)
+     from ouroboros.investigation_estimate_outcomes o
+    where o.investigation_id = 'a1090000-0000-0000-0000-000000000001'),
+  'reconciling again replaces the one row — an unpriced run leaves the cost verdict null');
+
+-- --- the table's own rules -------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_estimate_outcomes
+      (investigation_id, organization_id, calibration_version, depth, tools_enabled,
+       estimated_sources_min, estimated_sources_max, estimated_cost_cents_min, actual_sources)
+    values ('a1090000-0000-0000-0000-000000000003', 'org-v109', 1, 'quick', '["web"]', 1, 2, 5, 1)$$,
+  'an estimated cost is a whole range or nothing', 'investigation_estimate_outcomes_cost_range');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_estimate_outcomes
+      (investigation_id, organization_id, calibration_version, depth, tools_enabled,
+       estimated_sources_min, estimated_sources_max, actual_sources)
+    values ('a1090000-0000-0000-0000-000000000003', 'org-v109', 1, 'quick', '["web"]', 9, 2, 1)$$,
+  'an estimated source range runs low to high', 'investigation_estimate_outcomes_sources_range');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_estimate_outcomes
+      (investigation_id, organization_id, calibration_version, depth, tools_enabled,
+       estimated_sources_min, estimated_sources_max, actual_sources)
+    values ('a1090000-0000-0000-0000-000000000003', 'org-v109b', 1, 'quick', '["web"]', 1, 2, 1)$$,
+  'an outcome is recorded only in the workspace of the investigation it grades',
+  'investigation_estimate_outcomes_investigation_fk');
+
+select pg_temp.must_raise(
+  $$update ouroboros.investigation_estimate_outcomes set sources_within_estimate = true
+     where investigation_id = 'a1090000-0000-0000-0000-000000000002'$$,
+  '428C9', 'a verdict is generated from the numbers beside it and cannot be written');
+
+-- Deleting the investigation takes its outcome with it.
+delete from ouroboros.investigations where id = 'a1090000-0000-0000-0000-000000000002';
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.investigation_estimate_outcomes
+    where investigation_id = 'a1090000-0000-0000-0000-000000000002'),
+  'an investigation''s outcome goes with it');
+
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.investigation_estimate_outcomes', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.investigation_estimate_outcomes', 'insert')
+   and has_table_privilege('ouroboros_app', 'ouroboros.investigation_estimate_outcomes', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.investigation_estimate_outcomes', 'delete')
+   and has_function_privilege('ouroboros_app',
+         'ouroboros.record_investigation_estimate_outcome(text, uuid)', 'execute'),
+  'the service reconciles through the function and may read and refresh outcomes, never delete them');
+
+-- ===========================================================================
+-- V110 — draft-operation provenance on the shared draft (#556, CC.2)
+-- ===========================================================================
+--
+-- Mockup 20's `draft v0.3 (2 copilot edits applied)` and its `added by copilot` pill, as rows:
+-- a draft built by three batches — the author's in the code editor, then two of the copilot's —
+-- reads v0.3 with two copilot batches counted; the stage the copilot added reads `copilot` until
+-- a canvas edit touches it; a suggestion Apply is told apart from the conversation; the log
+-- replays to the stored draft exactly, and a draft written around the log is named by the probe.
+-- The second copilot batch is a `set_stage` rather than the mockup's spend guard: DSL v1 has no
+-- guard construct, so `set_guard` is not in the vocabulary yet (see V110's header).
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v110',  'Draft Works', 'draft-works-v110', now()),
+  ('org-v110b', 'Draft Two',   'draft-two-v110',   now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a1100000-0000-0000-0000-00000000000a', 'Ken Drafts', 'ken@draft-works.example', true);
+
+insert into ouroboros.workflows (id, organization_id, slug, name) values
+  ('a1100000-0000-0000-0000-000000000101', 'org-v110',  'security-patch', 'Security patch'),
+  ('a1100000-0000-0000-0000-000000000102', 'org-v110',  'standard-fix',   'Standard fix'),
+  ('a1100000-0000-0000-0000-000000000103', 'org-v110b', 'security-patch', 'Security patch');
+
+insert into ouroboros.copilot_sessions (id, organization_id, workflow_id, draft_name, created_by) values
+  ('a1100000-0000-0000-0000-000000000201', 'org-v110', 'a1100000-0000-0000-0000-000000000101',
+   'security-patch', 'a1100000-0000-0000-0000-00000000000a'),
+  ('a1100000-0000-0000-0000-000000000202', 'org-v110', 'a1100000-0000-0000-0000-000000000102',
+   'standard-fix', 'a1100000-0000-0000-0000-00000000000a');
+
+select pg_temp.must_hold(
+  (select draft_rev = 0
+          and provenance_summary = '{"canvas": 0, "code": 0, "copilot": 0, "suggestion": 0}'
+     from ouroboros.workflows where id = 'a1100000-0000-0000-0000-000000000101'),
+  'a workflow starts at draft_rev 0 with no batch counted for any actor');
+
+-- --- v0.1: the author's draft, in the code editor ------------------------------------
+select pg_temp.must_hold(
+  (select draft_rev = 1 from ouroboros.apply_draft_batch(
+     'org-v110', 'a1100000-0000-0000-0000-000000000101', 'code',
+     'a1100000-0000-0000-0000-00000000000a', null, null,
+     '[{"kind": "set_trigger", "params": {"trigger": {"event": "ticket_queued", "conditions": {"labels": ["security"]}}}},
+       {"kind": "add_stage", "params": {"node": {"id": "start", "type": "trigger", "title": "Issue queued",
+                                                 "position": {"x": 0, "y": 0}, "config": {}}}},
+       {"kind": "add_stage", "params": {"node": {"id": "test", "type": "infra", "title": "Test",
+                                                 "position": {"x": 240, "y": 0}, "config": {}}}},
+       {"kind": "add_stage", "params": {"node": {"id": "done", "type": "term", "title": "Needs review",
+                                                 "position": {"x": 480, "y": 0},
+                                                 "config": {"action": "needs_review", "options": {}}}}},
+       {"kind": "add_edge", "params": {"edge": {"from": "start", "to": "test", "kind": "default"}}},
+       {"kind": "add_edge", "params": {"edge": {"from": "test", "to": "done", "kind": "default"}}}]')),
+  'the first batch produces revision 1');
+
+select pg_temp.must_hold(
+  (select v.definition = '{"dsl_version": "1.0",
+                           "trigger": {"event": "ticket_queued", "conditions": {"labels": ["security"]}},
+                           "nodes": [{"id": "start", "type": "trigger", "title": "Issue queued",
+                                      "position": {"x": 0, "y": 0}, "config": {}},
+                                     {"id": "test", "type": "infra", "title": "Test",
+                                      "position": {"x": 240, "y": 0}, "config": {}},
+                                     {"id": "done", "type": "term", "title": "Needs review",
+                                      "position": {"x": 480, "y": 0},
+                                      "config": {"action": "needs_review", "options": {}}}],
+                           "edges": [{"from": "start", "to": "test", "kind": "default"},
+                                     {"from": "test", "to": "done", "kind": "default"}]}'::jsonb
+          and v.edited_in = 'code'
+     from ouroboros.workflow_versions v
+    where v.workflow_id = 'a1100000-0000-0000-0000-000000000101' and v.version is null),
+  'a batch on a workflow with no draft creates the draft from the empty base, as the code editor''s edit');
+
+-- --- v0.2 and v0.3: the copilot's two batches ----------------------------------------
+select pg_temp.must_hold(
+  (select draft_rev = 2 from ouroboros.apply_draft_batch(
+     'org-v110', 'a1100000-0000-0000-0000-000000000101', 'copilot', null,
+     'a1100000-0000-0000-0000-000000000201', null,
+     '[{"kind": "add_stage", "params": {"node": {"id": "exploit-verify", "type": "infra",
+                                                 "title": "Exploit verify", "position": {"x": 360, "y": 0},
+                                                 "config": {"command": "./scripts/rerun-poc.sh"}}}},
+       {"kind": "remove_edge", "params": {"from": "test", "to": "done"}},
+       {"kind": "add_edge", "params": {"edge": {"from": "test", "to": "exploit-verify", "kind": "default"}}},
+       {"kind": "add_edge", "params": {"edge": {"from": "exploit-verify", "to": "done", "kind": "default"}}}]')),
+  'the copilot''s first batch produces revision 2');
+
+select pg_temp.must_hold(
+  (select draft_rev = 3 from ouroboros.apply_draft_batch(
+     'org-v110', 'a1100000-0000-0000-0000-000000000101', 'copilot', null,
+     'a1100000-0000-0000-0000-000000000201', null,
+     '[{"kind": "set_stage", "params": {"node": {"id": "exploit-verify", "type": "infra",
+                                                 "title": "Exploit verify (sandboxed)",
+                                                 "position": {"x": 360, "y": 0},
+                                                 "config": {"command": "./scripts/rerun-poc.sh --sandbox"}}}}]')),
+  'the copilot''s second batch produces revision 3');
+
+select pg_temp.must_hold(
+  (select format('v%s.%s', coalesce(current_version, 0), draft_rev) = 'v0.3'
+          and (provenance_summary ->> 'copilot')::int = 2
+          and provenance_summary = '{"canvas": 0, "code": 1, "copilot": 2, "suggestion": 0}'
+     from ouroboros.workflows where id = 'a1100000-0000-0000-0000-000000000101'),
+  'the draft reads v0.3 with 2 copilot edits applied — the dry-run footer, from the workflow row alone');
+
+select pg_temp.must_hold(
+  (select count(distinct batch_id) = 1 and min(seq) = 1 and max(seq) = 4 and count(*) = 4
+          and bool_and(actor = 'copilot' and session_id = 'a1100000-0000-0000-0000-000000000201'
+                       and base_version is null)
+     from ouroboros.draft_operations
+    where workflow_id = 'a1100000-0000-0000-0000-000000000101' and draft_rev = 2),
+  'a batch''s operations share one batch id and revision, numbered from 1, with the session and no base yet');
+
+-- --- node provenance — the pill's source ---------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(node_id || ':' || provenance order by node_id)
+          = array['done:human', 'exploit-verify:copilot', 'start:human', 'test:human']
+     from ouroboros.workflow_draft_node_provenance
+    where workflow_id = 'a1100000-0000-0000-0000-000000000101'),
+  'the stage the copilot added reads copilot — its own later edit keeps it so — and the code editor''s read human');
+
+select pg_temp.must_hold(
+  (select added_rev = 2 from ouroboros.workflow_draft_node_provenance
+    where workflow_id = 'a1100000-0000-0000-0000-000000000101' and node_id = 'exploit-verify'),
+  'the projection says which revision added the stage');
+
+-- --- the consistency probe -----------------------------------------------------------
+select pg_temp.must_hold(
+  ouroboros.workflow_draft_replay('a1100000-0000-0000-0000-000000000101')
+    = (select definition from ouroboros.workflow_versions
+        where workflow_id = 'a1100000-0000-0000-0000-000000000101' and version is null)
+   and not exists (select 1 from ouroboros.workflow_draft_replay_mismatches
+                    where workflow_id = 'a1100000-0000-0000-0000-000000000101'),
+  'replaying the operation log over the empty base reproduces the stored draft exactly');
+
+-- A draft written around the log is exactly what the probe names.
+update ouroboros.workflow_versions
+   set definition = jsonb_set(definition, '{nodes,0,title}', '"Issue queued (edited outside)"')
+ where workflow_id = 'a1100000-0000-0000-0000-000000000101' and version is null;
+
+select pg_temp.must_hold(
+  exists (select 1 from ouroboros.workflow_draft_replay_mismatches
+           where workflow_id = 'a1100000-0000-0000-0000-000000000101'
+             and stored #>> '{nodes,0,title}' = 'Issue queued (edited outside)'
+             and replayed #>> '{nodes,0,title}' = 'Issue queued'),
+  'a draft edited outside the operation log is reported by the consistency probe, with both versions');
+
+update ouroboros.workflow_versions
+   set definition = jsonb_set(definition, '{nodes,0,title}', '"Issue queued"')
+ where workflow_id = 'a1100000-0000-0000-0000-000000000101' and version is null;
+
+-- --- a human edit clears the pill ----------------------------------------------------
+select ouroboros.apply_draft_batch(
+  'org-v110', 'a1100000-0000-0000-0000-000000000101', 'canvas',
+  'a1100000-0000-0000-0000-00000000000a', null, null,
+  '[{"kind": "set_stage", "params": {"node": {"id": "exploit-verify", "type": "infra",
+                                              "title": "Exploit verify (sandboxed)",
+                                              "position": {"x": 380, "y": 40},
+                                              "config": {"command": "./scripts/rerun-poc.sh --sandbox"}}}}]');
+
+select pg_temp.must_hold(
+  (select provenance = 'human' from ouroboros.workflow_draft_node_provenance
+    where workflow_id = 'a1100000-0000-0000-0000-000000000101' and node_id = 'exploit-verify')
+   and (select edited_in = 'visual' from ouroboros.workflow_versions
+         where workflow_id = 'a1100000-0000-0000-0000-000000000101' and version is null),
+  'a canvas operation touching the copilot''s stage flips its provenance to human — the pill clears');
+
+-- --- a suggestion Apply is not the conversation --------------------------------------
+select ouroboros.apply_draft_batch(
+  'org-v110', 'a1100000-0000-0000-0000-000000000101', 'suggestion',
+  'a1100000-0000-0000-0000-00000000000a', 'a1100000-0000-0000-0000-000000000201',
+  'a1100000-0000-0000-0000-000000000301',
+  '[{"kind": "add_stage", "params": {"node": {"id": "advisory-check", "type": "infra",
+                                              "title": "Advisory check", "position": {"x": 240, "y": 120},
+                                              "config": {}}}},
+    {"kind": "add_edge", "params": {"edge": {"from": "test", "to": "advisory-check", "kind": "default"}}}]');
+
+select pg_temp.must_hold(
+  (select provenance = 'suggestion' from ouroboros.workflow_draft_node_provenance
+    where workflow_id = 'a1100000-0000-0000-0000-000000000101' and node_id = 'advisory-check')
+   and (select array_agg(distinct actor order by actor) = array['canvas', 'code', 'copilot', 'suggestion']
+          from ouroboros.draft_operations where workflow_id = 'a1100000-0000-0000-0000-000000000101')
+   and (select provenance_summary = '{"canvas": 1, "code": 1, "copilot": 2, "suggestion": 1}' and draft_rev = 5
+          from ouroboros.workflows where id = 'a1100000-0000-0000-0000-000000000101')
+   and (select count(*) = 2 from ouroboros.draft_operations
+         where suggestion_id = 'a1100000-0000-0000-0000-000000000301' and actor = 'suggestion'),
+  'all four actors record, and a suggestion Apply reads suggestion — never copilot — with its suggestion id');
+
+-- --- remove_stage takes the stage''s edges with it ------------------------------------
+select ouroboros.apply_draft_batch(
+  'org-v110', 'a1100000-0000-0000-0000-000000000101', 'canvas',
+  'a1100000-0000-0000-0000-00000000000a', null, null,
+  '[{"kind": "remove_stage", "params": {"id": "advisory-check"}}]');
+
+select pg_temp.must_hold(
+  (select not (definition::text like '%advisory-check%')
+     from ouroboros.workflow_versions
+    where workflow_id = 'a1100000-0000-0000-0000-000000000101' and version is null)
+   and not exists (select 1 from ouroboros.workflow_draft_replay_mismatches
+                    where workflow_id = 'a1100000-0000-0000-0000-000000000101'),
+  'removing a stage removes every edge touching it, and the log still replays to the draft');
+
+-- --- refusals ------------------------------------------------------------------------
+select pg_temp.must_raise(
+  $$select ouroboros.apply_draft_batch(
+      'org-v110', 'a1100000-0000-0000-0000-000000000101', 'copilot', null,
+      'a1100000-0000-0000-0000-000000000201', null,
+      '[{"kind": "add_stage", "params": {"node": {"id": "fresh", "type": "infra", "title": "Fresh",
+                                                  "position": {"x": 0, "y": 200}, "config": {}}}},
+        {"kind": "add_stage", "params": {"node": {"id": "test", "type": "infra", "title": "Again",
+                                                  "position": {"x": 0, "y": 0}, "config": {}}}}]')$$,
+  '23514', 'a batch whose operation cannot apply — a stage id that already exists — is refused');
+
+select pg_temp.must_hold(
+  (select draft_rev = 6 from ouroboros.workflows where id = 'a1100000-0000-0000-0000-000000000101')
+   and not exists (select 1 from ouroboros.draft_operations where op #>> '{params,node,id}' = 'fresh'),
+  'a refused batch writes nothing — not its valid first operation, not a revision');
+
+select pg_temp.must_raise(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'canvas',
+      null, null, null, '[{"kind": "set_stage", "params": {"node": {"id": "ghost"}}}]')$$,
+  '23514', 'set_stage of a stage that does not exist is refused');
+
+select pg_temp.must_raise(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'canvas',
+      null, null, null, '[{"kind": "add_edge", "params": {"edge": {"from": "start", "to": "ghost", "kind": "default"}}}]')$$,
+  '23514', 'an edge to a stage that does not exist is refused');
+
+select pg_temp.must_raise(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'canvas',
+      null, null, null, '[{"kind": "add_edge", "params": {"edge": {"from": "start", "to": "test", "kind": "default"}}}]')$$,
+  '23514', 'a second edge joining the same ordered pair is refused');
+
+select pg_temp.must_raise(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'canvas',
+      null, null, null, '[{"kind": "remove_edge", "params": {"from": "done", "to": "start"}}]')$$,
+  '23514', 'removing an edge that is not there is refused');
+
+select pg_temp.must_raise(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'copilot',
+      null, null, null, '[{"kind": "set_guard", "params": {"spend_cap_cents": 500}}]')$$,
+  '23514', 'set_guard is not in the vocabulary while DSL v1 has no guard to set');
+
+select pg_temp.must_raise(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'canvas',
+      null, null, null, '[]')$$,
+  '23514', 'an empty batch is refused — a revision is a batch of operations');
+
+select pg_temp.must_raise(
+  $$select ouroboros.apply_draft_batch('org-v110b', 'a1100000-0000-0000-0000-000000000101', 'canvas',
+      null, null, null, '[{"kind": "remove_stage", "params": {"id": "test"}}]')$$,
+  '23503', 'another workspace cannot apply a batch to this workspace''s draft');
+
+select pg_temp.must_raise(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'copilot',
+      null, 'a1100000-0000-0000-0000-000000000202', null,
+      '[{"kind": "remove_stage", "params": {"id": "test"}}]')$$,
+  '23503', 'a copilot session can apply only to the draft its conversation edits');
+
+select pg_temp.must_reject(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'canvas',
+      null, 'a1100000-0000-0000-0000-000000000201', null,
+      '[{"kind": "remove_stage", "params": {"id": "test"}}]')$$,
+  'a canvas operation carries no copilot session', 'draft_operations_session_actor');
+
+select pg_temp.must_reject(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'copilot',
+      null, 'a1100000-0000-0000-0000-000000000201', 'a1100000-0000-0000-0000-000000000301',
+      '[{"kind": "remove_stage", "params": {"id": "test"}}]')$$,
+  'only a suggestion Apply carries a suggestion id', 'draft_operations_suggestion_actor');
+
+select pg_temp.must_reject(
+  $$select ouroboros.apply_draft_batch('org-v110', 'a1100000-0000-0000-0000-000000000101', 'robot',
+      null, null, null, '[{"kind": "remove_stage", "params": {"id": "test"}}]')$$,
+  'the actor is one of canvas, code, copilot and suggestion', 'draft_operations_actor');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.draft_operations
+      (organization_id, workflow_id, draft_rev, batch_id, seq, op, actor)
+    values ('org-v110', 'a1100000-0000-0000-0000-000000000101', 99, gen_random_uuid(), 1,
+            '{"kind": "add_stage", "params": {"node": {"id": "Not A Slug"}}}', 'canvas')$$,
+  'an operation names stages by DSL slug', 'draft_operations_op_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.draft_operations
+      (organization_id, workflow_id, draft_rev, batch_id, seq, op, actor)
+    values ('org-v110', 'a1100000-0000-0000-0000-000000000101', 99, gen_random_uuid(), 1,
+            '{"kind": "add_stage", "params": {"node": {"id": "x"}, "extra": true}}', 'canvas')$$,
+  'an operation carries exactly its kind''s parameters', 'draft_operations_op_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.draft_operations
+      (organization_id, workflow_id, draft_rev, batch_id, seq, op, actor)
+    values ('org-v110b', 'a1100000-0000-0000-0000-000000000101', 99, gen_random_uuid(), 1,
+            '{"kind": "remove_stage", "params": {"id": "x"}}', 'canvas')$$,
+  'an operation belongs to a workflow of its own workspace', 'draft_operations_workflow_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.draft_operations
+      (organization_id, workflow_id, draft_rev, batch_id, seq, op, actor)
+    select organization_id, workflow_id, draft_rev, gen_random_uuid(), seq, op, actor
+      from ouroboros.draft_operations
+     where workflow_id = 'a1100000-0000-0000-0000-000000000101' and draft_rev = 3$$,
+  'one revision of one base is one batch', 'draft_operations_revision_seq_key');
+
+select pg_temp.must_raise(
+  $$update ouroboros.draft_operations set actor = 'canvas'
+     where workflow_id = 'a1100000-0000-0000-0000-000000000101' and draft_rev = 2$$,
+  '23001', 'the operation log is history — an operation''s actor cannot be rewritten');
+
+select pg_temp.must_raise(
+  $$update ouroboros.workflows set provenance_summary = '{"canvas": 0, "code": 0, "copilot": -1, "suggestion": 0}'
+     where id = 'a1100000-0000-0000-0000-000000000102'$$,
+  '23514', 'the provenance summary counts are non-negative integers for exactly the four actors');
+
+-- A deleted person and a swept session leave the operations standing, unattributed.
+delete from ouroboros.copilot_sessions where id = 'a1100000-0000-0000-0000-000000000201';
+select pg_temp.must_hold(
+  (select count(*) = 4 + 1 + 2 from ouroboros.draft_operations
+    where workflow_id = 'a1100000-0000-0000-0000-000000000101'
+      and actor in ('copilot', 'suggestion') and session_id is null),
+  'the provenance outlives a swept copilot session — the operations keep their actor, the link goes null');
+
+-- --- publishing gives the draft a new base -------------------------------------------
+insert into ouroboros.workflow_versions (workflow_id, version, definition, published_at)
+select workflow_id, 1, definition, now() from ouroboros.workflow_versions
+ where workflow_id = 'a1100000-0000-0000-0000-000000000101' and version is null;
+update ouroboros.workflows set current_version = 1 where id = 'a1100000-0000-0000-0000-000000000101';
+
+select pg_temp.must_hold(
+  (select draft_rev = 0 and provenance_summary = '{"canvas": 0, "code": 0, "copilot": 0, "suggestion": 0}'
+     from ouroboros.workflows where id = 'a1100000-0000-0000-0000-000000000101')
+   and (select bool_and(provenance = 'published') from ouroboros.workflow_draft_node_provenance
+         where workflow_id = 'a1100000-0000-0000-0000-000000000101'),
+  'publishing starts the draft''s revision again at v1.0, and every stage reads as published');
+
+select pg_temp.must_hold(
+  (select draft_rev = 1 from ouroboros.apply_draft_batch(
+     'org-v110', 'a1100000-0000-0000-0000-000000000101', 'copilot', null, null, null,
+     '[{"kind": "set_trigger", "params": {"trigger": {"event": "ticket_queued", "conditions": {}}}}]')),
+  'the first batch after publishing is revision 1 again');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(draft_rev = 1) from ouroboros.draft_operations
+    where workflow_id = 'a1100000-0000-0000-0000-000000000101' and base_version = 1)
+   and not exists (select 1 from ouroboros.workflow_draft_replay_mismatches
+                    where workflow_id = 'a1100000-0000-0000-0000-000000000101'),
+  'the next batch is v1.1 on base 1, and the log replays from the published version to the draft');
+
+-- --- what the surfaces may do ---------------------------------------------------------
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.draft_operations', 'select')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.draft_operations', 'insert')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.draft_operations', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.draft_operations', 'delete')
+   and has_table_privilege('ouroboros_app', 'ouroboros.workflow_draft_node_provenance', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.workflow_draft_replay_mismatches', 'select')
+   and has_function_privilege('ouroboros_app',
+         'ouroboros.apply_draft_batch(text, uuid, text, text, uuid, uuid, jsonb)', 'execute')
+   and not has_function_privilege('public',
+         'ouroboros.apply_draft_batch(text, uuid, text, text, uuid, uuid, jsonb)', 'execute'),
+  'the application reads the log and applies batches through the writer, and never writes an operation itself');
+
+select pg_temp.must_hold(
+  (select prosecdef and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+     from pg_proc where proname = 'apply_draft_batch' and pronamespace = 'ouroboros'::regnamespace),
+  'the batch writer runs as its owner with its search_path pinned and pg_temp last');
+
+-- Deleting the workflow takes its log with it.
+delete from ouroboros.workflows where id = 'a1100000-0000-0000-0000-000000000101';
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.draft_operations
+    where workflow_id = 'a1100000-0000-0000-0000-000000000101'),
+  'a workflow''s operation log goes with it');
+
+-- ===========================================================================
+-- V111 — dry-run records in their own domain (#557, CC.3)
+-- ===========================================================================
+--
+-- Mockup 20's dry-run card, as rows: #489 on draft v0.3, seven result rows with their exact how
+-- labels and notes (the skipped row's reason among them), the replayed build's estimate with its
+-- sample, the simulated diff bounded and summarised, 2m 41s and $0.31, guards clean. Then what
+-- the schema refuses, an unpriced and a budget-stopped run, an injected guard violation, the W4
+-- isolation probe going red on a planted coupling, history read by index over a corpus, and the
+-- retention sweep cutting the bulk before the record.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v111',  'Dry Works', 'dry-works-v111', now()),
+  ('org-v111b', 'Dry Two',   'dry-two-v111',   now());
+
+insert into ouroboros.workflows (id, organization_id, slug, name) values
+  ('a1110000-0000-0000-0000-000000000101', 'org-v111',  'security-patch', 'Security patch'),
+  ('a1110000-0000-0000-0000-000000000102', 'org-v111',  'standard-fix',   'Standard fix'),
+  ('a1110000-0000-0000-0000-000000000103', 'org-v111b', 'security-patch', 'Security patch');
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('a1110000-0000-0000-0000-00000000000a', 'org-v111',  'github', 'GitHub · dry works'),
+  ('a1110000-0000-0000-0000-00000000000b', 'org-v111b', 'github', 'GitHub · dry two');
+
+insert into ouroboros.tickets
+    (id, organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values
+    ('a1110000-0000-0000-0000-000000000489', 'org-v111', 'a1110000-0000-0000-0000-00000000000a',
+     '489', '#489', 'https://github.com/dry-works-v111/helios-firmware/issues/489',
+     'CAN arbitration-lost storm under full telemetry load', 'open', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z'),
+    ('a1110000-0000-0000-0000-000000000490', 'org-v111b', 'a1110000-0000-0000-0000-00000000000b',
+     '490', '#490', 'https://github.com/dry-two-v111/helios-firmware/issues/490',
+     'Another workspace''s ticket', 'open', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+insert into ouroboros.copilot_sessions (id, organization_id, workflow_id, draft_name) values
+  ('a1110000-0000-0000-0000-000000000201', 'org-v111', 'a1110000-0000-0000-0000-000000000101', 'security-patch'),
+  ('a1110000-0000-0000-0000-000000000202', 'org-v111', 'a1110000-0000-0000-0000-000000000102', 'standard-fix');
+
+-- --- the mockup's dry run --------------------------------------------------------------
+insert into ouroboros.dry_runs
+    (id, organization_id, workflow_id, base_version, draft_rev, session_id, ticket_id, pinned_sha, started_at)
+  values
+    ('a1110000-0000-0000-0000-000000000301', 'org-v111', 'a1110000-0000-0000-0000-000000000101', null, 3,
+     'a1110000-0000-0000-0000-000000000201', 'a1110000-0000-0000-0000-000000000489',
+     'b7e4c2a19f0d3e5b6a7c8d9e0f1a2b3c4d5e6f70', '2026-10-06T10:00:00Z');
+
+select pg_temp.must_hold(
+  (select status = 'precheck' and mode = 'deep' and guard_audit = '[]' and guards_clean
+          and precheck_findings is null and duration_ms is null and cost_cents is null and finished_at is null
+     from ouroboros.dry_runs where id = 'a1110000-0000-0000-0000-000000000301'),
+  'a dry run starts in precheck, deep, with a clean guard audit, no pre-check result and no totals');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_runs set status = 'running' where id = 'a1110000-0000-0000-0000-000000000301'$$,
+  'a dry run is not past its pre-check until the pre-check''s findings are recorded', 'dry_runs_precheck_recorded');
+
+update ouroboros.dry_runs set status = 'running', precheck_findings = '[]'
+ where id = 'a1110000-0000-0000-0000-000000000301';
+
+insert into ouroboros.dry_run_stages
+    (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note, metrics, skip_reason)
+  values
+    ('org-v111', 'a1110000-0000-0000-0000-000000000301', 1, 'analyze', 'analyze', 'ok', 'llm',
+     'mapped 4 files · advisory DB skipped (no CVE on this issue)', '{"tokens": 12000, "files_touched": 4}', null),
+    ('org-v111', 'a1110000-0000-0000-0000-000000000301', 2, 'plan', 'plan', 'ok', 'llm',
+     '3 steps · would touch drivers/can/arbitration.c', '{"tokens": 9000}', null),
+    ('org-v111', 'a1110000-0000-0000-0000-000000000301', 3, 'implement', 'implement', 'ok', 'llm',
+     'diff drafted +41 −9 (below) · 84k tokens',
+     '{"tokens": 84000, "files_touched": 1, "simulated_writes": 1, "lines_added": 41, "lines_removed": 9}', null),
+    ('org-v111', 'a1110000-0000-0000-0000-000000000301', 4, 'build', 'build', 'ok', 'replayed',
+     'est. 4m 02s (214 similar builds, ±20s)',
+     '{"estimate_ms": 242000, "sample_count": 214, "spread_ms": 20000, "similarity_class": "zephyr-can-driver"}', null),
+    ('org-v111', 'a1110000-0000-0000-0000-000000000301', 5, 'exploit-verify', 'exploit-verify', 'skipped', 'skipped',
+     'no PoC exists: stage had nothing to do', '{}', 'no PoC exists: stage had nothing to do'),
+    ('org-v111', 'a1110000-0000-0000-0000-000000000301', 6, 'review', 'review ×2', 'ok', 'llm',
+     'both approve · 1 style nit', '{"tokens": 31000}', null),
+    ('org-v111', 'a1110000-0000-0000-0000-000000000301', 7, 'open-pr', 'open PR', 'not_reached', 'deterministic',
+     'would open DRAFT PR · not merged (policy)', '{}', null);
+
+insert into ouroboros.dry_run_artifacts
+    (organization_id, dry_run_id, kind, content, truncated, original_bytes, path_summary)
+  values
+    ('org-v111', 'a1110000-0000-0000-0000-000000000301', 'overlay_diff',
+     E'@@ drivers/can/arbitration.c @@\n-    if (err & CAN_ERR_LOSTARB) {\n+    if (err & CAN_ERR_LOSTARB) {\n',
+     false, octet_length(E'@@ drivers/can/arbitration.c @@\n-    if (err & CAN_ERR_LOSTARB) {\n+    if (err & CAN_ERR_LOSTARB) {\n'),
+     '[{"path": "drivers/can/arbitration.c", "added": 41, "removed": 9}]'),
+    ('org-v111', 'a1110000-0000-0000-0000-000000000301', 'plan_excerpt',
+     '1. back off exponentially on lost arbitration', false, 45, null);
+
+update ouroboros.dry_runs
+   set status = 'complete', finished_at = started_at + interval '2 minutes 41 seconds',
+       duration_ms = 161000, cost_cents = 31, tokens = 136000
+ where id = 'a1110000-0000-0000-0000-000000000301';
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s|%s|%s|%s', display_name, verdict,
+                           coalesce(ouroboros.dry_run_stage_how_label(how, metrics), '-'), note) order by seq)
+          = array['analyze|ok|-|mapped 4 files · advisory DB skipped (no CVE on this issue)',
+                  'plan|ok|-|3 steps · would touch drivers/can/arbitration.c',
+                  'implement|ok|simulated|diff drafted +41 −9 (below) · 84k tokens',
+                  'build|ok|replayed from history|est. 4m 02s (214 similar builds, ±20s)',
+                  'exploit-verify|skipped|skipped|no PoC exists: stage had nothing to do',
+                  'review ×2|ok|-|both approve · 1 style nit',
+                  'open PR|not_reached|-|would open DRAFT PR · not merged (policy)']
+     from ouroboros.dry_run_stages where dry_run_id = 'a1110000-0000-0000-0000-000000000301'),
+  'the seven mockup result rows read back with their exact how labels and composed notes');
+
+select pg_temp.must_hold(
+  (select skip_reason = 'no PoC exists: stage had nothing to do'
+     from ouroboros.dry_run_stages
+    where dry_run_id = 'a1110000-0000-0000-0000-000000000301' and stage_key = 'exploit-verify'),
+  'the skipped row carries its reason');
+
+select pg_temp.must_hold(
+  (select (metrics ->> 'estimate_ms')::int = 242000 and (metrics ->> 'sample_count')::int = 214
+          and (metrics ->> 'spread_ms')::int = 20000
+     from ouroboros.dry_run_stages
+    where dry_run_id = 'a1110000-0000-0000-0000-000000000301' and how = 'replayed'),
+  'the replayed row stores its estimate with the sample count and spread it rests on');
+
+select pg_temp.must_hold(
+  (select duration_ms = 161000 and cost_cents = 31 and guards_clean and status = 'complete'
+     from ouroboros.dry_runs where id = 'a1110000-0000-0000-0000-000000000301')
+   and (select truncated = false and original_bytes = octet_length(content)
+               and path_summary -> 0 ->> 'path' = 'drivers/can/arbitration.c'
+          from ouroboros.dry_run_artifacts
+         where dry_run_id = 'a1110000-0000-0000-0000-000000000301' and kind = 'overlay_diff'),
+  'the card''s head reads 2m 41s · $0.31 with guards clean, and the whole diff says it is whole');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(format('v%s.%s', coalesce(base_version, 0), draft_rev) = 'v0.3')
+     from ouroboros.dry_runs where workflow_id = 'a1110000-0000-0000-0000-000000000101'),
+  'the footer''s history line: 1 dry run · draft v0.3');
+
+-- --- a finished dry run is a record --------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.dry_runs set cost_cents = 0 where id = 'a1110000-0000-0000-0000-000000000301'$$,
+  'a finished dry run''s totals are final', 'dry_runs_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_runs set status = 'failed', failure_reason = 'later'
+     where id = 'a1110000-0000-0000-0000-000000000301'$$,
+  'complete is terminal', 'dry_runs_transition');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000301', 8, 'merge', 'merge', 'ok', 'deterministic', 'merged')$$,
+  'a finished dry run takes no new result rows', 'dry_run_stages_open');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_run_stages set note = 'rewritten'
+     where dry_run_id = 'a1110000-0000-0000-0000-000000000301' and seq = 1$$,
+  'a finished dry run''s result rows are final', 'dry_run_stages_open');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_run_artifacts set content = 'rewritten', original_bytes = 9
+     where dry_run_id = 'a1110000-0000-0000-0000-000000000301' and kind = 'plan_excerpt'$$,
+  'a finished dry run''s artifacts are final', 'dry_run_artifacts_open');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_runs set pinned_sha = '0000000000000000000000000000000000000000'
+     where id = 'a1110000-0000-0000-0000-000000000301'$$,
+  'a dry run keeps the commit it read at', 'dry_runs_transition');
+
+-- --- an unpriced run, budget-stopped -------------------------------------------------
+insert into ouroboros.dry_runs
+    (id, organization_id, workflow_id, draft_rev, ticket_id, pinned_sha, status, precheck_findings)
+  values
+    ('a1110000-0000-0000-0000-000000000302', 'org-v111', 'a1110000-0000-0000-0000-000000000102', 1,
+     'a1110000-0000-0000-0000-000000000489', 'c0ffee0000000000000000000000000000000001', 'running', '[]');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_runs set status = 'budget_stopped', finished_at = now(), duration_ms = 5000
+     where id = 'a1110000-0000-0000-0000-000000000302'$$,
+  'a budget stop says why', 'dry_runs_failure_reason');
+
+update ouroboros.dry_runs
+   set status = 'budget_stopped', finished_at = started_at + interval '5 seconds', duration_ms = 5000,
+       failure_reason = 'spend cap of $5.00 reached'
+ where id = 'a1110000-0000-0000-0000-000000000302';
+
+select pg_temp.must_hold(
+  (select status = 'budget_stopped' and cost_cents is null and tokens is null
+     from ouroboros.dry_runs where id = 'a1110000-0000-0000-0000-000000000302')
+   and (select array_agg(status order by status)
+               = array['budget_stopped', 'complete']
+          from ouroboros.dry_runs where organization_id = 'org-v111'),
+  'an unpriced run has a null cost, not 0, and budget_stopped stands apart from complete');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_runs set status = 'failed' where id = 'a1110000-0000-0000-0000-000000000302'$$,
+  'budget_stopped is terminal and distinct from failed', 'dry_runs_transition');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_runs (organization_id, workflow_id, draft_rev, ticket_id, pinned_sha, status, precheck_findings)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000102', 1, 'a1110000-0000-0000-0000-000000000489',
+            'c0ffee0000000000000000000000000000000001', 'stopped', '[]')$$,
+  'the status vocabulary is closed', 'dry_runs_status');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_runs (organization_id, workflow_id, draft_rev, ticket_id, pinned_sha, mode)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000102', 1, 'a1110000-0000-0000-0000-000000000489',
+            'c0ffee0000000000000000000000000000000001', 'shallow')$$,
+  'the mode vocabulary is deep and the reserved deep_build', 'dry_runs_mode');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_runs (organization_id, workflow_id, draft_rev, ticket_id, pinned_sha)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000102', 1, 'a1110000-0000-0000-0000-000000000489', 'b7e')$$,
+  'the pinned sha is a full commit sha', 'dry_runs_pinned_sha_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_runs (organization_id, workflow_id, draft_rev, ticket_id, pinned_sha, cost_cents)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000102', 1, 'a1110000-0000-0000-0000-000000000489',
+            'c0ffee0000000000000000000000000000000001', -1)$$,
+  'a cost is never negative', 'dry_runs_cost_nonnegative');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_runs (organization_id, workflow_id, draft_rev, ticket_id, pinned_sha)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000102', 1, 'a1110000-0000-0000-0000-000000000490',
+            'c0ffee0000000000000000000000000000000001')$$,
+  'a dry run runs against a ticket of its own workspace', 'dry_runs_ticket_workspace');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_runs (organization_id, workflow_id, draft_rev, session_id, ticket_id, pinned_sha)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000101', 1, 'a1110000-0000-0000-0000-000000000202',
+            'a1110000-0000-0000-0000-000000000489', 'c0ffee0000000000000000000000000000000001')$$,
+  'a dry run''s copilot session is a conversation about the same workflow', 'dry_runs_session_workflow');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_runs (organization_id, workflow_id, draft_rev, ticket_id, pinned_sha)
+    values ('org-v111b', 'a1110000-0000-0000-0000-000000000101', 1, 'a1110000-0000-0000-0000-000000000490',
+            'c0ffee0000000000000000000000000000000001')$$,
+  'a dry run tests a workflow of its own workspace', 'dry_runs_workflow_fk');
+
+-- --- the stage vocabulary and its honesty --------------------------------------------
+insert into ouroboros.dry_runs
+    (id, organization_id, workflow_id, draft_rev, ticket_id, pinned_sha, status, precheck_findings)
+  values
+    ('a1110000-0000-0000-0000-000000000303', 'org-v111', 'a1110000-0000-0000-0000-000000000102', 1,
+     'a1110000-0000-0000-0000-000000000489', 'c0ffee0000000000000000000000000000000002', 'running', '[]');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note, metrics)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'build', 'build', 'ok', 'replayed',
+            'est. 4m 02s', '{"estimate_ms": 242000, "spread_ms": 20000, "similarity_class": "zephyr"}')$$,
+  'a replayed row without a sample count is refused — an estimate travels with its basis',
+  'dry_run_stages_metrics_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note, metrics)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'build', 'build', 'ok', 'replayed',
+            'est. 4m 02s', '{"estimate_ms": 242000, "sample_count": 0, "spread_ms": 20000, "similarity_class": "zephyr"}')$$,
+  'a replay rests on at least one sample', 'dry_run_stages_metrics_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note, metrics)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'build', 'build', 'ok', 'llm',
+            'est. 4m 02s', '{"estimate_ms": 242000, "sample_count": 214, "spread_ms": 20000, "similarity_class": "zephyr"}')$$,
+  'only a replayed row carries an estimate — a measurement is not dressed as one', 'dry_run_stages_metrics_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note, metrics)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'plan', 'plan', 'ok', 'llm', 'x', '{"mood": 1}')$$,
+  'metrics carry only the known measurements', 'dry_run_stages_metrics_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'plan', 'plan', 'ok', 'guessed', 'x')$$,
+  'how is one of llm, replayed, deterministic and skipped', 'dry_run_stages_how');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'plan', 'plan', 'passed', 'llm', 'x')$$,
+  'verdict is one of ok, skipped, failed and not_reached', 'dry_run_stages_verdict');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note, skip_reason)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'verify', 'verify', 'skipped', 'llm', 'x', 'nothing')$$,
+  'a skipped verdict is a skipped how', 'dry_run_stages_skipped_paired');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'verify', 'verify', 'skipped', 'skipped', 'x')$$,
+  'a skipped row says why', 'dry_run_stages_skip_reason');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'plan', 'plan', 'ok', 'llm', '  ')$$,
+  'a reached row has a result line', 'dry_run_stages_note_when_reached');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 1, 'Open PR', 'open PR', 'ok', 'llm', 'x')$$,
+  'a stage key is a DSL slug', 'dry_run_stages_stage_key_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note)
+    values ('org-v111b', 'a1110000-0000-0000-0000-000000000303', 1, 'plan', 'plan', 'ok', 'llm', 'x')$$,
+  'a result row belongs to a dry run of its own workspace', 'dry_run_stages_dry_run_fk');
+
+-- --- the diff is bounded, and a truncated one says so ---------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_artifacts (organization_id, dry_run_id, kind, content, truncated, original_bytes, path_summary)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 'overlay_diff', repeat('+', 65537), false, 65537,
+            '[{"path": "a.c", "added": 1, "removed": 0}]')$$,
+  'an artifact''s content is at most 64 KiB', 'dry_run_artifacts_content_bounded');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_artifacts (organization_id, dry_run_id, kind, content, truncated, original_bytes, path_summary)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 'overlay_diff', repeat('+', 65536), false, 400000,
+            '[{"path": "a.c", "added": 1, "removed": 0}]')$$,
+  'a cut diff cannot claim to be whole', 'dry_run_artifacts_truncation_honest');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_artifacts (organization_id, dry_run_id, kind, content, truncated, original_bytes, path_summary)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 'overlay_diff', 'abc', true, 3,
+            '[{"path": "a.c", "added": 1, "removed": 0}]')$$,
+  'a whole diff cannot claim to be cut', 'dry_run_artifacts_truncation_honest');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_artifacts (organization_id, dry_run_id, kind, content, truncated, original_bytes)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 'overlay_diff', 'abc', false, 3)$$,
+  'an overlay diff carries its path summary', 'dry_run_artifacts_path_summary');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_artifacts (organization_id, dry_run_id, kind, content, truncated, original_bytes, path_summary)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 'review_excerpt', 'lgtm', false, 4,
+            '[{"path": "a.c", "added": 1, "removed": 0}]')$$,
+  'an excerpt has no path summary', 'dry_run_artifacts_path_summary');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_artifacts (organization_id, dry_run_id, kind, content, truncated, original_bytes)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 'transcript', 'x', false, 1)$$,
+  'the artifact kinds are overlay_diff, plan_excerpt and review_excerpt', 'dry_run_artifacts_kind');
+
+insert into ouroboros.dry_run_artifacts
+    (organization_id, dry_run_id, kind, content, truncated, original_bytes, path_summary)
+  values
+    ('org-v111', 'a1110000-0000-0000-0000-000000000303', 'overlay_diff', repeat('+', 65536), true, 400000,
+     '[{"path": "src/a.c", "added": 9000, "removed": 12}, {"path": "src/b.c", "added": 3, "removed": 3}]');
+
+select pg_temp.must_hold(
+  (select truncated and original_bytes = 400000 and octet_length(content) = 65536
+          and jsonb_array_length(path_summary) = 2
+     from ouroboros.dry_run_artifacts
+    where dry_run_id = 'a1110000-0000-0000-0000-000000000303' and kind = 'overlay_diff'),
+  'a large refactor''s diff is stored bounded, flagged truncated, with its original size and every path');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_artifacts (organization_id, dry_run_id, kind, content, truncated, original_bytes, path_summary)
+    values ('org-v111', 'a1110000-0000-0000-0000-000000000303', 'overlay_diff', 'x', false, 1,
+            '[{"path": "a.c", "added": 1, "removed": 0}]')$$,
+  'a dry run has one overlay diff', 'dry_run_artifacts_one_overlay_diff');
+
+-- --- the guard audit: empty when clean, populated when a guard held ------------------
+select pg_temp.must_reject(
+  $$update ouroboros.dry_runs set guard_audit = '[{"guard": "pr", "call": "open_pr", "count": 0}]'
+     where id = 'a1110000-0000-0000-0000-000000000303'$$,
+  'a guard audit entry counts at least one blocked call', 'dry_runs_guard_audit_shape');
+
+-- The injected violation: the implement stage tried to push and open a PR.
+update ouroboros.dry_runs
+   set guard_audit = '[{"guard": "write", "call": "git push origin HEAD", "count": 2, "stage_key": "implement"},
+                       {"guard": "pr", "call": "open_pr", "count": 1, "stage_key": "implement"}]',
+       status = 'failed', failure_reason = 'guards blocked 3 calls', finished_at = now(), duration_ms = 12000
+ where id = 'a1110000-0000-0000-0000-000000000303';
+
+select pg_temp.must_hold(
+  (select not guards_clean and jsonb_array_length(guard_audit) = 2
+     from ouroboros.dry_runs where id = 'a1110000-0000-0000-0000-000000000303')
+   and (select guards_clean and guard_audit = '[]'
+          from ouroboros.dry_runs where id = 'a1110000-0000-0000-0000-000000000301'),
+  'the guard audit is empty on the clean run and populated on the injected violation');
+
+-- --- W4: zero coupling to the run plane ----------------------------------------------
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.dry_run_isolation_violations),
+  'no foreign key joins the dry-run domain to the run plane, and no view reads from both');
+
+select pg_temp.must_hold(
+  not exists (select 1 from pg_constraint
+               where contype = 'f'
+                 and conrelid in ('ouroboros.dry_runs'::regclass, 'ouroboros.dry_run_stages'::regclass,
+                                  'ouroboros.dry_run_artifacts'::regclass)
+                 and confrelid not in ('ouroboros.organization'::regclass, 'ouroboros.workflows'::regclass,
+                                       'ouroboros.copilot_sessions'::regclass, 'ouroboros.tickets'::regclass,
+                                       'ouroboros.dry_runs'::regclass)),
+  'the dry-run tables reference only the workspace, workflow, copilot session, ticket and each other');
+
+-- The probe is load-bearing: a planted foreign key and a planted read-model view are each named.
+alter table ouroboros.dry_runs add column planted_run_id uuid
+  constraint dry_runs_planted_run_fk references ouroboros.runs (id);
+create view ouroboros.planted_runs_with_dry_runs as
+  select r.id, d.id as dry_run_id from ouroboros.runs_with_stage r cross join ouroboros.dry_run_stages s
+  join ouroboros.dry_runs d on d.id = s.dry_run_id;
+
+select pg_temp.must_hold(
+  (select array_agg(kind || ':' || relation order by kind)
+          = array['foreign_key:dry_runs', 'view:planted_runs_with_dry_runs']
+     from ouroboros.dry_run_isolation_violations),
+  'the isolation probe names a foreign key into runs and a view reading runs beside dry runs');
+
+drop view ouroboros.planted_runs_with_dry_runs;
+alter table ouroboros.dry_runs drop column planted_run_id;
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.dry_run_isolation_violations),
+  'with the plants removed the probe is empty again');
+
+-- --- per-draft history, index-backed over a corpus -----------------------------------
+insert into ouroboros.dry_runs
+    (organization_id, workflow_id, draft_rev, ticket_id, pinned_sha, status, precheck_findings,
+     started_at, finished_at, duration_ms)
+select 'org-v111b', 'a1110000-0000-0000-0000-000000000103', (i % 7) + 1,
+       'a1110000-0000-0000-0000-000000000490', md5(i::text) || '00000000', 'complete', '[]',
+       timestamptz '2026-01-01' + i * interval '1 hour',
+       timestamptz '2026-01-01' + i * interval '1 hour' + interval '3 minutes', 180000
+  from generate_series(1, 2000) i;
+
+analyze ouroboros.dry_runs;
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select id, draft_rev, started_at from ouroboros.dry_runs
+     where workflow_id = 'a1110000-0000-0000-0000-000000000103' order by started_at desc limit 10$$,
+  'dry_runs_workflow_history_idx');
+set local enable_seqscan = on;
+
+select pg_temp.must_hold(
+  (select array_agg(draft_rev order by started_at desc) = array[(2000 % 7) + 1, (1999 % 7) + 1, (1998 % 7) + 1]
+     from (select draft_rev, started_at from ouroboros.dry_runs
+            where workflow_id = 'a1110000-0000-0000-0000-000000000103'
+            order by started_at desc limit 3) page),
+  'a draft''s history reads newest first');
+
+-- --- the retention sweep: the bulk before the record ----------------------------------
+insert into ouroboros.dry_runs
+    (id, organization_id, workflow_id, draft_rev, ticket_id, pinned_sha, status, precheck_findings, started_at)
+  values
+    ('a1110000-0000-0000-0000-000000000304', 'org-v111', 'a1110000-0000-0000-0000-000000000102', 1,
+     'a1110000-0000-0000-0000-000000000489', 'c0ffee0000000000000000000000000000000004', 'running', '[]',
+     '2020-01-01'),
+    ('a1110000-0000-0000-0000-000000000305', 'org-v111', 'a1110000-0000-0000-0000-000000000102', 1,
+     'a1110000-0000-0000-0000-000000000489', 'c0ffee0000000000000000000000000000000005', 'running', '[]',
+     '2020-01-01');
+insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note) values
+  ('org-v111', 'a1110000-0000-0000-0000-000000000304', 1, 'plan', 'plan', 'ok', 'llm', '1 step'),
+  ('org-v111', 'a1110000-0000-0000-0000-000000000305', 1, 'plan', 'plan', 'ok', 'llm', '1 step');
+insert into ouroboros.dry_run_artifacts (organization_id, dry_run_id, kind, content, truncated, original_bytes) values
+  ('org-v111', 'a1110000-0000-0000-0000-000000000304', 'plan_excerpt', 'step', false, 4),
+  ('org-v111', 'a1110000-0000-0000-0000-000000000305', 'plan_excerpt', 'step', false, 4);
+update ouroboros.dry_runs set status = 'complete', finished_at = '2020-01-01 00:05', duration_ms = 300000
+ where id = 'a1110000-0000-0000-0000-000000000304';
+
+select pg_temp.must_reject(
+  $$select ouroboros.dry_runs_sweep('org-v111', now() - interval '1 day', now() - interval '30 days', 100)$$,
+  'a dry-run cutoff inside the 7-day floor is refused', 'dry_runs_sweep_cutoff_floor');
+
+select pg_temp.must_reject(
+  $$select ouroboros.dry_runs_sweep('org-v111', now() - interval '30 days', now() - interval '30 days', 0)$$,
+  'a sweep removes at least one dry run per call', 'dry_runs_sweep_limit');
+
+-- The artifact tier has passed the finished run; the record tier has not. The bulk goes first.
+select pg_temp.must_hold(
+  (select dry_runs = 0 and stages = 0 and artifacts = 1
+     from ouroboros.dry_runs_sweep('org-v111', '2019-01-01', '2021-01-01', 100)),
+  'the sweep removes a finished run''s artifacts past their cutoff and keeps its record');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.dry_run_stages where dry_run_id = 'a1110000-0000-0000-0000-000000000304')
+   and (select count(*) = 0 from ouroboros.dry_run_artifacts where dry_run_id = 'a1110000-0000-0000-0000-000000000304')
+   and (select count(*) = 1 from ouroboros.dry_run_artifacts where dry_run_id = 'a1110000-0000-0000-0000-000000000305'),
+  'history survives without the bulk, and a running dry run keeps its artifacts');
+
+-- An artifact tier set longer than the record tier is held to it: artifacts never outlive the record.
+select pg_temp.must_hold(
+  (select dry_runs = 1 and stages = 1 and artifacts = 0
+     from ouroboros.dry_runs_sweep('org-v111', '2021-01-01', '2019-01-01', 100)),
+  'past the record cutoff the dry run goes with its stages');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.dry_runs where id = 'a1110000-0000-0000-0000-000000000305')
+   and (select count(*) = 2000 from ouroboros.dry_runs where organization_id = 'org-v111b'),
+  'a dry run still running is never swept, and a sweep of one workspace leaves the others alone');
+
+-- --- a swept session leaves the dry run standing ---------------------------------------
+update ouroboros.copilot_sessions set status = 'discarded', closed_at = now()
+ where id = 'a1110000-0000-0000-0000-000000000201';
+delete from ouroboros.copilot_sessions where id = 'a1110000-0000-0000-0000-000000000201';
+
+select pg_temp.must_hold(
+  (select session_id is null and status = 'complete' and cost_cents = 31
+     from ouroboros.dry_runs where id = 'a1110000-0000-0000-0000-000000000301'),
+  'the dry run outlives a swept copilot session — the record stays, the link goes null');
+
+-- --- the application role ------------------------------------------------------------
+set local role ouroboros_app;
+
+select pg_temp.must_raise(
+  $$delete from ouroboros.dry_runs where id = 'a1110000-0000-0000-0000-000000000305'$$,
+  '42501', 'the application role cannot delete a dry run');
+
+select pg_temp.must_raise(
+  $$delete from ouroboros.dry_run_stages where dry_run_id = 'a1110000-0000-0000-0000-000000000305'$$,
+  '42501', 'the application role cannot delete a result row');
+
+select pg_temp.must_raise(
+  $$delete from ouroboros.dry_run_artifacts where dry_run_id = 'a1110000-0000-0000-0000-000000000305'$$,
+  '42501', 'the application role cannot delete an artifact');
+
+insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note) values
+  ('org-v111', 'a1110000-0000-0000-0000-000000000305', 2, 'review', 'review', 'ok', 'llm', 'approve');
+
+select count(*) from ouroboros.dry_runs_sweep('org-v111', '2019-01-01', '2019-01-01', 1);
+select count(*) from ouroboros.dry_run_isolation_violations;
+
+reset role;
+
+select pg_temp.must_hold(
+  (select prosecdef
+          and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+          and not has_function_privilege('public', oid, 'execute')
+     from pg_proc where proname = 'dry_runs_sweep' and pronamespace = 'ouroboros'::regnamespace),
+  'the dry-run sweep runs as its owner with search_path pinned and execute revoked from public');
+
+-- --- the workspace takes everything with it ------------------------------------------
+delete from ouroboros.organization where "id" in ('org-v111', 'org-v111b');
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.dry_runs where organization_id in ('org-v111', 'org-v111b'))
+   and (select count(*) = 0 from ouroboros.dry_run_stages where organization_id in ('org-v111', 'org-v111b'))
+   and (select count(*) = 0 from ouroboros.dry_run_artifacts where organization_id in ('org-v111', 'org-v111b')),
+  'deleting a workspace deletes its dry runs, their results and their artifacts');
+
+-- ===========================================================================
+-- V112 — capability matrices and the competitor watch registry (#610, CK.3)
+-- ===========================================================================
+--
+-- Mockup 22's matrix and its tracker sub-line as rows: the registry's vocabularies, the sub-line
+-- computed from it, two snapshots of a fixture page producing one diff that a competitor_diff
+-- source cites, and RS-127's 5 × 4 matrix read back exactly — every non-unknown cell cited, every
+-- row complete, every severity stored with its derivation. The deferred rules are forced by name
+-- with `set constraints`, never `all`.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v112', 'Matrix Works', 'matrix-works-v112', now()),
+  ('org-v112b', 'Elsewhere', 'elsewhere-v112', now());
+
+insert into ouroboros.investigations (id, organization_id, kind_id, question, depth, tools_enabled,
+                                      status, provenance)
+select v.id, v.org, k.id, 'Autonomous docking vs. Skylink / AeroMesh / Novum', 'deep_dive',
+       '["web", "competitor", "code", "tickets", "telemetry"]', 'running',
+       '{"researcher": "loop-v1", "alias": "researcher-long-ctx", "resolution_ref": null}'
+  from (values ('a1120000-0000-0000-0000-000000000001'::uuid, 'org-v112'),
+               ('a1120000-0000-0000-0000-000000000002'::uuid, 'org-v112'),
+               ('a1120000-0000-0000-0000-000000000003'::uuid, 'org-v112b')) as v(id, org)
+  join ouroboros.investigation_kinds k on k.organization_id = v.org and k.slug = 'gap_analysis';
+
+-- --- the registry ------------------------------------------------------------------------
+
+insert into ouroboros.competitors (id, organization_id, name, meta) values
+  ('a1120000-0000-0000-0000-000000000011', 'org-v112', 'Skylink',
+   '{"site": "https://skylink.example.com", "aliases": ["Skylink Robotics"], "notes": "Docking leader."}'),
+  ('a1120000-0000-0000-0000-000000000012', 'org-v112', 'AeroMesh', '{"site": "https://aeromesh.example.com"}'),
+  ('a1120000-0000-0000-0000-000000000013', 'org-v112', 'Novum', '{}'),
+  ('a1120000-0000-0000-0000-000000000014', 'org-v112', 'Kestrel', '{}'),
+  ('a1120000-0000-0000-0000-000000000019', 'org-v112b', 'Skylink', '{}');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitors (organization_id, name) values ('org-v112', 'SKYLINK')$$,
+  'a rival is registered once per workspace, whatever its capitalisation', 'competitors_organization_name_key');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitors (organization_id, name) values ('org-v112', '  ')$$,
+  'a rival has a name', 'competitors_name_present');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitors (organization_id, name, meta) values ('org-v112', 'X', '{"site": "ftp://x.example.com"}')$$,
+  'meta.site is an http(s) URL', 'competitors_meta_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitors (organization_id, name, meta) values ('org-v112', 'X', '{"aliases": ["A", "a"]}')$$,
+  'meta.aliases are distinct', 'competitors_meta_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitors (organization_id, name, meta) values ('org-v112', 'X', '{"revenue": 1}')$$,
+  'meta has only site, aliases and notes', 'competitors_meta_shape');
+
+insert into ouroboros.competitor_watches (id, competitor_id, source_kind, url, selector, cadence, enabled,
+                                          render_required) values
+  ('a1120000-0000-0000-0000-000000000021', 'a1120000-0000-0000-0000-000000000011', 'release_notes',
+   'https://skylink.example.com/releases', 'main .release-notes', 'daily', true, false),
+  ('a1120000-0000-0000-0000-000000000022', 'a1120000-0000-0000-0000-000000000012', 'changelog',
+   'https://aeromesh.example.com/changelog', null, 'daily', true, false),
+  ('a1120000-0000-0000-0000-000000000023', 'a1120000-0000-0000-0000-000000000013', 'filings',
+   'https://novum.example.com/investors/filings', null, 'weekly', true, false),
+  ('a1120000-0000-0000-0000-000000000024', 'a1120000-0000-0000-0000-000000000014', 'changelog',
+   'https://kestrel.example.com/changelog', null, 'hourly', true, false),
+  -- Not counted: a JS-rendered page v1 cannot fetch, honestly marked, and a disabled feed.
+  ('a1120000-0000-0000-0000-000000000025', 'a1120000-0000-0000-0000-000000000013', 'page',
+   'https://novum.example.com/product', '#features', 'weekly', true, true),
+  ('a1120000-0000-0000-0000-000000000026', 'a1120000-0000-0000-0000-000000000012', 'rss',
+   'https://aeromesh.example.com/feed.xml', null, 'daily', false, false);
+
+-- The other workspace watches its own Skylink.
+insert into ouroboros.competitor_watches (id, competitor_id, source_kind, url) values
+  ('a1120000-0000-0000-0000-000000000029', 'a1120000-0000-0000-0000-000000000019', 'release_notes',
+   'https://skylink.example.com/releases');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_watches (competitor_id, source_kind, url)
+    values ('a1120000-0000-0000-0000-000000000011', 'tweets', 'https://skylink.example.com/x')$$,
+  'a watch source kind is one of the six', 'competitor_watches_source_kind');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_watches (competitor_id, source_kind, url, cadence)
+    values ('a1120000-0000-0000-0000-000000000011', 'rss', 'https://skylink.example.com/feed', 'every 5 minutes')$$,
+  'a watch cadence is hourly, daily or weekly', 'competitor_watches_cadence');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_watches (competitor_id, source_kind, url)
+    values ('a1120000-0000-0000-0000-000000000011', 'page', 'javascript:alert(1)')$$,
+  'a watched URL is an http(s) URL', 'competitor_watches_url_valid');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_watches (competitor_id, source_kind, url, selector)
+    values ('a1120000-0000-0000-0000-000000000011', 'page', 'https://skylink.example.com/', ' ')$$,
+  'a selector, when present, scopes something', 'competitor_watches_selector_present');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_watches (competitor_id, source_kind, url)
+    values ('a1120000-0000-0000-0000-000000000012', 'changelog', 'https://aeromesh.example.com/changelog')$$,
+  'a source is watched once — a null selector included', 'competitor_watches_target_key');
+
+-- Marking a page JS-rendered after the fact breaks nothing.
+update ouroboros.competitor_watches set render_required = true
+ where id = 'a1120000-0000-0000-0000-000000000024';
+update ouroboros.competitor_watches set render_required = false
+ where id = 'a1120000-0000-0000-0000-000000000024';
+
+select pg_temp.must_hold(
+  (select rivals_watched = 4 and watches_enabled = 4
+          and source_kinds = array['release_notes', 'changelog', 'filings']
+          and sub_line = '4 rivals watched · release notes, changelogs, filings'
+     from ouroboros.competitor_tracker_summary where organization_id = 'org-v112'),
+  'the tracker''s sub-line is computed from the registry — render_required and disabled watches not counted');
+
+update ouroboros.competitor_watches set enabled = false
+ where id in ('a1120000-0000-0000-0000-000000000023', 'a1120000-0000-0000-0000-000000000024');
+select pg_temp.must_hold(
+  (select sub_line = '2 rivals watched · release notes, changelogs'
+     from ouroboros.competitor_tracker_summary where organization_id = 'org-v112')
+   and (select sub_line = '1 rival watched · release notes'
+          from ouroboros.competitor_tracker_summary where organization_id = 'org-v112b')
+   and not exists (select 1 from ouroboros.competitor_tracker_summary where organization_id = 'org-v111'),
+  'and it follows the registry when a watch is switched off — one rival is singular, none is no row');
+update ouroboros.competitor_watches set enabled = true
+ where id in ('a1120000-0000-0000-0000-000000000023', 'a1120000-0000-0000-0000-000000000024');
+
+-- --- snapshots: two of a changed page, one diff ------------------------------------------
+
+insert into ouroboros.competitor_snapshots (id, watch_id, content_hash, content_ref, taken_at) values
+  ('a1120000-0000-0000-0000-000000000031', 'a1120000-0000-0000-0000-000000000021',
+   'sha256:' || encode(sha256('6.1 notes'::bytea), 'hex'), 'archive://competitor/skylink/releases/t1',
+   now() - interval '10 days');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_snapshots (watch_id, content_hash, content_ref, taken_at)
+    values ('a1120000-0000-0000-0000-000000000021', 'sha256:' || repeat('1', 64), 'archive://x', now())$$,
+  'a watch has one first snapshot — every later one names its predecessor', 'competitor_snapshots_first_key');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_snapshots (watch_id, previous_id, content_hash, content_ref, taken_at)
+    values ('a1120000-0000-0000-0000-000000000021', 'a1120000-0000-0000-0000-000000000031',
+            'sha256:' || encode(sha256('6.2 notes'::bytea), 'hex'), 'archive://x', now())$$,
+  'a changed page''s snapshot carries its diff', 'competitor_snapshots_chain');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_snapshots (watch_id, previous_id, content_hash, content_ref, diff, taken_at)
+    values ('a1120000-0000-0000-0000-000000000021', 'a1120000-0000-0000-0000-000000000031',
+            'sha256:' || encode(sha256('6.1 notes'::bytea), 'hex'), 'archive://x', '+ nothing', now())$$,
+  'an unchanged page''s snapshot has no diff', 'competitor_snapshots_chain');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_snapshots (watch_id, previous_id, content_hash, content_ref, diff, taken_at)
+    values ('a1120000-0000-0000-0000-000000000021', 'a1120000-0000-0000-0000-000000000031',
+            'sha256:' || repeat('2', 64), 'archive://x', '+ x', now() - interval '11 days')$$,
+  'a snapshot is taken after its predecessor', 'competitor_snapshots_chain');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_snapshots (watch_id, previous_id, content_hash, content_ref, diff, taken_at)
+    values ('a1120000-0000-0000-0000-000000000022', 'a1120000-0000-0000-0000-000000000031',
+            'sha256:' || repeat('2', 64), 'archive://x', '+ x', now())$$,
+  'a predecessor is the same watch''s', 'competitor_snapshots_previous_fk');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_snapshots (watch_id, content_hash, content_ref, diff, taken_at)
+    values ('a1120000-0000-0000-0000-000000000022', 'sha256:' || repeat('2', 64), 'archive://x', '+ x', now())$$,
+  'a first snapshot has nothing to diff against', 'competitor_snapshots_diff_has_previous');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_snapshots (watch_id, content_hash, content_ref, taken_at)
+    values ('a1120000-0000-0000-0000-000000000022', 'md5:abc', 'archive://x', now())$$,
+  'a snapshot hash is sha256:<hex>', 'competitor_snapshots_content_hash_format');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_snapshots (watch_id, content_hash, content_ref, taken_at)
+    values ('a1120000-0000-0000-0000-000000000022', 'sha256:' || repeat('2', 64), 'archive:// x', now())$$,
+  'a snapshot refers to archived content', 'competitor_snapshots_content_ref_present');
+
+insert into ouroboros.competitor_snapshots (id, watch_id, previous_id, content_hash, content_ref, diff, taken_at) values
+  ('a1120000-0000-0000-0000-000000000032', 'a1120000-0000-0000-0000-000000000021',
+   'a1120000-0000-0000-0000-000000000031', 'sha256:' || encode(sha256('6.2 notes'::bytea), 'hex'),
+   'archive://competitor/skylink/releases/t2',
+   '+ 6.2 — Gust-adaptive final approach: wind feedforward over the last 2 m of descent.',
+   now() - interval '3 days');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_snapshots (watch_id, previous_id, content_hash, content_ref, diff, taken_at)
+    values ('a1120000-0000-0000-0000-000000000021', 'a1120000-0000-0000-0000-000000000031',
+            'sha256:' || repeat('3', 64), 'archive://x', '+ fork', now())$$,
+  'the chain does not fork — a snapshot has one successor', 'competitor_snapshots_previous_key');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 and count(diff) = 1
+          and (array_agg(diff) filter (where diff is not null))[1] like '+ 6.2 — Gust-adaptive%'
+     from ouroboros.competitor_snapshots where watch_id = 'a1120000-0000-0000-0000-000000000021')
+   and (select last_snapshot_at = (select taken_at from ouroboros.competitor_snapshots
+                                    where id = 'a1120000-0000-0000-0000-000000000032')
+          from ouroboros.competitor_watches where id = 'a1120000-0000-0000-0000-000000000021'),
+  'two snapshots of a changed page produce one diff, and the watch says when it was last looked at');
+
+select pg_temp.must_reject(
+  $$update ouroboros.competitor_snapshots set diff = '+ rewritten' where id = 'a1120000-0000-0000-0000-000000000032'$$,
+  'an archived snapshot is never rewritten', 'competitor_snapshots_immutable');
+
+-- A snapshot of the other workspace's rival, with a diff, for the refusals below.
+insert into ouroboros.competitor_snapshots (id, watch_id, previous_id, content_hash, content_ref, diff, taken_at) values
+  ('a1120000-0000-0000-0000-000000000038', 'a1120000-0000-0000-0000-000000000029', null,
+   'sha256:' || repeat('4', 64), 'archive://b/1', null, now() - interval '2 days'),
+  ('a1120000-0000-0000-0000-000000000039', 'a1120000-0000-0000-0000-000000000029',
+   'a1120000-0000-0000-0000-000000000038', 'sha256:' || repeat('5', 64), 'archive://b/2', '+ b',
+   now() - interval '1 day');
+
+-- --- the diff is citable ------------------------------------------------------------------
+
+-- pg_temp.v112_source(investigation, kind, snapshot) — a source insert that varies its kind and
+-- the snapshot it names.
+create function pg_temp.v112_source(investigation text, kind text, snapshot text)
+returns text language sql as $$
+  select format($f$insert into ouroboros.source_records
+                     (investigation_id, tool_slug, kind, title, locator, retrieved_at, content_hash,
+                      excerpt, snapshot_id)
+                   values ('%s', 'competitor', '%s', 'Skylink release notes — diff',
+                           'https://skylink.example.com/releases/6.2', now(), 'sha256:%s', 'x', %s)$f$,
+                investigation, kind, repeat('0', 64), snapshot);
+$$;
+
+select pg_temp.must_reject(
+  pg_temp.v112_source('a1120000-0000-0000-0000-000000000001', 'competitor_diff', 'null'),
+  'a competitor_diff source names the archived snapshot it cites', 'source_records_competitor_diff_snapshot');
+select pg_temp.must_reject(
+  pg_temp.v112_source('a1120000-0000-0000-0000-000000000001', 'web', '''a1120000-0000-0000-0000-000000000032'''),
+  'and only a competitor_diff source names one', 'source_records_competitor_diff_snapshot');
+select pg_temp.must_reject(
+  pg_temp.v112_source('a1120000-0000-0000-0000-000000000001', 'competitor_diff', '''a1120000-0000-0000-0000-000000000031'''),
+  'a cited snapshot is one that carries a diff', 'source_records_snapshot_cited');
+select pg_temp.must_reject(
+  pg_temp.v112_source('a1120000-0000-0000-0000-000000000001', 'competitor_diff', '''a1120000-0000-0000-0000-000000000039'''),
+  'of a rival of the investigation''s own workspace', 'source_records_snapshot_cited');
+
+insert into ouroboros.source_records (id, investigation_id, tool_slug, kind, title, locator, retrieved_at,
+                                      content_hash, excerpt, snapshot_id) values
+  ('a1120000-0000-0000-0000-000000000101', 'a1120000-0000-0000-0000-000000000001', 'web', 'web',
+   'Skylink S4 docking module — teardown & sensor BOM', 'https://droneanalysts.example.com/s4-teardown',
+   now(), 'sha256:' || repeat('a', 64), 'The S4 carries a 6-axis IMU.', null),
+  ('a1120000-0000-0000-0000-000000000102', 'a1120000-0000-0000-0000-000000000001', 'competitor',
+   'competitor_diff', 'Skylink firmware 6.2 release notes — "gust-adaptive final approach"',
+   'https://skylink.example.com/releases/6.2', now(), 'sha256:' || encode(sha256('6.2 notes'::bytea), 'hex'),
+   'Gust-adaptive final approach.', 'a1120000-0000-0000-0000-000000000032'),
+  ('a1120000-0000-0000-0000-000000000103', 'a1120000-0000-0000-0000-000000000001', 'code', 'code',
+   'dock_ctrl.c blame — gains last tuned 14 months ago', 'git://helios-firmware@8c1b2e4/src/dock/dock_ctrl.c#L214',
+   now(), 'sha256:' || repeat('b', 64), 'kp = 1.8f;', null),
+  ('a1120000-0000-0000-0000-000000000104', 'a1120000-0000-0000-0000-000000000001', 'web', 'web',
+   'Field comparison', 'https://research.example.com/field', now(), 'sha256:' || repeat('c', 64), 'x', null);
+-- The second investigation's source, which no cell of the first may cite.
+do $x$ begin execute pg_temp.v112_source('a1120000-0000-0000-0000-000000000002', 'web', 'null'); end $x$;
+
+select pg_temp.must_hold(
+  (select s.cite_no = 2 and snap.diff like '+ 6.2%' and w.source_kind = 'release_notes' and c.name = 'Skylink'
+     from ouroboros.source_records s
+     join ouroboros.competitor_snapshots snap on snap.id = s.snapshot_id
+     join ouroboros.competitor_watches w      on w.id = snap.watch_id
+     join ouroboros.competitors c             on c.id = w.competitor_id
+    where s.id = 'a1120000-0000-0000-0000-000000000102'),
+  'the diff is addressable from its competitor_diff source: [02] → snapshot → watch → Skylink');
+
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       delete from ouroboros.competitor_watches where id = 'a1120000-0000-0000-0000-000000000021';
+       set constraints ouroboros.source_records_snapshot_fk immediate;
+     end $x$ $q$,
+  'a cited snapshot cannot be deleted from under the ledger', 'source_records_snapshot_fk');
+
+-- --- the matrix ----------------------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.capability_matrices (investigation_id, title, us_label, rivals)
+    values ('a1120000-0000-0000-0000-000000000001', 'x', 'Helios',
+            array['a1120000-0000-0000-0000-000000000011', 'a1120000-0000-0000-0000-000000000011']::uuid[])$$,
+  'a rival is one column', 'capability_matrices_rivals_valid');
+select pg_temp.must_reject(
+  $$insert into ouroboros.capability_matrices (investigation_id, title, us_label, rivals)
+    values ('a1120000-0000-0000-0000-000000000001', 'x', 'Helios',
+            array['a1120000-0000-0000-0000-000000000019']::uuid[])$$,
+  'a column is a rival of the investigation''s own workspace', 'capability_matrices_rivals_valid');
+select pg_temp.must_reject(
+  $$insert into ouroboros.capability_matrices (investigation_id, title, us_label, rivals)
+    values ('a1120000-0000-0000-0000-000000000001', 'x', 'Helios', '{}')$$,
+  'a matrix compares us with at least one rival', 'capability_matrices_rivals_bounded');
+
+insert into ouroboros.capability_matrices (id, investigation_id, title, us_label, rivals) values
+  ('a1120000-0000-0000-0000-000000000201', 'a1120000-0000-0000-0000-000000000001',
+   'Autonomous docking vs. the field', 'Helios',
+   array['a1120000-0000-0000-0000-000000000011', 'a1120000-0000-0000-0000-000000000012',
+         'a1120000-0000-0000-0000-000000000013']::uuid[]);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.capability_matrices (investigation_id, title, us_label, rivals)
+    values ('a1120000-0000-0000-0000-000000000001', 'Again', 'Helios',
+            array['a1120000-0000-0000-0000-000000000011']::uuid[])$$,
+  'an investigation has one matrix', 'capability_matrices_investigation_key');
+
+insert into ouroboros.matrix_rows (id, matrix_id, capability, sort_order, gap_severity, severity_derivation)
+select ('a1120000-0000-0000-0000-00000000030' || r.n)::uuid, 'a1120000-0000-0000-0000-000000000201',
+       r.capability, r.n, r.severity, r.derivation
+  from (values
+    (1, 'Docking in >8 m/s gusts', 'high', 'us partial · best rival shipping (Skylink) · the churn driver'),
+    (2, 'Visual-inertial approach (no beacon)', 'high', 'us none · two rivals shipping (Skylink, AeroMesh)'),
+    (3, 'Abort & retry recovery logic', 'med', 'us partial · best rival shipping (Skylink) · lower field impact'),
+    (4, 'OTA resilience (A/B + rollback)', 'wip', 'us in flight · best rival shipping (Skylink)'),
+    (5, 'Recovery beacon over BLE', 'lead', 'us shipping · no rival shipping (AeroMesh unknown)')
+  ) as r (n, capability, severity, derivation);
+
+-- The grid, as the card prints it: one cell per row and subject. `null` is us.
+insert into ouroboros.matrix_cells (investigation_id, matrix_id, row_id, competitor_id, status, note)
+select 'a1120000-0000-0000-0000-000000000001', 'a1120000-0000-0000-0000-000000000201',
+       ('a1120000-0000-0000-0000-00000000030' || g.n)::uuid, g.competitor_id, g.status, g.note
+  from (values
+    (1, null::uuid, 'partial', null::text),
+    (1, 'a1120000-0000-0000-0000-000000000011', 'shipping', null),
+    (1, 'a1120000-0000-0000-0000-000000000012', 'partial', null),
+    (1, 'a1120000-0000-0000-0000-000000000013', 'none', null),
+    (2, null, 'none', null),
+    (2, 'a1120000-0000-0000-0000-000000000011', 'shipping', null),
+    (2, 'a1120000-0000-0000-0000-000000000012', 'shipping', null),
+    (2, 'a1120000-0000-0000-0000-000000000013', 'partial', 'beta'),
+    (3, null, 'partial', null),
+    (3, 'a1120000-0000-0000-0000-000000000011', 'shipping', null),
+    (3, 'a1120000-0000-0000-0000-000000000012', 'partial', null),
+    (3, 'a1120000-0000-0000-0000-000000000013', 'none', null),
+    (4, null, 'wip', 'in flight'),
+    (4, 'a1120000-0000-0000-0000-000000000011', 'shipping', null),
+    (4, 'a1120000-0000-0000-0000-000000000012', 'none', null),
+    (4, 'a1120000-0000-0000-0000-000000000013', 'none', null),
+    (5, null, 'shipping', null),
+    (5, 'a1120000-0000-0000-0000-000000000011', 'none', null),
+    (5, 'a1120000-0000-0000-0000-000000000012', 'unknown', null),
+    (5, 'a1120000-0000-0000-0000-000000000013', 'none', null)
+  ) as g (n, competitor_id, status, note);
+
+-- Every cell but the unknown one cites a source: Skylink's gust cell the teardown and the archived
+-- diff ([01][02]), our cells the blame ([03]), the rest the field comparison ([04]).
+insert into ouroboros.matrix_cell_sources (investigation_id, cell_id, source_id)
+select c.investigation_id, c.id, s.source_id
+  from ouroboros.matrix_cells c
+  join ouroboros.matrix_rows r on r.id = c.row_id
+  cross join lateral (
+    select unnest(case
+             when c.competitor_id is null then array['a1120000-0000-0000-0000-000000000103']
+             when c.competitor_id = 'a1120000-0000-0000-0000-000000000011' and r.sort_order = 1
+               then array['a1120000-0000-0000-0000-000000000101', 'a1120000-0000-0000-0000-000000000102']
+             else array['a1120000-0000-0000-0000-000000000104'] end)::uuid as source_id
+  ) s
+ where c.matrix_id = 'a1120000-0000-0000-0000-000000000201' and c.status <> 'unknown';
+
+set constraints ouroboros.matrix_cells_cited, ouroboros.matrix_rows_complete immediate;
+set constraints ouroboros.matrix_cells_cited, ouroboros.matrix_rows_complete deferred;
+
+select pg_temp.must_hold(
+  (select m.us_label || ' (us)|' || array_to_string(array(select c.name from unnest(m.rivals) with ordinality as r(id, ord)
+                                                            join ouroboros.competitors c on c.id = r.id order by r.ord), '|')
+          = 'Helios (us)|Skylink|AeroMesh|Novum'
+     from ouroboros.capability_matrices m where m.id = 'a1120000-0000-0000-0000-000000000201'),
+  'the matrix''s columns read Helios (us) · Skylink · AeroMesh · Novum, in order');
+
+select pg_temp.must_hold(
+  (select array_agg(r.capability || '|'
+                    || (select string_agg(case c.status when 'shipping' then '●' when 'partial' then '◐'
+                                                        when 'none' then '○' when 'unknown' then '?'
+                                                        when 'wip' then '◐' end
+                                          || ' ' || coalesce(c.note, c.status), '|'
+                                          order by coalesce(array_position(m.rivals, c.competitor_id), 0))
+                          from ouroboros.matrix_cells c where c.row_id = r.id)
+                    || '|' || upper(r.gap_severity)
+                    order by r.sort_order)
+          = array['Docking in >8 m/s gusts|◐ partial|● shipping|◐ partial|○ none|HIGH',
+                  'Visual-inertial approach (no beacon)|○ none|● shipping|● shipping|◐ beta|HIGH',
+                  'Abort & retry recovery logic|◐ partial|● shipping|◐ partial|○ none|MED',
+                  'OTA resilience (A/B + rollback)|◐ in flight|● shipping|○ none|○ none|WIP',
+                  'Recovery beacon over BLE|● shipping|○ none|? unknown|○ none|LEAD']
+          and bool_and(btrim(r.severity_derivation) <> '')
+     from ouroboros.matrix_rows r
+     join ouroboros.capability_matrices m on m.id = r.matrix_id
+    where m.id = 'a1120000-0000-0000-0000-000000000201'),
+  'RS-127''s matrix round-trips exactly — five capabilities × four subjects, statuses, notes and severities, each severity with its derivation');
+
+select pg_temp.must_hold(
+  (select count(*) = 19 from ouroboros.matrix_cells c
+    where c.matrix_id = 'a1120000-0000-0000-0000-000000000201' and c.status <> 'unknown'
+      and exists (select 1 from ouroboros.matrix_cell_sources l where l.cell_id = c.id))
+   and (select string_agg('[' || lpad(s.cite_no::text, 2, '0') || ']', '' order by s.cite_no)
+          = '[01][02]'
+          from ouroboros.matrix_cell_sources l
+          join ouroboros.matrix_cells c    on c.id = l.cell_id
+          join ouroboros.matrix_rows r     on r.id = c.row_id and r.sort_order = 1
+          join ouroboros.source_records s  on s.id = l.source_id
+         where c.competitor_id = 'a1120000-0000-0000-0000-000000000011'),
+  'all nineteen stated cells are cited, Skylink''s gust cell by the teardown and the archived diff');
+
+-- --- the citation discipline ---------------------------------------------------------------
+
+-- A cell that says something cannot commit uncited…
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       update ouroboros.matrix_cells set status = 'partial'
+        where row_id = 'a1120000-0000-0000-0000-000000000305'
+          and competitor_id = 'a1120000-0000-0000-0000-000000000012';
+       set constraints ouroboros.matrix_cells_cited immediate;
+     end $x$ $q$,
+  'an unknown cell moved to a status without a citation fails the write', 'matrix_cells_cited');
+
+-- …nor lose its last citation…
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       delete from ouroboros.matrix_cell_sources l
+        using ouroboros.matrix_cells c
+        where c.id = l.cell_id and c.row_id = 'a1120000-0000-0000-0000-000000000304' and c.competitor_id is null;
+       set constraints ouroboros.matrix_cell_sources_cited immediate;
+     end $x$ $q$,
+  'a stated cell''s last citation cannot be removed', 'matrix_cells_cited');
+
+-- …but unknown needs none, and one of two citations can go.
+do $x$ begin
+  update ouroboros.matrix_cells set status = 'unknown', note = null
+   where row_id = 'a1120000-0000-0000-0000-000000000304'
+     and competitor_id = 'a1120000-0000-0000-0000-000000000013';
+  delete from ouroboros.matrix_cell_sources l
+   using ouroboros.matrix_cells c
+   where c.id = l.cell_id and c.row_id = 'a1120000-0000-0000-0000-000000000304'
+     and c.competitor_id = 'a1120000-0000-0000-0000-000000000013';
+  delete from ouroboros.matrix_cell_sources
+   where source_id = 'a1120000-0000-0000-0000-000000000101';
+  set constraints ouroboros.matrix_cells_cited, ouroboros.matrix_cell_sources_cited immediate;
+  set constraints ouroboros.matrix_cells_cited, ouroboros.matrix_cell_sources_cited deferred;
+end $x$;
+
+-- A row is answered for every subject: a missing cell is a blank, and a blank is not unknown.
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       insert into ouroboros.matrix_rows (matrix_id, capability, sort_order, gap_severity, severity_derivation)
+       values ('a1120000-0000-0000-0000-000000000201', 'Night docking', 6, 'low', 'us unknown');
+       insert into ouroboros.matrix_cells (investigation_id, matrix_id, row_id, competitor_id, status)
+       select 'a1120000-0000-0000-0000-000000000001', matrix_id, id, null, 'unknown'
+         from ouroboros.matrix_rows where capability = 'Night docking';
+       set constraints ouroboros.matrix_rows_complete immediate;
+     end $x$ $q$,
+  'a row with a subject left blank fails the write', 'matrix_rows_complete');
+
+do $x$ begin
+  insert into ouroboros.matrix_rows (id, matrix_id, capability, sort_order, gap_severity, severity_derivation)
+  values ('a1120000-0000-0000-0000-000000000306', 'a1120000-0000-0000-0000-000000000201', 'Night docking', 6,
+          'low', 'nothing found for any subject');
+  insert into ouroboros.matrix_cells (investigation_id, matrix_id, row_id, competitor_id, status)
+  select 'a1120000-0000-0000-0000-000000000001', 'a1120000-0000-0000-0000-000000000201',
+         'a1120000-0000-0000-0000-000000000306', s.competitor_id, 'unknown'
+    from (select null::uuid as competitor_id
+          union all select unnest(rivals) from ouroboros.capability_matrices
+                     where id = 'a1120000-0000-0000-0000-000000000201') s;
+  set constraints ouroboros.matrix_rows_complete, ouroboros.matrix_cells_cited immediate;
+  set constraints ouroboros.matrix_rows_complete, ouroboros.matrix_cells_cited deferred;
+end $x$;
+
+-- Adding a column leaves every row short until it is answered.
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       update ouroboros.capability_matrices set rivals = rivals || 'a1120000-0000-0000-0000-000000000014'::uuid
+        where id = 'a1120000-0000-0000-0000-000000000201';
+       set constraints ouroboros.capability_matrices_complete immediate;
+     end $x$ $q$,
+  'a new rival column needs a cell in every row', 'matrix_rows_complete');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.matrix_cells (investigation_id, matrix_id, row_id, competitor_id, status)
+    values ('a1120000-0000-0000-0000-000000000001', 'a1120000-0000-0000-0000-000000000201',
+            'a1120000-0000-0000-0000-000000000301', 'a1120000-0000-0000-0000-000000000014', 'unknown')$$,
+  'a cell''s rival is one of the matrix''s columns', 'matrix_cells_subject_in_matrix');
+select pg_temp.must_reject(
+  $$insert into ouroboros.matrix_cells (investigation_id, matrix_id, row_id, competitor_id, status)
+    values ('a1120000-0000-0000-0000-000000000001', 'a1120000-0000-0000-0000-000000000201',
+            'a1120000-0000-0000-0000-000000000301', null, 'unknown')$$,
+  'one cell per row and subject — us included', 'matrix_cells_row_subject_key');
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       insert into ouroboros.matrix_rows (id, matrix_id, capability, sort_order, gap_severity, severity_derivation)
+       values ('a1120000-0000-0000-0000-000000000307', 'a1120000-0000-0000-0000-000000000201', 'Swarm docking', 7,
+               'low', 'x');
+       insert into ouroboros.matrix_cells (investigation_id, matrix_id, row_id, competitor_id, status)
+       values ('a1120000-0000-0000-0000-000000000002', 'a1120000-0000-0000-0000-000000000201',
+               'a1120000-0000-0000-0000-000000000307', null, 'unknown');
+     end $x$ $q$,
+  'a cell belongs to its matrix''s investigation', 'matrix_cells_matrix_fk');
+select pg_temp.must_reject(
+  $$update ouroboros.matrix_cells set status = 'rumoured'
+     where row_id = 'a1120000-0000-0000-0000-000000000301' and competitor_id is null$$,
+  'a cell status is one of the five', 'matrix_cells_status');
+select pg_temp.must_reject(
+  $$insert into ouroboros.matrix_cell_sources (investigation_id, cell_id, source_id)
+    select c.investigation_id, c.id, s.id
+      from ouroboros.matrix_cells c, ouroboros.source_records s
+     where c.row_id = 'a1120000-0000-0000-0000-000000000301' and c.competitor_id is null
+       and s.investigation_id = 'a1120000-0000-0000-0000-000000000002'$$,
+  'a cell cites only its own investigation''s sources', 'matrix_cell_sources_source_fk');
+
+-- --- severities and their derivations --------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.matrix_rows set gap_severity = 'low' where id = 'a1120000-0000-0000-0000-000000000303'$$,
+  'a severity does not change without its derivation', 'matrix_rows_severity_rederived');
+select pg_temp.must_reject(
+  $$update ouroboros.matrix_rows set severity_derivation = ' ' where id = 'a1120000-0000-0000-0000-000000000303'$$,
+  'a severity is never stored without a derivation', 'matrix_rows_severity_derivation_present');
+select pg_temp.must_reject(
+  $$update ouroboros.matrix_rows set gap_severity = 'critical', severity_derivation = 'x'
+     where id = 'a1120000-0000-0000-0000-000000000303'$$,
+  'a severity is high, med, low, wip or lead', 'matrix_rows_gap_severity');
+
+update ouroboros.matrix_rows
+   set gap_severity = 'high', severity_derivation = 'us partial · best rival shipping · abort is now a churn driver'
+ where id = 'a1120000-0000-0000-0000-000000000303';
+
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       delete from ouroboros.competitors where id = 'a1120000-0000-0000-0000-000000000012';
+       set constraints ouroboros.matrix_cells_competitor_fk immediate;
+     end $x$ $q$,
+  'a rival a matrix cites cannot be removed from under it', 'matrix_cells_competitor_fk');
+
+-- --- the application role --------------------------------------------------------------------
+set local role ouroboros_app;
+
+select pg_temp.must_hold(
+  (select current_user = 'ouroboros_app'),
+  'the assertions below really are the application role''s');
+
+insert into ouroboros.competitor_watches (competitor_id, source_kind, url)
+values ('a1120000-0000-0000-0000-000000000014', 'github_releases', 'https://github.com/kestrel/firmware/releases');
+select pg_temp.must_hold(
+  (select source_kinds = array['release_notes', 'changelog', 'github_releases', 'filings']
+     from ouroboros.competitor_tracker_summary where organization_id = 'org-v112'),
+  'the application role manages watches and reads the sub-line');
+
+select pg_temp.must_raise(
+  $$update ouroboros.competitor_snapshots set content_ref = 'x'$$,
+  '42501', 'the application role cannot edit a snapshot');
+select pg_temp.must_raise(
+  $$delete from ouroboros.competitor_snapshots$$,
+  '42501', 'the application role cannot delete a snapshot');
+select pg_temp.must_raise(
+  $$delete from ouroboros.matrix_cells$$,
+  '42501', 'the application role cannot blank a cell');
+select pg_temp.must_raise(
+  $$delete from ouroboros.matrix_rows$$,
+  '42501', 'the application role cannot delete a matrix row');
+
+reset role;
+
+-- --- the workspace takes everything with it -------------------------------------------------
+
+delete from ouroboros.organization where "id" in ('org-v112', 'org-v112b');
+set constraints ouroboros.matrix_cells_cited, ouroboros.matrix_cell_sources_cited,
+                ouroboros.matrix_rows_complete, ouroboros.matrix_cells_complete,
+                ouroboros.capability_matrices_complete, ouroboros.matrix_cells_competitor_fk,
+                ouroboros.source_records_snapshot_fk immediate;
+set constraints ouroboros.matrix_cells_cited, ouroboros.matrix_cell_sources_cited,
+                ouroboros.matrix_rows_complete, ouroboros.matrix_cells_complete,
+                ouroboros.capability_matrices_complete, ouroboros.matrix_cells_competitor_fk,
+                ouroboros.source_records_snapshot_fk deferred;
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.competitors where organization_id in ('org-v112', 'org-v112b'))
+   and (select count(*) = 0 from ouroboros.competitor_snapshots
+         where watch_id in ('a1120000-0000-0000-0000-000000000021', 'a1120000-0000-0000-0000-000000000029'))
+   and (select count(*) = 0 from ouroboros.capability_matrices
+         where id = 'a1120000-0000-0000-0000-000000000201')
+   and (select count(*) = 0 from ouroboros.matrix_cells
+         where matrix_id = 'a1120000-0000-0000-0000-000000000201'),
+  'deleting a workspace deletes its rivals, watches, snapshots and matrices — cited diffs included');
+
+-- ===========================================================================
+-- V113 — roadmap docs, their immutable versions and the suggestion queue (#612, CK.5)
+-- ===========================================================================
+--
+-- Mockup 22's pipeline step 1 as rows: RS-124's ROADMAP.md as a structured doc whose first version
+-- names Planning drafts and whose second, after the push, names the tickets too — numbers and MVP
+-- flags mirrored into the new version, the old one untouched. Versions refuse every edit but the
+-- repo projection, which moves only along its state machine; a suggestion is a user's or the AI's,
+-- and is applied (with the version its re-run produced) or dismissed (with who and when).
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v113', 'Roadmap Works', 'roadmap-works-v113', now()),
+  ('org-v113b', 'Elsewhere', 'elsewhere-v113', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v113', 'Ken Suenobu', 'ken@roadmap-works-v113.dev', true);
+
+insert into ouroboros.investigations (id, organization_id, kind_id, seq, question, depth, tools_enabled,
+                                      status, provenance)
+select v.id, v.org, k.id, 124, 'What should Helios ship next quarter?', 'deep_dive', '["tickets", "telemetry"]',
+       'running', '{"researcher": "loop-v1", "alias": "researcher-long-ctx", "resolution_ref": null}'
+  from (values ('a1130000-0000-0000-0000-000000000001'::uuid, 'org-v113'),
+               ('a1130000-0000-0000-0000-000000000002'::uuid, 'org-v113b')) as v(id, org)
+  join ouroboros.investigation_kinds k on k.organization_id = v.org and k.slug = 'roadmap_improvements';
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('a1130000-0000-0000-0000-00000000000a', 'org-v113',  'github', 'GitHub · roadmap works'),
+  ('a1130000-0000-0000-0000-00000000000b', 'org-v113b', 'github', 'GitHub · elsewhere');
+
+insert into ouroboros.draft_batches (id, organization_id, source_prompt, planner, target_source_id, created_by) values
+  ('a1130000-0000-0000-0000-000000000011', 'org-v113', 'RS-124 brief → roadmap', 'create-roadmap-v1',
+   'a1130000-0000-0000-0000-00000000000a', 'user-v113'),
+  ('a1130000-0000-0000-0000-000000000012', 'org-v113b', 'Somebody else''s drafts', 'create-roadmap-v1',
+   'a1130000-0000-0000-0000-00000000000b', null);
+
+-- RS-124's six items, drafted (AK.1) and then pushed as #742…#747.
+create temp table v113_items (n int, ms text, key text, title text, mvp boolean, effort text, checked boolean)
+  on commit drop;
+insert into v113_items values
+  (742, 'm1', 'dock-mpc',        'Wind-feedforward MPC in final approach', true,  'l',  true),
+  (743, 'm1', 'dock-retry',      'Re-planned abort & retry vectors',       true,  'm',  false),
+  (744, 'm1', 'dock-gust',       'Gust estimator from IMU residuals',      false, 'm',  false),
+  (745, 'm2', 'fleet-battery',   'Battery health model v2',                false, 'm',  false),
+  (746, 'm2', 'fleet-gaps',      'Telemetry gap alerts',                   false, 's',  false),
+  (747, 'm2', 'fleet-playbook',  'Operator recovery playbook docs',        false, 'xs', false);
+
+insert into ouroboros.ticket_drafts (id, batch_id, local_key, title)
+select ('a1130000-0000-0000-0000-000000000' || i.n)::uuid, 'a1130000-0000-0000-0000-000000000011',
+       'RM-' || (i.n - 741), i.title
+  from v113_items i;
+insert into ouroboros.ticket_drafts (id, batch_id, local_key, title) values
+  ('a1130000-0000-0000-0000-000000000999', 'a1130000-0000-0000-0000-000000000012', 'X-1', 'Elsewhere');
+
+insert into ouroboros.tickets (id, organization_id, source_id, external_id, external_key, external_url, title,
+                               state, source_created_at, source_updated_at)
+select ('a1130000-0000-0000-0000-000000001' || i.n)::uuid, 'org-v113', 'a1130000-0000-0000-0000-00000000000a',
+       i.n::text, '#' || i.n, 'https://github.com/roadmap-works-v113/helios-firmware/issues/' || i.n,
+       i.title, 'open', now(), now()
+  from v113_items i;
+insert into ouroboros.tickets (id, organization_id, source_id, external_id, external_key, external_url, title,
+                               state, source_created_at, source_updated_at) values
+  ('a1130000-0000-0000-0000-000000001999', 'org-v113b', 'a1130000-0000-0000-0000-00000000000b', '999', '#999',
+   'https://github.com/elsewhere-v113/x/issues/999', 'Elsewhere', 'open', now(), now());
+
+-- pg_temp.v113_structure(pushed) — RS-124's structure: drafts only before the push, drafts and
+-- tickets (with their keys mirrored) after it.
+create function pg_temp.v113_structure(pushed boolean)
+returns jsonb language sql as $$
+  select jsonb_build_object('milestones', jsonb_agg(m.milestone order by m.ms))
+    from (select i.ms,
+                 jsonb_build_object(
+                   'key', i.ms,
+                   'name', case i.ms when 'm1' then 'Docking parity' else 'Fleet reliability' end,
+                   'target_date', case i.ms when 'm1' then '2026-10-15' else '2026-11-20' end,
+                   'items', jsonb_agg(jsonb_build_object(
+                              'key', i.key, 'title', i.title,
+                              'draft_id', 'a1130000-0000-0000-0000-000000000' || i.n,
+                              'ticket_id', case when pushed then 'a1130000-0000-0000-0000-000000001' || i.n end,
+                              'ticket_key', case when pushed then '#' || i.n end,
+                              'mvp', i.mvp, 'effort', i.effort, 'checked', pushed and i.checked)
+                            order by i.n)) as milestone
+            from pg_temp.v113_items i group by i.ms) m;
+$$;
+
+-- --- the doc and its first version ------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.roadmap_docs (organization_id, investigation_id, title)
+    values ('org-v113', 'a1130000-0000-0000-0000-000000000002', 'x')$$,
+  'a doc''s investigation is of its own workspace', 'roadmap_docs_investigation_same_workspace');
+
+insert into ouroboros.roadmap_docs (id, organization_id, investigation_id, title) values
+  ('a1130000-0000-0000-0000-000000000101', 'org-v113', 'a1130000-0000-0000-0000-000000000001',
+   'Helios — Q4 Improvement Roadmap');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.roadmap_docs (organization_id, investigation_id, title)
+    values ('org-v113', 'a1130000-0000-0000-0000-000000000001', 'Again')$$,
+  'an investigation produces one roadmap', 'roadmap_docs_investigation_key');
+
+insert into ouroboros.roadmap_doc_versions (id, doc_id, version, structure, markdown, generated_by, repo_projection)
+select 'a1130000-0000-0000-0000-000000000201', 'a1130000-0000-0000-0000-000000000101', 1,
+       pg_temp.v113_structure(false), '# Helios — Q4 Improvement Roadmap\n', 'create-roadmap@run-a1',
+       '{"state": "pending", "path": "docs/ROADMAP.md", "pr_ref": null, "committed_sha": null, "observed_sha": null}';
+
+select pg_temp.must_hold(
+  (select current_version = 1 from ouroboros.roadmap_docs where id = 'a1130000-0000-0000-0000-000000000101'),
+  'the first version becomes the doc''s current one');
+
+-- --- versions are immutable -------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.roadmap_doc_versions set markdown = '# hand-edited' where id = 'a1130000-0000-0000-0000-000000000201'$$,
+  'a version''s markdown is never hand-edited', 'roadmap_doc_versions_no_update');
+select pg_temp.must_reject(
+  $$update ouroboros.roadmap_doc_versions set structure = jsonb_set(structure, '{milestones,0,items,0,mvp}', 'false')
+     where id = 'a1130000-0000-0000-0000-000000000201'$$,
+  'nor its structure — an MVP flag lands in the next version', 'roadmap_doc_versions_no_update');
+select pg_temp.must_reject(
+  $$update ouroboros.roadmap_doc_versions set generated_by = 'someone' where id = 'a1130000-0000-0000-0000-000000000201'$$,
+  'nor who generated it', 'roadmap_doc_versions_no_update');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.roadmap_doc_versions (doc_id, version, structure, markdown, generated_by, repo_projection)
+    select 'a1130000-0000-0000-0000-000000000101', 3, pg_temp.v113_structure(false), 'x', 'r',
+           '{"state": "pending", "path": "docs/ROADMAP.md", "pr_ref": null, "committed_sha": null, "observed_sha": null}'$$,
+  'a version is the next one, with no gap', 'roadmap_doc_versions_version_next');
+
+-- --- structure shape and refs ------------------------------------------------------------
+
+-- pg_temp.v113_version(structure) — a version-2 insert carrying the given structure.
+create function pg_temp.v113_version(structure text)
+returns text language sql as $$
+  select format($f$insert into ouroboros.roadmap_doc_versions (doc_id, version, structure, markdown, generated_by, repo_projection)
+                   values ('a1130000-0000-0000-0000-000000000101', 2, %s, 'x', 'r',
+                           '{"state": "pending", "path": "docs/ROADMAP.md", "pr_ref": null, "committed_sha": null, "observed_sha": null}')$f$,
+                structure);
+$$;
+
+select pg_temp.must_reject(pg_temp.v113_version($$'{"markdown": "# roadmap"}'$$),
+  'a structure is milestones, not free markdown', 'roadmap_doc_versions_structure_shape');
+select pg_temp.must_reject(pg_temp.v113_version($$'{"milestones": []}'$$),
+  'a roadmap has at least one milestone', 'roadmap_doc_versions_structure_shape');
+select pg_temp.must_reject(pg_temp.v113_version($$jsonb_set(pg_temp.v113_structure(false), '{milestones,0,target_date}', '"2026-02-30"')$$),
+  'a target date is a real date', 'roadmap_doc_versions_structure_shape');
+select pg_temp.must_reject(pg_temp.v113_version($$jsonb_set(pg_temp.v113_structure(false), '{milestones,0,items,0,effort}', '"huge"')$$),
+  'effort is xs, s, m, l or xl', 'roadmap_doc_versions_structure_shape');
+select pg_temp.must_reject(pg_temp.v113_version($$jsonb_set(pg_temp.v113_structure(false), '{milestones,1,items,0,key}', '"dock-mpc"')$$),
+  'an item key is unique in the doc', 'roadmap_doc_versions_structure_shape');
+select pg_temp.must_reject(pg_temp.v113_version($$jsonb_set(pg_temp.v113_structure(false), '{milestones,0,items,0,ticket_key}', '"#742"')$$),
+  'a mirrored ticket key comes only with its ticket', 'roadmap_doc_versions_structure_shape');
+select pg_temp.must_reject(pg_temp.v113_version($$jsonb_set(pg_temp.v113_structure(false), '{milestones,0,items,0,draft_id}', '"a1130000-0000-0000-0000-000000000999"')$$),
+  'an item''s draft is of the doc''s workspace', 'roadmap_doc_versions_refs_valid');
+select pg_temp.must_reject(pg_temp.v113_version($$jsonb_set(jsonb_set(pg_temp.v113_structure(false),
+                             '{milestones,0,items,0,ticket_id}', '"a1130000-0000-0000-0000-000000001999"'),
+                             '{milestones,0,items,0,ticket_key}', '"#999"')$$),
+  'an item''s ticket is of the doc''s workspace', 'roadmap_doc_versions_refs_valid');
+select pg_temp.must_reject(pg_temp.v113_version($$jsonb_set(pg_temp.v113_structure(true), '{milestones,0,items,0,ticket_key}', '"#700"')$$),
+  'a mirrored ticket key is the ticket''s own', 'roadmap_doc_versions_refs_valid');
+
+-- --- the push: version 2 names the tickets, keeps the drafts --------------------------------
+
+insert into ouroboros.roadmap_doc_versions (id, doc_id, version, structure, markdown, generated_by, repo_projection)
+select 'a1130000-0000-0000-0000-000000000202', 'a1130000-0000-0000-0000-000000000101', 2,
+       pg_temp.v113_structure(true), '# Helios — Q4 Improvement Roadmap\n', 'create-issues@run-a2',
+       '{"state": "pending", "path": "docs/ROADMAP.md", "pr_ref": null, "committed_sha": null, "observed_sha": null}';
+
+select pg_temp.must_hold(
+  (select d.current_version = 2 and d.title = 'Helios — Q4 Improvement Roadmap'
+     from ouroboros.roadmap_docs d where d.id = 'a1130000-0000-0000-0000-000000000101'),
+  'the push''s version is current');
+
+select pg_temp.must_hold(
+  (select array_agg(line order by ord)
+          = array['M1 · DOCKING PARITY — TARGET OCT 15',
+                  '[x] #742 Wind-feedforward MPC in final approach MVP L',
+                  '[ ] #743 Re-planned abort & retry vectors MVP M',
+                  '[ ] #744 Gust estimator from IMU residuals M',
+                  'M2 · FLEET RELIABILITY — TARGET NOV 20',
+                  '[ ] #745 Battery health model v2 M',
+                  '[ ] #746 Telemetry gap alerts S',
+                  '[ ] #747 Operator recovery playbook docs XS']
+     from (select mo * 100 as ord,
+                  'M' || mo || ' · ' || upper(m ->> 'name') || ' — TARGET '
+                  || upper(to_char((m ->> 'target_date')::date, 'Mon FMDD')) as line
+             from ouroboros.roadmap_doc_versions v,
+                  jsonb_array_elements(v.structure -> 'milestones') with ordinality as x(m, mo)
+            where v.id = 'a1130000-0000-0000-0000-000000000202'
+           union all
+           select mo * 100 + io,
+                  case when (i ->> 'checked')::boolean then '[x] ' else '[ ] ' end || (i ->> 'ticket_key') || ' '
+                  || (i ->> 'title') || case when (i ->> 'mvp')::boolean then ' MVP' else '' end
+                  || ' ' || upper(i ->> 'effort')
+             from ouroboros.roadmap_doc_versions v,
+                  jsonb_array_elements(v.structure -> 'milestones') with ordinality as x(m, mo),
+                  jsonb_array_elements(m -> 'items') with ordinality as y(i, io)
+            where v.id = 'a1130000-0000-0000-0000-000000000202') lines),
+  'RS-124''s document round-trips — two milestones with target dates, six items, MVP flags, one checked');
+
+select pg_temp.must_hold(
+  (select bool_and(r.draft_id is not null and r.ticket_id is not null)
+          and count(*) = 6
+     from ouroboros.roadmap_doc_versions v,
+          ouroboros.roadmap_structure_refs(v.structure) r
+    where v.id = 'a1130000-0000-0000-0000-000000000202')
+   and (select bool_and(r.draft_id is not null and r.ticket_id is null)
+          from ouroboros.roadmap_doc_versions v,
+               ouroboros.roadmap_structure_refs(v.structure) r
+         where v.id = 'a1130000-0000-0000-0000-000000000201'),
+  'v1 names drafts; after the push v2 names the tickets without losing the draft links, and v1 is untouched');
+
+-- --- the repo projection ---------------------------------------------------------------------
+
+-- pg_temp.v113_project(state, pr, sha, observed) — move version 2's projection.
+create function pg_temp.v113_project(state text, pr text, sha text, observed text, path text default 'docs/ROADMAP.md')
+returns text language sql as $$
+  select format($f$update ouroboros.roadmap_doc_versions
+                      set repo_projection = jsonb_build_object('state', %L, 'path', %L, 'pr_ref', %L::text,
+                                                               'committed_sha', %L::text, 'observed_sha', %L::text)
+                    where id = 'a1130000-0000-0000-0000-000000000202'$f$,
+                state, path, pr, sha, observed);
+$$;
+
+select pg_temp.must_reject(pg_temp.v113_project('pr_open', null, null, null),
+  'an open PR names its PR', 'roadmap_doc_versions_repo_projection_shape');
+select pg_temp.must_reject(pg_temp.v113_project('committed', 'PR #88', null, null),
+  'a committed projection names its commit', 'roadmap_doc_versions_repo_projection_shape');
+select pg_temp.must_reject(pg_temp.v113_project('merged', 'PR #88', '8c1b2e4', null),
+  'a projection state is one of the four', 'roadmap_doc_versions_projection_transition');
+select pg_temp.must_hold(
+  not ouroboros.roadmap_repo_projection_valid('{"state": "merged", "path": "docs/ROADMAP.md", "pr_ref": "PR #88", "committed_sha": "8c1b2e4", "observed_sha": null}')
+  and not ouroboros.roadmap_repo_projection_valid('{"state": "pending", "path": "../etc/ROADMAP.md", "pr_ref": null, "committed_sha": null, "observed_sha": null}')
+  and not ouroboros.roadmap_repo_projection_valid('{"state": "pending", "path": "/docs/ROADMAP.md", "pr_ref": null, "committed_sha": null, "observed_sha": null}')
+  and not ouroboros.roadmap_repo_projection_valid('{"state": "pending", "path": "docs/ROADMAP.md", "pr_ref": null, "committed_sha": "8c1b2e4", "observed_sha": null}')
+  and not ouroboros.roadmap_repo_projection_valid('{"state": "committed", "path": "docs/ROADMAP.md", "pr_ref": null, "committed_sha": "main", "observed_sha": null}')
+  and not ouroboros.roadmap_repo_projection_valid('{"state": "pending", "path": "docs/ROADMAP.md"}')
+  and ouroboros.roadmap_repo_projection_valid('{"state": "committed", "path": "docs/ROADMAP.md", "pr_ref": null, "committed_sha": "8c1b2e4", "observed_sha": null}'),
+  'a projection''s shape: one of four states, a path inside the repo, a sha only once committed, every key present');
+select pg_temp.must_reject(
+  $$insert into ouroboros.roadmap_doc_versions (doc_id, version, structure, markdown, generated_by, repo_projection)
+    select 'a1130000-0000-0000-0000-000000000101', 3, pg_temp.v113_structure(true), 'x', 'r',
+           '{"state": "pending", "path": "../etc/ROADMAP.md", "pr_ref": null, "committed_sha": null, "observed_sha": null}'$$,
+  'a projection path stays inside the repo', 'roadmap_doc_versions_repo_projection_shape');
+select pg_temp.must_reject(pg_temp.v113_project('drift_detected', 'PR #88', '8c1b2e4', '9d2c3f5'),
+  'drift is detected only on a committed projection', 'roadmap_doc_versions_projection_transition');
+select pg_temp.must_reject(pg_temp.v113_project('pending', null, null, null, 'ROADMAP.md'),
+  'a projection''s path is fixed once written', 'roadmap_doc_versions_projection_transition');
+
+do $x$ begin execute pg_temp.v113_project('pr_open', 'PR #88', null, null); end $x$;
+do $x$ begin execute pg_temp.v113_project('committed', 'PR #88', '8c1b2e4', null); end $x$;
+
+select pg_temp.must_reject(pg_temp.v113_project('pending', null, null, null),
+  'a committed projection does not go back to pending', 'roadmap_doc_versions_projection_transition');
+select pg_temp.must_reject(pg_temp.v113_project('drift_detected', 'PR #88', '8c1b2e4', null),
+  'drift names the commit it was observed at', 'roadmap_doc_versions_repo_projection_shape');
+
+do $x$ begin execute pg_temp.v113_project('drift_detected', 'PR #88', '8c1b2e4', '9d2c3f5'); end $x$;
+
+select pg_temp.must_hold(
+  (select repo_projection ->> 'state' = 'drift_detected' and repo_projection ->> 'committed_sha' = '8c1b2e4'
+          and repo_projection ->> 'observed_sha' = '9d2c3f5'
+     from ouroboros.roadmap_doc_versions where id = 'a1130000-0000-0000-0000-000000000202'),
+  'pending → pr_open → committed → drift_detected, each state shaped as the state requires');
+
+do $x$ begin execute pg_temp.v113_project('committed', 'PR #89', '0a1b2c3', null); end $x$;
+
+-- --- suggestions --------------------------------------------------------------------------------
+
+insert into ouroboros.doc_suggestions (id, doc_id, author_kind, author_user_id, author_agent, text, hint) values
+  ('a1130000-0000-0000-0000-000000000301', 'a1130000-0000-0000-0000-000000000101', 'user', 'user-v113', null,
+   'Pull #744 into the M1 MVP set — churn interviews rank gust handling above battery accuracy.',
+   '{"item": "dock-gust", "mvp": true}'),
+  ('a1130000-0000-0000-0000-000000000302', 'a1130000-0000-0000-0000-000000000101', 'ai', null, 'estimator',
+   'Split #745 — complexity is high for a single loop; model + calibration land better as two issues.',
+   '{"split": "fleet-battery", "into": 2}');
+
+select pg_temp.must_hold(
+  (select array_agg(case s.author_kind when 'user' then u."name" else 'AI · ' || s.author_agent end
+                    || ': ' || substring(s.text from '^\S+ #[0-9]+') order by s.id)
+          = array['Ken Suenobu: Pull #744', 'AI · estimator: Split #745']
+          and (select count(*) = 2 from ouroboros.doc_suggestions
+                where doc_id = 'a1130000-0000-0000-0000-000000000101' and status = 'open')
+     from ouroboros.doc_suggestions s
+     left join ouroboros."user" u on u."id" = s.author_user_id
+    where s.doc_id = 'a1130000-0000-0000-0000-000000000101'),
+  'SUGGESTED CHANGES — 2 OPEN: the human''s and the AI''s, distinguishably');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.doc_suggestions (doc_id, author_kind, author_user_id, text)
+    values ('a1130000-0000-0000-0000-000000000101', 'ai', 'user-v113', 'x')$$,
+  'an AI suggestion names its agent, not a person', 'doc_suggestions_author_coherent');
+select pg_temp.must_reject(
+  $$insert into ouroboros.doc_suggestions (doc_id, author_kind, author_agent, text)
+    values ('a1130000-0000-0000-0000-000000000101', 'user', 'estimator', 'x')$$,
+  'a user suggestion names no agent', 'doc_suggestions_author_coherent');
+select pg_temp.must_reject(
+  $$insert into ouroboros.doc_suggestions (doc_id, author_kind, author_agent, text)
+    values ('a1130000-0000-0000-0000-000000000101', 'robot', 'estimator', 'x')$$,
+  'an author is a user or the AI', 'doc_suggestions_author_kind');
+select pg_temp.must_reject(
+  $$insert into ouroboros.doc_suggestions (doc_id, author_kind, author_agent, text, status, dismissed_at, dismissed_by)
+    values ('a1130000-0000-0000-0000-000000000101', 'ai', 'estimator', 'x', 'dismissed', now(), 'user-v113')$$,
+  'a suggestion is written open', 'doc_suggestions_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.doc_suggestions set status = 'applied', applied_at = now(), applied_by = 'user-v113'
+     where id = 'a1130000-0000-0000-0000-000000000301'$$,
+  'applying records the version the re-run produced', 'doc_suggestions_status_coherent');
+select pg_temp.must_reject(
+  $$update ouroboros.doc_suggestions set status = 'applied', applied_version = 2, applied_at = now()
+     where id = 'a1130000-0000-0000-0000-000000000301'$$,
+  'and who applied it', 'doc_suggestions_transition');
+select pg_temp.must_reject(
+  $$update ouroboros.doc_suggestions set status = 'applied', applied_version = 9, applied_at = now(), applied_by = 'user-v113'
+     where id = 'a1130000-0000-0000-0000-000000000301'$$,
+  'the version is one the doc has', 'doc_suggestions_applied_version_fk');
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       update ouroboros.doc_suggestions set created_at = now() + interval '1 hour'
+        where id = 'a1130000-0000-0000-0000-000000000301';
+     end $x$ $q$,
+  'a suggestion is never edited', 'doc_suggestions_transition');
+select pg_temp.must_reject(
+  $$update ouroboros.doc_suggestions set text = 'Pull #745 instead' where id = 'a1130000-0000-0000-0000-000000000301'$$,
+  'nor its text', 'doc_suggestions_transition');
+
+-- Applying re-runs create-roadmap: version 3 is written, v2 untouched, and the suggestion records it.
+insert into ouroboros.roadmap_doc_versions (id, doc_id, version, structure, markdown, generated_by, repo_projection)
+select 'a1130000-0000-0000-0000-000000000203', 'a1130000-0000-0000-0000-000000000101', 3,
+       jsonb_set(pg_temp.v113_structure(true), '{milestones,0,items,2,mvp}', 'true'),
+       '# Helios — Q4 Improvement Roadmap\n', 'create-roadmap@run-a3',
+       '{"state": "pending", "path": "docs/ROADMAP.md", "pr_ref": null, "committed_sha": null, "observed_sha": null}';
+update ouroboros.doc_suggestions
+   set status = 'applied', applied_version = 3, applied_at = now(), applied_by = 'user-v113'
+ where id = 'a1130000-0000-0000-0000-000000000301';
+
+select pg_temp.must_hold(
+  (select s.status = 'applied' and s.applied_version = 3 and s.applied_by = 'user-v113'
+          and (v.structure #>> '{milestones,0,items,2,mvp}') = 'true'
+          and (v2.structure #>> '{milestones,0,items,2,mvp}') = 'false'
+          and d.current_version = 3
+     from ouroboros.doc_suggestions s
+     join ouroboros.roadmap_doc_versions v  on v.doc_id = s.doc_id and v.version = s.applied_version
+     join ouroboros.roadmap_doc_versions v2 on v2.doc_id = s.doc_id and v2.version = 2
+     join ouroboros.roadmap_docs d          on d.id = s.doc_id
+    where s.id = 'a1130000-0000-0000-0000-000000000301'),
+  'open → applied@v3: the re-run''s version is recorded, and v2 is untouched');
+
+select pg_temp.must_reject(
+  $$update ouroboros.doc_suggestions set status = 'dismissed', applied_version = null, applied_at = null,
+                                        applied_by = null, dismissed_at = now(), dismissed_by = 'user-v113'
+     where id = 'a1130000-0000-0000-0000-000000000301'$$,
+  'an applied suggestion stays applied', 'doc_suggestions_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.doc_suggestions set status = 'dismissed', dismissed_at = now()
+     where id = 'a1130000-0000-0000-0000-000000000302'$$,
+  'dismissing records who dismissed it', 'doc_suggestions_transition');
+update ouroboros.doc_suggestions set status = 'dismissed', dismissed_at = now(), dismissed_by = 'user-v113'
+ where id = 'a1130000-0000-0000-0000-000000000302';
+
+select pg_temp.must_hold(
+  (select status = 'dismissed' and dismissed_by = 'user-v113' and dismissed_at is not null
+          and applied_version is null
+     from ouroboros.doc_suggestions where id = 'a1130000-0000-0000-0000-000000000302'),
+  'open → dismissed, with actor and time');
+
+-- A suggestion made after a version cannot claim to have produced it.
+insert into ouroboros.doc_suggestions (id, doc_id, author_kind, author_agent, text, created_at) values
+  ('a1130000-0000-0000-0000-000000000303', 'a1130000-0000-0000-0000-000000000101', 'ai', 'estimator',
+   'Later idea', now() + interval '1 hour');
+select pg_temp.must_reject(
+  $$update ouroboros.doc_suggestions set status = 'applied', applied_version = 3, applied_at = now(), applied_by = 'user-v113'
+     where id = 'a1130000-0000-0000-0000-000000000303'$$,
+  'a suggestion cannot have produced a version written before it', 'doc_suggestions_transition');
+
+-- --- indexes ---------------------------------------------------------------------------------
+
+select pg_temp.must_hold(
+  (select indexdef like '%(doc_id, status)%' from pg_indexes
+    where schemaname = 'ouroboros' and indexname = 'doc_suggestions_doc_status_idx')
+   and exists (select 1 from pg_indexes where schemaname = 'ouroboros'
+                  and indexname = 'roadmap_doc_versions_doc_version_key'),
+  'versions are keyed by doc + version, and suggestions indexed by doc + status');
+
+-- --- the application role -----------------------------------------------------------------------
+set local role ouroboros_app;
+
+select pg_temp.must_hold(
+  (select current_user = 'ouroboros_app'),
+  'the assertions below really are the application role''s');
+
+select pg_temp.must_raise(
+  $$update ouroboros.roadmap_doc_versions set markdown = 'x'$$,
+  '42501', 'the application role may move only a version''s repo projection');
+select pg_temp.must_raise(
+  $$delete from ouroboros.roadmap_doc_versions$$,
+  '42501', 'the application role cannot delete a version');
+select pg_temp.must_raise(
+  $$delete from ouroboros.doc_suggestions$$,
+  '42501', 'the application role cannot delete a suggestion');
+do $x$ begin execute pg_temp.v113_project('drift_detected', 'PR #89', '0a1b2c3', '9d2c3f5'); end $x$;
+
+reset role;
+
+-- --- deletions -----------------------------------------------------------------------------------
+
+-- A person's deletion clears the actor and keeps the record.
+delete from ouroboros."user" where "id" = 'user-v113';
+select pg_temp.must_hold(
+  (select array_agg(status || ':' || coalesce(applied_by, dismissed_by, author_user_id, '∅') order by id)
+          = array['applied:∅', 'dismissed:∅', 'open:∅']
+     from ouroboros.doc_suggestions where doc_id = 'a1130000-0000-0000-0000-000000000101'),
+  'deleting a person clears who suggested, applied or dismissed — the suggestions stay');
+
+-- The investigation going leaves the roadmap.
+delete from ouroboros.investigations where id = 'a1130000-0000-0000-0000-000000000001';
+select pg_temp.must_hold(
+  (select investigation_id is null and current_version = 3
+     from ouroboros.roadmap_docs where id = 'a1130000-0000-0000-0000-000000000101'),
+  'a doc outlives its investigation');
+
+delete from ouroboros.organization where "id" in ('org-v113', 'org-v113b');
+set constraints ouroboros.roadmap_docs_current_version_fk immediate;
+set constraints ouroboros.roadmap_docs_current_version_fk deferred;
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.roadmap_docs where organization_id in ('org-v113', 'org-v113b'))
+   and (select count(*) = 0 from ouroboros.roadmap_doc_versions where doc_id = 'a1130000-0000-0000-0000-000000000101')
+   and (select count(*) = 0 from ouroboros.doc_suggestions where doc_id = 'a1130000-0000-0000-0000-000000000101'),
+  'deleting a workspace deletes its roadmaps, their versions and suggestions');
+
+-- ===========================================================================
+-- V114 — dry-run suggestions with a basis, and the review replays behind them (#558, CC.4)
+-- ===========================================================================
+--
+-- A suggestion is a record: a rule (with its id and version) or the LLM, evidence, typed
+-- operations Apply executes, and a confidence never without its basis. It is written open and
+-- settled once — applied with the batch an Apply produced, or ignored — and nothing about it is
+-- edited. Its operations fold over the draft (`dry_run_suggestion_preview`); the review replays
+-- hold their agreement classes; draft_operations.suggestion_id is a foreign key now, cleared when
+-- a swept dry run takes its suggestion.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v114', 'Suggestion Works', 'suggestion-works-v114', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v114', 'Ken Suggests', 'ken@suggestion-works-v114.dev', true);
+
+insert into ouroboros.workflows (id, organization_id, slug, name) values
+  ('a1140000-0000-0000-0000-000000000001', 'org-v114', 'security-patch', 'Security patch');
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('a1140000-0000-0000-0000-00000000000a', 'org-v114', 'github', 'GitHub · suggestion works');
+
+insert into ouroboros.tickets (id, organization_id, source_id, external_id, external_key, external_url, title,
+                               state, source_created_at, source_updated_at) values
+  ('a1140000-0000-0000-0000-000000000489', 'org-v114', 'a1140000-0000-0000-0000-00000000000a', '489', '#489',
+   'https://github.com/suggestion-works-v114/helios-firmware/issues/489',
+   'CAN arbitration-lost storm under full telemetry load', 'open', now(), now());
+
+-- A draft for the suggestions to apply to: trigger → test → exploit-verify → review.
+select count(*) from ouroboros.apply_draft_batch('org-v114', 'a1140000-0000-0000-0000-000000000001',
+  'code', 'user-v114', null, null, '[
+    {"kind": "set_trigger", "params": {"trigger": {"event": "ticket_queued", "conditions": {"labels": ["security"]}}}},
+    {"kind": "add_stage", "params": {"node": {"id": "trigger", "type": "trigger", "title": "trigger", "position": {"x": 0, "y": 0}, "config": {}}}},
+    {"kind": "add_stage", "params": {"node": {"id": "test", "type": "infra", "title": "test", "position": {"x": 0, "y": 100}, "config": {}}}},
+    {"kind": "add_stage", "params": {"node": {"id": "exploit-verify", "type": "llm", "title": "exploit-verify", "position": {"x": 0, "y": 200},
+      "config": {"mode": "prompt", "prompt_template": "Re-run the PoC.", "routing": {"inherit_task": "exploit-verify"},
+                 "limits": {"max_retries": 0, "token_budget": 100000}, "permissions": {"push_fixup": false, "touch_ci": false}}}}},
+    {"kind": "add_stage", "params": {"node": {"id": "review", "type": "llm", "title": "review", "position": {"x": 0, "y": 300},
+      "config": {"mode": "prompt", "prompt_template": "Review.", "routing": {"inherit_task": "review"},
+                 "limits": {"max_retries": 0, "token_budget": 100000}, "permissions": {"push_fixup": false, "touch_ci": false}}}}},
+    {"kind": "add_edge", "params": {"edge": {"from": "trigger", "to": "test", "kind": "default"}}},
+    {"kind": "add_edge", "params": {"edge": {"from": "test", "to": "exploit-verify", "kind": "default"}}},
+    {"kind": "add_edge", "params": {"edge": {"from": "exploit-verify", "to": "review", "kind": "default"}}}
+  ]'::jsonb);
+
+insert into ouroboros.dry_runs (id, organization_id, workflow_id, draft_rev, ticket_id, pinned_sha, status,
+                                precheck_findings) values
+  ('a1140000-0000-0000-0000-000000000101', 'org-v114', 'a1140000-0000-0000-0000-000000000001', 1,
+   'a1140000-0000-0000-0000-000000000489', repeat('a', 40), 'running', '[]');
+
+-- pg_temp.v114_suggestion(source, rule, basis, ops, evidence) — one suggestion insert, as a
+-- statement, so each refusal below can vary one thing.
+create function pg_temp.v114_suggestion(source text, rule text, basis text, ops text,
+                                        evidence text default '''{"stage_key": "exploit-verify"}''')
+returns text language sql as $$
+  select format($f$insert into ouroboros.dry_run_suggestions
+                     (organization_id, dry_run_id, source, rule_id, rule_version, title, body,
+                      evidence, proposed_ops, confidence, confidence_basis)
+                   values ('org-v114', 'a1140000-0000-0000-0000-000000000101', '%s', %s, %s,
+                           'Make exploit-verify conditional', 'It had nothing to do.',
+                           %s, %s, 93, %s)$f$,
+                source, rule, case when rule = 'null' then 'null' else '1' end, evidence, ops, basis);
+$$;
+
+-- The pieces the refusals vary.
+create temp table v114 (name text primary key, value text) on commit drop;
+insert into v114 values
+  ('basis', $$'{"method": "rule_strength", "inputs": {"rule": "deterministic-skip", "base": 95}}'$$),
+  ('ops', $$'[{"kind": "remove_edge", "params": {"from": "exploit-verify", "to": "review"}},
+              {"kind": "add_edge", "params": {"edge": {"from": "test", "to": "review", "kind": "default"}}}]'$$);
+
+create function pg_temp.v114(p_name text) returns text language sql as $$
+  select value from pg_temp.v114 where name = p_name
+$$;
+
+-- --- shape --------------------------------------------------------------------------------
+
+select pg_temp.must_reject(
+  pg_temp.v114_suggestion('heuristic', 'null', pg_temp.v114('basis'), pg_temp.v114('ops')),
+  'a suggestion is a rule''s or the LLM''s', 'dry_run_suggestions_source');
+select pg_temp.must_reject(
+  pg_temp.v114_suggestion('rule', 'null', pg_temp.v114('basis'), pg_temp.v114('ops')),
+  'a rule suggestion names its rule and version', 'dry_run_suggestions_rule_named');
+select pg_temp.must_reject(
+  pg_temp.v114_suggestion('llm', '''deterministic-skip''', pg_temp.v114('basis'), pg_temp.v114('ops')),
+  'an LLM suggestion names no rule', 'dry_run_suggestions_rule_named');
+select pg_temp.must_reject(
+  pg_temp.v114_suggestion('rule', '''deterministic-skip''', $$'{"method": "rule_strength", "inputs": {}}'$$, pg_temp.v114('ops')),
+  'a confidence without the inputs that produced it is refused', 'dry_run_suggestions_confidence_basis');
+select pg_temp.must_reject(
+  pg_temp.v114_suggestion('rule', '''deterministic-skip''', $$'{"inputs": {"base": 95}}'$$, pg_temp.v114('ops')),
+  'and so is one that does not say how it was scored', 'dry_run_suggestions_confidence_basis');
+select pg_temp.must_reject(
+  pg_temp.v114_suggestion('rule', '''deterministic-skip''', pg_temp.v114('basis'), $$'[]'$$),
+  'a suggestion proposes at least one operation', 'dry_run_suggestions_proposed_ops_shape');
+select pg_temp.must_reject(
+  pg_temp.v114_suggestion('rule', '''deterministic-skip''', pg_temp.v114('basis'), $$'[{"kind": "add exploit-verify conditional"}]'$$),
+  'a proposed operation is a typed draft operation, not prose', 'dry_run_suggestions_proposed_ops_shape');
+select pg_temp.must_reject(
+  pg_temp.v114_suggestion('rule', '''deterministic-skip''', pg_temp.v114('basis'), pg_temp.v114('ops'), $$'["stage"]'$$),
+  'evidence is an object', 'dry_run_suggestions_evidence_shape');
+
+select pg_temp.must_hold(
+  ouroboros.dry_run_confidence_basis_valid('{"method": "replay_statistics", "inputs": {"pairs": 10, "style_disagreements": 6}}')
+  and not ouroboros.dry_run_confidence_basis_valid('{"method": " ", "inputs": {"pairs": 10}}')
+  and not ouroboros.dry_run_confidence_basis_valid(null),
+  'a basis names a method and its inputs');
+
+do $x$ begin execute pg_temp.v114_suggestion('rule', '''deterministic-skip''', pg_temp.v114('basis'), pg_temp.v114('ops')); end $x$;
+do $x$ begin execute pg_temp.v114_suggestion('llm', 'null', $$'{"method": "llm_self_report", "inputs": {"model": "claude-fable-5"}}'$$, pg_temp.v114('ops')); end $x$;
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_suggestions (organization_id, dry_run_id, source, rule_id, rule_version, title, body,
+                                               evidence, proposed_ops, confidence, confidence_basis, status, resolved_at)
+    select organization_id, dry_run_id, source, rule_id, rule_version, title, body, evidence, proposed_ops,
+           confidence, confidence_basis, 'ignored', now()
+      from ouroboros.dry_run_suggestions where source = 'rule' and dry_run_id = 'a1140000-0000-0000-0000-000000000101'$$,
+  'a suggestion is written open', 'dry_run_suggestions_transition');
+
+-- --- what Apply would store ------------------------------------------------------------------
+
+select pg_temp.must_hold(
+  (select ouroboros.dry_run_suggestion_preview(s.id) -> 'edges'
+          @> '[{"from": "test", "to": "review", "kind": "default"}]'::jsonb
+          and not (ouroboros.dry_run_suggestion_preview(s.id) -> 'edges'
+                   @> '[{"from": "exploit-verify", "to": "review"}]'::jsonb)
+     from ouroboros.dry_run_suggestions s where s.source = 'rule' and s.dry_run_id = 'a1140000-0000-0000-0000-000000000101'),
+  'the preview folds the proposed operations over the current draft');
+
+select pg_temp.must_raise(
+  $$select ouroboros.workflow_draft_apply_op(
+      ouroboros.dry_run_suggestion_preview(s.id),
+      '{"kind": "remove_edge", "params": {"from": "exploit-verify", "to": "review"}}')
+      from ouroboros.dry_run_suggestions s where s.source = 'rule' and s.dry_run_id = 'a1140000-0000-0000-0000-000000000101'$$,
+  '23514', 'an operation that no longer applies raises rather than previewing something else');
+
+-- --- settling ---------------------------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_run_suggestions set body = 'Rewritten.' where source = 'rule' and dry_run_id = 'a1140000-0000-0000-0000-000000000101'$$,
+  'a suggestion is a record — its text is never edited', 'dry_run_suggestions_transition');
+select pg_temp.must_reject(
+  $$update ouroboros.dry_run_suggestions set status = 'applied', applied_op_batch_id = gen_random_uuid(), resolved_at = now(),
+                                            resolved_by = 'user-v114'
+     where source = 'rule' and dry_run_id = 'a1140000-0000-0000-0000-000000000101'$$,
+  'Apply names a batch that is an Apply of this suggestion', 'dry_run_suggestions_transition');
+select pg_temp.must_reject(
+  $$update ouroboros.dry_run_suggestions set status = 'applied', resolved_at = now()
+     where source = 'rule' and dry_run_id = 'a1140000-0000-0000-0000-000000000101'$$,
+  'an applied suggestion records its batch', 'dry_run_suggestions_resolution_coherent');
+
+-- Apply: the batch through V110's writer, as the suggestion actor, then the resolution.
+create temp table v114_batch on commit drop as
+select b.batch_id, s.id as suggestion_id
+  from ouroboros.dry_run_suggestions s
+  cross join lateral ouroboros.apply_draft_batch('org-v114', 'a1140000-0000-0000-0000-000000000001',
+                                                 'suggestion', 'user-v114', null, s.id, s.proposed_ops) b
+ where s.source = 'rule' and s.dry_run_id = 'a1140000-0000-0000-0000-000000000101';
+
+update ouroboros.dry_run_suggestions s
+   set status = 'applied', applied_op_batch_id = b.batch_id, resolved_at = now(), resolved_by = 'user-v114'
+  from pg_temp.v114_batch b
+ where s.id = b.suggestion_id;
+
+select pg_temp.must_hold(
+  (select s.status = 'applied' and w.draft_rev = 2 and (w.provenance_summary ->> 'suggestion')::int = 1
+          and exists (select 1 from ouroboros.draft_operations o
+                       where o.batch_id = s.applied_op_batch_id and o.suggestion_id = s.id and o.actor = 'suggestion')
+     from ouroboros.dry_run_suggestions s
+     join ouroboros.workflows w on w.id = 'a1140000-0000-0000-0000-000000000001'
+    where s.source = 'rule' and s.dry_run_id = 'a1140000-0000-0000-0000-000000000101'),
+  'open → applied: Apply is a suggestion-actor batch through apply_draft_batch(), and the suggestion records it');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_run_suggestions set status = 'ignored', applied_op_batch_id = null
+     where source = 'rule' and dry_run_id = 'a1140000-0000-0000-0000-000000000101'$$,
+  'an applied suggestion stays applied', 'dry_run_suggestions_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_run_suggestions set status = 'ignored'
+     where source = 'llm' and dry_run_id = 'a1140000-0000-0000-0000-000000000101'$$,
+  'an ignored suggestion records when', 'dry_run_suggestions_resolution_coherent');
+update ouroboros.dry_run_suggestions set status = 'ignored', resolved_at = now(), resolved_by = 'user-v114'
+ where source = 'llm' and dry_run_id = 'a1140000-0000-0000-0000-000000000101';
+
+select pg_temp.must_hold(
+  (select array_agg(source || ':' || status order by source) = array['llm:ignored', 'rule:applied']
+     from ouroboros.dry_run_suggestions where dry_run_id = 'a1140000-0000-0000-0000-000000000101'),
+  'open → ignored, with when and by whom');
+
+-- --- review replays ---------------------------------------------------------------------------
+
+insert into ouroboros.review_replay_pairs (organization_id, workflow_id, replay_set, sample_ref, reviewer_stages,
+                                           agreed, disagreement_class, replayed_at) values
+  ('org-v114', 'a1140000-0000-0000-0000-000000000001', 'a1140000-0000-0000-0000-000000000201', '#541',
+   array['review-primary', 'review-second'], false, 'style', now()),
+  ('org-v114', 'a1140000-0000-0000-0000-000000000001', 'a1140000-0000-0000-0000-000000000201', '#542',
+   array['review-primary', 'review-second'], true, null, now());
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.review_replay_pairs (organization_id, workflow_id, replay_set, sample_ref, reviewer_stages, agreed, replayed_at)
+    values ('org-v114', 'a1140000-0000-0000-0000-000000000001', gen_random_uuid(), '#543',
+            array['review-primary', 'review-second'], false, now())$$,
+  'a disagreement says what it was about', 'review_replay_pairs_class_when_disagreed');
+select pg_temp.must_reject(
+  $$insert into ouroboros.review_replay_pairs (organization_id, workflow_id, replay_set, sample_ref, reviewer_stages, agreed,
+                                               disagreement_class, replayed_at)
+    values ('org-v114', 'a1140000-0000-0000-0000-000000000001', gen_random_uuid(), '#543',
+            array['review-primary', 'review-second'], false, 'tone', now())$$,
+  'a disagreement is on style or substance', 'review_replay_pairs_disagreement_class');
+select pg_temp.must_reject(
+  $$insert into ouroboros.review_replay_pairs (organization_id, workflow_id, replay_set, sample_ref, reviewer_stages, agreed, replayed_at)
+    values ('org-v114', 'a1140000-0000-0000-0000-000000000001', gen_random_uuid(), '#543',
+            array['review-primary', 'review-primary'], true, now())$$,
+  'a pair is two different reviewers', 'review_replay_pairs_reviewer_stages');
+select pg_temp.must_reject(
+  $$insert into ouroboros.review_replay_pairs (organization_id, workflow_id, replay_set, sample_ref, reviewer_stages, agreed, replayed_at)
+    values ('org-v114', 'a1140000-0000-0000-0000-000000000001', 'a1140000-0000-0000-0000-000000000201', '#541',
+            array['review-primary', 'review-second'], true, now())$$,
+  'a replay set samples a change once', 'review_replay_pairs_set_sample_key');
+
+-- --- the application role ---------------------------------------------------------------------
+set local role ouroboros_app;
+
+select pg_temp.must_raise(
+  $$delete from ouroboros.dry_run_suggestions$$,
+  '42501', 'the application role cannot delete a suggestion');
+select pg_temp.must_raise(
+  $$update ouroboros.review_replay_pairs set agreed = true$$,
+  '42501', 'the application role cannot rewrite a replay');
+
+reset role;
+
+-- --- a swept dry run clears the operation's suggestion reference --------------------------------
+
+delete from ouroboros.dry_runs where id = 'a1140000-0000-0000-0000-000000000101';
+set constraints ouroboros.draft_operations_suggestion_fk immediate;
+set constraints ouroboros.draft_operations_suggestion_fk deferred;
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.dry_run_suggestions
+    where dry_run_id = 'a1140000-0000-0000-0000-000000000101')
+   and (select bool_and(o.suggestion_id is null) and count(*) = 2
+          from ouroboros.draft_operations o
+         where o.workflow_id = 'a1140000-0000-0000-0000-000000000001' and o.actor = 'suggestion'),
+  'deleting a dry run takes its suggestions, and the Apply''s operations keep their history with the reference cleared');
+
+delete from ouroboros.organization where "id" = 'org-v114';
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.review_replay_pairs where organization_id = 'org-v114'),
+  'deleting a workspace deletes its review replays');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --
@@ -34464,6 +38324,10 @@ analyze ouroboros.model_aliases;
 analyze ouroboros.provider_connections;
 analyze ouroboros.tickets;
 analyze ouroboros.ticket_sources;
+analyze ouroboros.investigations;
+analyze ouroboros.copilot_messages;
+analyze ouroboros.source_records;
+analyze ouroboros.dry_runs;
 
 \o
 \echo 'constraints.sql: all assertions passed'

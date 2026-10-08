@@ -233,12 +233,18 @@ const HISTORY_TABLE = "flyway_schema_history";
  * every update and delete — so a suite cannot put the shipped versions back once emptied, and every
  * later emission would refuse for a missing kind (BM.1, #457). `decision_items` references it and is
  * still emptied. A kind a suite declares stays for the run: declare it under a `custom:` id of its own.
+ *
+ * `research_tools` (V106) is the research-tool slug registry, shipped by its migration. Emptied,
+ * every workspace creation would refuse: the organization trigger seeds the four investigation
+ * kinds, whose playbooks' `default_tools` must be registered slugs (CK.1 #608, CM.3 #622). No
+ * foreign key references it — slugs are checked by trigger — so nothing else is kept with it.
  */
 const REFERENCE_TABLES = [
   "flake_score_formulas",
   "metric_definitions",
   "intervention_cause_rules",
   "decision_kinds",
+  "research_tools",
 ];
 
 export class ApiHarness {

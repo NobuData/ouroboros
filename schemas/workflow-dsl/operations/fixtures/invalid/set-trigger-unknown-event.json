@@ -1,0 +1,1 @@
+{ "kind": "set_trigger", "params": { "trigger": { "event": "pr_opened", "conditions": {} } } }

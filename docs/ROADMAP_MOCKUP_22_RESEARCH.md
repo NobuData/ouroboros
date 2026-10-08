@@ -319,16 +319,18 @@ issue assigned. Complexity chips: **XS · S · M · L**.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CK.1 | #608 | 🟡 Open | ouroboros-db: [CK.1] Investigations & kind registry schema | RS-### entities: kind, depth, tools, status, provenance, spend | mvp, research, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
-| CK.2 | #609 | 🟡 Open | ouroboros-db: [CK.2] Citation ledger — source records & claims | Archived sources (external+internal URIs), claim→citation links | mvp, research, db | N (after CK.1) | Y | M | ouroboros-db |
-| CK.3 | #610 | 🟡 Open | ouroboros-db: [CK.3] Capability matrices & competitor watch schema | Matrix cells with citations; rival registry, watched sources, diffs | mvp, research, db | N (after CK.2) | Y | M | ouroboros-db |
+| CK.1 | #608 ✅ | 🟢 Done | ouroboros-db: [CK.1] Investigations & kind registry schema | RS-### entities: kind, depth, tools, status, provenance, spend | mvp, research, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
+| CK.2 | #609 ✅ | 🟢 Done | ouroboros-db: [CK.2] Citation ledger — source records & claims | Archived sources (external+internal URIs), claim→citation links | mvp, research, db | N (after CK.1) | Y | M | ouroboros-db |
+| CK.3 | #610 ✅ | 🟢 Done | ouroboros-db: [CK.3] Capability matrices & competitor watch schema | Matrix cells with citations; rival registry, watched sources, diffs | mvp, research, db | N (after CK.2) | Y | M | ouroboros-db |
 | CK.4 | #611 | 🟡 Open | ouroboros-db: [CK.4] Regression baselines & watch items | Release baselines, metric windows, drift states, bisect results | mvp, research, db | N (after CK.1, AS.1) | Y | M | ouroboros-db |
-| CK.5 | #612 | 🟡 Open | ouroboros-db: [CK.5] Roadmap docs & suggested changes | Versioned doc entities, projection state, writeback refs, suggestions | mvp, research, db | N (after CK.1, AK.1) | Y | M | ouroboros-db |
+| CK.5 | #612 ✅ | 🟢 Done | ouroboros-db: [CK.5] Roadmap docs & suggested changes | Versioned doc entities, projection state, writeback refs, suggestions | mvp, research, db | N (after CK.1, AK.1) | Y | M | ouroboros-db |
 | CK.6 | #613 | 🟡 Open | ouroboros-db: [CK.6] Research dev seeds — mockup-22 parity + probes | RS-118/121/124/127, 44-source ledger, matrix, watch rows, doc; ci checks | mvp, research, db, ci | N (after CK.2–CK.5, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue CK.1 — ouroboros-db: [CK.1] Investigations & kind registry schema
 
-> **GitHub issue:** #608 · **Status:** 🟡 Open · **Parent epic:** #603
+> **GitHub issue:** #608 ✅ · **Status:** 🟢 Done · **Parent epic:** #603
+>
+> **Delivered (#608, `V106__investigations.sql` — no REST/UI change):** `research_tools` registers the six adapter slugs (`web`, `competitor`, `code`, `tickets`, `telemetry`, `docs`) installation-wide, so an unknown slug in `tools_enabled` or a playbook's `default_tools` is refused at write (and a slug still in use cannot be deleted or renamed); CL.1's SPI registers further adapters as rows. `investigation_kinds` is per workspace — `slug`, `display_name`, `tint_key` (`bug`/`reg`/`road`/`gap`, the mockup's chip classes) and a `playbook` of exactly `{version, default_tools, synthesis_template, deliverables}` (deliverables ⊆ `brief|matrix|roadmap_doc|fix_draft`, always with `brief`), whose version must rise with any change; an `after insert` trigger on `organization` seeds the four built-ins into every workspace, and the migration back-fills existing ones. `investigations` carries `seq` + generated `display_id` (`RS-001`…, wider past 999), the kind by composite key (same workspace), `question`, `depth`, `tools_enabled` (non-empty), `status` with transitions enforced by `investigations_status_transition` (workspace, seq, kind and origin immutable), `estimate` `{sources, cost_cents|null}` and `actuals` `{sources_used, spend_cents|null, duration_ms}` independently nullable, `provenance` `{researcher, alias, resolution_ref}` required from `running` and `actuals` from `brief_ready`, `origin`, `engine_task_ref`, `created_by`, and the three indexes. **Sequence mechanism: a per-workspace counter row** (`investigation_seq_counters`) bumped by `insert … on conflict do update` — concurrent creates serialise on it, a rollback returns its number, a deleted number is never reused; a supplied `seq` (CK.6's seed) is kept and raises the counter. Proven by `tests/verify-investigation-seq.sh` (new `ci/db` step: serialise, rollback, a lock-free `max + 1` probe that must collide, cross-workspace, and a 6×10 burst with rollbacks committing exactly 1…42); single-session rules in `constraints.sql`'s V106 section. *"`brief_ready` requires a brief"* stays with CK.2 (#609).
 
 - **Problem Statement:** Everything on the page hangs off an investigation
   entity that doesn't exist — with a per-org human id (`RS-127`), a kind, a
@@ -363,7 +365,9 @@ investigations{RS-127, gap_analysis, deep_dive, tools:[web,competitor,code,ticke
 
 ### Issue CK.2 — ouroboros-db: [CK.2] Citation ledger — source records & claims
 
-> **GitHub issue:** #609 · **Status:** 🟡 Open · **Parent epic:** #603
+> **GitHub issue:** #609 ✅ · **Status:** 🟢 Done · **Parent epic:** #603
+>
+> **Delivered (#609, `V108__citation_ledger.sql` + `R__dev_seed_research.sql` — no REST/UI change):** `source_records` — investigation FK, `tool_slug` (FK to `research_tools`), `kind` `web|competitor_diff|code|ticket|telemetry|doc`, `title`, `locator` validated per kind by `source_locator_valid()` (`http(s)` URLs for web/competitor_diff/doc; `issue-index://<index>/<key>` or a URL for ticket; `git://<repo>[/<repo>]@<sha 7–40>[/<path>][#L<n>[-L<m>]]` for code, no `.`/`..`/empty segments; `telemetry://<metric>/<window>` with `<n>h|d|w` or `<date>..<date>`), `retrieved_at`, `content_hash` (`sha256:<hex>`), `excerpt` (≤ 4 KiB, non-blank), `meta` (object ≤ 8 KiB), **`cite_no` dense per investigation** — allocated by the definer `source_records_allocate_cite_no()` from a `source_cite_counters` row (a supplied number must be exactly the next; rollbacks leave no gap) — and `cite_key` (symbolic, letter-first, unique per investigation); records are never updated, so numbers are stable. Per-investigation caps: 1 000 records, 2 MiB of excerpts. Indexes: (investigation, cite_no) unique, (investigation, kind), content_hash. `briefs` — versioned with no gap (`briefs_version_next`), structured `body` `{paragraphs: [{spans: [{text} | {text, claim}]}]}`, `deliverables` `{matrix|draft_batch|roadmap_doc|fix_draft: ref}`. `brief_claims` — span ref present in the brief body, `finding|open_question`, text. `brief_claim_sources` — many-to-many, composite keys keep a claim, its brief and its sources in one investigation. All four are append-only (no update/delete for the app; update refused for anyone). **Discipline as deferred constraint triggers:** `brief_claims_finding_cited` (a finding needs ≥ 1 link at commit; removing the last link fails too) and `investigations_brief_exists` (CK.1's *brief_ready requires a brief*). The seed writes RS-127 (acme-robotics, gap analysis, deep dive, `brief_ready`) with a dense 1…44 ledger — the five featured citations verbatim (`[git]` = #44 with `cite_key` `git`), the other 39 labelled placeholders for CK.6 — and brief v1's four findings cited `[07]` · `[12][31]` · `[git]` · `[19]`. Tests: `constraints.sql` V108 section; `seed.sql` reads the panel back verbatim; `seed.test.sh` registers the seed. CK.6's ci/db probe for the discipline builds on the trigger.
 
 - **Problem Statement:** "Every claim cited" needs storage where citations
   are archived facts, stable while the web moves — and where a brief's
@@ -398,7 +402,9 @@ brief_claims: "gap is control, not sensors" ──▶ {[07],[12],[31],[git]}   (
 
 ### Issue CK.3 — ouroboros-db: [CK.3] Capability matrices & competitor watch schema
 
-> **GitHub issue:** #610 · **Status:** 🟡 Open · **Parent epic:** #603
+> **GitHub issue:** #610 ✅ · **Status:** 🟢 Done · **Parent epic:** #603
+>
+> **Delivered (#610, `V112__capability_matrices_competitor_watches.sql` — no REST/UI change, no seed; CK.6 #613 seeds the matrix and registry):** `competitors` (workspace FK, `name` unique case-insensitively, `meta` `{site, aliases, notes}` checked by `competitor_meta_valid()`); `competitor_watches` (`source_kind` `release_notes|changelog|github_releases|rss|filings|page`, `http(s)` `url`, nullable `selector`, `cadence` `hourly|daily|weekly`, `last_snapshot_at` moved by each snapshot, `enabled`, `render_required`; one watch per rival/kind/url/selector; a scheduler due-index); `competitor_snapshots` (linear chain per watch via `previous_id` — one first, one successor, same watch, later `taken_at` — `sha256:` `content_hash`, `content_ref`, `diff` ≤ 64 KiB present **exactly when the hash changed**; never updated). `source_records.snapshot_id` makes a `competitor_diff` source cite the snapshot carrying the diff (required for that kind only, same workspace, diff present). `capability_matrices` (one per investigation, `us_label`, ordered `rivals` columns of the workspace's competitors), `matrix_rows` (`capability`, `sort_order`, `gap_severity` `high|med|low|wip|lead` with a required `severity_derivation` that must change with it), `matrix_cells` (one per row × subject, `competitor_id` null = us, `status` `shipping|partial|none|unknown|wip`, `note`), `matrix_cell_sources` (composite keys — a cell cites its own investigation's sources). **Deferred constraint triggers:** `matrix_cells_cited` (non-`unknown` needs ≥ 1 citation at commit; losing the last fails) and `matrix_rows_complete` (a cell for us and every rival — no blanks). Cited snapshots and rivals named by a matrix cannot be deleted (deferred FKs, so a workspace delete still cascades). The `competitor_tracker_summary` view computes `4 rivals watched · release notes, changelogs, filings` from enabled, fetchable watches. The matrix follows the mockup HTML (`Visual-inertial approach (no beacon)`, `OTA resilience (A/B + rollback)`, …), whose rows differ from the issue's ASCII sketch. Tests: `constraints.sql` V112 section — RS-127's 5 × 4 matrix round-trips exactly, two snapshots of a fixture page yield one diff cited by a `competitor_diff` source, and every vocabulary and refusal.
 
 - **Problem Statement:** The featured card's matrix and the tracker's rival
   registry are structured evidence, not markup (decisions V7, V9).
@@ -464,7 +470,9 @@ baseline{v2.0.4, hover_drift_gusts, window} × nightly ─▶ item{+14%, err,
 
 ### Issue CK.5 — ouroboros-db: [CK.5] Roadmap docs & suggested changes
 
-> **GitHub issue:** #612 · **Status:** 🟡 Open · **Parent epic:** #603
+> **GitHub issue:** #612 ✅ · **Status:** 🟢 Done · **Parent epic:** #603
+>
+> **Delivered (#612, `V113__roadmap_docs_suggestions.sql` — no REST/UI change, no seed; CK.6 #613 seeds RS-124's doc):** `roadmap_docs` (workspace, nullable `investigation_id` of the same workspace — set null on delete, one doc per investigation — `title`, `current_version` advanced by each new version). `roadmap_doc_versions` dense from 1, **immutable** for every role except `repo_projection` (the WF-P.1 pattern): `structure` `{milestones: [{key, name, target_date, items: [{key, title, draft_id, ticket_id, ticket_key, mvp, effort, checked}]}]}` shape-checked (real dates, effort `xs…xl`, unique keys, `ticket_key` exactly with `ticket_id`), item refs checked at write — drafts (AK.1 `ticket_drafts`) and tickets of the doc's workspace, `ticket_key` = the ticket's `external_key` — so an item keeps its draft link after the push; `markdown` (projection, ≤ 512 KiB), `generated_by`; `repo_projection` `{state, path, pr_ref, committed_sha, observed_sha}` shaped per state, with transitions `pending → pr_open | committed`, `pr_open → committed | pending`, `committed → drift_detected`, `drift_detected → pr_open | committed`, path fixed. `doc_suggestions` — `author_kind` `user|ai` (person or agent), `text`, optional `hint`, `open → applied` (version produced after it, who, when) or `open → dismissed` (who, when), terminal, never edited; `(doc_id, status)` index. Tests: `constraints.sql` V113 section — RS-124's doc round-trips (2 milestones with target dates, 6 items, MVP flags, #742 checked), v1 names drafts and v2 names tickets too, apply ⟳ writes v3 and leaves v2 untouched.
 
 - **Problem Statement:** The pipeline card's `ROADMAP.md` is a versioned
   product entity projected to a file — with writeback state and a
@@ -539,7 +547,7 @@ seeds: 4 kinds · RS-118/121/124/127 · ledger(44 + 312 compact) · matrix 5×4
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CL.1 | #614 | 🟡 Open | ouroboros-rest: [CL.1] ResearchToolAdapter SPI & conformance kit | Interface, capability/config schemas, source-record contract, registry, lint | mvp, research, rest | N (after CK.2) | Y | L | ouroboros-rest |
+| CL.1 | #614 ✅ | 🟢 Done | ouroboros-rest: [CL.1] ResearchToolAdapter SPI & conformance kit | Interface, capability/config schemas, source-record contract, registry, lint | mvp, research, rest | N (after CK.2) | Y | L | ouroboros-rest |
 | CL.2 | #615 | 🟡 Open | ouroboros-rest: [CL.2] Web search & page reader tool | SearXNG default + Brave/Tavily/Firecrawl configs; robots-aware fetch/extract/archive | mvp, research, rest | N (after CL.1) | Y | L | ouroboros-rest |
 | CL.3 | #616 | 🟡 Open | ouroboros-rest: [CL.3] Competitor tracker tool | Rival registry CRUD, scheduled snapshots+diffs, citable change feed | mvp, research, rest | N (after CL.1, CK.3) | Y | M | ouroboros-rest |
 | CL.4 | #617 | 🟡 Open | ouroboros-engine: [CL.4] Codebase & git mining tool | Blame/log/dep-graph queries over repo clones; bisect execution primitive | mvp, research, engine | N (after CL.1, #54) | Y | M | ouroboros-engine, ouroboros-rest |
@@ -548,7 +556,9 @@ seeds: 4 kinds · RS-118/121/124/127 · ledger(44 + 312 compact) · matrix 5×4
 
 ### Issue CL.1 — ouroboros-rest: [CL.1] ResearchToolAdapter SPI & conformance kit
 
-> **GitHub issue:** #614 · **Status:** 🟡 Open · **Parent epic:** #604
+> **GitHub issue:** #614 ✅ · **Status:** 🟢 Done · **Parent epic:** #604
+>
+> **Delivered (#614 — `ouroboros-rest` 0.40.8, `ouroboros-engine` 0.7.17, `docs/RESEARCH_TOOLS.md`):** `src/modules/research/tools/` — `ResearchToolAdapter` (`slug`, `displayMeta()` with a `{slot}` sub-line template, `counts()`, `configSchema()` in the ticket-source form dialect, `capabilities()` `{search, fetch, query, watch}`, `healthCheck()`), operations gated by capability sub-interfaces and each returning `{payload, sources: SourceRecord[], usage}` in V108's shape (`snapshotId` for `competitor_diff`, V112). Citation contract in `research-tool.citations.ts` (locators validated as `source_locator_valid()`, byte bounds, jsonb-text meta size); **a non-null payload with no sources fails** — in the kit and at run time. Error taxonomy `auth|network|robots_denied|rate_limited|upstream|unsupported` → surface states `reconnect|retrying|skipped_source|backing_off|retrying|not_supported`. Health `healthy|degraded|down|not_configured` → dots `ok|warn|err|idle` 1:1. Registry by slug (`RESEARCH_TOOL_ADAPTERS`, refuses duplicate slugs and flag/member mismatches at boot), ships **empty** (`501 research_tool_not_registered` until CL.2–CL.6). Two dependency-cruiser rules (`research-tool-core-imports-the-spi-only`, `research-tool-core-tests-run-on-the-fake`) with a boundary spec that watches them fail. Conformance kit + in-memory fake (green) + a kit spec proving every rule refuses a broken adapter. **Internal surface** `POST /internal/research/tools/:slug/:op` `{investigation, input, budget}`: workspace resolved from the investigation, checks investigation → running → tool enabled → registered → operation/input → budget → configured, settings/credential via the `ResearchToolSettings` seam (none until #629), result held to the contract, sources archived into `source_records` (dedup on locator + hash) and answered with cite numbers and the budget left; covered by the `no-secret-in-internal-response` lint; published in `openapi.internal.yaml` and mirrored in the engine's `control_plane.RESEARCH_TOOL_PATH`.
 
 - **Problem Statement:** Six tools ship across MVP+v2 and orgs will want
   more (internal wikis, vendor portals, data lakes); pluggability must be
@@ -753,7 +763,7 @@ compare(hover_drift_gusts, baseline:v2.0.4, nightly) ─▶ {+14%, unit:%, n, wi
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CM.1 | #620 | 🟡 Open | ouroboros-engine: [CM.1] Investigation loop & `/v0/investigate` contract | Plan→tools→synthesize→brief; checkpoints, budgets, citations; AF.2 LLM | mvp, research, engine, providers | N (after CL.1, AF.2, CK.2) | Y | L | ouroboros-engine, ouroboros-rest |
 | CM.2 | #621 | 🟡 Open | ouroboros-rest: [CM.2] Brief composition, matrices & export | Claim-linked briefs, matrix builder, source panels, Markdown export | mvp, research, rest | N (after CM.1, CK.3) | Y | M | ouroboros-rest |
-| CM.3 | #622 | 🟡 Open | ouroboros-rest: [CM.3] Scope & cost estimation + research routing | Depth×tools×alias-pricing estimates; `research` task kinds registered | mvp, research, rest, routing | N (after CK.1, CH.3) | Y | M | ouroboros-rest |
+| CM.3 | #622 ✅ | 🟢 Done | ouroboros-rest: [CM.3] Scope & cost estimation + research routing | Depth×tools×alias-pricing estimates; `research` task kinds registered | mvp, research, rest, routing | N (after CK.1, CH.3) | Y | M | ouroboros-rest |
 | CM.4 | #623 | 🟡 Open | ouroboros-rest: [CM.4] Regression watch service & bisect orchestration | Baseline capture, nightly compare, drift→bisect→forensics→draft chain | mvp, research, rest, engine | N (after CK.4, CL.4, CL.6) | Y | L | ouroboros-rest, ouroboros-engine |
 | CM.5 | #624 | 🟡 Open | ouroboros-rest: [CM.5] Gaps→Planning handoff & roadmap-doc pipeline | Draft batches from gaps; create-roadmap/create-issues skill runs, suggestions, writeback, repo PR | mvp, research, rest, planning, knowledge | N (after CM.2, CK.5, AL.4, BE.1) | Y | L | ouroboros-rest, ouroboros-engine |
 | CM.6 | #625 | 🟡 Open | ouroboros-rest: [CM.6] Investigation lifecycle API | Start/cancel/list/detail/history/library payloads; progress stream | mvp, research, rest | N (after CM.1, CM.3) | Y | M | ouroboros-rest |
@@ -841,7 +851,9 @@ export.md: brief + matrix + 44 numbered sources + provenance
 
 ### Issue CM.3 — ouroboros-rest: [CM.3] Scope & cost estimation + research routing
 
-> **GitHub issue:** #622 · **Status:** 🟡 Open · **Parent epic:** #605
+> **GitHub issue:** #622 ✅ · **Status:** 🟢 Done · **Parent epic:** #605
+>
+> **Delivered (#622 — `ouroboros-rest` 0.40.7, `V109__investigation_estimate_outcomes.sql`, Y.4 seed amendment):** **Routing:** the dev routing seed registers the `research-plan` (sort 9, `researchplan-primary`: `sizer` → `local-free`) and `research` (sort 10, `research-primary`: `researcher-long-ctx` → `coder-std`) task kinds, and a ninth alias `researcher-long-ctx` bound to Anthropic's `claude-sonnet-4-6` — the catalog's `$3 · $15` / 1M, 1M-context model, so the diagram's price is real rather than an override (the mockup's pill text `sonnet-long-ctx` is the drawing's; the alias is the issue's and RS-127's `researcher-long-ctx`). Both kinds render in routing's matrix with em-dash cost/latency (no usage — M7). **Estimator:** new `ResearchModule` — `estimate.calibration.ts` (version 1: rounds quick 1 / standard 2 / deep dive 4; per-round ops web 3, competitor/code/tickets/docs 2, telemetry 1; 1–1.5 sources per op; a 20k-in/1.5k-out digest call per source plus 1/2/4 synthesis passes of 120k/8k) and a pure `estimateInvestigation()` with exact `bigint` arithmetic; deep dive × five tools × `$3 · $15` = 40 ops → **40–60 sources, 522–687¢ → `est. 40–60 sources · ~$6`**. Unpriced researcher (no row, seat or usage price, no route, nothing kept) → `costCents: null`, no hosted cost, no `$` in the label. Hosted tool costs enter through the injectable `ResearchToolPricing` seam (default: none configured; CL.2 #615 binds its provider cost metadata). **Endpoint:** `POST /api/v1/research/estimates` `{kind, depth, tools?}` answers the estimate, the operation breakdown, the researcher (first kept hop of `resolve("research")`) and the composer's `label`; `404 investigation_kind_not_found`, `422 research_tool_unknown` / `research_tools_required`. **Storage & reconciliation:** V109 adds `investigations.estimate_calibration_version` (paired with `estimate`) and `investigation_estimate_outcomes` filled by the idempotent `record_investigation_estimate_outcome(org, investigation)` with generated `sources_within_estimate` / `cost_within_estimate`; `ResearchEstimateService.storeEstimate` (queued only) and `reconcile` are the contract CM.6/CM.1 call. RS-127's seed carries the estimate and its outcome (44 sources, 612¢ — both inside).
 
 - **Problem Statement:** `est. 40–60 sources · ~$6` must be computed
   before start (decision V5), and the composer's `researcher:
@@ -1454,11 +1466,11 @@ Ordered checklist (⊕ = parallelizable within its phase):
    BE.1 (#405); WF-Q store (#138/#139); AS/AT (#324/#326) + AJ.4 (#266) +
    BI.2/BJ.1 (#433/#437); AH dispatch (#253); #19/#24/#41/#46/#54;
    BA-B.3/C.3/D.5 (unfiled).
-2. **Phase 1 — Domain:** CK.1 (#608) → { CK.2 (#609) ⊕ CK.4 (#611) ⊕
-   CK.5 (#612) } → CK.3 (#610) → CK.6 (#613)
-3. **Phase 2 — Tools:** CL.1 (#614) → { CL.2 (#615) ⊕ CL.3 (#616) ⊕
+2. **Phase 1 — Domain:** CK.1 (#608) ✅ → { CK.2 (#609) ✅ ⊕ CK.4 (#611) ⊕
+   CK.5 (#612) ✅ } → CK.3 (#610) ✅ → CK.6 (#613)
+3. **Phase 2 — Tools:** CL.1 (#614) ✅ → { CL.2 (#615) ⊕ CL.3 (#616) ⊕
    CL.4 (#617) ⊕ CL.5 (#618) ⊕ CL.6 (#619) }
-4. **Phase 3 — Engine & pipeline:** CM.3 (#622) → CM.1 (#620) →
+4. **Phase 3 — Engine & pipeline:** CM.3 (#622) ✅ → CM.1 (#620) →
    { CM.2 (#621) ⊕ CM.4 (#623) ⊕ CM.6 (#625) } → CM.5 (#624) → CM.7 (#626)
 5. **Phase 4 — UI:** CN.1 (#627) → { CN.2 (#628) ⊕ CN.3 (#629) ⊕
    CN.4 (#630) ⊕ CN.5 (#631) ⊕ CN.6 (#632) } → CN.7 (#633) →

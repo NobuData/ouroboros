@@ -1,0 +1,12 @@
+{
+  "kind": "set_stage",
+  "params": {
+    "node": {
+      "id": "done",
+      "type": "term",
+      "title": "Needs review",
+      "position": { "x": 480, "y": 0 },
+      "config": { "action": "needs_review", "options": {} }
+    }
+  }
+}

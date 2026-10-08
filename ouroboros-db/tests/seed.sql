@@ -1113,8 +1113,8 @@ select pg_temp.must_hold(
 -- ===========================================================================
 -- R__dev_seed_routing.sql — mockup 06, surface for surface.
 --
--- The fourth seed's rows: seven `model_aliases` (`5eed000f…`), eight `task_kinds`
--- (`5eed0010…`), their eight `routes` (`5eed0011…`), seventeen ordered `route_hops`
+-- The fourth seed's rows: nine `model_aliases` (`5eed000f…`), ten `task_kinds`
+-- (`5eed0010…`), their ten `routes` (`5eed0011…`), twenty-one ordered `route_hops`
 -- (`5eed0012…`), three `escalation_rules` (`5eed0013…`) and the 370 routed `token_usage`
 -- calls (`5eed0014…`) every number on the screen is aggregated out of.
 --
@@ -1127,19 +1127,20 @@ select pg_temp.must_hold(
 -- ===========================================================================
 
 -- ---------------------------------------------------------------------------
--- The eight aliases — seven bound, and what each resolves to; one unbound.
+-- The nine aliases — eight bound, and what each resolves to; one unbound.
 --
 -- The matrix's pills and their grey resolution lines — `coder-max` → `claude-fable-5 ·
 -- Anthropic`. Asserted through the join rather than against `model_id` alone, because the
 -- line prints both halves and decision M1's whole point is that the second half lives in
--- exactly one place. The eighth row cannot join: it is mockup 21's `gpt5-experiments`, and
+-- exactly one place. `gpt5-experiments` cannot join: it is mockup 21's `gpt5-experiments`, and
 -- the assertions after this one are about it.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
-  (select count(*) = 7 from (
+  (select count(*) = 8 from (
      select alias.alias
        from (values
               ('coder-max',      'claude-fable-5',   'Anthropic Claude'),
+              ('researcher-long-ctx', 'claude-sonnet-4-6', 'Anthropic Claude'),
               ('coder-std',      'claude-sonnet-5',  'Anthropic Claude'),
               ('sizer',          'claude-haiku-4-5', 'Anthropic Claude'),
               ('coder-fallback', 'gpt-5-codex',      'GitHub Copilot'),
@@ -1157,9 +1158,9 @@ select pg_temp.must_hold(
          on conn.id = alias.provider_connection_id
         and conn.display_name = expected.connection
    ) as resolved),
-  'the seven bound aliases resolve to the models and connections the matrix prints under them');
+  'the eight bound aliases resolve to the models and connections the matrix prints under them');
 
--- The eighth is unbound — no connection, `enabled = false` as V019 requires of it, naming a
+-- `gpt5-experiments` is unbound — no connection, `enabled = false` as V019 requires of it, naming a
 -- model no provider here serves. It is the registry's `✗ no key — connect a provider` row
 -- (CG.4, #582; decision R2), and the one alias the matrix never draws.
 select pg_temp.must_hold(
@@ -1173,25 +1174,26 @@ select pg_temp.must_hold(
   'gpt5-experiments is seeded unbound, disabled, and naming gpt-5.2-preview — the registry''s no-key row');
 
 select pg_temp.must_hold(
-  (select count(*) = 8 from ouroboros.model_aliases alias
+  (select count(*) = 9 from ouroboros.model_aliases alias
      join ouroboros.organization org on org."id" = alias.organization_id
     where org."slug" = 'acme-robotics'),
-  'acme-robotics has exactly eight aliases — mockup 21''s ALLOWED MODELS · 8 ALIASES — and no ninth');
+  'acme-robotics has exactly nine aliases — mockup 21''s eight plus #622''s researcher-long-ctx — and no tenth');
 
 -- ---------------------------------------------------------------------------
 -- Params and restrictions — mockup 21's chips, as the structure CH.2 (#585) derives them from.
 --
--- Eight documents, asserted exactly, because the chips are a *derivation* and a derivation is
+-- Nine documents, asserted exactly, because the chips are a *derivation* and a derivation is
 -- only tested if its inputs are known: `(max thinking)(400k budget)` is `{"thinking": "max",
 -- "token_budget": 400000}`, `(8k out)` is `8192` and `(ctx 32k)` is `32768` — the powers of
 -- two the chips abbreviate — and the two `—` cells are two empty documents. No display
 -- string is stored anywhere, which tests/seed.test.sh asserts over the file itself.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
-  (select count(*) = 8 from (
+  (select count(*) = 9 from (
      select alias.alias
        from (values
               ('coder-max',        '{"thinking": "max", "token_budget": 400000}', '{}'),
+              ('researcher-long-ctx', '{"thinking": "std"}',                      '{}'),
               ('coder-std',        '{"thinking": "std"}',                         '{}'),
               ('sizer',            '{"temperature": 0, "max_output": 8192}',      '{}'),
               ('coder-fallback',   '{}',                                          '{}'),
@@ -1207,7 +1209,7 @@ select pg_temp.must_hold(
         and alias.params = expected.params::jsonb
         and alias.restrictions = expected.restrictions::jsonb
    ) as chipped),
-  'all eight aliases carry exactly the params and restrictions mockup 21''s chips derive from, and the two dash cells carry nothing');
+  'all nine aliases carry exactly the params and restrictions mockup 21''s chips derive from, and the two dash cells carry nothing');
 
 -- `second-opinion`'s restriction is the one a rule relies on: the review escalation adds it
 -- as a vote, which is exactly what `review_vote_only` says this workspace allows (V019, R3).
@@ -1225,14 +1227,14 @@ select pg_temp.must_hold(
   'the effort ≥ L rule merged over coder-max keeps the alias''s token budget — a merge, not a swap');
 
 -- ---------------------------------------------------------------------------
--- The matrix — eight kinds, their descriptions, and the first two hops of each chain.
+-- The matrix — ten kinds, their descriptions, and the first two hops of each chain.
 --
 -- One assertion for the whole table, because the table is one thing: a row is its mono name,
--- the grey line under it, its route's tag pill, and the two alias pills to the right. Eight
--- rows match or this fails.
+-- the grey line under it, its route's tag pill, and the two alias pills to the right. Ten
+-- rows match or this fails — the eight of mockup 06, then #622's research family.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
-  (select count(*) = 8 from (
+  (select count(*) = 10 from (
      select kind.name
        from (values
               (1, 'analyze',    'Read the issue, map the affected code paths',
@@ -1250,7 +1252,11 @@ select pg_temp.must_hold(
               (7, 'docs',       'Update READMEs, changelogs, operator manual',
                   'docs-primary',      'local-docs',     'sizer'),
               (8, 'commit-msg', 'Conventional-commit message from the staged diff',
-                  'commitmsg-primary', 'local-free',     'sizer')
+                  'commitmsg-primary', 'local-free',     'sizer'),
+              (9, 'research-plan', 'Plan an investigation and size its source budget',
+                  'researchplan-primary', 'sizer',       'local-free'),
+              (10, 'research',  'Synthesize cited findings into a research brief',
+                  'research-primary',  'researcher-long-ctx', 'coder-std')
             ) as expected (sort_order, name, description, tag, primary_alias, fallback_alias)
        join ouroboros.organization org on org."slug" = 'acme-robotics'
        join ouroboros.task_kinds kind
@@ -1271,13 +1277,13 @@ select pg_temp.must_hold(
          on fallback_alias.id = second_hop.model_alias_id
         and fallback_alias.alias = expected.fallback_alias
    ) as rows_of_the_matrix),
-  'the eight matrix rows are seeded in order, with the task, tag, primary and fallback each renders');
+  'the ten matrix rows are seeded in order, with the task, tag, primary and fallback each renders');
 
 -- Every route has exactly one chain and every chain is dense from 1, which V016 makes a
 -- correctness rule rather than a convention: `floor_hop_index` is a statement about a hop
 -- *number*, and a chain numbered 1, 2, 5 makes "below fallback 2" mean nothing.
 select pg_temp.must_hold(
-  (select count(*) = 8 from (
+  (select count(*) = 10 from (
      select route.id
        from ouroboros.routes route
        join ouroboros.organization org on org."id" = route.organization_id
@@ -1317,7 +1323,7 @@ select pg_temp.must_hold(
   'the implement chain is coder-max → coder-fallback → local-docs, with the mockup''s two hop notes');
 
 -- Local fallback **on**, the floor switch **off**, and `$2.50` — and the cap is this route's
--- alone. Null on the other seven is *no cap configured*, which is not the same as a default
+-- alone. Null on the other nine is *no cap configured*, which is not the same as a default
 -- of 250 quietly applied everywhere.
 select pg_temp.must_hold(
   (select count(*) = 1 from ouroboros.routes route
@@ -1330,14 +1336,14 @@ select pg_temp.must_hold(
   'implement-primary allows local fallback, sets no floor, and caps a run at $2.50');
 
 select pg_temp.must_hold(
-  (select count(*) = 7 from ouroboros.routes route
+  (select count(*) = 9 from ouroboros.routes route
      join ouroboros.organization org on org."id" = route.organization_id
     where org."slug" = 'acme-robotics'
       and route.tag <> 'implement-primary'
       and route.allow_local_fallback
       and route.floor_hop_index is null
       and route.max_cost_cents_per_run is null),
-  'the other seven routes allow local fallback and set neither a floor nor a cap');
+  'the other nine routes allow local fallback and set neither a floor nor a cap');
 
 -- ---------------------------------------------------------------------------
 -- The escalation rules — `3 active`, and their sentences character for character.
@@ -1416,6 +1422,16 @@ select pg_temp.must_hold(
               = expected.latency_ms
    ) as computed_rows),
   'all eight matrix rows compute the mockup''s $/run avg and p50 latency out of usage alone');
+
+-- The research family (#622) has done nothing yet, so its two rows have nothing to average and
+-- nothing to take a median of — M7's em-dash, observed in the populated workspace rather than
+-- only in an empty one. A seeded figure here would be a cost nobody incurred.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.token_usage usage
+     join ouroboros.organization org on org."id" = usage.organization_id
+    where org."slug" = 'acme-robotics'
+      and usage.task_kind in ('research', 'research-plan')),
+  'the research and research-plan rows carry no usage, so their $/run and p50 are the em-dash');
 
 -- ---------------------------------------------------------------------------
 -- Spend by provider · 30d, and the local share.
@@ -1609,13 +1625,16 @@ select pg_temp.must_hold(
 -- **The Anthropic figures are the catalog's, not the drawing's.** Mockup 21 reads `$15 · $75`
 -- and `$3 · $15`; the vendored snapshot prices claude-fable-5 at $10 · $50 and claude-sonnet-5
 -- at $2 · $10, and CG.2 (#580) settled that the catalog is the truth source. What is asserted
--- is that the seven priced cells are *computed* through the lookup, and which shape each is.
+-- is that the priced cells are *computed* through the lookup, and which shape each is. #622's
+-- `researcher-long-ctx` is a fourth token row: the catalog's claude-sonnet-4-6, 300¢ · 1500¢ per
+-- 1M — the rate CM.3's research estimate prices synthesis at.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
-  (select count(*) = 7 from (
+  (select count(*) = 8 from (
      select alias.alias
        from (values
               ('coder-max',      'token', 'bundled',  1000.0000, 5000.0000),
+              ('researcher-long-ctx', 'token', 'bundled', 300.0000, 1500.0000),
               ('coder-std',      'token', 'bundled',   200.0000, 1000.0000),
               ('sizer',          'token', 'bundled',   100.0000,  500.0000),
               ('coder-fallback', 'seat',  'bundled',  null,      null),
@@ -1634,7 +1653,7 @@ select pg_temp.must_hold(
         and price.input_cents_per_1m is not distinct from expected.input_cents
         and price.output_cents_per_1m is not distinct from expected.output_cents
    ) as priced),
-  'the seven bound aliases price through model_price() as three token rows, a seat, a usage and two free — one of them the seeded override');
+  'the eight bound aliases price through model_price() as four token rows, a seat, a usage and two free — one of them the seeded override');
 
 -- The override is one row, in one workspace, for the model `local-free` binds — both halves
 -- of its match are read from the alias and the connection rather than typed, so it cannot
@@ -1676,7 +1695,8 @@ select pg_temp.must_hold(
 -- rows, and R5 settles which one moves: the column is *computed*, so the routing matrix is
 -- the truth and the registry's four figures are a layout. #582's PR asks for the design to
 -- be amended to these; what is asserted is that every count, the unbound row's zero
--- included, falls out of the view and is stored nowhere.
+-- included, falls out of the view and is stored nowhere. #622's research routes move three of
+-- them again — `coder-std` 5, `local-free` 3, `sizer` 4 — and add `researcher-long-ctx` at 1.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
   (select array_agg(refs.ref_label order by refs.kind, refs.ref_label)
@@ -1688,8 +1708,9 @@ select pg_temp.must_hold(
 
 select pg_temp.must_hold(
   (select array_agg(counted.line order by counted.line) = array[
-            'coder-fallback=2', 'coder-max=4', 'coder-std=4', 'gpt5-experiments=0',
-            'local-docs=3', 'local-free=2', 'second-opinion=1', 'sizer=3']
+            'coder-fallback=2', 'coder-max=4', 'coder-std=5', 'gpt5-experiments=0',
+            'local-docs=3', 'local-free=3', 'researcher-long-ctx=1', 'second-opinion=1',
+            'sizer=4']
      from (select alias.alias || '=' || count(refs.ref_id) as line
              from ouroboros.model_aliases alias
              join ouroboros.organization org on org."id" = alias.organization_id
@@ -1806,12 +1827,12 @@ select pg_temp.must_hold(
 -- ---------------------------------------------------------------------------
 -- The id convention, for the routing seed's own rows.
 --
--- 416 rows under eight prefixes — an alias, a kind, a route, a hop, a rule, a routed call, a
+-- 425 rows under eight prefixes — an alias, a kind, a route, a hop, a rule, a routed call, a
 -- price override and a resolution are each recognisable on sight in a log or a URL — so a
 -- row added later with a generated id is caught here rather than by nobody.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
-  (select count(*) = 416 from (
+  (select count(*) = 425 from (
      select id from ouroboros.model_aliases    where id::text like '5eed000f-0000-4000-8000-%'
      union all
      select id from ouroboros.task_kinds       where id::text like '5eed0010-0000-4000-8000-%'
@@ -1829,7 +1850,7 @@ select pg_temp.must_hold(
      select id from ouroboros.resolution_snapshots
                                                where id::text like '5eed0017-0000-4000-8000-%'
    ) as seeded),
-  'the routing seed created its 416 prefixed rows and no 417th');
+  'the routing seed created its 425 prefixed rows and no 426th');
 
 
 -- ===========================================================================
@@ -2818,9 +2839,10 @@ select pg_temp.must_hold(
                   '7 stages · auto-merge',
                   '5 stages · needs review',
                   '4 stages · auto-merge',
-                  '5 stages · paused']
+                  '5 stages · paused',
+                  'not published']
      from rail),
-  'the rail reads what P.4 computes from these rows — the mockup''s four captions exactly, and 12 stages where the mockup wrote 6');
+  'the rail reads what P.4 computes from these rows — the mockup''s four captions exactly, 12 stages where the mockup wrote 6, and mockup 20''s unpublished security-patch draft (#558) last');
 
 -- The insights seed's (#436) nine graded loops merged inside the same thirty days, four of them on
 -- `standard-fix`, so the share is 26 of 62 — the same 42%.
@@ -2997,25 +3019,25 @@ select pg_temp.must_hold(
 -- ---------------------------------------------------------------------------
 -- Tracker Sync and Backlog Health — `42 open`, `38/42`, `4`, `6` on mockup 09; 46 and 39/46 since
 -- #460 filed the canonical twins of #465, #479, #486 and #490 (open; #486 sized) for the inbox's
--- ticket refs.
+-- ticket refs; 47 and 40/47 since #558 filed #489's (open, sized) for mockup 20's dry run.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
-  (select count(*) = 46
+  (select count(*) = 47
      from ouroboros.tickets t
      join ouroboros.ticket_sources src on src.id = t.source_id
      join ouroboros.organization org on org."id" = t.organization_id
     where org."slug" = 'acme-robotics'
       and src.kind = 'github'
       and t.state = 'open'),
-  'the GitHub source holds 46 open tickets — the sync row''s count and the health card''s tag');
+  'the GitHub source holds 47 open tickets — the sync row''s count and the health card''s tag');
 
 select pg_temp.must_hold(
-  (select count(*) filter (where t.sizing_status = 'sized') = 39 and count(*) = 46
+  (select count(*) filter (where t.sizing_status = 'sized') = 40 and count(*) = 47
      from ouroboros.tickets t
      join ouroboros.organization org on org."id" = t.organization_id
     where org."slug" = 'acme-robotics'
       and t.state = 'open'),
-  'Sized computes to 39 of 46 open tickets');
+  'Sized computes to 40 of 47 open tickets');
 
 -- Over the planning seed's own rows: `#482` (below) is a closed, sized ticket of the same
 -- workspace, so counting the whole workspace reads 49 of 53 and would say nothing about this
@@ -6960,6 +6982,245 @@ select pg_temp.must_hold(
      left join ouroboros.decision_resolutions r on r.item_id = item.id
     where item.id::text like '5eed0082-%'),
   'one expired item, and one answer that came in by email');
+
+-- ===========================================================================
+-- R__dev_seed_research.sql — RS-127's citation ledger and brief (#609, CK.2)
+-- ===========================================================================
+--
+-- Mockup 22's sources card and brief, read back from the rows: `44 sources` counted, the five
+-- featured citations verbatim as the card prints them (scheme dropped; the git locator rendered
+-- `repo @ sha · path`), the numbers dense, and every finding of the brief cited.
+select pg_temp.must_hold(
+  (select inv.display_id = 'RS-127' and inv.status = 'brief_ready' and inv.depth = 'deep_dive'
+          and kind.slug = 'gap_analysis'
+          and (select count(*) from ouroboros.source_records s where s.investigation_id = inv.id) = 44
+     from ouroboros.investigations inv
+     join ouroboros.investigation_kinds kind on kind.id = inv.kind_id
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'
+    where inv.seq = 127),
+  'RS-127 is acme-robotics'' finished deep-dive gap analysis — 44 sources, counted');
+
+select pg_temp.must_hold(
+  (select array_agg(coalesce('[' || s.cite_key || ']', '[' || lpad(s.cite_no::text, 2, '0') || ']')
+                    || '  ' || s.title || '  '
+                    || case when s.kind = 'code'
+                            then regexp_replace(s.locator, '^git://([^@]+)@([0-9a-f]+)/([^#]+)(#.*)?$', '\1 @ \2 · \3')
+                            else regexp_replace(s.locator, '^https?://', '') end
+                    order by s.cite_no)
+          = array['[07]  Skylink S4 docking module — teardown & sensor BOM  droneanalysts.example.com/s4-teardown',
+                  '[12]  Skylink firmware 6.2 release notes — "gust-adaptive final approach"  skylink.example.com/releases/6.2',
+                  '[19]  Churn interviews Q2 — 9 of 14 cite docking reliability  issue-index://support/churn-2026-q2',
+                  '[31]  "MPC for precision landing in turbulent flow" — conf. paper  arxiv.example.org/abs/2605.11423',
+                  '[git]  dock_ctrl.c blame — gains last tuned 14 months ago  helios-firmware @ 8c1b2e4 · src/dock/dock_ctrl.c']
+     from ouroboros.source_records s
+     join ouroboros.investigations inv on inv.id = s.investigation_id and inv.seq = 127
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'
+    where s.cite_no in (7, 12, 19, 31) or s.cite_key = 'git'),
+  'the sources card reproduces mockup 22''s five citations verbatim, the two internal URIs included');
+
+select pg_temp.must_hold(
+  (select array_agg(s.cite_no order by s.cite_no) = array(select generate_series(1, 44))
+          and bool_and(ouroboros.source_locator_valid(s.kind, s.locator))
+          and bool_and(s.content_hash = 'sha256:' || encode(sha256(convert_to(s.excerpt, 'UTF8')), 'hex'))
+     from ouroboros.source_records s
+     join ouroboros.investigations inv on inv.id = s.investigation_id and inv.seq = 127
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'),
+  'RS-127''s cite numbers are dense, 1…44, and every seeded locator and hash is well-formed');
+
+select pg_temp.must_hold(
+  (select array_agg(c.span_ref || ':' || (select string_agg(coalesce('[' || s.cite_key || ']',
+                                                                      '[' || lpad(s.cite_no::text, 2, '0') || ']'),
+                                                             '' order by s.cite_no)
+                                             from ouroboros.brief_claim_sources l
+                                             join ouroboros.source_records s on s.id = l.source_id
+                                            where l.claim_id = c.id)
+                    order by array_position(ouroboros.brief_body_claim_refs(b.body), c.span_ref))
+          = array['sensors-match:[07]', 'control-mpc:[12][31]', 'pid-fixed-gains:[git]', 'abort-gives-up:[19]']
+          and bool_and(c.claim_type = 'finding')
+          and max(b.version) = 1
+     from ouroboros.brief_claims c
+     join ouroboros.briefs b on b.id = c.brief_id
+     join ouroboros.investigations inv on inv.id = b.investigation_id and inv.seq = 127
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'),
+  'the brief''s findings carry the mockup''s markers in reading order: [07] · [12][31] · [git] · [19]');
+
+-- The discipline, asked of every seeded row rather than trusted to the commit-time trigger: a seed
+-- that bypassed it would leave an uncited finding here.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.brief_claims c
+    where c.claim_type = 'finding'
+      and not exists (select 1 from ouroboros.brief_claim_sources l where l.claim_id = c.id)),
+  'no seeded finding claim is uncited');
+
+-- RS-127's estimate and its reconciliation (#622, CM.3). The composer's `est. 40–60 sources · ~$6`
+-- is stored as the calibration-v1 estimate RS-127 was started under, and V109's outcome row
+-- compares it with what it used — 44 sources and 612¢, both inside — by generated verdict.
+select pg_temp.must_hold(
+  (select inv.estimate = '{"sources": {"min": 40, "max": 60}, "cost_cents": {"min": 522, "max": 687}}'::jsonb
+          and inv.estimate_calibration_version = 1
+          and (inv.estimate #>> '{cost_cents,min}')::int + (inv.estimate #>> '{cost_cents,max}')::int
+                between 1100 and 1299  -- midpoint rounds to ~$6
+     from ouroboros.investigations inv
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'
+    where inv.seq = 127),
+  'RS-127 stores the calibration-v1 estimate est. 40–60 sources · ~$6');
+
+select pg_temp.must_hold(
+  (select o.calibration_version = 1 and o.depth = 'deep_dive'
+          and o.tools_enabled = '["web", "competitor", "code", "tickets", "telemetry"]'::jsonb
+          and o.alias = 'researcher-long-ctx'
+          and (o.estimated_sources_min, o.estimated_sources_max) = (40, 60)
+          and (o.estimated_cost_cents_min, o.estimated_cost_cents_max) = (522, 687)
+          and (o.actual_sources, o.actual_spend_cents) = (44, 612)
+          and o.sources_within_estimate and o.cost_within_estimate
+     from ouroboros.investigation_estimate_outcomes o
+     join ouroboros.investigations inv on inv.id = o.investigation_id and inv.seq = 127
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics')
+   and (select count(*) = 1 from ouroboros.investigation_estimate_outcomes),
+  'RS-127''s outcome is recorded once: 44 sources and 612¢ against 40–60 and 522–687¢, both within');
+
+-- ===========================================================================
+-- Copilot messages carry no fabricated cost (#555, CC.1)
+-- ===========================================================================
+--
+-- *"cost_cents is null for unpriced exchanges, and a probe asserts no seeded or fixture message
+-- carries a fabricated cost."* V107's CHECKs refuse a cost on a user message or on an exchange
+-- with no token counts; this asks the same of every row a seed left, so a seed that bypassed the
+-- constraints — or a later one that copies a demo figure in — fails here by name. CC.4 (#558)
+-- seeds mockup 20's exchange, so the probe reads its three costed replies.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.copilot_messages
+    where cost_cents is not null
+      and (role <> 'copilot' or tokens_in is null or tokens_out is null)),
+  'no seeded copilot message carries a cost for an exchange nothing was metered for');
+
+-- ===========================================================================
+-- Every seeded draft agrees with its operation log (#556, CC.2)
+-- ===========================================================================
+--
+-- The consistency probe over the seeded database: any workflow whose draft carries an operation
+-- log must replay to it exactly. CC.4 (#558) seeds mockup 20's v0.3 draft and its batches, and
+-- it is the only seeded draft with a log.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.workflow_draft_replay_mismatches),
+  'every seeded draft with an operation log replays from its base to exactly the stored draft');
+
+select pg_temp.must_hold(
+  (select bool_and(w.draft_rev = 0
+                   and w.provenance_summary = '{"canvas": 0, "code": 0, "copilot": 0, "suggestion": 0}')
+     from ouroboros.workflows w
+    where w.slug <> 'security-patch' or w.organization_id <> (select "id" from ouroboros.organization where "slug" = 'acme-robotics'))
+   and (select w.draft_rev = 3
+               and w.provenance_summary = '{"canvas": 1, "code": 0, "copilot": 2, "suggestion": 0}'
+          from ouroboros.workflows w
+          join ouroboros.organization org on org."id" = w.organization_id and org."slug" = 'acme-robotics'
+         where w.slug = 'security-patch'),
+  'only mockup 20''s security-patch draft carries a log — v0.3, the author''s batch and two copilot batches (#558)');
+
+-- ===========================================================================
+-- R__dev_seed_workspace_copilot.sql — mockup 20 from the rows (#558, CC.4)
+-- ===========================================================================
+--
+-- The page renders from seeds alone: the conversation, the stage list, the dry-run card, the
+-- suggestions and the history line — each read back from what the rows hold, never a literal.
+
+-- The conversation: six messages, both chips answered, one bounced operation, every reply costed.
+select pg_temp.must_hold(
+  (select array_agg(m.role || ':' || left(m.body, 24) order by m.seq)
+          = array['user:Create a workflow for se', 'copilot:Drafted security-patch —',
+                  'user:label security. yes. als', 'copilot:Added a $5/run spend gua',
+                  'user:dry run #489', 'copilot:Dry run finished — 2m 41']
+          and (select array_agg(q ->> 'selected' order by o)
+                 from ouroboros.copilot_messages c,
+                      jsonb_array_elements(c.choices) with ordinality as x(q, o)
+                where c.session_id = s.id and c.seq = 2) = array['label:security', 'Yes']
+          and (select count(*) = 1 from ouroboros.copilot_messages c,
+                      jsonb_array_elements(c.tool_trace -> 'operations') op
+                where c.session_id = s.id and op ->> 'outcome' = 'bounced')
+          and bool_and(m.role = 'user' or m.cost_cents is not null)
+     from ouroboros.copilot_sessions s
+     join ouroboros.copilot_messages m on m.session_id = s.id
+     join ouroboros.workflows wf on wf.id = s.workflow_id and wf.slug = 'security-patch'
+     join ouroboros.organization org on org."id" = s.organization_id and org."slug" = 'acme-robotics'
+    group by s.id),
+  'the conversation reads as mockup 20 draws it — six messages, both chips answered, one bounced edge, every reply costed');
+
+-- The stage list: ten nodes, nine rows (review ×2), exploit-verify alone added by copilot, and the
+-- history line's v0.3 · 2 copilot edits.
+select pg_temp.must_hold(
+  (select count(*) = 10 and count(distinct n ->> 'title') = 9
+          and (select array_agg(p.node_id) from ouroboros.workflow_draft_node_provenance p
+                where p.workflow_id = wf.id and p.provenance = 'copilot') = array['exploit-verify']
+          and 'v' || coalesce(wf.current_version, 0) || '.' || wf.draft_rev = 'v0.3'
+          and (wf.provenance_summary ->> 'copilot')::int = 2
+     from ouroboros.workflows wf
+     join ouroboros.organization org on org."id" = wf.organization_id and org."slug" = 'acme-robotics'
+     join ouroboros.workflow_versions v on v.workflow_id = wf.id and v.version is null,
+          jsonb_array_elements(v.definition -> 'nodes') n
+    where wf.slug = 'security-patch'
+    group by wf.id, wf.current_version, wf.draft_rev, wf.provenance_summary),
+  'the draft is v0.3 (2 copilot edits applied): nine rows over ten stages, exploit-verify the copilot''s');
+
+-- The dry-run card: #489 from the shared universe, seven rows with their how labels, the diff,
+-- 2m 41s, $0.31, guards clean, and the history line's one dry run.
+select pg_temp.must_hold(
+  (select t.external_key = '#489' and t.title = mirror.title
+          and r.status = 'complete' and r.duration_ms = 161000 and r.cost_cents = 31 and r.guards_clean
+          and (select array_agg(st.display_name || ':' || st.verdict || ':'
+                                || coalesce(ouroboros.dry_run_stage_how_label(st.how, st.metrics), st.how) order by st.seq)
+                 from ouroboros.dry_run_stages st where st.dry_run_id = r.id)
+              = array['analyze:ok:llm', 'plan:ok:llm', 'implement:ok:simulated',
+                      'build:ok:replayed from history', 'exploit-verify:skipped:skipped',
+                      'review ×2:ok:llm', 'open PR:not_reached:deterministic']
+          and (select a.path_summary = '[{"path": "drivers/can/arbitration.c", "added": 41, "removed": 9}]'
+                 from ouroboros.dry_run_artifacts a where a.dry_run_id = r.id and a.kind = 'overlay_diff')
+          and (select count(*) = 1 from ouroboros.dry_runs h where h.workflow_id = r.workflow_id)
+     from ouroboros.dry_runs r
+     join ouroboros.tickets t on t.id = r.ticket_id
+     join ouroboros.github_issues mirror on mirror.organization_id = t.organization_id and mirror.number = 489
+                                        and mirror.title = t.title
+     join ouroboros.workflows wf on wf.id = r.workflow_id and wf.slug = 'security-patch'),
+  'the dry-run card reads #489''s run as mockup 20 draws it — rows, diff, 2m 41s, $0.31, guards clean, history: 1 dry run');
+
+-- The suggestions: 93% and 81%, both rules, both with a basis; the 81% basis equals the replays.
+select pg_temp.must_hold(
+  (select array_agg(s.rule_id || ':' || s.confidence order by s.confidence desc)
+          = array['deterministic-skip:93', 'replay-disagreement:81']
+          and bool_and(s.source = 'rule' and s.status = 'open'
+                       and ouroboros.dry_run_confidence_basis_valid(s.confidence_basis))
+     from ouroboros.dry_run_suggestions s
+     join ouroboros.dry_runs r on r.id = s.dry_run_id
+     join ouroboros.workflows wf on wf.id = r.workflow_id and wf.slug = 'security-patch')
+   and (select (s.confidence_basis #>> '{inputs,pairs}')::int = count(p.*)
+               and (s.confidence_basis #>> '{inputs,style_disagreements}')::int
+                   = count(p.*) filter (where p.disagreement_class = 'style')
+          from ouroboros.dry_run_suggestions s
+          join ouroboros.review_replay_pairs p
+            on p.replay_set = (s.confidence_basis #>> '{inputs,replay_set}')::uuid
+         where s.rule_id = 'replay-disagreement'
+         group by s.id, s.confidence_basis),
+  'both suggestions are rules with a confidence basis, and the 81% basis is the seeded replays — 6 of 10');
+
+-- ===========================================================================
+-- Dry runs stay out of the run plane, and say what they rest on (#557, CC.3)
+-- ===========================================================================
+--
+-- The W4 isolation probe over the seeded database — every migration and every seeded view in
+-- place: no foreign key joins a dry_run* table to the run plane, and no view reads from both.
+-- And the honesty probes over whatever dry runs exist: no replayed row without a sample count,
+-- and no cost of 0 on a run that metered nothing. CC.4 (#558) seeds mockup 20's dry run.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.dry_run_isolation_violations),
+  'no seeded foreign key or view couples the dry-run domain to the run plane');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.dry_run_stages
+    where how = 'replayed' and not (metrics ? 'sample_count')),
+  'no replayed dry-run row exists without the sample count its estimate rests on');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.dry_runs where cost_cents = 0 and tokens is null),
+  'no seeded dry run carries a fabricated zero cost for a run nothing was metered for');
 
 \o
 \echo 'seed.sql: all assertions passed'

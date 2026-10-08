@@ -5014,6 +5014,43 @@ In development `OURO_FARM_RELEASES_DIR` is `../ouroboros-runner/dist`, which is 
 `make release` writes — so one `make release` in `ouroboros-runner/` is a release this service
 serves.
 
+## Research estimates
+
+`POST /api/v1/research/estimates` is mockup 22's composer line — `est. 40–60 sources · ~$6`
+— and its `researcher:` pill, answered together
+([#622](https://github.com/NobuData/ouroboros/issues/622), decision **V5**). The composer calls
+it on every kind, depth or tool change; nothing is stored.
+
+```
+POST /api/v1/research/estimates  {kind: gap_analysis, depth: deep_dive,
+                                  tools: [web, competitor, code, tickets, telemetry]}
+  ─▶ resolve("research")        ─▶ researcher-long-ctx (first kept hop)      ─▶ the pill
+  ─▶ price(claude-sonnet-4-6)   ─▶ $3 · $15 per 1M (bundled catalog)
+  ─▶ 40 operations ─▶ 40–60 sources ─▶ 44–64 calls ─▶ 522–687¢ ─▶ "est. 40–60 sources · ~$6"
+```
+
+**Computed, never invented.** `src/modules/research/estimate.calibration.ts` holds every
+constant — depth rounds and synthesis passes, operations per tool per round, sources per
+operation, the token shape of a digest call and a synthesis pass — under a
+`CALIBRATION_VERSION`. `estimate.ts` is the pure function over them, in exact `bigint`
+arithmetic over the `numeric(14, 4)` rates (the low end floors, the high end ceils). Change a
+constant, bump the version.
+
+**No price, no dollars.** A researcher with no per-token price — no catalog row, a `seat` or
+`usage` price, no `research` route, or no kept hop — gives `costCents: null`, null hosted
+costs and a label with no `$`. A `free` model is priced at a real zero and reads `$0`.
+
+**Hosted tool costs** come from `ResearchToolPricing`, an injectable whose default answers
+*no hosted provider is configured*; CL.2 ([#615](https://github.com/NobuData/ouroboros/issues/615))
+overrides it with its provider configs' per-operation prices.
+
+**Storage and reconciliation** are service methods, exported for CM.6 (#625) and CM.1 (#620):
+`ResearchEstimateService.storeEstimate(org, investigation)` writes the estimate and its
+`estimate_calibration_version` onto a **queued** investigation (`409
+investigation_not_queued` after that), and `reconcile(org, investigation)` writes estimate and
+actuals side by side through V109's `record_investigation_estimate_outcome()` — idempotent, with
+generated `sources_within_estimate` / `cost_within_estimate` — which is what recalibration reads.
+
 ## BetterAuth
 
 **The library is installed, configured, mounted, and doing the work.** `/api/auth/*`
@@ -7236,6 +7273,9 @@ ouroboros-rest/
 │       │                   #   simulate.*  — POST /routing/simulate, one dependency · #197
 │       │                   #   stats.*     — $/run avg, p50, the 30d spend card · #198
 │       │                   #   {matrix,persistence,isolation,honesty}.integration-spec · #199
+│       ├── research/       # POST /research/estimates — sources & cost, researcher pill · #622
+│       │   └── tools/      # ResearchToolAdapter SPI, registry, conformance kit, POST /internal/research/tools/:slug/:op · #614
+│       │                   #   estimate.calibration.ts — the versioned constants
 │       ├── providers/     # the ModelProviderAdapter SPI, registry, kit   · #216
 │       │                   #   adapters/anthropic.adapter.ts — the first real one · #217
 │       │                   #   adapters/openai-compatible.adapter.ts + the SSRF policy · #218
@@ -7417,6 +7457,7 @@ database-backed sessions & the global guard [#703](https://github.com/NobuData/o
 organization plugin adoption [#704](https://github.com/NobuData/ouroboros/issues/704) ·
 tenant context [#32](https://github.com/NobuData/ouroboros/issues/32) ·
 model pricing [#586](https://github.com/NobuData/ouroboros/issues/586) ·
+research scope & cost estimation [#622](https://github.com/NobuData/ouroboros/issues/622) ·
 the model registry [#189](https://github.com/NobuData/ouroboros/issues/189) ·
 provider health [#196](https://github.com/NobuData/ouroboros/issues/196) ·
 provider adapters [#216](https://github.com/NobuData/ouroboros/issues/216) ·

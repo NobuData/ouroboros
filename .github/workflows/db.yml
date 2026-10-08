@@ -43,6 +43,8 @@ on:
       - "ouroboros-rest/src/auth/**"
       - "ouroboros-rest/package.json"
       - "schemas/workflow-dsl/v1.json"
+      - "schemas/workflow-dsl/operations-v1.json"
+      - "schemas/workflow-dsl/operations/**"
       - "schemas/org-policy/**"
       - "ouroboros-engine/src/ouroboros_engine/analysis/**"
       - "ouroboros-engine/uv.lock"
@@ -56,6 +58,8 @@ on:
       - "ouroboros-rest/src/auth/**"
       - "ouroboros-rest/package.json"
       - "schemas/workflow-dsl/v1.json"
+      - "schemas/workflow-dsl/operations-v1.json"
+      - "schemas/workflow-dsl/operations/**"
       - "schemas/org-policy/**"
       - "ouroboros-engine/src/ouroboros_engine/analysis/**"
       - "ouroboros-engine/uv.lock"
@@ -334,6 +338,24 @@ jobs:
       - name: Assert one running analysis per repository under concurrency
         run: ouroboros-db/tests/verify-analysis-run-guard.sh --runner docker
 
+      # Research's RS-### numbers (#608): *"gapless under concurrent creation — proven by a
+      # concurrency test, not by inspection"*. Five interleavings against a database of its own:
+      # concurrent creates serialise on the workspace's counter row, a rollback returns its
+      # number, two workspaces never wait on each other, and a burst of clients with rollbacks
+      # commits exactly 1…N. The third swaps in a lock-free `max + 1` and must collide, which is
+      # what proves the counter row — not something else — is doing the serialising.
+      - name: Assert gapless investigation numbers under concurrency
+        run: ouroboros-db/tests/verify-investigation-seq.sh --runner docker
+
+      # The Workflow Copilot's conversations (#555): *"at most one active session per draft —
+      # proven by a concurrent-insert test"* and *"seq is unique and monotonic per session;
+      # history pagination is stable under concurrent appends"*. Seven interleavings against a
+      # database of its own; the third drops copilot_sessions_one_active and must let two
+      # conversations through, and the sixth swaps the seq allocator for a lock-free `max + 1`
+      # and must collide — which is what proves the index and the session row lock are doing it.
+      - name: Assert one active copilot session per draft and ordered appends under concurrency
+        run: ouroboros-db/tests/verify-copilot-sessions.sh --runner docker
+
       # ---------------------------------------------------------------------------
       # The drift check (#710). Everything above asks what the applied schema enforces;
       # this asks whether it is still the schema BetterAuth expects. Decision A3 makes
@@ -440,6 +462,23 @@ jobs:
               -v ON_ERROR_STOP=1 -f /tests/lib/seeded-definitions.sql \
               > "$RUNNER_TEMP/seeded-definitions.json"
           ouroboros-db/scripts/workflow-dsl-drift.mjs "$RUNNER_TEMP/seeded-definitions.json"
+
+      # CC.2 (#556): the same question asked of recorded history. Every operation stored in
+      # `draft_operations` carries DSL objects — a node, an edge, a trigger — and a DSL change
+      # that would reject one leaves that history unreplayable. V110's CHECK holds only the
+      # envelope; this holds each operation to schemas/workflow-dsl/operations-v1.json, which
+      # `$ref`s v1.json's own definitions. CC.4 (#558) seeds mockup 20's log and adds the
+      # operations each dry-run suggestion proposes, so Apply's batches are held to it in advance.
+      - name: Assert every stored draft operation still validates against the DSL
+        run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            --volume "$PWD/ouroboros-db/tests:/tests:ro" \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
+              -v ON_ERROR_STOP=1 -f /tests/lib/draft-operations.sql \
+              > "$RUNNER_TEMP/draft-operations.json"
+          ouroboros-db/scripts/draft-ops-parity.mjs "$RUNNER_TEMP/draft-operations.json"
 
       # BQ.1 (#480): the org-policy document's half of the same question. The module tooling step
       # above already holds schemas/org-policy/v1.json to its golden fixtures (valid ones pass,
@@ -596,6 +635,23 @@ jobs:
             psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
               -v ON_ERROR_STOP=1 -f /tests/inbox-invariants.sql
           OURO_DB_NAME="$SEED_DB_NAME" ouroboros-db/tests/verify-inbox-invariants.sh --runner docker
+
+      # CC.4 (#558): the invariants mockup 20's seeded copilot page trusts — suggestion source and
+      # status vocabularies, every confidence with its basis, no empty evidence, every proposed
+      # operation applying to the seeded draft, the 81% basis equal to the seeded review replays,
+      # the dry run's #489 and session resolving to the shared universe, and W7's unresolved
+      # skill:advisory-db and exploit-verify task present. The proposed operations' DSL validity is
+      # the parity step above. verify-copilot-invariants.sh plants a violation of each and requires
+      # red naming it — every probe verified red-then-green.
+      - name: Assert the copilot invariants against the seeded database, and that they go red
+        run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            --volume "$PWD/ouroboros-db/tests:/tests:ro" \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
+              -v ON_ERROR_STOP=1 -f /tests/copilot-invariants.sql
+          OURO_DB_NAME="$SEED_DB_NAME" ouroboros-db/tests/verify-copilot-invariants.sh --runner docker
 
       # CG.5's third acceptance criterion (#583): *"probes run against the seeded database
       # from #582 without mutating it"*. The registry rules are asserted twice, and this is

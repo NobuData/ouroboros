@@ -41,8 +41,12 @@
  * provider or K.3's Octokit stand-in would let a GitHub-shaped assumption in the loop pass its
  * own tests, which is the decay the SPI exists to prevent, arriving through the tests instead.
  *
- * `providers/boundary.spec.ts`, `github/boundary.spec.ts` and
- * `ticket-sources/boundary.spec.ts` prove the rules bite: each
+ * The seventh and eighth are the same pair again, for the research tool SPI CL.1 (#614) landed —
+ * decision V2's third application of the pattern: core code imports `research-tool.adapter.ts`
+ * and never an adapter, and the SPI's own suites run on the in-memory fake.
+ *
+ * `providers/boundary.spec.ts`, `github/boundary.spec.ts`, `ticket-sources/boundary.spec.ts` and
+ * `research/tools/boundary.spec.ts` prove the rules bite: each
  * builds a tree containing exactly the violation its rule describes, cruises it with *this*
  * configuration, and asserts the violation is reported. A lint rule nobody has watched fail is
  * a lint rule that passes everything.
@@ -196,6 +200,37 @@ module.exports = {
         path:
           "(^|node_modules/)@octokit(/|$)|^src/modules/github/|" +
           "^src/modules/ticket-sources/providers/github\\.",
+      },
+    },
+
+    {
+      name: "research-tool-core-imports-the-spi-only",
+      severity: "error",
+      comment:
+        "Core code reaches a research tool through ResearchToolRegistry, never by importing " +
+        "one (CL.1, #614, decision V2). src/modules/research/tools/adapters/ is where an " +
+        "adapter lives and research-tools.module.ts is the single registration point; tests " +
+        "and fixtures are exempt, because the in-memory fake exists to power them.",
+      from: {
+        path: "^src/",
+        pathNot:
+          "^src/modules/research/tools/(research-tools\\.module\\.ts|adapters/)|" +
+          "spec\\.ts$|\\.fixture\\.ts$",
+      },
+      to: { path: "^src/modules/research/tools/adapters/" },
+    },
+    {
+      name: "research-tool-core-tests-run-on-the-fake",
+      severity: "error",
+      comment:
+        "The research tool SPI's own suites, its conformance kit and the fixtures they share run " +
+        "on the in-memory fake (CL.1, #614) — never on a real adapter — so an adapter-shaped " +
+        "assumption cannot pass the core's tests for the wrong reason. An adapter's own suites " +
+        "live beside it in adapters/.",
+      from: { path: "^src/modules/research/tools/[^/]+(\\.spec|\\.fixture)\\.ts$" },
+      to: {
+        path: "^src/modules/research/tools/adapters/",
+        pathNot: "^src/modules/research/tools/adapters/fake\\.tool\\.fixture\\.ts$",
       },
     },
 

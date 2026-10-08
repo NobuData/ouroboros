@@ -136,7 +136,7 @@ export interface SeededMatrixRow {
 /** What a cell prints when there is nothing to print — `app/models/matrix.ts`'s own. */
 export const EM_DASH = "—";
 
-/** The alias cells the seed's six routed aliases produce, so no resolution line is typed twice. */
+/** The alias cells the seed's seven routed aliases produce, so no resolution line is typed twice. */
 const CELL = {
   coderMax: { alias: "coder-max", resolution: "claude-fable-5 · Anthropic Claude" },
   coderStd: { alias: "coder-std", resolution: "claude-sonnet-5 · Anthropic Claude" },
@@ -146,6 +146,10 @@ const CELL = {
   localFree: {
     alias: "local-free",
     resolution: "llama-4-maverick · OpenAI-compatible · local vLLM",
+  },
+  researcherLongCtx: {
+    alias: "researcher-long-ctx",
+    resolution: "claude-sonnet-4-6 · Anthropic Claude",
   },
 } as const satisfies Record<string, SeededAliasCell>;
 
@@ -166,8 +170,10 @@ export const SECURITY_RULE = "security label → review adds second-opinion vote
 export const DOCS_ONLY_RULE = "docs-only diff → everything routes local";
 
 /**
- * The eight rows, in `task_kinds.sort_order` — the loop's own order of operations: read the
- * issue, size it, plan it, write it, test it, review it, document it, commit it.
+ * The ten rows, in `task_kinds.sort_order` — the loop's own order of operations: read the
+ * issue, size it, plan it, write it, test it, review it, document it, commit it; then #622's
+ * research family, plan an investigation and synthesize it. The two research rows have done
+ * no work, so their figures are the em-dash — decision M7's *no data*, never a `$0.00`.
  *
  * The **escalation column disagrees with mockup 06 on two rows**, and the disagreement is
  * settled in the schema's favour. The artwork draws the first rule's summary on `plan` and the
@@ -257,6 +263,26 @@ export const SEEDED_MATRIX: readonly SeededMatrixRow[] = [
     escalation: [],
     cost: "$0.00",
     latency: "0.8s",
+  },
+  {
+    kind: "research-plan",
+    description: "Plan an investigation and size its source budget",
+    tag: "researchplan-primary",
+    primary: CELL.sizer,
+    fallback: CELL.localFree,
+    escalation: [],
+    cost: EM_DASH,
+    latency: EM_DASH,
+  },
+  {
+    kind: "research",
+    description: "Synthesize cited findings into a research brief",
+    tag: "research-primary",
+    primary: CELL.researcherLongCtx,
+    fallback: CELL.coderStd,
+    escalation: [],
+    cost: EM_DASH,
+    latency: EM_DASH,
   },
 ];
 

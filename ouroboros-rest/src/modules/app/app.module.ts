@@ -39,6 +39,8 @@ import { ProviderConnectionsModule } from "../provider-connections/provider-conn
 import { ProvidersModule } from "../providers/providers.module";
 import { RegistryReadModule } from "../registry-read/registry-read.module";
 import { RegistryModule } from "../registry/registry.module";
+import { ResearchModule } from "../research/research.module";
+import { ResearchToolsModule } from "../research/tools/research-tools.module";
 import { RoutingModule } from "../routing/routing.module";
 import { LifecycleModule } from "../lifecycle/lifecycle.module";
 import { MembersModule } from "../members/members.module";
@@ -339,6 +341,14 @@ export class AppModule {
         AuditModule,
         ProviderConnectionsModule,
         RoutingModule,
+        // CM.3 ([#622](https://github.com/NobuData/ouroboros/issues/622)) — the composer's scope
+        // and cost estimate under `/api/v1/research/estimates`. After `RoutingModule` and
+        // `PricingModule`, whose exported services it consumes; its `/research` prefix is its own.
+        ResearchModule,
+        // CL.1 ([#614](https://github.com/NobuData/ouroboros/issues/614)) — the research tool SPI
+        // and the engine's one way to a tool, `POST /internal/research/tools/:slug/:op`. Outside
+        // `/api`, behind the internal key, so its position carries no routing rule.
+        ResearchToolsModule,
         // K.3 ([#101](https://github.com/NobuData/ouroboros/issues/101)) — the GitHub token
         // and the API client. After `VaultModule`, which seals the token, and after
         // `AuditModule`, which records who set it; its own `/settings/github-token` path

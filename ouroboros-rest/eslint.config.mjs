@@ -182,8 +182,19 @@ export default tseslint.config(
     //
     // The rule's own spec is exempt: it drives ESLint's `RuleTester` over source strings that
     // *contain* the mistake, which is the rule working rather than the file being wrong.
-    files: ["src/modules/internal/**/*.ts"],
-    ignores: ["src/modules/internal/no-secret-responses.spec.ts"],
+    //
+    // CL.1's research tool surface (#614) is engine-facing too, and lives beside its SPI rather
+    // than in `internal/`: its controller, its request DTO and the invoker that builds its answer
+    // are held to the same rule, so no tool setting or credential can reach the engine.
+    files: [
+      "src/modules/internal/**/*.ts",
+      "src/modules/research/tools/tools.internal.*.ts",
+      "src/modules/research/tools/research-tool.invoker.ts",
+    ],
+    ignores: [
+      "src/modules/internal/no-secret-responses.spec.ts",
+      "src/modules/research/tools/*.spec.ts",
+    ],
     plugins: { ouroboros },
     rules: { "ouroboros/no-secret-in-internal-response": "error" },
   },

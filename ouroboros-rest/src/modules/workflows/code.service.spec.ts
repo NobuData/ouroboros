@@ -51,6 +51,8 @@ function workflow(overrides: Partial<Workflow> = {}): Workflow {
     current_version: 3,
     template_slug: null,
     template_version: null,
+    draft_rev: 0,
+    provenance_summary: { canvas: 0, code: 0, copilot: 0, suggestion: 0 },
     created_at: AT,
     updated_at: AT,
     ...overrides,
