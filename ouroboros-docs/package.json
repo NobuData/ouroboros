@@ -1,6 +1,6 @@
 {
   "name": "ouroboros-docs",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": true,
   "description": "The Ouroboros documentation site — User Guide, Administration and CLI, built with Docusaurus. Not a workspace (CONVENTIONS.md § 1, limit 6).",
   "license": "Apache-2.0",
@@ -21,7 +21,8 @@
     "test": "vitest run",
     "format": "prettier --write \"**/*.{ts,tsx,mjs,json,css}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,mjs,json,css}\"",
-    "screenshots": "node screenshots/run.ts"
+    "screenshots": "node screenshots/run.ts",
+    "check:screenshots": "node screenshots/check.ts"
   },
   "dependencies": {
     "@docusaurus/core": "3.10.2",

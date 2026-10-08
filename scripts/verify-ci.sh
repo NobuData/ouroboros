@@ -536,6 +536,9 @@ done
 # Stylelint over the stylesheets, then markdownlint over docs/** (#1168).
 check_contains ouroboros-docs/package.json '"lint": "eslint \. && stylelint .* && markdownlint-cli2"' \
   'ouroboros-docs lints its code, stylesheets and pages'
+# Screenshots are checked, never captured, in CI (#1172).
+check_contains "$WORKFLOWS/docs.yml" '^        run: yarn check:screenshots$' \
+  'docs.yml checks screenshot integrity'
 # Not a workspace (§ 1, limit 6): it installs from its own lockfile, so the root workspace
 # files are no input of ci/docs.
 for workspace_file in $WORKSPACE_FILES; do
