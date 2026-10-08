@@ -568,7 +568,7 @@ dev seeds (e.g. acme-robotics; `acme-onboarding` for the wizard).
 | DA.4 | #1176 | 🟡 Open | ouroboros-docs: [DA.4] Mission Control dashboard | Reading the dashboard and acting from it | mvp, docs-site, documentation, dashboard | Y | Y | S | ouroboros-docs |
 | DA.5 | #1177 ✅ | 🟢 Done | ouroboros-docs: [DA.5] Issues — intake, sizing & queuing | Backlog sync view, estimates, queue a loop | mvp, docs-site, documentation, intake | Y | Y | M | ouroboros-docs |
 | DA.6 | #1178 ✅ | 🟢 Done | ouroboros-docs: [DA.6] Planning — roadmaps, generated tickets & timeline | Plans, ticket generation, gantt, tracker write-back | mvp, docs-site, documentation, planning | Y | Y | M | ouroboros-docs |
-| DA.7 | #1179 | 🟡 Open | ouroboros-docs: [DA.7] Workflows — Studio canvas | Build/edit/publish workflows visually | mvp, docs-site, documentation, workflow | Y | Y | M | ouroboros-docs |
+| DA.7 | #1179 ✅ | 🟢 Done | ouroboros-docs: [DA.7] Workflows — Studio canvas | Build/edit/publish workflows visually | mvp, docs-site, documentation, workflow | Y | Y | M | ouroboros-docs |
 | DA.8 | #1180 | 🟡 Open | ouroboros-docs: [DA.8] Workflows as code | TS-DSL editor, completions, round-trip with the canvas | mvp, docs-site, documentation, code-view | Y | Y | M | ouroboros-docs |
 | DA.9 | #1181 | 🟡 Open | ouroboros-docs: [DA.9] Models — routing & the model registry | Routes, aliases, escalation; browsing models | mvp, docs-site, documentation, routing, registry | Y | Y | M | ouroboros-docs |
 | DA.10 | #1182 | 🟡 Open | ouroboros-docs: [DA.10] Runs — the run console | Transcript, stages, guardrails, pause/abort/steer | mvp, docs-site, documentation, runs | Y | Y | M | ouroboros-docs |
@@ -699,6 +699,32 @@ idempotency, how to undo in the tracker).
 `user-guide.planning`, `.planning.tickets`, `.planning.timeline`, `.planning.write-back`.
 
 ### Issue DA.7 (#1179) — ouroboros-docs: [DA.7] Workflows — Studio canvas
+
+> **GitHub issue:** #1179 ✅ · **Status:** 🟢 Done · **Parent epic:** #1158
+>
+> **Delivered (#1179):** `user-guide/workflows/studio.mdx` — written to what `main` ships:
+> - **The Studio:** `/workflows` is the Studio opened on the rail's first workflow, not a separate list page, and the rail is the list. It covers rail captions, the page-head line, the Visual/Code tabs (Copilot **soon**, Browse templates not available yet), the owner/admin vs read-only view, and **+ New workflow**.
+> - **The canvas:** the five stage kinds, default, branch and loop edges, editing, and that **autosave** saves edits to the draft, not to what runs.
+> - **The inspector:** the model-stage fields, with permissions declared but not enforced yet, plus the other kinds and edges; **Apply** is local until pressed.
+> - **Validation at three moments:**
+>   - field errors;
+>   - edit-time refusals;
+>   - publish and dry-run findings, with DSL/Registry/Engine sources and a table of the engine's structural rules. There is no live structural-findings display.
+> - **Dry run:** open to every role; walks the stored draft for a sized issue; nothing is called or recorded.
+> - **Publishing:** the **Publish vN** dialog and the **Change note**.
+> - **Which version runs:** the pin is taken at queue time, shown on the run console as `standard-fix v14`. There is no version history or roll-back UI.
+> - **What can go wrong.**
+>
+> `tests/workflow-studio.test.ts` checks the page's labels against the Studio's constants, and every bold validation message against `canvas/view.ts`, `inspector/inspector.ts` and the engine's `structure.py`.
+>
+> **Screenshots** (`acme-robotics`, `standard-fix`). Nothing was written; after capture the DB still showed v14 and the seed's draft stamp.
+> - `user-guide.workflows` is the Studio, with the head line masked because it carries a relative "Last edited".
+> - `user-guide.workflow.canvas` is the canvas region after two **Zoom out** clicks, which change only the viewport, so the whole graph shows.
+> - `user-guide.workflow.inspector` is a page view with `implement` selected. The inspector is taller than the viewport.
+> - `user-guide.workflow.validation-error` is the **Prompt template** field emptied locally, showing **Write the stage prompt.** It is local until Apply, so it never autosaves. Structural findings need an invalid stored draft, which no seed has.
+> - `user-guide.workflow.publish` is the **Publish v15** dialog, opened but not submitted.
+>
+> No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. The **"…autosave arrives with #152"** notes the inspector still prints are stale UI copy, not documented. Module 0.1.14.
 
 **Problem Statement.** Workflows define what a loop does; the canvas is the main authoring tool.
 **Solution / Scope.** `/workflows` list and versions; `/workflows/[slug]` canvas: nodes, edges,

@@ -277,6 +277,99 @@
       "capturedAt": "2026-10-08T23:33:14.943Z",
       "uiVersion": "0.144.1",
       "seedRef": "3ec63a74c0d952aaa15b01a3a180d40eb12b9caa"
+    },
+    {
+      "id": "user-guide.workflows",
+      "route": "/workflows",
+      "workspace": "acme-robotics",
+      "ready": ".react-flow__node[data-id='analyze']",
+      "clip": "page",
+      "masks": [
+        ".studio__sub"
+      ],
+      "caption": "The Workflow Studio: every workflow in the rail, the selected one on the canvas, and the inspector beside it.",
+      "alt": "The Workflow Studio open on standard-fix, with Browse templates, Dry run and Publish v15 buttons, Visual, Code and Copilot (soon) tabs, a rail listing standard-fix, feature-loop, deps-refresh, docs-loop, hotfix-p0 (paused) and security-patch (not published) above + New workflow, the canvas with the first stages, and an empty inspector asking you to select a stage or an edge.",
+      "capturedAt": "2026-10-08T23:45:50.543Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "05111ae944803270844598a92960dce6fb331961"
+    },
+    {
+      "id": "user-guide.workflow.canvas",
+      "route": "/workflows/standard-fix",
+      "workspace": "acme-robotics",
+      "ready": ".react-flow__node[data-id='analyze']",
+      "clip": "section.studio-canvas",
+      "caption": "The standard-fix canvas: stages as cards, edges between them, and labelled branches and loops.",
+      "alt": "The whole standard-fix canvas at 50%: the trigger Issue queued, Understand & scope, the Effort re-check decision branching ≤ M to Write attack plan and > M to Split into subtasks and Back to queue, then Code the change, Build farm · pool A, Run test suite, Self-review diff and the Checks green? gate, which passes to Open PR & auto-merge or loops back on fail; the toolbar below holds zoom, Auto-layout, Add stage and Undo/Redo.",
+      "capturedAt": "2026-10-08T23:46:39.475Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "05111ae944803270844598a92960dce6fb331961",
+      "actions": [
+        {
+          "click": "role=button[name='Zoom out']"
+        },
+        {
+          "click": "role=button[name='Zoom out']"
+        }
+      ]
+    },
+    {
+      "id": "user-guide.workflow.inspector",
+      "route": "/workflows/standard-fix",
+      "workspace": "acme-robotics",
+      "ready": "aside.studio-inspector h2:has-text('Code the change')",
+      "clip": "page",
+      "actions": [
+        {
+          "click": ".react-flow__node[data-id='implement']"
+        }
+      ],
+      "caption": "Select a stage and the inspector beside the canvas configures it — here the model stage Code the change.",
+      "alt": "The Workflow Studio with the Code the change stage selected: the inspector on the right shows its kind, Implement, its title and description, Mode set to Skill with zephyr-conventions, the prompt template with its variable palette, and the start of Model routing.",
+      "capturedAt": "2026-10-08T23:46:42.256Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "05111ae944803270844598a92960dce6fb331961",
+      "masks": [
+        ".studio__sub"
+      ]
+    },
+    {
+      "id": "user-guide.workflow.validation-error",
+      "route": "/workflows/standard-fix",
+      "workspace": "acme-robotics",
+      "ready": "aside.studio-inspector :text('Write the stage prompt.')",
+      "clip": ".studio-inspector__prompt",
+      "actions": [
+        {
+          "click": ".react-flow__node[data-id='implement']"
+        },
+        {
+          "fill": "textarea.studio-inspector__template",
+          "value": ""
+        }
+      ],
+      "caption": "A field the inspector refuses: an empty prompt is marked, and the stage cannot be applied until it is fixed.",
+      "alt": "The Prompt template field of the Code the change stage, emptied and outlined, with Write the stage prompt. in red below it and the Insert a variable palette.",
+      "capturedAt": "2026-10-08T23:46:44.755Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "05111ae944803270844598a92960dce6fb331961"
+    },
+    {
+      "id": "user-guide.workflow.publish",
+      "route": "/workflows/standard-fix",
+      "workspace": "acme-robotics",
+      "ready": "role=dialog[name='Publish v15']",
+      "clip": ".shell-overlay__panel",
+      "actions": [
+        {
+          "click": "role=button[name='Publish v15']"
+        }
+      ],
+      "caption": "Publishing: the draft is checked, then frozen as the next version; runs queued from now on use it.",
+      "alt": "The Publish v15 dialog explaining that the draft is checked by both validators and frozen as the next version, that runs queued from now on use it and the draft stays open, with an optional Change note field and Publish v15 and Cancel buttons.",
+      "capturedAt": "2026-10-08T23:46:01.836Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "05111ae944803270844598a92960dce6fb331961"
     }
   ]
 }
