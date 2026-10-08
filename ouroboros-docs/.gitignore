@@ -22,3 +22,6 @@ screenshots/test-results/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# The capture harness's saved session (CZ.1).
+screenshots/.auth/

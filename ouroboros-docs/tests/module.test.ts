@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -106,12 +105,22 @@ describe("module files", () => {
 });
 
 describe("yarn screenshots", () => {
-  it("fails loudly until the capture harness exists", () => {
-    const run = spawnSync(process.execPath, ["scripts/screenshots-placeholder.mjs"], {
-      cwd: MODULE_DIR,
-      encoding: "utf8",
-    });
-    expect(run.status).toBe(1);
-    expect(run.stderr).toContain("CZ.1");
+  it("runs the capture harness under Node's own TypeScript support", () => {
+    expect(manifest.scripts.screenshots).toBe("node screenshots/run.ts");
+    expect(existsSync(join(MODULE_DIR, "scripts/screenshots-placeholder.mjs"))).toBe(false);
+  });
+
+  it("pins Playwright to the e2e suite's major", () => {
+    const e2e = JSON.parse(readFileSync(join(MODULE_DIR, "../tests/e2e/package.json"), "utf8")) as {
+      devDependencies: Record<string, string>;
+    };
+    const major = (range: string) => range.replace(/^\D*/, "").split(".")[0];
+    expect(major(manifest.devDependencies["@playwright/test"])).toBe(
+      major(e2e.devDependencies["@playwright/test"]),
+    );
+  });
+
+  it("keeps the saved session out of git", () => {
+    expect(readFileSync(join(MODULE_DIR, ".gitignore"), "utf8")).toContain("screenshots/.auth/");
   });
 });

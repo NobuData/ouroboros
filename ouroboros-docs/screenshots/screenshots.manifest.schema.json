@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://docs.ouroboros.build/screenshots.manifest.schema.json",
+  "title": "Ouroboros docs screenshot manifest",
+  "description": "Every screenshot the documentation site uses: where in the seeded app it is taken, what to wait for, what to hide, and how to describe it. Read by `yarn screenshots` (CZ.1, #1170).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entries"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "clock": {
+      "description": "The instant the browser's clock is frozen to for every capture (ISO 8601). Leave it out to freeze to the start of the current hour, which keeps two runs in the same hour identical.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "selector": {
+      "description": "A Playwright selector: CSS, or a prefixed engine such as `text=…` or `role=heading[level=1]`.",
+      "type": "string",
+      "minLength": 1
+    },
+    "action": {
+      "description": "One small declarative step before the capture — to open a dialog or a menu.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["click"],
+          "properties": { "click": { "$ref": "#/$defs/selector" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hover"],
+          "properties": { "hover": { "$ref": "#/$defs/selector" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fill", "value"],
+          "properties": {
+            "fill": { "$ref": "#/$defs/selector" },
+            "value": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["press"],
+          "properties": {
+            "press": {
+              "description": "A key, as Playwright names it: `Escape`, `Control+K`.",
+              "type": "string",
+              "minLength": 1
+            },
+            "on": { "$ref": "#/$defs/selector" }
+          }
+        }
+      ]
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "route", "workspace", "ready", "clip", "caption", "alt"],
+      "properties": {
+        "id": {
+          "description": "`<section>.<slug>` — the section is where the image is used and the folder it is written to.",
+          "type": "string",
+          "pattern": "^(home|user-guide|administration|cli)\\.[a-z0-9]+(-[a-z0-9]+)*(\\.[a-z0-9]+(-[a-z0-9]+)*)*$"
+        },
+        "route": {
+          "description": "The app route to open, from the UI's root: `/dashboard`.",
+          "type": "string",
+          "pattern": "^/"
+        },
+        "workspace": {
+          "description": "The seeded workspace's slug the page is shown in: `acme-robotics`.",
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "ready": {
+          "$ref": "#/$defs/selector",
+          "description": "What must be on the page before the capture. A missing match fails the entry."
+        },
+        "clip": {
+          "description": "`page` (the viewport), `fullPage`, or a selector whose element is captured.",
+          "type": "string",
+          "minLength": 1
+        },
+        "masks": {
+          "description": "Regions that change between runs (relative times, live sparklines), painted over.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/selector" }
+        },
+        "actions": { "type": "array", "items": { "$ref": "#/$defs/action" } },
+        "caption": {
+          "description": "The caption shown under the image.",
+          "type": "string",
+          "minLength": 1
+        },
+        "alt": { "description": "The image's alternative text.", "type": "string", "minLength": 1 },
+        "capturedAt": {
+          "description": "Written by `yarn screenshots`: when this entry was last captured.",
+          "type": "string",
+          "format": "date-time"
+        },
+        "uiVersion": {
+          "description": "Written by `yarn screenshots`: `ouroboros-ui`'s version at capture.",
+          "type": "string"
+        },
+        "seedRef": {
+          "description": "Written by `yarn screenshots`: the commit the seeded stack was built from.",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

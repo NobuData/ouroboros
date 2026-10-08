@@ -53,7 +53,8 @@ yarn typecheck                # tsc
 yarn test                     # Vitest — config, pages, brand, components, module contract
 yarn format:check             # Prettier over the code and config (yarn format fixes);
                               # Markdown is content and keeps the repo's compact tables
-yarn screenshots              # placeholder: fails until the capture harness lands (CZ.1)
+yarn screenshots              # recapture the manifest's screenshots from a seeded stack —
+                              # see "Recapturing screenshots" below
 ```
 
 **CI.** [`ci/docs`](../.github/workflows/docs.yml) runs `yarn install --immutable`, `lint`,
@@ -74,6 +75,7 @@ product stack.
 | Variable | Default | Read by | Purpose |
 |---|---|---|---|
 | `DOCS_SITE_URL` | `https://docs.ouroboros.build` | `docusaurus.config.ts`, at build time | The site's public URL, for canonical links and the sitemap. Set it only for a local or preview build served somewhere else. |
+| `OURO_DOCS_CAPTURE_BASE_URL` | `http://localhost:3000` | `yarn screenshots` | The seeded `ouroboros-ui` screenshots are captured from. Declared in the root [`.env.example`](../.env.example) with the other `OURO_*` variables, because it names a running product service. |
 
 `DOCS_SITE_URL` is not an `OURO_*` variable on purpose: nothing in the application reads
 it, and it never reaches a running service — it is a build input of a static site.
@@ -94,8 +96,11 @@ ouroboros-docs/
 │       ├── tokens.css      # synced copy of docs/design/tokens.css — never edit it here
 │       └── custom.css      # the tokens mapped onto Infima, fonts, chrome tweaks
 ├── static/                 # files copied verbatim into the build
-│   └── img/brand/          # synced copies: brand PNGs, mockup logos, favicon/
-├── scripts/                # sync-brand.mjs, the screenshots placeholder
+│   └── img/
+│       ├── brand/          # synced copies: brand PNGs, mockup logos, favicon/
+│       └── screenshots/    # captured by yarn screenshots: <section>/<slug>.<theme>.png
+├── screenshots/            # the capture harness (Playwright) — see "Recapturing screenshots"
+├── scripts/                # sync-brand.mjs
 ├── tests/                  # Vitest — config, sidebars, pages, brand, components, theme, module
 │   └── support/            # stand-ins for Docusaurus client modules, the jsdom setup
 ├── docusaurus.config.ts    # the site config: one docs instance at /, navbar, footer, strict links
@@ -155,6 +160,105 @@ the mono face (IBM Plex Mono), all served from the site itself.
 The finished shape — `docs/{user-guide,administration,cli}/`, `src/{components,pages,theme}/`,
 `static/img/{brand,screenshots}/`, the `screenshots/` Playwright project and the
 `Dockerfile` — is drawn in the roadmap's CY.1 entry; each piece arrives with its issue.
+
+## Recapturing screenshots
+
+Every screenshot on the site is captured from the real app, seeded with the development
+data, in both themes ([#1170](https://github.com/NobuData/ouroboros/issues/1170)). Nobody
+takes one by hand: a hand-taken image drifts in size, theme and data, and cannot be retaken
+when the UI changes. Captures run on your machine, never in CI.
+
+### What is where
+
+```
+screenshots/
+├── screenshots.manifest.json         # every screenshot: route, workspace, what to wait for …
+├── screenshots.manifest.schema.json  # … checked against this (ajv) before anything runs
+├── playwright.config.ts              # one Chromium project per theme, 1440×900 at 2×
+├── global-setup.ts                   # signs in once; the session is reused (.auth/, gitignored)
+├── capture.spec.ts                   # one test per entry, per theme
+├── run.ts                            # yarn screenshots
+├── settings.ts                       # base URL, the seeded user, timeouts
+└── lib/                              # manifest rules, actions, the image step, stamping
+```
+
+### Run it
+
+1. **Start the seeded stack.** `yarn dev` from the repository root, on a freshly seeded
+   database (`yarn dev:reset` first if yours has drifted), or the composed e2e stack
+   (`tests/e2e/scripts/run.sh --keep`). The harness signs in with the seed's email/password
+   credential, which `ouroboros-rest` accepts only outside production.
+2. **Capture.** From this directory:
+
+   ```bash
+   yarn screenshots                          # every entry, both themes
+   yarn screenshots --only home.dashboard    # one entry
+   yarn screenshots --only 'user-guide.*'    # a glob — * matches across dots
+   yarn screenshots --theme dark             # one theme
+   OURO_DOCS_CAPTURE_BASE_URL=http://localhost:3001 yarn screenshots   # another stack
+   ```
+
+   The first run may need the browser: `npx playwright install chromium`.
+3. **Review the diff.** Each image lands at `static/img/screenshots/<section>/<slug>.<theme>.png`,
+   and the manifest entry is stamped with `capturedAt`, `uiVersion` (from
+   `ouroboros-ui/package.json`) and `seedRef` (the commit). Look at every changed image
+   before committing — a changed screenshot is a changed page.
+
+The command checks the manifest and your `--only` before a browser starts, so a typo fails
+at once (exit 2). An entry that fails — its `ready` selector never appears, its route
+answers an error, the session is refused — fails alone, with the entry, theme, route and
+selector in the message; the rest are still captured, and the run exits non-zero.
+
+### Adding an entry
+
+```json
+{
+  "id": "user-guide.inbox",
+  "route": "/inbox",
+  "workspace": "acme-robotics",
+  "ready": "role=heading[name='Needs you']",
+  "clip": "page",
+  "masks": ["time"],
+  "actions": [{ "click": "role=button[name='Snooze']" }],
+  "caption": "The needs-you inbox, with the head card open.",
+  "alt": "The needs-you inbox listing three decisions, the first expanded."
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `id` | `<section>.<slug>` — `home`, `user-guide`, `administration` or `cli`, then a kebab-case slug (dots allowed). The section is the image's folder |
+| `route` | The app route, from the UI's root |
+| `workspace` | The seeded workspace's slug the page is shown in (`acme-robotics`, `kensuenobu`, …) |
+| `ready` | A Playwright selector that must be visible before the capture — CSS, `text=…`, `role=…`. Pick something only the *loaded* page has: seeded data, not a heading the skeleton already draws |
+| `clip` | `page` (the 1440×900 viewport), `fullPage`, or a selector whose element is captured alone |
+| `masks` | Selectors painted over in the app's own raised-surface colour — anything that changes between runs: relative times rendered on the server, live sparklines, generated ids |
+| `actions` | Steps before the capture, in order: `{"click": sel}`, `{"hover": sel}`, `{"fill": sel, "value": "…"}`, `{"press": "Escape"}` or `{"press": "Enter", "on": sel}` |
+| `caption`, `alt` | The caption under the image and its alternative text; both required |
+
+### What keeps captures identical
+
+Run twice against the same seeded stack, the harness writes byte-identical files:
+
+- **The clock.** The browser's clock is frozen — to the manifest's top-level `clock`
+  (ISO 8601) when set, otherwise to the start of the current hour. The seed has no fixed
+  instant of its own (it writes times relative to when it was applied), and the server's
+  clock is not frozen, so **server-rendered relative times must be masked**.
+- **Motion.** Animations, transitions, smooth scrolling and the caret are switched off.
+- **Fonts.** Each capture waits for the page's web fonts.
+- **The image step.** Captures are taken at device scale 2, downscaled to 1440 px wide and
+  written as palette PNGs with sharp ([D6](../docs/ROADMAP_OUROBOROS_DOCUMENTATION_SITE.md)),
+  which writes no timestamps — the same capture always becomes the same bytes.
+
+- **Images.** Lazy images are switched to eager and every image must finish loading.
+
+The seed's data still ages in real time — a decision's time-to-live runs out, a badge count
+drops — so two runs minutes apart agree, but a stack seeded last week does not match one
+seeded today. Capture from a **freshly seeded** database, as step 1 says.
+
+Captures share one session and switch its active workspace per entry, so they run one at a
+time. The manifest is written by the command (it stamps every captured entry), so Prettier
+leaves it alone.
 
 ## Authoring
 

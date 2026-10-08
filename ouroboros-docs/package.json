@@ -1,6 +1,6 @@
 {
   "name": "ouroboros-docs",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "description": "The Ouroboros documentation site — User Guide, Administration and CLI, built with Docusaurus. Not a workspace (CONVENTIONS.md § 1, limit 6).",
   "license": "Apache-2.0",
@@ -21,7 +21,7 @@
     "test": "vitest run",
     "format": "prettier --write \"**/*.{ts,tsx,mjs,json,css}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,mjs,json,css}\"",
-    "screenshots": "node scripts/screenshots-placeholder.mjs"
+    "screenshots": "node screenshots/run.ts"
   },
   "dependencies": {
     "@docusaurus/core": "3.10.2",
@@ -45,17 +45,21 @@
     "@docusaurus/tsconfig": "3.10.2",
     "@docusaurus/types": "3.10.2",
     "@eslint/js": "^9",
+    "@playwright/test": "^1.62",
     "@testing-library/dom": "^10",
     "@testing-library/jest-dom": "^7",
     "@testing-library/react": "^16",
     "@types/jsdom": "^30",
     "@types/node": "^24",
     "@types/react": "^19",
+    "ajv": "^8",
+    "ajv-formats": "^3",
     "eslint": "^9",
     "globals": "^17",
     "jsdom": "^30",
     "markdownlint-cli2": "^0.23",
     "prettier": "^3",
+    "sharp": "^0.34",
     "stylelint": "^17",
     "typescript": "^5",
     "typescript-eslint": "^8",

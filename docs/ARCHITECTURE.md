@@ -891,6 +891,7 @@ checkout runs with:
 | `OURO_WEBHOOK_INTERNAL_ALLOWLIST` | `ouroboros-rest` | Comma-separated hostnames, addresses or CIDR blocks a webhook may reach despite the SSRF policy, which otherwise denies loopback, link-local (metadata), RFC1918, CGNAT and unique-local targets at save and at delivery (BR.3, [#487](https://github.com/NobuData/ouroboros/issues/487)). Never relaxes https | empty |
 | `OURO_LOG_LEVEL` | `ouroboros-engine` | Log verbosity: `debug`, `info`, `warning`, `error` | `info` |
 | `OURO_TEST_DATABASE_DISPOSABLE` | `ouroboros-rest` tests | Whether `yarn test:integration` may empty the database between tests. The harness normally starts a throwaway PostgreSQL, which is disposable by definition; this is consulted only when `OURO_DATABASE_URL` points the suite at somebody else's, where truncation would take the development seed with it | `false` |
+| `OURO_DOCS_CAPTURE_BASE_URL` | `ouroboros-docs` screenshot harness | The seeded `ouroboros-ui` that `yarn screenshots` signs in to (with the development seed's password credential, so never a production stack) and captures the documentation's screenshots from ([#1170](https://github.com/NobuData/ouroboros/issues/1170)). Nothing in the application reads it | `http://localhost:3000` |
 
 The database variables appear twice on purpose: the six discrete parameters configure the
 containers and the migration runner, while `OURO_DATABASE_URL` is what an application

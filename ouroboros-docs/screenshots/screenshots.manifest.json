@@ -1,0 +1,20 @@
+{
+  "$schema": "./screenshots.manifest.schema.json",
+  "entries": [
+    {
+      "id": "home.dashboard",
+      "route": "/dashboard",
+      "workspace": "acme-robotics",
+      "ready": "text=3 issues in flight, 12 queued behind them.",
+      "clip": "page",
+      "masks": [
+        ".dash-runs td.ou-table__cell--mono.ou-table__cell--end"
+      ],
+      "caption": "Mission Control — live loops, the queue, the build farm and what needs you, at a glance.",
+      "alt": "The Ouroboros Mission Control dashboard for the Acme Robotics workspace, showing active loops, the queue and farm status.",
+      "capturedAt": "2026-10-08T17:52:11.794Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "a8b81e884b74691df850d40e33c7bf5e845c192f"
+    }
+  ]
+}
