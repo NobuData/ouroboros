@@ -5,11 +5,168 @@ sidebar_position: 6
 description: "How tracker issues become loop candidates, how they are sized, and how to queue one."
 ---
 
-How tracker issues become loop candidates, how they are sized, and how to queue one.
+The **Issues** screen at `/issues` is where your backlog becomes work for the loop.
+Ouroboros mirrors every open issue from your enabled repositories, sizes each one as it
+arrives, and suggests the workflow and model to run it with — before you ever ask. You read
+the estimates here, and you choose which issues go into the queue.
 
-:::info[Being written]
+<Screenshot id="user-guide.issues" />
 
-This page is being written in
-[#1177](https://github.com/NobuData/ouroboros/issues/1177).
+## Where the backlog comes from
 
-:::
+Ouroboros reads issues from GitHub, from every repository enabled for your workspace. The
+heading counts what is in scope — for example **9 open issues. 7 already sized.** — and the
+**Backlog · as Ouroboros sees it** card shows when it last synced: **synced 40s ago**,
+**syncing…** or **never synced**. Choose that tag to sync now; owners, admins and members can,
+a viewer cannot.
+
+Ouroboros keeps every ticket in one tracker-neutral shape, so the screens work the same
+whatever the source. Today GitHub is the only tracker you can connect: Jira, Linear and
+GitLab show as coming soon. Connecting a tracker and enabling repositories is an
+administrator's job — see [Ticket sources & repositories](../administration/sources.mdx).
+
+When the sync cannot run, a banner above the table says why, starting **Sync paused —**:
+
+| Banner | What to do |
+| --- | --- |
+| **Sync paused — no GitHub token is connected.** | An owner or admin adds a token under <UiPath path="Settings > Sources" /> |
+| **Sync paused — GitHub rejected the token.** | The token has expired or lost access; an owner or admin replaces it |
+| **Sync paused — a repository could not be found.** | An enabled repository no longer exists or the token cannot see it; an owner or admin checks the enabled repositories |
+| **Sync paused — GitHub's rate limit is reached.** | Nothing — the banner says when it resumes |
+| **Sync paused — GitHub is not answering.** | Wait, then choose **Check again** |
+| **Sync paused — no repository is enabled.** | An owner or admin enables repositories in step 2 of [sign-in](./getting-started/sign-in.mdx) |
+
+The issues already mirrored stay on screen while sync is paused, and you can still queue them.
+
+## Filtering the backlog
+
+The filter bar above the table narrows what you see:
+
+- **Repository** — **All repos**, or one repository. This follows the focus repository in
+  the header's workspace chip, and choosing one here changes the chip too — see
+  [Finding your way](./finding-your-way.mdx).
+- **Label chips** — choose a label to show only issues that carry it. Choose several to
+  show issues that carry all of them; a chosen chip shows **✓**.
+- **State** — **Open** (the default), **Closed** or **All**.
+- **Sort** — **Sort: estimated effort** (the default), **Sort: confidence**,
+  **Sort: updated** or **Sort: number**.
+- **Search** — type part of a title, a `#number` or a label.
+
+**Clear all** returns to the default view. Every filter is part of the address — for
+example `/issues?labels=bug&sort=confidence` — so you can bookmark or share a view. The table
+shows 25 issues a page and refreshes itself every 15 seconds.
+
+## Reading a size and estimate
+
+Each row shows the issue, its labels and four columns:
+
+- **Effort** — a size from **XS** to **XL**, and beside it the **confidence**: how sure the
+  estimator is of that size, as a percentage.
+- **Suggested workflow** — the workflow the estimate picked for this kind of work, such as
+  `standard-fix`, `feature-loop`, `docs-loop` or `deps-refresh`.
+- **Routed model** — the model class the issue would run on.
+- **Status** — where the issue stands:
+
+| Status | Meaning |
+| --- | --- |
+| **unsized** | Mirrored, but not picked up by the estimator yet |
+| **estimating…** | Being sized right now; the row fills in when it is done |
+| **sized** | Sized with enough confidence to queue |
+| **needs human** | The estimator was not confident enough, or produced no estimate |
+| **queued** | Already in the queue |
+
+Select a row — click it, or press **Enter** on it — to open its sizing story in the
+**Issue detail** panel.
+
+<Screenshot id="user-guide.issues.estimate" />
+
+The panel shows the issue's description and an **AI Work Breakdown**:
+
+- **Estimated files touched** — the files the change is expected to touch. An estimate that
+  names no files says so.
+- **Est. tokens** and **Est. cycle time** — how much model work the loop is expected to
+  spend on the issue, and how long the loop is expected to take.
+- **Effort** — the size and its confidence again (**conf 88%**).
+- **Regression risk** — **low**, **medium** or **high**, with a sentence on why.
+- The suggested workflow and the routed model.
+
+The **Estimation trace** at the bottom says which estimator sized the issue and when (for
+example **sized by heuristic-v0 · 2m ago**), and which signals it used. Each re-estimate is
+kept as a new version beside the last, shown as **v2**, **v3** and so on.
+
+### Where confidence comes from
+
+The estimator sizes an issue from what the issue says: its title, its description and its
+labels. Signals that agree raise the confidence; a missing description or no useful labels
+lower it. An issue sized below the workspace's confidence floor — 70% unless your
+administrator changed `OURO_ESTIMATION_CONFIDENCE_FLOOR` — is marked **needs human** rather
+than **sized**. The estimate is still shown, so you can see what the estimator thought.
+
+### Re-estimating
+
+- **Re-estimate** in the detail panel sizes that one issue again. Use it after you improve
+  the issue on GitHub — a clearer description or better labels.
+- **Re-estimate all** at the top of the screen sizes every issue the workspace mirrors, open
+  or closed, whatever the filters show. It asks first — **Re-estimate the whole backlog?** —
+  and leaves alone any issue already being estimated. Only owners and admins can use it.
+
+## Queueing issues for the loop
+
+Queueing puts an issue in line for a loop. It moves to **Up next in queue** on the
+[dashboard](./dashboard.mdx), and a loop picks it up when one is free. Owners, admins and
+members can queue; a viewer can read the backlog but not fill the queue.
+
+**One issue.** Open it in the detail panel and choose **Queue for loop**. It runs under its
+suggested workflow.
+
+**Several issues.** Tick their rows — or press **Space** on a row — and the selection bar
+appears along the bottom.
+
+<Screenshot id="user-guide.issues.queue-dialog" />
+
+1. The bar counts the selection and adds up its estimates: **3 issues selected · est. 3h 40m
+   combined autonomous work**.
+2. To pick the workflow, choose **Assign workflow ▾**. **Use suggested** (the default) runs
+   each issue under the workflow its own estimate suggested. Choose a named workflow to run
+   every selected issue under that one.
+3. Choose **Queue → …**. The button names the workflow: **Queue → suggested** when the
+   issues' suggestions differ.
+
+When it works you see **Queued 3 issues · est. 3h 40m combined autonomous work.** with a
+link, **See them on the dashboard →**, and the selection clears. **Queue N selected** at
+the top of the screen does the same for the current selection, each issue under its
+suggested workflow.
+
+## When an issue cannot be queued
+
+The loop only takes **sized** issues. A selection is queued whole or not at all: if one
+issue in it is refused, **Nothing was queued** opens and lists why, issue by issue.
+
+| Reason shown | Why | What to do |
+| --- | --- | --- |
+| **has not been sized yet** | The estimator has not reached it | Choose **Re-estimate**, or wait |
+| **is still being sized** | Its estimate is running | Wait for the row to fill in |
+| **needs a human before it can be queued** | Its confidence is under the floor, or it has no estimate | Improve the issue on GitHub, then **Re-estimate** |
+| **has lost its estimate — re-estimate it first** | Its estimate is missing | Choose **Re-estimate** |
+| **is already in the queue** | Someone queued it already | Nothing to do |
+| **is two issues in this selection** | Two repositories share that issue number, and the queue holds each number once | Deselect one of them |
+| **is not in this workspace** | It was removed from the workspace | Deselect it |
+
+Choose **Deselect N issues** to drop the refused issues from the selection and queue the
+rest. In the detail panel, **Queue for loop** is greyed out for an issue that cannot be
+queued; hover over it to read why.
+
+## What can go wrong
+
+- **The table is empty with "Connect GitHub to watch your backlog".** The workspace has no
+  GitHub token yet. An owner or admin chooses **Open settings** to add one.
+- **"Enable an org and repos to begin".** A token is connected but no repository is enabled;
+  an owner or admin chooses **Choose repos**.
+- **"No issues match this filter".** Your filters exclude everything; choose
+  **Clear filters**.
+- **An issue you just opened on GitHub is missing.** The next sync brings it in; choose the
+  sync tag to sync now.
+- **"This workspace has asked for too many estimates in the last minute."** Re-estimates are
+  rate-limited; wait the seconds it names.
+- **"The backlog stopped refreshing."** The screen lost contact with the service; it keeps
+  showing the last rows it had and recovers on its own.

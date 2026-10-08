@@ -167,6 +167,65 @@
       "capturedAt": "2026-10-08T21:31:08.279Z",
       "uiVersion": "0.144.1",
       "seedRef": "918e4c4ea5693566ae2f575c4ee5d9b243a71a23"
+    },
+    {
+      "id": "user-guide.issues",
+      "route": "/issues",
+      "workspace": "acme-robotics",
+      "ready": "tr.ou-table__row:has-text('#484') .issues-table__effort",
+      "clip": "page",
+      "caption": "Issue intake: every open issue, sized before you ask, with its suggested workflow and model.",
+      "alt": "The Issues screen for Acme Robotics headed 9 open issues, 7 already sized, with Re-estimate all and Queue 0 selected buttons, a filter bar of repository, label chips, state, sort and search, and the backlog table showing each issue's effort chip and confidence, suggested workflow and routed model, beside an empty Issue detail panel.",
+      "capturedAt": "2026-10-08T23:20:54.026Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "a7119ac42d1bf8fafd2a0211bb433d3d6448a6e6"
+    },
+    {
+      "id": "user-guide.issues.estimate",
+      "route": "/issues",
+      "workspace": "acme-robotics",
+      "ready": "section.issues-panel section[aria-labelledby='issue-panel-breakdown']",
+      "clip": "section.issues-panel",
+      "masks": [
+        ".issues-panel__meta",
+        ".issues-panel__trace-line:nth-of-type(1)"
+      ],
+      "actions": [
+        {
+          "click": "tr.ou-table__row:has-text('#484') .issues-table__title"
+        }
+      ],
+      "caption": "An issue's sizing story: the estimate, its confidence and regression risk, and how it was produced.",
+      "alt": "The Issue detail panel for #484 Motor PID integral windup on wheel stall, marked sized, with its description, the AI work breakdown listing two files, about 150k tokens, a 10–16 minute cycle time, effort M at 88% confidence, medium regression risk with its reason, the standard-fix workflow and cursor/composer-2 model, the Queue for loop, Re-estimate and Open on GitHub buttons, and the estimation trace.",
+      "capturedAt": "2026-10-08T23:20:56.400Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "a7119ac42d1bf8fafd2a0211bb433d3d6448a6e6"
+    },
+    {
+      "id": "user-guide.issues.queue-dialog",
+      "route": "/issues",
+      "workspace": "acme-robotics",
+      "ready": ".issues-bar",
+      "clip": "page",
+      "actions": [
+        {
+          "click": "input[aria-label='Select #484']"
+        },
+        {
+          "click": "input[aria-label='Select #489']"
+        },
+        {
+          "click": "input[aria-label='Select #487']"
+        },
+        {
+          "hover": ".issues-bar"
+        }
+      ],
+      "caption": "Three issues ticked: the selection bar totals their estimate and queues them under a workflow.",
+      "alt": "The backlog with #484, #489 and #487 ticked and, along the bottom, the selection bar reading 3 issues selected, est. 3h 40m combined autonomous work, with an Assign workflow menu button and a Queue → suggested button.",
+      "capturedAt": "2026-10-08T23:21:09.051Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "a7119ac42d1bf8fafd2a0211bb433d3d6448a6e6"
     }
   ]
 }
