@@ -1282,6 +1282,89 @@
       "capturedAt": "2026-10-09T03:07:16.109Z",
       "uiVersion": "0.144.1",
       "seedRef": "7203ed53486e6e861a848b47897eb8cab75dd082"
+    },
+    {
+      "id": "administration.policies",
+      "route": "/settings",
+      "workspace": "acme-robotics",
+      "ready": ".policy-card__rules",
+      "clip": "section:has(> .policy-card__rules)",
+      "caption": "Autonomy policies: the five rules, the dry-run override, and the published version.",
+      "alt": "The Autonomy policies card at policy v7, with five rules switched on: Auto-merge when all gates green (effort ≤ M, non-refactor), Human review required (label:refactor OR effort ≥ L), Protected paths need allow-once (boot/, keys/, .github/), Spend guard (pause loop at $2.50/run, monthly cap $600/provider) and Dry-run mode for new repos (first 10 loops open draft PRs). Below, the workspace-wide override Dry-run reads Off — never set. Completing the Get Started wizard turns it on., with Turn dry-run on, and the footer Policies are versioned — changes appear in the audit log. with Edit as code marked soon.",
+      "capturedAt": "2026-10-09T03:15:45.868Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "8f2b92e2906c78cf7f816d4c6f73d1bc7fe0889c"
+    },
+    {
+      "id": "administration.policies.protected-paths",
+      "route": "/settings",
+      "workspace": "acme-robotics",
+      "ready": "text=could not be listed",
+      "clip": "div[aria-label='Protected paths need allow-once']",
+      "actions": [
+        {
+          "click": "role=button[name=/^boot\\/ — edit/]"
+        },
+        {
+          "fill": "role=textbox[name='Add a path pattern']",
+          "value": "firmware/secure/**"
+        },
+        {
+          "click": ".policy-rule__form >> role=button[name='Add']"
+        }
+      ],
+      "caption": "Editing protected paths: the patterns this policy protects in every repository, with a new one added.",
+      "alt": "The Protected paths need allow-once rule marked edited, its editor open: the patterns boot/**, keys/**, .github/** and the newly added firmware/secure/**, each with Edit and Remove, the Add a path pattern field with the hint Relative to the repository root — drivers/can/** covers everything under drivers/can., a masked match preview and Done.",
+      "capturedAt": "2026-10-09T03:27:06.330Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "8f2b92e2906c78cf7f816d4c6f73d1bc7fe0889c",
+      "masks": [
+        ".glob-editor__preview"
+      ]
+    },
+    {
+      "id": "administration.policies.publish",
+      "route": "/settings",
+      "workspace": "acme-robotics",
+      "ready": "role=alertdialog",
+      "clip": ".shell-overlay__panel",
+      "actions": [
+        {
+          "click": "role=button[name=/^boot\\/ — edit/]"
+        },
+        {
+          "fill": "role=textbox[name='Add a path pattern']",
+          "value": "firmware/secure/**"
+        },
+        {
+          "click": ".policy-rule__form >> role=button[name='Add']"
+        },
+        {
+          "click": "role=button[name=/^Save changes/]"
+        }
+      ],
+      "caption": "Publishing a policy change: what changes, whether it tightens or loosens, and an optional note.",
+      "alt": "The Publish policy v8? dialog listing Tightens — Protected paths need allow-once — changed protected paths, the line Tightening: more work waits for a person, or less may run without one., an empty Change note (optional) field with the hint Why — shown in the policy history beside this version., and Publish policy v8 and Keep editing buttons.",
+      "capturedAt": "2026-10-09T03:26:33.682Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "8f2b92e2906c78cf7f816d4c6f73d1bc7fe0889c"
+    },
+    {
+      "id": "administration.policies.dry-run",
+      "route": "/settings",
+      "workspace": "acme-robotics",
+      "ready": "text=Turn dry-run off?",
+      "clip": ".shell-overlay__panel",
+      "actions": [
+        {
+          "click": "role=button[name='Turn dry-run off']"
+        }
+      ],
+      "caption": "Leaving dry-run: the confirmation says what changes the moment it is off.",
+      "alt": "The Turn dry-run off? confirmation listing: pull requests open ready for review, not as drafts; armed merges, and workflows whose last stage auto-merges, will merge code without a person in the loop; every surface lifts its dry-run refusal at once; the change is recorded in the audit log under your name, with the value it replaced. Buttons Turn dry-run off and Keep it as it is.",
+      "capturedAt": "2026-10-09T03:27:14.646Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "8f2b92e2906c78cf7f816d4c6f73d1bc7fe0889c"
     }
   ]
 }

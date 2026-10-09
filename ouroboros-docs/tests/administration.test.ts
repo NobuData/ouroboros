@@ -48,6 +48,9 @@ const PROVIDERS = page("providers.mdx");
 /** The build farm administration page. */
 const FARM = page("build-farm.mdx");
 
+/** The policies & guardrails page. */
+const POLICIES = page("policies.mdx");
+
 /**
  * Reads the value of one exported string constant of the UI, joining a value written as
  * several `"…" +` pieces — e.g. `export const NOTE =\n  "One " +\n  "two.";`.
@@ -229,7 +232,7 @@ describe("the roles & capabilities page (#1189)", () => {
   });
 
   it("carries no internal issue references or migration numbers in its prose", () => {
-    for (const text of [OVERVIEW, ROLES, SIGN_IN, MEMBERS, SOURCES, PROVIDERS, FARM]) {
+    for (const text of [OVERVIEW, ROLES, SIGN_IN, MEMBERS, SOURCES, PROVIDERS, FARM, POLICIES]) {
       const prose = text
         .replace(/^--- .*? --- /, "")
         .replace(/\*\*[^*]+\*\*/g, "")
@@ -1002,6 +1005,131 @@ describe("the build farm administration page (#1196)", () => {
       "administration.build-farm.runner-detail",
     ]) {
       expect(FARM).toContain(`<Screenshot id="${id}" />`);
+    }
+  });
+});
+
+describe("the policies & guardrails page (#1197)", () => {
+  it("documents exactly the five core rules, by the card's names", () => {
+    const document = source("ouroboros-ui", "app", "policies", "document.ts");
+    const core = /export const CORE_RULES = \[([^\]]+)\]/.exec(document)?.[1] ?? "";
+    expect([...core.matchAll(/"([a-z_]+)"/g)].map((match) => match[1])).toEqual([
+      "auto_merge",
+      "human_review",
+      "protected_paths",
+      "spend_guard",
+      "dry_run_new_repos",
+    ]);
+    for (const name of [
+      "Auto-merge when all gates green",
+      "Human review required",
+      "Protected paths need allow-once",
+      "Spend guard",
+      "Dry-run mode for new repos",
+    ]) {
+      expect(document).toContain(`"${name}"`);
+      expect(POLICIES).toContain(`| **${name}** |`);
+    }
+  });
+
+  it("names each rule's conditions as its editor labels them", () => {
+    for (const name of [
+      "AUTO_MERGE_EFFORT_LABEL",
+      "EXCLUDED_LABELS",
+      "REVIEW_LABELS",
+      "REVIEW_EFFORT_LABEL",
+      "PROTECTED_GLOBS_LABEL",
+      "PER_RUN_LABEL",
+      "MONTHLY_LABEL",
+      "LOOPS_LABEL",
+      "ONE_MORE",
+      "ONE_FEWER",
+    ]) {
+      expect(POLICIES).toContain(`**${constant("policies/rule-editors.tsx", name)}**`);
+    }
+    expect(constant("globs/glob-editor.tsx", "ADD_LABEL")).toBe("Add a path pattern");
+    expect(POLICIES).toContain("**Add a path pattern**");
+  });
+
+  it("describes publishing with the dialog's own words", () => {
+    for (const name of ["NOTE_LABEL", "OWNER_GATE_TITLE"]) {
+      expect(POLICIES).toContain(`**${constant("policies/card-view.ts", name)}**`);
+    }
+    for (const name of ["PUBLISH_NEEDS_OWNER", "NOTHING_TO_PUBLISH"]) {
+      expect(POLICIES).toContain(constant("policies/card-view.ts", name));
+    }
+    const card = source("ouroboros-ui", "app", "policies", "card-view.ts");
+    for (const verb of ["Tightens", "Loosens", "Changes"]) {
+      expect(card).toContain(`: "${verb}"`);
+      expect(POLICIES).toContain(`**${verb}**`);
+    }
+    expect(card).toContain("return `Publish policy v${String(nextVersion(baseVersion))}?`;");
+    expect(POLICIES).toContain("**Publish policy v8?**");
+    expect(constant("policies/card-view.ts", "EDIT_AS_CODE")).toBe("Edit as code");
+    expect(POLICIES).toContain("**Edit as code**");
+  });
+
+  it("calls the per-run cap enforced and the monthly cap not, as the editor does", () => {
+    const hints = source("ouroboros-ui", "app", "policies", "rule-editors.tsx");
+    expect(hints).toContain(
+      '"Enforced now. Where a route sets its own per-run cap, the stricter of the two applies. "',
+    );
+    expect(hints).toContain("Its enforcement arrives with cap enforcement (#237).");
+    expect(POLICIES).toContain("It is\n  enforced now.".replace(/\s+/g, " "));
+    expect(POLICIES).toContain("**not enforced yet**");
+  });
+
+  it("protects a path when either list matches, as the guardrails read both", () => {
+    expect(
+      source("ouroboros-rest", "src", "modules", "guardrails", "guardrails.repository.ts"),
+    ).toContain("protected_path_policies");
+    expect(POLICIES).toContain(
+      "**A path is protected if\neither list matches it.**".replace(/\s+/g, " "),
+    );
+  });
+
+  it("describes dry-run and leaving it with the row's and confirmation's words", () => {
+    const view = source("ouroboros-ui", "app", "policies", "view.ts");
+    for (const sentence of [
+      "Off — never set. Completing the Get Started wizard turns it on.",
+      '"Turn dry-run off"',
+      "Pull requests open ready for review, not as drafts.",
+    ]) {
+      expect(view).toContain(sentence);
+    }
+    expect(POLICIES).toContain(
+      "*Off — never set. Completing the Get Started\nwizard turns it on.*".replace(/\s+/g, " "),
+    );
+    expect(POLICIES).toContain("**Turn dry-run off**");
+    expect(POLICIES).toContain(`**${constant("policies/view.ts", "POLICY_CANCEL")}**`);
+    expect(POLICIES).toContain(`**${constant("policies/view.ts", "DRY_RUN_MERGE_LABEL")}**`);
+    expect(
+      source("ouroboros-rest", "src", "modules", "policies", "org-policy.controller.ts"),
+    ).toContain("**The flip is `owner`/`admin`**");
+  });
+
+  it("states the decision time limits the database defaults and bounds", () => {
+    const migration = source(
+      "ouroboros-db",
+      "migrations",
+      "V096__guardrail_exceptions_action_tokens.sql",
+    );
+    expect(migration).toMatch(
+      /guardrail_exception_max_ttl_minutes\s+integer\s+not null default 1440/,
+    );
+    expect(migration).toMatch(/action_token_ttl_minutes\s+integer\s+not null default 2880/);
+    expect(POLICIES).toContain("| 24 hours (1440 minutes) | 1 minute to 7 days |");
+    expect(POLICIES).toContain("| 48 hours (2880 minutes) | 5 minutes to 7 days |");
+  });
+
+  it("shows the screenshots the issue lists", () => {
+    for (const id of [
+      "administration.policies",
+      "administration.policies.protected-paths",
+      "administration.policies.publish",
+      "administration.policies.dry-run",
+    ]) {
+      expect(POLICIES).toContain(`<Screenshot id="${id}" />`);
     }
   });
 });
