@@ -73,6 +73,7 @@ import { TriageModule } from "../triage/triage.module";
 import { TestResultsReadModule } from "../test-results-read/results.module";
 import { TicketSourcesModule } from "../ticket-sources/ticket-sources.module";
 import { WorkflowsModule } from "../workflows/workflows.module";
+import { CopilotModule } from "../copilot/copilot.module";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 
@@ -405,6 +406,11 @@ export class AppModule {
         // names, P7's reference check and the code view's `skills/` files; it imports nothing of
         // the workflow module's back, and nothing else claims the prefix.
         SkillsModule,
+        // CD.1 ([#559](https://github.com/NobuData/ouroboros/issues/559)) — the Workflow Copilot
+        // under `/api/v1/workflows/{id}/copilot`. After `WorkflowsModule` (the catalog it grounds
+        // in), `RoutingModule` (the `copilot-workflow` kind's resolution) and `EngineModule`
+        // (the turn); it exports nothing.
+        CopilotModule,
         // BN.1 ([#461](https://github.com/NobuData/ouroboros/issues/461)) — the decision kind registry,
         // the out-of-band watcher and the Needs-You feed under `/api/v1/inbox`. Every plane that
         // blocks on a person imports it for the registry (facts, pull requests, guardrails, planning,

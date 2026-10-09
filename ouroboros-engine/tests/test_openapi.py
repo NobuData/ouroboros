@@ -31,6 +31,21 @@ from ouroboros_engine.api.health import HEALTH_PATH, Liveness
 from ouroboros_engine.api.root import ServiceIdentity
 from ouroboros_engine.api.status import ServiceStatus
 from ouroboros_engine.api.tasks import EchoRequest, EchoResponse
+from ouroboros_engine.copilot.contract import (
+    CatalogEntry,
+    CopilotContext,
+    CopilotDelta,
+    CopilotDone,
+    CopilotError,
+    CopilotToolCall,
+    CopilotTurn,
+    CopilotTurnRequest,
+    CopilotUsage,
+    GuardEntry,
+    ToolCall,
+    ToolResultTurn,
+    UserTurn,
+)
 from ouroboros_engine.core.errors import ErrorEnvelope
 from ouroboros_engine.core.security import INTERNAL_KEY_HEADER, UNAUTHORIZED_BODY
 from ouroboros_engine.estimation.contract import (
@@ -126,6 +141,19 @@ _DOCUMENTED_MODELS: dict[str, type[BaseModel]] = {
     "AnalyzerStarted": AnalyzerStarted,
     "AnalyzerFinished": AnalyzerFinished,
     "AnalysisFinished": AnalysisFinished,
+    "CatalogEntry": CatalogEntry,
+    "GuardEntry": GuardEntry,
+    "CopilotContext": CopilotContext,
+    "ToolCall": ToolCall,
+    "UserTurn": UserTurn,
+    "CopilotTurn": CopilotTurn,
+    "ToolResultTurn": ToolResultTurn,
+    "CopilotTurnRequest": CopilotTurnRequest,
+    "CopilotDelta": CopilotDelta,
+    "CopilotToolCall": CopilotToolCall,
+    "CopilotUsage": CopilotUsage,
+    "CopilotError": CopilotError,
+    "CopilotDone": CopilotDone,
 }
 
 

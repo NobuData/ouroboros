@@ -134,6 +134,14 @@ import { WorkflowsService } from "./workflows.service";
   // gives: a consumer that reached past them would be a consumer that had skipped the honesty
   // rules those services are the whole of. `WorkflowsService` is exported for onboarding's
   // template instantiation (BB.3, #386), which must publish through the same gate as the studio.
-  exports: [WorkflowStatsService, WorkflowRegistryService, TriggerService, WorkflowsService],
+  // `WorkflowCatalogService` is exported for the Workflow Copilot (CD.1, #559), whose proposals
+  // are grounded in the same catalog and P7 catalogue the canvas and the code view read.
+  exports: [
+    WorkflowStatsService,
+    WorkflowRegistryService,
+    TriggerService,
+    WorkflowsService,
+    WorkflowCatalogService,
+  ],
 })
 export class WorkflowsModule {}

@@ -14,7 +14,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-engine
-  version: 0.7.17
+  version: 0.7.18
   summary: Internal backend for Ouroboros — executes the work ouroboros-rest brokers.
   description: |-
     The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the
@@ -974,6 +974,107 @@ paths:
                           id: a7150000-0000-0000-0000-000000000498
                 extractor: llm-v1
                 notes: []
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /v0/copilot-workflow:
+    post:
+      tags: [v0]
+      summary: Run one turn of the Workflow Copilot, streaming the reply
+      description: |-
+        One model turn of the conversational author — CD.1
+        ([#559](https://github.com/NobuData/ouroboros/issues/559)), mockup 20. The engine
+        assembles the system context from what it is sent (the shared draft, the stage catalog,
+        the skills and task routes that exist, the guard vocabulary the enforcement planes
+        honour), invokes the routed model through the invocation gateway
+        (`POST /internal/llm/invoke` — AD.3's contract, AF.2's executor) and parses the reply
+        into text and **structured tool calls** as it streams.
+
+        **The only write path is the typed operation vocabulary.** The manifest's write tools
+        are exactly `add_stage`, `set_stage`, `remove_stage`, `add_edge`, `remove_edge`,
+        `set_trigger` and `set_guard`; `ask_user` asks a question whose options render as chips;
+        `read_draft`, `read_catalog`, `read_skills` and `lookup_tickets` ground a proposal; and
+        `propose_dry_run` names a ticket worth trying. Nothing here applies anything:
+        `ouroboros-rest` runs the loop — it validates each operation against the DSL before
+        applying it under the draft's etag with `copilot` provenance, bounces an invalid one back
+        as a `tool` transcript entry carrying the validator's message, and sends the next turn.
+
+        The answer is `application/x-ndjson`, one event per line, written as the model writes:
+
+        * `delta` — a fragment of reply text;
+        * `tool_call` — a call the parser recovered, validated against the manifest, or carrying
+          `error` and no `arguments` when it did not validate (bounced like any invalid
+          operation);
+        * `usage` — what the gateway metered, per hop; `cost_cents` is `null` when nothing
+          prices the model, never `0`;
+        * `error` — the turn could not be made: `gateway_unavailable` until AF.2
+          ([#235](https://github.com/NobuData/ouroboros/issues/235)) lands, `gateway_unreachable`,
+          `gateway_refused`, or one of the gateway's own per-hop codes;
+        * `done` — always last on a turn that was made.
+
+        A turn ends with exactly one `error` or one `done`.
+      operationId: copilotWorkflowTurn
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CopilotTurnRequest"
+            example:
+              alias: coder-max
+              session: 5eed008a-0000-4000-8000-000000000001
+              resolution_version: z1-v1
+              cost_cap_cents: 500
+              context:
+                draft: null
+                draft_label: v0.0
+                catalog:
+                  - type: llm
+                    label: Model stage
+                    summary: A prompt or skill run by a routed model.
+                  - type: infra
+                    label: Build / test
+                    summary: A build-farm job.
+                skills: [pr-etiquette, zephyr-conventions]
+                tasks: [analyze, plan, implement, review]
+                guards:
+                  - name: spend_guard
+                    description: A per-run and monthly spend cap the executor checks.
+              transcript:
+                - role: user
+                  text: >-
+                    security patches: always a second model's review, never auto-merge,
+                    prove the CVE is actually fixed
+      responses:
+        "200":
+          description: |-
+            The turn, streamed. For the example: the model drafts a first stage, asks what
+            triggers the workflow, and the gateway meters the exchange.
+          content:
+            application/x-ndjson:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/CopilotDelta"
+                  - $ref: "#/components/schemas/CopilotToolCall"
+                  - $ref: "#/components/schemas/CopilotUsage"
+                  - $ref: "#/components/schemas/CopilotError"
+                  - $ref: "#/components/schemas/CopilotDone"
+                discriminator:
+                  propertyName: kind
+                  mapping:
+                    delta: "#/components/schemas/CopilotDelta"
+                    tool_call: "#/components/schemas/CopilotToolCall"
+                    usage: "#/components/schemas/CopilotUsage"
+                    error: "#/components/schemas/CopilotError"
+                    done: "#/components/schemas/CopilotDone"
+              example: |
+                {"kind":"delta","text":"Drafted security-patch. I added an exploit-verify stage — that task kind does not exist yet, so the draft will carry a warning until it does.\n"}
+                {"kind":"tool_call","id":"call-1","tool":"add_stage","arguments":{"node":{"id":"exploit-verify","type":"llm","title":"Exploit verify","position":{"x":640,"y":200},"config":{"mode":"prompt","prompt_template":"Re-run the CVE proof of concept against the patched build.","routing":{"inherit_task":"exploit-verify"},"limits":{"max_retries":1,"token_budget":200000},"permissions":{"push_fixup":false,"touch_ci":false}}}},"error":null}
+                {"kind":"tool_call","id":"call-2","tool":"ask_user","arguments":{"prompt":"What triggers it?","options":["label:security","CVE pattern in title"]},"error":null}
+                {"kind":"usage","input_tokens":18400,"output_tokens":2100,"cost_cents":12.0,"model":"claude-fable-5","connection":"5eed0009-0000-4000-8000-000000000001"}
+                {"kind":"done","finish_reason":"stop"}
         "401":
           $ref: "#/components/responses/Unauthorized"
         "422":
@@ -2324,6 +2425,305 @@ components:
             it. Empty rather than absent when there is none, so reading `details.task_kind`
             never has to check `details` first.
           examples: [{}]
+
+    CatalogEntry:
+      type: object
+      title: CatalogEntry
+      description: One stage type of the catalog (R.3), as the copilot is told about it.
+      additionalProperties: false
+      required: [type, label]
+      properties:
+        type:
+          type: string
+          enum: [trigger, llm, infra, flow, term]
+        label:
+          type: string
+          minLength: 1
+          maxLength: 80
+        summary:
+          type: string
+          maxLength: 400
+          default: ""
+
+    GuardEntry:
+      type: object
+      title: GuardEntry
+      description: One guard the workspace's enforcement planes honour — an org-policy rule id.
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+          examples: [spend_guard]
+        description:
+          type: string
+          maxLength: 400
+          default: ""
+
+    CopilotContext:
+      type: object
+      title: CopilotContext
+      description: |-
+        What grounds a turn: the shared draft as stored, and the names that exist. A skill or
+        task the copilot names outside these lists does not resolve (decision W7), and the
+        prompt tells it to say so.
+      additionalProperties: false
+      required: []
+      properties:
+        draft:
+          type: [object, "null"]
+          default: null
+          description: The draft document (WF-P.3), or null before the first operation.
+        draft_label:
+          type: string
+          minLength: 1
+          maxLength: 32
+          default: v0.0
+          description: The draft's revision as the head prints it — `v0.3`.
+        catalog:
+          type: array
+          maxItems: 32
+          default: []
+          items:
+            $ref: "#/components/schemas/CatalogEntry"
+        skills:
+          type: array
+          maxItems: 500
+          default: []
+          items: {type: string}
+          description: Every skill slug the registry holds (BF.1).
+        tasks:
+          type: array
+          maxItems: 200
+          default: []
+          items: {type: string}
+          description: Every task kind the routing table has a route for (Z.1).
+        guards:
+          type: array
+          maxItems: 32
+          default: []
+          items:
+            $ref: "#/components/schemas/GuardEntry"
+
+    ToolCall:
+      type: object
+      title: ToolCall
+      description: One call a previous copilot reply made, as the transcript records it.
+      additionalProperties: false
+      required: [id, tool]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 32
+          examples: [call-1]
+        tool:
+          type: string
+          minLength: 1
+          maxLength: 64
+        arguments:
+          type: object
+          default: {}
+
+    UserTurn:
+      type: object
+      title: UserTurn
+      description: Something the person said — a typed message, or a chip they chose.
+      additionalProperties: false
+      required: [role, text]
+      properties:
+        role:
+          type: string
+          const: user
+        text:
+          type: string
+          minLength: 1
+          maxLength: 20000
+
+    CopilotTurn:
+      type: object
+      title: CopilotTurn
+      description: A reply the copilot already gave, with the calls it made.
+      additionalProperties: false
+      required: [role]
+      properties:
+        role:
+          type: string
+          const: copilot
+        text:
+          type: string
+          maxLength: 200000
+          default: ""
+        tool_calls:
+          type: array
+          maxItems: 64
+          default: []
+          items:
+            $ref: "#/components/schemas/ToolCall"
+
+    ToolResultTurn:
+      type: object
+      title: ToolResultTurn
+      description: |-
+        What `ouroboros-rest` answered one call with. A bounced operation is `ok: false` with
+        the validator's message as `content` — the self-correction loop's whole feedback.
+      additionalProperties: false
+      required: [role, call_id, ok, content]
+      properties:
+        role:
+          type: string
+          const: tool
+        call_id:
+          type: string
+          minLength: 1
+          maxLength: 32
+        ok:
+          type: boolean
+        content:
+          type: string
+          maxLength: 200000
+
+    CopilotTurnRequest:
+      type: object
+      title: CopilotTurnRequest
+      description: The body of a `POST /v0/copilot-workflow` request. Closed.
+      additionalProperties: false
+      required: [alias, session, context, transcript]
+      properties:
+        alias:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: The routing alias the `copilot-workflow` task kind resolved to.
+          examples: [coder-max]
+        session:
+          type: string
+          pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          description: The copilot session the invocation is attributed to.
+        resolution_version:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 32
+          default: null
+        cost_cap_cents:
+          type: [integer, "null"]
+          minimum: 0
+          default: null
+        context:
+          $ref: "#/components/schemas/CopilotContext"
+        transcript:
+          type: array
+          minItems: 1
+          maxItems: 400
+          description: The conversation so far, oldest first.
+          items:
+            oneOf:
+              - $ref: "#/components/schemas/UserTurn"
+              - $ref: "#/components/schemas/CopilotTurn"
+              - $ref: "#/components/schemas/ToolResultTurn"
+            discriminator:
+              propertyName: role
+              mapping:
+                user: "#/components/schemas/UserTurn"
+                copilot: "#/components/schemas/CopilotTurn"
+                tool: "#/components/schemas/ToolResultTurn"
+
+    CopilotDelta:
+      type: object
+      title: CopilotDelta
+      description: A fragment of reply text, as the model wrote it.
+      additionalProperties: false
+      required: [kind, text]
+      properties:
+        kind:
+          type: string
+          const: delta
+        text:
+          type: string
+
+    CopilotToolCall:
+      type: object
+      title: CopilotToolCall
+      description: |-
+        A structured call the parser recovered from the reply — validated against the
+        manifest, or carrying `error` (written for the model) and no `arguments` when it did
+        not validate.
+      additionalProperties: false
+      required: [kind, id, tool]
+      properties:
+        kind:
+          type: string
+          const: tool_call
+        id:
+          type: string
+          examples: [call-1]
+        tool:
+          type: string
+          examples: [add_stage]
+        arguments:
+          type: [object, "null"]
+          default: null
+        error:
+          type: [string, "null"]
+          default: null
+
+    CopilotUsage:
+      type: object
+      title: CopilotUsage
+      description: What one hop of the invocation metered — the gateway's `usage`, forwarded.
+      additionalProperties: false
+      required: [kind, input_tokens, output_tokens, model, connection]
+      properties:
+        kind:
+          type: string
+          const: usage
+        input_tokens:
+          type: integer
+          minimum: 0
+        output_tokens:
+          type: integer
+          minimum: 0
+        cost_cents:
+          type: [number, "null"]
+          minimum: 0
+          default: null
+          description: Null when nothing prices the model — unpriced, never free.
+        model:
+          type: string
+        connection:
+          type: string
+
+    CopilotError:
+      type: object
+      title: CopilotError
+      description: A turn that could not be completed.
+      additionalProperties: false
+      required: [kind, code, message]
+      properties:
+        kind:
+          type: string
+          const: error
+        code:
+          type: string
+          examples: [gateway_unavailable]
+        message:
+          type: string
+
+    CopilotDone:
+      type: object
+      title: CopilotDone
+      description: The turn finished.
+      additionalProperties: false
+      required: [kind, finish_reason]
+      properties:
+        kind:
+          type: string
+          const: done
+        finish_reason:
+          type: string
+          examples: [stop]
 
     AnalyzerSetEntry:
       type: object
