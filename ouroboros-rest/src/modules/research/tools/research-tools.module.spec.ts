@@ -13,7 +13,7 @@ import { ResearchToolsInternalController } from "./tools.internal.controller";
  * The wiring. Nothing connects: `pg` connects lazily, and no query is issued.
  */
 describe("the research tools module", () => {
-  it("compiles, with the internal route and an empty registry", async () => {
+  it("compiles, with the internal route and the web tool registered", async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [ConfigurationModule.forRoot(testConfiguration()), ResearchToolsModule],
     }).compile();
@@ -22,8 +22,8 @@ describe("the research tools module", () => {
       ResearchToolsInternalController,
     );
     expect(moduleRef.get(ResearchToolInvoker)).toBeInstanceOf(ResearchToolInvoker);
-    // CL.1 ships the SPI and no adapter: CL.2–CL.6 each register one.
-    expect(moduleRef.get(ResearchToolRegistry).slugs()).toEqual([]);
+    // CL.2 (#615) registers the web tool; CL.3–CL.6 each register one more.
+    expect(moduleRef.get(ResearchToolRegistry).slugs()).toEqual(["web"]);
 
     await moduleRef.close();
   });

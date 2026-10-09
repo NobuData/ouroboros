@@ -7,6 +7,7 @@ import { ResearchEstimateService } from "./estimate.service";
 import { ResearchModule } from "./research.module";
 import { ResearchRepository } from "./research.repository";
 import { ResearchToolPricing } from "./tool-pricing";
+import { RegistryToolPricing } from "./tools/research-tool.pricing";
 
 /**
  * The wiring. Nothing connects: `pg` connects lazily, and no query is issued. The export is
@@ -21,7 +22,7 @@ describe("the research module", () => {
     expect(moduleRef.get(ResearchEstimateController)).toBeInstanceOf(ResearchEstimateController);
     expect(moduleRef.get(ResearchEstimateService)).toBeInstanceOf(ResearchEstimateService);
     expect(moduleRef.get(ResearchRepository)).toBeInstanceOf(ResearchRepository);
-    expect(moduleRef.get(ResearchToolPricing)).toBeInstanceOf(ResearchToolPricing);
+    expect(moduleRef.get(ResearchToolPricing)).toBeInstanceOf(RegistryToolPricing);
 
     await moduleRef.close();
   });
@@ -30,7 +31,7 @@ describe("the research module", () => {
     expect(Reflect.getMetadata("exports", ResearchModule)).toEqual([ResearchEstimateService]);
   });
 
-  it("lets #615 replace the hosted tool pricing", async () => {
+  it("binds the registry-backed hosted tool pricing, and still lets a test replace it", async () => {
     class Hosted extends ResearchToolPricing {}
 
     const moduleRef = await Test.createTestingModule({

@@ -111,4 +111,41 @@ describe("the research tool repository", () => {
 
     expect(insert?.parameters).toContain("a1120000-0000-0000-0000-000000000032");
   });
+
+  it("records a skip once per investigation, tool, page and reason", async () => {
+    database.answers({ rows: [{ id: "skip-1" }] }, { rows: [] });
+    const skip = {
+      locator: "https://skylink.example.com/dealers/pricing",
+      reason: "robots_denied" as const,
+      note: "robots.txt disallows /dealers/pricing for OuroborosResearch (Disallow: /dealers/)",
+    };
+
+    expect(await repository.recordSkip(INVESTIGATION, "web", skip)).toBe(true);
+    expect(await repository.recordSkip(INVESTIGATION, "web", skip)).toBe(false);
+
+    const [statement] = database.statements;
+    expect(statement.sql).toContain('insert into "ouroboros"."source_skips"');
+    expect(statement.sql).toContain(
+      'on conflict ("investigation_id", "tool_slug", "locator", "reason") do nothing',
+    );
+    expect(statement.parameters).toEqual([
+      INVESTIGATION,
+      "web",
+      skip.locator,
+      "robots_denied",
+      skip.note,
+    ]);
+  });
+
+  it("clips a note to the column's bound", async () => {
+    database.answers({ rows: [{ id: "skip-1" }] });
+
+    await repository.recordSkip(INVESTIGATION, "web", {
+      locator: "https://x.example.com/a.pdf",
+      reason: "unsupported_type",
+      note: "n".repeat(900),
+    });
+
+    expect((database.statements[0].parameters[4] as string).length).toBe(500);
+  });
 });

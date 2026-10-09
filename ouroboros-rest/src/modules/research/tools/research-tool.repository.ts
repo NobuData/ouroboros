@@ -11,7 +11,7 @@
 import { Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../../db/db.service";
-import type { InvestigationStatus } from "../../db/schema";
+import type { InvestigationStatus, SourceSkipReason } from "../../db/schema";
 import type { SourceRecord } from "./research-tool.adapter";
 
 /** What a tool call needs to know about its investigation. */
@@ -34,6 +34,15 @@ export interface ArchivedSource {
   readonly citeNo: number;
   /** Whether an identical record (same locator and content hash) was already in the ledger. */
   readonly deduplicated: boolean;
+}
+
+/** A page an investigation declined to read, as the invoker records it (V116, #615). */
+export interface SourceSkip {
+  /** The page as it was asked for. */
+  readonly locator: string;
+  readonly reason: SourceSkipReason;
+  /** What the sources panel shows — the adapter's classified detail. */
+  readonly note: string;
 }
 
 @Injectable()
@@ -124,5 +133,34 @@ export class ResearchToolRepository {
 
       return archived;
     });
+  }
+
+  /**
+   * Record a page the investigation declined to read — once per investigation, tool, page and
+   * reason (`source_skips`, V116). A second refusal of the same page says nothing new, so it
+   * writes nothing.
+   *
+   * @param investigationId - The investigation.
+   * @param toolSlug - The tool that declined it.
+   * @param skip - The page, the reason and the note.
+   * @returns `true` when this call recorded it, `false` when it was already recorded.
+   */
+  async recordSkip(investigationId: string, toolSlug: string, skip: SourceSkip): Promise<boolean> {
+    const rows = await this.database.db
+      .insertInto("source_skips")
+      .values({
+        investigation_id: investigationId,
+        tool_slug: toolSlug,
+        locator: skip.locator,
+        reason: skip.reason,
+        note: skip.note.slice(0, 500),
+      })
+      .onConflict((conflict) =>
+        conflict.columns(["investigation_id", "tool_slug", "locator", "reason"]).doNothing(),
+      )
+      .returning("id")
+      .execute();
+
+    return rows.length > 0;
   }
 }

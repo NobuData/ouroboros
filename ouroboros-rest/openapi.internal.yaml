@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.40.9"
+  version: "0.41.0"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -1289,10 +1289,17 @@ paths:
         7. **`409 research_tool_not_configured`** — the workspace has not configured a tool
            whose settings are required.
 
-        Then the operation runs. **`502 research_tool_failed`** carries the classified failure
-        (`details.errorClass`: `auth`, `network`, `robots_denied`, `rate_limited`, `upstream`,
-        `unsupported`), its designed `surfaceState`, whether a retry can help and how long the
-        upstream asked to wait. **`502 research_tool_contract_violation`** means the tool
+        Then the operation runs. **A fetch the tool declines is a skip, not a failure** (#615): a
+        page robots.txt forbids (`robots_denied`) or a type the tool does not read — a PDF waits
+        for the papers tool (#635), an image is not text (`unsupported_type`) — answers `200` with
+        `payload: null`, no sources and `skipped: {locator, reason, note, recorded}`, and the skip
+        is recorded under the investigation (`source_skips`, V116) so the brief's gaps are visible
+        rather than silent. The operation counts against the budget.
+
+        **`502 research_tool_failed`** carries every other classified failure
+        (`details.errorClass`: `auth`, `network`, `rate_limited`, `upstream` — and `robots_denied`
+        or `unsupported` from a search or a query), its designed `surfaceState`, whether a retry
+        can help and how long the upstream asked to wait. **`502 research_tool_contract_violation`** means the tool
         answered outside the citation contract — a payload with no sources, a source the ledger
         would refuse, more tokens than `budget.tokens` allowed, or an unclassified exception —
         and nothing was archived.
@@ -1359,6 +1366,7 @@ paths:
                     excerpt: "Gust-adaptive final approach: wind feedforward is applied over the last 2 m of descent."
                     meta:
                       query: skylink gust-adaptive final approach
+                skipped: null
                 usage:
                   operations: 1
                   tokens: 0
@@ -1454,12 +1462,12 @@ paths:
                 message: The research tool failed.
                 details:
                   tool: web
-                  operation: fetch
-                  errorClass: robots_denied
-                  surfaceState: skipped_source
-                  retryable: false
-                  retryAfterSeconds: null
-                  detail: robots.txt disallows /releases
+                  operation: search
+                  errorClass: rate_limited
+                  surfaceState: backing_off
+                  retryable: true
+                  retryAfterSeconds: 12
+                  detail: Brave Search asked for fewer searches (429)
         "500":
           description: "`internal_error` — the service itself failed."
           content:
@@ -2838,12 +2846,35 @@ components:
           format: uuid
           description: The competitor snapshot a `competitor_diff` source cites (V112).
 
+    ToolSkip:
+      type: object
+      title: ToolSkip
+      description: |-
+        A page a fetch declined to read (#615) — recorded under the investigation in
+        `source_skips` (V116), once per tool, page and reason.
+      additionalProperties: false
+      required: [locator, reason, note, recorded]
+      properties:
+        locator:
+          type: string
+          description: The page as it was asked for.
+        reason:
+          type: string
+          enum: [robots_denied, unsupported_type]
+        note:
+          type: string
+          description: What the sources panel shows beside the skip.
+          examples: ["robots.txt disallows /dealers/pricing for OuroborosResearch (Disallow: /dealers/)"]
+        recorded:
+          type: boolean
+          description: Whether this call recorded it; false when the investigation already had it.
+
     ToolInvocation:
       type: object
       title: ToolInvocation
       description: What one operation answered.
       additionalProperties: false
-      required: [tool, operation, investigation, payload, sources, usage, budget]
+      required: [tool, operation, investigation, payload, sources, skipped, usage, budget]
       properties:
         tool:
           type: string
@@ -2859,6 +2890,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ToolSource"
+        skipped:
+          description: The page a fetch declined to read, or null. With one, `payload` is null and `sources` is empty.
+          oneOf:
+            - $ref: "#/components/schemas/ToolSkip"
+            - type: "null"
         usage:
           type: object
           additionalProperties: false

@@ -478,6 +478,43 @@ export const DEFAULT_WEBHOOK_MAX_ATTEMPTS = 5;
 export const MAX_WEBHOOK_MAX_ATTEMPTS = 20;
 
 /**
+ * The SearXNG instance the web research tool searches through when a workspace names none —
+ * `OURO_RESEARCH_SEARXNG_URL`'s default (#615): the compose stack's container, as published on
+ * the host.
+ */
+export const DEFAULT_RESEARCH_SEARXNG_URL = "http://localhost:8888";
+
+/** How long one page or robots.txt request may take, by default — fifteen seconds (#615). */
+export const DEFAULT_RESEARCH_FETCH_TIMEOUT_MS = 15_000;
+
+/** The shortest page request timeout an operator may set — one second. */
+export const MIN_RESEARCH_FETCH_TIMEOUT_MS = 1_000;
+
+/** The longest page request timeout an operator may set — two minutes. */
+export const MAX_RESEARCH_FETCH_TIMEOUT_MS = 120_000;
+
+/** The most bytes of one page the web tool reads, by default — 5 MiB (#615). */
+export const DEFAULT_RESEARCH_FETCH_MAX_BYTES = 5_242_880;
+
+/** The smallest page cap an operator may set — 64 KiB. */
+export const MIN_RESEARCH_FETCH_MAX_BYTES = 65_536;
+
+/** The largest page cap an operator may set — 50 MiB. */
+export const MAX_RESEARCH_FETCH_MAX_BYTES = 52_428_800;
+
+/** Redirects one fetch follows, by default — five (#615). */
+export const DEFAULT_RESEARCH_FETCH_MAX_REDIRECTS = 5;
+
+/** The most redirects an operator may allow. */
+export const MAX_RESEARCH_FETCH_MAX_REDIRECTS = 20;
+
+/** The pause between two requests to the same host, by default — one second (#615). */
+export const DEFAULT_RESEARCH_HOST_INTERVAL_MS = 1_000;
+
+/** The longest pause between requests to one host an operator may set — one minute. */
+export const MAX_RESEARCH_HOST_INTERVAL_MS = 60_000;
+
+/**
  * How many days without a tracker update make an open ticket *stale* on the Backlog Health card,
  * when `OURO_BACKLOG_STALE_DAYS` is not set — thirty, mockup 09's `Stale > 30d`.
  *
@@ -1038,6 +1075,25 @@ export interface Configuration {
    */
   readonly webhookInternalAllowlist: readonly string[];
   /**
+   * The SearXNG instance the web research tool searches through when a workspace's configuration
+   * names none. From `OURO_RESEARCH_SEARXNG_URL`, {@link DEFAULT_RESEARCH_SEARXNG_URL} when unset
+   * (#615).
+   */
+  readonly researchSearxngUrl: string;
+  /** How long one page request may take. From `OURO_RESEARCH_FETCH_TIMEOUT_MS` (#615). */
+  readonly researchFetchTimeoutMs: number;
+  /** The most bytes of one page the web tool reads. From `OURO_RESEARCH_FETCH_MAX_BYTES` (#615). */
+  readonly researchFetchMaxBytes: number;
+  /** Redirects one fetch follows. From `OURO_RESEARCH_FETCH_MAX_REDIRECTS` (#615). */
+  readonly researchFetchMaxRedirects: number;
+  /** The pause between two requests to one host. From `OURO_RESEARCH_HOST_INTERVAL_MS` (#615). */
+  readonly researchHostIntervalMs: number;
+  /**
+   * Internal hosts the web research tool may read despite the SSRF policy — hostnames, addresses
+   * and CIDR blocks from `OURO_RESEARCH_FETCH_INTERNAL_ALLOWLIST`; empty when unset (#615).
+   */
+  readonly researchFetchInternalAllowlist: readonly string[];
+  /**
    * Days without a tracker update after which an open ticket counts as stale on the Backlog Health
    * card. From `OURO_BACKLOG_STALE_DAYS`, {@link DEFAULT_BACKLOG_STALE_DAYS} when unset.
    */
@@ -1235,6 +1291,12 @@ export const VARIABLES = {
   webhookDispatchSeconds: "OURO_WEBHOOK_DISPATCH_SECONDS",
   webhookMaxAttempts: "OURO_WEBHOOK_MAX_ATTEMPTS",
   webhookInternalAllowlist: "OURO_WEBHOOK_INTERNAL_ALLOWLIST",
+  researchSearxngUrl: "OURO_RESEARCH_SEARXNG_URL",
+  researchFetchTimeoutMs: "OURO_RESEARCH_FETCH_TIMEOUT_MS",
+  researchFetchMaxBytes: "OURO_RESEARCH_FETCH_MAX_BYTES",
+  researchFetchMaxRedirects: "OURO_RESEARCH_FETCH_MAX_REDIRECTS",
+  researchHostIntervalMs: "OURO_RESEARCH_HOST_INTERVAL_MS",
+  researchFetchInternalAllowlist: "OURO_RESEARCH_FETCH_INTERNAL_ALLOWLIST",
   backlogStaleDays: "OURO_BACKLOG_STALE_DAYS",
   reestimationHourUtc: "OURO_REESTIMATION_HOUR_UTC",
   reestimationJitterMinutes: "OURO_REESTIMATION_JITTER_MINUTES",
@@ -1858,6 +1920,54 @@ const environmentShape = z.object({
         "collector.internal,10.20.0.0/16",
     ),
 
+  // CL.2's (#615) six: where the web research tool searches by default, and the politeness and
+  // safety bounds of the page reader every provider shares.
+  OURO_RESEARCH_SEARXNG_URL: z
+    .string()
+    .default(DEFAULT_RESEARCH_SEARXNG_URL)
+    .refine(
+      (value) => isAbsoluteUrl(value, ["http:", "https:"]),
+      "expected an absolute http:// or https:// URL, such as http://searxng:8080",
+    ),
+  OURO_RESEARCH_FETCH_TIMEOUT_MS: boundedWhole(
+    MIN_RESEARCH_FETCH_TIMEOUT_MS,
+    DEFAULT_RESEARCH_FETCH_TIMEOUT_MS,
+    MAX_RESEARCH_FETCH_TIMEOUT_MS,
+    "milliseconds",
+  ),
+  OURO_RESEARCH_FETCH_MAX_BYTES: boundedWhole(
+    MIN_RESEARCH_FETCH_MAX_BYTES,
+    DEFAULT_RESEARCH_FETCH_MAX_BYTES,
+    MAX_RESEARCH_FETCH_MAX_BYTES,
+    "bytes",
+  ),
+  OURO_RESEARCH_FETCH_MAX_REDIRECTS: boundedWhole(
+    0,
+    DEFAULT_RESEARCH_FETCH_MAX_REDIRECTS,
+    MAX_RESEARCH_FETCH_MAX_REDIRECTS,
+    "redirects",
+  ),
+  OURO_RESEARCH_HOST_INTERVAL_MS: boundedWhole(
+    0,
+    DEFAULT_RESEARCH_HOST_INTERVAL_MS,
+    MAX_RESEARCH_HOST_INTERVAL_MS,
+    "milliseconds",
+  ),
+  OURO_RESEARCH_FETCH_INTERNAL_ALLOWLIST: z
+    .string()
+    .default("")
+    .transform((value) =>
+      value
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter((entry) => entry !== ""),
+    )
+    .refine(
+      (entries) => entries.every(isAllowlistEntry),
+      "expected a comma-separated list of hostnames, IP addresses or CIDR blocks, such as " +
+        "fixtures.internal,10.20.0.0/16",
+    ),
+
   // AL.5's (#281) four: the Backlog Health card's stale threshold, and the nightly job's hour,
   // jitter window and batch bound.
   OURO_BACKLOG_STALE_DAYS: boundedWhole(
@@ -2208,6 +2318,12 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     webhookDispatchSeconds: values.OURO_WEBHOOK_DISPATCH_SECONDS,
     webhookMaxAttempts: values.OURO_WEBHOOK_MAX_ATTEMPTS,
     webhookInternalAllowlist: values.OURO_WEBHOOK_INTERNAL_ALLOWLIST,
+    researchSearxngUrl: values.OURO_RESEARCH_SEARXNG_URL,
+    researchFetchTimeoutMs: values.OURO_RESEARCH_FETCH_TIMEOUT_MS,
+    researchFetchMaxBytes: values.OURO_RESEARCH_FETCH_MAX_BYTES,
+    researchFetchMaxRedirects: values.OURO_RESEARCH_FETCH_MAX_REDIRECTS,
+    researchHostIntervalMs: values.OURO_RESEARCH_HOST_INTERVAL_MS,
+    researchFetchInternalAllowlist: values.OURO_RESEARCH_FETCH_INTERNAL_ALLOWLIST,
     backlogStaleDays: values.OURO_BACKLOG_STALE_DAYS,
     reestimationHourUtc: values.OURO_REESTIMATION_HOUR_UTC,
     reestimationJitterMinutes: values.OURO_REESTIMATION_JITTER_MINUTES,

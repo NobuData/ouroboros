@@ -257,6 +257,8 @@ services:
       OURO_UI_URL: http://localhost:3000
       # The engine, which is a container's view: nothing else can resolve this name.
       OURO_ENGINE_URL: http://engine:8000
+      # The web research tool's SearXNG (#615), by its compose name — a container's view.
+      OURO_RESEARCH_SEARXNG_URL: http://searxng:8080
       OURO_ENGINE_SHARED_SECRET: ${OURO_ENGINE_SHARED_SECRET:-dev-engine-shared-secret-change-me}
       # BetterAuth's own two names, unprefixed because the library reads them (issue #700).
       # The secret is a credential and is interpolated with the rest of them; the URL is an
@@ -488,6 +490,30 @@ services:
   # (src/modules/mail/mailpit.fixture.ts). Messages are kept in memory: restarting it empties
   # the inbox, which is what a development catcher should do.
   # ---------------------------------------------------------------------------
+  # The web research tool's default search provider (#615, CL.2): self-hosted metasearch with a
+  # JSON API — no key, no per-query cost. `rest` reaches it as http://searxng:8080; the host sees
+  # it on loopback 8888, which is OURO_RESEARCH_SEARXNG_URL's default for a `yarn dev` rest.
+  searxng:
+    image: searxng/searxng:2026.9.29-896ec8d3a
+    environment:
+      # A credential, interpolated like every other; the fallback keeps an unconfigured stack
+      # booting. SearXNG signs its own cookies with it and nothing else.
+      SEARXNG_SECRET: ${OURO_SEARXNG_SECRET:-dev-searxng-secret-change-me}
+      SEARXNG_BASE_URL: http://localhost:8888/
+    volumes:
+      - ./ouroboros-rest/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    ports:
+      - "127.0.0.1:8888:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+      start_interval: 1s
+    networks:
+      - ouroboros
+
   mailpit:
     image: axllent/mailpit:v1.31
     ports:

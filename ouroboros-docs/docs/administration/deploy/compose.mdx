@@ -27,10 +27,12 @@ Make a directory for the deployment, holding:
 ouroboros/
 ├── compose.yml        # below
 ├── .env               # the secrets — never committed
-└── proxy/
-    ├── app.conf       # from "The application host"
-    ├── farm.conf      # from "The farm gateway" — only with a build farm
-    └── certs/         # app.example.com.pem/.key, farm.example.com.pem/.key
+├── proxy/
+│   ├── app.conf       # from "The application host"
+│   ├── farm.conf      # from "The farm gateway" — only with a build farm
+│   └── certs/         # app.example.com.pem/.key, farm.example.com.pem/.key
+└── searxng/
+    └── settings.yml   # below — the web search container's settings
 ```
 
 ### `.env`
@@ -46,6 +48,7 @@ BETTER_AUTH_SECRET=<openssl rand -base64 32>
 OURO_VAULT_MASTER_KEY=<openssl rand -base64 32>
 OURO_GITHUB_CLIENT_ID=<from your GitHub OAuth app>
 OURO_GITHUB_CLIENT_SECRET=<from your GitHub OAuth app>
+OURO_SEARXNG_SECRET=<openssl rand -hex 32>
 ```
 
 Keep <EnvVar name="OURO_VAULT_MASTER_KEY" /> backed up somewhere other than the database: it
@@ -122,11 +125,28 @@ services:
       OURO_FARM_CLIENT_CERT_HEADER: x-ouro-client-cert
       OURO_FARM_RELEASES_DIR: /runner-releases
       OURO_FARM_MIN_AGENT_VERSION: 0.5.0
+      # Web search for research investigations.
+      OURO_RESEARCH_SEARXNG_URL: http://searxng:8080
     volumes:
       - ouroboros-runner-releases:/runner-releases:ro
       - ouroboros-artifacts:/app/.artifacts
     restart: unless-stopped
     # No `ports:` — the REST service is internal.
+
+  # The metasearch research investigations search through. Remove it if every workspace
+  # uses a hosted search provider.
+  searxng:
+    image: searxng/searxng:2026.9.29-896ec8d3a
+    environment:
+      SEARXNG_SECRET: ${OURO_SEARXNG_SECRET}
+      SEARXNG_BASE_URL: http://searxng:8080/
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 10s
+      retries: 6
+    restart: unless-stopped
 
   ui:
     image: registry.apiome.dev/ouroboros-ui:latest
@@ -155,7 +175,7 @@ volumes:
   ouroboros-artifacts:
 ```
 
-What the file does, service by service, is on [Container images](./containers.mdx). Three
+What the file does, service by service, is on [Container images](./containers.mdx). Four
 choices in it are worth knowing:
 
 - **Only `proxy` publishes a port.** Everything else is reachable by name on the compose
@@ -164,9 +184,32 @@ choices in it are worth knowing:
 - **`migrate` gates `rest`.** The REST service does not start until the migrations have
   exited successfully, and the app does not start until the REST service is healthy. There is
   no sleep anywhere: each step waits on the previous one's own health check.
+- **`searxng` is optional.** Research investigations search through it unless a workspace
+  chooses a hosted provider — see [Research tools](../research.mdx). Remove the service and
+  <EnvVar name="OURO_RESEARCH_SEARXNG_URL" /> if no workspace will use it.
 - **The runner releases volume is empty** until you put releases in it. The farm's installer
   serves what it finds there, one directory per version — see
   [Build farm administration](../build-farm.mdx).
+
+### `searxng/settings.yml`
+
+The web search container's settings. They turn on the JSON API that research investigations
+read, and turn off what a public instance needs and a private one does not.
+
+```yaml
+use_default_settings: true
+
+server:
+  limiter: false
+  public_instance: false
+  image_proxy: false
+
+search:
+  safe_search: 1
+  formats:
+    - html
+    - json
+```
 
 ## Bringing it up
 

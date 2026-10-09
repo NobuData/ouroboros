@@ -6065,6 +6065,30 @@ export interface InvestigationsTable {
 export type SourceRecordKindColumn =
   "web" | "competitor_diff" | "code" | "ticket" | "telemetry" | "doc";
 
+/** `source_skips.reason` (V116, #615). */
+export type SourceSkipReason = "robots_denied" | "unsupported_type";
+
+/**
+ * `ouroboros.source_skips` — the sources an investigation declined to read, and why (V116,
+ * [#615](https://github.com/NobuData/ouroboros/issues/615), CL.2): a robots denial, or a type the
+ * tool does not read (a PDF waits for the papers tool). Not sources — never cited — but recorded so
+ * a brief's gaps are visible. One per investigation, tool, locator and reason; never edited.
+ */
+export interface SourceSkipsTable {
+  id: Generated<string>;
+  investigation_id: string;
+  /** The tool that declined it — a `research_tools` slug. */
+  tool_slug: string;
+  /** The page as it was asked for. */
+  locator: string;
+  reason: SourceSkipReason;
+  /** What the sources panel shows — `robots.txt disallows /dealers/`, `papers tool arrives in v2`. */
+  note: string;
+  /** The rule that matched, the content type. Written as a JSON string. */
+  meta: ColumnType<Record<string, unknown>, string | undefined, never>;
+  skipped_at: ColumnType<Date, Date | string | undefined, never>;
+}
+
 /**
  * `ouroboros.source_records` — the citation ledger (V108,
  * [#609](https://github.com/NobuData/ouroboros/issues/609); V112's `snapshot_id`,
@@ -7069,6 +7093,7 @@ export interface Database {
   investigations: InvestigationsTable;
   investigation_estimate_outcomes: InvestigationEstimateOutcomesTable;
   source_records: SourceRecordsTable;
+  source_skips: SourceSkipsTable;
   metric_definitions: MetricDefinitionsTable;
   metric_daily: MetricDailyTable;
   metric_rollup_state: MetricRollupStateTable;
@@ -8354,6 +8379,16 @@ export const TABLE_COLUMNS = {
     "cite_key",
     "snapshot_id",
     "created_at",
+  ],
+  source_skips: [
+    "id",
+    "investigation_id",
+    "tool_slug",
+    "locator",
+    "reason",
+    "note",
+    "meta",
+    "skipped_at",
   ],
   metric_definitions: [
     "metric_id",

@@ -1,0 +1,40 @@
+---
+title: "Research"
+sidebar_label: "Research"
+sidebar_position: 16
+description: "What research investigations read, and how every finding is cited."
+---
+
+A **research investigation** reads the outside world, and your own code and history, to answer
+a question. Every claim it makes cites a source it read.
+
+:::info[Not available yet]
+
+The Research page, where you start an investigation and read its brief, arrives in a later
+release.
+
+:::
+
+## Research tools
+
+Investigations read through **research tools**, which a workspace owner or admin enables. Each
+tool reports its own health, so a broken setup shows before an investigation depends on it.
+
+| Tool | What it does | What it cites | Setup |
+| --- | --- | --- | --- |
+| ◍ **Web search & page reader** | Searches the web, then reads whole pages: the main content, without navigation, banners or footers | Each search result, with its snippet. Each page read, at the address it was read from, with an excerpt and a fingerprint of its content. | Nothing, on a deployment that runs SearXNG. A hosted search provider needs a key. See [Research tools](../administration/research.mdx). |
+
+The web tool's row reads *search API + full-page extraction, robots-aware*.
+
+### Pages the web tool does not read
+
+The web tool respects what a site asks. When it will not read a page, the investigation records
+the skip with a note saying why, and carries on. The skip is never hidden.
+
+- **robots.txt disallows the page.** The note names the rule, for example
+  `Disallow: /private/`.
+- **The page is a PDF.** The note reads *papers tool arrives in v2*.
+- **The page is not text**, such as an image. The note names the content type.
+
+A page that fails to load, because the site is down or slow, is not a skip. The investigation
+may try it again.

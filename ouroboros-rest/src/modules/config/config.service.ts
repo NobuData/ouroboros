@@ -376,6 +376,36 @@ export class AppConfigService {
     return this.config.getOrThrow<readonly string[]>("webhookInternalAllowlist");
   }
 
+  /** `OURO_RESEARCH_SEARXNG_URL` — where the web research tool searches by default (#615). */
+  get researchSearxngUrl(): string {
+    return this.config.getOrThrow<string>("researchSearxngUrl");
+  }
+
+  /** `OURO_RESEARCH_FETCH_TIMEOUT_MS` — how long one page request may take (#615). */
+  get researchFetchTimeoutMs(): number {
+    return this.config.getOrThrow<number>("researchFetchTimeoutMs");
+  }
+
+  /** `OURO_RESEARCH_FETCH_MAX_BYTES` — the most bytes of one page the web tool reads (#615). */
+  get researchFetchMaxBytes(): number {
+    return this.config.getOrThrow<number>("researchFetchMaxBytes");
+  }
+
+  /** `OURO_RESEARCH_FETCH_MAX_REDIRECTS` — redirects one fetch follows (#615). */
+  get researchFetchMaxRedirects(): number {
+    return this.config.getOrThrow<number>("researchFetchMaxRedirects");
+  }
+
+  /** `OURO_RESEARCH_HOST_INTERVAL_MS` — the pause between two requests to one host (#615). */
+  get researchHostIntervalMs(): number {
+    return this.config.getOrThrow<number>("researchHostIntervalMs");
+  }
+
+  /** `OURO_RESEARCH_FETCH_INTERNAL_ALLOWLIST` — internal hosts the web tool may read (#615). */
+  get researchFetchInternalAllowlist(): readonly string[] {
+    return this.config.getOrThrow<readonly string[]>("researchFetchInternalAllowlist");
+  }
+
   /**
    * Days without a tracker update after which an open ticket is stale — `OURO_BACKLOG_STALE_DAYS`.
    *
@@ -575,6 +605,12 @@ export class AppConfigService {
       webhookDispatchSeconds: this.webhookDispatchSeconds,
       webhookMaxAttempts: this.webhookMaxAttempts,
       webhookInternalAllowlist: this.webhookInternalAllowlist,
+      researchSearxngUrl: this.researchSearxngUrl,
+      researchFetchTimeoutMs: this.researchFetchTimeoutMs,
+      researchFetchMaxBytes: this.researchFetchMaxBytes,
+      researchFetchMaxRedirects: this.researchFetchMaxRedirects,
+      researchHostIntervalMs: this.researchHostIntervalMs,
+      researchFetchInternalAllowlist: this.researchFetchInternalAllowlist,
       backlogStaleDays: this.backlogStaleDays,
       reestimationHourUtc: this.reestimationHourUtc,
       reestimationJitterMinutes: this.reestimationJitterMinutes,

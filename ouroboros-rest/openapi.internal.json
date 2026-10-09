@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest (internal)",
-    "version": "0.40.9",
+    "version": "0.41.0",
     "summary": "What ouroboros-engine may ask the control plane for — and what it is never given.",
     "description": "The **engine-facing** surface of\n[Ouroboros](https://github.com/NobuData/ouroboros)' communications layer. Two\noperations, one caller, and one idea holding both of them together — roadmap decision\n**P3**, [#224](https://github.com/NobuData/ouroboros/issues/224):\n\n> **A worker never holds a provider credential.**\n\nMockup 07's page subline promises something weaker — *\"keys never leave the control\nplane — workers only ever see short-lived tokens\"* — and this document is where the\nfirst clause is made literal and the second is **improved on**. There is no token. A\nfifteen-minute credential is still a credential: it genuinely reaches the worker,\nrevocation is bounded only by its TTL, and the audit surface widens to every process\nthat ever held one. It is also, for most LLM providers, fiction — almost none support\nderiving short-lived scoped keys, so such a token would in practice be a full API key\nwith a timer bolted on by us.\n\nSo the two operations divide the world:\n\n| Operation | For | Hands over |\n|---|---|---|\n| `POST /internal/llm/invoke` | every **cloud** provider | nothing — the control plane makes the call and streams back the answer |\n| `POST /internal/credentials/lease` | **local** providers only | an address, TTL-bounded and audited |\n\nThe exception is narrow and is not a compromise. An engine worker calling an Ollama\ndaemon on the same box gains nothing from proxying its traffic through this service,\nbecause there is no key on that path to protect — so it is told the address and nothing\nelse, and a lease naming a cloud provider is a `403` by policy, enforced here rather\nthan trusted to the caller.\n\n**What is built and what is specified.** The lease is implemented. The proxy is\n*specified* by this document and implemented by AF.2\n([#235](https://github.com/NobuData/ouroboros/issues/235)); calling it today answers\n`501` with `code: \"invocation_not_implemented\"`, deliberately rather than `404`, so an\nexecutor being written against this contract can tell *the path is right and the other\nhalf is not built yet* from *I have the URL wrong*. The contract exists first because\nAF.1 ([#234](https://github.com/NobuData/ouroboros/issues/234)) has to choose an\nexecutor **against** it — a decision recorded afterwards is a description of whatever\ngot built.\n\n**Authentication is the #51 pattern, in the other direction.** Every operation requires\n`X-Ouro-Internal-Key`, carrying `OURO_ENGINE_SHARED_SECRET` — the same header and the\nsame variable `ouroboros-rest` sends when *it* calls the engine\n([#51](https://github.com/NobuData/ouroboros/issues/51)). The comparison is constant\ntime, a missing header takes the same path as a wrong one, and the rejection is one\nconstant body: `401` with `code: \"unauthenticated\"` and nothing else. A session cookie\nis not accepted here, whoever it belongs to.\n\n**These paths are outside `/api`, and unversioned.** `/api` is the browser's boundary;\nthe only caller of these two is deployed alongside this service and upgraded with it, so\na version in the path would be one nobody could ever be on a different side of. That is\nthe same argument `/health/live` and `ouroboros-engine`'s `/healthz` are written under.\n\n**Every error has the shape every other error in this system has** — `{code, message,\ndetails}`, `docs/ARCHITECTURE.md` § 5.3 — so a worker parses one envelope whether it\nwas refused at the boundary or inside a handler.\n\n**The naming convention changes at this boundary, once.** This service writes\n`camelCase` in its contracts and `ouroboros-engine` writes `snake_case` in its own; each\nside translates in exactly one file — `src/modules/engine/engine.contract.ts` here,\n`ouroboros_engine/control_plane/contract.py` there — so no code on either side carries\nthe other's spelling.",
     "license": {
@@ -1269,7 +1269,7 @@
           "research"
         ],
         "summary": "Run one research tool operation and archive its sources",
-        "description": "Run `search`, `fetch` or `query` on one tool for one investigation. The workspace — and\nso the tool's settings and credential — is **resolved from the investigation**, never\nnamed by the caller; neither ever appears in an answer.\n\nThe checks, in this order:\n\n1. **`404 investigation_not_found`** — no such investigation.\n2. **`409 investigation_not_running`** — only a running investigation calls tools.\n3. **`403 research_tool_not_enabled`** — the investigation did not enable this tool.\n4. **`501 research_tool_not_registered`** — this build has no adapter for the slug.\n5. **`422 research_tool_operation_unsupported`** — the tool does not declare the\n   operation, or the `input` is not what it takes (`details.reason`).\n6. **`409 research_budget_exhausted`** — `budget.operations` is 0, or `budget.tokens` is 0.\n7. **`409 research_tool_not_configured`** — the workspace has not configured a tool\n   whose settings are required.\n\nThen the operation runs. **`502 research_tool_failed`** carries the classified failure\n(`details.errorClass`: `auth`, `network`, `robots_denied`, `rate_limited`, `upstream`,\n`unsupported`), its designed `surfaceState`, whether a retry can help and how long the\nupstream asked to wait. **`502 research_tool_contract_violation`** means the tool\nanswered outside the citation contract — a payload with no sources, a source the ledger\nwould refuse, more tokens than `budget.tokens` allowed, or an unclassified exception —\nand nothing was archived.\n\n**Budgets are the caller's.** Send what the investigation has left; the adapter is\nhanded the remaining tokens as its ceiling, and the answer says what is left after this\ncall. A `null` `payload` with no sources is the empty answer — a search that found\nnothing.\n\n`200` rather than `201`: the ledger rows are the investigation's, not a resource at a URL.",
+        "description": "Run `search`, `fetch` or `query` on one tool for one investigation. The workspace — and\nso the tool's settings and credential — is **resolved from the investigation**, never\nnamed by the caller; neither ever appears in an answer.\n\nThe checks, in this order:\n\n1. **`404 investigation_not_found`** — no such investigation.\n2. **`409 investigation_not_running`** — only a running investigation calls tools.\n3. **`403 research_tool_not_enabled`** — the investigation did not enable this tool.\n4. **`501 research_tool_not_registered`** — this build has no adapter for the slug.\n5. **`422 research_tool_operation_unsupported`** — the tool does not declare the\n   operation, or the `input` is not what it takes (`details.reason`).\n6. **`409 research_budget_exhausted`** — `budget.operations` is 0, or `budget.tokens` is 0.\n7. **`409 research_tool_not_configured`** — the workspace has not configured a tool\n   whose settings are required.\n\nThen the operation runs. **A fetch the tool declines is a skip, not a failure** (#615): a\npage robots.txt forbids (`robots_denied`) or a type the tool does not read — a PDF waits\nfor the papers tool (#635), an image is not text (`unsupported_type`) — answers `200` with\n`payload: null`, no sources and `skipped: {locator, reason, note, recorded}`, and the skip\nis recorded under the investigation (`source_skips`, V116) so the brief's gaps are visible\nrather than silent. The operation counts against the budget.\n\n**`502 research_tool_failed`** carries every other classified failure\n(`details.errorClass`: `auth`, `network`, `rate_limited`, `upstream` — and `robots_denied`\nor `unsupported` from a search or a query), its designed `surfaceState`, whether a retry\ncan help and how long the upstream asked to wait. **`502 research_tool_contract_violation`** means the tool\nanswered outside the citation contract — a payload with no sources, a source the ledger\nwould refuse, more tokens than `budget.tokens` allowed, or an unclassified exception —\nand nothing was archived.\n\n**Budgets are the caller's.** Send what the investigation has left; the adapter is\nhanded the remaining tokens as its ceiling, and the answer says what is left after this\ncall. A `null` `payload` with no sources is the empty answer — a search that found\nnothing.\n\n`200` rather than `201`: the ledger rows are the investigation's, not a resource at a URL.",
         "operationId": "runResearchToolOperation",
         "parameters": [
           {
@@ -1353,6 +1353,7 @@
                       }
                     }
                   ],
+                  "skipped": null,
                   "usage": {
                     "operations": 1,
                     "tokens": 0
@@ -1499,12 +1500,12 @@
                   "message": "The research tool failed.",
                   "details": {
                     "tool": "web",
-                    "operation": "fetch",
-                    "errorClass": "robots_denied",
-                    "surfaceState": "skipped_source",
-                    "retryable": false,
-                    "retryAfterSeconds": null,
-                    "detail": "robots.txt disallows /releases"
+                    "operation": "search",
+                    "errorClass": "rate_limited",
+                    "surfaceState": "backing_off",
+                    "retryable": true,
+                    "retryAfterSeconds": 12,
+                    "detail": "Brave Search asked for fewer searches (429)"
                   }
                 }
               }
@@ -3181,6 +3182,42 @@
           }
         }
       },
+      "ToolSkip": {
+        "type": "object",
+        "title": "ToolSkip",
+        "description": "A page a fetch declined to read (#615) — recorded under the investigation in\n`source_skips` (V116), once per tool, page and reason.",
+        "additionalProperties": false,
+        "required": [
+          "locator",
+          "reason",
+          "note",
+          "recorded"
+        ],
+        "properties": {
+          "locator": {
+            "type": "string",
+            "description": "The page as it was asked for."
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "robots_denied",
+              "unsupported_type"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "description": "What the sources panel shows beside the skip.",
+            "examples": [
+              "robots.txt disallows /dealers/pricing for OuroborosResearch (Disallow: /dealers/)"
+            ]
+          },
+          "recorded": {
+            "type": "boolean",
+            "description": "Whether this call recorded it; false when the investigation already had it."
+          }
+        }
+      },
       "ToolInvocation": {
         "type": "object",
         "title": "ToolInvocation",
@@ -3192,6 +3229,7 @@
           "investigation",
           "payload",
           "sources",
+          "skipped",
           "usage",
           "budget"
         ],
@@ -3219,6 +3257,17 @@
             "items": {
               "$ref": "#/components/schemas/ToolSource"
             }
+          },
+          "skipped": {
+            "description": "The page a fetch declined to read, or null. With one, `payload` is null and `sources` is empty.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ToolSkip"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "usage": {
             "type": "object",

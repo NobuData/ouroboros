@@ -1611,6 +1611,15 @@
 > `regression_threshold(org, metric_key, metric_class)` answers the effective rule. V115 also gives
 > `investigations` the `(id, organization_id)` key the item's composite foreign key needs.
 >
+> `V116` ([#615](https://github.com/NobuData/ouroboros/issues/615), CL.2) records the pages a
+> research tool **would not read** — the honest half of the citation ledger. `source_skips` holds
+> one row per investigation, tool, `locator` and `reason` (`robots_denied` — robots.txt forbids the
+> page, the note naming the rule — or `unsupported_type`, the note saying what the type was, a PDF's
+> *papers tool arrives in v2*), with a non-blank `note` (≤ 500), a `meta` object (≤ 8 KiB) and
+> `skipped_at`. A repeat is ignored (`on conflict do nothing` on
+> `source_skips_investigation_locator_key`); rows are never updated; they cascade with the
+> investigation; `ouroboros_app` may select and insert.
+>
 > [#558](https://github.com/NobuData/ouroboros/issues/558) seeds mockup 20 from those rows:
 > [`R__dev_seed_workspace_copilot.sql`](migrations/R__dev_seed_workspace_copilot.sql) — see
 > [What the copilot drafted, and what its dry run said](#what-the-copilot-drafted-and-what-its-dry-run-said).
@@ -3454,6 +3463,7 @@ ouroboros-db/
 │   ├── V113__roadmap_docs_suggestions.sql # roadmap_docs, immutable roadmap_doc_versions (structure, markdown projection, repo projection state machine), doc_suggestions (user|ai, applied@vN|dismissed) — #612
 │   ├── V114__dry_run_suggestions.sql  # dry_run_suggestions (rule|llm, evidence, proposed_ops, confidence + basis, open→applied|ignored), review_replay_pairs, draft_operations.suggestion_id FK — #558
 │   ├── V115__regression_baselines_watch_items.sql # regression_baselines (release window stats per metric), regression_watch_items (signed drift + unit, err|warn|ok, detected→…→fixed_merged|dismissed with bisect/investigation/fix/PR refs), regression_watch_settings (thresholds over per-class defaults) — #611
+│   ├── V116__source_skips.sql        # source_skips (robots_denied|unsupported_type, note ≤ 500, one per investigation/tool/locator/reason, immutable) — #615
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -3719,6 +3729,7 @@ outside this module alters it.
 | `review_replay_pairs` | `V114` | A reviewer-pair replay over a historical change ([#558](https://github.com/NobuData/ouroboros/issues/558), CC.4; CF.5 #574) — `replay_set`, `sample_ref`, `reviewer_stages`, `agreed`, `disagreement_class`, `replayed_at` | two different reviewer stages; `disagreement_class` `style\|substance` exactly when they disagreed; one sample per replay set; cascades with the workflow; `ouroboros_app` may select and insert |
 | `regression_baselines` | `V115` | A per-release metric baseline ([#611](https://github.com/NobuData/ouroboros/issues/611), CK.4, decision **V6**) — `repo_ref`, `release_tag`, `metric_source`, `metric_key`, `metric_class`, `window`, `captured_at`, `captured_via`, `captured_by` | one per workspace, repository, release and metric; `metric_key` shaped by its source, a BI metric held to `metric_definitions`; `window` `{n ≥ 1, median, spread ≥ 0, spread_kind, unit, from ≤ to}`; a release capture names no person; never updated; cascades with the workspace; `ouroboros_app` may select and insert |
 | `regression_watch_items` | `V115` | A baseline's drift and its lifecycle ([#611](https://github.com/NobuData/ouroboros/issues/611), CK.4) — `current`, `drift_value`, `drift_unit`, `drift_display`, `severity`, `status`, `bisect_result`, `investigation_id`, `fix_ticket_ref`, `pr_ref`, `note`, `dismissed_by`/`dismissed_at`/`dismiss_reason` | opened `detected`; transitions held by `regression_watch_items_transition`; `bisected` needs a bisect result, `investigation_open` a `regression_watch` investigation, the fix states a ticket or draft ref, `fixed_merged` a PR ref, `dismissed` who/when/why; refs resolve in the workspace; one open item per baseline; indexed `(organization_id, severity, status)`; `ouroboros_app` may select, insert and update |
+| `source_skips` | `V116` | A page a research tool would not read ([#615](https://github.com/NobuData/ouroboros/issues/615), CL.2, decision **V3**) — `investigation_id`, `tool_slug`, `locator`, `reason`, `note`, `meta`, `skipped_at` | `reason` `robots_denied\|unsupported_type`; `locator` non-blank, ≤ 2048, no whitespace; `note` non-blank ≤ 500; `meta` an object ≤ 8 KiB; unique per investigation, tool, locator and reason; never updated; cascades with the investigation; `ouroboros_app` may select and insert |
 | `regression_watch_settings` | `V115` | A workspace's regression thresholds ([#611](https://github.com/NobuData/ouroboros/issues/611), CK.4) — `thresholds` `{classes, metrics}` | rules of `{direction, warn_pct + err_pct, min_spread_multiple, min_samples}` over `regression_threshold_defaults()`; one row per workspace; `ouroboros_app` may select, insert and update |
 
 Two **functions**, both `V012`'s and both documented in
