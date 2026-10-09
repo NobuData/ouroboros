@@ -93,3 +93,9 @@ jobs:
       - name: Screenshot integrity
         working-directory: ouroboros-docs
         run: yarn check:screenshots
+
+      # The configuration reference is generated from the root .env.example (#1191). A variable
+      # added or reworded there without `yarn gen:config-reference` fails here, naming the fix.
+      - name: Configuration reference is current
+        working-directory: ouroboros-docs
+        run: yarn check:config-reference
