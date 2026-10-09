@@ -2,14 +2,82 @@
 title: "ouroboros-runner hello"
 sidebar_label: "hello"
 sidebar_position: 5
-description: "Checking that the agent can reach the control plane."
+description: "Checking what the agent tells the control plane when it connects."
+flags:
+  - "--no-shell"
+  - "--state-dir"
 ---
 
-Checking that the agent can reach the control plane.
+`hello` prints the message this machine sends the deployment when it connects. That message says
+what the machine is and which jobs it can run. `hello` builds it exactly as [`run`](./run.mdx) does,
+from the same checks of the machine, and checks it against the protocol before printing it. It
+needs no network and no enrollment.
 
-:::info[Being written]
+Use it when a runner is refused, declines jobs you expect it to take, or shows the wrong cores or
+memory on the Build Farm page. It shows exactly what the machine claims about itself.
 
-This page is being written in
-[#1203](https://github.com/NobuData/ouroboros/issues/1203).
+## Synopsis
 
-:::
+```text
+ouroboros-runner hello [--no-shell] [--state-dir DIR]
+```
+
+## Flags
+
+| Flag | Variable | What it does |
+| --- | --- | --- |
+| `--no-shell` | <EnvVar name="OURO_RUNNER_NO_SHELL" /> | Describes the machine as `run --no-shell` would: `"shell": false`. Pass it, or set the variable, to match how the service runs. |
+| `--state-dir DIR` | <EnvVar name="OURO_RUNNER_STATE_DIR" /> | Where to read the pool and the security mode from once enrolled. Defaults to `/var/lib/ouroboros-runner`. It is read without locking, so you can run `hello` while the agent runs. |
+
+## Example
+
+On a machine that is not enrolled yet:
+
+```text
+$ ouroboros-runner hello
+{
+  "v": 1,
+  "type": "hello",
+  "id": "00000000000000000000000000",
+  "payload": {
+    "agent": {
+      "version": "0.8.0",
+      "protocol_min": 1,
+      "protocol_max": 1
+    },
+    "arch": "linux/x86_64",
+    "hostname": "shed-pi-01",
+    "capabilities": {
+      "docker": false,
+      "shell": true,
+      "ccache": false,
+      "cpus": 16,
+      "memory_mb": 29853
+    }
+  }
+}
+```
+
+Once the machine is enrolled, the payload also names its `pool` and its `security_mode`, which is
+`mtls` or `bearer_fallback`.
+
+| Field | What it means |
+| --- | --- |
+| `agent` | The agent's version and the protocol range it speaks. |
+| `arch`, `hostname` | The platform and the machine's name. |
+| `capabilities.docker` | Whether a Docker or Podman daemon answered. Without one, container jobs are declined. |
+| `capabilities.shell` | Whether shell jobs may run directly on this machine: `false` under `--no-shell`. |
+| `capabilities.ccache` | Whether `ccache` is on the `PATH`. |
+| `capabilities.cpus`, `capabilities.memory_mb` | The cores and installed memory. |
+
+The `id` is all zeros on purpose. The real connection gives every message a fresh id, so a printed
+one cannot be replayed.
+
+## What can go wrong
+
+- **`"docker": false` on a machine with Docker** — the daemon did not answer this account. Check
+  that the daemon is running and that the account can reach its socket. Run `hello` as the
+  service's account to see what the agent sees.
+- **`this machine cannot describe itself legally: …`** — something the machine reports would break
+  the protocol, and the error names the field. The deployment would refuse this hello too, so
+  report the line with the output of [`version`](./version.mdx).

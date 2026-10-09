@@ -450,6 +450,26 @@ The site cites no issues: parentheticals that do — `(issue #330)`, `(BR.5, #48
 comment that still cites one outside parentheses. The heading id is the name in lower case,
 which is what `<EnvVar>` links to.
 
+### The CLI flag check
+
+Each CLI reference page lists the flags it documents in a `flags:` front matter list — a block
+list of quoted flags, or `flags: []` for a command that takes none:
+
+```yaml
+flags:
+  - "--state-dir"
+  - "--no-shell"
+```
+
+`yarn check:cli-flags` ([`scripts/check-cli-flags.ts`](scripts/check-cli-flags.ts), a step of
+`ci/docs`, [#1203](https://github.com/NobuData/ouroboros/issues/1203)) reads the tools' own usage
+texts — the `usage` constant in `ouroboros-runner/cmd/ouroboros-runner/main.go`, whose synopsis
+lines give each command's flags, and `install.sh`'s `usage` heredoc — and fails when a flag is
+missing from its page's list (`cli/runner/<command>.mdx`, or `cli/install-sh.mdx`), when a
+listed flag is accepted nowhere, or when a page has no list. A runner page may list a flag its
+command takes but its synopsis omits, such as `hello`'s `--state-dir`. Adding a flag to either
+usage text therefore means adding it to the page — its front matter and its body.
+
 ### Diagrams
 
 Fence a diagram as `mermaid` and it renders as SVG:

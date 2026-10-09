@@ -3,13 +3,46 @@ title: "ouroboros-runner version"
 sidebar_label: "version"
 sidebar_position: 4
 description: "Printing the agent's version."
+flags: []
 ---
 
-Printing the agent's version.
+`version` prints which build of the agent this is, the protocol versions it speaks, and what it
+sees of this machine. It needs no network and no enrollment. Use it to check an upgrade landed. Also
+use it to compare the agent's protocol range with the minimum a deployment's refusal names.
 
-:::info[Being written]
+## Synopsis
 
-This page is being written in
-[#1203](https://github.com/NobuData/ouroboros/issues/1203).
+```text
+ouroboros-runner version
+```
 
-:::
+It takes no flags.
+
+## Example
+
+```text
+$ ouroboros-runner version
+ouroboros-runner 0.8.0
+protocol        1 (speaks 1–1)
+arch            linux/x86_64
+hostname        shed-pi-01
+cpus            16
+memory          29853 MB
+```
+
+| Line | What it is |
+| --- | --- |
+| `ouroboros-runner` | The agent's version. |
+| `protocol` | The newest protocol version it speaks, and the whole range it can speak. A deployment that needs a newer protocol refuses the agent, naming the minimum. |
+| `arch` | The platform: `linux/x86_64`, `linux/arm64` or `darwin/arm64`. |
+| `hostname` | The machine's hostname. A runner enrolled without `--name` is named after it. |
+| `cpus`, `memory` | The cores and installed memory the agent reports to the deployment. |
+
+[`install.sh`](../install-sh.mdx) runs `version` on the binary it downloads and refuses one whose
+first line is not the release it asked for.
+
+## What can go wrong
+
+- **The version is not the one you installed** — another `ouroboros-runner` comes first on your
+  `PATH`. The installer puts the agent in `/usr/local/bin/ouroboros-runner`, so run that path to
+  check.

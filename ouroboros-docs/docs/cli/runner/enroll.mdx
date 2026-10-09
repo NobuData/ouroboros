@@ -3,13 +3,89 @@ title: "ouroboros-runner enroll"
 sidebar_label: "enroll"
 sidebar_position: 2
 description: "Enrolling a build machine with an enrollment token."
+flags:
+  - "--server"
+  - "--tenant"
+  - "--pool"
+  - "--token"
+  - "--name"
+  - "--state-dir"
+  - "--server-ca"
+  - "--bearer-fallback"
 ---
 
-Enrolling a build machine with an enrollment token.
+`enroll` makes this machine a runner in one of your pools. It spends an enrollment token once and
+keeps the identity it gets back in the state directory. You run it once per machine, before
+[`run`](./run.mdx). [`install.sh`](../install-sh.mdx) runs it for you on a first install.
 
-:::info[Being written]
+## Synopsis
 
-This page is being written in
-[#1203](https://github.com/NobuData/ouroboros/issues/1203).
+```text
+ouroboros-runner enroll --server URL --tenant NAME --pool NAME --token TOKEN
+                        [--name NAME] [--state-dir DIR] [--server-ca FILE]
+                        [--bearer-fallback]
+```
 
-:::
+## Flags
+
+| Flag | Variable | What it does |
+| --- | --- | --- |
+| `--server URL` | <EnvVar name="OURO_RUNNER_SERVER" /> | Your deployment's address for runners, `https://` only. It is recorded in the state directory, so `run` does not need it again. |
+| `--tenant NAME` | — | The workspace the runner joins, as the **Enroll a runner** card's command shows it. Required. |
+| `--pool NAME` | — | The pool the runner joins. The token must belong to this pool. Required. |
+| `--token TOKEN` | <EnvVar name="OURO_RUNNER_TOKEN" /> | The enrollment token, `orb_enroll_…`, minted on the Build Farm page. Prefer the variable: it keeps the token out of the process list. The token is never written anywhere. |
+| `--name NAME` | — | The runner's name, unique in its workspace: lower-case, at most 64 characters. Defaults to this machine's hostname as a slug, for example `Shed-Pi-01` becomes `shed-pi-01`. |
+| `--state-dir DIR` | <EnvVar name="OURO_RUNNER_STATE_DIR" /> | Where the identity is kept. Defaults to `/var/lib/ouroboros-runner`. |
+| `--server-ca FILE` | <EnvVar name="OURO_RUNNER_SERVER_CA" /> | A PEM file of CA certificates for a deployment whose certificate the system does not trust. |
+| `--bearer-fallback` | — | Enrolls without a client certificate, for networks whose proxies strip one. The runner shows as degraded, and `run` needs the same flag every time — see [The bearer-token fallback](../../administration/build-farm.mdx#the-bearer-token-fallback). |
+
+## What it does
+
+1. **Checks the flags and the state directory.** If the directory already holds a runner, it stops
+   before presenting the token, so the mistake costs you nothing.
+2. **Generates a private key on this machine** and sends the deployment only a certificate
+   request. The key never leaves the machine.
+3. **Spends the token.** The deployment issues a client certificate. A token enrolls one machine;
+   a second enrollment with it is refused.
+4. **Checks the certificate** before saving anything. It must match this key, come from the farm
+   CA the response names, and belong to this runner. Then it records the farm CA's fingerprint, so
+   a later certificate from any other CA is refused.
+5. **Saves the identity** in the state directory and prints a summary.
+
+## Example
+
+```bash
+export OURO_RUNNER_TOKEN='orb_enroll_…'
+sudo --preserve-env=OURO_RUNNER_TOKEN ouroboros-runner enroll \
+  --server https://ouroboros.example.com \
+  --tenant acme-robotics --pool pool-a
+```
+
+```text
+enrolled shed-pi-01 as runner 7f7c9d0e-… in acme-robotics / pool-a
+identity  client certificate 08fb5b04…, valid until 2026-12-17T23:25:14Z, renewed from 2026-11-17T23:25:14Z
+farm CA   sha256 7c0416c4… (pinned)
+state     /var/lib/ouroboros-runner
+next      ouroboros-runner run --state-dir /var/lib/ouroboros-runner
+```
+
+The `next` line is the command to run the agent with. For a runner enrolled with
+`--bearer-fallback`, the `identity` line reads `BEARER FALLBACK` and `next` includes the flag.
+
+The default state directory is under `/var/lib`, so enrolling into it needs root. If you enroll
+as root but run the agent as another account, give that account the directory afterwards.
+
+## What can go wrong
+
+- **`this state directory already holds an enrolled runner: … Remove it to enrol this machine again`**
+  — the machine is already enrolled. To start over, stop the agent and remove the directory, then
+  enroll with a new token.
+- **`--server: the server must be an https:// url`** — runners speak to the deployment over TLS
+  only.
+- **`--tenant is required`**, **`--pool "…" is not a pool name`**, **`--token is not an enrollment token`**
+  — copy the whole command from the **Enroll a runner** card again.
+- **`enrollment failed: …`** — the deployment refused the request, and the rest of the line says
+  why. A token that is used up, expired or revoked is the usual cause, so mint a new one. A token
+  minted for another pool is refused too.
+- **A certificate error naming the server** — the deployment's certificate comes from a CA this
+  machine does not trust. Pass `--server-ca`.

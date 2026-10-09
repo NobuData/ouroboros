@@ -5,11 +5,145 @@ sidebar_position: 1
 description: "The runner agent, its environment variables, exit codes and state directory."
 ---
 
-The runner agent, its environment variables, exit codes and state directory.
+`ouroboros-runner` is the build-farm agent. It runs on a build machine you own and connects out
+to your deployment. Then it takes the build jobs your pool is offered. It never listens on a
+port: nothing ever connects to it, so the machine needs no inbound firewall rule.
 
-:::info[Being written]
+You usually install it with [`install.sh`](../install-sh.mdx), which enrolls the machine and runs
+the agent as a service. This section is the reference for the agent itself: for running it by
+hand, writing your own service unit, or finding out what a machine reports.
 
-This page is being written in
-[#1203](https://github.com/NobuData/ouroboros/issues/1203).
+## Commands
 
-:::
+| Command | What it does |
+| --- | --- |
+| [`enroll`](./enroll.mdx) | Spends an enrollment token once and keeps the identity it buys. |
+| [`run`](./run.mdx) | Connects to the deployment, stays connected and runs the jobs it is offered. This is what a service runs. |
+| [`version`](./version.mdx) | Prints the build, the protocol range it speaks and this machine. |
+| [`hello`](./hello.mdx) | Prints what this machine would tell the deployment when it connects. |
+| [`heartbeat`](./heartbeat.mdx) | Measures this machine once and prints the heartbeat it would send. |
+| [`help`](./help.mdx) | Prints the usage. |
+
+`version`, `hello` and `heartbeat` need no network and no enrollment. Use them to
+[inspect a machine](#inspecting-a-machine).
+
+## Flags and environment variables
+
+Each setting is a flag, and most also have an environment variable. The flag wins when you give
+both. The variable suits a service unit. The agent reads no `.env` file: set the variables in the
+service's environment.
+
+| Flag | Variable | Default | Used by |
+| --- | --- | --- | --- |
+| `--server` | <EnvVar name="OURO_RUNNER_SERVER" /> | — | `enroll` |
+| `--token` | <EnvVar name="OURO_RUNNER_TOKEN" /> | — | `enroll` |
+| `--state-dir` | <EnvVar name="OURO_RUNNER_STATE_DIR" /> | `/var/lib/ouroboros-runner` | `enroll`, `run`, `hello` |
+| `--server-ca` | <EnvVar name="OURO_RUNNER_SERVER_CA" /> | The system's trusted CAs | `enroll`, `run` |
+| `--no-shell` | <EnvVar name="OURO_RUNNER_NO_SHELL" /> | `false` | `run`, `hello` |
+| `--keep-workspace-on-failure` | <EnvVar name="OURO_RUNNER_KEEP_WORKSPACE_ON_FAILURE" /> | `false` | `run` |
+| `--log-cap-bytes` | <EnvVar name="OURO_RUNNER_LOG_CAP_BYTES" /> | `67108864` (64 MiB) | `run` |
+| `--tenant`, `--pool`, `--name` | — | `--name`: the hostname, as a slug | `enroll` |
+| `--bearer-fallback` | — | off | `enroll`, `run` |
+| `--window` | — | `5s` | `heartbeat` |
+
+The two true/false variables take `true` or `false`, or `1` or `0`. Anything else stops the agent
+with an error naming the variable, so a typo in a unit file never quietly means `false`.
+
+`--bearer-fallback` deliberately has no variable. Its weaker mode has to be written where the
+agent is started — see [The bearer-token fallback](../../administration/build-farm.mdx#the-bearer-token-fallback).
+
+The agent reads facts about the machine from the machine itself: its hostname, architecture,
+cores and memory, whether a Docker or Podman daemon answers, and whether `ccache` is on the `PATH`.
+None of these can be set.
+
+## Exit status
+
+| Status | Meaning |
+| --- | --- |
+| `0` | The command succeeded. For `run`, it was stopped with `SIGTERM` or `SIGINT`. |
+| `1` | Anything else, whether a usage error or a runtime failure. |
+
+Both kinds of failure print one line on standard error starting `ouroboros-runner:`. The message
+tells you which kind it is:
+
+- **A usage error**: you mistyped the command, a flag, or a value. The line continues
+  `no such command:` and then the problem, which may be a flag or a value rather than a command.
+  Nothing was attempted.
+
+  ```text
+  ouroboros-runner: no such command: "enrol" — expected `enroll`, `run`, `version`, `hello` or `heartbeat`
+  ouroboros-runner: no such command: flag provided but not defined: -pol
+  ouroboros-runner: no such command: OURO_RUNNER_NO_SHELL="maybe" is not true or false
+  ```
+
+- **A runtime failure**: the command started and could not finish. The line says what went wrong.
+
+  ```text
+  ouroboros-runner: this machine is not enrolled (no runner.json in /var/lib/ouroboros-runner); run `ouroboros-runner enroll` first
+  ```
+
+`run` logs to standard error as `key=value` lines. A service manager's journal collects them.
+
+## The state directory
+
+The state directory holds the runner's identity and its work. It is `/var/lib/ouroboros-runner`
+unless you set `--state-dir`. The directory is `0700`, and an `enroll` or a `run` locks it while it
+is in use, so only one agent can use it at a time.
+
+```text
+/var/lib/ouroboros-runner/
+├── .lock          held while enroll or run is using the directory
+├── runner.json    who this runner is: ids, names, dates, the farm CA and its fingerprint. Nothing secret
+├── identity.pem   the client certificate and its private key                       0600
+├── bearer.token   only for a runner enrolled with --bearer-fallback                  0600
+├── session        the last session, so a reconnect can resume it                     0600
+├── outbox/        finished job results not yet confirmed by the deployment
+├── work/          one workspace per running job, removed when the job ends
+└── cache/         one compiler cache per pool, kept between jobs
+```
+
+- **The private key never leaves the machine.** `enroll` generates it here and sends the
+  deployment only a certificate request.
+- **Every file is written safely.** It is created `0600` and replaced in one atomic step, so a
+  crash never leaves the key and its certificate disagreeing.
+- **Hand edits are refused.** The identity is checked every time it is loaded, so the agent
+  refuses an edited directory before presenting anything.
+- **No secret is logged.** The token and any bearer secret print as `[redacted]`.
+
+If you lose the directory, enroll the machine again with a new token.
+
+To move a runner to a fresh identity, stop it and remove the directory. Then enroll again.
+Removing the directory does not revoke the old identity: remove the old runner on the Build Farm
+page too — see
+[Draining and removing a runner](../../administration/build-farm.mdx#draining-and-removing-a-runner).
+
+## Inspecting a machine
+
+When a machine will not connect, or shows something unexpected on the Build Farm page, three
+commands tell you what it reports. None of them needs the network or an enrollment:
+
+```bash
+ouroboros-runner version     # the build, the protocol range it speaks, this machine
+ouroboros-runner hello       # what it tells the deployment when it connects, as JSON
+ouroboros-runner heartbeat   # the heartbeat it would send, measured now
+```
+
+- [`version`](./version.mdx) shows the protocol range. Compare it with the minimum a refusal names.
+- [`hello`](./hello.mdx) shows exactly what the machine claims: its architecture, cores, memory,
+  whether Docker answers and whether shell jobs are allowed. It is checked against the protocol
+  before it is printed.
+- [`heartbeat`](./heartbeat.mdx) shows the CPU and memory figures the Build Farm table displays.
+  Run it beside `top` to compare.
+
+## What can go wrong
+
+- **`no such command`** — a usage error: a mistyped command, flag or value. The rest of the line
+  says which. Run `ouroboros-runner help` for the usage.
+- **`this machine is not enrolled`** — `run` found no identity in the state directory. Enroll
+  first, or point `--state-dir` at the directory you enrolled into.
+- **The service keeps restarting, and the log has a `level=ERROR` line** — the deployment has
+  refused this runner for good, and the line says what to do. The usual causes are a revoked
+  certificate, an expired one, or an agent older than the deployment accepts. See
+  [`run`](./run.mdx#when-the-deployment-refuses-the-runner).
+- **A setting seems to be ignored** — the flag wins over the variable. Check the service unit for
+  a stale flag.

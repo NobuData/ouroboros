@@ -3,13 +3,44 @@ title: "ouroboros-runner help"
 sidebar_label: "help"
 sidebar_position: 7
 description: "Printing the agent's usage."
+flags: []
 ---
 
-Printing the agent's usage.
+`help` prints the agent's usage on standard output and exits `0`. The usage lists every command,
+its flags and the environment variables behind them. It is the agent's own summary; these pages
+expand on it.
 
-:::info[Being written]
+## Synopsis
 
-This page is being written in
-[#1203](https://github.com/NobuData/ouroboros/issues/1203).
+```text
+ouroboros-runner help
+```
 
-:::
+It takes no flags.
+
+## Example
+
+```text
+$ ouroboros-runner help
+ouroboros-runner — the Ouroboros build farm agent.
+
+Usage:
+  ouroboros-runner enroll --server URL --tenant NAME --pool NAME --token TOKEN
+                          [--name NAME] [--state-dir DIR] [--server-ca FILE]
+                          [--bearer-fallback]
+  …
+```
+
+## Other ways to see the usage
+
+- `ouroboros-runner -h` prints the same text to standard error and exits `0`.
+- For `enroll`, `run` and `heartbeat`, a mistyped flag or `-h` after the command, such as
+  `ouroboros-runner enroll -h`, prints it too. It goes to standard error, followed by a
+  `no such command:` line, and the agent exits `1`.
+- Running `ouroboros-runner` with no command prints only the `no such command:` line and exits
+  `1`, so a service unit missing its command never looks like a success.
+
+## What can go wrong
+
+- **The usage differs from these pages** — the agent on the machine is a different version. Run
+  [`version`](./version.mdx) to see which, and upgrade with [`install.sh`](../install-sh.mdx#upgrading).

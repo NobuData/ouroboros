@@ -542,6 +542,9 @@ check_contains "$WORKFLOWS/docs.yml" '^        run: yarn check:screenshots$' \
 # The configuration reference is generated from .env.example and fails when stale (#1191).
 check_contains "$WORKFLOWS/docs.yml" '^        run: yarn check:config-reference$' \
   'docs.yml checks the configuration reference is current'
+# The CLI reference pages document every flag main.go's and install.sh's usage texts name (#1203).
+check_contains "$WORKFLOWS/docs.yml" '^        run: yarn check:cli-flags$' \
+  'docs.yml checks the CLI flags are documented'
 # Not a workspace (§ 1, limit 6): it installs from its own lockfile, so the root workspace
 # files are no input of ci/docs.
 for workspace_file in $WORKSPACE_FILES; do

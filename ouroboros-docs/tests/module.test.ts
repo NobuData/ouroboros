@@ -121,6 +121,10 @@ describe("yarn screenshots", () => {
     );
   });
 
+  it("checks the CLI pages document every flag, under Node's own TypeScript support", () => {
+    expect(manifest.scripts["check:cli-flags"]).toBe("node scripts/check-cli-flags.ts");
+  });
+
   it("checks screenshot integrity under Node's own TypeScript support", () => {
     expect(manifest.scripts["check:screenshots"]).toBe("node screenshots/check.ts");
   });
