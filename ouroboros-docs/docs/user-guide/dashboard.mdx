@@ -5,11 +5,148 @@ sidebar_position: 5
 description: "What each dashboard card means and what to do from it."
 ---
 
-What each dashboard card means and what to do from it.
+**Mission Control**, at `/dashboard`, is the screen you land on. It answers three questions at a
+glance: what the loops are doing right now, what is waiting for them, and how the week is
+going. Every card leads to the screen where you act on it.
 
-:::info[Being written]
+<Screenshot id="user-guide.dashboard" />
 
-This page is being written in
-[#1176](https://github.com/NobuData/ouroboros/issues/1176).
+The dashboard refreshes itself while it is open; you never need to reload it.
 
-:::
+## The header
+
+The greeting says whether anything is running — **the loop is turning** when at least one loop
+is in flight, **the loop is idle** when none is. The line under it sums up the moment, for
+example **3 issues in flight, 12 queued behind them. Nothing has merged since midnight UTC.**
+
+Two buttons sit beside it:
+
+- **Edit workflows** — opens Workflows (see [Workflows — Studio canvas](./workflows/studio.mdx)).
+- **⟳ Pull next issue** — greyed out. Starting the next issue by hand is not available yet;
+  hovering it says so. Loops pick up issues from the queue on their own, and you fill the queue
+  from [Issues](./issues.mdx).
+
+## The four figures
+
+The row under the header holds four headline numbers:
+
+| Card | What it counts |
+| --- | --- |
+| **Loops live** | Runs in flight now, broken down by what each is doing — **1 coding · 1 building · 1 in review**. |
+| **Queued issues** | Issues waiting for a loop, with the estimated loop time they add up to — **est. 9h 40m of autonomous work**. |
+| **PRs merged · 7d** | Pull requests merged in the last seven days, against the seven before — **▼ 4 vs last week**, or **Level with last week**. |
+| **Token spend · today** | Tokens used today, with their cost and how many model providers they went to — **≈ $18.60 across 4 providers**. |
+
+A fall in merges is shown in red, a rise in green. Spend with no price shows the tokens alone;
+nothing is guessed. For trends over longer ranges, see [Insights](./insights.mdx).
+
+## Active loops
+
+<Screenshot id="user-guide.dashboard.loops" />
+
+**Active loops** lists every run in flight, with a **live** tag while there are any:
+
+- **Issue** — the issue's number and title. Choose it to open that loop's
+  [run console](./runs/console.mdx).
+- **Workflow** — the workflow running it.
+- **Stage** — the stage it is in and how far along the workflow it is, such as
+  **Implementing · 4/6**, with a bar.
+- **Model** — the model serving the current stage.
+- **Elapsed** — how long the loop has been running. It counts up while you watch.
+- **Status** — **coding**, **building** or **review**.
+
+A loop leaves the table when it merges or stops for a person. **Open run console →** above the
+table is greyed out — a list of every run is not available yet; open a loop from its issue
+instead.
+
+## Loop pulse
+
+<Screenshot id="user-guide.dashboard.pulse" />
+
+**Loop pulse** shows the last **7 days** in three bars:
+
+- **Autonomous merge rate** — the share of loop pull requests that merged without a person
+  stepping in.
+- **Median cycle time** — the middle time from a loop starting to it merging.
+- **Human interventions** — how many times a person was needed this week, such as
+  **15 this week**.
+
+Until a run has finished, the card says **No runs have finished yet, so these three have nothing
+to measure.** For the formulas and longer ranges, see [Insights](./insights.mdx).
+
+### Auto-merge
+
+**Auto-merge when checks pass**, at the foot of the card, is a workspace setting: when it is on,
+a loop's pull request merges by itself once every required check is green. When it is off, a
+person merges each one from its [pull request page](./pull-requests.mdx). Only owners and
+admins can switch it; for anyone else it says **Only an owner or an admin can change auto-merge
+for this workspace.** Your workspace's policies can still require a person for some pull
+requests either way.
+
+## System
+
+<Screenshot id="user-guide.dashboard.system" />
+
+**System** says whether the services behind the loops are answering. Each row is **up**,
+**down** or **unknown**, with a line from the service itself:
+
+- **REST API** — **Serving requests.**
+- **Database** — **Accepting queries.**
+- **Engine** — the service that runs the loops, with its build number.
+
+The tag in the corner sums them up: **operational** when everything is up, **degraded** when
+anything is down. While the engine is down, no loop can make progress — tell whoever runs your
+Ouroboros installation.
+
+## Recently closed by the loop
+
+<Screenshot id="user-guide.dashboard.closed" />
+
+**Recently closed by the loop** lists the runs that finished, newest first:
+
+- **Issue → PR** — the issue and the pull request the loop opened for it. The pull request
+  number is a link to its [verification page](./pull-requests.mdx) when Ouroboros has that pull
+  request; otherwise it is plain text.
+- **Model**, **Cycle** (how long the loop took) and **Checks** (how many of its checks passed,
+  such as **14/14**; a short count is tinted, and hovering it says how many did not pass).
+- **Outcome** — **merged**, **needs human**, **failed** or **canceled**. A run that needs a
+  person carries **Review →**, which opens [Needs You](./inbox.mdx).
+
+**All issues →** opens [Issues](./issues.mdx).
+
+## Up next in queue
+
+<Screenshot id="user-guide.dashboard.queue" />
+
+**Up next in queue** lists the issues waiting for a loop, in the order Ouroboros will pick them
+up, each with its size (**XS** to **XL**) and the workflow that will run it. When more are
+waiting than fit, a button such as **+7 queued →** shows how many more. Both it and
+**Manage queue →** open [Issues](./issues.mdx), where you queue and size issues.
+
+## A new workspace
+
+<Screenshot id="user-guide.dashboard.empty" />
+
+In a workspace where nothing has run yet, every card says what will fill it rather than showing
+an empty box — for example **Nothing is running right now**, with *Loops appear here the moment
+Ouroboros picks an issue up, and stay until they merge or stop for a person.* — and the figures
+read **0**.
+
+A new workspace also shows the banner **New workspace — your first loop in about 4 minutes.**
+**Get started →** opens the [Get Started wizard](./getting-started/wizard.mdx); **Dismiss**
+hides the banner. It stays until you run a first loop or dismiss it.
+
+## What can go wrong
+
+- **"Showing data from 14:20 — the latest refresh failed."** The dashboard could not refresh;
+  what you see is from the time it names. The cards keep the last good figures. Choose
+  **Retry**, or wait for the next refresh.
+- **"The dashboard could not be read."** Nothing could be read since you opened the page. Each
+  card says what it could not read — such as **The loops could not be read** — and the banner
+  says why, once. Choose **Retry**.
+- **System reads degraded.** One of the services is down; the row says which. Loops cannot make
+  progress while the engine or database is down.
+- **Auto-merge could not be changed.** The setting did not save; it shows what is really set.
+  Try again, or check that you are an owner or admin.
+- **A closed run has no pull request link.** Ouroboros has not synced that pull request from
+  your git host yet; it is still listed with its number.

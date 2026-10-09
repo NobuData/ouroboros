@@ -565,7 +565,7 @@ dev seeds (e.g. acme-robotics; `acme-onboarding` for the wizard).
 | DA.1 | #1173 ✅ | 🟢 Done | ouroboros-docs: [DA.1] User Guide overview, concepts & glossary | The loop, workspaces, issues→runs→PRs, decisions; glossary | mvp, docs-site, documentation | Y | Y | M | ouroboros-docs |
 | DA.2 | #1174 ✅ | 🟢 Done | ouroboros-docs: [DA.2] Getting started — sign in, workspace & the Get Started wizard | Login, recovery, wizard cards, dry-run first loop | mvp, docs-site, documentation, onboarding | Y | Y | M | ouroboros-docs |
 | DA.3 | #1175 ✅ | 🟢 Done | ouroboros-docs: [DA.3] Finding your way — app shell, navigation & command palette | Sidebar, header, ⌘K, themes, keyboard | mvp, docs-site, documentation, shell | Y | Y | S | ouroboros-docs |
-| DA.4 | #1176 | 🟡 Open | ouroboros-docs: [DA.4] Mission Control dashboard | Reading the dashboard and acting from it | mvp, docs-site, documentation, dashboard | Y | Y | S | ouroboros-docs |
+| DA.4 | #1176 ✅ | 🟢 Done | ouroboros-docs: [DA.4] Mission Control dashboard | Reading the dashboard and acting from it | mvp, docs-site, documentation, dashboard | Y | Y | S | ouroboros-docs |
 | DA.5 | #1177 ✅ | 🟢 Done | ouroboros-docs: [DA.5] Issues — intake, sizing & queuing | Backlog sync view, estimates, queue a loop | mvp, docs-site, documentation, intake | Y | Y | M | ouroboros-docs |
 | DA.6 | #1178 ✅ | 🟢 Done | ouroboros-docs: [DA.6] Planning — roadmaps, generated tickets & timeline | Plans, ticket generation, gantt, tracker write-back | mvp, docs-site, documentation, planning | Y | Y | M | ouroboros-docs |
 | DA.7 | #1179 ✅ | 🟢 Done | ouroboros-docs: [DA.7] Workflows — Studio canvas | Build/edit/publish workflows visually | mvp, docs-site, documentation, workflow | Y | Y | M | ouroboros-docs |
@@ -639,6 +639,20 @@ shortcuts table (verified from the shell's action registry).
 **Problem Statement.** Users need a map of the app before task guides make sense.
 
 ### Issue DA.4 (#1176) — ouroboros-docs: [DA.4] Mission Control dashboard
+
+> **GitHub issue:** #1176 ✅ · **Status:** 🟢 Done · **Parent epic:** #1158
+>
+> **Delivered (#1176):** `user-guide/dashboard.mdx` — written to what `main` ships, card by card with each link target:
+> - the header (greeting turning/idle, the summary line, **Edit workflows**, and **⟳ Pull next issue** honest-absent per D12); the four figures (**Loops live**, **Queued issues**, **PRs merged · 7d**, **Token spend · today**);
+> - **Active loops** (issue → run console; **Open run console →** inert), **Loop pulse** with the workspace's **Auto-merge when checks pass** switch (owner/admin), **System** (REST API, Database, Engine; operational/degraded/unknown), **Recently closed by the loop** (PR link only when mirrored, **Review →** to Needs You, **All issues →**), **Up next in queue** (**Manage queue →**, **+N queued →**);
+> - the new-workspace state and the Get Started banner; the stale and unread banners and the rest of what can go wrong.
+> The issue's "farm" and "spend" are covered by the figures and System: the dashboard has no separate farm card.
+>
+> `tests/dashboard.test.ts` holds labels to the dashboard's constants, the four figures, pulse bars, outcomes, system words and the stale headline's shape to their sources.
+>
+> **Screenshots** (`acme-robotics`; engine running so System reads operational): `user-guide.dashboard` (full), one crop per card group — `.dashboard.loops` (elapsed column masked), `.dashboard.pulse`, `.dashboard.system`, `.dashboard.closed`, `.dashboard.queue` — and `user-guide.dashboard.empty` (`kensuenobu`, the seeded workspace with no runs). `user-guide.dashboard-banner` was recaptured by the same run, unchanged in content. Nothing is clicked.
+>
+> No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.23.
 
 **Problem Statement.** The dashboard is the daily landing screen; each card needs a "what it
 means / what to do" explanation.
