@@ -1502,13 +1502,17 @@ docs added.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |---|---|---|---|---|---|---|---|---|---|
-| DE.1 | #1209 | 🟡 Open | ouroboros: [DE.1] /implement requires documentation updates | New documentation step, audit item, docs build, version bump, PR section | mvp, docs-site, documentation | Y (after CY.2, CZ.1) | Y | S | .claude/skills/implement, AGENTS.md |
+| DE.1 | #1209 ✅ | 🟢 Done | ouroboros: [DE.1] /implement requires documentation updates | New documentation step, audit item, docs build, version bump, PR section | mvp, docs-site, documentation | Y (after CY.2, CZ.1) | Y | S | .claude/skills/implement, AGENTS.md |
 | DE.2 | #1210 | 🟡 Open | ouroboros: [DE.2] Roadmap skills add a Documentation section to every issue | create-roadmap / update-roadmap / create-issues | mvp, docs-site, documentation | Y | Y | S | .claude/skills |
 | DE.3 | #1211 | 🟡 Open | ouroboros: [DE.3] PR template, issue form & CONVENTIONS documentation rule | Checkbox, "Documentation impact" field, § Documentation | mvp, docs-site, documentation | Y | Y | XS | .github, docs |
 | DE.4 | #1212 | 🟡 Open | ouroboros-docs: [DE.4] Docs coverage gate | UI routes / runner flags / OURO_* vars must map to pages | mvp, docs-site, ci | N (after CY.5, DB.3, DC.3) | Y | M | ouroboros-docs, .github, scripts |
 | DE.5 | #1213 | 🟡 Open | ouroboros: [DE.5] Amend open roadmap issues with documentation scope | Add a Documentation section to every open issue in every roadmap (all areas) | mvp, docs-site, documentation | N (after DE.2, content epics) | Y | L | docs (roadmaps), GitHub issues |
 
 ### Issue DE.1 (#1209) — ouroboros: [DE.1] /implement requires documentation updates
+
+> **GitHub issue:** #1209 ✅ · **Status:** 🟢 Done · **Parent epic:** #1162
+>
+> **Delivered (#1209):** `.claude/skills/implement/SKILL.md` — Phase 3 gains a **Documentation** bullet group (what counts as user-visible; the section by what the reader is doing; name the concrete page paths first; `yarn screenshots --only <id>` for affected ids only against the stack already running; `.env.example` → `gen:config-reference`; `flags:` front matter → `check:cli-flags`; `docs-coverage` once #1212 lands; internal-only → say so), Phase 4 an audit item (docs match the build, screenshots current), Phase 5 the site's own `lint`/`typecheck`/`test`/`check:*`/`build` when `ouroboros-docs/**` changed, Phase 6 the version rule (patch for edits, minor for a new page), Phase 7 a **Documentation** PR section. `AGENTS.md` gains the rule verbatim. **`docs/CONVENTIONS.md` had no § Documentation**, so § 11 was written: the rule and why (D12), placement, what travels with a page (screenshots, variables, flags, coverage), versioning and the PR section, pointing at the skill. `ouroboros-docs/README.md` § Authoring points back. `scripts/verify-layout.sh` asserts the AGENTS.md line, § 11 and three phrases of the skill. **Dry read-through** (#721, the signed-in session UI in the app shell): the step yields `docs/user-guide/finding-your-way.mdx` (the header's account menu and **Switch workspace**) with `user-guide.appearance` recaptured, and `docs/user-guide/getting-started/sign-in.mdx` for signing out — concrete paths, as the acceptance criterion asks. Module 0.1.45 (README).
 
 **Problem Statement.** The description requires that any ticket implemented via `/implement`
 include documentation updates and creation for its changes. Today the skill only says

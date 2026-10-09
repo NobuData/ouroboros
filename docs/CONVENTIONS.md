@@ -818,3 +818,43 @@ an architecture decision rather than a code review:
 4. **Tenancy is enforced in one place** — the REST layer's tenant-context resolution
    (with database row-level security as later defence in depth,
    [#25](https://github.com/NobuData/ouroboros/issues/25)).
+
+## 11. Documentation
+
+**A user-visible change updates `ouroboros-docs` in the same pull request**
+([#1209](https://github.com/NobuData/ouroboros/issues/1209)). User-visible means anything a
+person meets: a UI route, label, flow or setting; a CLI command or flag; an `OURO_*`
+variable; an API behaviour. The site documents only what ships on `main` (roadmap decision
+D12), so a change that ships without its page leaves the site describing a product that no
+longer exists — and a page written from a mockup rather than the running build is worse than
+none. Internal-only changes need no page, and the pull request says so.
+
+Where a page goes is one question: **what is the reader doing when they need it?** Using the
+product UI → `docs/user-guide/`; operating or configuring the deployment or a workspace →
+`docs/administration/`; typing a command → `docs/cli/`. A topic with more than one side gets
+a page in each, cross-linked. The authoring guide in
+[`ouroboros-docs/README.md`](../ouroboros-docs/README.md) § Authoring has the front matter,
+naming, admonitions, components and link rules a page follows.
+
+What travels with the page:
+
+- **Screenshots** are captured from the seeded stack by `yarn screenshots --only <id>`, in
+  both themes, and committed; a change to a screen recaptures the ids that show it and no
+  others. `yarn check:screenshots` holds the manifest, the files and the pages together.
+- **Variables** are documented from `.env.example`: edit the template, then
+  `yarn gen:config-reference`; `yarn check:config-reference` fails `ci/docs` when the
+  reference is stale.
+- **CLI flags** are listed in each command page's `flags:` front matter;
+  `yarn check:cli-flags` fails `ci/docs` when a flag in a tool's usage text has no page.
+- **Coverage** of UI routes by pages is `docs-coverage.json`, once DE.4
+  ([#1212](https://github.com/NobuData/ouroboros/issues/1212)) creates it.
+
+The module's version moves with the pages (§ 8): a **patch** for edits to existing pages or
+screenshots, a **minor** for a new page. A pull request that touches the site runs the site's
+own `lint`, `typecheck`, `test`, every `check:*` and `build` from `ouroboros-docs/`, which is
+outside the turbo graph, and lists the pages and screenshot ids it changed under a
+**Documentation** heading. The `/implement` skill
+([`.claude/skills/implement/SKILL.md`](../.claude/skills/implement/SKILL.md)) carries each of
+these steps, so a ticket implemented through it produces the page paths before any code is
+written.
+

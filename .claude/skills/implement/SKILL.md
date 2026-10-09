@@ -52,6 +52,13 @@ git checkout -b ticket-<number>
 - Keep implementation **simple** - keep code easy to read and understand, fully document methods, inputs, and return variables.
 - Create **comprehensive test cases** for all new and changed functionality.
 - UI: Create integration UI tests when working on UI/UX features.
+- **Documentation** (`ouroboros-docs` — see `docs/CONVENTIONS.md` § 11 and `ouroboros-docs/README.md` § Authoring):
+  - For **every user-visible change** — a UI route, label, flow or setting; a CLI flag; an `OURO_*` variable; an API behaviour — create or update the page in `ouroboros-docs/docs/`, in the section the reader needs it from: uses the product UI → `user-guide/`; operates or configures the deployment or a workspace → `administration/`; types a command → `cli/`. A topic with more than one side gets a page in each, cross-linked.
+  - Name the **concrete page paths** before editing (e.g. `ouroboros-docs/docs/user-guide/finding-your-way.mdx`), and keep every label, route, flag and variable on the page exactly as implemented.
+  - **Screenshots:** add or refresh the entry in `ouroboros-docs/screenshots/screenshots.manifest.json` and recapture **only the affected ids** with `yarn screenshots --only <id>` from `ouroboros-docs/`, against the seeded stack already running for the UI checks. Never recapture unrelated ids; Read both theme PNGs afterwards.
+  - A new or changed `OURO_*` variable: edit `.env.example` (and the top-level one), then `yarn gen:config-reference`. A new CLI flag: add it to the command page's `flags:` front matter (`yarn check:cli-flags`).
+  - Update the `docs-coverage` entries once `ouroboros-docs/docs-coverage.json` exists (DE.4, #1212); until then say so in the PR.
+  - An **internal-only change** needs no docs — say so in the PR's Documentation section.
 - Lint the code.
 - DO NOT RUN END TO END TESTS
 
@@ -61,6 +68,7 @@ git checkout -b ticket-<number>
 - UI: Use **CSS classes** - no hard-coded values.
 - Documentation must be complete and simple.
 - Check for code reuse; extract repeated logic into separate reusable modules.
+- **Docs match the implemented behaviour:** every page touched names labels, routes, flags and variables as built, and its screenshots are current (recaptured in this ticket, or unaffected).
 - DO NOT RUN END TO END TESTS
 - Only run unit tests.  End-to-end and integration are not necessary to run.  Tests should limit the number of threads run at the same time to 1/2 the threads available on the CPU.
 
@@ -84,6 +92,7 @@ yarn test
 
 Run package-specific tests the issue touches, per READMEs.
 
+- When `ouroboros-docs/**` changed, run from `ouroboros-docs/` (it is outside the turbo graph): `yarn lint`, `yarn typecheck`, `yarn test`, every `yarn check:*` (`check:brand`, `check:screenshots`, `check:config-reference`, `check:cli-flags`) and `yarn build` — a broken link or anchor fails the build.
 - DO NOT RUN END TO END TESTS
 - Test all code, not just changes, so regressions are checked.  Tests should limit the number of threads run at the same time to 1/2 the threads available on the CPU.
 - Fix **any failures introduced that block ticket** and **any tests or build issues** before proceeding.
@@ -93,6 +102,7 @@ Run package-specific tests the issue touches, per READMEs.
 - Mark ticket complete in **ROADMAP** and REMOVE ITS ENTRY FROM THE ISSUES TABLE matching the issue number if applicable.
 - Update the **CHANGELOG** with a single line summary of what was done - it must be short and succinct, less than 80 characters.
 - Bump semver versions in modified projects.
+- Bump `ouroboros-docs/package.json`: **patch** for edits to existing pages or screenshots, **minor** for a new page.
 
 ## Phase 7: Commit, Push, Pull Request
 
@@ -126,6 +136,7 @@ gh pr create \
 - What was done and why
 - How to test
 - Risk/notes
+- **Documentation**: the `ouroboros-docs` pages and screenshot ids created or changed, or "none — internal-only change" and why
 - Issue link: `Closes #<number>` (or `Fixes #<number>`)
 - Notate:
 ```

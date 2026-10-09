@@ -416,6 +416,13 @@ leaves it alone.
 
 ## Authoring
 
+Every user-visible change to the product updates this site in the same pull request —
+[`docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) § 11 is the rule, and the `/implement` skill
+([`.claude/skills/implement/SKILL.md`](../.claude/skills/implement/SKILL.md)) carries it step by
+step: name the page paths, write or update the pages, recapture only the affected screenshots,
+run this module's checks, bump its version, and list what changed under **Documentation** in
+the pull request. What follows is how a page is written.
+
 ### Where a page goes
 
 Ask what the reader is doing when they need the page:
