@@ -1035,6 +1035,7 @@ suites: span map ✓ · merged diagnostics ✓ · checks rows ✓ · symbol tabl
   decision.
 - **Parallelism/Dependencies:** Independent. Informs X.2/X.3 scope.
 - **Technical Stack:** ADR, isolated-vm prototype.
+- **Documentation:** None — not user-visible: an ADR and a prototype in `docs/`; the DSL the code view accepts does not change until a follow-on ships
 - **Epic:** X
 
 ### Issue X.2 — ouroboros-ui: [X.2] Skills & lib tree sections
@@ -1052,6 +1053,7 @@ suites: span map ✓ · merged diagnostics ✓ · checks rows ✓ · symbol tabl
   edits round-trip to the knowledge registry; no orphan placeholder rows.
 - **Parallelism/Dependencies:** Needs mockup-14/06 roadmaps; X.1 for `lib/`.
 - **Technical Stack:** React, CM6 markdown.
+- **Documentation:** user-guide/workflows/code.mdx § The code view (skills/ editable, lib/routing.ts read-only), user-guide/knowledge.mdx § Skills / § Editing a skill (round-trip); recapture user-guide.workflow.code
 - **Epic:** X
 
 ### Issue X.3 — ouroboros-rest: [X.3] Git-backed workflow-as-code sync
@@ -1072,6 +1074,7 @@ suites: span map ✓ · merged diagnostics ✓ · checks rows ✓ · symbol tabl
 - **Parallelism/Dependencies:** Needs U.4, WF-Q.3 (+INTAKE-O.1 App for write
   scope).
 - **Technical Stack:** Octokit, WF-Q SPI.
+- **Documentation:** workflows/code.mdx § Checking and publishing (PR-based sync, divergence shown), administration/policies.mdx (opt-in, registry-wins/repo-wins), audit trail; recapture workflow.publish, add policies.workflow-sync
 - **Epic:** X
 
 ```
@@ -1092,6 +1095,7 @@ publish v16 ─▶ PR: .ouroboros/workflows/standard-fix.loop.ts │ merge edite
   whatever ships.
 - **Parallelism/Dependencies:** Independent; informed by X.1.
 - **Technical Stack:** ADR.
+- **Documentation:** None — not user-visible: an ADR in `docs/`; the editor does not change until the decision's follow-on ships
 - **Epic:** X
 
 ### Issue X.5 — ouroboros-ui: [X.5] Minimap & editor comfort features
@@ -1107,6 +1111,7 @@ publish v16 ─▶ PR: .ouroboros/workflows/standard-fix.loop.ts │ merge edite
   mockup's painted gradient); features themed both schemes.
 - **Parallelism/Dependencies:** Needs V.2.
 - **Technical Stack:** CM6 extensions.
+- **Documentation:** user-guide/workflows/code.mdx § The code view (minimap, search/replace, folding, multi-cursor) + § Help while you type; recapture user-guide.workflow.code
 - **Epic:** X
 
 ---

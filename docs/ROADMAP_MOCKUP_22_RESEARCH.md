@@ -461,6 +461,7 @@ watch: skylink/release_notes url+selector ─▶ snapshots{hash, diff} ─▶ ci
 - **Parallelism/Dependencies:** Needs CK.1, AS.1 (case/metric identity).
   Blocks CK.6, CM.4.
 - **Technical Stack:** PostgreSQL 17, Flyway.
+- **Documentation:** None — not user-visible: database tables; the watch card they feed is CN.3's and CM.4's to document.
 - **Epic:** CK
 
 ```
@@ -534,6 +535,7 @@ apply ─▶ re-run create-roadmap ─▶ v4 (suggestion → applied@v4)
 - **Parallelism/Dependencies:** Needs CK.2–CK.5, #24 (+Y.4/AK.4/AS
   coordination). Feeds CL/CM/CN tests, e2e.
 - **Technical Stack:** Flyway repeatable migration, SQL.
+- **Documentation:** None — not user-visible: development seed data; the Research pages' screenshots are captured from it, but the seed itself has no page.
 - **Epic:** CK
 
 ```
@@ -623,6 +625,7 @@ engine ──/internal/research/tools/web/search──▶ REST(adapter) ─▶ r
 - **Parallelism/Dependencies:** Needs CL.1. Parallel with CL.3–CL.6.
 - **Technical Stack:** SearXNG container, undici, readability extraction,
   robots-parser.
+- **Documentation:** administration/research.mdx (search providers, politeness, variables via .env.example); deploy/containers.mdx + compose.mdx (the searxng container); user-guide/research.mdx § Research tools
 - **Epic:** CL
 
 ```
@@ -654,6 +657,7 @@ robots denied ─▶ skipped-source note (recorded, honest)
 - **Parallelism/Dependencies:** Needs CL.1, CK.3. Parallel with siblings.
 - **Technical Stack:** NestJS scheduler, CL.2 fetch pipeline, fast-diff,
   feed parser.
+- **Documentation:** user-guide/research.mdx (competitor watch: rivals, watches, source kinds, cadence); administration/research.mdx (Owner/Admin, GitHub token); new user-guide.research.watch
 - **Epic:** CL
 
 ```
@@ -686,6 +690,7 @@ query changes(skylink, 90d) ─▶ [diff records]
 - **Parallelism/Dependencies:** Needs CL.1, #54 (+AH dispatch for bisect).
   Feeds CM.1, CM.4.
 - **Technical Stack:** FastAPI, GitPython/plumbing, farm dispatch client.
+- **Documentation:** user-guide/research.mdx § Research tools (code & git tool); administration/research.mdx + deploy/containers.mdx (engine clone storage, variables)
 - **Epic:** CL
 
 ```
@@ -719,6 +724,7 @@ bisect(v2.0.4, nightly, hil:hover_drift) ─▶ farm jobs ×9 ─▶ culprit a41
 - **Parallelism/Dependencies:** Needs CL.1, WF-Q store. Parallel with
   siblings.
 - **Technical Stack:** NestJS, PostgreSQL FTS, Kysely.
+- **Documentation:** user-guide/research.mdx § Research tools (issue & PR history tool); administration/research.mdx (importing document sets, owner-only)
 - **Epic:** CL
 
 ```
@@ -748,6 +754,7 @@ import churn-2026-q2.csv ─▶ 14 docs · citable · counted in the card sub-li
 - **Parallelism/Dependencies:** Needs CL.1, BI.2/BJ.1, AS/AT stores.
   Parallel with siblings.
 - **Technical Stack:** NestJS, Kysely over BI/AS/AT schemas.
+- **Documentation:** user-guide/research.mdx § Research tools (the telemetry tool: what it cites, no configuration)
 - **Epic:** CL
 
 ```
@@ -807,6 +814,7 @@ compare(hover_drift_gusts, baseline:v2.0.4, nightly) ─▶ {+14%, unit:%, n, wi
   AF.2, CK.2, CM.3 routing. Blocks CM.2, CM.6.
 - **Technical Stack:** FastAPI, #54 queue/worker, AF.2 client, pydantic
   contract.
+- **Documentation:** None — not user-visible: an internal engine contract (`/v0/investigate`) behind the composer; the depth presets a person chooses are CN.2's to document.
 - **Epic:** CM
 
 ```
@@ -841,6 +849,7 @@ deliver ─▶ brief + matrix rows · actuals{44 src, 612¢} · checkpoint each 
   uncited non-unknown cells (V7 discipline).
 - **Parallelism/Dependencies:** Needs CM.1, CK.3. Feeds CN.4, CM.5.
 - **Technical Stack:** NestJS, Kysely, Markdown generation.
+- **Documentation:** user-guide/research.mdx § Reading a brief (cites, findings vs open questions, sources panel, Markdown export)
 - **Epic:** CM
 
 ```
@@ -921,6 +930,7 @@ route.task("research") ─▶ alias researcher-long-ctx ─▶ composer pill (re
   inbox events). Feeds CN.3.
 - **Technical Stack:** NestJS scheduler, engine bisect client, Planning
   client.
+- **Documentation:** user-guide/research.mdx § Regression watch (baselines, drift, bisect); administration/research.mdx (thresholds, auto-bisect policy, variables via .env.example + gen:config-reference); recapture user-guide.research.watch
 - **Epic:** CM
 
 ```
@@ -971,6 +981,7 @@ nightly ─▶ compare(hover_drift, v2.0.4) ─▶ +14% > threshold ─▶ item(
   sizing, BE.5 seed amendment). Feeds CN.5.
 - **Technical Stack:** NestJS, engine skill execution, GitHub API,
   Planning client.
+- **Documentation:** user-guide/research.mdx (Draft epic from gaps →); planning.mdx § Drafting tickets (research-origin batches); knowledge.mdx § Skills (the two generated skills); recapture user-guide.planning if seeded
 - **Epic:** CM
 
 ```
@@ -1001,6 +1012,7 @@ brief ─create-roadmap─▶ doc v1 ─▶ PR #88 · suggestions{KS, AI} ─app
   isolation enforced.
 - **Parallelism/Dependencies:** Needs CM.1, CM.3. Feeds CN.2, CN.6.
 - **Technical Stack:** NestJS, SSE, Kysely.
+- **Documentation:** user-guide/research.mdx (who may start/cancel); cli/rest-api.mdx recipe for GET /api/v1/research and one brief
 - **Epic:** CM
 
 ```
@@ -1028,6 +1040,7 @@ GET /research?quarter=current ─▶ {active: 4, quarter: 23, rows[]}
   (spot-verified); ≤ 2 min added.
 - **Parallelism/Dependencies:** Needs CM.1–CM.6.
 - **Technical Stack:** Jest/Supertest/Testcontainers, pytest.
+- **Documentation:** None — not user-visible: integration suites in ci/rest and ci/engine.
 - **Epic:** CM
 
 ```
@@ -1071,6 +1084,7 @@ anatomy, kind-chip hues, capability/`gap-sev` treatments, `cite` rows,
   amendment posted.
 - **Parallelism/Dependencies:** Needs #41, BA-D.5. Blocks CN.2–CN.7.
 - **Technical Stack:** Next.js, #46 primitives.
+- **Documentation:** create user-guide/research.mdx (route, head, kinds); finding-your-way.mdx drops the Research soon marker; new user-guide.research, recapture user-guide.shell + command-palette; coverage /research
 - **Epic:** CN
 
 ```
@@ -1103,6 +1117,7 @@ anatomy, kind-chip hues, capability/`gap-sev` treatments, `cite` rows,
   flows live in e2e; member gating per org config; both themes.
 - **Parallelism/Dependencies:** Needs CN.1, CM.3, CM.6.
 - **Technical Stack:** React, #46 primitives, SSE client.
+- **Documentation:** user-guide/research.mdx § Starting an investigation (question, kinds, depth, tool chips, estimate line); new user-guide.research.composer
 - **Epic:** CN
 
 ```
@@ -1136,6 +1151,7 @@ est. 40–60 sources · ~$6                                  [Start investigatio
   flow connects a fixture tool; both themes.
 - **Parallelism/Dependencies:** Needs CN.1, CL.1 (+adapters), CM.4.
 - **Technical Stack:** React, #46 primitives.
+- **Documentation:** user-guide/research.mdx § Research tools and § Regression watch; administration/research.mdx (enabling tools, who may); new user-guide.research.tools, user-guide.research.watch
 - **Epic:** CN
 
 ```
@@ -1172,6 +1188,7 @@ REGRESSION WATCH (nightly vs v2.0.4)
   navigates with the batch created; matrix hover shows cell citations.
 - **Parallelism/Dependencies:** Needs CN.1, CM.2 (+CM.5 for the action).
 - **Technical Stack:** React, #46 Table + primitives.
+- **Documentation:** user-guide/research.mdx § Reading a brief (matrix, citations, sources, Export brief ↗, Draft epic from gaps →); new user-guide.research.brief, user-guide.research.matrix
 - **Epic:** CN
 
 ```
@@ -1208,6 +1225,7 @@ SOURCES — 44 CITED: [07][12][19][31][git] · all ↗       [Export ↗][Draft 
   the drift state + suggestion; status pills track seeded ticket states.
 - **Parallelism/Dependencies:** Needs CN.1, CM.5.
 - **Technical Stack:** React, #46 primitives.
+- **Documentation:** user-guide/research.mdx § From brief to roadmap (pipeline card); planning.mdx § The roadmap and knowledge.mdx § Skills cross-links; new user-guide.research.pipeline
 - **Epic:** CN
 
 ```
@@ -1235,6 +1253,7 @@ SOURCES — 44 CITED: [07][12][19][31][git] · all ↗       [Export ↗][Draft 
   in the history view; links navigate to their surfaces; both themes.
 - **Parallelism/Dependencies:** Needs CN.1, CM.6.
 - **Technical Stack:** React, #46 primitives, SSE client.
+- **Documentation:** user-guide/research.mdx § Investigations and the library (rows, status pills, History, filters, contextual links); new user-guide.research.library
 - **Epic:** CN
 
 ### Issue CN.7 — ouroboros-ui: [CN.7] Research states & guards
@@ -1259,6 +1278,7 @@ SOURCES — 44 CITED: [07][12][19][31][git] · all ↗       [Export ↗][Draft 
   failed investigation renders partials + reason; all states themed.
 - **Parallelism/Dependencies:** Needs CN.2–CN.6.
 - **Technical Stack:** React, #46 EmptyState/Skeleton.
+- **Documentation:** user-guide/research.mdx § What can go wrong (empty states, gateway-absent state, role gates); new user-guide.research.empty
 - **Epic:** CN
 
 ### Issue CN.8 — ouroboros-ui: [CN.8] Research e2e leg
@@ -1281,6 +1301,7 @@ SOURCES — 44 CITED: [07][12][19][31][git] · all ↗       [Export ↗][Draft 
   (the longest leg in the suite — budgeted, fixture-backed synthesis).
 - **Parallelism/Dependencies:** Needs CN.1–CN.7, CK.6; amends #56.
 - **Technical Stack:** Playwright.
+- **Documentation:** None — not user-visible: an end-to-end test leg; the screens it exercises are documented by CN.1–CN.7.
 - **Epic:** CN
 
 ```
@@ -1322,6 +1343,7 @@ e2e: parity ✓ · investigate→brief ✓ · citations ✓ · gaps→planning �
   the honest idle state.
 - **Parallelism/Dependencies:** Needs CL.1 (+compose additions).
 - **Technical Stack:** Docling, GROBID, FastAPI workers.
+- **Documentation:** user-guide/research.mdx § Research tools (papers tool live); administration/research.mdx + deploy/containers.mdx (Docling/GROBID services, variables); recapture user-guide.research.tools
 - **Epic:** CO
 
 ### Issue CO.2 — ouroboros-engine: [CO.2] Deep multi-agent research & theme clustering
@@ -1350,6 +1372,7 @@ e2e: parity ✓ · investigate→brief ✓ · citations ✓ · gaps→planning �
   config).
 - **Technical Stack:** FastAPI workers, pgvector (or equivalent — decided
   in-issue), AF.2.
+- **Documentation:** user-guide/research.mdx § Reading a brief (verification → open questions, themes, budget); recapture user-guide.research.brief
 - **Epic:** CO
 
 ### Issue CO.3 — ouroboros-rest: [CO.3] Competitor tracker expansion
@@ -1371,6 +1394,7 @@ e2e: parity ✓ · investigate→brief ✓ · citations ✓ · gaps→planning �
   subject raises exactly one refresh suggestion.
 - **Parallelism/Dependencies:** Needs CL.3 (+inbox events).
 - **Technical Stack:** Playwright-core render tier, NestJS.
+- **Documentation:** user-guide/research.mdx (render_required opt-in, filings, watch auto-discovery); administration/research.mdx (render tier caps via .env.example); new user-guide.research.watch-discovery
 - **Epic:** CO
 
 ### Issue CO.4 — ouroboros-rest: [CO.4] Scheduled investigations & research library
@@ -1392,6 +1416,7 @@ e2e: parity ✓ · investigate→brief ✓ · citations ✓ · gaps→planning �
   navigate; compare renders two versions side by side.
 - **Parallelism/Dependencies:** Needs CM.6 (+inbox).
 - **Technical Stack:** NestJS scheduler, React.
+- **Documentation:** user-guide/research.mdx (scheduled/triggered investigations, library search/tags/compare); administration/research.mdx (schedules, triggers, caps); new user-guide.research.compare, recapture user-guide.research.library
 - **Epic:** CO
 
 ### Issue CO.5 — ouroboros-rest: [CO.5] Brief→Knowledge flywheel
@@ -1413,6 +1438,7 @@ e2e: parity ✓ · investigate→brief ✓ · citations ✓ · gaps→planning �
   auto-confirm path exists; duplicates suppressed.
 - **Parallelism/Dependencies:** Needs CM.2, BF fact services.
 - **Technical Stack:** NestJS, Knowledge client.
+- **Documentation:** user-guide/research.mdx (After the brief); knowledge.mdx § Learned by the loop (proposer: investigation); inbox.mdx (review card); recapture user-guide.knowledge.fact
 - **Epic:** CO
 
 ---

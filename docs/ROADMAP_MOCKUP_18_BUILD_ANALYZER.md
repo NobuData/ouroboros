@@ -1296,6 +1296,7 @@ e2e: run→findings ✓ · apply→farm ✓ · draft→studio ✓ · push→trac
   unchanged when the pass is disabled.
 - **Parallelism/Dependencies:** Needs BV.4, AF.2 (+BH.2 for matching).
 - **Technical Stack:** FastAPI, structured output.
+- **Documentation:** User Guide `analyzer.mdx` § The header (model pill, `$`), § How it works (synthesis provenance, unquantified, upstream matches, budgets); `models.mdx` (`analyze` task kind); recapture `user-guide.analyzer`.
 - **Epic:** BX
 
 ### Issue BX.2 — ouroboros-engine: [BX.2] Workflow simulation on historical loops
@@ -1318,6 +1319,7 @@ e2e: run→findings ✓ · apply→farm ✓ · draft→studio ✓ · push→trac
   rendered; button goes live.
 - **Parallelism/Dependencies:** Needs BV.3, WF-R.2.
 - **Technical Stack:** Python replay over trace fixtures.
+- **Documentation:** User Guide `analyzer.mdx` § Acting on a suggestion (simulation results in Details: counts, deltas, undecidable, assumptions, estimate class); link `workflows/studio.mdx`; add `user-guide.analyzer.simulation`.
 - **Epic:** BX
 
 ### Issue BX.3 — ouroboros-rest: [BX.3] Auto-apply policies
@@ -1339,6 +1341,7 @@ e2e: run→findings ✓ · apply→farm ✓ · draft→studio ✓ · push→trac
   audit + notification complete.
 - **Parallelism/Dependencies:** Needs BV.5/BV.6, BQ.2.
 - **Technical Stack:** NestJS, policy integration.
+- **Documentation:** Administration `policies.mdx` § The rules, new *Analyzer auto-apply* (allow-list, floor, ceiling, cap, kill switch); User Guide `analyzer.mdx` (reversal), `inbox.mdx`; add `administration.policies.analyzer-auto-apply`.
 - **Epic:** BX
 
 ### Issue BX.4 — ouroboros-rest: [BX.4] Cross-repo & org-level analysis
@@ -1357,6 +1360,7 @@ e2e: run→findings ✓ · apply→farm ✓ · draft→studio ✓ · push→trac
   isolation preserved at the org boundary.
 - **Parallelism/Dependencies:** Needs BV.1, BL.4.
 - **Technical Stack:** NestJS, engine analyzers.
+- **Documentation:** User Guide `analyzer.mdx` § Choosing a repository (org scope), § Suggestions (fleet findings, per-repo attribution), § How it works (org runs); Administration `build-farm.mdx` § Pools.
 - **Epic:** BX
 
 ### Issue BX.5 — ouroboros-engine: [BX.5] Custom analyzer SDK
@@ -1376,6 +1380,7 @@ e2e: run→findings ✓ · apply→farm ✓ · draft→studio ✓ · push→trac
   sandbox escapes blocked (test suite); docs complete.
 - **Parallelism/Dependencies:** Needs BV.2.
 - **Technical Stack:** Python sandboxing, docs.
+- **Documentation:** Administration new `analyzers.mdx` (register, validate, sandbox limits, rollback); User Guide `analyzer.mdx` § The header / Suggestions (custom origin labels); link the SDK contract; add `administration.analyzers`.
 - **Epic:** BX
 
 ---

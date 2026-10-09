@@ -1137,6 +1137,7 @@ Loop failures → PagerDuty 🔒 "connect PagerDuty first"
   renders sync state.
 - **Parallelism/Dependencies:** Needs BR.1, BA-E SSO.
 - **Technical Stack:** SCIM 2.0, NestJS.
+- **Documentation:** Administration `sign-in-and-workspace.mdx` § Enterprise SSO, new *Provisioning with SCIM* (endpoints, token, group→role, deactivation, drift report); `members-and-tokens.mdx` (locked rows); add `administration.sso.scim`.
 - **Epic:** BT
 
 ### Issue BT.2 — ouroboros-rest: [BT.2] Policy as code & engine ADR
@@ -1155,6 +1156,7 @@ Loop failures → PagerDuty 🔒 "connect PagerDuty first"
   the same gates; ADR merged with triggers.
 - **Parallelism/Dependencies:** Needs BQ.1/BQ.2 (+U machinery patterns).
 - **Technical Stack:** YAML projection, ADR.
+- **Documentation:** Administration `policies.mdx` new *Policy as code* (YAML projection, code editing, one publish gate); CLI `rest-api.mdx` fetch/apply recipe; link the ADR; add `administration.policies.code`; coverage entry.
 - **Epic:** BT
 
 ### Issue BT.3 — ouroboros-rest: [BT.3] Teams, Datadog & PagerDuty connectors
@@ -1174,6 +1176,7 @@ Loop failures → PagerDuty 🔒 "connect PagerDuty first"
   health.
 - **Parallelism/Dependencies:** Needs BR.3/BR.4.
 - **Technical Stack:** Vendor APIs over the webhook substrate.
+- **Documentation:** Administration `notifications-and-webhooks.mdx` new *Connectors* (Teams, Datadog, PagerDuty; sheets, health, unlocked routes); User Guide `inbox.mdx` § Answer from anywhere; add `administration.connectors`.
 - **Epic:** BT
 
 ### Issue BT.4 — ouroboros-rest: [BT.4] SaaS governance tier
@@ -1193,6 +1196,7 @@ Loop failures → PagerDuty 🔒 "connect PagerDuty first"
   reproducible; self-hosted unchanged.
 - **Parallelism/Dependencies:** Needs BQ.4 (+BD.2's tier framework).
 - **Technical Stack:** Deployment config, compliance tooling.
+- **Documentation:** Administration `sign-in-and-workspace.mdx` § Data region (migration, rollback), new *Deployment tier* (entitlements, plan-locked rows, training-data control); `retention-audit-lifecycle.mdx` (compliance packs).
 - **Epic:** BT
 
 ### Issue BT.5 — ouroboros-rest: [BT.5] Audit intelligence
@@ -1211,6 +1215,7 @@ Loop failures → PagerDuty 🔒 "connect PagerDuty first"
   reproducible; LLM notes labeled + optional.
 - **Parallelism/Dependencies:** Needs BR.2 (+AF.2 for summaries).
 - **Technical Stack:** NestJS rules, report generation.
+- **Documentation:** Administration `retention-audit-lifecycle.mdx` § The audit trail, new *Anomaly alerts* (rules, routing), session context, report templates, labelled summaries; add `administration.audit.anomaly-rules`.
 - **Epic:** BT
 
 ---

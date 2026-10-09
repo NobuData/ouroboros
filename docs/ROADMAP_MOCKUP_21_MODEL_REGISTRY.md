@@ -1961,6 +1961,7 @@ e2e: parity ✓ · lifecycle ✓ · rebind→routing re-renders ✓ · import �
   and inert; alerts fire once per change.
 - **Parallelism/Dependencies:** Needs CG.2, CH.3.
 - **Technical Stack:** NestJS scheduler, undici, fixtures.
+- **Documentation:** providers.mdx § Pricing catalog refresh (fetchers off by default, review queue, variables via .env.example); models.mdx drift badge; new administration.providers.pricing-refresh
 - **Epic:** CJ
 
 ### Issue CJ.2 — ouroboros-rest: [CJ.2] Alias change history & audit surface
@@ -1980,6 +1981,7 @@ e2e: parity ✓ · lifecycle ✓ · rebind→routing re-renders ✓ · import �
   (harness); rebind history renders the swap story; append-only enforced.
 - **Parallelism/Dependencies:** Needs CH.1, #26 (+AD.4 coordination).
 - **Technical Stack:** NestJS interceptor, PostgreSQL, React.
+- **Documentation:** models.mdx § Inspecting an alias (History tab); retention-audit-lifecycle.mdx § The audit trail (alias.* events); recapture user-guide.models.registry.detail
 - **Epic:** CJ
 
 ### Issue CJ.3 — ouroboros-rest: [CJ.3] Environment-tier aliases
@@ -2004,6 +2006,7 @@ e2e: parity ✓ · lifecycle ✓ · rebind→routing re-renders ✓ · import �
   per connection as before; merge assistant converts a seeded `-dev` pair.
 - **Parallelism/Dependencies:** Needs CH.1, AD.2 (+Z.1 ctx amendment).
 - **Technical Stack:** NestJS, Kysely, React.
+- **Documentation:** models.mdx § Inspecting an alias (tier bindings, prod default, fallback) and § Simulating routing (environment); concepts.mdx dry-run → dev tier; recapture user-guide.models.registry.detail
 - **Epic:** CJ
 
 ```
@@ -2034,6 +2037,7 @@ resolve(implement, env=dev) ─▶ same alias · dev key   env tier unbound ─�
   without explicit confirmation.
 - **Parallelism/Dependencies:** Needs CH.4, Z.4 (+CH.5 warning states).
 - **Technical Stack:** NestJS, React.
+- **Documentation:** models.mdx § The model registry (deprecation advisory, successors, migration assistant); inbox.mdx (advisory card); new user-guide.models.registry.deprecation, recapture user-guide.models.registry
 - **Epic:** CJ
 
 ### Issue CJ.5 — ouroboros-rest: [CJ.5] Registry as code & per-alias analytics
@@ -2057,6 +2061,7 @@ resolve(implement, env=dev) ─▶ same alias · dev key   env tier unbound ─�
   seeded figures and em-dash honestly when usage is absent.
 - **Parallelism/Dependencies:** Needs CH.1 (+Z.5/AF.2 for analytics truth).
 - **Technical Stack:** NestJS, YAML/JSON schema, React.
+- **Documentation:** models.mdx § The model registry (export/import as code, dry-run diff) and § Inspecting an alias (analytics); cli/rest-api.mdx export recipe; recapture user-guide.models.registry.detail
 - **Epic:** CJ
 
 ---

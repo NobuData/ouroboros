@@ -620,6 +620,7 @@ install.sh: detect platform ─▶ fetch+verify binary ─▶ enroll(flags) ─�
   scores, the log leg fails if streaming is faked, and the stats move on the terminal state.
 - **Parallelism/Dependencies:** Needs AG.4, AH.4. Un-parks AI.7's remaining criteria.
 - **Technical Stack:** Go (`os/exec` git), NestJS config, a compose git fixture.
+- **Documentation:** CLI: runner/run.mdx § What it does (checkout, workspace.checkout_failed), runner/hello.mdx (git capability); clone-base variable → .env.example + gen:config-reference; build-farm.mdx § What can go wrong.
 - **Epic:** AG
 
 ```
@@ -1778,6 +1779,7 @@ e2e: enroll ✓ · presence ✓ · drain ✓ · revoke ✓ · read-only ✓ · t
   threshold honored; costs surfaced; toggle truth updated.
 - **Parallelism/Dependencies:** Needs AH.4, AG.6.
 - **Technical Stack:** Cloud SDK (first provider), NestJS controller.
+- **Documentation:** Administration: build-farm.mdx § Pools (autoscale live: threshold, on-prem first, cost), § Draining; provider variables → .env.example + gen:config-reference; recapture administration.build-farm.
 - **Epic:** AJ
 
 ### Issue AJ.2 — ouroboros-runner: [AJ.2] Remote shared build cache
@@ -1797,6 +1799,7 @@ e2e: enroll ✓ · presence ✓ · drain ✓ · revoke ✓ · read-only ✓ · t
   labels truthful per pool.
 - **Parallelism/Dependencies:** Needs AG.5.
 - **Technical Stack:** ccache remote / sccache, MinIO.
+- **Documentation:** Administration: build-farm.mdx § Pools (shared cache backends, namespaces, caps, trust boundary, label) and § Runner health (local vs remote hits); deploy/containers.mdx if a cache service is added.
 - **Epic:** AJ
 
 ### Issue AJ.3 — ouroboros-rest: [AJ.3] Workflow build-stage integration
@@ -1819,6 +1822,7 @@ e2e: enroll ✓ · presence ✓ · drain ✓ · revoke ✓ · read-only ✓ · t
   definition.
 - **Parallelism/Dependencies:** Needs WF-T.6, AH.4.
 - **Technical Stack:** NestJS, engine executor integration.
+- **Documentation:** User Guide: runs/console.mdx § The stage timeline (build stage progress from the farm job, log link), dashboard.mdx (building status), workflows/studio.mdx (build-stage gate); recapture user-guide.run.live.
 - **Epic:** AJ
 
 ```
@@ -1842,6 +1846,7 @@ run #479 · stage build ─▶ farm job(pool-a, run_id) ─▶ finish{exit 0, cc
   documented.
 - **Parallelism/Dependencies:** Needs AH.3.
 - **Technical Stack:** PostgreSQL (rollup tables), NestJS.
+- **Documentation:** Administration: build-farm.mdx § Runner health (the Health history sheet); add administration.build-farm.health-history, recapture .runner-detail. Retention tiers are internal.
 - **Epic:** AJ
 
 ### Issue AJ.5 — ouroboros-runner: [AJ.5] Pool image registry & isolation evaluation
@@ -1861,6 +1866,7 @@ run #479 · stage build ─▶ farm job(pool-a, run_id) ─▶ finish{exit 0, cc
   gated by a passing dry-run build; ADR merged with triggers.
 - **Parallelism/Dependencies:** Needs AG.4.
 - **Technical Stack:** OCI registries, ADR.
+- **Documentation:** Administration: build-farm.mdx § Pools (digest-pinned pool image, registry credentials, propose → dry-run → promote, rollback); the isolation ADR gets no page; recapture administration.build-farm.
 - **Epic:** AJ
 
 ---

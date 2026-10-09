@@ -431,6 +431,7 @@ seeds: session(6 msgs, chips ✓) · draft v0.3 (9 stages, 2 copilot ops, W7 war
 - **Parallelism/Dependencies:** Needs CC.2, WF-P.2, **AF.2**. Blocks
   CD.5, CE.2.
 - **Technical Stack:** FastAPI tool-calling, NestJS orchestration.
+- **Documentation:** none — not user-visible: an engine task kind behind the conversation; what a person meets is documented with CE.1 (#565) and CE.2 (#566).
 - **Epic:** CD
 
 ```
@@ -466,6 +467,7 @@ seeds: session(6 msgs, chips ✓) · draft v0.3 (9 stages, 2 copilot ops, W7 war
 - **Parallelism/Dependencies:** Needs CC.3, **AF.2**, BF.5 (+CD.3
   stubs). Blocks CD.4.
 - **Technical Stack:** Python virtual FS, AF.2 client, guard framework.
+- **Documentation:** none — not user-visible: the engine's dry-run harness; its guarantees (no writes, no PRs, no merges) are documented on the copilot page with CE.4 (#568) and CE.5 (#569).
 - **Epic:** CD
 
 ```
@@ -493,6 +495,7 @@ guards: farm ∅ · SPI-write ∅ · PR ∅ — audited clean
   formulas documented.
 - **Parallelism/Dependencies:** Needs AH.1, BI.2. Feeds CD.2.
 - **Technical Stack:** NestJS, Kysely statistics.
+- **Documentation:** none — not user-visible: estimator internals; the estimate, sample and spread a person sees are documented with the dry-run card, CE.4 (#568).
 - **Epic:** CD
 
 ```
@@ -524,6 +527,7 @@ n < 12 ─▶ "insufficient history — first real build will measure"
 - **Parallelism/Dependencies:** Needs CD.2/CD.3, WF-R.2. Blocks CD.5,
   CE.4.
 - **Technical Stack:** NestJS, engine client.
+- **Documentation:** `user-guide/workflows/copilot.mdx` § Dry runs (pre-check, budget = min(org cap, draft guard), budget stop, cancel, re-run, history, edge-case picker)
 - **Epic:** CD
 
 ```
@@ -555,6 +559,7 @@ picker: #489 (security×no-CVE — exercises the conditional path) · #491 (has-
   without its data (honesty fixture); LLM suggestions labeled.
 - **Parallelism/Dependencies:** Needs CD.4, CC.4. Feeds CE.4.
 - **Technical Stack:** NestJS rule pack, CD.1 loop.
+- **Documentation:** `user-guide/workflows/copilot.mdx` § Suggestions (rule table, confidence basis, Apply/Explain/Ignore, moved-on conflict); shot shared with CE.4
 - **Epic:** CD
 
 ```
@@ -580,6 +585,7 @@ rule(skipped, nothing-to-do) ─▶ suggest{ops: [set_predicate(exploit-verify,
   removing a guard or the op validator turns tests red; ≤ 120s added.
 - **Parallelism/Dependencies:** Needs CD.1–CD.5.
 - **Technical Stack:** Jest, Testcontainers, engine pytest.
+- **Documentation:** none — not user-visible: integration and parity suites; nothing a person or integrator meets changes.
 - **Epic:** CD
 
 ```
@@ -625,6 +631,7 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 - **Parallelism/Dependencies:** Needs WF-S.1, CD.4, BA-D.5. Blocks
   CE.2–CE.5.
 - **Technical Stack:** Next.js, studio shell.
+- **Documentation:** new `user-guide/workflows/copilot.mdx` (segment, promote with guards, discard, create-from-conversation); `studio.mdx` + `code.mdx` segment; coverage `/workflows/[slug]/copilot`; shots `…copilot`, recapture `…workflows`
 - **Epic:** CE
 
 ```
@@ -654,6 +661,7 @@ promote ─▶ "publishes v1 · never-auto-merge + $5/run guard compiled" ─▶
   round-trip; provider-outage state designed; keyboard/a11y complete.
 - **Parallelism/Dependencies:** Needs CE.1, CD.1.
 - **Technical Stack:** React, streaming client.
+- **Documentation:** `user-guide/workflows/copilot.mdx` § The conversation (streaming markers, chips, composer, cost affix, states); shot `user-guide.workflows.copilot.conversation`
 - **Epic:** CE
 
 ```
@@ -684,6 +692,7 @@ promote ─▶ "publishes v1 · never-auto-merge + $5/run guard compiled" ─▶
   edit links land focused; both themes.
 - **Parallelism/Dependencies:** Needs CE.1, CC.2 (+draft reads).
 - **Technical Stack:** React, #46 primitives.
+- **Documentation:** `user-guide/workflows/copilot.mdx` § The draft (stage rows, provenance pill, W7 warnings, footer); shot `user-guide.workflows.copilot.stages`
 - **Epic:** CE
 
 ```
@@ -716,6 +725,7 @@ promote ─▶ "publishes v1 · never-auto-merge + $5/run guard compiled" ─▶
   reasons render; estimate popovers show n/spread.
 - **Parallelism/Dependencies:** Needs CE.1, CD.4/CD.5.
 - **Technical Stack:** React, streaming, shared diff styles.
+- **Documentation:** `user-guide/workflows/copilot.mdx` § The dry-run card (pill, `how` labels, provenance popover, diff block, re-run, another issue); shot `user-guide.workflows.copilot.dry-run`
 - **Epic:** CE
 
 ```
@@ -750,6 +760,7 @@ promote ─▶ "publishes v1 · never-auto-merge + $5/run guard compiled" ─▶
   meaningfully when its layer breaks; ≤ 4 min added.
 - **Parallelism/Dependencies:** Needs CE.2–CE.4, CC.4; amends #56.
 - **Technical Stack:** React, Playwright.
+- **Documentation:** `user-guide/workflows/copilot.mdx` safety strip + what-can-go-wrong (gateway unavailable, budget stopped, guard-audit violation, read-only); shot `user-guide.workflows.copilot.safety`
 - **Epic:** CE
 
 ```
@@ -793,6 +804,7 @@ e2e: brief→draft ✓ · chips ✓ · dry-run(rows·diff·suggestions) ✓ · a
   W7 warnings retire for this kind.
 - **Parallelism/Dependencies:** Needs WF-P.2, AG.4/AJ.5.
 - **Technical Stack:** Sandboxed containers, gate provider.
+- **Documentation:** `user-guide/workflows/code.mdx` (`exploit_verify` kind, verdicts), `user-guide/inbox.mdx` (PoC approval kind), `user-guide/pull-requests.mdx` (criterion), `administration/build-farm.mdx` (sandbox)
 - **Epic:** CF
 
 ### Issue CF.2 — ouroboros-rest: [CF.2] Conversation access grants & advisory-DB skill
@@ -814,6 +826,7 @@ e2e: brief→draft ✓ · chips ✓ · dry-run(rows·diff·suggestions) ✓ · a
   audits complete.
 - **Parallelism/Dependencies:** Needs CD.1, BF.1.
 - **Technical Stack:** NestJS grants, knowledge registry.
+- **Documentation:** `user-guide/workflows/copilot.mdx` (permission chips, grants), `user-guide/knowledge.mdx` (`advisory-db` skill, skip reasons), the grant surface's Administration page; shot `administration.copilot.grants`
 - **Epic:** CF
 
 ### Issue CF.3 — ouroboros-rest: [CF.3] Deep+build dry-run mode
@@ -834,6 +847,7 @@ e2e: brief→draft ✓ · chips ✓ · dry-run(rows·diff·suggestions) ✓ · a
   attributed to dry-run accounting.
 - **Parallelism/Dependencies:** Needs CD.4, AH.4.
 - **Technical Stack:** Farm dispatch, branch lifecycle.
+- **Documentation:** `user-guide/workflows/copilot.mdx` `deep_build` mode (admin confirm, `how: built`, throwaway branch, no PRs), `administration/build-farm.mdx` (dry-run jobs); recapture `…copilot.dry-run`
 - **Epic:** CF
 
 ### Issue CF.4 — ouroboros-engine: [CF.4] Batch what-if dry runs
@@ -853,6 +867,7 @@ e2e: brief→draft ✓ · chips ✓ · dry-run(rows·diff·suggestions) ✓ · a
   aggregates.
 - **Parallelism/Dependencies:** Needs CD.2 (+BX.2 shape).
 - **Technical Stack:** Python batch orchestration.
+- **Documentation:** `user-guide/workflows/copilot.mdx` batch what-if runs (ticket set, budget, aggregates, partial on cancel), `user-guide/analyzer.mdx` cross-link; shot `…copilot.batch` if seeded
 - **Epic:** CF
 
 ### Issue CF.5 — ouroboros-rest: [CF.5] Review-replay statistics
@@ -872,6 +887,7 @@ e2e: brief→draft ✓ · chips ✓ · dry-run(rows·diff·suggestions) ✓ · a
   (the CD.5 honesty fixture flips); costs accounted.
 - **Parallelism/Dependencies:** Needs CD.2, AW/AS history.
 - **Technical Stack:** Engine replay, NestJS stats.
+- **Documentation:** `user-guide/workflows/copilot.mdx` `reviewer-disagreement` live (replay, style vs substance, sample size, budget confirm, Explain pairs), `user-guide/pull-requests.mdx` cross-link
 - **Epic:** CF
 
 ---

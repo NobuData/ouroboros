@@ -2200,6 +2200,7 @@ e2e: seeded org ─▶ stats ✓ tables ✓ pulse ✓ toggle ✓ · switch org �
   per session.
 - **Parallelism/Dependencies:** Needs G.6, I.8; sensible only after J.3.
 - **Technical Stack:** NestJS `@Sse()` + RxJS, EventSource.
+- **Documentation:** cli/rest-api.mdx § Polling without wasting requests (SSE channel + ETag fallback), user-guide/dashboard.mdx (live updates replace the 15 s refresh); no screenshots
 - **Epic:** J
 
 ```
@@ -2222,6 +2223,7 @@ engine event ─▶ run row update ─▶ SSE delta ─▶ hook store ─▶ met
   OpenAPI for the inbox roadmap to implement against.
 - **Parallelism/Dependencies:** Needs G.5, #26.
 - **Technical Stack:** NestJS interceptor, #26 audit table.
+- **Documentation:** retention-audit-lifecycle.mdx § The audit trail (settings.auto_merge_changed), user-guide/finding-your-way.mdx § The header (the Needs-you pill's feed); no screenshots
 - **Epic:** J
 
 ### Issue J.3 — ouroboros-engine: [J.3] Engine→read-model ingestion bridge
@@ -2242,6 +2244,7 @@ engine event ─▶ run row update ─▶ SSE delta ─▶ hook store ─▶ met
   transitions rejected; duplicate idempotency key is a no-op.
 - **Parallelism/Dependencies:** Needs #54, G.2; enables J.1 to matter.
 - **Technical Stack:** NestJS, FastAPI client, shared-secret auth (#35 pattern).
+- **Documentation:** None — not user-visible: an internal, shared-secret ingestion API between the engine and the REST service under `/internal/*`, which is never exposed; the dashboard it feeds is documented already
 - **Epic:** J
 
 ```mermaid
@@ -2273,6 +2276,7 @@ sequenceDiagram
   rendered as unpriced, never $0; repricing backfill idempotent.
 - **Parallelism/Dependencies:** Needs F.3, J.3.
 - **Technical Stack:** PostgreSQL, NestJS, Flyway.
+- **Documentation:** user-guide/dashboard.mdx § The four figures ('cost unavailable'), insights.mdx § The five headline figures, administration/providers.mdx § Spend (price table, backfill); recapture user-guide.dashboard if changed
 - **Epic:** J
 
 ```
@@ -2294,6 +2298,7 @@ token_usage × price(provider, model, effective_at) ─▶ cost_cents ─▶ "�
   sources respect tenant scope; keyboard-only flow intact.
 - **Parallelism/Dependencies:** Needs H.3, G.2.
 - **Technical Stack:** React, generated client.
+- **Documentation:** user-guide/finding-your-way.mdx § The command palette (run/queue results, groups, recents — drop the not-available note); recapture user-guide.command-palette
 - **Epic:** J
 
 ---

@@ -1506,7 +1506,7 @@ docs added.
 | DE.2 | #1210 ✅ | 🟢 Done | ouroboros: [DE.2] Roadmap skills add a Documentation section to every issue | create-roadmap / update-roadmap / create-issues | mvp, docs-site, documentation | Y | Y | S | .claude/skills |
 | DE.3 | #1211 ✅ | 🟢 Done | ouroboros: [DE.3] PR template, issue form & CONVENTIONS documentation rule | Checkbox, "Documentation impact" field, § Documentation | mvp, docs-site, documentation | Y | Y | XS | .github, docs |
 | DE.4 | #1212 ✅ | 🟢 Done | ouroboros-docs: [DE.4] Docs coverage gate | UI routes / runner flags / OURO_* vars must map to pages | mvp, docs-site, ci | N (after CY.5, DB.3, DC.3) | Y | M | ouroboros-docs, .github, scripts |
-| DE.5 | #1213 | 🟡 Open | ouroboros: [DE.5] Amend open roadmap issues with documentation scope | Add a Documentation section to every open issue in every roadmap (all areas) | mvp, docs-site, documentation | N (after DE.2, content epics) | Y | L | docs (roadmaps), GitHub issues |
+| DE.5 | #1213 ✅ | 🟢 Done | ouroboros: [DE.5] Amend open roadmap issues with documentation scope | Add a Documentation section to every open issue in every roadmap (all areas) | mvp, docs-site, documentation | N (after DE.2, content epics) | Y | L | docs (roadmaps), GitHub issues |
 
 ### Issue DE.1 (#1209) — ouroboros: [DE.1] /implement requires documentation updates
 
@@ -1580,6 +1580,42 @@ for `/workshop/*`); `yarn check:coverage` enumerates routes from the filesystem,
 current tree passes after DA/DB are done.
 
 ### Issue DE.5 (#1213) — ouroboros: [DE.5] Amend open roadmap issues with documentation scope
+
+> **GitHub issue:** #1213 ✅ · **Status:** 🟢 Done · **Parent epic:** #1162
+>
+> **Delivered (#1213):** every open, non-epic issue across all 27 roadmaps — **223 issues**, enumerated with `gh issue list --state open` (339 open, 109 epics excluded, 7 already carrying the section) — gained a **Documentation** section in its GitHub body (appended before the *Created by Ouroboros* footer) and a `- **Documentation:**` bullet in its roadmap block after *Technical Stack* (**213** blocks; 10 issues have no block of their own — #826, #918–#922, #968, #1100, #1248, #1250 — and are GitHub-only). Each names the pages by section and path (existing pages with the section to update; stub pages for areas without one: `user-guide/chatops.mdx`, `administration/chatops.mdx`, `cli/ouro.mdx`, `user-guide/marketplace.mdx`, `administration/marketplace.mdx`, `user-guide/research.mdx`, `administration/research.mdx`, `user-guide/workflows/copilot.mdx`, plus `administration/analyzers.mdx` and `user-guide/studio.mdx` proposed once each), the screenshot ids to add or recapture, `docs-coverage.json` entries for new routes, and `.env.example` → `gen:config-reference` for variables; every user-visible Chat Ops issue (BZ/CA) also names DF.5 (#1218). **33 issues** state `None — not user-visible: <reason>` (tables, seeds, test suites, ADRs, internal engine/REST plumbing), so the omission is a decision. The sections were authored by roadmap slice from each issue's own Solution/Scope against the real pages' headings, then applied by one script (`roadmap` and `github` modes, idempotent: a body or block that already has the section is skipped). Spot-check of ten areas, each naming concrete paths: #725 (BetterAuth → `sign-in-and-workspace.mdx`, `retention-audit-lifecycle.mdx`), #93 (Dashboard → `finding-your-way.mdx` § The command palette), #126 (Issue intake → `sources.mdx`), #184 (Workflow code → `workflows/code.mdx`), #238 (Providers → `providers.mdx` § Local models with Ollama), #991 (Build farm → `cli/runner/run.mdx`, `hello.mdx`), #347 (Test results → `operations.mdx` § Moving artifacts to S3), #550 (Chat Ops → `cli/ouro.mdx`, `user-guide/chatops.mdx`, DF.5), #574 (Copilot → `workflows/copilot.mdx`), #808 (Marketplace → `user-guide/marketplace.mdx` § How listings are ranked), #921 (Scaffolding → `.env.example`, `deploy/compose.mdx`), #653 (App shell → `finding-your-way.mdx` § Appearance). No site page changed (the docs are the ticket text), so no module version moves.
+>
+> **Amended issues per roadmap:**
+>
+> | Roadmap | Issues amended | Of which not user-visible |
+> |---|---|---|
+> | `ROADMAP_MOCKUP_01_BETTERAUTH.md` | 4: #725, #724, #723, #722 | 0 |
+> | `ROADMAP_MOCKUP_02_DASHBOARD.md` | 5: #93, #92, #91, #90, #89 | 1 |
+> | `ROADMAP_MOCKUP_03_ISSUE_INTAKE.md` | 5: #126, #125, #124, #123, #122 | 0 |
+> | `ROADMAP_MOCKUP_04_WORKFLOW_BUILDER.md` | 6: #160, #159, #158, #157, #156, #155 | 1 |
+> | `ROADMAP_MOCKUP_05_WORKFLOW_CODE.md` | 5: #184, #183, #182, #181, #180 | 2 |
+> | `ROADMAP_MOCKUP_06_MODEL_ROUTING.md` | 5: #211, #210, #209, #208, #207 | 1 |
+> | `ROADMAP_MOCKUP_07_PROVIDERS_KEYS.md` | 5: #238, #237, #236, #235, #234 | 1 |
+> | `ROADMAP_MOCKUP_08_BUILD_FARM.md` | 6: #991, #267, #266, #265, #264, #263 | 0 |
+> | `ROADMAP_MOCKUP_09_PLANNING.md` | 6: #968, #293, #292, #291, #290, #289 | 0 |
+> | `ROADMAP_MOCKUP_10_RUN_CONSOLE.md` | 5: #319, #318, #317, #316, #315 | 0 |
+> | `ROADMAP_MOCKUP_11_TEST_RESULTS.md` | 5: #347, #346, #345, #344, #343 | 0 |
+> | `ROADMAP_MOCKUP_12_PR_VERIFICATION.md` | 5: #375, #374, #373, #372, #371 | 0 |
+> | `ROADMAP_MOCKUP_13_ONBOARDING.md` | 5: #400, #399, #398, #397, #396 | 0 |
+> | `ROADMAP_MOCKUP_14_KNOWLEDGE.md` | 5: #427, #426, #425, #424, #423 | 0 |
+> | `ROADMAP_MOCKUP_15_INSIGHTS.md` | 5: #452, #451, #450, #449, #448 | 0 |
+> | `ROADMAP_MOCKUP_16_NEEDS_YOU_INBOX.md` | 5: #475, #474, #473, #472, #471 | 0 |
+> | `ROADMAP_MOCKUP_17_SETTINGS.md` | 5: #501, #500, #499, #498, #497 | 0 |
+> | `ROADMAP_MOCKUP_18_BUILD_ANALYZER.md` | 6: #1100, #526, #525, #524, #523, #522 | 0 |
+> | `ROADMAP_MOCKUP_19_CHATOPS.md` | 20: #550, #549, #548, #547, #546, #545, #544, #543, #542, #541, #540, #539, #538, #537, #536, #535, #534, #533, #532, #531 | 5 |
+> | `ROADMAP_MOCKUP_20_WORKFLOW_COPILOT.md` | 16: #574, #573, #572, #571, #570, #569, #568, #567, #566, #565, #564, #563, #562, #561, #560, #559 | 4 |
+> | `ROADMAP_MOCKUP_21_MODEL_REGISTRY.md` | 5: #602, #601, #600, #599, #598 | 0 |
+> | `ROADMAP_MOCKUP_22_RESEARCH.md` | 26: #639, #638, #637, #636, #635, #634, #633, #632, #631, #630, #629, #628, #627, #626, #625, #624, #623, #621, #620, #619, #618, #617, #616, #615, #613, #611 | 5 |
+> | `ROADMAP_MOCKUP_23_MARKETPLACE.md` | 44: #808, #807, #806, #805, #804, #803, #802, #801, #800, #799, #798, #797, #796, #795, #794, #793, #792, #791, #790, #789, #788, #787, #786, #785, #784, #783, #782, #781, #780, #779, #778, #777, #776, #775, #774, #773, #772, #771, #770, #769, #768, #767, #766, #765 | 10 |
+> | `ROADMAP_OUROBOROS_APPLICATION_SCAFFOLDING.md` | 13: #922, #921, #920, #919, #918, #58, #57, #54, #49, #48, #38, #25, #18 | 3 |
+> | `ROADMAP_OUROBOROS_DOCUMENTATION_SITE.md` | 2: #1250, #1248 | 0 |
+> | `ROADMAP_UIUX_APP_SHELL.md` | 3: #653, #652, #651 | 0 |
+> | *(no roadmap block)* | 1: #826 | 0 |
 
 **Problem Statement.** Documentation must be complete. Open issues in **every** existing
 roadmap — all 23 mockup roadmaps, the app-shell, scaffolding and OOE roadmaps, including the

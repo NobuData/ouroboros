@@ -1117,6 +1117,7 @@ e2e: parity ✓ · live scenario (stepper·transcript·steer·guardrails) ✓ ·
   transcript); controls acked by the real executor.
 - **Parallelism/Dependencies:** Needs WF-T.6, AP.1/AP.3/AP.4.
 - **Technical Stack:** Engine executor hooks, AP contracts.
+- **Documentation:** User Guide: runs/console.mdx § Changes, resources and guardrails / § When a run needs you (halt → Needs You), concepts.mdx (no Simulated banner), inbox.mdx; Administration: policies.mdx; recapture run.live, run.guardrail
 - **Epic:** AR
 
 ### Issue AR.2 — ouroboros-ui: [AR.2] IDE take-over protocol
@@ -1136,6 +1137,7 @@ e2e: parity ✓ · live scenario (stepper·transcript·steer·guardrails) ✓ ·
   loop cleanly; ADR merged.
 - **Parallelism/Dependencies:** Needs AQ.2 (+AR.1 for resume semantics).
 - **Technical Stack:** Editor URI protocols, React.
+- **Documentation:** User Guide: runs/console.mdx § Controlling a live run (Take over in IDE, resume re-plans), dashboard.mdx (taken-over badge), finding-your-way.mdx (editor preference); recapture run.controls, add run.taken-over.
 - **Epic:** AR
 
 ### Issue AR.3 — ouroboros-rest: [AR.3] SSE live transcript
@@ -1153,6 +1155,7 @@ e2e: parity ✓ · live scenario (stepper·transcript·steer·guardrails) ✓ ·
   resumes without gaps or duplicates; fallback transparent.
 - **Parallelism/Dependencies:** Needs DASH-J.1, AP.2.
 - **Technical Stack:** NestJS `@Sse()`, EventSource.
+- **Documentation:** User Guide: runs/console.mdx § The agent transcript (live stream, polling fallback, quiet vs dropped); CLI: rest-api.mdx § Polling (per-run stream, after=<seq> resume); no screenshots unless an indicator appears.
 - **Epic:** AR
 
 ### Issue AR.4 — ouroboros-rest: [AR.4] Slack-thread steering
@@ -1171,6 +1174,7 @@ e2e: parity ✓ · live scenario (stepper·transcript·steer·guardrails) ✓ ·
   correct actor; permissions honored; caption truthful.
 - **Parallelism/Dependencies:** Needs mockup-19 roadmap, AP.4.
 - **Technical Stack:** Slack API (via 19's integration), NestJS.
+- **Documentation:** User Guide: new chatops.mdx (run threads, reply-to-steer, /ouro pause|abort), runs/console.mdx § Controlling a live run; CLI: ouro.mdx (DF.5 #1218); Administration: chatops.mdx (identity mapping). No screenshots.
 - **Epic:** AR
 
 ### Issue AR.5 — ouroboros-rest: [AR.5] Verified secrets scanning & policy escalation
@@ -1190,6 +1194,7 @@ e2e: parity ✓ · live scenario (stepper·transcript·steer·guardrails) ✓ ·
   config; evidence hygiene tests hold.
 - **Parallelism/Dependencies:** Needs AP.3, AR.1.
 - **Technical Stack:** Verifier integration, policy config.
+- **Documentation:** Administration: policies.mdx § The rules (block/warn matrix; verified scanning opt-in and its posture); User Guide: runs/console.mdx § Changes, resources and guardrails; recapture administration.policies, run.guardrail.
 - **Epic:** AR
 
 ---

@@ -554,6 +554,7 @@ flowchart LR
   with the running version.
 - **Parallelism/Dependencies:** Needs 2.1, 4.8, 6.2. Cosmetic — scheduled v2.
 - **Technical Stack:** @nestjs/swagger customization, Python logging.
+- **Documentation:** cli/rest-api.mdx § The API description (branded /api/docs); operations.mdx § Logs (start-up banner, version, db/engine ticks)
 - **Epic:** 2
 
 ```
@@ -1024,6 +1025,7 @@ PR ─▶ [postgres up] ─▶ flyway migrate (clean db) ─▶ validate ─▶ 
   still green.
 - **Parallelism/Dependencies:** Needs 3.4 and 4.6 in place. v2.
 - **Technical Stack:** PostgreSQL RLS, Flyway, Kysely (GUC set).
+- **Documentation:** deploy/containers.mdx + compose.mdx (ouro_migrate vs ouro_app roles, variables via .env.example); retention-audit-lifecycle.mdx § The security model (RLS)
 - **Epic:** 3
 
 ```
@@ -1605,6 +1607,7 @@ jest ─▶ [testcontainers: postgres] ─▶ [flyway migrate] ─▶ [nest app]
   under scripted burst; documented threat notes in `docs/ARCHITECTURE.md`.
 - **Parallelism/Dependencies:** Needs 4.7. v2.
 - **Technical Stack:** @nestjs/throttler, helmet.
+- **Documentation:** cli/rest-api.mdx § Errors (429 throttling); deploy/app-host.mdx + checklist.mdx (security headers, cookie name if the __Host- review renames it); OURO_CORS_ORIGINS already documented
 - **Epic:** 4
 
 ```
@@ -2057,6 +2060,7 @@ tokens ─▶ [Button] [Chip] [Card] [Table] [Field] [Pill] [EmptyState] ─▶ 
   in CI.
 - **Parallelism/Dependencies:** Needs 5.8. v2.
 - **Technical Stack:** Ladle or Storybook 8.
+- **Documentation:** None — not user-visible: a developer component workshop; its `/workshop/*` routes stay `{"undocumented": …}` in `docs-coverage.json`.
 - **Epic:** 5
 
 ### Issue 5.11 — ouroboros-ui: [5.11] Placeholder routes for remaining mockup screens
@@ -2098,6 +2102,7 @@ tokens ─▶ [Button] [Chip] [Card] [Table] [Field] [Pill] [EmptyState] ─▶ 
   in both themes.
 - **Parallelism/Dependencies:** Needs 5.3. v2 (nice-to-have polish).
 - **Technical Stack:** Next.js routes.
+- **Documentation:** finding-your-way.mdx § The sidebar (soon rows and their one-liners); docs-coverage.json entries per placeholder page.tsx (page or undocumented: placeholder)
 - **Epic:** 5
 
 ```
@@ -2305,6 +2310,7 @@ REST 4.9 ──POST /v0/tasks/echo {task_kind, payload}──▶ engine
   restart behavior documented; decision doc for external-queue threshold.
 - **Parallelism/Dependencies:** Needs 6.3. v2.
 - **Technical Stack:** asyncio, FastAPI background lifecycles.
+- **Documentation:** None — not user-visible: the engine's internal task queue; `/v0/tasks` is the engine's internal surface, never published.
 - **Epic:** 6
 
 ```
@@ -2405,6 +2411,7 @@ compose up ─▶ [ui loads] ─▶ [login+tenant] ─▶ [dashboard data]
   image; images pullable and runnable via compose override.
 - **Parallelism/Dependencies:** Needs 7.1. v2.
 - **Technical Stack:** GitHub Actions, GHCR, docker/build-push-action.
+- **Documentation:** deploy/containers.mdx § The registry, compose.mdx image names, operations.mdx § The images, HOSTING.md § 7, docs README § Publishing: GHCR address, login, tags
 - **Epic:** 7
 
 ```
@@ -2424,6 +2431,7 @@ main merge (rest/**) ─▶ build ─▶ ghcr.io/…/ouroboros-rest:{latest, sha
 - **Acceptance Criteria:** A clean VM following the doc reaches a working login.
 - **Parallelism/Dependencies:** Needs 7.3. v2.
 - **Technical Stack:** Markdown; compose production override.
+- **Documentation:** docs/DEPLOYMENT.md must agree with administration/deploy/*.mdx and operations.mdx; update those pages where the runbook settles a hedged fact (backups, TLS)
 - **Epic:** 7
 
 ```

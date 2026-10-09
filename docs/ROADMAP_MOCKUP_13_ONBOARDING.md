@@ -896,6 +896,7 @@ e2e: connect ✓ · scan ✓ · template→Studio ✓ · pick ✓ · launch→qu
   gone; graceful fallback if the run stalls (honest states).
 - **Parallelism/Dependencies:** Needs AR.1, BB.5.
 - **Technical Stack:** React, run-console data plane.
+- **Documentation:** User Guide `first-loop.mdx` rewritten (live timeline, guided review, first-merge guidance, failure states); `wizard.mdx` § 4; add `user-guide.first-loop.timeline`, `.review`; coverage entry if a new route.
 - **Epic:** BD
 
 ### Issue BD.2 — ouroboros-rest: [BD.2] Managed keys & hosted runner tier
@@ -918,6 +919,7 @@ e2e: connect ✓ · scan ✓ · template→Studio ✓ · pick ✓ · launch→qu
   migrates cleanly; self-hosted stays unchanged.
 - **Parallelism/Dependencies:** Needs AF.2, AJ.1.
 - **Technical Stack:** Provider/farm pool config, quotas.
+- **Documentation:** Administration `providers.mdx` § The managed key pool, `build-farm.mdx` § A hosted runner pool, `deploy/containers.mdx` (capability variables); User Guide `wizard.mdx` § The right-hand column; no self-hosted screenshot.
 - **Epic:** BD
 
 ### Issue BD.3 — ouroboros-rest: [BD.3] Config import/export
@@ -937,6 +939,7 @@ e2e: connect ✓ · scan ✓ · template→Studio ✓ · pick ✓ · launch→qu
   matches apply.
 - **Parallelism/Dependencies:** Needs BB.2 (+subsystem read surfaces).
 - **Technical Stack:** NestJS, versioned bundle schema.
+- **Documentation:** Administration `sign-in-and-workspace.mdx` new Export/import section (exclusions, preview, selective apply); User Guide `wizard.mdx`; CLI `rest-api.mdx` recipe; add `administration.workspace.import-preview`.
 - **Epic:** BD
 
 ### Issue BD.4 — ouroboros-rest: [BD.4] Devcontainer prebuilds & deep scans
@@ -959,6 +962,7 @@ e2e: connect ✓ · scan ✓ · template→Studio ✓ · pick ✓ · launch→qu
   from enumeration; rows honest throughout.
 - **Parallelism/Dependencies:** Needs AG.4/AJ.5, BB.1.
 - **Technical Stack:** Farm jobs, devcontainer CLI, registry.
+- **Documentation:** User Guide `wizard.mdx` § 2. Pick a repo (`detected`→`measured`), `knowledge.mdx` § Repository profile; Administration `build-farm.mdx` prebuild/deep-scan section; recapture `user-guide.wizard.detection`.
 - **Epic:** BD
 
 ### Issue BD.5 — ouroboros-rest: [BD.5] Opt-in aggregate telemetry
@@ -977,6 +981,7 @@ e2e: connect ✓ · scan ✓ · template→Studio ✓ · pick ✓ · launch→qu
   thresholds; payload matches documentation (audit); opt-out clean.
 - **Parallelism/Dependencies:** Needs BB.3/BB.5.
 - **Technical Stack:** NestJS, consented aggregation.
+- **Documentation:** User Guide `wizard.mdx` (caption/footer provenance); Administration `sign-in-and-workspace.mdx` § The Workspace card (opt-in, payload, self-hosted off); add `administration.workspace.telemetry`.
 - **Epic:** BD
 
 ---

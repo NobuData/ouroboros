@@ -761,6 +761,7 @@ e2e: parity ✓ · approve→merge ✓ · allow-once→resume ✓ · waive→ann
   merge-class buttons confirm-gated; mirrors stay consistent.
 - **Parallelism/Dependencies:** Needs BN.1/BN.2, mockup-19 roadmap.
 - **Technical Stack:** Slack Block Kit + interactions via 19.
+- **Documentation:** User Guide `inbox.mdx` § Answer from anywhere (Slack buttons, confirm page), new `user-guide/chatops.mdx`; Administration new `chatops.mdx` (app install, user mapping), `notifications-and-webhooks.mdx`; DF.5 #1218.
 - **Epic:** BP
 
 ### Issue BP.2 — ouroboros-ui: [BP.2] Mobile & web push
@@ -780,6 +781,7 @@ e2e: parity ✓ · approve→merge ✓ · allow-once→resume ✓ · waive→ann
   ADR merged.
 - **Parallelism/Dependencies:** Needs BN.3 prefs.
 - **Technical Stack:** Web Push (VAPID), service worker.
+- **Documentation:** User Guide `inbox.mdx` § Notification settings (devices, threshold, mutes), § Answer from anywhere (push row, deep link); Administration `deploy/containers.mdx` + config reference (VAPID variables).
 - **Epic:** BP
 
 ### Issue BP.3 — ouroboros-engine: [BP.3] Decision briefs
@@ -799,6 +801,7 @@ e2e: parity ✓ · approve→merge ✓ · allow-once→resume ✓ · waive→ann
   layout preserved.
 - **Parallelism/Dependencies:** Needs BN.1, AF.2.
 - **Technical Stack:** FastAPI, structured output.
+- **Documentation:** User Guide `inbox.mdx` § Reading a decision card (`AI brief`, citations, absence normal); Administration `policies.mdx` (per-kind enablement, off switch); `insights.mdx` cost; recapture `user-guide.inbox.card`.
 - **Epic:** BP
 
 ### Issue BP.4 — ouroboros-rest: [BP.4] Auto-accept policy authoring & batch answers
@@ -820,6 +823,7 @@ e2e: parity ✓ · approve→merge ✓ · allow-once→resume ✓ · waive→ann
   excluded by design).
 - **Parallelism/Dependencies:** Needs BN.2, BN.4.
 - **Technical Stack:** NestJS, condition builder.
+- **Documentation:** Administration `policies.mdx` new *Auto-accept rules* (builder, preview, kill switches, merge-class refused); User Guide `inbox.mdx` § Answering (batch), § What needs a human; add `administration.policies.auto-accept`.
 - **Epic:** BP
 
 ### Issue BP.5 — ouroboros-rest: [BP.5] SLA alerts & escalation chains
@@ -838,6 +842,7 @@ e2e: parity ✓ · approve→merge ✓ · allow-once→resume ✓ · waive→ann
   register.
 - **Parallelism/Dependencies:** Needs BN.3, BM.2.
 - **Technical Stack:** NestJS scheduler.
+- **Documentation:** User Guide `inbox.mdx` § Time limits and escalation (thresholds, chains, delegation, snooze), § This week (breach); Administration `policies.mdx` § Decision time limits; add `administration.policies.escalation`.
 - **Epic:** BP
 
 ---

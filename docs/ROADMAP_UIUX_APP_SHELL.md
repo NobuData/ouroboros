@@ -779,6 +779,7 @@ matrix: 3 scales × 2 themes × 5 pages ─▶ diffs ✓ · overflow probe ✓ �
   audit; preference persists; no per-page overrides needed (token proof).
 - **Parallelism/Dependencies:** After CQ.1/CQ.3.
 - **Technical Stack:** CSS tokens, prefs API.
+- **Documentation:** finding-your-way.mdx § Appearance (Density comfortable/compact beside font size, saved to the account); recapture user-guide.appearance
 - **Epic:** CR
 
 ### Issue CR.2 — ouroboros-ui: [CR.2] Navigation customization
@@ -794,6 +795,7 @@ matrix: 3 scales × 2 themes × 5 pages ─▶ diffs ✓ · overflow probe ✓ �
   search/⌘K; reset restores registry order.
 - **Parallelism/Dependencies:** Needs CP.2.
 - **Technical Stack:** React dnd, prefs API.
+- **Documentation:** finding-your-way.mdx § The sidebar (edit mode, reorder, hide, Reset to default; hidden stays reachable); new user-guide.shell.edit-nav, recapture user-guide.shell
 - **Epic:** CR
 
 ### Issue CR.3 — ouroboros-ui: [CR.3] Display-aware scale suggestion
@@ -810,6 +812,7 @@ matrix: 3 scales × 2 themes × 5 pages ─▶ diffs ✓ · overflow probe ✓ �
   through CQ.2; dismissal sticks.
 - **Parallelism/Dependencies:** Needs CQ.2.
 - **Technical Stack:** React, heuristics.
+- **Documentation:** finding-your-way.mdx § Appearance (the one-time scale suggestion toast: apply/preview, never auto-applies, per-display dismissal); no screenshot
 - **Epic:** CR
 
 ---

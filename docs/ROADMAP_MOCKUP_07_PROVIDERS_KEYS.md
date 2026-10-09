@@ -1959,6 +1959,7 @@ e2e: parity ✓ · add ✓ · test truth ✓ · reveal/rotate ✓ · pull ✓ ·
 - **Parallelism/Dependencies:** Independent (AB.1, AD.3 as inputs). Blocks
   AF.2.
 - **Technical Stack:** ADR, streaming prototype.
+- **Documentation:** None — not user-visible: an ADR under docs/; no product surface.
 - **Epic:** AF
 
 ### Issue AF.2 — ouroboros-rest: [AF.2] Chain executor implementation
@@ -1983,6 +1984,7 @@ e2e: parity ✓ · add ✓ · test truth ✓ · reveal/rotate ✓ · pull ✓ ·
 - **Parallelism/Dependencies:** Needs AF.1, AD.3, Z.1. Unlocks INTAKE-O.2,
   WF-T.6, AB.2.
 - **Technical Stack:** Per ADR (NestJS streaming or LiteLLM), adapter SPI.
+- **Documentation:** User Guide: models.mdx § Escalation rules / § Simulating routing (hop behaviour, floor abort, per-hop usage); Administration: providers.mdx § Testing and health (last used); /internal route stays off the site.
 - **Epic:** AF
 
 ```
@@ -2011,6 +2013,7 @@ engine ─▶ /internal/llm/invoke {resolution r1, payload}
   without UI changes.
 - **Parallelism/Dependencies:** Needs AC.1, AD.1.
 - **Technical Stack:** Provider APIs, AWS SDK (SigV4), Vault/OpenBao transit.
+- **Documentation:** Administration: providers.mdx § What you can connect (OpenAI/Gemini/Bedrock) and § Keys (KEK backends); deploy/containers.mdx vault row; operations.mdx re-wrap runbook; new OURO_* → .env.example + gen:config-reference.
 - **Epic:** AF
 
 ### Issue AF.4 — ouroboros-rest: [AF.4] Cap enforcement & spend alerts
@@ -2031,6 +2034,7 @@ engine ─▶ /internal/llm/invoke {resolution r1, payload}
   card shows blocked state; warning-only tooltip removed (truth updated).
 - **Parallelism/Dependencies:** Needs AF.2.
 - **Technical Stack:** NestJS, alert events.
+- **Documentation:** Administration: providers.mdx § Spend and the monthly cap (blocked state, 80/95/100 % alerts); User Guide: models.mdx § Escalation rules, inbox.mdx § Decision kinds; recapture administration.providers.
 - **Epic:** AF
 
 ### Issue AF.5 — ouroboros-ui: [AF.5] Ollama pull queue & model management
@@ -2049,6 +2053,7 @@ engine ─▶ /internal/llm/invoke {resolution r1, payload}
   guarded like connection deletion; disk figures only when real (honesty).
 - **Parallelism/Dependencies:** Needs AC.4.
 - **Technical Stack:** React, Ollama API.
+- **Documentation:** Administration: providers.mdx § Local models with Ollama (queue, cancel, delete + dependency guard, footprint), § Discovering models; recapture administration.providers, .discovery; add .ollama-queue.
 - **Epic:** AF
 
 ---

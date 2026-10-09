@@ -1236,6 +1236,7 @@ e2e: parity ✓ · upload→parse ✓ · classify→correction→transcript ✓ 
   fallback honest; affixes truthful.
 - **Parallelism/Dependencies:** Needs AT.4 contract, AF.2 (+Z.1 routing).
 - **Technical Stack:** FastAPI, structured output.
+- **Documentation:** User Guide: runs/tests.mdx § Reading a failure (triage narrative with model, cost and confidence note; heuristic fallback); recapture user-guide.tests.failure.
 - **Epic:** AV
 
 ### Issue AV.2 — ouroboros-rest: [AV.2] PR-plane activation (gating, waivers, annotations)
@@ -1255,6 +1256,7 @@ e2e: parity ✓ · upload→parse ✓ · classify→correction→transcript ✓ 
   truthful.
 - **Parallelism/Dependencies:** Needs mockup-12 roadmap, AS.4, AL.2.
 - **Technical Stack:** NestJS, SPI write surface.
+- **Documentation:** User Guide: runs/tests.mdx § Deciding what happens next (toggles gate the publish), pull-requests.mdx § Verification gates (quarantined failures distinct), § Waiving a claim (posted to the PR); recapture tests, pr.
 - **Epic:** AV
 
 ### Issue AV.3 — ouroboros-rest: [AV.3] Quarantine automation & insights feed
@@ -1274,6 +1276,7 @@ e2e: parity ✓ · upload→parse ✓ · classify→correction→transcript ✓ 
   un-quarantine on sustained green; export documented.
 - **Parallelism/Dependencies:** Needs AT.3 (+AV.2 for gate semantics).
 - **Technical Stack:** NestJS, policy config.
+- **Documentation:** User Guide: runs/tests.mdx § Flaky tests (auto-quarantine policy, soft signal), insights.mdx; Administration: policies.mdx § The rules, notifications-and-webhooks.mdx § Event families; recapture tests.flaky, policies.
 - **Epic:** AV
 
 ### Issue AV.4 — ouroboros-ui: [AV.4] Coverage deep-dive
@@ -1290,6 +1293,7 @@ e2e: parity ✓ · upload→parse ✓ · classify→correction→transcript ✓ 
   trend renders across seeded attempts; advisory-only (no fake gates).
 - **Parallelism/Dependencies:** Needs AT.1 coverage parsing, AO.3.
 - **Technical Stack:** React, lcov detail parsing.
+- **Documentation:** User Guide: runs/tests.mdx new § Coverage (per-file table, diff coverage, trend, advisory thresholds); add user-guide.tests.coverage, .tests.coverage.diff; docs-coverage.json entry for the new route.
 - **Epic:** AV
 
 ### Issue AV.5 — ouroboros-rest: [AV.5] Artifact store migration & scale-out
@@ -1305,6 +1309,7 @@ e2e: parity ✓ · upload→parse ✓ · classify→correction→transcript ✓ 
   measurable on fixture sets; tiered sweeps correct.
 - **Parallelism/Dependencies:** Needs AT.2.
 - **Technical Stack:** Storage drivers, migration jobs.
+- **Documentation:** Administration: operations.mdx new § Moving artifacts to S3, retention-audit-lifecycle.mdx (tiers per kind), deploy/containers.mdx; new OURO_ARTIFACT_* → .env.example + gen:config-reference; runs/tests.mdx retention row.
 - **Epic:** AV
 
 ---

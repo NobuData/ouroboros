@@ -1026,6 +1026,7 @@ e2e: parity ✓ · ranges ✓ · popovers ✓ · digest→mailpit ✓ · honesty
   email content; on-demand send round-trips; button honesty flips.
 - **Parallelism/Dependencies:** Needs BJ.4, mockup-19 roadmap.
 - **Technical Stack:** Slack Block Kit via 19's integration.
+- **Documentation:** User Guide `insights.mdx` § The weekly digest (Slack digest, Send this view); Administration new `chatops.mdx` (Slack app, channels), `notifications-and-webhooks.mdx`; add `administration.chatops.channels`.
 - **Epic:** BL
 
 ### Issue BL.2 — ouroboros-ui: [BL.2] Routing-suggestion surface & apply flow
@@ -1043,6 +1044,7 @@ e2e: parity ✓ · ranges ✓ · popovers ✓ · digest→mailpit ✓ · honesty
   in Models; dismissals persist; outcome deltas tracked honestly.
 - **Parallelism/Dependencies:** Needs AB.3, BK.4.
 - **Technical Stack:** React, routing deep-links.
+- **Documentation:** User Guide `insights.mdx` § The rest of the page (suggestion band, Apply in Models →, dismissal, outcome); `models.mdx` § Editing a route (staged change, user saves); add `user-guide.insights.suggestion`.
 - **Epic:** BL
 
 ### Issue BL.3 — ouroboros-rest: [BL.3] Custom ranges, saved views & export
@@ -1060,6 +1062,7 @@ e2e: parity ✓ · ranges ✓ · popovers ✓ · digest→mailpit ✓ · honesty
   versions.
 - **Parallelism/Dependencies:** Needs BJ.1.
 - **Technical Stack:** NestJS, React.
+- **Documentation:** User Guide `insights.mdx` § Choosing a range (custom, retention bound), new *Saved views* and *Exporting* (CSV with methodology versions); recapture `user-guide.insights.range`; add `user-guide.insights.saved-views`.
 - **Epic:** BL
 
 ### Issue BL.4 — ouroboros-rest: [BL.4] Scale-up & org-level analytics
@@ -1077,6 +1080,7 @@ e2e: parity ✓ · ranges ✓ · popovers ✓ · digest→mailpit ✓ · honesty
   cross-repo truth; migration rehearsed on a fixture volume.
 - **Parallelism/Dependencies:** Needs BI.2.
 - **Technical Stack:** ADR, TimescaleDB (conditional).
+- **Documentation:** User Guide `insights.mdx` § Choosing a range (all-repos scope, per-repo comparison); Administration `retention-audit-lifecycle.mdx` § Data retention (rollup tiers), `operations.mdx` if graduation is an operator step.
 - **Epic:** BL
 
 ### Issue BL.5 — ouroboros-engine: [BL.5] Insight narratives & anomaly notes
@@ -1095,6 +1099,7 @@ e2e: parity ✓ · ranges ✓ · popovers ✓ · digest→mailpit ✓ · honesty
   no narrative without a computed basis; dismissals persist.
 - **Parallelism/Dependencies:** Needs BJ.2, AF.2.
 - **Technical Stack:** FastAPI, structured output.
+- **Documentation:** User Guide `insights.mdx` § The rest of the page, new *AI notes* (badge, citations, dismissal, never replaces a computed line); `models.mdx` task kind; add `user-guide.insights.ai-note`.
 - **Epic:** BL
 
 ---
