@@ -36,6 +36,9 @@ const ROLES = page("roles.mdx");
 /** The sign-in & workspace settings page. */
 const SIGN_IN = page("sign-in-and-workspace.mdx");
 
+/** The members, invites, roles & API tokens page. */
+const MEMBERS = page("members-and-tokens.mdx");
+
 /**
  * Reads the value of one exported string constant of the UI, joining a value written as
  * several `"…" +` pieces — e.g. `export const NOTE =\n  "One " +\n  "two.";`.
@@ -217,7 +220,7 @@ describe("the roles & capabilities page (#1189)", () => {
   });
 
   it("carries no internal issue references or migration numbers in its prose", () => {
-    for (const text of [OVERVIEW, ROLES, SIGN_IN]) {
+    for (const text of [OVERVIEW, ROLES, SIGN_IN, MEMBERS]) {
       const prose = text
         .replace(/^--- .*? --- /, "")
         .replace(/\*\*[^*]+\*\*/g, "")
@@ -358,6 +361,148 @@ describe("the sign-in & workspace settings page (#1192)", () => {
   it("shows the screenshots the issue lists", () => {
     for (const id of ["administration.workspace", "administration.workspace.domain"]) {
       expect(SIGN_IN).toContain(`<Screenshot id="${id}" />`);
+    }
+  });
+});
+
+describe("the members, invites, roles & API tokens page (#1193)", () => {
+  /** The members card's copy module. */
+  const VIEW = "members/view.ts";
+
+  it("names the card's controls and dialogs as the card draws them", () => {
+    for (const name of [
+      "MEMBERS_TITLE",
+      "INVITE_LABEL",
+      "INVITE_EMAIL",
+      "INVITE_ROLE",
+      "INVITE_SEND",
+      "RESEND",
+      "REVOKE",
+      "MANAGE_TITLE",
+      "ROLE_SAVE",
+      "REMOVE_LABEL",
+      "REMOVE_CONFIRM",
+      "YOU_TAG",
+      "SERVICE_TITLE",
+      "SERVICE_CREATE",
+      "SERVICE_NAME",
+      "SERVICE_SCOPES",
+      "SERVICE_SUBMIT",
+      "TOKEN_TITLE",
+      "TOKEN_DONE",
+      "ROTATE",
+      "ROTATE_CONFIRM",
+      "REVOKE_CONFIRM",
+    ]) {
+      expect(MEMBERS).toContain(`**${constant(VIEW, name)}**`);
+    }
+    const view = source("ouroboros-ui", "app", ...VIEW.split("/"));
+    expect(view).toContain('capability: "Can approve loops"');
+    expect(view).toContain('lastActive: "Last active"');
+    expect(view).toContain('member: "Member"');
+    expect(view).toContain('role: "Role"');
+    for (const column of ["Member", "Role", "Can approve loops", "Last active"]) {
+      expect(MEMBERS).toContain(`| **${column}** |`);
+    }
+  });
+
+  it("quotes the card's warnings and refusals in its own words", () => {
+    for (const name of ["OWNER_ONLY_REASON", "LAST_OWNER_DEMOTE", "TOKEN_WARNING"]) {
+      expect(MEMBERS).toContain(constant(VIEW, name));
+    }
+    const view = source("ouroboros-ui", "app", ...VIEW.split("/"));
+    expect(view).toContain("return `Invitation sent to ${email}.`;");
+    expect(view).toContain(
+      "return `${name} goes from ${roleLabel(from)} to ${roleLabel(to)} at once, losing what that role allowed.`;",
+    );
+    expect(MEMBERS).toContain(
+      "*Maya Chen goes from Maintainer to Viewer at once, losing what that role allowed.*",
+    );
+    expect(view).toContain(
+      "return `${name} loses access to this workspace at once. Their audit history stays.`;",
+    );
+    expect(MEMBERS).toContain(
+      "*Jorge Reyes loses access to this workspace at once. Their audit history stays.*",
+    );
+    expect(view).toContain('"3–40 lower-case letters, digits or hyphens, starting with a letter."');
+    expect(MEMBERS).toContain("3–40 lower-case letters, digits or hyphens, starting with a letter");
+  });
+
+  it("offers the roles the invite picker offers, starting at Viewer", () => {
+    const view = source("ouroboros-ui", "app", ...VIEW.split("/"));
+    expect(view).toContain('export const DEFAULT_INVITE_ROLE: OrganizationRole = "viewer";');
+    expect(MEMBERS).toContain("New invitations start as **Viewer**.");
+    expect(MEMBERS).toContain("**The picker offers Owner, Maintainer and Viewer.**");
+  });
+
+  it("lists every scope a service account may hold, with the service's own description", () => {
+    const scopes = source("ouroboros-rest", "src", "modules", "auth", "service.scopes.ts");
+    expect(scopes).toContain('export const SERVICE_SCOPES = ["api.read", "farm.submit"] as const;');
+    const described = [...scopes.matchAll(/^ {2}"([a-z.]+)": "([^"]+)",$/gm)];
+    expect(described.map((match) => match[1])).toEqual(["api.read", "farm.submit"]);
+    for (const [, scope, description] of described) {
+      expect(MEMBERS).toContain(`| \`${scope}\` | ${description} |`);
+    }
+  });
+
+  it("quotes the token refusals as the service words them", () => {
+    const scopes = source("ouroboros-rest", "src", "modules", "auth", "service.scopes.ts");
+    for (const sentence of [
+      "This service token is not valid. It may have been rotated or revoked.",
+      "Service accounts cannot call this route; it needs a person's session.",
+    ]) {
+      expect(scopes).toContain(`"${sentence}"`);
+      expect(MEMBERS).toContain(`*${sentence}*`);
+    }
+    expect(scopes).toContain("`This service account lacks the ${scope} scope.`");
+    expect(MEMBERS).toContain("*This service account lacks the farm.submit scope.*");
+  });
+
+  it("names the token prefix and header the service reads", () => {
+    const principal = source("ouroboros-rest", "src", "modules", "auth", "service.principal.ts");
+    expect(principal).toContain('export const SERVICE_TOKEN_PREFIX = "orb_svc_";');
+    expect(MEMBERS).toContain("It starts with `orb_svc_`.");
+    expect(constant(VIEW, "TOKEN_WARNING")).toContain("This is the only time this token is shown");
+    expect(MEMBERS).toContain("`Authorization: Bearer <token>`");
+    expect(MEMBERS).toContain(":::caution[The token is shown once]");
+  });
+
+  it("describes invitations as recorded but not delivered or accepted in the app", () => {
+    // The day an accept screen or invitation mail ships, this page's warning must change.
+    expect(source("ouroboros-rest", "src", "auth", "auth.routes.ts")).toContain(
+      "**no email is sent**",
+    );
+    const ui = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) return entry.name === "__tests__" ? [] : ui(path);
+        return /\.tsx?$/.test(entry.name) && !entry.name.endsWith(".d.ts") ? [path] : [];
+      });
+    const accepting = ui(join(REPO_ROOT, "ouroboros-ui", "app")).filter((file) =>
+      /accept-invitation|acceptInvitation/.test(readFileSync(file, "utf8")),
+    );
+    expect(accepting).toEqual([]);
+    expect(MEMBERS).toContain(
+      ":::warning[Invitations are not delivered or accepted in the app yet]",
+    );
+    expect(MEMBERS).toContain('fetch("/api/auth/organization/accept-invitation"');
+  });
+
+  it("states the invitation lifetime the service leaves at the library's default", () => {
+    // No `invitationExpiresIn` anywhere in the service: the organization plugin's 48 hours apply.
+    for (const file of ["auth.options.ts", "organization.plugin.ts"]) {
+      expect(source("ouroboros-rest", "src", "auth", file)).not.toContain("invitationExpiresIn");
+    }
+    expect(MEMBERS).toContain("An invitation lasts 48 hours.");
+  });
+
+  it("shows the screenshots the issue lists", () => {
+    for (const id of [
+      "administration.members",
+      "administration.members.invite",
+      "administration.api-tokens.create",
+    ]) {
+      expect(MEMBERS).toContain(`<Screenshot id="${id}" />`);
     }
   });
 });

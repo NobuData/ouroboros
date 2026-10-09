@@ -1047,6 +1047,68 @@
       "capturedAt": "2026-10-09T02:27:29.127Z",
       "uiVersion": "0.144.1",
       "seedRef": "caed2437bc4861981f5ff9edb2b7d157f38127fb"
+    },
+    {
+      "id": "administration.members",
+      "route": "/settings",
+      "workspace": "acme-robotics",
+      "ready": "#settings-members-title",
+      "clip": "section:has(.members__footer)",
+      "masks": [
+        "#members tbody td:nth-child(4)",
+        "#members tbody td .members__muted",
+        ".members__service-meta > span:last-child"
+      ],
+      "caption": "The Members & roles card: everyone in the workspace, their role and approval capability, service accounts and pending invitations.",
+      "alt": "The Members & roles card for Acme Robotics, marked applies instantly, with + Invite member. Its table lists Ken Suenobu (you) as Owner and Maya Chen as Maintainer, both with Can approve loops ticked, Jorge Reyes as Viewer with the box unticked, the devops-bot service account as Service, and a pending Maintainer invitation for priya@acme.dev; the Last active column is masked. Below, the Service accounts section with + Create service account lists devops-bot with the scopes api.read and farm.submit, its masked token hint and Rotate and Revoke buttons, above the footer Owner > Maintainer (approve/merge) > Viewer (read-only).",
+      "capturedAt": "2026-10-09T02:42:19.056Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "749c1f6c1a354ac94511f4bbb0c5ea1e50626d2d"
+    },
+    {
+      "id": "administration.members.invite",
+      "route": "/settings",
+      "workspace": "acme-robotics",
+      "ready": "role=dialog[name='Invite a member']",
+      "clip": ".shell-overlay__panel",
+      "actions": [
+        {
+          "click": "role=button[name='+ Invite member']"
+        },
+        {
+          "fill": "role=dialog >> role=textbox[name='Email']",
+          "value": "sam@acme-robotics.dev"
+        }
+      ],
+      "caption": "Inviting a member: an email address and the role they will join with.",
+      "alt": "The Invite a member dialog with sam@acme-robotics.dev in the Email field and the Role choices Owner — everything, including deleting the workspace, Maintainer — approve/merge, and every setting but deletion, and Viewer — read-only, which is selected; the note They join with this role when they accept. Until then the invitation is a dimmed row you can resend or revoke., and Cancel and Send invitation buttons.",
+      "capturedAt": "2026-10-09T02:42:19.056Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "749c1f6c1a354ac94511f4bbb0c5ea1e50626d2d"
+    },
+    {
+      "id": "administration.api-tokens.create",
+      "route": "/settings",
+      "workspace": "acme-robotics",
+      "ready": "role=dialog[name='Create a service account']",
+      "clip": ".shell-overlay__panel",
+      "actions": [
+        {
+          "click": "role=button[name='+ Create service account']"
+        },
+        {
+          "fill": "role=dialog >> role=textbox[name='Name']",
+          "value": "release-bot"
+        },
+        {
+          "click": "role=dialog >> input[value='api.read']"
+        }
+      ],
+      "caption": "Creating a service account: a name and the scopes its token will carry.",
+      "alt": "The Create a service account dialog with release-bot in the Name field and its hint 3–40 lower-case letters, digits or hyphens, starting with a letter.; under Scopes, api.read — Read any workspace resource a viewer may read (GET requests). is ticked and farm.submit — Submit and cancel build-farm jobs (POST /farm/jobs). is not; Cancel and Create and show token buttons.",
+      "capturedAt": "2026-10-09T02:42:22.773Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "749c1f6c1a354ac94511f4bbb0c5ea1e50626d2d"
     }
   ]
 }

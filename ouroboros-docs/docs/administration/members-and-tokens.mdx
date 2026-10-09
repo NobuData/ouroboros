@@ -5,11 +5,202 @@ sidebar_position: 6
 description: "Inviting members, changing roles, and issuing API tokens."
 ---
 
-Inviting members, changing roles, and issuing API tokens.
+Use the **Members & roles** card in <UiPath path="Settings" /> to decide who is in the workspace
+and what each person may do. You also use it to give a script or a bot its own API token. This
+page covers inviting people, changing their role, removing them, and creating, rotating and
+revoking tokens.
 
-:::info[Being written]
+Everyone in the workspace can read the card. Only an **Owner** or a **Maintainer** can change
+it. Changes on this card apply at once — the card is marked **applies instantly**, and there is
+nothing to save. What each role allows is described in
+[Roles & capabilities](./roles.mdx).
 
-This page is being written in
-[#1193](https://github.com/NobuData/ouroboros/issues/1193).
+<Screenshot id="administration.members" />
+
+## Reading the card
+
+The table lists everyone in the workspace, then its service accounts, then pending invitations:
+
+| Column | What it shows |
+| --- | --- |
+| **Member** | The person's name, tagged **you** on your own row. A service account shows ⚙︎ and its name; an invitation shows the address it was sent to. |
+| **Role** | **Owner**, **Maintainer** or **Viewer**. A service account reads **Service**. For an invitation, the role the person will join with. |
+| **Can approve loops** | Whether the person may approve and merge — see [the approve-loops capability](./roles.mdx#the-approve-loops-capability). Service accounts never can. For an invitation, how long ago it was sent, and **expired** once it has run out. |
+| **Last active** | When the person or account last used Ouroboros. |
+
+The footer sums up the roles: **Owner > Maintainer (approve/merge) > Viewer (read-only)**.
+
+There are no seats to buy or count: a workspace can have as many members as you invite.
+
+## Inviting someone
+
+1. Choose **+ Invite member**.
+2. Type their **Email** — the address their GitHub account has verified.
+3. Choose their **Role**. New invitations start as **Viewer**. Only an Owner can invite
+   someone as an Owner; a Maintainer sees *Only an owner can make someone an owner.*
+4. Choose **Send invitation**.
+
+<Screenshot id="administration.members.invite" />
+
+The card says *Invitation sent to …* and adds the invitation as a dimmed row. On that row:
+
+- **Resend** starts the invitation's time again.
+- **Revoke** withdraws it.
+
+An invitation lasts 48 hours. After that the row reads **expired**: resend it to give the person
+another 48 hours.
+
+:::warning[Invitations are not delivered or accepted in the app yet]
+
+**Send invitation** records the invitation, but no email is sent. There is also no screen yet
+where the invited person accepts it. Signing in does not accept it either: someone who signs in
+with an invitation waiting still arrives in a personal workspace of their own.
+
+Until that arrives, tell the person yourself, and have them accept it in their browser:
+
+1. They sign in to Ouroboros with GitHub, using the account whose verified address you
+   invited.
+2. They open the browser's developer console on any Ouroboros page and run:
+
+   ```js
+   await (await fetch("/api/auth/organization/list-user-invitations")).json()
+   ```
+
+   Each invitation in the list has an `id`, the workspace's `organizationName` and a `status`.
+   Note the `id` of the invitation whose `status` is `pending`.
+3. They accept it with that `id`:
+
+   ```js
+   await fetch("/api/auth/organization/accept-invitation", {
+     method: "POST",
+     headers: { "content-type": "application/json" },
+     body: JSON.stringify({ invitationId: "<the id>" }),
+   })
+   ```
+
+4. They reload the page and switch to your workspace from the workspace chip in the header.
+
+Their row on your card turns from a dimmed invitation into a member with the role you chose.
 
 :::
+
+## Changing someone's role
+
+Select the person's role on their row — it opens **Change role or remove**. Choose the new role
+and **Change role**.
+
+- **The picker offers Owner, Maintainer and Viewer.** Only an Owner can make someone an Owner.
+- **A change that takes something away asks first.** For example, *Maya Chen goes from
+  Maintainer to Viewer at once, losing what that role allowed.* Confirm to apply it.
+- **The last Owner is protected.** You cannot change the role of the workspace's only Owner:
+  *This is the workspace's last owner. Make someone else an owner before changing this role.*
+- **A Maintainer cannot change an Owner.** The change is refused with *You are not allowed to
+  update this member*. Ask an Owner.
+- **The approve-loops box stays as it was.** If you ticked or unticked someone's
+  **Can approve loops** box yourself, a role change keeps your choice.
+
+Some people show as **Viewer** but hold an older role, `member`, that can do a little more. See
+[The member role](./roles.mdx#the-member-role). Choosing **Viewer** for them makes them a true
+Viewer.
+
+## Removing someone
+
+Open **Change role or remove** on their row and choose **Remove from workspace**. The dialog warns
+you, for example *Jorge Reyes loses access to this workspace at once. Their audit history
+stays.* Choose **Yes, remove**.
+
+The last Owner cannot be removed — make someone else an Owner first. A Maintainer cannot remove
+an Owner.
+
+Every invitation, role change, capability change and removal is recorded in the audit log.
+
+## API tokens and service accounts
+
+A script, a CI job or a bot that calls the REST API needs its own token. In Ouroboros a token
+belongs to a **service account**: an identity of its own, so what the bot does appears in the
+audit log under its name, not a person's. Each service account holds one token at a time.
+
+Only Owners and Maintainers can see, create, rotate and revoke service accounts. They are listed
+under **Service accounts** on the Members & roles card, with each one's scopes, the last four
+characters of its token and when it was last used.
+
+### Scopes
+
+A service account can do only what its scopes allow:
+
+| Scope | What it allows |
+| --- | --- |
+| `api.read` | Read any workspace resource a viewer may read (GET requests). |
+| `farm.submit` | Submit and cancel build-farm jobs (POST /farm/jobs). |
+
+`api.read` covers reading, and nothing else. A write is allowed only where a scope names it —
+today that is only `farm.submit` for build-farm jobs. Anything else a token tries to change is
+refused. Some reads are refused too, whatever the scopes: those that answer about a person or
+an administrator, such as the members list, the workspace settings and the audit log.
+
+Give each service account the fewest scopes it needs.
+
+### Creating a token
+
+1. Under **Service accounts**, choose **+ Create service account**.
+2. Give it a **Name**: 3–40 lower-case letters, digits or hyphens, starting with a letter, such
+   as `release-bot`. Its actions are recorded as `service:release-bot`.
+3. Tick its **Scopes** — at least one.
+4. Choose **Create and show token**.
+
+<Screenshot id="administration.api-tokens.create" />
+
+The next dialog, **Copy this token now**, shows the token. It starts with `orb_svc_`. Copy it,
+then choose **I have copied it**.
+
+:::caution[The token is shown once]
+
+*This is the only time this token is shown — you will not see it again. If it is lost, rotate
+the account to get a new one.* Ouroboros keeps only a fingerprint of the token, so nobody can
+read it back — not even an Owner.
+
+Treat the token like a password:
+
+- Put it straight into your secret store or your CI's secrets, never in a repository, a
+  ticket or a chat message.
+- Give each bot its own service account, so you can revoke one without breaking the others.
+- If a token may have leaked, rotate or revoke it at once.
+
+:::
+
+A program sends the token in the `Authorization` header: `Authorization: Bearer <token>`. For
+examples with `curl`, see [Using the REST API from the shell](../cli/rest-api.mdx).
+
+### Rotating a token
+
+Choose **Rotate** on the account, then **Rotate and show new token**. The account keeps its
+name, scopes and history and gets a new token, shown once as above. The old token stops working
+the moment the new one is shown, so update everything that uses it.
+
+### Revoking a service account
+
+Choose **Revoke**, then **Yes, revoke**. The token stops working at once and the account is
+disabled. This cannot be undone: to give the bot access again, create a new service account.
+
+## What can go wrong
+
+- **The invited person arrives in a workspace of their own.** Invitations are not accepted at
+  sign-in yet. Have them accept it as described under
+  [Inviting someone](#inviting-someone).
+- **The person's invitation list is empty, or accepting is refused.** They signed in with an
+  account whose verified address differs from the one you invited, or the invitation expired.
+  Resend it, or revoke it and invite the address they signed in with.
+- **Inviting is refused with *User is already a member of this organization*.** They are
+  already in the workspace. Change their role instead.
+- **The Owner choice is greyed out.** *Only an owner can make someone an owner.* Ask an Owner.
+- **A token is refused with *This service token is not valid. It may have been rotated or
+  revoked.*** The token was rotated or the account was revoked. Use the current token, or
+  create a new account.
+- **A token is refused with *This service account lacks the farm.submit scope.*** The account
+  does not hold the scope that route needs. Create an account with the scope, or call a route
+  the account may use.
+- **A token is refused with *Service accounts cannot call this route; it needs a person's
+  session.*** The route answers about a person or administers the workspace, so no token may
+  call it.
+- **The Service accounts section has no create button.** You are not an Owner or Maintainer, or
+  the list of accounts could not be read. Reload the page.

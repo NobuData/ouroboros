@@ -122,12 +122,13 @@ beside a workspace's tenant domain does not appear for any workspace.
 ## Who can sign in
 
 Anyone with a GitHub account who can reach your sign-in page can sign in. Signing in does not
-by itself put someone in your workspace:
+put anyone in your workspace. Someone who belongs to no workspace yet gets a personal workspace
+of their own, named after them, of which they are the Owner. They see nothing of any other
+workspace until they accept an invitation to it.
 
-- **Someone you invited** joins your workspace. Ouroboros matches their GitHub account to the
-  invitation by email address, but only an address that GitHub has verified.
-- **Anyone else** gets a personal workspace of their own, named after them, of which they are
-  the Owner. They see nothing of any other workspace until someone invites them.
+Signing in does not accept an invitation. The invited person accepts it themselves, with the
+GitHub account whose verified address you invited — see
+[Inviting someone](./members-and-tokens.mdx#inviting-someone).
 
 To keep strangers off the deployment altogether, put the UI on a network only your people can
 reach. To invite people, see [Members, invites, roles & API tokens](./members-and-tokens.mdx).
@@ -216,8 +217,9 @@ the purge removes, are covered in
   Serve the UI over HTTPS at the address `BETTER_AUTH_URL` names.
 - **Everyone was signed out at once.** `BETTER_AUTH_SECRET` changed. Everyone signs in again;
   nothing else is lost.
-- **An invited person arrives in a workspace of their own.** Their GitHub account has no
-  verified address matching the invitation. Ask them to verify that address on GitHub, or
-  invite the address GitHub shows as verified.
+- **An invited person arrives in a workspace of their own.** Signing in does not accept an
+  invitation. They accept it as described in
+  [Inviting someone](./members-and-tokens.mdx#inviting-someone), with a GitHub account that
+  has verified the invited address.
 - **The tenant domain will not save.** Either it is not a lower-case domain (*Enter a
   lower-case domain name, such as acme.ouroboros.dev.*), or another workspace holds it.
