@@ -75,6 +75,17 @@ check_exists ouroboros-docs/.gitignore 'ouroboros-docs/.gitignore exists'
 check_exists ouroboros-docs/.dockerignore 'ouroboros-docs/.dockerignore exists'
 check_exists ouroboros-docs/Dockerfile 'ouroboros-docs/Dockerfile exists'
 check_exists ouroboros-docs/nginx.conf 'ouroboros-docs/nginx.conf exists'
+# A user-visible change updates the site in the same pull request (#1209): the rule is in
+# AGENTS.md and CONVENTIONS.md § 11, and the /implement skill carries the steps.
+check_contains AGENTS.md 'User-visible changes must update `ouroboros-docs`' \
+  'AGENTS.md requires user-visible changes to update ouroboros-docs'
+check_contains docs/CONVENTIONS.md '^## 11\. Documentation$' 'docs/CONVENTIONS.md § 11 is Documentation'
+check_contains .claude/skills/implement/SKILL.md '^- \*\*Documentation\*\* \(`ouroboros-docs`' \
+  'the /implement skill has a Documentation step'
+check_contains .claude/skills/implement/SKILL.md 'yarn screenshots --only <id>' \
+  'and recaptures only the affected screenshots'
+check_contains .claude/skills/implement/SKILL.md '^- \*\*Documentation\*\*: the `ouroboros-docs` pages' \
+  'and asks the PR body for a Documentation section'
 
 printf '\nRoot README module map\n'
 for module in $MODULES ouroboros-web; do
