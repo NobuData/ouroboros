@@ -2369,6 +2369,7 @@ e2e: parity ✓ · filters ✓ · select→queue→dashboard ✓ · re-estimate 
   catches missed deliveries.
 - **Parallelism/Dependencies:** Needs K.4. Enables O.5.
 - **Technical Stack:** GitHub App, webhooks, Octokit.
+- **Documentation:** sources.mdx § Connecting GitHub, § Two GitHub tokens, § How sources sync (App, webhooks, PAT fallback), sign-in-and-workspace.mdx § What the app may see, deploy/overview + app-host; App vars via gen:config-reference
 - **Epic:** O
 
 ```
@@ -2395,6 +2396,7 @@ GitHub ── issues webhook (signed) ──▶ receiver ─▶ upsert (idempote
 - **Parallelism/Dependencies:** Needs L.2, provider/routing roadmaps (mockups
   06/07).
 - **Technical Stack:** FastAPI, provider clients, structured output.
+- **Documentation:** issues.mdx § Reading a size (sized by <model>, async path) + § Where confidence comes from (fallback named), providers.mdx § Spend (estimation cap); new OURO_* via gen:config-reference; recapture issues.estimate
 - **Epic:** O
 
 > **Amendment (#435, BI.4 — estimator calibration).** The estimator's own calibration is now
@@ -2420,6 +2422,7 @@ GitHub ── issues webhook (signed) ──▶ receiver ─▶ upsert (idempote
   shows registry workflows; suggestion honors registry availability.
 - **Parallelism/Dependencies:** Needs mockup-04 roadmap.
 - **Technical Stack:** NestJS, workflow registry.
+- **Documentation:** user-guide/issues.mdx § Queueing issues (Assign workflow ▾ lists real workflows) + § Reading a size, workflows/studio.mdx § What can go wrong (renames vs old estimates); recapture user-guide.issues.queue-dialog
 - **Epic:** O
 
 ### Issue O.4 — ouroboros-engine: [O.4] Estimation signals from knowledge
@@ -2438,6 +2441,7 @@ GitHub ── issues webhook (signed) ──▶ receiver ─▶ upsert (idempote
   the O.2 benchmark documented.
 - **Parallelism/Dependencies:** Needs O.2, mockup-14 roadmap.
 - **Technical Stack:** FastAPI, knowledge/retrieval services.
+- **Documentation:** user-guide/issues.mdx § Where confidence comes from (three signals in the trace, graceful degradation), user-guide/knowledge.mdx § Scope; recapture user-guide.issues.estimate
 - **Epic:** O
 
 ### Issue O.5 — ouroboros-rest: [O.5] GitHub write-backs
@@ -2454,6 +2458,7 @@ GitHub ── issues webhook (signed) ──▶ receiver ─▶ upsert (idempote
   on re-estimate; audit rows on every write-back.
 - **Parallelism/Dependencies:** Needs O.1 (+#26 audit path).
 - **Technical Stack:** Octokit, NestJS.
+- **Documentation:** sources.mdx § Configuring a source (opt-in, ouro:size labels, intake comment, kill-switch), retention-audit-lifecycle.mdx § The audit trail, user-guide/issues.mdx § Reading a size; add administration.sources.write-backs
 - **Epic:** O
 
 ```

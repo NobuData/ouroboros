@@ -1835,6 +1835,7 @@ e2e: parity ✓ · edit→apply ✓ · publish gate ✓ · dry-run path ✓ · r
   prototype results recorded; T.6 scoped accordingly.
 - **Parallelism/Dependencies:** None (parallel with all v2). Blocks T.6.
 - **Technical Stack:** ADR, asyncio prototype.
+- **Documentation:** None — not user-visible: an ADR and a resume-after-restart prototype in `docs/`; no product surface changes until T.6 ships
 - **Epic:** T
 
 ### Issue T.2 — ouroboros-rest: [T.2] Jira ticket-source provider
@@ -1854,6 +1855,7 @@ e2e: parity ✓ · edit→apply ✓ · publish gate ✓ · dry-run path ✓ · r
   status mapping table documented.
 - **Parallelism/Dependencies:** Needs Q.5. Parallel with T.3/T.4.
 - **Technical Stack:** Jira REST v3, JQL, webhooks.
+- **Documentation:** sources.mdx § What you can connect (Jira arrives), § Configuring a source (base URL, project keys, token), § How sources sync (status-category table), issues.mdx § Where the backlog comes from; add sources.jira
 - **Epic:** T
 
 ```
@@ -1874,6 +1876,7 @@ JQL "project in (…) AND updated >= cursor" ─▶ mapTicket(status-category→
   `ENG-123` key) round-trip intake; team scoping honored.
 - **Parallelism/Dependencies:** Needs Q.5. Parallel with T.2/T.4.
 - **Technical Stack:** Linear GraphQL API, webhooks.
+- **Documentation:** sources.mdx § What you can connect (Linear arrives), § Configuring a source (API key, team), § How sources sync (state-type mapping), issues.mdx § Where the backlog comes from; add sources.linear
 - **Epic:** T
 
 ### Issue T.4 — ouroboros-rest: [T.4] GitLab ticket-source provider
@@ -1890,6 +1893,7 @@ JQL "project in (…) AND updated >= cursor" ─▶ mapTicket(status-category→
   fixtures; tickets flow end to end.
 - **Parallelism/Dependencies:** Needs Q.5. Parallel with T.2/T.3.
 - **Technical Stack:** GitLab REST v4, webhooks.
+- **Documentation:** sources.mdx § What you can connect (GitLab arrives), § Configuring a source (base URL, project, token), § How sources sync (label/state mapping), issues.mdx § Where the backlog comes from; add sources.gitlab
 - **Epic:** T
 
 ### Issue T.5 — ouroboros-ui: [T.5] Workflow template library
@@ -1906,6 +1910,7 @@ JQL "project in (…) AND updated >= cursor" ─▶ mapTicket(status-category→
   themed; templates validate against the current DSL schema in CI.
 - **Parallelism/Dependencies:** Needs P.3. Coordinates with mockup-13's roadmap.
 - **Technical Stack:** React, #46 primitives.
+- **Documentation:** user-guide/workflows/studio.mdx § Creating a workflow (gallery, create-from-template, provenance), getting-started/wizard.mdx § 3; add user-guide.workflow.templates; coverage entry if a new route
 - **Epic:** T
 
 ### Issue T.6 — ouroboros-engine: [T.6] Workflow execution bridge
@@ -1929,6 +1934,7 @@ JQL "project in (…) AND updated >= cursor" ─▶ mapTicket(status-category→
   provably enforced.
 - **Parallelism/Dependencies:** Needs T.1, #54, DASH-J.3, provider roadmaps.
 - **Technical Stack:** Per ADR (asyncio interpreter or Temporal), FastAPI.
+- **Documentation:** user-guide/concepts.mdx (simulated note removed), runs/console.mdx (pinned version, crash-resume), workflows/studio.mdx § Which version runs, inbox.mdx § Decision kinds; recapture run.live, concepts.loop-in-app
 - **Epic:** T
 
 ```

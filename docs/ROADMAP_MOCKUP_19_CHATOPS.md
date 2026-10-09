@@ -256,6 +256,7 @@ v2`** created at filing; every issue assigned. Complexity chips:
   distinct; teams rows storable-but-inert.
 - **Parallelism/Dependencies:** Needs AD.1, BR.4. Blocks BY.2–BY.4, BZ.*.
 - **Technical Stack:** PostgreSQL 17, Flyway.
+- **Documentation:** none — not user-visible: database tables for chat connections and channel bindings; what people meet is documented with BZ.1 (#535) and CA.1 (#541).
 - **Epic:** BY
 
 ```mermaid
@@ -290,6 +291,7 @@ erDiagram
   cover the matrix; mirror queries efficient (channel+ts index).
 - **Parallelism/Dependencies:** Needs BY.1, BM.1. Feeds BZ.2/BZ.3, CA.2.
 - **Technical Stack:** PostgreSQL 17, Flyway.
+- **Documentation:** none — not user-visible: database tables for message and command records; the mirror that renders them is documented with CA.2 (#542).
 - **Epic:** BY
 
 ```
@@ -314,6 +316,7 @@ chat_commands{/ouro status, invoker: ken-link, outcome: ok}
   member; unlink revokes cleanly.
 - **Parallelism/Dependencies:** Needs BY.1, BR.1. Feeds BZ.1/BZ.4.
 - **Technical Stack:** PostgreSQL 17, Flyway.
+- **Documentation:** none — not user-visible: database tables for identity links and on-call assignments; the linking flow is documented with BZ.1 (#535).
 - **Epic:** BY
 
 ```
@@ -341,6 +344,7 @@ on_call{ken} ─▶ blocking questions DM Ken (rotations: CB.3)
   red/green verified.
 - **Parallelism/Dependencies:** Needs BY.2/BY.3 (+BM.4/AO.5 coordination).
 - **Technical Stack:** Flyway repeatable migration, SQL.
+- **Documentation:** none — not user-visible: the development seed and its probes; it is what the ChatOps screenshots are captured from, not a change a person meets.
 - **Epic:** BY
 
 ```
@@ -384,6 +388,7 @@ seeds: connection(app v2.4) · 3 channels · 6-message stream (refs live) ·
   reproduces a working app; truth rows flip (amendments verified).
 - **Parallelism/Dependencies:** Needs BY.1/BY.3. Blocks BZ.2–BZ.4.
 - **Technical Stack:** Slack OAuth/Events/interactivity, HMAC verification.
+- **Documentation:** new `administration/chatops.mdx` (Slack install, scopes, endpoints, Socket Mode dev-only, `OURO_*` vars) + `user-guide/chatops.mdx` (`/ouro link`); `cli/ouro.mdx` DF.5 (#1218)
 - **Epic:** BZ
 
 ```
@@ -418,6 +423,7 @@ POST /slack/interactivity ─▶ verify sig+ts ─▶ ack ≤3s ─▶ async han
 - **Parallelism/Dependencies:** Needs BY.2, BN.1, BR.3/BR.4. Blocks BZ.4,
   CA.2.
 - **Technical Stack:** Block Kit, outbox, Slack Web API.
+- **Documentation:** `user-guide/chatops.mdx` (decision/event cards, system lines, countdown), `administration/chatops.mdx` (retries, dedupe, dead-letter); `cli/ouro.mdx` DF.5 (#1218)
 - **Epic:** BZ
 
 ```
@@ -454,6 +460,7 @@ item(protected_path) + route ─▶ outbox ─▶ Block Kit card {⏸ headline, 
   command = registry entry only).
 - **Parallelism/Dependencies:** Needs BZ.1 (+plane APIs). Blocks BZ.5.
 - **Technical Stack:** NestJS, grammar registry.
+- **Documentation:** new `cli/ouro.mdx` — the `/ouro` grammar from the registry (nine commands, `confirm`, `help`, `explain pr` v2) — DF.5 (#1218); `user-guide/chatops.mdx` commands overview
 - **Epic:** BZ
 
 ```
@@ -484,6 +491,7 @@ item(protected_path) + route ─▶ outbox ─▶ Block Kit card {⏸ headline, 
 - **Parallelism/Dependencies:** Needs BZ.2, BN.2 (+BM timers). Delivers
   BP.1's scope (coordination).
 - **Technical Stack:** Slack interactivity, BN.2 composition.
+- **Documentation:** `user-guide/chatops.mdx` (answer from chat, merge-class deep link, escalation), `user-guide/inbox.mdx` (priority bump), `administration/chatops.mdx` (windows, on-call); `cli/ouro.mdx` DF.5
 - **Epic:** BZ
 
 ```
@@ -511,6 +519,7 @@ unanswered 30m ─▶ escalate: inbox ↑ + DM on-call + card "⚠ escalated"
   keyboard-complete; both themes.
 - **Parallelism/Dependencies:** Needs BZ.3, H.3.
 - **Technical Stack:** React, palette extension.
+- **Documentation:** `finding-your-way.mdx` (palette command mode), `user-guide/chatops.mdx` (console parity), `cli/ouro.mdx` (DF.5); recapture `user-guide.command-palette`; new `user-guide.chatops.console`
 - **Epic:** BZ
 
 ```
@@ -534,6 +543,7 @@ unanswered 30m ─▶ escalate: inbox ↑ + DM on-call + card "⚠ escalated"
   verification or the capability check turns tests red; ≤ 120s added.
 - **Parallelism/Dependencies:** Needs BZ.1–BZ.5.
 - **Technical Stack:** Jest, Slack fixture harness.
+- **Documentation:** none — not user-visible: the Slack fixture harness and integration suites; nothing a person or integrator meets changes.
 - **Epic:** BZ
 
 ```
@@ -575,6 +585,7 @@ the #16 tokens (both themes; the mockup is dark-only).
   health truthful; both themes; #49 stub retired (amendment).
 - **Parallelism/Dependencies:** Needs #41, BZ.1, BA-D.5. Blocks CA.2–CA.4.
 - **Technical Stack:** Next.js, #46 primitives.
+- **Documentation:** new `user-guide/chatops.mdx` + `administration/chatops.mdx` (page, add channel, health strip, install); notifications rows live; coverage `/chatops`; shots `user-guide.chatops`, `administration.chatops.install`; DF.5
 - **Epic:** CA
 
 ```
@@ -605,6 +616,7 @@ the #16 tokens (both themes; the mockup is dark-only).
   plain-text honesty; refs deep-link correctly.
 - **Parallelism/Dependencies:** Needs CA.1, BZ.2 (+BZ.3 composer).
 - **Technical Stack:** React, #46 primitives, I.8 poll family.
+- **Documentation:** `user-guide/chatops.mdx` (mirror card, message treatments, composer, Teams not-yet); shot `user-guide.chatops.mirror`; DF.5 (#1218)
 - **Epic:** CA
 
 ```
@@ -632,6 +644,7 @@ the #16 tokens (both themes; the mockup is dark-only).
   drive real publishes (fixture); v2 labels honest; both themes.
 - **Parallelism/Dependencies:** Needs CA.1, BZ.3, BR.4.
 - **Technical Stack:** React, #46 primitives.
+- **Documentation:** `user-guide/chatops.mdx` (commands + routing cards), `notifications-and-webhooks.mdx` (chat route targets); shots `user-guide.chatops.commands`, `.routing`; DF.5 (#1218)
 - **Epic:** CA
 
 ```
@@ -656,6 +669,7 @@ Blocking questions → [#ouroboros-loops ▾] + DM on-call (Ken · rotations arr
   CB.1 lands (slot contract documented); both themes.
 - **Parallelism/Dependencies:** Needs CA.1.
 - **Technical Stack:** React, #46 primitives.
+- **Documentation:** `user-guide/chatops.mdx` — AI-presence card as a preview (D12), pointer to `/ouro` commands (`cli/ouro.mdx`, DF.5); shot `user-guide.chatops.ai-preview`
 - **Epic:** CA
 
 ```
@@ -686,6 +700,7 @@ today: the /ouro commands ↓ work everywhere
 - **Parallelism/Dependencies:** Needs CA.2–CA.4, BY.4, BZ.6 harness;
   amends #56.
 - **Technical Stack:** React, Playwright, Slack fixtures.
+- **Documentation:** `user-guide/chatops.mdx` what-can-go-wrong (unlinked, DLQ, revoked, channel-removed, read-only), `administration/chatops.mdx` (retry, re-install); shot `user-guide.chatops.unlinked`; DF.5
 - **Epic:** CA
 
 ```
@@ -727,6 +742,7 @@ e2e: install ✓ · publish→mirror ✓ · button→resume→update ✓ · comm
   degrade gracefully ("here's what I can compute…").
 - **Parallelism/Dependencies:** Needs BZ.3, AF.2 (+BV findings, BI).
 - **Technical Stack:** FastAPI, tool-calling, structured output.
+- **Documentation:** `user-guide/chatops.mdx` AI presence replaces the preview; `cli/ouro.mdx` `explain pr` available (DF.5); `pull-requests.mdx` summary; shot `user-guide.chatops.ai-presence` replaces `.ai-preview`
 - **Epic:** CB
 
 ### Issue CB.2 — ouroboros-rest: [CB.2] MS Teams integration
@@ -745,6 +761,7 @@ e2e: install ✓ · publish→mirror ✓ · button→resume→update ✓ · comm
   channels; segment truthful.
 - **Parallelism/Dependencies:** Needs BZ.2/BZ.3.
 - **Technical Stack:** Teams bot framework, adaptive cards.
+- **Documentation:** `administration/chatops.mdx` Teams half (install, binding, degradations), `user-guide/chatops.mdx` Teams tag, `cli/ouro.mdx` parity (DF.5); recapture `.mirror`; new `administration.chatops.teams-install`
 - **Epic:** CB
 
 ### Issue CB.3 — ouroboros-rest: [CB.3] On-call rotations & DM policies
@@ -762,6 +779,7 @@ e2e: install ✓ · publish→mirror ✓ · button→resume→update ✓ · comm
   the right human.
 - **Parallelism/Dependencies:** Needs BY.3 (+BP.5 shape).
 - **Technical Stack:** NestJS scheduler.
+- **Documentation:** `administration/chatops.mdx` (rotations, overrides, quiet hours, fall-through, calendar), `user-guide/inbox.mdx` (handoff DM); shot `administration.chatops.rotations`; coverage if a new route
 - **Epic:** CB
 
 ### Issue CB.4 — ouroboros-rest: [CB.4] Run-thread steering continuity
@@ -782,6 +800,7 @@ e2e: install ✓ · publish→mirror ✓ · button→resume→update ✓ · comm
 - **Parallelism/Dependencies:** Needs BZ.2, AP.4 (delivers AR.4 —
   coordination).
 - **Technical Stack:** Slack threads, AP.4 composition.
+- **Documentation:** `user-guide/chatops.mdx` (run threads, reply-to-steer vocabulary, mirroring), `user-guide/runs/console.mdx` (steering caption live); recapture the console's steering shot, `user-guide.chatops.mirror`
 - **Epic:** CB
 
 ### Issue CB.5 — ouroboros-rest: [CB.5] Channel digests & subscriptions
@@ -798,6 +817,7 @@ e2e: install ✓ · publish→mirror ✓ · button→resume→update ✓ · comm
   cadence; quiet hours honored; filters correct.
 - **Parallelism/Dependencies:** Needs BZ.2, BJ.4.
 - **Technical Stack:** NestJS scheduler, renderer.
+- **Documentation:** `cli/ouro.mdx` subscribe/unsubscribe/subscriptions (DF.5), `user-guide/chatops.mdx` digests + quiet hours, `administration/chatops.mdx` + `notifications-and-webhooks.mdx` (revoke, once); recapture `.routing`
 - **Epic:** CB
 
 ---

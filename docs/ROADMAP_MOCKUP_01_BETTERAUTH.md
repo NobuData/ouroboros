@@ -1892,6 +1892,7 @@ signed-in  ─▶ /login ─▶ active org? ──yes─▶ /dashboard ──no�
   - Provider misconfiguration fails closed with a designed error, never a stack trace.
 - **Parallelism/Dependencies:** Needs A.5, C.2. Blocks E.2.
 - **Technical Stack:** @better-auth/sso (samlify, jose), Flyway.
+- **Documentation:** sign-in-and-workspace.mdx § Enterprise SSO (SAML/OIDC per workspace, ssoAvailable) + § Who can sign in (JIT membership); new OURO_* via gen:config-reference; screens are #723's
 - **Epic:** E
 
 ```mermaid
@@ -1924,6 +1925,7 @@ sequenceDiagram
   - Both themes; designed error states for IdP failures.
 - **Parallelism/Dependencies:** Needs E.1, D.3.
 - **Technical Stack:** Next.js, better-auth SSO client, #46 primitives.
+- **Documentation:** getting-started/sign-in.mdx § Step 1 (SSO redirect), sign-in-and-workspace.mdx § Enterprise SSO + § Tenant domain; recapture user-guide.sign-in, add administration.sso(.domain); coverage entry for the SSO settings route
 - **Epic:** E
 
 ### Issue E.3 (#724) — ouroboros-rest: [E.3] Invitation flow with email delivery
@@ -1940,6 +1942,7 @@ sequenceDiagram
   - Non-admin cannot invite; revoked invitations cannot be accepted.
 - **Parallelism/Dependencies:** Needs A.5. Parallel with E.1.
 - **Technical Stack:** better-auth org plugin hooks, mailer abstraction, Next.js pages.
+- **Documentation:** members-and-tokens.mdx § Inviting someone (email, expiry, resend/revoke, pending list), notifications-and-webhooks.mdx § Setting up email, sign-in.mdx; recapture administration.members.invite, add .members.pending
 - **Epic:** E
 
 ```
@@ -1963,6 +1966,7 @@ admin ─▶ invite(email, role) ─▶ hook ─▶ mail ─▶ /invitations/:id
   - #38's body updated to remove superseded items.
 - **Parallelism/Dependencies:** Needs A.4, C.2; audit path needs #26.
 - **Technical Stack:** better-auth rate limiting, @nestjs/throttler, #26 audit table.
+- **Documentation:** sign-in-and-workspace.mdx § What can go wrong (429 + Retry-After), retention-audit-lifecycle.mdx § The audit trail (four auth events), cli/rest-api.mdx § Errors; no screenshots
 - **Epic:** E
 
 ```

@@ -395,6 +395,7 @@ every issue assigned. Complexity chips: **XS · S · M · L**.
 - **Parallelism/Dependencies:** Needs #19, BA-B.3 (#708). Blocks CS.2–CS.6,
   CV.1, CV.2.
 - **Technical Stack:** PostgreSQL 17, Flyway.
+- **Documentation:** None — not user-visible: database projection of the hub catalog; the screens it feeds are documented with CW.1–CW.4 (#794–#797).
 - **Epic:** CS
 
 ```mermaid
@@ -450,6 +451,7 @@ erDiagram
 - **Parallelism/Dependencies:** Needs CS.1, WF-P.1 (#132). Blocks CS.3, CS.6,
   CT.6, CV.3.
 - **Technical Stack:** PostgreSQL 17, Flyway.
+- **Documentation:** None — not user-visible: installation rows and node provenance; the provenance chip and uninstall behaviour are documented with CW.5 (#798).
 - **Epic:** CS
 
 ```
@@ -489,6 +491,7 @@ installation{hil-bench-smoke@2.3 sha256:9f1c…}
     row.
 - **Parallelism/Dependencies:** Needs CS.1, CS.2. Blocks CS.6, CV.5.
 - **Technical Stack:** PostgreSQL 17, Flyway.
+- **Documentation:** None — not user-visible: vote and review tables; the voting rules a person meets are documented with CV.5 (#791) and CW.4 (#797).
 - **Epic:** CS
 
 ```
@@ -519,6 +522,7 @@ vote_history: up(2.2) → down(2.3) → up(2.3) ─▶ hub sees the pattern, not
   the page; three seeded publications reproduce the stats tile.
 - **Parallelism/Dependencies:** Needs CS.1. Blocks CS.6, CV.4.
 - **Technical Stack:** PostgreSQL 17, Flyway.
+- **Documentation:** None — not user-visible: publication state rows; the states an author sees are documented with CV.4 (#790) and CW.6 (#799).
 - **Epic:** CS
 
 ```
@@ -555,6 +559,7 @@ publication draft ─▶ checking ─(safety findings)─▶ failed ⤾ fix ⤿
 - **Parallelism/Dependencies:** Needs CS.1, BQ.1 (#480). Blocks CS.6, CT.4,
   CV.6.
 - **Technical Stack:** PostgreSQL 17, Flyway.
+- **Documentation:** administration/marketplace.mdx (new): the grant vocabulary and what each permits; trusted hub keys, rotation and revocation. Policy section itself with CV.6.
 - **Epic:** CS
 
 ```
@@ -594,6 +599,7 @@ grant vocab (closed)                     policy(marketplace)            trust st
 - **Parallelism/Dependencies:** Needs CS.2–CS.5, WF-P.5 (#136), BE.5 (#409) for
   the referenced skill, AH seeds for the `hil` pool tag. Feeds every CV/CW test.
 - **Technical Stack:** Flyway repeatable migration, SQL/JSON.
+- **Documentation:** None — not user-visible: development seed; it is what the marketplace screenshots (CW.1–CW.7) are captured from.
 - **Epic:** CS
 
 ```
@@ -620,6 +626,7 @@ seeds ─▶ 6 listings · 10 categories · 5 publishers · 14 installs · 1 upd
   guard is removed — each verified by deliberately breaking it once in review.
 - **Parallelism/Dependencies:** Needs CS.6, #24. Blocks nothing; gates the epic.
 - **Technical Stack:** GitHub Actions, SQL, ajv.
+- **Documentation:** None — not user-visible: ci/db constraint probes.
 - **Epic:** CS
 
 ```
@@ -676,6 +683,7 @@ ci/db: migrate ─▶ constraints (+CS probes) ─▶ seeds ⊨ package schema �
     and states the inertness property in the first paragraph.
 - **Parallelism/Dependencies:** Needs WF-P.2 (#133). Blocks CT.2–CT.6, CU.3.
 - **Technical Stack:** JSON Schema 2020-12, zod, pydantic v2.
+- **Documentation:** administration/marketplace.mdx (new) § The package format: data-only snippets, the one-inlet/one-outlet rule, typed parameters, grants, the committed schema.
 - **Epic:** CT
 
 ```
@@ -720,6 +728,7 @@ package.json ─▶ schema (committed, $id: snippet/v1)
 - **Parallelism/Dependencies:** Needs CT.1, WF-P.1/P.3 (#132/#134). Blocks
   CT.3, CV.4, CW.6.
 - **Technical Stack:** NestJS, Kysely, zod.
+- **Documentation:** administration/marketplace.mdx § Building a package: what is inferred with evidence, what is promoted or stripped, the named selection rejections (wizard with CW.6).
 - **Epic:** CT
 
 ```
@@ -765,6 +774,7 @@ selection {n_a31, n_c07, n_8f2} ─▶ induced subgraph ─▶ inlet/outlet chec
 - **Parallelism/Dependencies:** Needs CT.2, R.2 (#144), AR.5 (#319). Blocks
   CU.3 (the hub re-runs the same kit), CV.4.
 - **Technical Stack:** NestJS, the existing scanner, engine dry-run client.
+- **Documentation:** administration/marketplace.mdx § Safety checks before listing: the pipeline, findings with rule/locator/remedy, re-run on the hub, stale check blocks submission.
 - **Epic:** CT
 
 ```
@@ -801,6 +811,7 @@ submit ─▶ [secrets][lints][license][schema][R.2 smoke][hygiene] ─▶ repor
     normalisation (JCS fixtures).
 - **Parallelism/Dependencies:** Needs CT.1, CS.5. Blocks CT.6, CV.1, CV.3.
 - **Technical Stack:** NestJS, node crypto (Ed25519), JCS canonicalisation.
+- **Documentation:** administration/marketplace.mdx § Signatures and verification (digest identity, refusal + decision item, key rotation); user-guide/inbox.mdx the verification-failure decision kind.
 - **Epic:** CT
 
 ```
@@ -847,6 +858,7 @@ fetch version ─▶ recompute sha256(JCS(package)) == digest ?
 - **Parallelism/Dependencies:** Needs CT.1, CS.1, AH.6 (#254), BF.1 (#410),
   Z.1 (#194), CH.3 (#586). Blocks CT.6, CV.2, CV.3, CW.4.
 - **Technical Stack:** NestJS, Kysely.
+- **Documentation:** user-guide/marketplace.mdx § Compatibility and what Requires means: live rows, computed insertion point, remedy links, cost figure provenance (rendered by CW.4).
 - **Epic:** CT
 
 ```
@@ -895,6 +907,7 @@ fit(hil-bench-smoke@2.3, standard-fix)
 - **Parallelism/Dependencies:** Needs CT.5, CS.2, WF-P.3 (#134). Blocks CV.3,
   CW.5, CT.7.
 - **Technical Stack:** NestJS, graph utilities, WF DSL validators.
+- **Documentation:** user-guide/marketplace.mdx § Installing / Updating / Uninstalling (draft-only writes, 3-way merge, named uninstall refusal); workflows/studio.mdx § provenance on inserted nodes.
 - **Epic:** CT
 
 ```
@@ -928,6 +941,7 @@ fork     copy subgraph, drop link            uninstall  remove ▸ restore from�
   suite red; property tests run with a fixed seed and a documented shrink case.
 - **Parallelism/Dependencies:** Needs CT.6. Feeds CU.8, CV.7.
 - **Technical Stack:** Vitest/Jest, fast-check (property testing).
+- **Documentation:** None — not user-visible: conformance corpus and property tests.
 - **Epic:** CT
 
 ```
@@ -984,6 +998,7 @@ props/  install∘uninstall = id · merge idempotent · no id collisions · no o
 - **Parallelism/Dependencies:** Needs #8, #11, #55. Blocks all CU work.
 - **Technical Stack:** NestJS, Kysely, PostgreSQL 17, Flyway, Docker, GitHub
   Actions.
+- **Documentation:** administration/marketplace.mdx (new) § Running a private hub: the ouroboros-hub image, its OURO_* variables (.env.example + gen:config-reference); deploy/overview and containers gain the optional service.
 - **Epic:** CU
 
 ```
@@ -1023,6 +1038,7 @@ trust boundary #4: rest ──HTTPS+token──▶ hub   (browser never)
 - **Parallelism/Dependencies:** Needs CU.1, BA-C.3 (#713) for the workspace
   identity source. Blocks CU.3, CU.5, CU.6.
 - **Technical Stack:** NestJS, GitHub OAuth, Kysely.
+- **Documentation:** administration/marketplace.mdx § Publisher identity, tokens and the verified badge (identity ownership, not safety); user-guide/marketplace.mdx § Who wrote it.
 - **Epic:** CU
 
 ```
@@ -1062,6 +1078,7 @@ publish_token(hashed) ⟷ workspace_id(opaque, from rest) ─▶ publish · vote
 - **Parallelism/Dependencies:** Needs CU.2, CT.1, CT.3. Blocks CU.4, CU.7,
   CV.4.
 - **Technical Stack:** NestJS, Kysely, node crypto.
+- **Documentation:** administration/marketplace.mdx § Publishing rules: slug ownership and typosquat review, immutable versions, what a yank does and does not do.
 - **Epic:** CU
 
 ```
@@ -1104,6 +1121,7 @@ yank(v2.2) ─▶ hidden from search · still resolvable by digest · installs w
     budget (measured, recorded in the issue).
 - **Parallelism/Dependencies:** Needs CU.3. Blocks CU.5, CU.6, CV.2.
 - **Technical Stack:** NestJS, PostgreSQL FTS + `pg_trgm`, Kysely.
+- **Documentation:** user-guide/marketplace.mdx § How listings are ranked: proportion bar, Wilson-bound sort, 'not enough votes yet', Trending's half-life, per-query facet counts, search syntax.
 - **Epic:** CU
 
 ```
@@ -1146,6 +1164,7 @@ facets        ▸ counts for the *current* query, not a static rail
 - **Parallelism/Dependencies:** Needs CU.4, CU.2, CU.6 (install records).
   Blocks CU.7, CV.5.
 - **Technical Stack:** NestJS, Kysely, rate limiting.
+- **Documentation:** user-guide/marketplace.mdx § Voting and reviews: install first, one per workspace, change/retract, self-vote refused, 'under review' stats (shared with CV.5).
 - **Epic:** CU
 
 ```
@@ -1185,6 +1204,7 @@ PUT /vote {up, v2.3, ws#7f3}
     reproduces the numbers by hand.
 - **Parallelism/Dependencies:** Needs CU.4. Blocks CU.5, CU.7, CV.2, CV.3.
 - **Technical Stack:** NestJS, Kysely.
+- **Documentation:** user-guide/marketplace.mdx § What the numbers mean (deduped installs, cost provenance, leaderboard formula); administration/marketplace.mdx § Telemetry: opt-in, k-anonymous, the fields sent.
 - **Epic:** CU
 
 ```
@@ -1223,6 +1243,7 @@ points_90d = Σ installs × thumbs-up-rate   (the leaderboard caption, computed)
     never rendered as HTML.
 - **Parallelism/Dependencies:** Needs CU.3, CU.5, CU.6. Blocks CU.8, CV.1.
 - **Technical Stack:** NestJS, Kysely.
+- **Documentation:** user-guide/marketplace.mdx § Reporting a listing; user-guide/inbox.mdx the takedown advisory (warns, never edits); administration/marketplace.mdx § Moderation for hub operators.
 - **Epic:** CU
 
 ```
@@ -1254,6 +1275,7 @@ advisories feed ─▶ CV.1 poll ─▶ inbox decision item "installed version y
   manifests).
 - **Parallelism/Dependencies:** Needs CU.3–CU.7, CT.7, CS.6. Feeds CV.7, CW.8.
 - **Technical Stack:** NestJS testing, Vitest/Jest, Docker.
+- **Documentation:** None — not user-visible: hub test fixtures and the `hub-fixture` compose profile are developer tooling.
 - **Epic:** CU
 
 ```
@@ -1305,6 +1327,7 @@ lifecycle: publish▸list▸search▸resolve▸vote▸review▸yank▸advisory  
 - **Parallelism/Dependencies:** Needs CS.1, CT.4, CU.4, CU.7, BM.1/BN.1
   (#457/#461) for the decision kinds. Blocks CV.2–CV.5.
 - **Technical Stack:** NestJS, undici/fetch, Kysely.
+- **Documentation:** administration/marketplace.mdx § Connecting to the hub (hub URL/token OURO_* vars via .env.example + gen:config-reference, caching); user-guide/marketplace.mdx § When the hub is unreachable.
 - **Epic:** CV
 
 ```
@@ -1345,6 +1368,7 @@ rest ──token──▶ hub  (ETag · TTL · circuit breaker)
   - OpenAPI complete; the generated UI client compiles.
 - **Parallelism/Dependencies:** Needs CV.1, CT.5, CS.2/CS.3. Blocks CW.1–CW.4.
 - **Technical Stack:** NestJS, Kysely, class-validator.
+- **Documentation:** cli/rest-api.mdx: a GET /api/v1/marketplace/catalog recipe (params, degraded-mode field) for api.read tokens; screens with CW.1–CW.4.
 - **Epic:** CV
 
 ```
@@ -1389,6 +1413,7 @@ GET /stats ─▶ {published 412(+37), installed_here 14/5wf, votes30d 9.4k/88%,
 - **Parallelism/Dependencies:** Needs CT.6, CV.1, CS.5, CV.6, WF-P.3 (#134).
   Blocks CW.5, CV.7.
 - **Technical Stack:** NestJS, Kysely, transactional apply.
+- **Documentation:** user-guide/marketplace.mdx § Installing (the refusals, digest-bound consent, admin-required → decision); user-guide/inbox.mdx the install-approval decision kind; policies.mdx § Marketplace.
 - **Epic:** CV
 
 ```
@@ -1428,6 +1453,7 @@ uninstall ─▶ restore plan ─▶ draft   (refuse ⇒ reason + "detach instea
 - **Parallelism/Dependencies:** Needs CT.2, CT.3, CU.3, CS.4, BR.1 (#485).
   Blocks CW.6.
 - **Technical Stack:** NestJS, Kysely.
+- **Documentation:** user-guide/marketplace.mdx § My contributions: publication states, stale-check rule, the name that rides along; roles.mdx the marketplace.publish capability.
 - **Epic:** CV
 
 ```
@@ -1461,6 +1487,7 @@ check ─▶ report{block×0, warn×2}  ─▶ submit ─▶ hub listing  ─▶
   - Reviews without a vote are refused server-side even if the client asks.
 - **Parallelism/Dependencies:** Needs CV.1, CS.3, CU.5. Blocks CW.4.
 - **Technical Stack:** NestJS, Kysely.
+- **Documentation:** user-guide/marketplace.mdx § Voting and reviews (You voted, not yet counted, rejected votes, pending review); roles.mdx marketplace.vote; retention-audit page the vote audit event.
 - **Epic:** CV
 
 ```
@@ -1500,6 +1527,7 @@ hub down ─▶ pending_sync (retry) ─▶ UI: "your vote will count once the h
 - **Parallelism/Dependencies:** Needs CS.5, BQ.2 (#481), BR.1/BR.2/BR.3
   (#485/#486/#487), BM.1/BN.1/BN.2 (#457/#461/#462). Blocks CV.3, CV.7.
 - **Technical Stack:** NestJS, Kysely.
+- **Documentation:** policies.mdx § Marketplace (every switch); roles.mdx the three marketplace capabilities; retention-audit page the audit events; inbox.mdx the install decision. Shot administration.policies.marketplace.
 - **Epic:** CV
 
 ```
@@ -1532,6 +1560,7 @@ audit: install(slug@v, digest, grants, actor) · vote · publish · policy_chang
   budget with the fixture hub containerised.
 - **Parallelism/Dependencies:** Needs CV.1–CV.6, CU.8, CT.7. Gates the epic.
 - **Technical Stack:** Jest/Vitest, supertest, Testcontainers.
+- **Documentation:** None — not user-visible: integration test suites against the fixture hub.
 - **Epic:** CV
 
 ```
@@ -1582,6 +1611,7 @@ the #16 tokens and both themes.
 - **Parallelism/Dependencies:** Needs CP.2 (#644), CP.4 (#646), CQ.1 (#648),
   CV.2, #46. Blocks CW.2–CW.6.
 - **Technical Stack:** Next.js App Router, TypeScript, generated API client.
+- **Documentation:** user-guide/marketplace.mdx (new): the page, head actions, stats tiles; finding-your-way.mdx sidebar entry. Shots user-guide.marketplace + recapture user-guide.shell. Coverage /marketplace.
 - **Epic:** CW
 
 ```
@@ -1610,6 +1640,7 @@ the #16 tokens and both themes.
   five including `(you)` outside the top five.
 - **Parallelism/Dependencies:** Needs CW.1, CV.2. Feeds CW.7.
 - **Technical Stack:** Next.js, TypeScript.
+- **Documentation:** user-guide/marketplace.mdx § Finding a snippet: live rail counts, the four switches and their meaning, URL-reflected filters, leaderboard with (you). Shot user-guide.marketplace.filters.
 - **Epic:** CW
 
 ```
@@ -1643,6 +1674,7 @@ rail: categories(facets) · switches(URL-reflected) · leaderboard(+you)
   announced as a list with names.
 - **Parallelism/Dependencies:** Needs CW.1, CV.2. Blocks CW.4, CW.6.
 - **Technical Stack:** Next.js, TypeScript, CSS modules/tokens.
+- **Documentation:** user-guide/marketplace.mdx § Reading a card: badges, contributor row, ranking row, contextual action; search syntax, sort segment. Shot user-guide.marketplace.card.
 - **Epic:** CW
 
 ```
@@ -1683,6 +1715,7 @@ unrated: "not enough votes yet"  ·  installed: [Update to v4.0]
   container, never the page.
 - **Parallelism/Dependencies:** Needs CW.3, CV.2, CV.5. Blocks CW.5.
 - **Technical Stack:** Next.js, TypeScript.
+- **Documentation:** user-guide/marketplace.mdx § The listing panel: vote states, stages inserted, live Requires rows, grants, cost provenance, reviews; Follow is v2. Shot user-guide.marketplace.listing.
 - **Epic:** CW
 
 ```
@@ -1723,6 +1756,7 @@ detail: 96% (1,204 votes) [▲ Helpful cast][▼ Not helpful]  "You voted"
 - **Parallelism/Dependencies:** Needs CW.4, CV.3, S.3 (#149), S.5 (#151), S.6
   (#152). Blocks CW.7, CW.8.
 - **Technical Stack:** Next.js, TypeScript, React Flow (Studio side).
+- **Documentation:** user-guide/marketplace.mdx § Installing / Updating / Uninstalling (dialog, digest-bound consent, merge); studio.mdx § provenance chip, update banner. Shots .install, .update-merge, workflow.provenance-chip.
 - **Epic:** CW
 
 ```
@@ -1760,6 +1794,7 @@ update: changelog ─ diff ─ per-node keep local | take incoming
 - **Parallelism/Dependencies:** Needs CW.3, CV.4, S.5 (#151) multi-select.
   Blocks CW.7.
 - **Technical Stack:** Next.js, TypeScript.
+- **Documentation:** user-guide/marketplace.mdx § Publishing a snippet (entry points, four steps, irreversible facts); studio.mdx § Publish a selection. Shots .publish.selection, .publish.safety; coverage if a route.
 - **Epic:** CW
 
 ```
@@ -1792,6 +1827,7 @@ update: changelog ─ diff ─ per-node keep local | take incoming
   dialog and publish wizard.
 - **Parallelism/Dependencies:** Needs CW.2–CW.6. Blocks CW.8.
 - **Technical Stack:** Next.js, TypeScript, Storybook, axe.
+- **Documentation:** user-guide/marketplace.mdx § What can go wrong: availability, empty, rating, permission, compatibility and lifecycle states with what still works. Shots .unreachable, .blocked.
 - **Epic:** CW
 
 ```
@@ -1823,6 +1859,7 @@ states: hub down(stale) · disabled · private-only · empty · unrated · block
 - **Parallelism/Dependencies:** Needs CW.7, CU.8, CV.7, #56. **This is the MVP
   gate.**
 - **Technical Stack:** Playwright, Docker Compose.
+- **Documentation:** None — not user-visible: the end-to-end suite's marketplace leg.
 - **Epic:** CW
 
 ```
@@ -1861,6 +1898,7 @@ e2e: browse▸filter▸sort▸detail▸install(consent)▸draft v15✓▸publish
   downstream at the next sync; no upstream call is made for private-only slugs.
 - **Parallelism/Dependencies:** Needs CU.7, CV.1. — **Epic:** CX
 - **Technical Stack:** NestJS, Kysely.
+- **Documentation:** administration/marketplace.mdx § Private hubs and mirroring (allow-list, dual provenance, precedence, sync); admin UI shot administration.marketplace.mirror; coverage for its route.
 
 ### Issue CX.2 — ouroboros-rest: [CX.2] Air-gapped mirror bundles
 
@@ -1879,6 +1917,7 @@ e2e: browse▸filter▸sort▸detail▸install(consent)▸draft v15✓▸publish
   and source.
 - **Parallelism/Dependencies:** Needs CT.4, CV.1, CX.1. — **Epic:** CX
 - **Technical Stack:** NestJS, tar/zip, crypto.
+- **Documentation:** administration/marketplace.mdx § Air-gapped bundles (export, verified import, offline installs; a cli/ page if it ships as a command); user-guide/marketplace.mdx bundle age in the availability state.
 
 ### Issue CX.3 — ouroboros-hub: [CX.3] Quality gauntlet, provenance & badges
 
@@ -1901,6 +1940,7 @@ e2e: browse▸filter▸sort▸detail▸install(consent)▸draft v15✓▸publish
   badge; attestation verification is enforced for badged listings.
 - **Parallelism/Dependencies:** Needs CU.3, CT.3, R.2 (#144). — **Epic:** CX
 - **Technical Stack:** NestJS, engine dry-run, Sigstore.
+- **Documentation:** user-guide/marketplace.mdx § Badges (gauntlet, evidence links); administration/marketplace.mdx § Publishing with provenance (CI attestation, the workflow template).
 
 ### Issue CX.4 — ouroboros-hub: [CX.4] Author analytics, follows & notifications
 
@@ -1919,6 +1959,7 @@ e2e: browse▸filter▸sort▸detail▸install(consent)▸draft v15✓▸publish
   and rate-limited.
 - **Parallelism/Dependencies:** Needs CU.6, BN.3 (#463). — **Epic:** CX
 - **Technical Stack:** NestJS, Kysely, Next.js.
+- **Documentation:** user-guide/marketplace.mdx § Following and the author view; notifications-and-webhooks.mdx the two opt-in notification kinds. Shot user-guide.marketplace.author.
 
 ### Issue CX.5 — ouroboros-rest: [CX.5] Snippet suggestions & curated collections
 
@@ -1939,6 +1980,7 @@ e2e: browse▸filter▸sort▸detail▸install(consent)▸draft v15✓▸publish
 - **Parallelism/Dependencies:** Needs CV.2, CD.5 (#563), BV analyzers.
   — **Epic:** CX
 - **Technical Stack:** NestJS, Next.js.
+- **Documentation:** user-guide/marketplace.mdx § Collections and suggestions; workflows/copilot.mdx and analyzer.mdx § suggested snippets (Insert into draft / View in marketplace, what is never suggested).
 
 ### Issue CX.6 — ouroboros-rest: [CX.6] Additional listing kinds & dependencies
 
@@ -1959,6 +2001,7 @@ e2e: browse▸filter▸sort▸detail▸install(consent)▸draft v15✓▸publish
 - **Parallelism/Dependencies:** Needs CT.1, CV.3, BB.3 (#386), BE.1 (#405).
   — **Epic:** CX
 - **Technical Stack:** NestJS, Kysely.
+- **Documentation:** user-guide/marketplace.mdx § Kinds of listing and § Dependencies (full plan before consent); knowledge.mdx § imported skills; administration/marketplace.mdx package format gains kind.
 
 ### Issue CX.7 — ouroboros-hub: [CX.7] Reputation, weighted votes & anti-brigading
 
@@ -1977,6 +2020,7 @@ e2e: browse▸filter▸sort▸detail▸install(consent)▸draft v15✓▸publish
   methodology page reproduces a listing's score by hand.
 - **Parallelism/Dependencies:** Needs CU.5, CU.6, CU.7. — **Epic:** CX
 - **Technical Stack:** NestJS, Kysely, analytics jobs.
+- **Documentation:** user-guide/marketplace.mdx § How listings are ranked (trust weights, quarantine, version-scoped decay); administration/marketplace.mdx § Ranking methodology with the worked example.
 
 ---
 

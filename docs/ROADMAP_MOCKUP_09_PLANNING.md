@@ -1486,6 +1486,7 @@ e2e: parity ✓ · generate→size ✓ · push+deps+epic ✓ · sync-back ✓ ·
   cost honest; benchmark recorded.
 - **Parallelism/Dependencies:** Needs AL.1, AF.2 (+Z.1 routing).
 - **Technical Stack:** FastAPI, structured output, invocation gateway.
+- **Documentation:** User Guide: planning.mdx § Drafting tickets (from the description; llm-v1 provenance, per-batch cost, outline-v0 fallback), models.mdx § Routing (plan task kind); recapture user-guide.planning.tickets.
 - **Epic:** AN
 
 ### Issue AN.2 — ouroboros-rest: [AN.2] Jira, Linear & GitLab push
@@ -1507,6 +1508,7 @@ e2e: parity ✓ · generate→size ✓ · push+deps+epic ✓ · sync-back ✓ ·
   without changes.
 - **Parallelism/Dependencies:** Needs AL.2, WF-T.2–T.4.
 - **Technical Stack:** Jira REST v3, Linear GraphQL, GitLab REST.
+- **Documentation:** User Guide: planning.mdx § Pushing tickets to the tracker / § What is written (per-tracker mapping); Administration: sources.mdx § What you can connect (Jira, Linear, GitLab); recapture user-guide.planning.write-back.
 - **Epic:** AN
 
 ### Issue AN.3 — ouroboros-rest: [AN.3] Import from Jira
@@ -1525,6 +1527,7 @@ e2e: parity ✓ · generate→size ✓ · push+deps+epic ✓ · sync-back ✓ ·
   intact; re-import is a no-op; dry-run matches actual.
 - **Parallelism/Dependencies:** Needs AN.2.
 - **Technical Stack:** Jira REST/JQL, NestJS.
+- **Documentation:** User Guide: planning.mdx new § Importing from Jira (JQL scope, dry-run preview, idempotent re-import); Administration: sources.mdx § What you can connect (Jira); add user-guide.planning.import.
 - **Epic:** AN
 
 ### Issue AN.4 — ouroboros-ui: [AN.4] Shareable roadmap links
@@ -1543,6 +1546,7 @@ e2e: parity ✓ · generate→size ✓ · push+deps+epic ✓ · sync-back ✓ ·
   audited.
 - **Parallelism/Dependencies:** Needs AM.4 (+AD.4 audit shape).
 - **Technical Stack:** Next.js public route, signed tokens.
+- **Documentation:** User Guide: planning.mdx § The roadmap (Share ↗: scoped vs public, expiry, revocation); Administration: retention-audit-lifecycle.mdx (audit); add user-guide.planning.share; coverage entry for the share route.
 - **Epic:** AN
 
 ### Issue AN.5 — ouroboros-rest: [AN.5] Drift detection & re-planning suggestions
@@ -1567,6 +1571,7 @@ e2e: parity ✓ · generate→size ✓ · push+deps+epic ✓ · sync-back ✓ ·
 - **Parallelism/Dependencies:** Needs AM.4, DASH read-model; AN.1 for
   narratives.
 - **Technical Stack:** NestJS analysis job, engine narratives.
+- **Documentation:** User Guide: planning.mdx § The roadmap (drift annotations, suggest → apply → dismiss, provenance, methodology note); recapture user-guide.planning.timeline, add .planning.drift.
 - **Epic:** AN
 
 ```

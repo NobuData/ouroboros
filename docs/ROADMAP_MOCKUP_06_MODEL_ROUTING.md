@@ -2084,6 +2084,7 @@ e2e: parity ✓ · reorder→save ✓ · rule→simulate ✓ · floor fail ✓ �
   candidate executors.
 - **Parallelism/Dependencies:** Independent; input to the mockup-07 roadmap.
 - **Technical Stack:** Docs.
+- **Documentation:** None — not user-visible: a requirements document in `docs/` for the invocation-gateway ADR; nothing a person or integrator meets changes
 - **Epic:** AB
 
 ### Issue AB.2 — ouroboros-rest: [AB.2] Traffic-derived health & latency
@@ -2103,6 +2104,7 @@ e2e: parity ✓ · reorder→save ✓ · rule→simulate ✓ · floor fail ✓ �
   measured latency.
 - **Parallelism/Dependencies:** Needs the 07 roadmap's invocation layer.
 - **Technical Stack:** NestJS, telemetry aggregation.
+- **Documentation:** models.mdx § Provider health (measured latency/error rate, degraded reason + window, unknown retired), administration/providers.mdx § Testing and health (thresholds); recapture models.routing, administration.providers
 - **Epic:** AB
 
 ### Issue AB.3 — ouroboros-rest: [AB.3] Learned routing suggestions
@@ -2121,6 +2123,7 @@ e2e: parity ✓ · reorder→save ✓ · rule→simulate ✓ · floor fail ✓ �
   documented thresholds; UI hints dismiss/persist; no auto-mutation.
 - **Parallelism/Dependencies:** Needs AB.2.
 - **Technical Stack:** NestJS/engine analysis, fixtures.
+- **Documentation:** user-guide/models.mdx § The routing matrix (dismissible suggestion hints, never auto-applied) + a methodology subsection; add user-guide.models.routing.suggestion
 - **Epic:** AB
 
 ### Issue AB.4 — ouroboros-ui: [AB.4] Full spend report surface
@@ -2138,6 +2141,7 @@ e2e: parity ✓ · reorder→save ✓ · rule→simulate ✓ · floor fail ✓ �
   clearly separated; export correct.
 - **Parallelism/Dependencies:** Needs Z.5, DASH-J.4.
 - **Technical Stack:** React, dataviz per the design system.
+- **Documentation:** user-guide/models.mdx new § Spend (windows, breakdowns, priced vs unpriced, budget lines, CSV), administration/providers.mdx § Spend link; add user-guide.models.spend; coverage entry /models/spend → user-guide/models
 - **Epic:** AB
 
 ### Issue AB.5 — ouroboros-rest: [AB.5] Per-repo route overrides
@@ -2155,6 +2159,7 @@ e2e: parity ✓ · reorder→save ✓ · rule→simulate ✓ · floor fail ✓ �
   removing an override falls back cleanly; isolation preserved.
 - **Parallelism/Dependencies:** Needs Z.1.
 - **Technical Stack:** NestJS, React.
+- **Documentation:** user-guide/models.mdx § The routing matrix (repository context) + § Editing a route (overridden values marked, removal); recapture user-guide.models.routing, add user-guide.models.routing.override
 - **Epic:** AB
 
 ---

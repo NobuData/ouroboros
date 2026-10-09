@@ -1212,6 +1212,7 @@ e2e: sync ✓ · gates ✓ · waive+annotate ✓ · arm→flip→merge ✓ · ac
   cost honest; `unavailable` state retired.
 - **Parallelism/Dependencies:** Needs AX.2, AF.2 (+Z.1 votes).
 - **Technical Stack:** FastAPI, structured output, invocation gateway.
+- **Documentation:** User Guide: pull-requests.mdx § Verification gates (model review verdict, re-vote per revision), § Changed files and the review thread, § Returning to the loop; models.mdx § Routing; recapture pr, pr.evidence.
 - **Epic:** AZ
 
 ### Issue AZ.2 — ouroboros-engine: [AZ.2] Claim extraction & auto-evidence mapping
@@ -1231,6 +1232,7 @@ e2e: sync ✓ · gates ✓ · waive+annotate ✓ · arm→flip→merge ✓ · ac
   nothing auto-verifies without confirmation.
 - **Parallelism/Dependencies:** Needs AX.3, AF.2.
 - **Technical Stack:** FastAPI, structured output.
+- **Documentation:** User Guide: pull-requests.mdx § Does the PR do what the ticket says? (extracted claims labelled, suggested evidence, human confirm); recapture user-guide.pr.criteria.
 - **Epic:** AZ
 
 ### Issue AZ.3 — ouroboros-rest: [AZ.3] GitLab merge-request support
@@ -1249,6 +1251,7 @@ e2e: sync ✓ · gates ✓ · waive+annotate ✓ · arm→flip→merge ✓ · ac
   MR walks the e2e chain; mapping table documented.
 - **Parallelism/Dependencies:** Needs AX.1, WF-T.4.
 - **Technical Stack:** GitLab REST v4.
+- **Documentation:** Administration: sources.mdx § What you can connect (GitLab MRs, mapping table); User Guide: pull-requests.mdx § Human approval (approvals), § Merging (host strategies); screenshots only once a GitLab seed exists.
 - **Epic:** AZ
 
 ### Issue AZ.4 — ouroboros-rest: [AZ.4] App merge identity & deep license scanning
@@ -1269,6 +1272,7 @@ e2e: sync ✓ · gates ✓ · waive+annotate ✓ · arm→flip→merge ✓ · ac
   correctly; footers truthful.
 - **Parallelism/Dependencies:** Needs INTAKE-O.1, AX.2.
 - **Technical Stack:** GitHub App tokens, license detection engine.
+- **Documentation:** Administration: sources.mdx § Connecting GitHub (App merge identity), policies.mdx § The rules (deep license tier); User Guide: pull-requests.mdx § Merging, § Verification gates; recapture user-guide.pr.
 - **Epic:** AZ
 
 ### Issue AZ.5 — ouroboros-engine: [AZ.5] Loop-created PRs end-to-end
@@ -1290,6 +1294,7 @@ e2e: sync ✓ · gates ✓ · waive+annotate ✓ · arm→flip→merge ✓ · ac
   dashboard outcome truthful.
 - **Parallelism/Dependencies:** Needs AR.1, AX.1/AX.4.
 - **Technical Stack:** Engine executor, SPI PR capability.
+- **Documentation:** User Guide: pull-requests.mdx § Finding a pull request / § Merging (loop-opened PRs, policy-armed merge), concepts.mdx § Dry-run and live, dashboard.mdx; Administration: policies.mdx § Dry-run; recapture pr.merge-confirm
 - **Epic:** AZ
 
 ---

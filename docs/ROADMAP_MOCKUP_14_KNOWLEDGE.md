@@ -1099,6 +1099,7 @@ e2e: import ✓ · confirm→inject ✓ · estimator carries fact ✓ · playboo
   auto-confirms; benchmark vs deterministic proposers documented.
 - **Parallelism/Dependencies:** Needs BF.3 contract, AF.2 (+Z.1).
 - **Technical Stack:** FastAPI, structured output.
+- **Documentation:** User Guide `knowledge.mdx` § Learned by the loop (sources, still proposed, provenance, cost); `models.mdx` § The routing matrix (`learn` task kind); recapture `user-guide.knowledge.fact`.
 - **Epic:** BH
 
 ### Issue BH.2 — ouroboros-rest: [BH.2] Retrieval layer (embeddings)
@@ -1120,6 +1121,7 @@ e2e: import ✓ · confirm→inject ✓ · estimator carries fact ✓ · playboo
   path works offline; O.4 contract satisfied.
 - **Parallelism/Dependencies:** Needs BF.5, AF.2 (embedding calls).
 - **Technical Stack:** pgvector, provider stack.
+- **Documentation:** Administration `providers.mdx` § Local models with Ollama (embedding model, local path); User Guide `issues.mdx` § Reading a size and estimate, `knowledge.mdx` (dedupe); variables → config reference.
 - **Epic:** BH
 
 ### Issue BH.3 — ouroboros-rest: [BH.3] Git-backed skills sync
@@ -1139,6 +1141,7 @@ e2e: import ✓ · confirm→inject ✓ · estimator carries fact ✓ · playboo
   holds.
 - **Parallelism/Dependencies:** Needs BF.1, X.3 machinery.
 - **Technical Stack:** SPI PR capability, projection discipline.
+- **Documentation:** User Guide `knowledge.mdx` § Skills, new *Keeping skills in git* (opt-in, `.ouroboros/skills/<slug>.skill.md`, publish gate, divergence); link `workflows/code.mdx`; add `user-guide.knowledge.skills-sync`.
 - **Epic:** BH
 
 ### Issue BH.4 — ouroboros-rest: [BH.4] Warm-snapshot activation
@@ -1156,6 +1159,7 @@ e2e: import ✓ · confirm→inject ✓ · estimator carries fact ✓ · playboo
   round-trip to farm jobs; recipe-change nudge fires.
 - **Parallelism/Dependencies:** Needs BD.4, BE.4.
 - **Technical Stack:** Farm jobs, React.
+- **Documentation:** User Guide `knowledge.mdx` § Repository profile and environment / Editing the environment (measured boot row, re-snapshot toggle, Rebuild snapshot now, nudge); recapture `user-guide.knowledge.repo-profile`.
 - **Epic:** BH
 
 ### Issue BH.5 — ouroboros-rest: [BH.5] Knowledge analytics & inbox integration
@@ -1175,6 +1179,7 @@ e2e: import ✓ · confirm→inject ✓ · estimator carries fact ✓ · playboo
   beyond the data.
 - **Parallelism/Dependencies:** Needs BF.5, mockup-16 roadmap.
 - **Technical Stack:** NestJS analytics, React.
+- **Documentation:** User Guide `knowledge.mdx` § Learned by the loop / Skills (ROI, effectiveness, staleness), `inbox.mdx` § Decision kinds (fact reviews, batch), `insights.mdx`; add `user-guide.knowledge.analytics`.
 - **Epic:** BH
 
 ---
