@@ -634,6 +634,14 @@ the runner's usage text. An edit to any of those can break the site without touc
 `ouroboros-docs/`. ouroboros-ui's tab and home-screen icons are named file by file, so a change
 to the rest of the product UI never queues the docs.
 
+Those inputs reach the site through `ci/docs` only, never through its image.
+[`ouroboros-docs/Dockerfile`](../ouroboros-docs/Dockerfile)
+([#1206](https://github.com/NobuData/ouroboros/issues/1206)) builds with the module directory as
+its context, like `ouroboros-web`'s (§ 5), so the brand copies, the generated configuration
+reference and the screenshots are committed rather than produced at image build — and `ci/docs`
+is what holds each copy to its source. The image is `nginx-unprivileged` serving the static
+build on 8080, as roadmap decision D8 specifies; `publish/docs` pushes it.
+
 `docs/RUNNER_PROTOCOL.md` is the other unusual entry, and the second document in this table
 after mockup 05: it is not documentation *about* the code, it is half of a contract, and
 `ci/runner` asserts that it still agrees with the schema and the fixtures. An edit to it that

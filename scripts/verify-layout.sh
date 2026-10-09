@@ -67,12 +67,14 @@ printf '\nouroboros-docs\n'
 # The documentation site is the first module scaffolded after the README structure was
 # written down, so it carries all six sections rather than the three the older modules are
 # checked for, and the module-local files § 2 requires of a directory that can be lifted out
-# of the repository. Its Dockerfile is DD.1's, so it is not asked for here.
+# of the repository — the Dockerfile (#1206) among them, which builds from the module alone.
 for section in Configuration Layout 'Related issues'; do
   check_contains ouroboros-docs/README.md "^## $section" "ouroboros-docs README documents $section"
 done
 check_exists ouroboros-docs/.gitignore 'ouroboros-docs/.gitignore exists'
 check_exists ouroboros-docs/.dockerignore 'ouroboros-docs/.dockerignore exists'
+check_exists ouroboros-docs/Dockerfile 'ouroboros-docs/Dockerfile exists'
+check_exists ouroboros-docs/nginx.conf 'ouroboros-docs/nginx.conf exists'
 
 printf '\nRoot README module map\n'
 for module in $MODULES ouroboros-web; do

@@ -137,6 +137,10 @@ const config: Config = {
 
   url: process.env.DOCS_SITE_URL || DEFAULT_SITE_URL,
   baseUrl: "/",
+  // The home page would otherwise carry a second inline script — a banner explaining a
+  // misconfigured baseUrl. The image's CSP admits only the theme script (roadmap decision D8,
+  // scripts/csp.ts), and baseUrl is fixed at "/", so the banner has nothing to report.
+  baseUrlIssueBanner: false,
 
   organizationName: "NobuData",
   projectName: "ouroboros",
