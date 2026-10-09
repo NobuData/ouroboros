@@ -1,15 +1,199 @@
 ---
 title: "Policies & guardrails"
-sidebar_label: "Policies"
+sidebar_label: "Policies & guardrails"
 sidebar_position: 10
-description: "Org policy, protected paths, spend guard, dry-run and decision windows."
+description: "The org policy, protected paths, spend guard, dry-run and exceptions."
 ---
 
-Org policy, protected paths, spend guard, dry-run and decision windows.
+Policies decide how much Ouroboros may do without a person, and where it must stop and ask.
+A loose policy lets work merge that nobody looked at; a tight one leaves every pull request
+waiting. This page covers the workspace's **autonomy policy**: its rules, how a change is
+published, the dry-run switch, and the exceptions a person can grant.
 
-:::info[Being written]
+The policy lives on the **Autonomy policies** card in <UiPath path="Settings > Policies" />
+(`/settings#policies`). Everyone in the workspace can read it. An **Owner** or **Maintainer**
+can change it, but a change that **loosens** a rule needs an **Owner** to publish it.
 
-This page is being written in
-[#1197](https://github.com/NobuData/ouroboros/issues/1197).
+<Screenshot id="administration.policies" />
 
-:::
+## The rules
+
+The policy has five rules. Each has a switch and, under its name, chips showing its conditions.
+Select a chip to edit them.
+
+| Rule | What it does | Conditions you set |
+| --- | --- | --- |
+| **Auto-merge when all gates green** | A pull request that matches merges itself once every check, review gate and spend guard passes. | **Largest effort that merges on its own**, and **Labels that never merge on their own**. |
+| **Human review required** | Matching work always waits for a person before it merges. | **Labels that always wait for a person**, and **Smallest effort that always waits for a person**. |
+| **Protected paths need allow-once** | A loop that changes a matching file stops until a person allows it once. | **Protected path patterns**. |
+| **Spend guard** | Runaway loops stop before they get expensive. | **Pause a loop when its run would cost more than** an amount, and **Monthly cap, per provider**. |
+| **Dry-run mode for new repos** | New repositories prove themselves before anything merges on its own. | **Loops that open draft PRs on a new repository**. |
+
+A rule that is switched off does nothing. Under the rules, the workspace-wide
+[**Dry-run**](#dry-run) switch overrides all of them.
+
+Some rules hold conditions too detailed for the card, or are custom rules. Those are kept
+exactly as published and show a note; you can still switch them on and off. **Edit as code**,
+for editing the whole policy as a document, is marked **soon** and is not available yet.
+
+## Publishing a change
+
+The policy is **versioned**: the card shows the version in force, such as **policy v7**, and every
+change publishes the next one. Edits stay on the card, marked **edited**, until you publish
+them:
+
+1. Change rules: switch them, or select a chip and edit its conditions.
+2. Choose **Save changes** at the top of the settings page.
+3. The **Publish policy v8?** dialog lists each change and whether it **Tightens**, **Loosens**
+   or **Changes** the policy:
+   - **Tightening** — more work waits for a person, or less may run without one.
+   - **Loosening** — more work may run without a person.
+   - **Neither** — nothing moves between a person and the loop.
+4. Optionally write a **Change note (optional)**: why you made the change. It is shown in the
+   policy history beside the version.
+5. Choose **Publish policy v8**.
+
+<Screenshot id="administration.policies.publish" />
+
+The new version applies to loops straight away, and the publish is recorded in the audit log.
+
+- **A loosening needs an Owner.** A Maintainer's loosening edit is refused: *Not published —
+  this edit loosens a rule, and only an owner can publish that.* The dialog says so before you
+  publish: **An owner must publish this**.
+- **Someone else published first.** If the policy changed while you were editing, the publish is
+  refused and nothing of yours is published. Reload the page and make your edits again.
+- **Nothing changed.** *These edits change nothing the policy holds, so there is no new version
+  to publish.*
+
+**The policy history** — select the version tag, such as **policy v7** — lists every version
+with who published it, when, and their note. To go back to an earlier policy, publish its rules
+again as a new version. Versions are never edited or removed.
+
+## Protected paths
+
+Protected paths are the parts of a repository a loop must not change without a person's
+say-so, such as `boot/**` or `.github/**`. Select one of the rule's chips, then **Add a path
+pattern** relative to the repository root (`drivers/can/**` covers everything under
+`drivers/can`). While you edit, the card checks what the patterns match in your enabled
+repositories.
+
+<Screenshot id="administration.policies.protected-paths" />
+
+The policy's patterns apply to **every** repository in the workspace. Each repository can also
+protect paths of its own, saved on the Get Started wizard's detection card or on the
+repository's profile in [Knowledge](../user-guide/knowledge.mdx). **A path is protected if
+either list matches it.** Removing a pattern here does not unprotect a path that a
+repository's own list still protects.
+
+When a loop touches a protected path, its run stops, and a decision **Allow a one-time edit to
+a protected path?** appears in the [Needs-you inbox](../user-guide/inbox.mdx). See
+[Exceptions](#exceptions-and-allow-once).
+
+## Spend guard
+
+- **Pause a loop when its run would cost more than** — a per-run cap, such as `$2.50`. It is
+  enforced now. When a route sets its own **Max cost per run**, the stricter of the two applies;
+  neither can loosen the other. The cap travels with every run to the executor, which stops the
+  run before it spends more, and says which cap stopped it.
+- **Monthly cap, per provider** — is stored with the policy but **not enforced yet**. It is
+  separate from the monthly cap on a provider's card in
+  [Model providers & keys](./providers.mdx), which also only warns.
+
+Leave a field empty for no cap of that kind.
+
+## Dry-run mode for new repos
+
+**Loops that open draft PRs on a new repository** — for example `10` — sets how many loops a new
+repository runs in dry-run: their pull requests open as drafts and nothing of theirs merges on
+its own. A loop counts once it has opened a pull request. After that many, the repository is
+treated like any other. Use **One more loop** and **One fewer loop** to set the number; `0` holds
+nothing.
+
+## Dry-run
+
+**Dry-run** is the workspace-wide override at the foot of the card. While it is on, **nothing
+merges**, whatever the rules allow:
+
+- new pull requests open as drafts;
+- arming and merging are refused, and an armed merge is disarmed when it would fire;
+- workflows that auto-merge are overridden, not edited.
+
+Pull requests show **Dry-run — review the draft PR** in place of their merge button. The row
+says where dry-run stands: **On**, **Off**, or *Off — never set. Completing the Get Started
+wizard turns it on.* Finishing Get Started turns it on, so every new workspace starts in
+dry-run.
+
+**To leave dry-run**, choose **Turn dry-run off**. The confirmation says what changes at once:
+
+<Screenshot id="administration.policies.dry-run" />
+
+Choose **Turn dry-run off** to confirm, or **Keep it as it is**. From then on, the rules above
+decide what merges. Turning dry-run on or off takes an Owner or Maintainer and is recorded in
+the audit log.
+
+Leave dry-run on until you trust the rules. Then, before turning it off, check that **Auto-merge
+when all gates green** matches only work you are happy to see merge unread.
+
+## Exceptions and allow-once
+
+A protected path is the one rule a person can make an exception to, one file at a time. In the
+inbox, **Allow once** on *Allow a one-time edit to a protected path?* grants an exception that:
+
+- covers **one file on one run**;
+- is used up the first time the run checks that path again;
+- lapses if it is not used within **24 hours**.
+
+**Deny** returns the loop with the path still protected. Both answers need the **Can approve
+loops** capability — see [Roles & capabilities](./roles.mdx). To change which paths are
+protected, edit the policy or the repository's own list.
+
+### Decision time limits
+
+Two time limits apply to decisions, both set per workspace:
+
+| Limit | Default | Range |
+| --- | --- | --- |
+| How long an unused allow-once exception stays good | 24 hours (1440 minutes) | 1 minute to 7 days |
+| How long an emailed answer link stays good | 48 hours (2880 minutes) | 5 minutes to 7 days |
+
+There is no screen for them. If you must change them, the deployment administrator does so in
+the database, in minutes — for example, allow-once exceptions good for 4 hours:
+
+```sql
+insert into ouroboros.workspace_settings (organization_id, guardrail_exception_max_ttl_minutes)
+select id, 240 from ouroboros.organization where slug = 'acme-robotics'
+on conflict (organization_id) do update set guardrail_exception_max_ttl_minutes = 240;
+```
+
+For answer links, set `action_token_ttl_minutes` the same way.
+
+Each kind of decision also has an **escalation window**: 30 minutes for most, a day for splits
+and re-sizes, a week for facts. Nothing escalates an unanswered decision yet, and the windows
+cannot be changed.
+
+## How policy shows up in the inbox
+
+The [Needs-you inbox](../user-guide/inbox.mdx) is where the rules meet people:
+
+- **Human review required** sends matching pull requests there as merge approvals.
+- **Protected paths need allow-once** sends a protected-path decision there.
+- The side column's **What needs a human** lists each rule that sends a decision to a person,
+  with its conditions. **Edit policies →** opens this card.
+
+## What can go wrong
+
+- **Every pull request opens as a draft and nothing merges.** Dry-run is on. Choose **Turn
+  dry-run off** when you are ready.
+- **A new repository's pull requests stay drafts while others merge.** It is still within its
+  first loops under **Dry-run mode for new repos**.
+- **A publish is refused because it loosens a rule.** Ask an Owner to publish it, or keep the
+  rule as strict as it was.
+- **A path is still protected after you removed its pattern.** The repository's own list still
+  protects it. Remove it there too.
+- **A loop stopped on cost.** Its run would cost more than the per-run cap. Raise the cap, or
+  route the work to a cheaper model.
+- **Spending passed the monthly cap and nothing stopped.** The monthly caps only warn for now.
+  Use the per-run cap to stop spending.
+- **An allow-once was granted but the run stopped again.** The run touched another protected
+  path, or the exception lapsed before the run used it. Allow the new path, or ask the loop to
+  try again.

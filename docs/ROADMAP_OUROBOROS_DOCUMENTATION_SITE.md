@@ -1002,7 +1002,7 @@ since other pages link variables to it).
 | DB.6 | #1194 ✅ | 🟢 Done | ouroboros-docs: [DB.6] Ticket sources & repositories | Connecting trackers/repos, sync, write-back, troubleshooting | mvp, docs-site, documentation, sources | Y | Y | M | ouroboros-docs |
 | DB.7 | #1195 ✅ | 🟢 Done | ouroboros-docs: [DB.7] Model providers & keys | Adding providers, sealed keys, discovery, local Ollama, managed pool | mvp, docs-site, documentation, providers | Y | Y | M | ouroboros-docs |
 | DB.8 | #1196 ✅ | 🟢 Done | ouroboros-docs: [DB.8] Build farm administration | Pools, farm tokens, enrolling runners, gateway, health | mvp, docs-site, documentation, build-farm | Y | Y | M | ouroboros-docs |
-| DB.9 | #1197 | 🟡 Open | ouroboros-docs: [DB.9] Policies & guardrails | Org policy, protected paths, spend guard, dry-run, decision TTLs, exceptions | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
+| DB.9 | #1197 ✅ | 🟢 Done | ouroboros-docs: [DB.9] Policies & guardrails | Org policy, protected paths, spend guard, dry-run, decision TTLs, exceptions | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
 | DB.10 | #1198 | 🟡 Open | ouroboros-docs: [DB.10] Notifications, email & webhooks | SMTP, digests, channels, webhook endpoints, signing, retries | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
 | DB.11 | #1199 | 🟡 Open | ouroboros-docs: [DB.11] Data retention, audit & workspace lifecycle | Retention, audit trail, disconnect, purge, security model summary | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
 | DB.12 | #1200 | 🟡 Open | ouroboros-docs: [DB.12] Operations — upgrades, backups, health & troubleshooting | Migrations on upgrade, PG backups, health endpoints, common failures | mvp, docs-site, documentation, infra | Y | Y | M | ouroboros-docs |
@@ -1182,6 +1182,24 @@ removing a runner, gateway/mTLS and `--bearer-fallback` trade-off. Commands them
 **Problem Statement.** Builds run on the customer's own machines; admins must enrol and keep them healthy.
 
 ### Issue DB.9 (#1197) — ouroboros-docs: [DB.9] Policies & guardrails
+
+> **GitHub issue:** #1197 ✅ · **Status:** 🟢 Done · **Parent epic:** #1159
+>
+> **Delivered (#1197):** `administration/policies.mdx` covers:
+>
+> - **The five core rules** with each editor's condition labels. Detailed and custom rules are kept as published, and **Edit as code** is honest-absent (soon).
+> - **Publishing:** **Save changes** → **Publish policy vN?** with Tightens/Loosens/Changes and the change note; loosening is owner-only; version conflict and nothing-to-publish; the history and "rollback = publish again".
+> - **Protected paths** as the **union** of the policy's globs and each repository's own list (detection card / Knowledge profile). Removing a policy pattern doesn't unprotect a path a repo still lists.
+> - **Spend guard:** the per-run cap is enforced (stricter of route and guard). The monthly per-provider cap is stored but **not enforced yet**.
+> - **Loops-per-period** as **Dry-run mode for new repos** (`first_n_loops`, a loop counts once it opened a PR).
+> - **The workspace-wide Dry-run override** and how to leave it (**Turn dry-run off**, owner/admin, audited; Get Started turns it on).
+> - **Exceptions:** allow-once covers one file on one run, single use, lapses in 24 h, and needs the approve capability.
+> - **Decision time limits:** `guardrail_exception_max_ttl_minutes` 1440 and `action_token_ttl_minutes` 2880, 1/5 min to 7 days, with no screen. Per the #1193/#1194/#1196 precedent the page gives the SQL. Escalation windows are per kind, and nothing escalates yet.
+> - **How policy shows up in the inbox, and what can go wrong.**
+>
+> `tests/administration.test.ts` pins the core rule list and names, the editor labels, the publish dialog's words, the enforced/not-enforced cap hints, the guardrails' union read, the dry-run row and confirmation, the flip's roles and V096's defaults.
+>
+> **Screenshots** (`acme-robotics`): `administration.policies` (the card at v7), `administration.policies.protected-paths` (the editor with `firmware/secure/**` added; match preview masked — it reads *could not be listed* on the seeded stack), `administration.policies.publish` (**Publish policy v8?**, Tightens) and `administration.policies.dry-run` (**Turn dry-run off?**, with `org_policies.dry_run` set true on the throwaway DB). **UI defect seen:** `.policy-rule__edited` and `.policy-rule__term--open` colour their text `--accent-ink` (text *on* an accent fill) over a tint, so the **edited** tag and the open chip are nearly invisible in both themes. No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.32.
 
 **Solution / Scope.** `/settings/policies` (`/settings#policies`): org policy and versions,
 publishing, protected paths (union semantics), spend guard via the cap, loops-per-period,
