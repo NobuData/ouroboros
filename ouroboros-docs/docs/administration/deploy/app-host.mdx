@@ -5,11 +5,99 @@ sidebar_position: 5
 description: "Running the UI, REST and engine services on the application host."
 ---
 
-Running the UI, REST and engine services on the application host.
+`app.example.com` is the address people use. Behind it sit the three application services —
+the web app, the REST service and the engine — of which only the web app is reachable. This
+page is the HTTPS proxy in front of it, and the three addresses that have to agree for
+sign-in to work.
 
-:::info[Being written]
+## `proxy/app.conf`
 
-This page is being written in
-[#1190](https://github.com/NobuData/ouroboros/issues/1190).
+A plain HTTPS reverse proxy to `ouroboros-ui`, with nothing path-specific. For the `proxy`
+service on the [compose page](./compose.mdx), it is mounted as `conf.d/default.conf`:
 
-:::
+```nginx
+server {
+  listen 443 ssl;
+  server_name app.example.com;
+  ssl_certificate     /etc/ssl/ouroboros/app.example.com.pem;
+  ssl_certificate_key /etc/ssl/ouroboros/app.example.com.key;
+
+  location / {
+    proxy_set_header Host              $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_pass http://ui:3000;
+  }
+}
+```
+
+That is the whole configuration. The web app handles everything itself: pages, the API calls
+its own server makes, and the sign-in paths it forwards. Nothing here points at the REST
+service, and nothing should: a proxy that forwarded `/api/` to `rest:4000` would also expose
+`/internal/*`, which is the engine's surface.
+
+Terminate TLS here, with a certificate for `app.example.com`. The app must be served over
+`https://`: the session cookie is a `__Secure-` cookie, which a browser only accepts from a
+secure origin.
+
+## The addresses that must agree
+
+Sign-in is the one thing the browser does not go through the app's server for — a click, then
+GitHub's redirect back. The app forwards `/api/auth/*` to the REST service, so the browser
+only ever sees `app.example.com`, and that is why four addresses have to be that one:
+
+| Where | Value |
+| --- | --- |
+| <EnvVar name="BETTER_AUTH_URL" /> on the REST service | `https://app.example.com` |
+| <EnvVar name="OURO_UI_URL" /> on the REST service | `https://app.example.com` |
+| <EnvVar name="OURO_CORS_ORIGINS" /> on the REST service | `https://app.example.com` |
+| The GitHub OAuth app's **Authorization callback URL** | `https://app.example.com/api/auth/callback/github` |
+
+<EnvVar name="BETTER_AUTH_URL" /> is the one that surprises people. The repository's
+`.env.example` sets it to the REST service's address, which works in development because
+both services are on `localhost`. In this layout the REST service is internal and the browser
+can only reach the app, so it is the **app's** public address.
+
+On `ouroboros-ui`, <EnvVar name="OURO_REST_URL" /> is the opposite: the REST service's
+**internal** address, `http://rest:4000`. The app calls it from its own server and never sends
+it to a browser.
+
+## Running the services elsewhere
+
+The compose page puts every service on one host. They need not be:
+
+- **The web app** can run on more than one host behind the proxy. It keeps no state.
+- **The REST service** can run as more than one replica, if build artifacts go to S3 rather
+  than a volume — see <EnvVar name="OURO_ARTIFACT_STORE" />. Every replica needs the same
+  secrets.
+- **The engine** needs to be reachable from every REST replica at
+  <EnvVar name="OURO_ENGINE_URL" />, and nowhere else.
+
+Whatever the layout, the rule is the same: the web app is the only service with a public
+address, and the REST service's port is published to nothing outside the network.
+
+## Checking it
+
+1. **The sign-in page loads** at `https://app.example.com`, over a certificate the browser
+   trusts, with **Continue with GitHub**.
+2. **A full sign-in works.** Choose it, authorize on GitHub, and land back in the app. If
+   GitHub shows *The redirect_uri is not associated with this application*, the OAuth app's
+   callback is not `https://app.example.com/api/auth/callback/github`.
+3. **The cookie is secure.** In the browser's developer tools, the session cookie for
+   `app.example.com` is named `__Secure-better-auth.session_token`.
+4. **The REST service is not reachable from outside.** From a machine outside your network,
+   `curl https://app.example.com/internal/runs` is the app's 404, and nothing answers on the
+   REST service's port.
+
+## What can go wrong
+
+- **Sign-in redirects to `localhost:4000`** — <EnvVar name="BETTER_AUTH_URL" /> still holds
+  the development value. Set it to `https://app.example.com` and restart the REST service.
+- **GitHub refuses the callback** — the OAuth app's callback URL does not match. Register it
+  as `https://app.example.com/api/auth/callback/github`, exactly.
+- **Signed in, then immediately signed out again** — the app is served over `http://`, so
+  the browser drops the `__Secure-` cookie. Serve it over HTTPS.
+- **Every request after sign-in is refused** — <EnvVar name="OURO_CORS_ORIGINS" /> does not
+  include `https://app.example.com`.
+- **The app shows `502 Bad Gateway`** — the `ui` container is not running or not healthy.
+  `docker compose ps` and `docker compose logs ui` say why.
