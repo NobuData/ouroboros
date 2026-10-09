@@ -45,6 +45,9 @@ const SOURCES = page("sources.mdx");
 /** The model providers & keys page. */
 const PROVIDERS = page("providers.mdx");
 
+/** The build farm administration page. */
+const FARM = page("build-farm.mdx");
+
 /**
  * Reads the value of one exported string constant of the UI, joining a value written as
  * several `"…" +` pieces — e.g. `export const NOTE =\n  "One " +\n  "two.";`.
@@ -226,7 +229,7 @@ describe("the roles & capabilities page (#1189)", () => {
   });
 
   it("carries no internal issue references or migration numbers in its prose", () => {
-    for (const text of [OVERVIEW, ROLES, SIGN_IN, MEMBERS, SOURCES, PROVIDERS]) {
+    for (const text of [OVERVIEW, ROLES, SIGN_IN, MEMBERS, SOURCES, PROVIDERS, FARM]) {
       const prose = text
         .replace(/^--- .*? --- /, "")
         .replace(/\*\*[^*]+\*\*/g, "")
@@ -817,6 +820,188 @@ describe("the model providers & keys page (#1195)", () => {
       "administration.providers.discovery",
     ]) {
       expect(PROVIDERS).toContain(`<Screenshot id="${id}" />`);
+    }
+  });
+});
+
+describe("the build farm administration page (#1196)", () => {
+  /**
+   * Reads a file of the REST service's farm module.
+   *
+   * @param path the file's path segments, from `ouroboros-rest/src/modules/farm/`.
+   * @returns its text.
+   */
+  function farm(...path: string[]): string {
+    return source("ouroboros-rest", "src", "modules", "farm", ...path);
+  }
+
+  it("names the page's controls, cards and dialogs as the UI draws them", () => {
+    for (const [file, name] of [
+      ["farm/enroll.ts", "ENROLL_TITLE"],
+      ["farm/enroll.ts", "COPY_COMMAND"],
+      ["farm/enroll.ts", "POOL_LABEL"],
+      ["farm/enroll.ts", "REVOKE"],
+      ["farm/pools.ts", "SHEET_TITLE"],
+      ["farm/pools.ts", "NEW_POOL"],
+      ["farm/pools.ts", "CREATE"],
+      ["farm/pools.ts", "DELETE"],
+      ["farm/runners.ts", "RUNNERS_TITLE"],
+      ["farm/lifecycle.ts", "DRAIN"],
+      ["farm/lifecycle.ts", "UNDRAIN"],
+      ["farm/lifecycle.ts", "REMOVE"],
+      ["farm/lifecycle.ts", "VIEW_DETAILS"],
+      ["farm/runner-details.ts", "GROUP_MACHINE"],
+      ["farm/runner-details.ts", "GROUP_SECURITY"],
+      ["farm/runner-details.ts", "GROUP_TELEMETRY"],
+      ["farm/runners.ts", "DRAIN_REQUESTED"],
+    ] as const) {
+      expect(FARM).toContain(`**${constant(file, name)}**`);
+    }
+    const view = source("ouroboros-ui", "app", "farm", "view.ts");
+    for (const label of ["Runners online", "Builds today", "Avg build time", "Cache hit rate"]) {
+      expect(view).toContain(`label: "${label}"`);
+      expect(FARM).toContain(`**${label}**`);
+    }
+    expect(view).toContain('label: "Pool settings"');
+    expect(FARM).toContain("**Pool settings**");
+  });
+
+  it("describes the pool form with the form's own labels and limits", () => {
+    const pools = source("ouroboros-ui", "app", "farm", "pools.ts");
+    const labels = /export const FIELD_LABELS = \{([\s\S]*?)\}/.exec(pools)?.[1] ?? "";
+    const named = [...labels.matchAll(/: "([^"]+)"/g)].map((match) => match[1]);
+    expect(named).toEqual([
+      "Name",
+      "Description",
+      "Executor",
+      "Image",
+      "Env allow-list",
+      "Concurrency",
+    ]);
+    for (const label of named) expect(FARM).toContain(`| **${label}** |`);
+    expect(pools).toContain(
+      '{ value: "container", label: "container — builds run in a pinned image" }',
+    );
+    expect(pools).toContain(
+      '{ value: "shell", label: "shell — builds run on the machine itself" }',
+    );
+    expect(FARM).toContain("**container** — builds run in a pinned image");
+    expect(FARM).toContain("**shell** — builds run on the machine itself");
+    expect(pools).toContain("export const MAX_CONCURRENCY_MAX = 64;");
+    expect(constant("farm/pools.ts", "AUTOSCALE_AFFIX")).toBe("arrives with cloud runners (v2)");
+    expect(FARM).toContain("*arrives with cloud runners\n  (v2)*".replace(/\s+/g, " "));
+  });
+
+  it("states the token defaults and limits the service mints with", () => {
+    const policy = farm("farm.policy.ts");
+    expect(policy).toContain("export const DEFAULT_TOKEN_TTL_MS = DAY_MS;");
+    expect(farm("enrollment.service.ts")).toContain("max_uses: request.maxUses ?? 1,");
+    expect(FARM).toContain("enrolls **one** machine and expires after **24 hours**");
+    expect(policy).toContain("export const CERTIFICATE_LIFETIME_MS = 90 * DAY_MS;");
+    expect(FARM).toContain(
+      "valid for 90 days; the runner renews it on its own once 30 days remain.",
+    );
+  });
+
+  it("states the heartbeat and presence timings the gateway uses", () => {
+    const gateway = farm("gateway", "gateway.policy.ts");
+    expect(gateway).toContain("export const HEARTBEAT_INTERVAL_MS = 10_000;");
+    expect(gateway).toContain(
+      "How long after its last genuine heartbeat a runner is presumed gone — 32 seconds.",
+    );
+    expect(FARM).toContain("A runner sends a heartbeat every 10 seconds.");
+  });
+
+  it("offers Remove only where the UI does", () => {
+    expect(source("ouroboros-ui", "app", "farm", "lifecycle.ts")).toContain(
+      'return status === "offline" || status === "draining";',
+    );
+    expect(FARM).toContain(
+      "It is offered only for a runner that\n  is **offline** or **draining**".replace(/\s+/g, " "),
+    );
+    for (const consequence of [
+      "Its certificate is revoked, so the machine cannot reconnect.",
+      "The builds it ran keep their history and their logs.",
+    ]) {
+      expect(source("ouroboros-ui", "app", "farm", "lifecycle.ts")).toContain(
+        consequence.slice(0, 40),
+      );
+    }
+  });
+
+  it("quotes the enroll and token sentences as the UI words them", () => {
+    for (const [file, name] of [
+      ["farm/enroll.ts", "COPIED_TOAST"],
+      ["farm/enroll.ts", "MINT_UNAVAILABLE"],
+      ["farm/runners.ts", "BEARER_FALLBACK_NOTE"],
+    ] as const) {
+      const sentence = constant(file, name);
+      const tail = sentence.includes("—") ? sentence.split("— ")[1] : sentence;
+      expect(FARM).toContain(tail);
+    }
+    expect(constant("farm/enroll.ts", "REVOKE_NOTE")).toContain(
+      "Machines it already enrolled keep their certificates — retire those from the runners table.",
+    );
+    expect(FARM).toContain(
+      "*Machines it already enrolled keep\ntheir certificates — retire those from the runners table.*".replace(
+        /\s+/g,
+        " ",
+      ),
+    );
+  });
+
+  it("documents the bearer fallback switch as the database holds it and the gateway enforces it", () => {
+    const migration = source("ouroboros-db", "migrations", "V041__farm_certificate_authority.sql");
+    expect(migration).toContain(
+      "add column runner_bearer_fallback boolean not null default false;",
+    );
+    expect(farm("gateway", "gateway.repository.ts")).toContain(
+      '.where("workspace_settings_effective.runner_bearer_fallback", "=", true)',
+    );
+    expect(FARM).toContain("cuts every fallback runner off at its next connection");
+    expect(FARM).toContain("do update set runner_bearer_fallback = true;");
+    // No screen or API changes it: the day one does, this section must change.
+    const ui = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) return entry.name === "__tests__" ? [] : ui(path);
+        return /\.tsx?$/.test(entry.name) && !entry.name.endsWith(".d.ts") ? [path] : [];
+      });
+    const toggles = ui(join(REPO_ROOT, "ouroboros-ui", "app")).filter(
+      (file) =>
+        /bearerFallback|bearer_fallback/i.test(readFileSync(file, "utf8")) &&
+        /fetch|api\./.test(readFileSync(file, "utf8")) &&
+        /runnerBearerFallback|runner_bearer_fallback/.test(readFileSync(file, "utf8")),
+    );
+    expect(toggles).toEqual([]);
+    expect(FARM).toContain("There is no\nscreen to turn it on.".replace(/\s+/g, " "));
+  });
+
+  it("describes the hosted pool as reserved, as only the Smart Defaults card reads it", () => {
+    const readers = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) return readers(path);
+        return entry.name.endsWith(".ts") && !/\.(spec|fixture)\.ts$/.test(entry.name)
+          ? [path]
+          : [];
+      });
+    const modules = join(REPO_ROOT, "ouroboros-rest", "src", "modules");
+    const reading = readers(modules)
+      .filter((file) => readFileSync(file, "utf8").includes("config.hostedRunnerPool"))
+      .map((file) => file.slice(modules.length + 1));
+    expect(reading).toEqual([join("onboarding", "defaults.service.ts")]);
+    expect(FARM).toContain('<EnvVar name="OURO_HOSTED_RUNNER_POOL" />');
+  });
+
+  it("shows the screenshots the issue lists", () => {
+    for (const id of [
+      "administration.build-farm",
+      "administration.farm-tokens",
+      "administration.farm-tokens.mint",
+      "administration.build-farm.runner-detail",
+    ]) {
+      expect(FARM).toContain(`<Screenshot id="${id}" />`);
     }
   });
 });

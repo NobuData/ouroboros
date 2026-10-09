@@ -1001,7 +1001,7 @@ since other pages link variables to it).
 | DB.5 | #1193 ✅ | 🟢 Done | ouroboros-docs: [DB.5] Members, invites, roles & API tokens | Inviting, roles, capabilities, API tokens and scopes | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
 | DB.6 | #1194 ✅ | 🟢 Done | ouroboros-docs: [DB.6] Ticket sources & repositories | Connecting trackers/repos, sync, write-back, troubleshooting | mvp, docs-site, documentation, sources | Y | Y | M | ouroboros-docs |
 | DB.7 | #1195 ✅ | 🟢 Done | ouroboros-docs: [DB.7] Model providers & keys | Adding providers, sealed keys, discovery, local Ollama, managed pool | mvp, docs-site, documentation, providers | Y | Y | M | ouroboros-docs |
-| DB.8 | #1196 | 🟡 Open | ouroboros-docs: [DB.8] Build farm administration | Pools, farm tokens, enrolling runners, gateway, health | mvp, docs-site, documentation, build-farm | Y | Y | M | ouroboros-docs |
+| DB.8 | #1196 ✅ | 🟢 Done | ouroboros-docs: [DB.8] Build farm administration | Pools, farm tokens, enrolling runners, gateway, health | mvp, docs-site, documentation, build-farm | Y | Y | M | ouroboros-docs |
 | DB.9 | #1197 | 🟡 Open | ouroboros-docs: [DB.9] Policies & guardrails | Org policy, protected paths, spend guard, dry-run, decision TTLs, exceptions | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
 | DB.10 | #1198 | 🟡 Open | ouroboros-docs: [DB.10] Notifications, email & webhooks | SMTP, digests, channels, webhook endpoints, signing, retries | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
 | DB.11 | #1199 | 🟡 Open | ouroboros-docs: [DB.11] Data retention, audit & workspace lifecycle | Retention, audit trail, disconnect, purge, security model summary | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
@@ -1153,6 +1153,25 @@ Source: `MODEL_PROVIDERS.md`.
 **Problem Statement.** Loops cannot run without a working model provider.
 
 ### Issue DB.8 (#1196) — ouroboros-docs: [DB.8] Build farm administration
+
+> **GitHub issue:** #1196 ✅ · **Status:** 🟢 Done · **Parent epic:** #1159
+>
+> **Delivered (#1196):** `administration/build-farm.mdx` covers:
+>
+> - **The page and its four figures.**
+> - **Pools:** the **Configure pools** form, with container/shell executors, the env allow-list and per-runner concurrency. A pool can be switched off; only an empty one can be deleted. Auto-scale is honest-absent as *arrives with cloud runners (v2)*.
+> - **The hosted pool** is honest-absent: `OURO_HOSTED_RUNNER_POOL` only drives the Smart Defaults card.
+> - **Enrolling:** **Copy command** mints a single-use, 24 h token. It needs `OURO_FARM_PUBLIC_URL` and `OURO_FARM_RELEASES_DIR`. A blocked copy revokes the token. There's a `caution` on the command being a secret.
+> - **The Farm tokens page:** listing and **Revoke**.
+> - **Runner health:** the table columns, a 10 s heartbeat, about 32 s to offline, and **View details** (Machine / Security / Telemetry snapshot).
+> - **Drain/Undrain/Remove:** Remove only for offline or draining runners, with its consequences.
+> - **Authentication:** mTLS with the workspace CA (90-day certificates renewed at 30 days left), and `OURO_FARM_CLIENT_CERT_HEADER` behind a TLS-terminating proxy, linking the gateway page.
+> - **The `--bearer-fallback` trade-off.** The workspace switch `workspace_settings.runner_bearer_fallback` defaults off and has no screen or API, so the page gives the SQL, verified on the stack. Switching it off cuts every fallback runner off at its next connection, as the gateway's candidate query shows.
+> - **What can go wrong.**
+>
+> **Harness change:** `screenshots/playwright.config.ts` now grants `clipboard-read`/`clipboard-write`, so the **Copy command** capture shows the minted state instead of the blocked-copy refusal; pinned in `tests/screenshots/config.test.ts`. `tests/administration.test.ts` pins the UI labels, pool form, token and certificate defaults, heartbeat timing, the Remove rule, quoted sentences, the fallback column and gateway filter, and the single reader of `hostedRunnerPool`.
+>
+> **Screenshots** (`acme-robotics`, with a fake-heartbeat loop keeping the seeded fleet alive): `administration.build-farm`, `administration.farm-tokens` (the seeded tokens), `administration.farm-tokens.mint` (the enroll card after **Copy command**; REST started with `OURO_FARM_PUBLIC_URL=https://ouroboros.acme.dev` and the runner `dist`) and `administration.build-farm.runner-detail` (`anvil-mac`, on the bearer fallback). No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.31.
 
 **Solution / Scope.** `/build-farm` from the admin side: pools, hosted pool
 (`OURO_HOSTED_RUNNER_POOL`), `/settings/farm-tokens` (minting enrollment tokens, expiry,
