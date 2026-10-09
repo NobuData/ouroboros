@@ -5,11 +5,219 @@ sidebar_position: 5
 description: "Configuring GitHub sign-in, the workspace's domain and region, and workspace recovery."
 ---
 
-Configuring GitHub sign-in, the workspace's domain and region, and workspace recovery.
+Nobody can use a deployment until sign-in works. Everyone signs in to Ouroboros with their
+GitHub account, through a GitHub OAuth app that you register for the deployment. This page
+covers setting that up and what each sign-in setting does. It then covers the **Workspace**
+card in <UiPath path="Settings" />, where an Owner or Maintainer names the workspace and sets
+its tenant domain. Last, it covers what happens when a deleted workspace is waiting to be
+recovered.
 
-:::info[Being written]
+The sign-in sections are for the **deployment administrator**: everything in them is set in the
+REST service's environment, and changing a value needs a restart. The **Workspace** card is
+for **workspace administrators**. For what each one looks after, see the
+[Administration overview](./index.mdx).
 
-This page is being written in
-[#1192](https://github.com/NobuData/ouroboros/issues/1192).
+## What sign-in needs
 
-:::
+Five variables of the REST service make sign-in work. All of them are required, and the
+service refuses to start if any of them is missing or malformed.
+
+| Variable | What it is |
+| --- | --- |
+| <EnvVar name="OURO_GITHUB_CLIENT_ID" /> | The client ID of the GitHub OAuth app you register below. |
+| <EnvVar name="OURO_GITHUB_CLIENT_SECRET" /> | That app's client secret. |
+| <EnvVar name="BETTER_AUTH_SECRET" /> | The key that signs sessions. At least 16 characters. |
+| <EnvVar name="BETTER_AUTH_URL" /> | The address browsers sign in through. GitHub's callback is built from it. |
+| <EnvVar name="OURO_UI_URL" /> | Where a browser lands once it has signed in or out — the UI's address. |
+
+<EnvVar name="OURO_CORS_ORIGINS" /> matters too. Once someone is signed in, the REST service
+accepts their requests only from the addresses it lists, so it must include the UI's public
+address.
+
+`BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` are the only variables without the `OURO_` prefix.
+They belong to BetterAuth, the library that handles sign-in, and keep the names its own
+documentation uses.
+
+## Register the GitHub OAuth app
+
+Register one OAuth app for each environment, such as one for development and one for
+production. Each environment has its own callback address, and an app accepts only the
+callback it was registered with.
+
+1. On GitHub, open **Settings → Developer settings → OAuth Apps** and choose **New OAuth App**.
+   Register it under your GitHub organization rather than a person's account if you can, so
+   it outlives any one person's account.
+2. Fill in the form:
+   - **Application name** — what people see on GitHub's consent screen, such as
+     *Ouroboros (Acme)*.
+   - **Homepage URL** — the UI's public address, such as `https://app.example.com`.
+   - **Authorization callback URL** — `BETTER_AUTH_URL` followed by
+     `/api/auth/callback/github`. See the table below.
+3. Register the app, then choose **Generate a new client secret**. GitHub shows the secret
+   once.
+4. Put the client ID in `OURO_GITHUB_CLIENT_ID` and the secret in `OURO_GITHUB_CLIENT_SECRET`,
+   in the REST service's environment, then restart the service.
+
+The callback URL must match `BETTER_AUTH_URL` exactly — scheme, host and port:
+
+| Environment | `BETTER_AUTH_URL` | Authorization callback URL |
+| --- | --- | --- |
+| Local development | `http://localhost:4000` | `http://localhost:4000/api/auth/callback/github` |
+| A deployment | `https://app.example.com` (the UI's public address) | `https://app.example.com/api/auth/callback/github` |
+
+In local development, browsers can reach the REST service directly, so the template points
+`BETTER_AUTH_URL` at it. In a deployment, keep the REST service on your internal network.
+Browsers then reach it only through the UI, which passes every `/api/auth/` request on to
+the REST service. Set `BETTER_AUTH_URL` to the UI's public address. The session cookie then
+belongs to that address, and over `https://` it gets the secure `__Secure-` prefix. See
+[Deploying Ouroboros](./deploy/overview.mdx) for the layout.
+
+### What the app is allowed to see
+
+The consent screen asks for two permissions and nothing more:
+
+- `read:user` — the person's GitHub profile: their name, login and avatar.
+- `user:email` — their email addresses, including a private primary address. Ouroboros needs
+  it to match a person to the invitation sent to that address.
+
+Signing in grants no access to repositories. Ouroboros works in your code through a separate
+GitHub App that each workspace installs — see
+[Ticket sources & repositories](./sources.mdx).
+
+Sign-in always goes through github.com. <EnvVar name="OURO_GITHUB_API_BASE_URL" /> moves where
+Ouroboros reads issues and repositories, for GitHub Enterprise Server, but it does not change
+where people sign in.
+
+## The session secret
+
+`BETTER_AUTH_SECRET` signs every session. Generate a strong value, for example with
+`openssl rand -base64 32`, and keep it with your other secrets. The development value ends in
+`change-me`, and it must never reach a deployment.
+
+Changing it signs everyone out at once. Every session cookie was signed with the old key, so
+everyone signs in again. Rotate it when you believe the secret has leaked, and expect that.
+
+A session lasts seven days. Using Ouroboros moves that expiry forward, at most once a day, so
+someone who works in it daily is not signed out partway through a task. Signing out ends the
+session at once.
+
+## Email and password: development only
+
+A development build of Ouroboros also offers a **development sign-in** form on the sign-in
+page, with **Email** and **Password** fields. It signs in to the demonstration accounts that
+the development seed creates, so you can work locally without registering an OAuth app.
+
+It is off whenever the services run with `NODE_ENV=production`. The published REST and UI
+images set that themselves: the UI does not draw the form, and the REST service refuses an
+email-and-password sign-in whatever a browser sends. Do not override `NODE_ENV` in a
+deployment.
+
+## Enterprise SSO
+
+Enterprise SSO is not available yet. The sign-in page shows **Continue with SSO** and a
+**Company domain** field, but for every domain the answer is *Enterprise SSO is not configured
+yet — sign in with GitHub for now.* There is nothing to configure. The **SSO enforced** tag
+beside a workspace's tenant domain does not appear for any workspace.
+
+## Who can sign in
+
+Anyone with a GitHub account who can reach your sign-in page can sign in. Signing in does not
+by itself put someone in your workspace:
+
+- **Someone you invited** joins your workspace. Ouroboros matches their GitHub account to the
+  invitation by email address, but only an address that GitHub has verified.
+- **Anyone else** gets a personal workspace of their own, named after them, of which they are
+  the Owner. They see nothing of any other workspace until someone invites them.
+
+To keep strangers off the deployment altogether, put the UI on a network only your people can
+reach. To invite people, see [Members, invites, roles & API tokens](./members-and-tokens.mdx).
+What people see when they sign in is in the User Guide's
+[Sign in](../user-guide/getting-started/sign-in.mdx).
+
+## The Workspace card
+
+The **Workspace** card is the first card in <UiPath path="Settings" />. Everyone in the
+workspace can read it. Only an Owner or a Maintainer can change it. Anyone else sees each
+value as text, with *Changing it takes an owner or an admin.*
+
+<Screenshot id="administration.workspace" />
+
+| Row | What it is | Who sets it |
+| --- | --- | --- |
+| **Workspace name** | The name shown in the header and the workspace switcher. Up to 100 characters. It cannot start or end with a space. | Owner, Maintainer |
+| **Tenant domain** | The workspace's domain, such as `acme-robotics.dev`. Lower case, with at least one dot. | Owner, Maintainer |
+| **Data region** | Where this deployment keeps its data, as the deployment administrator named it. | The deployment |
+| **Data retention** | How long transcripts, build logs and artifacts are kept. | Owner, Maintainer |
+| **Training on this workspace's data** | Always *Off — this deployment never trains on your data.* | The deployment |
+
+Change the name or domain, then choose **Save changes** at the top of the settings page. The
+change is recorded in the audit log. Retention is described with the rest of the workspace's
+data lifecycle, in [Data retention, audit & lifecycle](./retention-audit-lifecycle.mdx).
+
+### Tenant domain
+
+A workspace has one tenant domain, and no two workspaces on a deployment can share one.
+Saving a new domain replaces the old one. While you edit, the card says what will change
+before you save:
+
+<Screenshot id="administration.workspace.domain" />
+
+The domain is the workspace's record of which company it belongs to. Neither GitHub sign-in
+nor the **Continue with SSO** check uses it today. If another workspace already holds the
+domain, the save is refused with *That domain belongs to another workspace.* Nothing else on
+the card changes either: a refused save leaves the name as it was.
+
+### Data region
+
+The region is a label, not a choice. Set it with <EnvVar name="OURO_DATA_REGION" /> in the REST
+service's environment, such as `eu-central-1`, and restart the service. It names where you
+deployed and moves no data. Left unset, the card reads **self-hosted** with *Self-hosted —
+single region. The operator has not named it (OURO_DATA_REGION).* The **Data residency** link
+beside it explains where a workspace's data is kept.
+
+## Workspace recovery
+
+Deleting a workspace does not destroy it at once. It waits out a 30-day recovery window, and
+during that time it is frozen:
+
+- Opening it sends everyone to `/workspace-recovery`, under the heading
+  ***Workspace* is scheduled for deletion**, with a countdown of the time left.
+- No loop starts, no stage advances and no build is offered.
+- Everyone who is not an Owner is signed out of it.
+
+Only an **Owner** can bring it back: they see **Restore workspace**, which returns it to active
+at once. Everyone else is told *Only an owner of this workspace can restore it.* Restoring is
+possible until the data is purged, even shortly after the countdown ends. Once the purge
+begins, the workspace cannot be recovered.
+
+If the last Owner cannot sign in any more, nobody can restore the workspace from the app.
+Keep at least two Owners in every workspace you care about. Deleting and restoring, and what
+the purge removes, are covered in
+[Data retention, audit & lifecycle](./retention-audit-lifecycle.mdx).
+
+## What can go wrong
+
+- **The REST service exits at start-up naming `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` or an
+  `OURO_GITHUB_*` variable.** The variable is missing or malformed. The secret needs at least
+  16 characters. `BETTER_AUTH_URL` needs an address with no path, such as
+  `https://app.example.com`.
+- **GitHub says *The redirect_uri is not associated with this application.*** The app's
+  **Authorization callback URL** does not match `BETTER_AUTH_URL` followed by
+  `/api/auth/callback/github`. Correct whichever is wrong, then restart the REST service.
+- **After approving on GitHub, the browser cannot open the page it is sent back to.**
+  `BETTER_AUTH_URL` names an address the browser cannot reach — usually the internal REST
+  address in a deployment. Set it to the UI's public address, and update the app's callback
+  to match.
+- **Signing out or switching workspace is refused with *Invalid origin*.** The address the
+  browser is on is not in `OURO_CORS_ORIGINS`. Add the UI's public address and restart the
+  REST service.
+- **People sign in but land back on the sign-in page.** `BETTER_AUTH_URL` is `https://` while
+  the UI is served over plain HTTP, and browsers keep a `__Secure-` cookie only over HTTPS.
+  Serve the UI over HTTPS at the address `BETTER_AUTH_URL` names.
+- **Everyone was signed out at once.** `BETTER_AUTH_SECRET` changed. Everyone signs in again;
+  nothing else is lost.
+- **An invited person arrives in a workspace of their own.** Their GitHub account has no
+  verified address matching the invitation. Ask them to verify that address on GitHub, or
+  invite the address GitHub shows as verified.
+- **The tenant domain will not save.** Either it is not a lower-case domain (*Enter a
+  lower-case domain name, such as acme.ouroboros.dev.*), or another workspace holds it.
