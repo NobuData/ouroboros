@@ -2,14 +2,207 @@
 title: "Stack & operator commands"
 sidebar_label: "Stack commands"
 sidebar_position: 4
-description: "The yarn verbs that set up, run, stop and reset a local stack."
+description: "The yarn commands that set up, run, stop and reset a local stack."
 ---
 
-The `yarn` verbs that set up, run, stop and reset a local stack.
+These are the `yarn` commands you run from the root of an Ouroboros checkout. Use them to try
+Ouroboros on your own machine, or to work on it. Each one is a script in the repository's root
+`package.json`.
 
-:::info[Being written]
+To deploy Ouroboros for a team, use the published images instead — see
+[Deploying Ouroboros](../administration/deploy/overview.mdx).
 
-This page is being written in
-[#1204](https://github.com/NobuData/ouroboros/issues/1204).
+## Before you start
+
+You need [Node 24](https://nodejs.org) with corepack, [uv](https://docs.astral.sh/uv/) and
+Docker. Then, from a fresh clone:
+
+```bash
+corepack enable      # Yarn 4, the version package.json pins
+yarn install         # every module's dependencies, from the committed lockfile
+yarn setup           # the .env files, with a real secret in each
+docker compose up -d # PostgreSQL, migrated, with demonstration data
+yarn dev             # the application: UI, REST API and engine
+```
+
+Then open `http://localhost:3000`. A local stack offers an email and password sign-in. Sign in as a
+demonstration person, for example `ken@acme-robotics.dev` with the password
+`ouroboros-dev-password`.
+
+## The commands
+
+| Command | What it does |
+| --- | --- |
+| [`yarn install`](#yarn-install) | Installs every module's dependencies. |
+| [`yarn setup`](#yarn-setup) | Creates the `.env` files the services read. |
+| [`yarn dev`](#yarn-dev) | Runs the application from your checkout. |
+| [`yarn dev:stop`](#yarn-devstop) | Stops the database container, keeping its data. |
+| [`yarn dev:reset`](#yarn-devreset) | Removes the containers **and deletes their data**. |
+| [`yarn dev:web`](#yarn-devweb) | Runs the marketing site on its own. |
+| [`yarn dev:docs`](#yarn-devdocs) | Runs this documentation site on its own. |
+| [`yarn verify`](#yarn-verify) | Runs the repository's shell test suites. |
+| [`yarn e2e`](#yarn-e2e) | Builds the whole stack in containers and runs the end-to-end suite against it. |
+
+Anything you type after a command is passed on to the script it runs. For example,
+`yarn setup --dry-run` runs `scripts/setup.sh --dry-run`.
+
+## `yarn install`
+
+Installs the dependencies of every module in the stack from the committed `yarn.lock`. Run it
+after cloning and after any `git pull` that changes a lockfile. Run `corepack enable` once
+first, so `yarn` is the version the repository pins.
+
+## `yarn setup`
+
+Runs `scripts/setup.sh`. It writes a `.env` beside every `.env.example` in the checkout: one at
+the top and one per module that has a template. Each `.env` is a copy of its template, with two
+changes:
+
+- **Real secrets.** Every placeholder marked `…-change-me` gets a strong random value.
+- **Shared secrets agree.** A secret that two modules both read gets the same value in both
+  files. For example, the REST service and the engine compare
+  <EnvVar name="OURO_ENGINE_SHARED_SECRET" /> on every call.
+
+It never overwrites a `.env` you already have unless you pass `--force`. When it finds an
+existing file, it keeps the secrets already in it, so it is safe to re-run after a `git pull`
+adds a variable.
+
+```text
+scripts/setup.sh [-n|--dry-run] [-f|--force] [--db-port PORT] [--root DIR]
+```
+
+| Option | What it does |
+| --- | --- |
+| `-n`, `--dry-run` | Reports what it would write, and writes nothing. |
+| `-f`, `--force` | Replaces `.env` files that already exist, keeping their secrets. |
+| `--db-port PORT` | Publishes PostgreSQL on another port, and changes <EnvVar name="OURO_DATABASE_URL" /> to match. Use it when something already listens on `5432`. |
+| `--root DIR` | Sets up the checkout at `DIR` instead of the one the script is in. |
+| `-h`, `--help` | Prints the usage. |
+
+| Exit status | Meaning |
+| --- | --- |
+| `0` | Every missing file now exists, or `--dry-run` reported cleanly. `--help` exits `0` too. |
+| `1` | A file could not be written. Each reason is printed. |
+| `2` | Bad command-line usage, such as an unknown option or a port that is not a number. |
+
+When it finishes, it lists how many files it created, replaced and left alone. If something
+already listens on the database port, it warns you and prints the command to fix it:
+
+```bash
+scripts/setup.sh --force --db-port 55433
+```
+
+`yarn setup` cannot register a GitHub OAuth application for you, and a local stack doesn't need
+one: you sign in with the demonstration people's password. To try the GitHub sign-in itself,
+register a development app as described in
+[Register the GitHub OAuth app](../administration/sign-in-and-workspace.mdx#register-the-github-oauth-app),
+with the callback `http://localhost:4000/api/auth/callback/github`. Put its id and secret in
+<EnvVar name="OURO_GITHUB_CLIENT_ID" /> and <EnvVar name="OURO_GITHUB_CLIENT_SECRET" />.
+
+## `yarn dev`
+
+Runs the application from your checkout, with live reload. First it applies any pending database
+migrations. Then it starts the services side by side and streams all their logs into one
+terminal:
+
+| Service | Address |
+| --- | --- |
+| The UI | `http://localhost:3000` |
+| The REST API | `http://localhost:4000/api/v1` |
+| The engine | `http://127.0.0.1:8000` |
+| PostgreSQL | `postgresql://ouroboros:ouroboros@localhost:5432/ouroboros` |
+
+`yarn dev` migrates a database that is already running, but it does not start one. Start
+PostgreSQL first with `docker compose up -d`. That brings it up, applies every migration and
+loads the demonstration data, and the database keeps running in the background.
+
+Press `Ctrl-C` to stop the services. The database is a container and keeps running, which is
+what you want between restarts.
+
+## `yarn dev:stop`
+
+Runs `docker compose stop`. It stops the stack's containers, the database among them, and keeps
+their data. `docker compose up -d` starts them again where they left off.
+
+## `yarn dev:reset`
+
+Runs `docker compose down -v`. It removes the stack's containers and network, **and its
+volumes**.
+
+:::caution[This deletes your local data]
+
+`yarn dev:reset` deletes every volume the stack keeps. That includes the database and everything
+in it, along with build artifacts, runner releases, the farm's certificate authority and
+downloaded local models. It cannot be undone. Use `yarn dev:stop` to stop the stack and keep its
+data.
 
 :::
+
+Use it for a clean start. The next `docker compose up -d` creates an empty database, migrates it
+and loads the demonstration data again.
+
+## `yarn dev:web`
+
+Installs the marketing site's dependencies and runs it on its own, on `http://localhost:3000`. It
+is not part of the application stack and uses the same port as the UI, so stop `yarn dev` first.
+
+## `yarn dev:docs`
+
+Installs this documentation site's dependencies and runs it with live reload on
+`http://localhost:3100`, alongside the application if you like.
+
+## `yarn verify`
+
+Runs `scripts/run-tests.sh`, which runs the repository's shell test suites. These suites check
+the repository's own tooling in `scripts/` and the modules whose tooling is shell. Give it
+directories to run only the suites in them:
+
+```bash
+yarn verify                     # every suite
+yarn verify ouroboros-db/tests  # only the suites in that directory
+```
+
+It takes several minutes for every suite.
+
+| Exit status | Meaning |
+| --- | --- |
+| `0` | Every suite passed. |
+| `1` | A suite failed, or there was nothing to run. |
+| `2` | A directory you named does not exist. |
+
+## `yarn e2e`
+
+Runs the end-to-end suite. It installs the suite's dependencies, builds the three application
+images from your checkout and starts the whole stack in containers. It waits until every service
+reports healthy, runs the browser tests against it, then stops the stack. The database volume is
+kept.
+
+The first run builds the images and takes several minutes.
+
+| Option | What it does |
+| --- | --- |
+| `--keep` | Leaves the stack running afterwards, so you can look at it. |
+| `--no-build` | Reuses the images already built. |
+| `-- ARGS` | Passes everything after `--` to the test runner, for example `yarn e2e -- --grep "sign in"`. |
+
+| Exit status | Meaning |
+| --- | --- |
+| `0` | The suite passed. |
+| `1` | The suite failed. |
+| `2` | The stack did not come up, or the options were wrong. |
+
+## What can go wrong
+
+- **`yarn dev` fails to reach the database** — PostgreSQL is not running. Start it with
+  `docker compose up -d`, then run `yarn dev` again.
+- **The database container will not start** — something else on the machine already listens on
+  `5432`, often a PostgreSQL installed on the host. Run `yarn setup --force --db-port 55433`, then
+  start it again.
+- **The services refuse to start, naming a variable** — a `.env` file is missing or out of date.
+  Run `yarn setup`. It adds what is missing and keeps your secrets.
+- **Every call between the REST service and the engine is refused** — the two `.env` files hold
+  different shared secrets, usually because one was edited by hand. Run `yarn setup --force` to
+  make them agree.
+- **`yarn dev:web` says port 3000 is in use** — the UI is running. Stop `yarn dev` first.
+- **Your local data is gone** — `yarn dev:reset` deletes the volumes. Next time, use
+  `yarn dev:stop`.

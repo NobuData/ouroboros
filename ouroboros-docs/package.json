@@ -1,6 +1,6 @@
 {
   "name": "ouroboros-docs",
-  "version": "0.1.38",
+  "version": "0.1.39",
   "private": true,
   "description": "The Ouroboros documentation site — User Guide, Administration and CLI, built with Docusaurus. Not a workspace (CONVENTIONS.md § 1, limit 6).",
   "license": "Apache-2.0",
