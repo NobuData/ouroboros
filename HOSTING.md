@@ -26,6 +26,7 @@ This document covers only what you have to decide to stand a deployment up.
 | `db` (internal) | PostgreSQL 17 :5432 | **Internal only** | Always |
 | `ollama` (internal) | Ollama :11434 | **Internal only** | Only if you run a local model |
 | `www.example.com` | `ouroboros-web` :3000 | Public | Only for the marketing site. It is a separate app with no link to the stack |
+| `docs.example.com` | `ouroboros-docs` :8080 | Public | Only to host the documentation yourself. A static site with no link to the stack — see [§ 7](#7-the-documentation-site) |
 
 Two services have no hostname at all:
 
@@ -405,6 +406,31 @@ volumes:
 
 The development `docker-compose.yml` differs on purpose: it publishes REST and the UI on
 `127.0.0.1`, applies the demo seed, and uses placeholder secrets. Don't deploy it as is.
+
+---
+
+## 7. The documentation site
+
+The documentation is a static site in its own image, [`ouroboros-docs/Dockerfile`](ouroboros-docs/Dockerfile)
+([#1206](https://github.com/NobuData/ouroboros/issues/1206)). It talks to nothing: no service
+address, no secret and no volume. Host it if you want the documentation on your own domain or
+inside a network without internet access.
+
+```bash
+docker build -t ouroboros-docs --build-arg DOCS_SITE_URL=https://docs.example.com ouroboros-docs
+docker run -d -p 127.0.0.1:8080:8080 ouroboros-docs
+```
+
+- **Port 8080**, as the image's non-root user (uid 101). Put it behind the same kind of HTTPS
+  proxy as § 5, with nothing path-specific.
+- **`DOCS_SITE_URL`** is a build argument, not a runtime variable: it is written into the
+  sitemap and canonical links when the site is built. Build with your own address.
+- **`GET /healthz`** answers `200` for a liveness probe; the image's `HEALTHCHECK` uses it.
+- The server sends its own security headers, including a Content-Security-Policy. A proxy in front
+  should pass them through rather than set its own.
+
+The full description — build arguments, caching and headers — is
+[`ouroboros-docs/README.md`](ouroboros-docs/README.md) § Run, *The image*.
 
 ---
 

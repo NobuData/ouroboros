@@ -76,6 +76,47 @@ Port **3100** is the docs site's alone: `ouroboros-ui` and `ouroboros-web` both 
 ([`CONVENTIONS.md`](../docs/CONVENTIONS.md) § 4 port map), so the docs can run beside the
 product stack.
 
+### The image
+
+The site ships as a static image ([#1206](https://github.com/NobuData/ouroboros/issues/1206),
+roadmap decision D8): `node:24-alpine` installs and builds it, and
+`nginxinc/nginx-unprivileged` serves `build/` as uid 101 on **8080**. Nothing outside this
+directory is read — the brand copies, the configuration reference and the screenshots are
+committed, so the build context is the module alone:
+
+```bash
+docker build -t ouroboros-docs ouroboros-docs                    # from the repository root
+docker run --rm -p 8080:8080 ouroboros-docs                      # http://localhost:8080
+```
+
+| Build argument | Default | What it sets |
+|---|---|---|
+| `DOCS_SITE_URL` | `https://docs.ouroboros.build` | The site's public URL, for canonical links and the sitemap (see Configuration) |
+| `VERSION` | `0.0.0` | `org.opencontainers.image.version` — pass this `package.json`'s version |
+| `REVISION` | `unknown` | `org.opencontainers.image.revision` — pass the git commit |
+| `SOURCE` | `https://github.com/NobuData/ouroboros` | `org.opencontainers.image.source` and `.url` |
+| `CREATED` | empty | `org.opencontainers.image.created` — an RFC 3339 time |
+
+What the server does is [`nginx.conf`](nginx.conf):
+
+| Request | Answer |
+|---|---|
+| `/`, `/cli`, `/user-guide/concepts` | The page — `cli.html` is tried before the directory `cli/`, which has no `index.html` |
+| `/cli/` | `301` to `/cli`, relative, so it is right behind any proxy |
+| An unknown path | Docusaurus' `404.html`, with status **404** |
+| `/assets/*` | `Cache-Control: public, max-age=31536000, immutable` — every file there is content-hashed |
+| Any page | `Cache-Control: no-cache`, so a new deployment is seen at once |
+| `GET /healthz` | `200 ok`, from nginx without reading the disk — the image's `HEALTHCHECK` |
+
+Text is gzipped, and every answer carries
+[`nginx-headers.conf`](nginx-headers.conf)'s security headers. The Content-Security-Policy admits
+scripts from the site and, inline, **only the theme script** — the lines that set the colour
+mode before the first paint. Its SHA-256 is read from the built pages by
+[`scripts/gen-csp.ts`](scripts/gen-csp.ts) in the `build` stage and written into
+`/etc/nginx/ouroboros/csp.conf`, because Docusaurus owns that script's text. The image build
+fails if a page carries any other inline script; `baseUrlIssueBanner: false` in the config is
+what removes the one Docusaurus would otherwise add to the home page.
+
 ## Configuration
 
 | Variable | Default | Read by | Purpose |
@@ -107,7 +148,8 @@ ouroboros-docs/
 │       └── screenshots/    # captured by yarn screenshots: <section>/<slug>.<theme>.png
 ├── screenshots/            # the capture harness (Playwright) — see "Recapturing screenshots"
 ├── plugins/screenshots.ts  # reads the manifest and image sizes at build time for <Screenshot>
-├── scripts/                # sync-brand.mjs; gen-config-reference.ts + config-reference.ts
+├── scripts/                # sync-brand.mjs; gen-config-reference.ts + config-reference.ts;
+│                           # check-cli-flags.ts + cli-flags.ts; gen-csp.ts + csp.ts (the image's CSP)
 ├── tests/                  # Vitest — config, sidebars, pages, brand, components, theme, module
 │   └── support/            # stand-ins for Docusaurus client modules, the jsdom setup
 ├── docusaurus.config.ts    # the site config: one docs instance at /, navbar, footer, strict links
@@ -115,7 +157,9 @@ ouroboros-docs/
 ├── sidebars.ts             # one sidebar per section, generated from its folder
 ├── eslint.config.mjs · stylelint.config.mjs · .markdownlint-cli2.jsonc · .prettierrc.json
 ├── vitest.config.mts · tsconfig.json
-└── package.json · yarn.lock · .yarnrc.yml · .gitignore · .dockerignore
+├── Dockerfile · .dockerignore   # the image — see "The image"
+├── nginx.conf · nginx-headers.conf   # its server and security headers
+└── package.json · yarn.lock · .yarnrc.yml · .gitignore
 ```
 
 Every page in `docs/` belongs to exactly one section. The home page is not a doc: it is
@@ -511,4 +555,5 @@ page's title, headings, description and text are indexed. Build the site
 - [#1166](https://github.com/NobuData/ouroboros/issues/1166) — CY.3 brand theme, light/dark & logos (this module's theme)
 - [#1169](https://github.com/NobuData/ouroboros/issues/1169) — CY.6 landing page
 - [#1170](https://github.com/NobuData/ouroboros/issues/1170) — CZ.1 screenshot capture harness
+- [#1206](https://github.com/NobuData/ouroboros/issues/1206) — DD.1 Dockerfile & nginx runtime (the image)
 - [#1156](https://github.com/NobuData/ouroboros/issues/1156) — Epic CY · Docs Site Foundation

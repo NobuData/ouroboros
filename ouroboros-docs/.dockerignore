@@ -1,6 +1,5 @@
-# Keeps the build context small and secrets out (CONVENTIONS.md § 2). The Dockerfile
-# itself arrives with DD.1; this file exists from the scaffold so the module never has a
-# window in which a stray .env or node_modules could be sent to a daemon.
+# Keeps the build context small and secrets out (CONVENTIONS.md § 2). The context is this
+# directory alone (see the Dockerfile); the image is built from the committed sources.
 .git
 node_modules
 .yarn/cache
@@ -8,6 +7,8 @@ node_modules
 build
 .docusaurus
 screenshots/test-results
+# The capture harness's saved sign-in session — a credential, never image content.
+screenshots/.auth
 npm-debug.log*
 yarn-error.log*
 README.md
