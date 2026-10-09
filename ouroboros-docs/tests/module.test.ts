@@ -63,9 +63,11 @@ describe("package.json", () => {
     expect(manifest.scripts.lint).toBe('eslint . && stylelint "src/**/*.css" && markdownlint-cli2');
   });
 
-  it("points markdownlint at the site's pages", () => {
+  it("points markdownlint at the site's pages, and not at partials", () => {
     const config = readFileSync(join(MODULE_DIR, ".markdownlint-cli2.jsonc"), "utf8");
-    expect(config).toContain('"globs": ["docs/**/*.{md,mdx}"]');
+    // A `_*.mdx` partial has no front matter (Docusaurus rejects it under CI), so the
+    // first-heading rule cannot hold it; the generated one is held by its own tests.
+    expect(config).toContain('"globs": ["docs/**/*.{md,mdx}", "!docs/**/_*.mdx"]');
   });
 
   it("pins every @docusaurus package to one exact 3.10 patch", () => {

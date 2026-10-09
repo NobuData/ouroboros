@@ -4,7 +4,10 @@
 // the repository's engineering documents are not part of the site. markdownlint's default
 // rules apply, less the ones that do not fit MDX pages:
 {
-  "globs": ["docs/**/*.{md,mdx}"],
+  // Partials (`_*.mdx`) are fragments the pages import, not pages: they have no front matter
+  // (Docusaurus rejects it under CI), so the first-heading rule cannot apply, and the one
+  // partial that exists is generated and held by tests/config-reference.test.ts.
+  "globs": ["docs/**/*.{md,mdx}", "!docs/**/_*.mdx"],
   "config": {
     "default": true,
     // Prose is wrapped by the editor, not at a column, and tables run long.

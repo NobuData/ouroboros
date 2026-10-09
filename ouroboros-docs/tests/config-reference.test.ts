@@ -237,8 +237,11 @@ describe("renderReference", () => {
     expect(out).toContain("```text\nsmtp://user@host\n```");
   });
 
-  it("opens with front matter carrying the do-not-edit notice", () => {
-    expect(out.startsWith("---\n# Generated from the root .env.example")).toBe(true);
+  it("opens with the do-not-edit notice as an MDX comment, never front matter", () => {
+    // A partial's front matter is a build error under CI (Docusaurus mdx-loader), so the
+    // notice is a comment and the file must not start with a front matter fence.
+    expect(out.startsWith("{/* Generated from the root .env.example")).toBe(true);
+    expect(out.startsWith("---")).toBe(false);
   });
 
   it("refuses a description that still cites an issue outside parentheses", () => {

@@ -313,16 +313,19 @@ function valueLine(variable: ConfigVariable): string {
 }
 
 /**
- * The generated file's front matter. A partial's front matter is not shown (the page that imports
- * it keeps its own), so it is where the do-not-edit notice lives, as a YAML comment — and its
- * `title` is what markdownlint's first-heading rule reads.
+ * The generated file's opening: the do-not-edit notice, as an MDX comment.
+ *
+ * It is a comment and not front matter on purpose. The file is an MDX *partial* — its name
+ * starts with `_`, and `configuration/index.mdx` imports it — and Docusaurus ignores a
+ * partial's front matter: a warning in a local build, but **an error under `CI`**, which is
+ * what failed `ci/docs` on every merge from #1191 until this was caught. markdownlint's
+ * first-heading rule, which the old front matter's `title` satisfied, now skips partials
+ * (`.markdownlint-cli2.jsonc`): a partial is a fragment of the page that imports it, not a
+ * page.
  */
-export const GENERATED_FRONT_MATTER = [
-  "---",
-  "# Generated from the root .env.example by scripts/gen-config-reference.ts — do not edit.",
-  "# Run `yarn gen:config-reference` in ouroboros-docs after changing .env.example.",
-  'title: "Configuration variables"',
-  "---",
+export const GENERATED_NOTICE = [
+  "{/* Generated from the root .env.example by scripts/gen-config-reference.ts — do not edit.",
+  "    Run `yarn gen:config-reference` in ouroboros-docs after changing .env.example. */}",
 ].join("\n");
 
 /** A bare address in prose, without the punctuation that may end its sentence. */
@@ -338,7 +341,7 @@ const BARE_URL = /\bhttps?:\/\/[^\s`]*[^\s`.,;:)]/g;
  *   or a decision after {@link stripReferences} — reword that comment in `.env.example`.
  */
 export function renderReference(sections: readonly ConfigSection[]): string {
-  const out: string[] = [GENERATED_FRONT_MATTER, ""];
+  const out: string[] = [GENERATED_NOTICE, ""];
 
   for (const section of sections) {
     out.push(`## ${escapeMdx(section.title)}`, "");
