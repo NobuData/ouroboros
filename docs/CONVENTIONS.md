@@ -654,6 +654,14 @@ secrets. `DOCS_SITE_URL` comes from the repository variable of that name when it
 `scripts/verify-ci.sh` asserts the job, its gate, its guard, the registry, the image name and
 the three tags.
 
+Because `publish/docs` builds nothing on a pull request, the image is proven inside `ci/docs`
+instead ([#1208](https://github.com/NobuData/ouroboros/issues/1208)): it is built with
+`load: true` and no push — so no credential is involved and a fork's pull request runs it too —
+and `ouroboros-docs/scripts/smoke-image.sh` runs it and probes `/healthz`, the section roots, a
+deep page, a 404 and the footer's copyright line. A green build that serves nothing therefore
+turns `ci/docs` red, and `needs: ci` keeps it unpublished. The build shares `publish/docs`'
+cache scope, so the publish build replays it.
+
 `docs/RUNNER_PROTOCOL.md` is the other unusual entry, and the second document in this table
 after mockup 05: it is not documentation *about* the code, it is half of a contract, and
 `ci/runner` asserts that it still agrees with the schema and the fixtures. An edit to it that

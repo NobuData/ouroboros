@@ -426,15 +426,19 @@ docker build -t ouroboros-docs --build-arg DOCS_SITE_URL=https://docs.example.co
 ```
 
 - **Port 8080**, as the image's non-root user (uid 101). Put it behind the same kind of HTTPS
-  proxy as § 5, with nothing path-specific.
+  proxy as § 5, with nothing path-specific, **at the root of its own hostname** — it is built for
+  `/`, so it cannot live under a path like `example.com/docs/`. It runs with a read-only root
+  filesystem given a `tmpfs` on `/tmp`.
 - **`DOCS_SITE_URL`** is a build argument, not a runtime variable: it is written into the
   sitemap and canonical links when the site is built. Build with your own address.
 - **`GET /healthz`** answers `200` for a liveness probe; the image's `HEALTHCHECK` uses it.
 - The server sends its own security headers, including a Content-Security-Policy. A proxy in front
   should pass them through rather than set its own.
 
-The full description — build arguments, caching and headers — is
-[`ouroboros-docs/README.md`](ouroboros-docs/README.md) § Run, *The image*.
+The full description — build arguments, caching, headers, a compose service and the
+reverse-proxy notes — is [`ouroboros-docs/README.md`](ouroboros-docs/README.md) § Run, *The
+image*. `ci/docs` smoke-tests every build of it before it can be published
+([#1208](https://github.com/NobuData/ouroboros/issues/1208)).
 
 ---
 

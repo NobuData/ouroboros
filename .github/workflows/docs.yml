@@ -105,6 +105,29 @@ jobs:
         working-directory: ouroboros-docs
         run: yarn check:cli-flags
 
+      # A green build can still produce an image that serves nothing (#1208). So the image is
+      # built here, on every event, loaded into this runner's daemon and never pushed — no
+      # credential is involved, so a fork's pull request runs it too — and then run and probed:
+      # /healthz, the three section roots, a deep page, a 404 and the footer's copyright line.
+      # A failure here fails ci/docs, which is what publish/docs needs, so a broken image is
+      # never published. The cache scope is publish/docs' own, so its build is a cache hit.
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: ouroboros-docs
+          file: ouroboros-docs/Dockerfile
+          push: false
+          load: true
+          tags: ouroboros-docs:smoke
+          cache-from: type=gha,scope=ouroboros-docs
+          cache-to: type=gha,mode=max,scope=ouroboros-docs
+
+      - name: Smoke-test the image
+        working-directory: ouroboros-docs
+        run: scripts/smoke-image.sh ouroboros-docs:smoke
+
   # ---------------------------------------------------------------------------
   # publish/docs — the documentation site's image (#1207, roadmap decision D9).
   #

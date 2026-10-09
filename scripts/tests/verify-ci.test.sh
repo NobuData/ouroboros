@@ -777,6 +777,18 @@ jobs:
           module: ouroboros-docs
           scaffolded-by: "#1164"
 
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: ouroboros-docs
+          push: false
+          load: true
+          tags: ouroboros-docs:smoke
+
+      - name: Smoke-test the image
+        working-directory: ouroboros-docs
+        run: scripts/smoke-image.sh ouroboros-docs:smoke
+
   publish:
     name: publish/docs
     runs-on: ubuntu-latest
@@ -1083,6 +1095,10 @@ check_break 'a docs workflow that stops watching .env.example is reported' \
 check_break 'a docs workflow that stops watching the runner installer is reported' \
   'install\.sh runs docs\.yml runner\.yml' \
   'sed -i "/ouroboros-runner\/install\.sh/d" "$root/.github/workflows/docs.yml"'
+
+check_break 'a docs workflow that no longer smoke-tests its image is reported' \
+  'smoke-tests it before anything is published' \
+  'sed -i "/run: scripts\/smoke-image.sh/d" "$root/.github/workflows/docs.yml"'
 
 # publish/docs (#1207): the PR guard, the gate and the registry are each what makes a tag
 # trustworthy, so losing any one of them is reported.
