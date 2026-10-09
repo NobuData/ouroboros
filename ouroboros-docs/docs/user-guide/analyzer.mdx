@@ -5,11 +5,217 @@ sidebar_position: 14
 description: "Judging and acting on the analyzer's build suggestions."
 ---
 
-Judging and acting on the analyzer's build suggestions.
+The **Build Analyzer**, at `/analyzer`, reads every build, test run and loop transcript in a
+repository's history and looks for patterns: when builds got slower or faster and why, which
+stages waste time, which failures keep coming back. It turns what it finds into suggestions —
+changes to how builds run, changes to your workflows, and tickets — each with a predicted
+impact, a confidence, and the evidence behind it.
 
-:::info[Being written]
+Nothing the analyzer suggests changes anything by itself. You judge each suggestion, and you
+decide whether to apply it, draft it, or dismiss it. After you apply one, the analyzer measures
+whether it delivered.
 
-This page is being written in
-[#1187](https://github.com/NobuData/ouroboros/issues/1187).
+<Screenshot id="user-guide.analyzer" />
 
-:::
+You reach the page from **✦ Build Analyzer** on [Insights](./insights.mdx); the sidebar
+highlights **Build Farm** while you are on it.
+
+## Choosing a repository
+
+The analyzer works on one repository at a time: the one chosen in the header's workspace chip
+(**Focus repository**). With no repository chosen, it shows the first enabled one and says
+**Showing the first enabled repository — choose another from the tenant chip.** The eyebrow
+names the repository — **Build Analyzer · helios-firmware**.
+
+## The header
+
+The headline says how much history there is to learn from — such as
+**Your last 1,284 builds have opinions.** With fewer builds than days in the window it reads,
+for example, **12 builds in 90 days — early opinions, held loosely.**
+
+- **Schedule** — shows when the analysis runs, such as **Schedule: weekly + every 50 builds**,
+  **Schedule: manual only** or **Schedule: paused**. Choose it to open **Analysis schedule**:
+  **Scheduled runs** on or off, a **Weekly run** on a **Day** at a **Time (UTC)**, an
+  **Every-N-builds run** with **Builds between runs**, and the limits a run may use —
+  **Max builds**, **Max log lines** and **Compute ceiling (s)**. Members can read it; only
+  owners and admins can change it.
+- **Run analysis now** — starts an analysis straight away. Only owners and admins can run one.
+  While it runs, **Analysis progress** shows each phase, and the results on the page stay
+  those of the last finished analysis until it ends.
+
+### What the last analysis read
+
+The strip under the header describes the last finished analysis:
+
+- **Corpus** — what it read: builds, loops, days, log lines and rig sessions. A **sampled**
+  tag means it read only part of something, such as
+  **log lines read at 30%, capped by the max-log-lines budget**.
+- **Analyzed by** — the analyzers that ran. Its **ⓘ** lists each one and how it ended.
+- **Last run** — when it ran and how long it took.
+- **Confidence** — **high**, **medium** or **low**, from how many days had builds and how many
+  builds a day there were. Its **ⓘ** (**How this was judged**) shows the figures and the bars
+  each level needs.
+
+## Build duration
+
+<Screenshot id="user-guide.analyzer.duration" />
+
+**Build duration · 90 days, with detected change-points** plots the median build time per day
+over the analysis window. Each dashed line is a **change-point** — a day the build time
+shifted and stayed shifted — and its chip says when, what it is attributed to, and by how much:
+**Aug 23 · ccache enabled −2m 10s**. A shift that made builds faster is green; slower is amber.
+
+Choose a chip to open its details: the change, the evidence the analyzer used, and what it is
+**Attributed to (top candidate)**, with the other candidates below it. Attribution is *a
+ranking, not a verdict*: the analyzer scores every recorded change near the shift by how close
+it was and how plausible that kind of change is. It does not prove a cause. A shift that
+nothing recorded explains is labelled **no recorded change** — the shift is real, but the
+analyzer does not know why.
+
+## Suggestions
+
+Suggestions come in two cards: **Suggested build-process changes** (test gates, caching,
+runner pools, build steps) and **Suggested workflow changes** (how your loops run), each with
+how many are open.
+
+<Screenshot id="user-guide.analyzer.suggestion" />
+
+Each suggestion shows:
+
+- **What to change** — such as
+  **Split the test gate: native_sim every build, QEMU + HIL only before merge**.
+- **Evidence** — the pattern it is based on, in one line.
+- **The predicted impact** — such as **−3m 40s per loop**. Its **ⓘ** (**How this impact was
+  computed**) says whether the figure was measured or extrapolated, and how the analyzer's
+  past accuracy scaled it.
+- **The confidence** — such as **conf 91%**. Its **ⓘ** (**How this confidence was scored**)
+  shows what the score was built from.
+
+### Acting on a suggestion
+
+The first button depends on the kind of suggestion:
+
+- **Apply** — for a build-process change. It opens a **Consequence preview** that says
+  exactly what will change and where it **Lands in**, then asks you to confirm. Applying
+  records today's figures as a baseline and starts a measurement (see
+  [Predicted vs measured](#predicted-vs-measured)).
+- **Draft as v15 →** — for a workflow change; the number is the workflow's next version. It
+  opens the same preview, then creates a draft in the workflow studio and opens it. *Publishing
+  remains human*: nothing changes how loops run until a person reviews the draft and publishes
+  it.
+- **Draft spike ticket** — for a suggestion marked **needs a spike**: the analyzer could not
+  verify what the change would win, so it drafts an investigation ticket that asserts no
+  impact. You choose the **Tracker**; the ticket goes into a planning batch and reaches your
+  tracker only when that batch is pushed.
+
+Then:
+
+- **Details** — the evidence behind the suggestion, with links to the builds, test results
+  and pull requests it cites.
+- **Dismiss** — asks **Dismiss this suggestion?** with an optional **Reason (optional)**.
+  Dismissing is permanent: the suggestion *won't be suggested again*, even when a later
+  analysis finds the same pattern.
+
+Only owners and admins can apply a suggestion or draft from one; members can dismiss;
+viewers can read. A button you cannot use is greyed out and says why.
+
+**Simulate on last 50 loops**, on workflow suggestions, is marked **soon** — it is not
+available yet.
+
+The preview stays honest about what it can do: a change no part of Ouroboros can make yet says
+**This cannot be applied yet** and why, and nothing is applied. If the suggestion changed while
+the preview was open, the preview is read again and says so before you confirm.
+
+A suggestion you have acted on stays in the list as a short row: an applied one links to
+**Predicted vs measured**; a drafted workflow change says *publishing remains a person's step*
+and links to **Open in the studio**; a drafted spike links to **Open the draft in Planning**;
+a dismissed one says *won't be suggested again*.
+
+## Predicted vs measured
+
+<Screenshot id="user-guide.analyzer.predicted-vs-measured" />
+
+**Predicted vs measured** holds every suggestion you applied: what the analyzer
+**predicted**, and what was **measured** after the change. *Every applied suggestion is
+re-measured for 14 days.* A result that delivered is marked **✓**; one that missed is shown in
+amber with a note, such as *under-delivered — analyzer revised its cache model*.
+
+- While the measurement runs, the row says how far along it is — **day 3 of 14** — and what is
+  being measured until when.
+- When something else changed in the same window — another applied suggestion or a detected
+  change-point — the row is marked **confounded** and lists **What interfered:**. A confounded
+  result is not used to judge the analyzer.
+
+The analyzer learns from its misses. Choose **retrains** to read
+**How the analyzer recalibrates**: each analyzer keeps one multiplier per kind of impact, and
+each clean measurement adjusts it, so the next prediction is scaled by how accurate the last
+ones were.
+
+## Drafted tickets
+
+<Screenshot id="user-guide.analyzer.tickets" />
+
+**Drafted tickets — from patterns, not people** lists the tickets the analyzer drafted from its
+findings, such as **BA-1 Refactor tests/ota fixtures — shared setup times out under load**,
+each with its size and one line of evidence. Choose the evidence line to see every reference
+the ticket's body carries.
+
+The drafts sit in a planning batch; nothing reaches your tracker until you push them:
+
+1. Tick the drafts you want — **All drafts** ticks or clears every one. Owners, admins and
+   members can change the ticks; viewers cannot.
+2. Read the total under the list, such as **est. total ~1.5 days of loop time**.
+3. Choose **Push 4 tickets to backlog →** (the count follows your ticks) to file them in the
+   batch's tracker. Only owners and admins can push.
+
+**Edit drafts** opens the batch in [Planning](./planning.mdx), where you can change a ticket's
+title or body before pushing. After a push, the card says how many landed — such as
+**All 4 tickets are in GitHub.** — with **Open Issues**; they appear in
+[Issues](./issues.mdx) once the backlog has synced. If some did not land, **Retry** pushes only
+the ones that are missing.
+
+Findings that would make a ticket but are not drafted yet are listed under
+**Not drafted yet**, with **Draft 2 tickets** (the count varies) to turn them into a batch.
+
+## How it works
+
+**How it works** describes the three steps every analysis takes — **ingest** (what it read in
+this window), **correlate** (change-points against merges, configs and infrastructure events)
+and **synthesize** (process changes, workflow drafts and tickets, with evidence attached). A
+source the analysis could not read is listed as **not read**, with the reason.
+
+*Runs on your build farm's data. Nothing leaves the tenant.* **How that is enforced ↗**
+explains how.
+
+## Too little history
+
+<Screenshot id="user-guide.analyzer.gated" />
+
+The analyzer needs **builds on at least 10 days** in the last 90 before it can tell a real shift
+from noise. Below that, the page says **The analyzer needs more history.**, counts what there
+is — **3 builds on 3 days in the last 90.** — and shows no chart or suggestions.
+
+You can still run an analysis; its results appear once the history exists. A repository with
+enough history that has never been analysed says **No analysis has run here yet** and offers
+**Run the first analysis**.
+
+## What can go wrong
+
+- **"Only an owner or admin can run an analysis."** Ask an owner or admin, or wait for the
+  schedule.
+- **"An analysis of … is already running"** — a second run was not started. Choose
+  **Follow its progress**.
+- **"The analysis could not be started."** The analysis service may be unavailable. The
+  results on the page are unaffected; try again later.
+- **"The analysis failed, and nothing from it is shown."** The reason follows. The page keeps
+  the last finished analysis's results.
+- **"Stopped at its budget"** — the run hit its compute or size limit. What the finished
+  analyzers found is kept; raise the limits under **Schedule** if this keeps happening.
+- **"This cannot be applied yet"** in a preview — no part of Ouroboros can make that change
+  yet. Nothing is applied; act on it by hand, or dismiss it.
+- **"This suggestion was resolved while the preview was open; nothing was applied."** Someone
+  else applied, drafted or dismissed it first.
+- **"The push could not be made."** The tracker refused or could not be reached. Choose
+  **Retry**; only the tickets that did not land are filed.
+- **The chart is missing on a repository you expected to see.** Check the repository in the
+  header chip; the analyzer shows only the focus repository.
