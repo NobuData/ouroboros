@@ -29,8 +29,8 @@ When the sync cannot run, a banner above the table says why, starting **Sync pau
 
 | Banner | What to do |
 | --- | --- |
-| **Sync paused — no GitHub token is connected.** | An owner or admin adds a token under <UiPath path="Settings > Sources" /> |
-| **Sync paused — GitHub rejected the token.** | The token has expired or lost access; an owner or admin replaces it |
+| **Sync paused — no GitHub token is connected.** | An owner or admin sets the workspace's backlog token — see [Setting the backlog token](../administration/sources.mdx#setting-the-backlog-token) |
+| **Sync paused — GitHub rejected the token.** | The backlog token has expired or lost access; an owner or admin [replaces it](../administration/sources.mdx#setting-the-backlog-token) |
 | **Sync paused — a repository could not be found.** | An enabled repository no longer exists or the token cannot see it; an owner or admin checks the enabled repositories |
 | **Sync paused — GitHub's rate limit is reached.** | Nothing — the banner says when it resumes |
 | **Sync paused — GitHub is not answering.** | Wait, then choose **Check again** |

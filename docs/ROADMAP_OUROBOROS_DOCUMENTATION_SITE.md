@@ -999,7 +999,7 @@ since other pages link variables to it).
 | DB.3 | #1191 ✅ | 🟢 Done | ouroboros-docs: [DB.3] Configuration reference — generated from .env.example | Every OURO_* variable, per service, generated + drift-checked | mvp, docs-site, documentation, ci | Y (first in DB) | Y | M | ouroboros-docs |
 | DB.4 | #1192 ✅ | 🟢 Done | ouroboros-docs: [DB.4] Sign-in & workspace settings | GitHub OAuth app, BetterAuth, domain, region, recovery | mvp, docs-site, documentation, auth, settings | Y | Y | M | ouroboros-docs |
 | DB.5 | #1193 ✅ | 🟢 Done | ouroboros-docs: [DB.5] Members, invites, roles & API tokens | Inviting, roles, capabilities, API tokens and scopes | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
-| DB.6 | #1194 | 🟡 Open | ouroboros-docs: [DB.6] Ticket sources & repositories | Connecting trackers/repos, sync, write-back, troubleshooting | mvp, docs-site, documentation, sources | Y | Y | M | ouroboros-docs |
+| DB.6 | #1194 ✅ | 🟢 Done | ouroboros-docs: [DB.6] Ticket sources & repositories | Connecting trackers/repos, sync, write-back, troubleshooting | mvp, docs-site, documentation, sources | Y | Y | M | ouroboros-docs |
 | DB.7 | #1195 | 🟡 Open | ouroboros-docs: [DB.7] Model providers & keys | Adding providers, sealed keys, discovery, local Ollama, managed pool | mvp, docs-site, documentation, providers | Y | Y | M | ouroboros-docs |
 | DB.8 | #1196 | 🟡 Open | ouroboros-docs: [DB.8] Build farm administration | Pools, farm tokens, enrolling runners, gateway, health | mvp, docs-site, documentation, build-farm | Y | Y | M | ouroboros-docs |
 | DB.9 | #1197 | 🟡 Open | ouroboros-docs: [DB.9] Policies & guardrails | Org policy, protected paths, spend guard, dry-run, decision TTLs, exceptions | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
@@ -1096,6 +1096,22 @@ opt-in), token shown once, revoking. Links to DC.5 for using a token.
 **Problem Statement.** Access control is the admin's most frequent task.
 
 ### Issue DB.6 (#1194) — ouroboros-docs: [DB.6] Ticket sources & repositories
+
+> **GitHub issue:** #1194 ✅ · **Status:** 🟢 Done · **Parent epic:** #1159
+>
+> **Delivered (#1194):** `administration/sources.mdx` covers:
+>
+> - **What can be connected:** only GitHub is registered on `main` (github.com, or GHE through `OURO_GITHUB_API_BASE_URL`, which the source's Octokit factory also reads). Jira, Linear and GitLab are honest-absent **coming soon** / **v2** tiles. There are no webhooks (`webhooks: false`); sources are polled.
+> - **The two GitHub credentials** (verified live, user-chosen treatment). The source's token is used for sync, test, the Planning push to the first repository, and the pull-request plane (open, sync, review, comment, merge). The workspace backlog token behind the Issues page is set only through `PUT /api/v1/settings/github-token`, so the page gives a `curl` recipe with the session cookie and `Origin`, verified against REST. A token stored on a source leaves the backlog `not_configured`. The missing screen is #1250.
+> - **Connecting:** the **Connect a GitHub account** form with up to 50 repositories, plus a per-feature permissions table (Issues read / read-write, Pull requests, Contents for merge).
+> - **Sync:** cadence shared via `OURO_BACKLOG_SYNC_INTERVAL_SECONDS` with ±25% jitter, first import vs incremental, **Sync now** debounce, and the row's last-sync line.
+> - **Configure, pause and resume.** No delete route exists, and the page says so.
+> - **Errors:** all six error reasons with fixes, and a source in **error** not polled until someone resumes it, saves settings or stores a credential.
+> - **What can go wrong**, linking `TICKET_SOURCES.md`.
+>
+> `user-guide/issues.mdx`: the user chose to correct its two token banner rows to point at the backlog-token section. `tests/administration.test.ts` pins the registered provider list, catalog announcements, form titles and limits, the UI labels, the six reasons, the active-only loop filter, the absent delete route, the token prefixes, the absence of any UI caller of `settings/github-token`, and the shared interval.
+>
+> **Screenshots** (`acme-robotics`): `administration.sources` (seeded rows, captured right after a REST restart so no stale last-sync line shows), `administration.sources.connect` (the GitHub form filled for `acme-labs`, token left empty) and `administration.sources.error` (the GitHub row in **error** after **Test connection**). No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.29.
 
 **Solution / Scope.** `/settings/sources`: connecting each tracker adapter that exists on
 `main` (verify in `ouroboros-rest`; GitHub App vs token source differences), sync cadence,

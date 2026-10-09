@@ -39,6 +39,9 @@ const SIGN_IN = page("sign-in-and-workspace.mdx");
 /** The members, invites, roles & API tokens page. */
 const MEMBERS = page("members-and-tokens.mdx");
 
+/** The ticket sources & repositories page. */
+const SOURCES = page("sources.mdx");
+
 /**
  * Reads the value of one exported string constant of the UI, joining a value written as
  * several `"…" +` pieces — e.g. `export const NOTE =\n  "One " +\n  "two.";`.
@@ -220,7 +223,7 @@ describe("the roles & capabilities page (#1189)", () => {
   });
 
   it("carries no internal issue references or migration numbers in its prose", () => {
-    for (const text of [OVERVIEW, ROLES, SIGN_IN, MEMBERS]) {
+    for (const text of [OVERVIEW, ROLES, SIGN_IN, MEMBERS, SOURCES]) {
       const prose = text
         .replace(/^--- .*? --- /, "")
         .replace(/\*\*[^*]+\*\*/g, "")
@@ -503,6 +506,160 @@ describe("the members, invites, roles & API tokens page (#1193)", () => {
       "administration.api-tokens.create",
     ]) {
       expect(MEMBERS).toContain(`<Screenshot id="${id}" />`);
+    }
+  });
+});
+
+describe("the ticket sources & repositories page (#1194)", () => {
+  /**
+   * Reads a file of the REST service's ticket-sources module.
+   *
+   * @param path the file's path segments, from `ouroboros-rest/src/modules/ticket-sources/`.
+   * @returns its text.
+   */
+  function sources(...path: string[]): string {
+    return source("ouroboros-rest", "src", "modules", "ticket-sources", ...path);
+  }
+
+  it("documents only the providers registered on main — GitHub — and the rest as coming soon", () => {
+    expect(sources("ticket-sources.module.ts")).toContain(
+      "useFactory: (github: GithubTicketSourceProvider): TicketSourceProvider[] => [github],",
+    );
+    const catalog = source("ouroboros-ui", "app", "sources", "catalog.ts");
+    const soon = [...catalog.matchAll(/\{ kind: "[a-z]+", label: "([A-Za-z]+)", source:/g)].map(
+      (match) => match[1],
+    );
+    expect(soon).toEqual(["Jira", "Linear", "GitLab"]);
+    for (const label of soon) expect(SOURCES).toContain(`**${label}**`);
+    expect(constant("catalog-tiles.ts", "COMING_SOON_LABEL")).toBe("coming soon");
+    expect(constant("sources/catalog.ts", "V2_LABEL")).toBe("v2");
+    expect(SOURCES).toContain("marked **coming soon** and **v2**");
+  });
+
+  it("describes the GitHub form with the provider's own titles and limits", () => {
+    const config = sources("providers", "github.config.ts");
+    for (const title of [
+      "Connect a GitHub account",
+      "GitHub account",
+      "Repositories",
+      "Personal access token",
+    ]) {
+      expect(config).toContain(`title: "${title}"`);
+      expect(SOURCES).toContain(`**${title}**`);
+    }
+    expect(config).toContain("export const MAX_ENABLED_REPOS = 50;");
+    expect(SOURCES).toContain("At least one, at most 50.");
+  });
+
+  it("says GitHub sources are polled, not sent webhooks", () => {
+    expect(sources("providers", "github.provider.ts")).toMatch(/webhooks: false,/);
+    expect(SOURCES).toContain("it does not\nreceive webhooks".replace("\n", " "));
+  });
+
+  it("names the page's controls and dialogs as the UI draws them", () => {
+    for (const [file, name] of [
+      ["sources/view.ts", "ADD_SOURCE_LABEL"],
+      ["sources/view.ts", "TEST_LABEL"],
+      ["sources/view.ts", "SYNC_LABEL"],
+      ["sources/view.ts", "PAUSE_LABEL"],
+      ["sources/view.ts", "RESUME_LABEL"],
+      ["sources/view.ts", "CONFIGURE_LABEL"],
+      ["sources/catalog.ts", "ADD_DIALOG_TITLE"],
+      ["sources/catalog.ts", "NAME_LABEL"],
+      ["sources/catalog.ts", "ADD"],
+      ["sources/catalog.ts", "ADDED_TITLE"],
+      ["sources/catalog.ts", "CONFIGURE_DIALOG_TITLE"],
+      ["sources/catalog.ts", "SETTINGS_HEADING"],
+      ["sources/catalog.ts", "SAVE"],
+      ["sources/catalog.ts", "CREDENTIAL_HEADING"],
+      ["sources/catalog.ts", "STORE_CREDENTIAL"],
+    ] as const) {
+      expect(SOURCES).toContain(`**${constant(file, name)}**`);
+    }
+    expect(SOURCES).toContain(constant("sources/states.ts", "READ_ONLY_BODY").split(". ")[0]);
+    const catalog = source("ouroboros-ui", "app", "sources", "catalog.ts");
+    for (const sentence of [
+      "This workspace already has a source with that name.",
+      "Some settings do not satisfy the provider's schema — see below.",
+    ]) {
+      expect(catalog).toContain(sentence);
+      expect(SOURCES).toContain(`*${sentence}*`);
+    }
+  });
+
+  it("explains every reason a sync can stop, in the service's words", () => {
+    const errors = sources("ticket-source.errors.ts");
+    const block = /TICKET_SOURCE_ERROR_REASONS[\s\S]*?\}\);/.exec(errors)?.[0] ?? "";
+    const reasons = [...block.matchAll(/^ {4}[a-z_]+: "([^"]+)",$/gm)].map((match) => match[1]);
+    expect(reasons).toHaveLength(6);
+    for (const reason of reasons) expect(SOURCES).toContain(`| **${reason}** |`);
+    expect(source("ouroboros-ui", "app", "sources", "view.ts")).toContain(
+      "export const UNEXPLAINED_ERROR",
+    );
+  });
+
+  it("says a source in error waits for someone to act, as the loop's filter does", () => {
+    expect(sources("ticket-sources.repository.ts")).toContain('.where("status", "=", "active")');
+    expect(sources("sources.service.ts")).toContain(
+      'New settings, a new credential and an explicit\n * `status: "active"` all move an `error` source back to `active`',
+    );
+    expect(SOURCES).toContain("**A source in error is not synced again until you act.**");
+  });
+
+  it("offers no way to remove a source, and says so", () => {
+    expect(sources("sources.controller.ts")).not.toMatch(/@Delete\(/);
+    expect(SOURCES).toContain("A source cannot be removed from this page.");
+  });
+
+  it("documents the backlog token, which has an API but no screen", () => {
+    const controller = source("ouroboros-rest", "src", "modules", "github", "github.controller.ts");
+    expect(controller).toContain('@Controller("settings/github-token")');
+    expect(controller).toContain("@Roles(...ADMINISTRATORS)");
+    const tokens = source("ouroboros-rest", "src", "modules", "github", "github.token.ts");
+    expect(tokens).toContain(
+      'export const TOKEN_PREFIXES = ["github_pat_", "ghp_", "gho_", "ghu_", "ghs_", "ghr_"] as const;',
+    );
+    expect(SOURCES).toContain(
+      "`github_pat_`,\n`ghp_`, `gho_`, `ghu_`, `ghs_` or `ghr_`".replace("\n", " "),
+    );
+    expect(SOURCES).toContain('curl -X PUT "$OURO_REST_URL/api/v1/settings/github-token"');
+    // The day a screen sets it, this section must change.
+    const ui = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) return entry.name === "__tests__" ? [] : ui(path);
+        return /\.tsx?$/.test(entry.name) && !entry.name.endsWith(".d.ts") ? [path] : [];
+      });
+    const setting = ui(join(REPO_ROOT, "ouroboros-ui", "app")).filter((file) =>
+      readFileSync(file, "utf8").includes("settings/github-token"),
+    );
+    expect(setting).toEqual([]);
+    expect(SOURCES).toContain("There is no screen for this token yet.");
+  });
+
+  it("names the one interval both syncs share", () => {
+    expect(sources("sources.service.ts")).toContain(
+      "pollIntervalSeconds: this.config.backlogSyncIntervalSeconds,",
+    );
+    expect(sources("ticket-sources.scheduler.ts")).toContain(
+      "jittered(this.config.backlogSyncIntervalSeconds * 1000)",
+    );
+    expect(SOURCES).toContain('<EnvVar name="OURO_BACKLOG_SYNC_INTERVAL_SECONDS" />');
+  });
+
+  it("points the Issues page's token banners at the backlog token", () => {
+    const issues = source("ouroboros-docs", "docs", "user-guide", "issues.mdx");
+    expect(issues).toContain("../administration/sources.mdx#setting-the-backlog-token");
+    expect(issues).not.toContain('adds a token under <UiPath path="Settings > Sources" />');
+  });
+
+  it("shows the screenshots the issue lists", () => {
+    for (const id of [
+      "administration.sources",
+      "administration.sources.connect",
+      "administration.sources.error",
+    ]) {
+      expect(SOURCES).toContain(`<Screenshot id="${id}" />`);
     }
   });
 });

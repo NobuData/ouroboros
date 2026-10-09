@@ -1109,6 +1109,67 @@
       "capturedAt": "2026-10-09T02:42:22.773Z",
       "uiVersion": "0.144.1",
       "seedRef": "749c1f6c1a354ac94511f4bbb0c5ea1e50626d2d"
+    },
+    {
+      "id": "administration.sources",
+      "route": "/settings/sources",
+      "workspace": "acme-robotics",
+      "ready": "role=button[name='+ Add source']",
+      "clip": "page",
+      "caption": "Ticket sources: each connected tracker, its status and last sync, and the controls an owner or admin uses on it.",
+      "alt": "The Ticket sources settings page for Acme Robotics, headed Where this workspace's tickets come from. Connect a tracker, test it before trusting it, and see honestly why syncing has stopped., with + Add source and the settings tab row with Sources selected. Two rows follow: GitHub · acme-robotics, tagged GitHub and active, watching acme-robotics · 4 repositories, never synced; and Jira · PROJ, tagged Jira and active, never synced. Each row has Test connection, Sync now, Pause and Configure.",
+      "capturedAt": "2026-10-09T02:52:53.271Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "10a8a54f42dc08ac9603b7e56168560c3dc26b84"
+    },
+    {
+      "id": "administration.sources.connect",
+      "route": "/settings/sources",
+      "workspace": "acme-robotics",
+      "ready": "role=dialog >> role=textbox[name='GitHub account']",
+      "clip": ".shell-overlay__panel",
+      "actions": [
+        {
+          "click": "role=button[name='+ Add source']"
+        },
+        {
+          "click": "role=dialog >> role=button[name=/GitHub/]"
+        },
+        {
+          "fill": "role=dialog >> role=textbox[name='Name']",
+          "value": "GitHub · acme-labs"
+        },
+        {
+          "fill": "role=dialog >> role=textbox[name='GitHub account']",
+          "value": "acme-labs"
+        },
+        {
+          "fill": "role=dialog >> role=textbox[name='Repositories']",
+          "value": "lab-firmware\nlab-console"
+        }
+      ],
+      "caption": "Connecting GitHub: a name, the account, its repositories and a token.",
+      "alt": "The Connect a GitHub account form: Name filled with GitHub · acme-labs and the hint How this source is listed — GitHub · acme-robotics, say.; GitHub account filled with acme-labs, the organization or user whose repositories to watch; Repositories listing lab-firmware and lab-console, one repository name per line without the account; an empty Personal access token field noting read access to issues, sealed in the vault the moment it is stored and never shown again; and Add source, Back to catalog and Cancel buttons.",
+      "capturedAt": "2026-10-09T02:52:55.889Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "10a8a54f42dc08ac9603b7e56168560c3dc26b84"
+    },
+    {
+      "id": "administration.sources.error",
+      "route": "/settings/sources",
+      "workspace": "acme-robotics",
+      "ready": "li.sources-row:has-text('GitHub · acme-robotics') .sources-row__glyph",
+      "clip": "li.sources-row:has-text('GitHub · acme-robotics')",
+      "caption": "A source whose sync stopped: the row says why, and what to do next.",
+      "alt": "The GitHub · acme-robotics row in error, its status line reading credentials rejected, with Test connection, Sync now, Resume and Configure. Beside the buttons the test result reads ✗ credentials rejected — acme-robotics/helios-firmware: GitHub rejected this token, or it is missing the repository scope.",
+      "actions": [
+        {
+          "click": "li.sources-row:has-text('GitHub · acme-robotics') >> role=button[name='Test connection']"
+        }
+      ],
+      "capturedAt": "2026-10-09T02:52:58.706Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "10a8a54f42dc08ac9603b7e56168560c3dc26b84"
     }
   ]
 }

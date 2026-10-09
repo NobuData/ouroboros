@@ -5,11 +5,198 @@ sidebar_position: 7
 description: "Connecting trackers and repositories, sync, write-back and troubleshooting."
 ---
 
-Connecting trackers and repositories, sync, write-back and troubleshooting.
+Without a source of tickets there is nothing for Ouroboros to work on. This page covers connecting
+GitHub as a ticket source and choosing what it watches. It also covers keeping the source syncing,
+deciding what it may write back, and fixing it when it stops.
 
-:::info[Being written]
+You manage sources on <UiPath path="Settings > Sources" /> (`/settings/sources`). Everyone in the
+workspace can read the page. Only an **Owner** or a **Maintainer** can add, configure, test,
+sync or pause a source. Anyone else sees each control switched off, with the reason.
 
-This page is being written in
-[#1194](https://github.com/NobuData/ouroboros/issues/1194).
+<Screenshot id="administration.sources" />
+
+## What you can connect
+
+**GitHub** is the only tracker this version of Ouroboros connects to — github.com, or a GitHub
+Enterprise Server when <EnvVar name="OURO_GITHUB_API_BASE_URL" /> points at it. **Jira**,
+**Linear** and **GitLab** appear in the catalog marked **coming soon** and **v2**, and cannot
+be chosen yet.
+
+A GitHub source is one GitHub account (an organization or a user), up to 50 of its
+repositories, and a personal access token. Ouroboros reads from GitHub on a schedule; it does not
+receive webhooks from GitHub.
+
+## Two GitHub tokens
+
+Ouroboros keeps two GitHub credentials, and they do different jobs:
+
+| Credential | Set where | Used for |
+| --- | --- | --- |
+| **The source's token** | The **Personal access token** field when you add or configure a source | Syncing that source's tickets, testing it, pushing tickets from Planning, and opening, syncing, reviewing and merging pull requests in its repositories |
+| **The workspace's backlog token** | The REST API only — see [Setting the backlog token](#setting-the-backlog-token) | The **Issues** backlog: mirroring open issues from the repositories enabled for the workspace, so they can be sized and queued |
+
+Storing a token on a source does not give the backlog a token. If the **Issues** page says
+**Sync paused — no GitHub token is connected.**, set the backlog token as described below. Both
+tokens can be the same GitHub token, if it has the permissions both jobs need.
+
+## Connecting GitHub
+
+1. Choose **+ Add source**. The **Add a ticket source** dialog lists the trackers.
+2. Choose **GitHub**. The form **Connect a GitHub account** opens.
+3. Fill it in:
+   - **Name** — how the source is listed, such as `GitHub · acme-labs`. Each source in a
+     workspace needs a different name.
+   - **GitHub account** — the organization or user whose repositories to watch, as it appears in
+     a URL: `acme-labs`, not `https://github.com/acme-labs`.
+   - **Repositories** — one repository name per line, without the account: `lab-firmware`, not
+     `acme-labs/lab-firmware`. At least one, at most 50.
+   - **Personal access token** — a fine-grained or classic GitHub token that can see those
+     repositories. See [Token permissions](#token-permissions).
+4. Choose **Add source**.
+
+<Screenshot id="administration.sources.connect" />
+
+The dialog confirms **Source added** and the new row appears, **active** and **never synced**.
+Choose **Test connection** on the row to check that GitHub accepts the token. Then choose
+**Sync now** to fetch its tickets, or wait for the next scheduled sync.
+
+The token is sealed in the vault as soon as it is stored. Nobody can read it back: the row
+shows only a mask.
+
+### Token permissions
+
+What the source's token needs depends on what you use. For a fine-grained token, grant access to
+the source's repositories with these repository permissions:
+
+| You use | Permission |
+| --- | --- |
+| Syncing and testing the source | **Issues: Read** (and **Metadata: Read**, which GitHub always adds) |
+| Pushing tickets from [Planning](../user-guide/planning.mdx) | **Issues: Read and write** |
+| Pull requests — opening, syncing, requesting reviews and commenting | **Pull requests: Read and write** |
+| Merging pull requests | **Contents: Read and write**, as well as **Pull requests** |
+
+A classic token needs the `repo` scope for private repositories, or `public_repo` for public ones.
+
+Give the token the least it needs. A token that can read but not write still syncs; the first
+push or merge that needs more fails with **permission denied**.
+
+## Setting the backlog token
+
+The **Issues** backlog reads open issues from every repository enabled for the workspace. An
+Owner or Maintainer turns a GitHub organization's repositories on or off in step 2 of
+[sign-in](../user-guide/getting-started/sign-in.mdx). The backlog needs a token that can read
+issues on those repositories.
+
+There is no screen for this token yet. An Owner or Maintainer sets it through the REST API,
+signed in as themselves:
+
+1. Sign in to Ouroboros in your browser and open the browser's developer tools. Copy the value of
+   the session cookie: `__Secure-better-auth.session_token` on an `https://` deployment, or
+   `better-auth.session_token` on a local one.
+2. From a machine that can reach the REST service, send the token:
+
+   ```bash
+   curl -X PUT "$OURO_REST_URL/api/v1/settings/github-token" \
+     -H "content-type: application/json" \
+     -H "Origin: https://app.example.com" \
+     -H "Cookie: __Secure-better-auth.session_token=<the cookie value>" \
+     -d '{"token": "<the GitHub token>"}'
+   ```
+
+   `Origin` is the UI's public address. The answer shows the token masked, such as
+   `"configured": true, "masked": "ghp_••••3456"`.
+
+The token is set for the workspace your session is in. A token must start with `github_pat_`,
+`ghp_`, `gho_`, `ghu_`, `ghs_` or `ghr_`, or be a 40-character hexadecimal classic token. Sending
+a new one replaces the old one; `curl -X DELETE` on the same address removes it, which pauses
+the backlog.
+
+:::caution[Keep the cookie and the token out of your shell history]
+
+The session cookie signs you in as you, and the token reaches your repositories. Paste them from
+the clipboard, don't store them in scripts, and clear your shell history afterwards.
 
 :::
+
+## How sources sync
+
+Every active source is synced on a schedule, every
+<EnvVar name="OURO_BACKLOG_SYNC_INTERVAL_SECONDS" /> seconds (five minutes unless your
+deployment administrator changed it), give or take a quarter so that sources do not all call
+GitHub at the same moment. The **Issues** backlog uses the same interval.
+
+- The first sync of a source imports its open issues. Later syncs fetch only what changed.
+- **Sync now** syncs one source straight away. It is refused while that source is already
+  syncing, or if it synced moments ago — the row says how many seconds to wait.
+- While a sync runs, the row reads **syncing**. Afterwards it reads **synced 2m ago**, with what
+  the last sync did: **last sync imported 3 · updated 1 · unchanged 40**.
+
+A sync that has more to fetch than one pass allows continues a second later, so a large first
+import finishes in several quick passes.
+
+## Configuring a source
+
+Choose **Configure** on a row. The **Configure source** dialog has two parts:
+
+- **Settings** — the account and repositories. **Save settings** replaces them all; the stored
+  token is unchanged.
+- **Credential** — **Store credential** replaces the token. The old token is never shown, and
+  the row's mask changes to the new one's.
+
+The push from Planning writes to the **first** repository in the list, so put the repository
+you want new tickets in at the top.
+
+## Pausing a source
+
+Choose **Pause** to stop a source syncing. It keeps its tickets and its settings, and its row
+reads **paused**. **Sync now** is refused while it is paused. Choose **Resume** to start it
+again.
+
+A source cannot be removed from this page. Pause a source you no longer use.
+
+## When a sync fails
+
+A source whose sync fails turns to **error**, and its row says why. Choose **Test connection**
+for the details: the test says what GitHub answered, without changing anything.
+
+<Screenshot id="administration.sources.error" />
+
+**A source in error is not synced again until you act.** Fixing the cause is not enough on its
+own. Do one of these:
+
+- choose **Resume**,
+- save new settings, or
+- store a new credential.
+
+The source then returns to **active** and is synced on the next cycle, or straight away with
+**Sync now**.
+
+| The row says | What it means | What to do |
+| --- | --- | --- |
+| **credentials rejected** | GitHub refused the token: it was revoked, it expired, or it is mistyped. *the stored credential could not be opened* means the vault cannot open the stored token at all. | Store a new token under **Configure → Credential**. |
+| **permission denied** | GitHub accepted the token, but it may not do what was asked. | Widen the token's permissions, then store it again. |
+| **project or repository not found** | The account or a repository does not exist, or the token cannot see it. GitHub answers the same for both. | Check the spelling under **Configure → Settings** and that the token has access to every repository listed. |
+| **rate limited** | The token has used up its GitHub request allowance for the hour. The row says when it resets. | Wait, then choose **Resume**. Fewer repositories per token, or a longer sync interval, help. |
+| **tracker unavailable** | GitHub did not answer, or answered with its own error. | Wait, then choose **Resume**. |
+| **tracker rejected the write** | GitHub refused something Ouroboros tried to write. | Check the push or pull request that failed for the details. |
+
+## What can go wrong
+
+- **The Issues page says *Sync paused — no GitHub token is connected.* although a source has a
+  token.** The backlog uses its own token. See [Setting the backlog token](#setting-the-backlog-token).
+- **Adding a source is refused with *This workspace already has a source with that name.*** Give
+  it a different **Name**.
+- **Adding a source is refused with *Some settings do not satisfy the provider's schema — see
+  below.*** A field is malformed — usually a full URL in **GitHub account**, or `owner/repo` in
+  **Repositories**. The message under the field says which.
+- **A row for a tracker other than GitHub, such as Jira, cannot be tested or synced.** *This build
+  has no provider for that ticket source kind.* Only GitHub can be connected in this version.
+  Pause the source so it is not mistaken for a working one.
+- **Every control on the page is switched off.** You are a Viewer. *Sources are added,
+  configured, tested, synced and paused by an owner or an admin.*
+- **Tickets do not appear on the Issues page after a source syncs.** The **Issues** backlog comes
+  from the repositories enabled for the workspace, through the backlog token, not from the
+  source. See [Two GitHub tokens](#two-github-tokens).
+
+For how ticket sources are built, and how to write one for another tracker, see
+[`TICKET_SOURCES.md`](https://github.com/NobuData/ouroboros/blob/main/docs/TICKET_SOURCES.md).
