@@ -2,13 +2,14 @@
 title: "Research tools"
 sidebar_label: "Research"
 sidebar_position: 14
-description: "Choosing the web search provider, how the page reader stays polite, safe and honest, and running the competitor tracker."
+description: "Choosing the web search provider, how the page reader stays polite, safe and honest, running the competitor tracker, and where the code & git mining tool keeps its clones."
 ---
 
 Research investigations read the outside world through **research tools**. This page covers
 **Web search & page reader**: where its searches go, how it reads a page, what it keeps, and the
 variables that bound it. It also covers the **competitor tracker**: who manages it, what it
-needs, and how it is scheduled.
+needs, and how it is scheduled. And it covers **Codebase & git mining**: what it reads, where its
+repository clones live, and how a bisect keeps going.
 
 :::info[Not available yet]
 
@@ -186,9 +187,67 @@ watch not read for two cadences is **stale**. The tool is **healthy** when no wa
 **degraded** when some are, and **down** when all are. Filings and pages that need JavaScript
 are left out.
 
+## Code & git mining
+
+The code & git mining tool reads the workspace's repositories from **clones the engine keeps**.
+What it answers is described in [Code & git mining](../user-guide/research.mdx#code--git-mining).
+
+### What it reads
+
+- **The repositories enabled for the workspace**, and only those. A repository is enabled on
+  Get Started, and its GitHub organisation must be enabled too.
+- **Public repositories need no token.** A private one is fetched with the workspace's backlog
+  token, set as described in [Setting the backlog token](./sources.mdx#setting-the-backlog-token).
+  The REST service hands the token to the engine for each fetch. The engine does not store it, and
+  it is never written into a clone.
+- **The stack for dependency graphs** comes from repository detection's latest scan of the
+  repository. A repository that was never scanned gets *unsupported* until it is.
+
+### Where the clones live
+
+The engine keeps one **bare clone** per workspace and repository under
+<EnvVar name="OURO_ENGINE_CLONE_DIR" />, as `<workspace id>/<owner>__<name>.git`. Two workspaces
+that enable the same repository each fetch it with their own token, into their own clone.
+
+- **The first question about a repository clones it**, which can take minutes for a large one.
+  The REST service waits up to <EnvVar name="OURO_RESEARCH_CODE_TIMEOUT_MS" /> for an answer.
+- **A clone is fetched again** once it is older than
+  <EnvVar name="OURO_ENGINE_CLONE_REFRESH_SECONDS" />, and whenever a question names a branch,
+  tag or commit the clone does not have yet.
+- **If a refresh fails**, the clone is read as it was. Every answer names the commit it was read
+  at, so an older clone still gives an exact answer.
+- **Clones are read-only.** No question writes to a clone or to GitHub. Only fetching updates a
+  clone.
+
+Mount a volume at the clone directory so clones survive a restart. See
+[`ouroboros-engine`](./deploy/containers.mdx#ouroboros-engine). Deleting the directory is safe:
+the next question clones again.
+
+### Bisects
+
+A bisect runs one **build-farm job** per step, in the pool the investigation names, so it needs
+a pool with a runner that can build the repository and run the test. Each job builds one commit
+and runs the step's command, or the pool's default command when none was given.
+
+Each step's result and the narrowed range are saved together in the database. A job's completion
+moves its bisect on at once. Every <EnvVar name="OURO_RESEARCH_BISECT_TICK_MS" />, each REST
+replica also checks the running bisects. After a restart, that check decides any step whose job
+finished meanwhile and starts the next one, so the bisect continues instead of starting again.
+If a runner is lost and the farm retries the job, the bisect follows the retry.
+
+### Code tool health
+
+| Health | Means |
+| --- | --- |
+| **healthy** | Repositories are enabled and the engine answers |
+| **not configured** | The workspace has no repositories enabled |
+| **down** | The engine that keeps the clones cannot be reached |
+
+A token GitHub refuses shows on the first question, as a request to reconnect.
+
 ## Variables
 
-All are set on the REST service. Each has a working default.
+All but the clone variables are set on the REST service. Each has a working default.
 
 | Variable | Default | What it bounds |
 | --- | --- | --- |
@@ -200,6 +259,16 @@ All are set on the REST service. Each has a working default.
 | <EnvVar name="OURO_RESEARCH_FETCH_INTERNAL_ALLOWLIST" /> | empty | Internal hosts the reader may reach, comma-separated: hostnames, IP addresses or CIDR blocks. |
 | <EnvVar name="OURO_RESEARCH_WATCH_TICK_MS" /> | `60000` | How often the competitor tracker looks for due watches, from 10 seconds to an hour. `0` turns it off on that replica. |
 | <EnvVar name="OURO_RESEARCH_WATCH_BATCH" /> | `10` | How many due watches one tick checks, from 1 to 100. |
+| <EnvVar name="OURO_RESEARCH_CODE_TIMEOUT_MS" /> | `120000` | How long one code & git mining question may wait for the engine, from 5 seconds to 15 minutes. |
+| <EnvVar name="OURO_RESEARCH_BISECT_TICK_MS" /> | `60000` | How often running bisects are checked and resumed, from 10 seconds to an hour. `0` turns the check off on that replica. |
+
+The engine reads the clone variables:
+
+| Variable | Default | What it bounds |
+| --- | --- | --- |
+| <EnvVar name="OURO_ENGINE_CLONE_DIR" /> | the system temporary directory | Where the clones live. The compose file sets `/var/lib/ouroboros-engine/clones`, on a volume. |
+| <EnvVar name="OURO_ENGINE_CLONE_REFRESH_SECONDS" /> | `300` | How long a clone is read before it is fetched again, up to a day. `0` fetches before every question. |
+| <EnvVar name="OURO_ENGINE_CLONE_TIMEOUT_SECONDS" /> | `120` | The network timeout of one fetch, up to an hour. |
 
 The SearXNG container takes one variable of its own, <EnvVar name="OURO_SEARXNG_SECRET" />.
 See [Container images](./deploy/containers.mdx#searxng--web-search).

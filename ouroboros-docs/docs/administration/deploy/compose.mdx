@@ -97,6 +97,10 @@ services:
     environment:
       OURO_ENGINE_SHARED_SECRET: ${OURO_ENGINE_SHARED_SECRET}
       OURO_LOG_LEVEL: info
+      # The code & git mining tool's repository clones, kept across restarts.
+      OURO_ENGINE_CLONE_DIR: /var/lib/ouroboros-engine/clones
+    volumes:
+      - ouroboros-engine-clones:/var/lib/ouroboros-engine/clones
     restart: unless-stopped
 
   rest:
@@ -173,6 +177,7 @@ volumes:
   ouroboros-db-data:
   ouroboros-runner-releases:
   ouroboros-artifacts:
+  ouroboros-engine-clones:
 ```
 
 What the file does, service by service, is on [Container images](./containers.mdx). Four

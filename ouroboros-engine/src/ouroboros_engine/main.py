@@ -23,6 +23,7 @@ from fastapi import FastAPI
 from ouroboros_engine.analysis.registry import default_registry
 from ouroboros_engine.api import (
     analysis,
+    code,
     copilot,
     estimate,
     health,
@@ -33,6 +34,7 @@ from ouroboros_engine.api import (
     tasks,
     workflows,
 )
+from ouroboros_engine.code.clones import CloneStore
 from ouroboros_engine.control_plane.client import ControlPlaneClient
 from ouroboros_engine.copilot.gateway import UrllibGateway
 from ouroboros_engine.copilot.turn import CopilotTurnRunner
@@ -148,6 +150,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # rather than vanishing from every run. A test installs its own registry the same way.
     app.state.analyzer_registry = default_registry()
 
+    # The code & git mining tool's clone cache (CL.4, #617): bare clones under
+    # `OURO_ENGINE_CLONE_DIR`, fetched with the token each call carries and never stores.
+    # Nothing is created until a clone is first asked for. A test installs its own.
+    app.state.code_clones = CloneStore(
+        resolved.clone_dir,
+        refresh_seconds=resolved.clone_refresh_seconds,
+        timeout_seconds=resolved.clone_timeout_seconds,
+    )
+
     # And the Workflow Copilot's turn runner (CD.1, #559): the control-plane client built
     # against `OURO_REST_URL` with this service's own internal key — the one principal
     # `ouroboros-rest`'s internal surface accepts from the executor — and the standard-library
@@ -182,6 +193,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(plan.router)
     app.include_router(learn.router)
     app.include_router(analysis.router)
+    app.include_router(code.router)
     app.include_router(copilot.router)
     _mount_simulator(app, resolved)
     return app

@@ -16,6 +16,7 @@ binds a port, and :func:`load_settings` turns pydantic's report into a message t
 names the offending environment variables rather than the Python attributes behind them.
 """
 
+import tempfile
 from pathlib import Path
 from typing import Literal
 
@@ -86,6 +87,14 @@ class Settings(BaseSettings):
         rest_url: ``OURO_REST_URL``, where ``ouroboros-rest`` is. Read by that
             development driver, which reports runs to it, and by the Workflow Copilot's
             turn (CD.1, #559), which invokes models through its gateway.
+        clone_dir: ``OURO_ENGINE_CLONE_DIR``, where the code & git mining tool keeps its
+            bare clones (CL.4, #617), one per workspace and repository. Defaults to a
+            directory under the system temporary directory, so a laptop needs nothing;
+            a deployment points it at a volume so clones survive a restart.
+        clone_refresh_seconds: ``OURO_ENGINE_CLONE_REFRESH_SECONDS``, how long a fetched
+            clone is read without fetching again.
+        clone_timeout_seconds: ``OURO_ENGINE_CLONE_TIMEOUT_SECONDS``, the socket timeout
+            of one fetch.
     """
 
     model_config = SettingsConfigDict(
@@ -123,6 +132,24 @@ class Settings(BaseSettings):
         default="http://localhost:4000",
         min_length=1,
         validation_alias="OURO_REST_URL",
+    )
+    clone_dir: Path = Field(
+        default_factory=lambda: (
+            Path(tempfile.gettempdir()) / "ouroboros-engine" / "clones"
+        ),
+        validation_alias="OURO_ENGINE_CLONE_DIR",
+    )
+    clone_refresh_seconds: int = Field(
+        default=300,
+        ge=0,
+        le=86_400,
+        validation_alias="OURO_ENGINE_CLONE_REFRESH_SECONDS",
+    )
+    clone_timeout_seconds: int = Field(
+        default=120,
+        ge=1,
+        le=3_600,
+        validation_alias="OURO_ENGINE_CLONE_TIMEOUT_SECONDS",
     )
 
 

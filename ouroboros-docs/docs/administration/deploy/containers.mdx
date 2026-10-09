@@ -100,6 +100,17 @@ Listens on `8000` on all interfaces, as the `engine` user. Its container health 
 | <EnvVar name="OURO_ENGINE_SHARED_SECRET" /> | **yes** | `<engine secret>` | Must equal the REST service's value. The engine refuses to start without it. |
 | <EnvVar name="OURO_LOG_LEVEL" /> | no | `info` | `debug`, `info`, `warning` or `error`. |
 | `PORT` | no | `8000` | Already set in the image. |
+| <EnvVar name="OURO_ENGINE_CLONE_DIR" /> | no | `/var/lib/ouroboros-engine/clones` | Where the code & git mining tool keeps its repository clones. Mount a volume there. |
+| <EnvVar name="OURO_ENGINE_CLONE_REFRESH_SECONDS" /> | no | `300` | How long a clone is read before it is fetched again. |
+| <EnvVar name="OURO_ENGINE_CLONE_TIMEOUT_SECONDS" /> | no | `120` | The network timeout of one fetch from GitHub. |
+
+The engine writes one thing: the **clones** the code & git mining tool reads, one per workspace
+and repository. Mount a volume at `/var/lib/ouroboros-engine/clones` and set
+<EnvVar name="OURO_ENGINE_CLONE_DIR" /> to that path. The image creates the directory owned by the
+`engine` user, so a new named volume starts with the right owner. Without a volume the clones
+live in the container's temporary directory and are fetched again after every restart, which
+takes minutes for a large repository. See
+[Code & git mining](../research.mdx#code--git-mining).
 
 Leave <EnvVar name="OURO_RUN_SIMULATOR_SECRET" /> **unset**. It exists for a development-only
 simulated-run driver that is not in the production image.

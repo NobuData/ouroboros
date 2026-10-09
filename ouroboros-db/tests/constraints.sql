@@ -38949,6 +38949,145 @@ select pg_temp.must_hold(
   'a deleted workspace takes its rivals'' archives with it');
 
 -- ===========================================================================
+-- V118 — the bisect primitive's checkpoints and citations (#617, CL.4)
+-- ===========================================================================
+--
+-- A bisect keeps its candidate line and the window the culprit is still in, so a restart resumes
+-- rather than starting again; it spends at most ⌊log₂ n⌋ + 1 farm jobs, each the workspace's own;
+-- and a converged one is cited as `bisect://owner/name@<culprit>?jobs=…` beside `git://`.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v118', 'Bisect Works', 'bisect-works-v118', now()),
+  ('org-v118b', 'Elsewhere', 'elsewhere-v118', now());
+
+insert into ouroboros.github_orgs (id, organization_id, login) values
+  ('a1180010-0000-4000-8000-000000000001', 'org-v118', 'acme-robotics'),
+  ('a1180010-0000-4000-8000-000000000002', 'org-v118b', 'elsewhere-v118');
+insert into ouroboros.github_repos (id, org_id, name) values
+  ('a1180011-0000-4000-8000-000000000001', 'a1180010-0000-4000-8000-000000000001', 'helios-firmware'),
+  ('a1180011-0000-4000-8000-000000000002', 'a1180010-0000-4000-8000-000000000002', 'x');
+insert into ouroboros.runner_pools (id, organization_id, name, executor, image, tags) values
+  ('a1180001-0000-4000-8000-000000000001', 'org-v118', 'hil-rig', 'shell', null, '[]'),
+  ('a1180001-0000-4000-8000-000000000002', 'org-v118b', 'pool', 'shell', null, '[]');
+insert into ouroboros.build_jobs
+  (id, organization_id, number, pool_id, github_repo_id, git_ref, label, title, executor, command, status,
+   log_cap_bytes)
+select ('a1180004-0000-4000-8000-00000000000' || n)::uuid, 'org-v118', n, 'a1180001-0000-4000-8000-000000000001',
+       'a1180011-0000-4000-8000-000000000001', 'refs/heads/nightly', 'bisect', 'bisect step ' || n, 'shell',
+       'west build && hil run', 'queued', 65536
+  from generate_series(1, 4) n;
+insert into ouroboros.build_jobs
+  (id, organization_id, number, pool_id, github_repo_id, git_ref, label, title, executor, command, status,
+   log_cap_bytes) values
+  ('a1180004-0000-4000-8000-000000000099', 'org-v118b', 1, 'a1180001-0000-4000-8000-000000000002',
+   'a1180011-0000-4000-8000-000000000002', 'refs/heads/main', 'bisect', 'elsewhere', 'shell', 'make', 'queued', 65536);
+
+-- Six candidates: ⌊log₂ 6⌋ + 1 = 3 steps.
+insert into ouroboros.code_bisects (id, organization_id, github_repo_id, repository, pool, test_ref,
+                                    good_ref, bad_ref, good_sha, bad_sha, build_ref, commits, hi, max_steps)
+select 'a1180020-0000-4000-8000-000000000001', 'org-v118', 'a1180011-0000-4000-8000-000000000001',
+       'acme-robotics/helios-firmware', 'hil-rig', 'hil:hover_drift', 'v2.0.4', 'nightly',
+       repeat('0', 40), repeat('6', 40), 'refs/heads/nightly',
+       jsonb_build_array(repeat('1', 40), repeat('2', 40), repeat('3', 40),
+                         repeat('4', 40), repeat('5', 40), repeat('6', 40)), 5, 3;
+
+select pg_temp.must_hold(
+  (select status = 'running' and lo = 0 and hi = 5 and culprit_sha is null and finished_at is null
+     from ouroboros.code_bisects where id = 'a1180020-0000-4000-8000-000000000001'),
+  'a new bisect is running, its window the whole line');
+
+insert into ouroboros.code_bisect_steps (bisect_id, step, candidate, commit_sha, build_job_id, organization_id) values
+  ('a1180020-0000-4000-8000-000000000001', 1, 2, repeat('3', 40), 'a1180004-0000-4000-8000-000000000001', 'org-v118');
+update ouroboros.code_bisect_steps set verdict = 'good', decided_at = now()
+ where bisect_id = 'a1180020-0000-4000-8000-000000000001' and step = 1;
+update ouroboros.code_bisects set lo = 3 where id = 'a1180020-0000-4000-8000-000000000001';
+select pg_temp.must_hold(
+  (select lo = 3 and hi = 5 from ouroboros.code_bisects where id = 'a1180020-0000-4000-8000-000000000001'),
+  'a good step narrows the checkpoint to the candidates after it');
+
+insert into ouroboros.code_bisect_steps (bisect_id, step, candidate, commit_sha, build_job_id, organization_id) values
+  ('a1180020-0000-4000-8000-000000000001', 2, 4, repeat('5', 40), 'a1180004-0000-4000-8000-000000000002', 'org-v118'),
+  ('a1180020-0000-4000-8000-000000000001', 3, 3, repeat('4', 40), 'a1180004-0000-4000-8000-000000000003', 'org-v118');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.code_bisect_steps (bisect_id, step, candidate, commit_sha, build_job_id, organization_id)
+    values ('a1180020-0000-4000-8000-000000000001', 4, 3, repeat('4', 40),
+            'a1180004-0000-4000-8000-000000000004', 'org-v118')$$,
+  'a bisect spends at most ⌊log₂ n⌋ + 1 farm jobs', 'code_bisect_steps_bounded');
+select pg_temp.must_reject(
+  $$insert into ouroboros.code_bisect_steps (bisect_id, step, candidate, commit_sha, build_job_id, organization_id)
+    values ('a1180020-0000-4000-8000-000000000001', 3, 1, repeat('9', 40),
+            'a1180004-0000-4000-8000-000000000004', 'org-v118')$$,
+  'a step builds the candidate it names', 'code_bisect_steps_candidate_in_line');
+select pg_temp.must_reject(
+  $$update ouroboros.code_bisect_steps set build_job_id = 'a1180004-0000-4000-8000-000000000099'
+     where bisect_id = 'a1180020-0000-4000-8000-000000000001' and step = 2$$,
+  'a bisect never cites another workspace''s build', 'code_bisect_steps_job_fk');
+select pg_temp.must_reject(
+  $$update ouroboros.code_bisect_steps set verdict = 'maybe', decided_at = now()
+     where bisect_id = 'a1180020-0000-4000-8000-000000000001' and step = 2$$,
+  'a step is good or bad', 'code_bisect_steps_verdict');
+select pg_temp.must_reject(
+  $$update ouroboros.code_bisect_steps set verdict = 'bad'
+     where bisect_id = 'a1180020-0000-4000-8000-000000000001' and step = 2$$,
+  'a verdict is decided at a time', 'code_bisect_steps_decided_together');
+
+select pg_temp.must_reject(
+  $$update ouroboros.code_bisects set lo = 4, hi = 3 where id = 'a1180020-0000-4000-8000-000000000001'$$,
+  'the checkpoint is a non-empty window', 'code_bisects_window');
+select pg_temp.must_reject(
+  $$update ouroboros.code_bisects set hi = 6 where id = 'a1180020-0000-4000-8000-000000000001'$$,
+  'the checkpoint stays inside the line', 'code_bisects_window');
+select pg_temp.must_reject(
+  $$update ouroboros.code_bisects set status = 'converged', finished_at = now()
+     where id = 'a1180020-0000-4000-8000-000000000001'$$,
+  'a converged bisect names its culprit', 'code_bisects_converged_has_culprit');
+select pg_temp.must_reject(
+  $$update ouroboros.code_bisects set status = 'failed', note = 'a step job was canceled'
+     where id = 'a1180020-0000-4000-8000-000000000001'$$,
+  'a bisect that stopped has finished', 'code_bisects_finished_when_done');
+select pg_temp.must_reject(
+  $$update ouroboros.code_bisects set max_steps = 40 where id = 'a1180020-0000-4000-8000-000000000001'$$,
+  'a bisect bound fits a locator', 'code_bisects_max_steps');
+
+update ouroboros.code_bisects
+   set lo = 3, hi = 3, status = 'converged', culprit_sha = repeat('4', 40), finished_at = now()
+ where id = 'a1180020-0000-4000-8000-000000000001';
+select pg_temp.must_hold(
+  (select status = 'converged' and culprit_sha = repeat('4', 40)
+     from ouroboros.code_bisects where id = 'a1180020-0000-4000-8000-000000000001'),
+  'a converged bisect names its culprit');
+
+-- The citation: the culprit, and the jobs that proved it.
+select pg_temp.must_hold(
+  ouroboros.source_locator_valid('code',
+    'bisect://acme-robotics/helios-firmware@' || repeat('4', 40)
+    || '?jobs=a1180004-0000-4000-8000-000000000001,a1180004-0000-4000-8000-000000000002,a1180004-0000-4000-8000-000000000003'),
+  'a converged bisect is citable as a code source');
+select pg_temp.must_hold(
+  ouroboros.source_locator_valid('code', 'git://helios-firmware@8c1b2e4/src/dock/dock_ctrl.c#L214'),
+  'a git:// locator is still a code source');
+select pg_temp.must_hold(
+  not ouroboros.source_locator_valid('code', 'bisect://acme-robotics/helios-firmware@4444444?jobs=a1180004-0000-4000-8000-000000000001')
+  and not ouroboros.source_locator_valid('code', 'bisect://acme-robotics/helios-firmware@' || repeat('4', 40))
+  and not ouroboros.source_locator_valid('code', 'bisect://acme-robotics/helios-firmware@' || repeat('4', 40) || '?jobs=12')
+  and not ouroboros.source_locator_valid('code', 'bisect://helios-firmware@' || repeat('4', 40)
+                                                   || '?jobs=a1180004-0000-4000-8000-000000000001')
+  and not ouroboros.source_locator_valid('code', 'bisect://acme-robotics/..@' || repeat('4', 40)
+                                                   || '?jobs=a1180004-0000-4000-8000-000000000001')
+  and not ouroboros.source_locator_valid('web', 'bisect://acme-robotics/helios-firmware@' || repeat('4', 40)
+                                                  || '?jobs=a1180004-0000-4000-8000-000000000001'),
+  'a bisect locator names a full culprit sha, owner/name and at least one job — and only for code');
+select pg_temp.must_hold(
+  not ouroboros.source_locator_valid('code', 'bisect://acme-robotics/helios-firmware@' || repeat('4', 40) || '?jobs='
+    || (select string_agg('a1180004-0000-4000-8000-000000000001', ',') from generate_series(1, 33))),
+  'a bisect locator names at most 32 jobs');
+
+delete from ouroboros.organization where "id" in ('org-v118', 'org-v118b');
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.code_bisects where organization_id = 'org-v118'),
+  'a deleted workspace takes its bisects with it');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

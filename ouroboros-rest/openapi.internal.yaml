@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.41.1"
+  version: "0.41.2"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -2829,7 +2829,7 @@ components:
           type: string
         locator:
           type: string
-          description: An http(s) URL, or an internal `issue-index://`, `git://` or `telemetry://` URI.
+          description: An http(s) URL, or an internal `issue-index://`, `git://`, `bisect://` (a converged bisect and the farm jobs that proved it, #617) or `telemetry://` URI.
         retrievedAt:
           type: string
           format: date-time

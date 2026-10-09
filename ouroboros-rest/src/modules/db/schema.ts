@@ -6140,6 +6140,65 @@ export interface CompetitorSnapshotContentsTable {
   created_at: Stamped;
 }
 
+/** `code_bisects.status` (V118, #617). */
+export type CodeBisectStatus = "running" | "converged" | "inconclusive" | "failed" | "canceled";
+
+/**
+ * `ouroboros.code_bisects` — one bisect between a good and a bad commit, and its checkpoint (V118,
+ * [#617](https://github.com/NobuData/ouroboros/issues/617), CL.4): the first-parent candidate line,
+ * the window `lo..hi` the culprit is still among, the step bound ⌊log₂ n⌋ + 1 and, once
+ * converged, the culprit.
+ */
+export interface CodeBisectsTable {
+  id: Generated<string>;
+  organization_id: ColumnType<string, string, never>;
+  investigation_id: ColumnType<string | null, string | null | undefined, never>;
+  github_repo_id: ColumnType<string, string, never>;
+  /** `owner/name`. */
+  repository: ColumnType<string, string, never>;
+  /** The farm pool each step builds in, by name. */
+  pool: ColumnType<string, string, never>;
+  /** What a step tests — `hil:hover_drift`. */
+  test_ref: ColumnType<string, string, never>;
+  /** The argv each step runs; null for the pool's default. Written as a JSON string. */
+  command: ColumnType<string[] | null, string | null | undefined, never>;
+  good_ref: ColumnType<string, string, never>;
+  bad_ref: ColumnType<string, string, never>;
+  good_sha: ColumnType<string, string, never>;
+  bad_sha: ColumnType<string, string, never>;
+  /** The ref each build fetches — `refs/heads/nightly`. */
+  build_ref: ColumnType<string, string, never>;
+  /** The candidates, oldest first. Written as a JSON string. */
+  commits: ColumnType<string[], string, never>;
+  lo: ColumnType<number, number | undefined, number>;
+  hi: ColumnType<number, number, number>;
+  max_steps: ColumnType<number, number, never>;
+  status: ColumnType<CodeBisectStatus, CodeBisectStatus | undefined, CodeBisectStatus>;
+  culprit_sha: ColumnType<string | null, never, string | null>;
+  note: ColumnType<string | null, never, string | null>;
+  created_by: ColumnType<string | null, string | null | undefined, never>;
+  created_at: Stamped;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  finished_at: ColumnType<Date | null, never, Date | string | null>;
+}
+
+/**
+ * `ouroboros.code_bisect_steps` — one build-farm job per bisect step, and its verdict (V118, #617).
+ */
+export interface CodeBisectStepsTable {
+  bisect_id: ColumnType<string, string, never>;
+  step: ColumnType<number, number, never>;
+  /** The candidate built, by index into the bisect's line. */
+  candidate: ColumnType<number, number, never>;
+  commit_sha: ColumnType<string, string, never>;
+  /** The job deciding the step — after an infrastructure retry, the retry. */
+  build_job_id: ColumnType<string, string, string>;
+  organization_id: ColumnType<string, string, never>;
+  verdict: ColumnType<"good" | "bad" | null, never, "good" | "bad">;
+  created_at: Stamped;
+  decided_at: ColumnType<Date | null, never, Date | string>;
+}
+
 /** A ledger row's kind (V108's `source_records_kind` CHECK). */
 export type SourceRecordKindColumn =
   "web" | "competitor_diff" | "code" | "ticket" | "telemetry" | "doc";
@@ -7177,6 +7236,8 @@ export interface Database {
   competitor_watches: CompetitorWatchesTable;
   competitor_snapshots: CompetitorSnapshotsTable;
   competitor_snapshot_contents: CompetitorSnapshotContentsTable;
+  code_bisects: CodeBisectsTable;
+  code_bisect_steps: CodeBisectStepsTable;
   metric_definitions: MetricDefinitionsTable;
   metric_daily: MetricDailyTable;
   metric_rollup_state: MetricRollupStateTable;
@@ -8502,6 +8563,43 @@ export const TABLE_COLUMNS = {
     "created_at",
   ],
   competitor_snapshot_contents: ["snapshot_id", "content", "created_at"],
+  code_bisects: [
+    "id",
+    "organization_id",
+    "investigation_id",
+    "github_repo_id",
+    "repository",
+    "pool",
+    "test_ref",
+    "command",
+    "good_ref",
+    "bad_ref",
+    "good_sha",
+    "bad_sha",
+    "build_ref",
+    "commits",
+    "lo",
+    "hi",
+    "max_steps",
+    "status",
+    "culprit_sha",
+    "note",
+    "created_by",
+    "created_at",
+    "updated_at",
+    "finished_at",
+  ],
+  code_bisect_steps: [
+    "bisect_id",
+    "step",
+    "candidate",
+    "commit_sha",
+    "build_job_id",
+    "organization_id",
+    "verdict",
+    "created_at",
+    "decided_at",
+  ],
   metric_definitions: [
     "metric_id",
     "family",
