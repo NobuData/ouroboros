@@ -1,0 +1,149 @@
+---
+title: "Research tools"
+sidebar_label: "Research"
+sidebar_position: 14
+description: "Choosing the web search provider and how the page reader stays polite, safe and honest."
+---
+
+Research investigations read the outside world through **research tools**. This page covers
+the first of them, **Web search & page reader**: where its searches go, how it reads a page,
+what it keeps, and the variables that bound it.
+
+:::info[Not available yet]
+
+Workspace settings for research tools arrive with the research settings screen. Until then
+every workspace's web tool uses the deployment's SearXNG with the defaults below.
+
+:::
+
+## Search providers
+
+The tool searches through one **provider** per workspace. Switching provider changes where
+searches go and nothing else: every provider's results are cited the same way, and pages are
+always read by Ouroboros' own reader, never by the provider.
+
+| Provider | Key | Cost per search | Notes |
+| --- | --- | --- | --- |
+| **SearXNG** (default) | none | none | The deployment's own metasearch. The compose file ships it as the `searxng` service. |
+| **Brave Search** | yes | about $0.005 | Hosted. Up to 20 results per search. |
+| **Tavily** | yes | about $0.008, twice that at **advanced** depth | Hosted. **Search depth** is `basic` or `advanced`. |
+| **Firecrawl** | yes | not priced per search | Hosted. Billed in credits per result, so cost estimates leave it out. |
+
+A workspace's settings hold the provider, an optional **SearXNG URL** that overrides the
+deployment's, the **API key** for a hosted provider, **SafeSearch** (`off`, `moderate` or
+`strict`; `moderate` by default) and Tavily's search depth. The key is sealed in the vault and
+never shown again.
+
+The deployment's SearXNG lives at <EnvVar name="OURO_RESEARCH_SEARXNG_URL" />. A workspace
+that names no SearXNG URL of its own searches there.
+
+### Health
+
+The tool's health tells a broken configuration from a broken provider:
+
+| Health | Means | Fix |
+| --- | --- | --- |
+| **not configured** | The workspace has not set the tool up | Enable it in the workspace's research settings |
+| **misconfigured: …** | The settings cannot work, for example a hosted provider with no key | Correct the settings it names |
+| **unreachable: …** | The settings are fine, but the provider did not answer | Check the SearXNG container or the provider's status |
+| **slow: …** | The provider answered, but took more than 2 seconds | Usually transient |
+
+The health check never spends money. For a hosted provider it only checks that the API answers;
+a wrong key shows up on the first search, as a request to reconnect.
+
+## Reading a page
+
+Whichever provider found a page, Ouroboros reads it itself, in this order:
+
+1. **Only `http` and `https`**, with no credentials in the URL.
+2. **PDFs are skipped** with the note *papers tool arrives in v2*. A later research tool reads
+   documents and papers.
+3. **robots.txt decides.** A disallowed page is skipped, never read.
+4. **Pacing.** The reader waits its turn for the host, then sends the request.
+5. **Redirects are followed one hop at a time.** Each hop is checked against robots.txt and
+   the address policy again, up to <EnvVar name="OURO_RESEARCH_FETCH_MAX_REDIRECTS" /> hops.
+6. **The content type decides what is kept.** HTML is reduced to its main content, without
+   navigation, banners or footers. Plain text, JSON and XML are kept as they are. Anything else,
+   such as an image, is skipped as not readable text.
+
+Requests carry the user agent `OuroborosResearch/1.0`, so a site can address the reader in its
+robots.txt as `OuroborosResearch`.
+
+### robots.txt and politeness
+
+- **robots.txt is honoured as RFC 9309 says.** The longest matching rule wins, and `allow`
+  wins a tie. A group for `OuroborosResearch` takes precedence over `*`.
+- **A missing robots.txt allows everything.** That covers any 4xx answer.
+- **An unreadable robots.txt disallows everything.** A 5xx answer or no answer counts as
+  unreadable, and the reader asks again after five minutes.
+- **Answers are cached per site for a day.**
+- **One request at a time per host.** Requests to a host start at least
+  <EnvVar name="OURO_RESEARCH_HOST_INTERVAL_MS" /> apart, or further apart when the site's
+  `Crawl-delay` asks for more. The reader honours a crawl delay of up to 30 seconds.
+- **A `429` is respected.** The reader backs off for as long as the site's `Retry-After` says.
+
+### Skipped pages are recorded
+
+A page the reader will not read is **not an error and not silent**. The skip is recorded in the
+investigation, with the page's address and a note saying why, and the investigation goes on.
+There are two reasons:
+
+| Reason | Note |
+| --- | --- |
+| robots.txt disallows the page | The rule that disallowed it, for example `Disallow: /private/` |
+| The page is not readable text | *papers tool arrives in v2* for a PDF, or the content type it was |
+
+A page that fails for another reason, such as a timeout or a server error, is a failed
+request. The investigation may retry it.
+
+### What is archived
+
+Each page read becomes a **source** in the investigation's citation ledger, at the address it
+was finally read from. A source holds:
+
+- a **hash** of every byte read, so a later reading shows whether the page changed;
+- an **excerpt** of the main content, up to 4 KiB;
+- the page's title, its status, content type and size, whether it was cut off at the size
+  cap, and the redirects that led to it.
+
+Each search result also becomes a source, with the provider's snippet as its excerpt. The full
+page text goes to the investigation for that step and is not stored.
+
+## Network safety
+
+The URLs the reader opens were chosen by a model, so the reader treats them as hostile. It uses
+the same address policy as webhooks:
+
+- **Internal addresses are refused.** That covers loopback, link-local (including the cloud
+  metadata endpoint), private ranges, carrier-grade NAT and unique-local IPv6, whether the URL
+  names a host or an address.
+- **The connection goes to the address that was checked**, so DNS cannot answer differently
+  between the check and the connection.
+- **An exception needs an operator.** Add a host to
+  <EnvVar name="OURO_RESEARCH_FETCH_INTERNAL_ALLOWLIST" /> to let the reader reach it, for
+  example an intranet wiki.
+
+:::caution[Internal hosts]
+
+Every address on the allowlist is readable by any investigation in any workspace. List only
+hosts whose content every workspace may see.
+
+:::
+
+A refused address is a failed request, not a skipped page.
+
+## Variables
+
+All are set on the REST service. Each has a working default.
+
+| Variable | Default | What it bounds |
+| --- | --- | --- |
+| <EnvVar name="OURO_RESEARCH_SEARXNG_URL" /> | `http://localhost:8888` | The deployment's SearXNG. The compose file sets `http://searxng:8080`. |
+| <EnvVar name="OURO_RESEARCH_FETCH_TIMEOUT_MS" /> | `15000` | How long one request may take, from 1 to 120 seconds. |
+| <EnvVar name="OURO_RESEARCH_FETCH_MAX_BYTES" /> | `5242880` (5 MiB) | The most bytes read from one page. A longer page is read up to the cap and marked as cut off. |
+| <EnvVar name="OURO_RESEARCH_FETCH_MAX_REDIRECTS" /> | `5` | The most redirects followed for one page, from 0 to 20. |
+| <EnvVar name="OURO_RESEARCH_HOST_INTERVAL_MS" /> | `1000` | The least time between two requests to one host, up to 60 seconds. |
+| <EnvVar name="OURO_RESEARCH_FETCH_INTERNAL_ALLOWLIST" /> | empty | Internal hosts the reader may reach, comma-separated: hostnames, IP addresses or CIDR blocks. |
+
+The SearXNG container takes one variable of its own, <EnvVar name="OURO_SEARXNG_SECRET" />.
+See [Container images](./deploy/containers.mdx#searxng--web-search).

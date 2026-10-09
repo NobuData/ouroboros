@@ -5,8 +5,8 @@
  * It consumes routing (the `research` task kind's resolution, Z.1) and pricing (CH.3) through
  * their exported services only, and exports {@link ResearchEstimateService} — the contract CM.6
  * (#625) stores estimates through and CM.1 (#620) reconciles actuals through.
- * {@link ResearchToolPricing} is a provider so CL.2 (#615) can replace it with one reading its
- * hosted providers' cost metadata.
+ * {@link ResearchToolPricing} is bound to {@link RegistryToolPricing} (CL.2, #615), which asks each
+ * registered tool what one operation costs under the workspace's configuration.
  */
 
 import { Module } from "@nestjs/common";
@@ -18,11 +18,17 @@ import { ResearchEstimateController } from "./estimate.controller";
 import { ResearchEstimateService } from "./estimate.service";
 import { ResearchRepository } from "./research.repository";
 import { ResearchToolPricing } from "./tool-pricing";
+import { RegistryToolPricing } from "./tools/research-tool.pricing";
+import { ResearchToolsModule } from "./tools/research-tools.module";
 
 @Module({
-  imports: [DbModule, RoutingModule, PricingModule],
+  imports: [DbModule, RoutingModule, PricingModule, ResearchToolsModule],
   controllers: [ResearchEstimateController],
-  providers: [ResearchEstimateService, ResearchRepository, ResearchToolPricing],
+  providers: [
+    ResearchEstimateService,
+    ResearchRepository,
+    { provide: ResearchToolPricing, useClass: RegistryToolPricing },
+  ],
   exports: [ResearchEstimateService],
 })
 export class ResearchModule {}

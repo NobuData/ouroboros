@@ -49,6 +49,7 @@ interface Harness {
   readonly tool: FakeResearchTool;
   readonly archive: jest.Mock;
   readonly settingsFor: jest.Mock;
+  readonly recordSkip: jest.Mock;
 }
 
 /**
@@ -62,6 +63,7 @@ function harness(
     investigation?: ToolInvestigation | undefined;
     settings?: ToolSettings | null;
     tool?: FakeResearchTool;
+    skipAlreadyRecorded?: boolean;
   } = {},
 ): Harness {
   const tool = options.tool ?? new FakeResearchTool();
@@ -78,9 +80,11 @@ function harness(
   const settingsFor = jest.fn(() =>
     Promise.resolve(options.settings === undefined ? SETTINGS : options.settings),
   );
+  const recordSkip = jest.fn(() => Promise.resolve(options.skipAlreadyRecorded !== true));
   const repository = {
     findInvestigation: () => Promise.resolve(investigation),
     archiveSources: archive,
+    recordSkip,
   } as unknown as ResearchToolRepository;
 
   return {
@@ -90,6 +94,7 @@ function harness(
     tool,
     archive,
     settingsFor,
+    recordSkip,
   };
 }
 
@@ -306,23 +311,78 @@ describe("the research tool invoker", () => {
 
   describe("an answer outside the contract", () => {
     it("502s a classified failure with its surface state, archiving nothing", async () => {
-      const { invoker, tool, archive } = harness();
+      const { invoker, tool, archive, recordSkip } = harness();
 
-      tool.willFail("robots_denied");
+      tool.willFail("rate_limited");
 
-      expect(
-        await refusal(
-          invoker.invoke("fake", "fetch", {
-            ...REQUEST,
-            input: { locator: FAKE_CORPUS[1].locator },
-          }),
-        ),
-      ).toMatchObject({
+      expect(await refusal(invoker.invoke("fake", "search", REQUEST))).toMatchObject({
         status: HttpStatus.BAD_GATEWAY,
         code: RESEARCH_TOOL_ERRORS.toolFailed,
-        details: { errorClass: "robots_denied", surfaceState: "skipped_source", retryable: false },
+        details: { errorClass: "rate_limited", surfaceState: "backing_off", retryable: true },
       });
       expect(archive).not.toHaveBeenCalled();
+      expect(recordSkip).not.toHaveBeenCalled();
+    });
+
+    it("answers a robots-denied fetch as a skip and records it under the investigation", async () => {
+      const { invoker, tool, archive, recordSkip } = harness();
+
+      tool.willFail("robots_denied");
+      const answer = await invoker.invoke("fake", "fetch", {
+        ...REQUEST,
+        input: { locator: FAKE_CORPUS[1].locator },
+      });
+
+      expect(answer).toMatchObject({
+        payload: null,
+        sources: [],
+        skipped: { locator: FAKE_CORPUS[1].locator, reason: "robots_denied", recorded: true },
+        usage: { operations: 1, tokens: 0 },
+        budget: { operations: REQUEST.budget.operations - 1, tokens: REQUEST.budget.tokens },
+      });
+      expect(recordSkip).toHaveBeenCalledWith(INVESTIGATION, "fake", {
+        locator: FAKE_CORPUS[1].locator,
+        reason: "robots_denied",
+        note: answer.skipped?.note,
+      });
+      expect(archive).not.toHaveBeenCalled();
+    });
+
+    it("answers an unsupported type as an unsupported_type skip", async () => {
+      const { invoker, tool, recordSkip } = harness();
+
+      tool.willFail("unsupported");
+      const answer = await invoker.invoke("fake", "fetch", {
+        ...REQUEST,
+        input: { locator: FAKE_CORPUS[1].locator },
+      });
+
+      expect(answer.skipped).toMatchObject({ reason: "unsupported_type" });
+      expect(recordSkip).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps an unsupported search a failure — only a fetch skips a page", async () => {
+      const { invoker, tool, recordSkip } = harness();
+
+      tool.willFail("unsupported");
+
+      expect(await refusal(invoker.invoke("fake", "search", REQUEST))).toMatchObject({
+        status: HttpStatus.BAD_GATEWAY,
+        details: { errorClass: "unsupported" },
+      });
+      expect(recordSkip).not.toHaveBeenCalled();
+    });
+
+    it("says when the skip was already on the record", async () => {
+      const { invoker, tool } = harness({ skipAlreadyRecorded: true });
+
+      tool.willFail("robots_denied");
+      const answer = await invoker.invoke("fake", "fetch", {
+        ...REQUEST,
+        input: { locator: FAKE_CORPUS[1].locator },
+      });
+
+      expect(answer.skipped?.recorded).toBe(false);
     });
 
     it("502s a payload with no sources — and archives nothing", async () => {

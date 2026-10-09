@@ -218,6 +218,17 @@ export interface ResearchToolAdapter {
    *   `down` result, because a dot's colour must not depend on somebody's control flow.
    */
   healthCheck(config: ResearchToolConfig | null, secret: string | null): Promise<ToolHealth>;
+
+  /**
+   * What one operation costs under a configuration, for the scope estimate (#622) — declared
+   * only by a tool that can be pointed at a paid API.
+   *
+   * @param config - The workspace's configuration, or null when it has stored none.
+   * @returns List price in cents per operation, or null when this configuration is unpriced
+   *   (self-hosted, or a provider that publishes no per-operation price). Absent means the tool
+   *   never charges.
+   */
+  operationPriceCents?(config: ResearchToolConfig | null): number | null;
 }
 
 /** A tool that searches. */

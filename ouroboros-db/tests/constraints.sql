@@ -38817,6 +38817,61 @@ select pg_temp.must_hold(
   'a deleted workspace takes its baselines, watch items and thresholds with it');
 
 -- ===========================================================================
+-- V116 — the sources an investigation declined to read (#615, CL.2)
+-- ===========================================================================
+--
+-- A robots denial and a PDF the papers tool will read are recorded beside the ledger, once per
+-- investigation, tool, page and reason, and never edited.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v116', 'Skip Works', 'skip-works-v116', now());
+
+insert into ouroboros.investigations (id, organization_id, kind_id, seq, question, depth, tools_enabled,
+                                      status, provenance)
+select 'a1160000-0000-0000-0000-000000000001', 'org-v116', k.id, 1, 'Docking vs. the field', 'standard',
+       '["web"]', 'running', '{"researcher": "loop-v1", "alias": "researcher-long-ctx", "resolution_ref": null}'
+  from ouroboros.investigation_kinds k where k.organization_id = 'org-v116' and k.slug = 'gap_analysis';
+
+insert into ouroboros.source_skips (investigation_id, tool_slug, locator, reason, note, meta) values
+  ('a1160000-0000-0000-0000-000000000001', 'web', 'https://skylink.example.com/dealers/pricing',
+   'robots_denied', 'robots.txt disallows /dealers/ for OuroborosResearch', '{"rule": "Disallow: /dealers/"}'),
+  ('a1160000-0000-0000-0000-000000000001', 'web', 'https://arxiv.example.org/pdf/2605.11423.pdf',
+   'unsupported_type', 'papers tool arrives in v2', '{"content_type": "application/pdf"}');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.source_skips where investigation_id = 'a1160000-0000-0000-0000-000000000001'),
+  'a robots denial and a deferred PDF are both recorded under the investigation');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.source_skips (investigation_id, tool_slug, locator, reason, note)
+    values ('a1160000-0000-0000-0000-000000000001', 'web', 'https://skylink.example.com/dealers/pricing',
+            'robots_denied', 'again')$$,
+  'a second refusal of the same page for the same reason says nothing new', 'source_skips_investigation_locator_key');
+select pg_temp.must_reject(
+  $$insert into ouroboros.source_skips (investigation_id, tool_slug, locator, reason, note)
+    values ('a1160000-0000-0000-0000-000000000001', 'web', 'https://x.example.com/', 'timeout', 'slow')$$,
+  'a skip is robots_denied or unsupported_type — a failure is not a skip', 'source_skips_reason');
+select pg_temp.must_reject(
+  $$insert into ouroboros.source_skips (investigation_id, tool_slug, locator, reason, note)
+    values ('a1160000-0000-0000-0000-000000000001', 'web', 'https://x.example.com/', 'robots_denied', '  ')$$,
+  'a skip says why', 'source_skips_note_present');
+select pg_temp.must_reject(
+  $$insert into ouroboros.source_skips (investigation_id, tool_slug, locator, reason, note)
+    values ('a1160000-0000-0000-0000-000000000001', 'web', 'https://x.example.com/a b', 'robots_denied', 'x')$$,
+  'a locator has no whitespace', 'source_skips_locator_format');
+select pg_temp.must_reject(
+  $$insert into ouroboros.source_skips (investigation_id, tool_slug, locator, reason, note)
+    values ('a1160000-0000-0000-0000-000000000001', 'not-a-tool', 'https://x.example.com/', 'robots_denied', 'x')$$,
+  'a skip names a registered tool', 'source_skips_tool_slug_fkey');
+select pg_temp.must_reject(
+  $$update ouroboros.source_skips set note = 'edited' where investigation_id = 'a1160000-0000-0000-0000-000000000001'$$,
+  'a skip is never edited', 'source_skips_immutable');
+
+delete from ouroboros.organization where "id" = 'org-v116';
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.source_skips where investigation_id = 'a1160000-0000-0000-0000-000000000001'),
+  'a deleted workspace takes its investigations'' skips with it');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

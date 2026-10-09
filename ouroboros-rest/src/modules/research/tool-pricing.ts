@@ -7,7 +7,8 @@
  * ([#615](https://github.com/NobuData/ouroboros/issues/615)) is the first that can be pointed at
  * a paid API — and none of those configurations exists yet. So this is the seam rather than the
  * source: an injectable class the estimator asks, whose default answers *no hosted provider is
- * configured*, and which #615 replaces with one reading its provider configs.
+ * configured*. `research.module.ts` binds #615's `RegistryToolPricing` in its place, which reads
+ * each registered tool's declared price.
  *
  * The default answers *nothing* rather than a guessed per-search price. A tool with no declared
  * price is either self-hosted or not configured, and in neither case does the estimate get to

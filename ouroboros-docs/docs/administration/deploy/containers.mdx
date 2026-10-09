@@ -153,6 +153,7 @@ Build jobs upload their artifacts — test reports, captures, logs — to the RE
 | <EnvVar name="OURO_LOCAL_PROVIDER_URLS" /> | `ollama=http://ollama:11434` | Only with a local model host. The address must be reachable from the engine. |
 | <EnvVar name="OURO_GITHUB_API_BASE_URL" /> | `https://ghe.example.com/api/v3` | GitHub Enterprise Server only. |
 | <EnvVar name="OURO_SMTP_URL" />, <EnvVar name="OURO_MAIL_FROM" /> | `smtps://user:password@smtp.example.com:465`, `no-reply@example.com` | Only for the weekly Insights digest and decision mail. Set both or neither — see [Notifications](../notifications-and-webhooks.mdx). |
+| <EnvVar name="OURO_RESEARCH_SEARXNG_URL" /> | `http://searxng:8080` | The `searxng` service's internal address, where research investigations search by default. The page reader's limits are on [Research tools](../research.mdx). |
 
 Everything else — poll intervals, sweeps, retention, budgets — has a working default. The
 [Configuration reference](../configuration/index.mdx) lists them all.
@@ -167,6 +168,21 @@ serves every environment.
 | --- | --- | --- | --- |
 | <EnvVar name="OURO_REST_URL" /> | **yes** | `http://rest:4000` | The REST service's **internal** address. The app calls it from its own server and never sends it to a browser. |
 | `PORT` | no | `3000` | Already set in the image. |
+
+## `searxng` — web search
+
+Image `searxng/searxng`, from Docker Hub, pinned to a dated release. It is the metasearch the
+web research tool searches through when a workspace has chosen no hosted provider. It listens on
+`8080`; its container health check calls `GET /healthz`.
+
+| Setting | Value | Notes |
+| --- | --- | --- |
+| `SEARXNG_SECRET` | <EnvVar name="OURO_SEARXNG_SECRET" /> | **Required.** Signs SearXNG's own cookies. Generate one per deployment with `openssl rand -hex 32`. No Ouroboros service reads it. |
+| `/etc/searxng/settings.yml` | a read-only file | Turns on the JSON API the tool reads, turns off the public-instance limiter and the image proxy, and sets moderate SafeSearch. The repository's copy is `ouroboros-rest/searxng/settings.yml`. |
+
+Do not publish its port. Only the REST service calls it, at
+<EnvVar name="OURO_RESEARCH_SEARXNG_URL" />. A workspace that uses a hosted provider does not
+need it, and a deployment where every workspace does can leave it out.
 
 ## `ollama` — optional
 
@@ -185,5 +201,8 @@ pulls. It needs no Ouroboros configuration of its own; the REST service learns i
   default.
 - **The engine reports up, but every run fails at once** — the two copies of
   <EnvVar name="OURO_ENGINE_SHARED_SECRET" /> differ. Set the same value on both services.
+- **Research searches fail with `unreachable: SearXNG did not answer`** — the `searxng`
+  service is down or <EnvVar name="OURO_RESEARCH_SEARXNG_URL" /> does not point at it. Run
+  `docker compose ps searxng` and check the address.
 - **The app says it cannot reach the REST service** — <EnvVar name="OURO_REST_URL" /> on
   `ouroboros-ui` must be the internal address, `http://rest:4000`, not the app's public one.

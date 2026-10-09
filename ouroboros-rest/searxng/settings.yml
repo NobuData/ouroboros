@@ -1,0 +1,23 @@
+# SearXNG for the web research tool (#615, CL.2) — the self-hosted default search provider.
+#
+# Everything SearXNG ships is kept (`use_default_settings`); this file changes only what the
+# research tool needs:
+#
+#   * the JSON format, which is how `ouroboros-rest` reads results (`/search?format=json`);
+#   * no limiter — the only client is `ouroboros-rest` on the compose network, and the page reader
+#     paces itself per host;
+#   * not a public instance.
+#
+# The secret key comes from SEARXNG_SECRET in the compose file, never from this file.
+use_default_settings: true
+
+server:
+  limiter: false
+  public_instance: false
+  image_proxy: false
+
+search:
+  safe_search: 1
+  formats:
+    - html
+    - json

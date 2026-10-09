@@ -46,7 +46,9 @@ import {
   type ToolResult,
 } from "./research-tool.adapter";
 import { resultViolations } from "./research-tool.citations";
+import type { SourceSkipReason } from "../../db/schema";
 import {
+  ResearchToolError,
   budgetExhausted,
   contractViolation,
   investigationNotRunning,
@@ -55,6 +57,7 @@ import {
   toolFailed,
   toolNotConfigured,
   toolNotEnabled,
+  type ToolErrorClass,
 } from "./research-tool.errors";
 import { ResearchToolRegistry } from "./research-tool.registry";
 import { ResearchToolRepository, type ArchivedSource } from "./research-tool.repository";
@@ -88,6 +91,31 @@ export interface InvokedSource extends SourceRecord {
 }
 
 /** What one operation answers. */
+/**
+ * A page the fetch declined to read — answered as a skip rather than a failure, and recorded under
+ * the investigation (`source_skips`, V116, #615).
+ */
+export interface SkippedSource {
+  /** The page as it was asked for. */
+  readonly locator: string;
+  /** `robots_denied` or `unsupported_type`. */
+  readonly reason: SourceSkipReason;
+  /** What the sources panel shows — `robots.txt disallows /dealers/`, `papers tool arrives in v2`. */
+  readonly note: string;
+  /** Whether this call recorded it; `false` when the investigation already had it. */
+  readonly recorded: boolean;
+}
+
+/**
+ * The failure classes a fetch answers as a **skip** — a decision the tool made about the page, not
+ * an error it hit. A robots denial is honoured and shown; a PDF or an image is a type the tool does
+ * not read. Every other class stays a `502 research_tool_failed`.
+ */
+export const SKIP_REASONS: Readonly<Partial<Record<ToolErrorClass, SourceSkipReason>>> = {
+  robots_denied: "robots_denied",
+  unsupported: "unsupported_type",
+};
+
 export interface ToolInvocationResult {
   readonly tool: string;
   readonly operation: ToolOperation;
@@ -95,6 +123,8 @@ export interface ToolInvocationResult {
   readonly investigation: string;
   readonly payload: unknown;
   readonly sources: readonly InvokedSource[];
+  /** The page the fetch declined to read, or null. With one, `payload` is null and `sources` empty. */
+  readonly skipped: SkippedSource | null;
   /** What this call consumed — always one operation. */
   readonly usage: { readonly operations: 1; readonly tokens: number };
   /** What remains after it. */
@@ -183,7 +213,34 @@ export class ResearchToolInvoker {
       tokenCeiling: budget.tokens,
     };
 
-    const result = await this.run(tool, operation, context, request.input);
+    let result: ToolResult;
+
+    try {
+      result = await this.run(tool, operation, context, request.input);
+    } catch (error) {
+      if (!(error instanceof SkipSignal)) throw error;
+
+      // The operation was spent — the page was asked for — and the skip is part of the
+      // investigation's record, not a line in a log.
+      const locator = request.input.locator as string;
+      const recorded = await this.repository.recordSkip(investigation.id, slug, {
+        locator,
+        reason: error.reason,
+        note: error.cause.detail,
+      });
+
+      return {
+        tool: slug,
+        operation,
+        investigation: investigation.displayId,
+        payload: null,
+        sources: [],
+        skipped: { locator, reason: error.reason, note: error.cause.detail, recorded },
+        usage: { operations: 1, tokens: 0 },
+        budget: { operations: budget.operations - 1, tokens: budget.tokens },
+      };
+    }
+
     const archived = await this.repository.archiveSources(investigation.id, slug, result.sources);
 
     return {
@@ -192,6 +249,7 @@ export class ResearchToolInvoker {
       investigation: investigation.displayId,
       payload: result.payload,
       sources: result.sources.map((source, index) => withLedger(source, archived[index])),
+      skipped: null,
       usage: { operations: 1, tokens: result.usage.tokens },
       budget: {
         operations: budget.operations - 1,
@@ -222,6 +280,12 @@ export class ResearchToolInvoker {
       result = await callOperation(tool, operation, context, input);
     } catch (error) {
       if (isResearchToolError(error)) {
+        const reason = SKIP_REASONS[error.errorClass];
+
+        if (operation === "fetch" && reason !== undefined) {
+          throw new SkipSignal(reason, error);
+        }
+
         throw toolFailed(tool.slug, operation, error);
       }
 
@@ -249,6 +313,21 @@ export class ResearchToolInvoker {
  * @param candidate - The `:op` path segment.
  * @returns Whether it names one of the three operations.
  */
+/** A fetch the adapter declined for a {@link SKIP_REASONS} class — caught by `invoke`. */
+class SkipSignal extends Error {
+  /**
+   * @param reason - Why the page was not read.
+   * @param cause - The adapter's classified refusal, whose detail is the note.
+   */
+  constructor(
+    readonly reason: SourceSkipReason,
+    override readonly cause: ResearchToolError,
+  ) {
+    super(`skipped: ${reason}`);
+    this.name = "SkipSignal";
+  }
+}
+
 function isOperation(candidate: string): candidate is ToolOperation {
   return (TOOL_OPERATIONS as readonly string[]).includes(candidate);
 }

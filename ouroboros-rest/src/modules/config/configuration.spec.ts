@@ -150,6 +150,12 @@ describe("the development defaults", () => {
       webhookDispatchSeconds: DEFAULT_WEBHOOK_DISPATCH_SECONDS,
       webhookMaxAttempts: DEFAULT_WEBHOOK_MAX_ATTEMPTS,
       webhookInternalAllowlist: [],
+      researchSearxngUrl: "http://localhost:8888",
+      researchFetchTimeoutMs: 15_000,
+      researchFetchMaxBytes: 5_242_880,
+      researchFetchMaxRedirects: 5,
+      researchHostIntervalMs: 1_000,
+      researchFetchInternalAllowlist: [],
       // AL.5's (#281) four, written out in the template at their defaults for the same reason.
       backlogStaleDays: DEFAULT_BACKLOG_STALE_DAYS,
       reestimationHourUtc: DEFAULT_REESTIMATION_HOUR_UTC,
