@@ -1425,6 +1425,64 @@
       "capturedAt": "2026-10-09T03:32:28.422Z",
       "uiVersion": "0.144.1",
       "seedRef": "e924ed75bd6fe6b994e5995e5381615aede01064"
+    },
+    {
+      "id": "administration.retention",
+      "route": "/settings",
+      "workspace": "acme-robotics",
+      "ready": "text=Audit log (days)",
+      "clip": ".settings-workspace__retention",
+      "masks": [
+        ".settings-workspace__note"
+      ],
+      "actions": [
+        {
+          "click": "text=Advanced: set each class"
+        }
+      ],
+      "caption": "Data retention on the Workspace card: one tier for loop data, or each class set on its own, within its floor and ceiling.",
+      "alt": "The Data retention area of the Workspace card: the Data retention select at 30 days for transcripts, logs and artifacts, a masked sweep note, and Advanced: set each class opened with Transcripts, Build logs and Artifacts at 30 days, each 7–365 days with its next sweep, and Audit log at 400 days, 90–3650 days, with the note that the audit log is kept at least 90 days, so the record a quarterly review reads cannot be configured away.",
+      "capturedAt": "2026-10-09T03:44:50.848Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "f0958cecb36fb44f6f43cb8f073b9996bd988ed8"
+    },
+    {
+      "id": "administration.lifecycle.disconnect",
+      "route": "/settings",
+      "workspace": "acme-robotics",
+      "ready": "role=alertdialog >> text=As of now, disconnecting GitHub from this workspace means:",
+      "clip": ".shell-overlay__panel",
+      "actions": [
+        {
+          "click": "role=button[name=/^Disconnect…/]"
+        }
+      ],
+      "caption": "Disconnecting GitHub: what it does, read from the workspace as it stands, before you confirm.",
+      "alt": "The Disconnect GitHub? dialog: As of now, disconnecting GitHub from this workspace means: 2 open pull requests remain on GitHub, untouched; 3 running loops finish their current stage, then stop; 0 GitHub sources and 4 repositories stop syncing; no GitHub token is stored, nothing to delete; all loops are paused until you resume them. Below, the field Type Acme Robotics to confirm, and Cancel and a disabled Disconnect GitHub.",
+      "capturedAt": "2026-10-09T03:44:53.531Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "f0958cecb36fb44f6f43cb8f073b9996bd988ed8"
+    },
+    {
+      "id": "administration.lifecycle.purge-confirm",
+      "route": "/settings",
+      "workspace": "acme-robotics",
+      "ready": "role=alertdialog >> text=Deleting this workspace:",
+      "clip": ".shell-overlay__panel",
+      "actions": [
+        {
+          "click": "role=button[name=/^Delete Acme Robotics…/]"
+        },
+        {
+          "fill": "role=alertdialog >> role=textbox",
+          "value": "Acme Robotics"
+        }
+      ],
+      "caption": "Deleting a workspace: typed confirmation, a 30-day recovery window, then an irreversible purge.",
+      "alt": "The Delete Acme Robotics? dialog: Deleting this workspace freezes every page of it behind a recovery screen, at once; signs out everyone in it who is not an owner; stops all dispatch; can be undone by an owner for 30 days — Restore on the recovery screen; and after 30 days destroys the workspace's encryption key, then deletes its data, which cannot be undone. The confirmation field holds Acme Robotics, with Cancel and Delete workspace.",
+      "capturedAt": "2026-10-09T03:44:55.828Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "f0958cecb36fb44f6f43cb8f073b9996bd988ed8"
     }
   ]
 }

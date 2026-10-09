@@ -1004,7 +1004,7 @@ since other pages link variables to it).
 | DB.8 | #1196 ✅ | 🟢 Done | ouroboros-docs: [DB.8] Build farm administration | Pools, farm tokens, enrolling runners, gateway, health | mvp, docs-site, documentation, build-farm | Y | Y | M | ouroboros-docs |
 | DB.9 | #1197 ✅ | 🟢 Done | ouroboros-docs: [DB.9] Policies & guardrails | Org policy, protected paths, spend guard, dry-run, decision TTLs, exceptions | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
 | DB.10 | #1198 ✅ | 🟢 Done | ouroboros-docs: [DB.10] Notifications, email & webhooks | SMTP, digests, channels, webhook endpoints, signing, retries | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
-| DB.11 | #1199 | 🟡 Open | ouroboros-docs: [DB.11] Data retention, audit & workspace lifecycle | Retention, audit trail, disconnect, purge, security model summary | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
+| DB.11 | #1199 ✅ | 🟢 Done | ouroboros-docs: [DB.11] Data retention, audit & workspace lifecycle | Retention, audit trail, disconnect, purge, security model summary | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
 | DB.12 | #1200 | 🟡 Open | ouroboros-docs: [DB.12] Operations — upgrades, backups, health & troubleshooting | Migrations on upgrade, PG backups, health endpoints, common failures | mvp, docs-site, documentation, infra | Y | Y | M | ouroboros-docs |
 
 ### Issue DB.1 (#1189) — ouroboros-docs: [DB.1] Administration overview, roles & capabilities
@@ -1238,6 +1238,23 @@ fixtures. Screenshots: `administration.webhooks`, `.webhooks.create`, `.notifica
 **Problem Statement.** Admins integrate Ouroboros with their own systems and mail.
 
 ### Issue DB.11 (#1199) — ouroboros-docs: [DB.11] Data retention, audit & workspace lifecycle
+
+> **GitHub issue:** #1199 ✅ · **Status:** 🟢 Done · **Parent epic:** #1159
+>
+> **Delivered (#1199):** `administration/retention-audit-lifecycle.mdx` covers:
+>
+> - **Retention:** the Workspace card's **Data retention** select and **Advanced: set each class**. Floors and ceilings are loop 7–365 and audit 90–3650. Sweeps run hourly for transcripts, every ten minutes for build logs, and on schedules shown on the card. Saving deletes nothing until the next sweep. Only finished work is swept. There's the build-log byte budget and the artifact default.
+> - **The audit trail:** what is recorded, reading and filtering it (owner/admin), **Export CSV** (≤366 days, itself audited), streaming to a SIEM, and held events.
+> - **The Danger zone:**
+>   - **Pause all loops.**
+>   - **Disconnect GitHub App:** pause, pause GitHub sources, delete the backlog token. Reconnecting points at the sources page's backlog-token section, and the page notes there's no App to uninstall.
+>   - **Delete workspace** (owner, recent sign-in): a 30-day recovery window, then the purge in the order the service runs it. Key destroyed → artifacts → data → tombstone, with a `danger` admonition.
+> - **A security-model summary:** tenancy, vault (AES-256-GCM per-workspace keys under `OURO_VAULT_MASTER_KEY`; KMS/Vault custody honest-absent), shown-once secrets, runners, where data lives.
+> - **What can go wrong.**
+>
+> **Correction made while writing:** the purge does *not* reach a database backup taken before it. Anyone holding that backup and the master key can still open it, per `SECURITY_MODEL.md` §2.6. The page says so, and a test refuses "even from a backup". `tests/administration.test.ts` also pins the ceiling constraint, the UI labels and sentences, the sweep intervals, and the purge order read from `lifecycle.purge.ts`.
+>
+> **Screenshots** (`acme-robotics`): `administration.retention` (the advanced editor open; sweep note masked), `administration.lifecycle.disconnect` (the preview dialog) and `administration.lifecycle.purge-confirm` (the delete dialog with the name typed). No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.34.
 
 **Solution / Scope.** Retention settings and ceilings (365/3650), transcript sweep, audit
 events and where to read them, disconnect (pause + clear token + pause sources) vs purge
