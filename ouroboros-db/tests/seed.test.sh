@@ -5,7 +5,7 @@
 # migrations/R__dev_seed_farm.sql, migrations/R__dev_seed_intake.sql,
 # migrations/R__dev_seed_onboarding.sql,
 # migrations/R__dev_seed_providers.sql, migrations/R__dev_seed_research.sql,
-# migrations/R__dev_seed_workspace_copilot.sql,
+# migrations/R__dev_seed_workspace_copilot.sql, migrations/R__dev_seed_workspace_research.sql,
 # migrations/R__dev_seed_routing.sql,
 # migrations/R__dev_seed_sources.sql, migrations/R__dev_seed_ticket_planning.sql,
 # migrations/R__dev_seed_workflows.sql, migrations/R__dev_seed_workspace_interventions.sql,
@@ -39,6 +39,8 @@
 # R__dev_seed_workspace_settings.sql (#484) is *who may do what, and where the record goes*,
 # R__dev_seed_workspace_triage_inbox.sql (#460) is *what is waiting on a person*,
 # R__dev_seed_research.sql (#609) is *what it found out, and from where*,
+# R__dev_seed_workspace_research.sql (#613) is *the rest of what research knows — the quarter, the
+# rivals, the watch and the roadmap*,
 # R__dev_seed_workspace_copilot.sql (#558) is *what the copilot drafted, and what its dry run said* — and the
 # structural rules below are asserted over all of them, in a loop, so that a tenth seed
 # inherits them by being added to the one list at the top.
@@ -100,6 +102,7 @@ SETTINGS_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_settings.sql"
 INBOX_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_triage_inbox.sql"
 RESEARCH_SEED="$MODULE_DIR/migrations/R__dev_seed_research.sql"
 COPILOT_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_copilot.sql"
+WORKSPACE_RESEARCH_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_research.sql"
 CONFIG="$MODULE_DIR/flyway.toml"
 SEED_CONFIG="$MODULE_DIR/flyway.seed.toml"
 DEV_CONFIG="$MODULE_DIR/flyway.dev.toml"
@@ -148,6 +151,7 @@ SETTINGS_BODY="$work/seed-body-workspace-settings.sql"
 INBOX_BODY="$work/seed-body-workspace-triage-inbox.sql"
 RESEARCH_BODY="$work/seed-body-research.sql"
 COPILOT_BODY="$work/seed-body-workspace-copilot.sql"
+WORKSPACE_RESEARCH_BODY="$work/seed-body-workspace-research.sql"
 seed_body "$SEED" "$BODY"
 seed_body "$DASHBOARD_SEED" "$DASHBOARD_BODY"
 seed_body "$INTAKE_SEED" "$INTAKE_BODY"
@@ -170,6 +174,7 @@ seed_body "$SETTINGS_SEED" "$SETTINGS_BODY"
 seed_body "$INBOX_SEED" "$INBOX_BODY"
 seed_body "$RESEARCH_SEED" "$RESEARCH_BODY"
 seed_body "$COPILOT_SEED" "$COPILOT_BODY"
+seed_body "$WORKSPACE_RESEARCH_SEED" "$WORKSPACE_RESEARCH_BODY"
 
 # count_lines PATTERN [FILE] — how many lines of a seed's SQL match an extended regex.
 # Defaults to R__dev_seed.sql, which is what the assertions written before there was a
@@ -208,6 +213,7 @@ check_exists "$SETTINGS_SEED" 'migrations/R__dev_seed_workspace_settings.sql exi
 check_exists "$INBOX_SEED" 'migrations/R__dev_seed_workspace_triage_inbox.sql exists'
 check_exists "$RESEARCH_SEED" 'migrations/R__dev_seed_research.sql exists'
 check_exists "$COPILOT_SEED" 'migrations/R__dev_seed_workspace_copilot.sql exists'
+check_exists "$WORKSPACE_RESEARCH_SEED" 'migrations/R__dev_seed_workspace_research.sql exists'
 
 # Repeatable, not versioned. A seed that grows with the product would otherwise become a
 # chain of V### files that can never be re-run — README.md § Migration rules, rule 3.
@@ -215,7 +221,8 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
                  "$PROVIDERS_SEED" "$ROUTING_SEED" "$RUN_CONSOLE_SEED" "$SOURCES_SEED" \
                  "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED" \
                  "$KNOWLEDGE_SEED" "$ONBOARDING_SEED" "$INTERVENTIONS_SEED" "$METRICS_SEED" \
-                 "$ANALYZER_SEED" "$SETTINGS_SEED" "$INBOX_SEED" "$RESEARCH_SEED" "$COPILOT_SEED"; do
+                 "$ANALYZER_SEED" "$SETTINGS_SEED" "$INBOX_SEED" "$RESEARCH_SEED" "$COPILOT_SEED" \
+                 "$WORKSPACE_RESEARCH_SEED"; do
   check_matches "$(basename -- "$seed_file")" '^R__[a-z0-9_]+\.sql$' \
     "$(basename -- "$seed_file") is a repeatable migration, so it re-applies when it changes"
 done
@@ -275,6 +282,8 @@ research_description=$(basename -- "$RESEARCH_SEED" .sql)
 research_description=${research_description#R__}
 copilot_description=$(basename -- "$COPILOT_SEED" .sql)
 copilot_description=${copilot_description#R__}
+workspace_research_description=$(basename -- "$WORKSPACE_RESEARCH_SEED" .sql)
+workspace_research_description=${workspace_research_description#R__}
 
 # The providers seed hangs off the first one too — it finds the workspace by slug and Ken
 # by email — and the routing seed hangs off the providers one, since every alias binds to a
@@ -366,6 +375,12 @@ copilot_description=${copilot_description#R__}
 # the wizard with no ticket to pick. `dev_seed_onboarding` sorts sixth, straight after it. It
 # reads no other seed: its workspace is its own.
 #
+# The rest of mockup 22's seed (#613) **must** sort after the research seed, whose RS-127 its matrix
+# is about, the sources seed, whose GitHub source its tickets are filed through, the farm seed,
+# whose jobs its bisects name, and the test-results seed, whose failing HIL measurement is RS-121's
+# evidence. It is named `workspace_research` for that: `dev_seed_research_more` would sort before
+# `dev_seed_sources` and file its tickets through nothing.
+#
 # The research seed (#609) only needs to sort after the first: RS-127 finds its workspace by slug
 # and Ken by email, and its gap_analysis kind is the one V106 gives every workspace when it is
 # created. `dev_seed_research` sorts after `dev_seed_providers` and before `dev_seed_routing`,
@@ -376,10 +391,10 @@ copilot_description=${copilot_description#R__}
 # the first of their domain. `dev_seed_farm` does that; `farm_dev_seed`, which reads better,
 # would sort before `dev_seed` and every join in it would find nothing on a database migrated
 # from empty.
-check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$research_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$copilot_description" "$interventions_description" "$knowledge_description" "$metrics_description" "$analyzer_description" "$settings_description" "$inbox_description")" \
-  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$research_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$copilot_description" "$interventions_description" "$knowledge_description" "$metrics_description" "$analyzer_description" "$settings_description" "$inbox_description" |
+check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$research_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$copilot_description" "$interventions_description" "$knowledge_description" "$metrics_description" "$analyzer_description" "$workspace_research_description" "$settings_description" "$inbox_description")" \
+  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$research_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$copilot_description" "$interventions_description" "$knowledge_description" "$metrics_description" "$analyzer_description" "$workspace_research_description" "$settings_description" "$inbox_description" |
      LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" \
-  'the twenty-two seeds sort in the order their rows depend on, so Flyway applies them in it'
+  'the twenty-three seeds sort in the order their rows depend on, so Flyway applies them in it'
 
 # Every statement is guarded, and every statement can be applied twice. Counted rather
 # than spot-checked: the failure this catches is a *new* statement added later without
@@ -401,7 +416,8 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
                  "$PROVIDERS_SEED" "$ROUTING_SEED" "$RUN_CONSOLE_SEED" "$SOURCES_SEED" \
                  "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED" \
                  "$KNOWLEDGE_SEED" "$ONBOARDING_SEED" "$INTERVENTIONS_SEED" "$METRICS_SEED" \
-                 "$ANALYZER_SEED" "$SETTINGS_SEED" "$INBOX_SEED" "$RESEARCH_SEED" "$COPILOT_SEED"; do
+                 "$ANALYZER_SEED" "$SETTINGS_SEED" "$INBOX_SEED" "$RESEARCH_SEED" "$COPILOT_SEED" \
+                 "$WORKSPACE_RESEARCH_SEED"; do
   name=$(basename -- "$seed_file")
   body=$BODY
   [ "$seed_file" = "$AUDIT_SEED" ] && body=$AUDIT_BODY
@@ -425,6 +441,7 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
   [ "$seed_file" = "$INBOX_SEED" ] && body=$INBOX_BODY
   [ "$seed_file" = "$RESEARCH_SEED" ] && body=$RESEARCH_BODY
   [ "$seed_file" = "$COPILOT_SEED" ] && body=$COPILOT_BODY
+  [ "$seed_file" = "$WORKSPACE_RESEARCH_SEED" ] && body=$WORKSPACE_RESEARCH_BODY
 
   inserts=$(count_lines '^insert into ouroboros\.' "$body")
   updates=$(count_lines '^update ouroboros\.' "$body")
@@ -1756,8 +1773,8 @@ check_contains "$RESEARCH_BODY" 'not exists \(select 1 from ouroboros\.briefs b 
 # The card's count is the rows, and the filler is honest about being filler.
 check_absent "$RESEARCH_BODY" "'44 sources'|'SOURCES — 44 CITED'" \
   'no card figure is stored as a literal — 44 sources is counted'
-check_contains "$RESEARCH_BODY" 'placeholder until #613 seeds the full ledger' \
-  'the 39 unfeatured sources say they are placeholders'
+check_absent "$RESEARCH_BODY" 'placeholder' \
+  'the ledger has no placeholders left — #613 seeded the 39 unfeatured sources'
 
 # RS-127's estimate (#622): stored with the calibration that produced it, written into an existing
 # RS-127 only when it has none, and reconciled by V109's one writer rather than by a hand-made row.
@@ -1810,6 +1827,51 @@ check_contains "$COPILOT_BODY" '"skill": "advisory-db"' 'analyze loads skill:adv
 check_contains "$COPILOT_BODY" '"inherit_task": "exploit-verify"' 'exploit-verify routes by a task kind the catalog does not have'
 
 # ---------------------------------------------------------------------------
+# R__dev_seed_workspace_research.sql — the rest of mockup 22 (#613)
+# ---------------------------------------------------------------------------
+
+printf '\nR__dev_seed_workspace_research.sql — the quarter, the matrix, the rivals, the watch and the roadmap\n'
+
+for prefix in 5eed008e 5eed008f 5eed0090 5eed0091 5eed0092 5eed0093 5eed0094 5eed0095 5eed0096 5eed0097 5eed0098; do
+  check_contains "$WORKSPACE_RESEARCH_BODY" "'$prefix-0000-4000-8000-" \
+    "the research workspace seed builds its ids from the $prefix… prefix"
+done
+
+workspace_research_tables=$(grep -Eo '^(insert into|update) ouroboros\.[a-z_]+' "$WORKSPACE_RESEARCH_BODY" |
+  sed -E 's/^(insert into|update) ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
+check_equals 'brief_claim_sources brief_claims briefs capability_matrices competitor_snapshots competitor_watches competitors doc_suggestions draft_batches investigations issue_estimates matrix_cell_sources matrix_cells matrix_rows pull_requests regression_baselines regression_watch_items roadmap_doc_versions roadmap_docs source_records ticket_drafts tickets ' \
+  "$workspace_research_tables" \
+  'the research workspace seed writes the research domain and the tickets, drafts and PR it points at — and nothing else'
+
+# Rows whose BEFORE INSERT triggers allocate or check a sequence are written only where none exist.
+check_contains "$WORKSPACE_RESEARCH_BODY" 'not exists \(select 1 from ouroboros\.investigations x' \
+  'investigations are written only under numbers the workspace has not used'
+check_contains "$WORKSPACE_RESEARCH_BODY" 'not exists \(select 1 from ouroboros\.source_records s where s\.investigation_id = inv\.id\)' \
+  'each ledger is written only into an investigation that has none'
+check_contains "$WORKSPACE_RESEARCH_BODY" 'not exists \(select 1 from ouroboros\.briefs x where x\.investigation_id = inv\.id\)' \
+  'and each brief'
+check_contains "$WORKSPACE_RESEARCH_BODY" 'not exists \(select 1 from ouroboros\.issue_estimates x where x\.ticket_id = ticket\.id\)' \
+  'and each estimate'
+check_contains "$WORKSPACE_RESEARCH_BODY" 'not exists \(select 1 from ouroboros\.roadmap_doc_versions v where v\.doc_id = doc\.id\)' \
+  'and the roadmap version'
+
+# The watch items move through V115's lifecycle one guarded step at a time.
+for step in "and status = 'detected'" "and item.status = 'bisecting'" "and item.status = 'bisected'" \
+            "and status = 'fix_drafted'" "and status = 'fix_running'"; do
+  check_contains "$WORKSPACE_RESEARCH_BODY" "$step" "a watch item moves only from the state its step expects ($step)"
+done
+
+# The card's numbers are the rows'.
+check_absent "$WORKSPACE_RESEARCH_BODY" "'4 active|'23 this quarter|'312 sources|'6 issues|'4 rivals watched" \
+  'no card figure is stored as a literal — every count is computed'
+check_absent "$WORKSPACE_RESEARCH_BODY" "'5eed00[0-7][0-9a-f]-0000-4000-8000-|'5eed008[4-7a-d]-0000-4000-8000-" \
+  'every other seed''s rows are found by natural key'
+
+# No live run: the workspace's three are mockup 02's.
+check_absent "$WORKSPACE_RESEARCH_BODY" '^insert into ouroboros\.runs' \
+  'the seed starts no loop — `3 loops live` stays mockup 02''s'
+
+# ---------------------------------------------------------------------------
 # The documentation the seed is only usable through
 # ---------------------------------------------------------------------------
 
@@ -1838,6 +1900,7 @@ check_contains "$README" 'R__dev_seed_workspace_settings\.sql' 'README.md docume
 check_contains "$README" 'R__dev_seed_workspace_triage_inbox\.sql' 'README.md documents the inbox seed'
 check_contains "$README" 'R__dev_seed_research\.sql' 'README.md documents the research seed'
 check_contains "$README" 'R__dev_seed_workspace_copilot\.sql' 'README.md documents the copilot seed'
+check_contains "$README" 'R__dev_seed_workspace_research\.sql' 'README.md documents the research workspace seed'
 check_contains "$README" 'acme-onboarding' 'README.md names the onboarding workspace a developer will find'
 check_contains "$README" 'resolution_snapshots' 'README.md documents the snapshot table the routing seed fills for mockup 21'
 check_contains "$README" 'V024' 'README.md documents the migration that adds it'

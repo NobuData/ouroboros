@@ -2436,9 +2436,35 @@ its brief.
 | The composer's `est. 40–60 sources · ~$6` | RS-127's stored `estimate` `{sources 40–60, cost_cents 522–687}` under calibration v1 ([#622](https://github.com/NobuData/ouroboros/issues/622)) — what CM.3's estimator computes for a five-tool deep dive at `researcher-long-ctx`'s price — and its `investigation_estimate_outcomes` row against the actuals (44 sources, 612¢), both within |
 
 Cite numbers are dense by rule, so `[07]`…`[31]` exist only with the numbers around them: the
-other **39 sources are placeholders that say so in their titles**, until
-[#613](https://github.com/NobuData/ouroboros/issues/613) (CK.6) seeds the full ledger. It sorts
-after the base seed, which is all it reads.
+other 39 are the rest of RS-127's reading — rival spec sheets and reviews, papers, fleet telemetry,
+support tickets and the docking controller's history
+([#613](https://github.com/NobuData/ouroboros/issues/613), CK.6, replaced the placeholders a
+database seeded before it still holds). It sorts after the base seed, which is all it reads.
+
+#### The quarter, the rivals, the watch and the roadmap
+
+[`R__dev_seed_workspace_research.sql`](migrations/R__dev_seed_workspace_research.sql)
+([#613](https://github.com/NobuData/ouroboros/issues/613), CK.6) is the rest of mockup 22 for
+`acme-robotics` — every region of the Research page from rows, every number computed.
+
+| The page | From the rows |
+|---|---|
+| `INVESTIGATIONS 4 active · 23 this quarter` | RS-101…RS-127, dense: RS-105…RS-127 start inside the current quarter (fractions of it, from `now()`), RS-101…RS-104 in the one before. *Active* is counted as not `failed` or `cancelled` — the nineteen others of the quarter were superseded or failed. CM.6 ([#625](https://github.com/NobuData/ouroboros/issues/625)) owns the definition |
+| `RS-118 bug fix … 18 sources` | `bug_root_cause`, `brief_ready`, 18 sources; its brief's `fix_draft` deliverable is a Planning draft with a −12 °C repro test for #498 |
+| `RS-121 regression … queued` · `evidence →` | `regression_forensics`, `queued`, 9 sources; source 1 is the failing HIL overshoot measurement R__dev_seed_test_results.sql records, with its test run |
+| `RS-124 roadmap … 312 sources · ✓ issues filed` | `roadmap_improvements`, `issues_filed`, **312 compact ticket-kind sources** (`issue-index://support/SUP-…`) over seven themes; its brief's deliverables are the pushed create-issues batch and the roadmap doc |
+| The capability matrix | RS-127's `capability_matrices` row, five `matrix_rows` with severity and derivation, twenty `matrix_cells` — `◐ beta` and `◐ in flight` as notes — each citing RS-127's ledger but the one `? unknown` |
+| `⌖ Competitor tracker — 4 rivals watched · release notes, changelogs, filings` | four `competitors`, four `competitor_watches`, read by `competitor_tracker_summary`; Skylink's release notes carry an archived snapshot pair whose second has the 6.2 diff |
+| `REGRESSION WATCH` — `+14%` fixing #512 · `+230 ms` queued #517 · `✓ merged` PR #641 | three `regression_baselines` (`v2.0.4`; boot time's `v2.1.0-rc1`) over HIL case metrics and three `regression_watch_items` walked through V115's lifecycle — bisected (shas `a41f2c9`, `7c03d1e`, over the farm seed's jobs), fix tickets #512 · #517 · #639, PR #641 merged |
+| `RS-124 — FROM BRIEF TO ROADMAP TO ISSUES`, ROADMAP.md rendered and raw, `SUGGESTED CHANGES — 2 OPEN` | the `roadmap_docs` row, version 1 (two milestones, six items, MVP flags, #742 checked, target dates the 15th and 51st day of the quarter, the markdown projection), committed at `8c1b2e4`; two open `doc_suggestions`, Ken's and the AI's |
+| `6 issues · 2 milestones`, `1/3 done` · `0/3 done`, effort and `cx:` chips | canonical tickets #742…#747 (#742 closed) with `issue_estimates` (effort; risk as complexity; cycle time) and the batch's six pushed drafts |
+
+The filed issues and the watch's fix tickets move mockup 09's GitHub counts to 55 open, 45 sized.
+Two of mockup 22's pills are not seeded: `fix loop live` (RS-118) and `loop live` (#743) are live
+loops, and the workspace's three live loops are mockup 02's (`3 loops live`). The mockup's issue
+#512 also shares GitHub's number space with mockup 02's merged PR #512. Ken's personal workspace
+gets nothing — its empty Research page is the guidance fixture #633 verifies against. It sorts
+after the research, sources, farm and test-results seeds, which it reads.
 
 #### What the copilot drafted, and what its dry run said
 
@@ -3435,7 +3461,7 @@ ouroboros-db/
 │   ├── R__dev_seed_intake.sql        # mockup 03's backlog and its estimates, dev only — #103 (sorts after the above)
 │   ├── R__dev_seed_onboarding.sql    # mockup 13 mid-wizard, in its own workspace acme-onboarding, dev only — #383 (sorts after intake)
 │   ├── R__dev_seed_providers.sql     # mockup 07's connections and meters, dev only — #221
-│   ├── R__dev_seed_research.sql      # mockup 22 — RS-127, its 44-source ledger (five featured verbatim), brief v1 and its estimate vs actuals, dev only — #609, #622
+│   ├── R__dev_seed_research.sql      # mockup 22 — RS-127, its 44-source ledger (five featured verbatim), brief v1 and its estimate vs actuals, dev only — #609, #622, #613
 │   ├── R__dev_seed_routing.sql       # mockup 06 as rows, mockup 21's registry over them, and the research routes, dev only — #192, #582, #622 (sorts after the above)
 │   ├── R__dev_seed_run_console.sql   # mockup 10 — run #482 mid-flight, transcript and cards, dev only — #302 (sorts after dashboard and farm)
 │   ├── R__dev_seed_sources.sql       # the two trackers acme-robotics ingests from, dev only — #138 (sorts after the above)
@@ -3447,6 +3473,7 @@ ouroboros-db/
 │   ├── R__dev_seed_workspace_knowledge.sql # mockup 14 — skills, facts, playbooks, env recipe, injection records, dev only — #409
 │   ├── R__dev_seed_workspace_metrics.sql # mockup 15 — ninety days of metric_daily from components, nine graded merges, dev only — #436
 │   ├── R__dev_seed_workspace_metrics_analyzer.sql # mockup 18 — the corpus, two analysis runs, findings, suggestions, measurements, dev only — #509
+│   ├── R__dev_seed_workspace_research.sql # mockup 22 — RS-101…RS-126 (RS-118/121/124 featured, 312-source ledger), the matrix, four rivals, the regression watch, RS-124's ROADMAP.md, dev only — #613
 │   ├── R__dev_seed_workspace_settings.sql # mockup 17 — policy v1–v7, members, today's audit lines, retention, webhooks, routes, dev only — #484
 │   ├── R__dev_seed_workspace_copilot.sql # mockup 20 — the security-patch conversation, draft v0.3 with W7 warnings, the dry run on #489, two suggestions, dev only — #558
 │   ├── R__dev_seed_workspace_triage_inbox.sql # mockup 16 — three open cards, the week's eleven answers, PR #504, dev only — #460 (sorts last)

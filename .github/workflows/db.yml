@@ -653,6 +653,23 @@ jobs:
               -v ON_ERROR_STOP=1 -f /tests/copilot-invariants.sql
           OURO_DB_NAME="$SEED_DB_NAME" ouroboros-db/tests/verify-copilot-invariants.sh --runner docker
 
+      # CK.6 (#613): the disciplines mockup 22's seeded Research page trusts — every finding claim
+      # cited, every matrix cell but `unknown` cited, the regression watch's vocabulary and
+      # lifecycle (no `bisected` without a bisect result, no `fixed_merged` without a PR), roadmap
+      # doc versions never edited, RS-### numbers dense, and source locators well-formed — asked of
+      # the seeded rows and of the write each must refuse. verify-research-invariants.sh removes
+      # each discipline and requires red naming it. RS-### gaplessness under concurrency is
+      # verify-investigation-seq.sh's, above.
+      - name: Assert the research invariants against the seeded database, and that they go red
+        run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            --volume "$PWD/ouroboros-db/tests:/tests:ro" \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
+              -v ON_ERROR_STOP=1 -f /tests/research-invariants.sql
+          OURO_DB_NAME="$SEED_DB_NAME" ouroboros-db/tests/verify-research-invariants.sh --runner docker
+
       # CG.5's third acceptance criterion (#583): *"probes run against the seeded database
       # from #582 without mutating it"*. The registry rules are asserted twice, and this is
       # the second time — the first is inside constraints.sql two steps up, which includes
