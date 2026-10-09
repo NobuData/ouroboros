@@ -36,6 +36,28 @@ describe("locators", () => {
     ).toBe(true);
   });
 
+  it("accepts a converged bisect as a code source, as V118 does (#617)", () => {
+    const job = "a1180004-0000-4000-8000-000000000001";
+    const culprit = "a41f2c9".padEnd(40, "0");
+    const bisect = `bisect://acme-robotics/helios-firmware@${culprit}?jobs=${job}`;
+
+    expect(locatorValid("code", bisect)).toBe(true);
+    expect(locatorValid("code", `${bisect},${job.replace(/1$/, "2")}`)).toBe(true);
+    expect(locatorValid("web", bisect)).toBe(false);
+    expect(locatorValid("code", `bisect://acme-robotics/helios-firmware@a41f2c9?jobs=${job}`)).toBe(
+      false,
+    );
+    expect(locatorValid("code", `bisect://helios-firmware@${culprit}?jobs=${job}`)).toBe(false);
+    expect(locatorValid("code", `bisect://acme-robotics/helios-firmware@${culprit}`)).toBe(false);
+    expect(locatorValid("code", `bisect://acme-robotics/..@${culprit}?jobs=${job}`)).toBe(false);
+    expect(
+      locatorValid(
+        "code",
+        `bisect://acme-robotics/helios-firmware@${culprit}?jobs=${Array(33).fill(job).join(",")}`,
+      ),
+    ).toBe(false);
+  });
+
   it("refuses what V108 refuses", () => {
     expect(locatorValid("code", "git://helios-firmware/src/dock/dock_ctrl.c")).toBe(false);
     expect(locatorValid("code", "git://helios-firmware@8c1b2e4/src/../etc/passwd")).toBe(false);

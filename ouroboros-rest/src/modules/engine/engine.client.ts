@@ -89,6 +89,12 @@ import {
   type EngineCopilotEvent,
   type EngineCopilotTurnRequest,
 } from "./engine.copilot";
+import {
+  type CodeOperation,
+  codeRefusalSchema,
+  type EngineCodeAnswer,
+  engineCodeRoute,
+} from "./engine.code.contract";
 import { engineUnavailable } from "./engine.errors";
 
 /**
@@ -468,6 +474,72 @@ export class EngineClient {
     }
 
     return parsed.data;
+  }
+
+  /**
+   * Run one code & git mining operation over a clone the engine keeps (CL.4,
+   * [#617](https://github.com/NobuData/ouroboros/issues/617)).
+   *
+   * Unlike every other call here, a `code_*` refusal is **answered** rather than thrown: a ref
+   * that names nothing, a path not in the tree or a good commit that is not an ancestor is
+   * something the caller tells its own caller, in the engine's sentence (built from the request,
+   * never from the token). Anything else — a transport failure, the deadline, a `401`, a `5xx`
+   * that is not a fetch failure, a body outside the contract — is `engine_unavailable`, as ever.
+   *
+   * @param operation - The route segment.
+   * @param body - The request, in the engine's `snake_case`.
+   * @param schema - What a `200` must be.
+   * @param timeoutMs - The deadline — a first clone of a large repository takes a while.
+   * @returns The answer, or the engine's refusal.
+   * @throws {UpstreamError} `engine_unavailable` for everything that is not one of the two.
+   */
+  async code<T>(
+    operation: CodeOperation,
+    body: Record<string, unknown>,
+    schema: ZodType<T>,
+    timeoutMs: number,
+  ): Promise<EngineCodeAnswer<T>> {
+    const url = engineRouteUrl(this.config.engineUrl, engineCodeRoute(operation));
+    const init: RequestInit = {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    };
+    const response = await this.send(url, init, timeoutMs);
+
+    if (!response.ok && response.status !== ENGINE_UNAUTHORIZED) {
+      let refusal: unknown;
+      try {
+        refusal = await response.json();
+      } catch {
+        refusal = undefined;
+      }
+      const parsed = codeRefusalSchema.safeParse(refusal);
+      if (parsed.success) {
+        return { ok: false, refusal: { status: response.status, ...parsed.data } };
+      }
+      this.logger.error(`POST ${url} responded ${response.status} without a code_* refusal`);
+      throw engineUnavailable();
+    }
+    if (!response.ok) {
+      await this.refuse(response, url, init);
+    }
+
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch (error) {
+      this.logger.error(`POST ${url} answered with a body that is not JSON`, { cause: error });
+      throw engineUnavailable();
+    }
+    const parsed = schema.safeParse(payload);
+    if (!parsed.success) {
+      this.logger.error(
+        `POST ${url} answered outside the /v0 contract: ${JSON.stringify(parsed.error.issues)}`,
+      );
+      throw engineUnavailable();
+    }
+    return { ok: true, data: parsed.data };
   }
 
   /**

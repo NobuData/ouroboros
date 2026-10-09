@@ -91,6 +91,7 @@ That is the command the image runs, minus the `uv` — see [Container](#containe
 | `POST /v0/plan` | yes | Draft a batch of tickets: `{narrative, outline?, context}` in, drafts with dependencies and provenance out |
 | `GET /v0/analysis/analyzers` | yes | The installed Build Analyzer set, in `analysis_runs.analyzer_set`'s shape — #510 |
 | `POST /v0/analysis/runs` | yes | Run the analyzers over an assembled corpus, streaming `started`/`outcome`/`report` as NDJSON — #510 |
+| `POST /v0/code/blame` · `/history` · `/changed-between` · `/dep-graph` · `/bisect-commits` | yes | The code & git mining tool over the engine's repository clones — each answer names the commit it was read at; see [Code & git mining](#code--git-mining) — #617 |
 | `POST /v0/learn` | yes | Learn candidate facts: a source bundle in, candidates with confidence and typed provenance out — committed for #423; today `unavailable-v0` answers none and says why |
 | `/openapi.json`, `/docs` | yes | The committed specification, served verbatim. A map of the internal surface is not something a misrouted port should hand out |
 
@@ -517,6 +518,30 @@ The corpus is serialised as ouroboros-rest sends it, validated by `POST /v0/anal
 each analyzer's sandbox and streamed back. An analyzer that stopped running there would otherwise
 pass every in-process golden with a shorter list.
 
+## Code & git mining
+
+The research tool `code` (CL.4, [#617](https://github.com/NobuData/ouroboros/issues/617)) is
+registered in `ouroboros-rest`, which keeps the workspace's GitHub token and the citation
+contract; the repository clones live here. `ouroboros_engine/code/`:
+
+- `clones.py` — bare clones under `OURO_ENGINE_CLONE_DIR`, one per workspace and repository
+  (`<workspace id>/<owner>__<name>.git`), fetched with [dulwich](https://www.dulwich.io/) (no git
+  binary in the image) using the token a request carries for that fetch only. Fresh for
+  `OURO_ENGINE_CLONE_REFRESH_SECONDS`; a ref the clone lacks forces one fetch; a failed refresh
+  reads the clone as it was (`clone.stale`). `https://` remotes only.
+- `repo.py` — `ReadOnlyRepo`, the only view an operation gets: resolve a ref (names and hex ids,
+  no revision syntax), read commits, trees and blobs.
+- `mining.py` — `blame` (*unchanged in N months*, measured to the read commit's date so it
+  re-runs the same), `history` (path, or a symbol by pickaxe), `changed_between`, and the
+  first-parent line a bisect walks with its bound ⌊log₂ n⌋ + 1.
+- `deps.py` — `dep_graph` for C/C++, Python and JS/TS; any other stack, or a module with none of
+  its sources, is `status: unsupported` with the reason — never an empty graph.
+
+`tests/test_code_readonly.py` asserts that no operation module imports or calls anything that
+writes, and that every operation leaves a clone's — and the remote's — bytes unchanged. The
+fixture repository (`tests/code_fixtures.py`) is built commit by commit with fixed dates, so its
+ids are the same everywhere and the documented examples are what it answers.
+
 ## The simulated-run driver (development only)
 
 [#307](https://github.com/NobuData/ouroboros/issues/307) (AP.5). The Run Console is fed by
@@ -643,6 +668,9 @@ Development default port: **8000** (`PORT`).
 | `OURO_LOG_LEVEL` | Log verbosity — `debug`, `info`, `warning` or `error` | `info` |
 | `OURO_RUN_SIMULATOR_SECRET` | The simulator's principal on REST's internal surface. Set, a development engine mounts `/dev` and the driver can run ([#307](https://github.com/NobuData/ouroboros/issues/307)). Must differ from `OURO_ENGINE_SHARED_SECRET` | unset |
 | `OURO_REST_URL` | Where the simulated-run driver reports runs to | `http://localhost:4000` |
+| `OURO_ENGINE_CLONE_DIR` | Where the code & git mining tool keeps its bare clones; a volume in a deployment ([#617](https://github.com/NobuData/ouroboros/issues/617)) | `<temp dir>/ouroboros-engine/clones` |
+| `OURO_ENGINE_CLONE_REFRESH_SECONDS` | How long a fetched clone is read without fetching again (0–86400) | `300` |
+| `OURO_ENGINE_CLONE_TIMEOUT_SECONDS` | The socket timeout of one fetch (1–3600) | `120` |
 
 Values come from the **process environment layered over `.env` files** — the repo-root
 one, then this module's, then the real environment, later winning
@@ -809,6 +837,7 @@ ouroboros-engine/
 │   │   ├── plan.py     #   POST /v0/plan — draft a batch of tickets             · #277
 │   │   ├── learn.py    #   POST /v0/learn — candidate facts from a bundle       · #412
 │   │   ├── analysis.py #   /v0/analysis — the analyzer set, the streamed run    · #510
+│   │   ├── code.py     #   /v0/code — blame, history, changed-between, deps     · #617
 │   │   └── v0.py       #   the versioned prefix and the rule that governs it
 │   ├── core/           # process-wide concerns, not routes
 │   │   ├── errors.py   #   the {code, message, details} envelope, for every failure
@@ -853,6 +882,7 @@ ouroboros-engine/
 │   │   ├── common.py   #   rounding, sampling notes, evidence lists — shared
 │   │   ├── changepoint.py# change_point v1: PELT over daily medians, ranked attribution
 │   │   └── patterns/   #   the six pattern analyzers, one module each           · #512
+│   ├── code/           # clones, ReadOnlyRepo, blame/history/deps, bisect line  · #617
 │   ├── dev.py          # `uv run dev` entry point; not imported by the application
 │   ├── main.py         # create_app() and the `app` uvicorn serves
 │   ├── openapi.py      # loads the committed spec; `uv run openapi` renders the JSON

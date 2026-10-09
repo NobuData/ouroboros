@@ -113,6 +113,7 @@ tool out — the estimate never guesses.
 |---|---|---|
 | `web` | `adapters/web/` — search through SearXNG (default), Brave, Tavily or Firecrawl; our own robots-aware page reader | CL.2 #615 |
 | `competitor` | `adapters/competitor/` — the watch scheduler, its snapshots and scoped diffs; `query` ops `changes` / `latest` cite archived diffs | CL.3 #616 |
+| `code` | `adapters/code/` over `research/code/` — blame, history, changed-between and dependency graphs read from the engine's clones (`/v0/code/*`), and the bisect primitive over build-farm jobs | CL.4 #617 |
 
 ### `web` (CL.2, #615)
 
@@ -150,6 +151,34 @@ tool out — the estimate never guesses.
   sourceKind?}` / `{op: "latest", rival, sourceKind}` → `competitor_diff` sources naming the snapshot;
   health ages each readable watch's last read against two cadences (`healthCheck` takes the
   workspace since #616).
+
+### `code` (CL.4, #617)
+
+- **Where git runs.** The engine keeps bare clones per workspace and repository
+  (`ouroboros-engine/src/ouroboros_engine/code/`, dulwich — no git binary; `OURO_ENGINE_CLONE_DIR`)
+  and answers `POST /v0/code/{blame,history,changed-between,dep-graph,bisect-commits}`. The REST
+  side never touches git: `research/code/code.reader.ts` resolves the repository among the
+  workspace's **enabled** ones, hands the engine the workspace's GitHub token for that call
+  (`code.workspace.ts`), and classifies every refusal (`code_*` → `unsupported` / `auth` /
+  `network`). `EngineClient.code()` returns a `code_*` refusal instead of throwing it.
+- **Read-only, structurally.** Operations get the engine's `ReadOnlyRepo` (lookups only);
+  `tests/test_code_readonly.py` asserts the operation modules import and call nothing that writes,
+  and that every operation leaves a clone's bytes — and the remote's — unchanged.
+- **Citations.** `code.sources.ts`: `git://owner/name@<40-hex>/path#Lnn` at the exact commit read
+  (V108), and a converged bisect as `bisect://owner/name@<culprit>?jobs=<uuid>,…` (V118 widened
+  `source_locator_valid()`; the TS mirror is `research-tool.citations.ts`). Blame's
+  *unchanged in N months* is measured to the commit read, not the clock, so it re-runs the same.
+- **`dep_graph`.** C/C++ includes, Python imports, JS/TS imports, for the stack BB.1's language
+  row reports; anything else — or a module with no source of its stack — is `unsupported` with
+  the reason, never an empty graph.
+- **Bisect** (`code-bisect.service.ts`, `code-bisect.search.ts`). The engine lists the
+  first-parent line good..bad; each step is one `FarmJobsService.submit` at the window's middle
+  (`succeeded` → good, `failed` → bad, a `retried` job's retry followed, `canceled` → `failed`),
+  at most ⌊log₂ n⌋ + 1 steps (a one-commit line is built once to confirm). The checkpoint
+  (`code_bisects.lo..hi`, V118) moves in the same transaction as the step's verdict, holding the
+  row `for update`; `CodeBisectScheduler` settles on each `JobCompletions` event and resumes every
+  `OURO_RESEARCH_BISECT_TICK_MS`. The same question returns the same bisect.
+  `CodeModule` exports `CodeBisectService` and `code.sources.ts`'s `bisectSource` for #623.
 
 ## Writing an adapter
 

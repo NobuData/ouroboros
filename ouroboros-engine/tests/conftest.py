@@ -51,6 +51,9 @@ _ENGINE_VARIABLES = (
     "OURO_ENGINE_SHARED_SECRET",
     "OURO_RUN_SIMULATOR_SECRET",
     "OURO_REST_URL",
+    "OURO_ENGINE_CLONE_DIR",
+    "OURO_ENGINE_CLONE_REFRESH_SECONDS",
+    "OURO_ENGINE_CLONE_TIMEOUT_SECONDS",
 )
 
 #: The shared secret the suite runs with. Not a credential and never deployed — the

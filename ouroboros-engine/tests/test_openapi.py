@@ -13,12 +13,14 @@ from pathlib import Path
 
 import pytest
 import yaml
+from dulwich.client import GitClient, get_transport_and_path
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 from fastapi.testclient import TestClient
 from openapi_spec_validator import validate
 from pydantic import BaseModel
 
+from code_fixtures import build_repo
 from ouroboros_engine import __version__, openapi
 from ouroboros_engine.analysis.contract import Corpus
 from ouroboros_engine.analysis.harness import (
@@ -31,6 +33,8 @@ from ouroboros_engine.api.health import HEALTH_PATH, Liveness
 from ouroboros_engine.api.root import ServiceIdentity
 from ouroboros_engine.api.status import ServiceStatus
 from ouroboros_engine.api.tasks import EchoRequest, EchoResponse
+from ouroboros_engine.code import contract as code_contract
+from ouroboros_engine.code.clones import CloneStore, RepositoryRef
 from ouroboros_engine.copilot.contract import (
     CatalogEntry,
     CopilotContext,
@@ -138,6 +142,29 @@ _DOCUMENTED_MODELS: dict[str, type[BaseModel]] = {
     "AnalyzerSet": AnalyzerSet,
     "Corpus": Corpus,
     "AnalysisRequest": AnalysisRequest,
+    **{
+        name: getattr(code_contract, name)
+        for name in (
+            "CodeRepository",
+            "CloneInfo",
+            "CommitInfo",
+            "Age",
+            "BlameRequest",
+            "BlameHunk",
+            "Blame",
+            "HistoryRequest",
+            "ChangedCommit",
+            "History",
+            "ChangedBetweenRequest",
+            "ChangedFile",
+            "ChangedBetween",
+            "DepGraphRequest",
+            "DepEdge",
+            "DepGraph",
+            "BisectCommitsRequest",
+            "BisectCommits",
+        )
+    },
     "AnalyzerStarted": AnalyzerStarted,
     "AnalyzerFinished": AnalyzerFinished,
     "AnalysisFinished": AnalysisFinished,
@@ -369,12 +396,54 @@ def test_the_document_describes_nothing_the_application_does_not_serve(
     )
 
 
+class _FixtureRemotes(CloneStore):
+    """A clone store that fetches every repository from one local fixture.
+
+    The code routes' documented examples name ``https://github.com/…``; the suite never opens
+    a socket, so this store reads the seeded fixture (``tests/code_fixtures.py``) instead —
+    the same repository the documented answers were produced from.
+    """
+
+    def __init__(self, root: Path, fixture: Path) -> None:
+        """Read everything from ``fixture``.
+
+        Args:
+            root: Where clones go.
+            fixture: The fixture repository.
+        """
+        super().__init__(root)
+        self._fixture = fixture
+
+    def _client(self, repository: RepositoryRef) -> tuple[GitClient, str]:
+        """The fixture's local transport, whatever the remote says.
+
+        Args:
+            repository: Unused beyond the remote check.
+
+        Returns:
+            The local client and the fixture's path.
+        """
+        del repository
+        return get_transport_and_path(str(self._fixture), quiet=True)
+
+
+@pytest.fixture
+def fixture_remotes(client: TestClient, tmp_path: Path) -> TestClient:
+    """The authenticated client, its code routes reading the seeded fixture."""
+    seeded = build_repo(tmp_path / "remote" / "helios-firmware.git")
+    client.app.state.code_clones = _FixtureRemotes(  # type: ignore[attr-defined]
+        tmp_path / "clones", seeded.path
+    )
+    return client
+
+
 def test_each_documented_operation_is_reachable(
-    client: TestClient, document: dict
+    fixture_remotes: TestClient, document: dict
 ) -> None:
     # The documented request body is what is sent, so this is two assertions in one: the
     # operation answers, and the example beside it is a body the service really accepts
     # rather than one that was plausible when it was written.
+    client = fixture_remotes
     for (path, method), operation in _operations(document).items():
         response = client.request(method, path, json=_documented_request(operation))
 
@@ -563,6 +632,26 @@ def test_the_documented_plan_is_the_one_the_installed_planner_gives(
     answer = OutlinePlanner().plan(PlanRequest.model_validate(sent))
 
     assert answer.model_dump(mode="json") == documented
+
+
+@pytest.mark.parametrize(
+    "route",
+    ["blame", "history", "changed-between", "dep-graph", "bisect-commits"],
+)
+def test_the_documented_code_answer_is_the_one_the_fixture_gives(
+    fixture_remotes: TestClient, document: dict, route: str
+) -> None:
+    # The code routes' examples were read from the seeded fixture, so they are one worked
+    # case each: the request documented produces the answer documented — except when the
+    # clone was fetched, which is the moment the test runs.
+    operation = document["paths"][f"/v0/code/{route}"]["post"]
+    sent = operation["requestBody"]["content"]["application/json"]["example"]
+    documented = operation["responses"]["200"]["content"]["application/json"]["example"]
+
+    answer = fixture_remotes.post(f"/v0/code/{route}", json=sent).json()
+
+    assert {**answer, "clone": None} == {**documented, "clone": None}
+    assert answer["clone"]["repository"] == documented["clone"]["repository"]
 
 
 def test_every_body_the_document_describes_carries_an_example(document: dict) -> None:

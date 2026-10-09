@@ -416,6 +416,16 @@ export class AppConfigService {
     return this.config.getOrThrow<number>("researchWatchBatch");
   }
 
+  /** `OURO_RESEARCH_CODE_TIMEOUT_MS` — how long one code & git mining call may take (#617). */
+  get researchCodeTimeoutMs(): number {
+    return this.config.getOrThrow<number>("researchCodeTimeoutMs");
+  }
+
+  /** `OURO_RESEARCH_BISECT_TICK_MS` — how often running bisects are resumed; 0 off (#617). */
+  get researchBisectTickMs(): number {
+    return this.config.getOrThrow<number>("researchBisectTickMs");
+  }
+
   /**
    * Days without a tracker update after which an open ticket is stale — `OURO_BACKLOG_STALE_DAYS`.
    *
@@ -623,6 +633,8 @@ export class AppConfigService {
       researchFetchInternalAllowlist: this.researchFetchInternalAllowlist,
       researchWatchTickMs: this.researchWatchTickMs,
       researchWatchBatch: this.researchWatchBatch,
+      researchCodeTimeoutMs: this.researchCodeTimeoutMs,
+      researchBisectTickMs: this.researchBisectTickMs,
       backlogStaleDays: this.backlogStaleDays,
       reestimationHourUtc: this.reestimationHourUtc,
       reestimationJitterMinutes: this.reestimationJitterMinutes,

@@ -24,10 +24,12 @@ tool reports its own health, so a broken setup shows before an investigation dep
 | --- | --- | --- | --- |
 | ◍ **Web search & page reader** | Searches the web, then reads whole pages: the main content, without navigation, banners or footers | Each search result, with its snippet. Each page read, at the address it was read from, with an excerpt and a fingerprint of its content. | Nothing, on a deployment that runs SearXNG. A hosted search provider needs a key. See [Research tools](../administration/research.mdx). |
 | ⌖ **Competitor tracker** | Watches your rivals' release notes, changelogs, GitHub releases and feeds on a schedule, and keeps every change | Each change, as the archived difference between two dated snapshots | An owner or admin adds rivals and their watches. See [Competitor watch](#competitor-watch). |
+| ⌥ **Codebase & git mining** | Reads the workspace's enabled repositories: who last changed a line and when, how often a file changes, what moved between two versions, a module's dependencies, and which commit broke a test | Each answer, at the exact commit it was read at, so it can be read again and give the same answer. A bisect's culprit, with the build-farm jobs that proved it. | Nothing beyond enabling the repository, with **Enable *repository* →** on [Get Started](./getting-started/wizard.mdx). A private repository also needs the workspace's backlog token. See [Code & git mining](#code--git-mining). |
 
 The web tool's row reads *search API + full-page extraction, robots-aware*. The competitor
 tracker's row counts what is watched, for example *4 rivals watched · release notes, changelogs,
-filings*. A rival counts once it has an enabled watch that can be read.
+filings*. A rival counts once it has an enabled watch that can be read. The code tool's row names
+the repositories it reads, for example *blame, bisect, dependency graph over helios-firmware*.
 
 ### Pages the web tool does not read
 
@@ -93,3 +95,69 @@ During an investigation, the loop asks the tracker for a rival's **changes** ove
 days by default, or for the **latest** change of one source kind. Each change becomes a source
 in the brief, titled like *Skylink · release notes · changed 2026-10-01*. Its excerpt is the
 difference itself.
+
+## Code & git mining
+
+The code & git mining tool answers questions about your own code from its git history. It needs
+no model and makes no guesses: the same question at the same commit always gets the same answer.
+It reads the repositories enabled for the workspace, and never changes them.
+
+An investigation names a repository as `owner/name`, such as `acme-robotics/helios-firmware`, or
+by its name alone when only one enabled repository has it. A question is asked at a branch, a tag
+or a commit; the default branch when none is named.
+
+### What it can answer
+
+| Question | What you get |
+| --- | --- |
+| **Blame** a file's lines, such as `src/dock/dock_ctrl.c` lines 200-230 | Who last changed each line, in which commit, and how long the lines have gone unchanged, for example *unchanged in 14 months* |
+| **History** of a file, a directory or a symbol over a window, 90 days by default | Each change with its author and the lines added and removed, how many people made them, and how often it changes per month |
+| **Changed between** two versions, such as `v2.0.4` and `nightly`, optionally inside one directory | Every commit in between that touched it, and the files they touched, most-changed first |
+| **Dependency graph** of a directory | Which files include or import which, rolled up to directories, and what it uses from outside the repository |
+| **Bisect** a test between a good version and a bad one | The commit that broke it, found by building commits on the build farm. See [Bisect](#bisect). |
+
+"Unchanged in 14 months" is measured to the date of the commit the question was asked at, not to
+today, so a citation of it stays true.
+
+### Dependency graphs
+
+The graph is read for three stacks: **C and C++** (`#include`), **Python** (`import`) and
+**JavaScript and TypeScript** (`import`, `export … from` and `require`). The stack is the language
+in the repository's detection card, **We already figured this out**, on
+[Get Started](./getting-started/wizard.mdx#2-pick-a-repo).
+
+For any other stack, or a directory with no source files of its stack, the tool answers
+**unsupported** and says why, for example *dependency graphs are read for C/C++, Python and JS/TS;
+acme-robotics/ground-station is detected as Rust*. It never answers with an empty graph, which
+would read as "no dependencies".
+
+### Bisect
+
+A bisect finds the commit that broke a test. You give it:
+
+- a **good** version, where the test passed, such as `v2.0.4`;
+- a **bad** version, where it fails, such as `nightly`;
+- the **test**, by name, such as `hil:hover_drift`, and the command that runs it;
+- the build-farm **pool** to run it on.
+
+It lists the commits from good to bad along the bad version's main line, then runs the test on
+the build farm at the middle one. A job that succeeds marks that commit good; a job that fails
+marks it bad. Each answer halves what is left, so a bisect over *n* commits takes at most
+⌊log₂ *n*⌋ + 1 farm jobs: nine jobs for 300 commits.
+
+A bisect runs for as long as its builds take, and it survives restarts. Each step's result is
+saved as it arrives, and a bisect carries on from the last saved step rather than starting
+again. Asking the same question again returns the bisect already running, or already finished.
+
+| Outcome | Means |
+| --- | --- |
+| **Converged** | The culprit commit was found. It is cited with the farm jobs that proved it. |
+| **Inconclusive** | The only candidate commit built good, so the failure did not reproduce |
+| **Failed** | A step could not be decided, for example its farm job was canceled or the farm refused it. The note says which. |
+| **Canceled** | Someone stopped it. Its running farm job is canceled too. |
+
+### Citing code
+
+Every answer is cited at the exact commit it was read at, so anyone can read the same thing
+again. A blame is cited by the file and the lines, a bisect by its culprit and the farm jobs that
+proved it.

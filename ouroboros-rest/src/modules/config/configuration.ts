@@ -530,6 +530,27 @@ export const DEFAULT_RESEARCH_WATCH_BATCH = 10;
 export const MAX_RESEARCH_WATCH_BATCH = 100;
 
 /**
+ * How long one code & git mining call may wait for the engine, by default — two minutes, because
+ * the first call on a repository clones it (#617).
+ */
+export const DEFAULT_RESEARCH_CODE_TIMEOUT_MS = 120_000;
+
+/** The shortest code call deadline an operator may set — five seconds. */
+export const MIN_RESEARCH_CODE_TIMEOUT_MS = 5_000;
+
+/** The longest code call deadline an operator may set — fifteen minutes. */
+export const MAX_RESEARCH_CODE_TIMEOUT_MS = 900_000;
+
+/** How often running bisects are checked for a step to resume, by default — every minute (#617). */
+export const DEFAULT_RESEARCH_BISECT_TICK_MS = 60_000;
+
+/** The shortest bisect tick an operator may set — ten seconds; `0` turns the resume tick off. */
+export const MIN_RESEARCH_BISECT_TICK_MS = 10_000;
+
+/** The longest bisect tick an operator may set — an hour. */
+export const MAX_RESEARCH_BISECT_TICK_MS = 3_600_000;
+
+/**
  * How many days without a tracker update make an open ticket *stale* on the Backlog Health card,
  * when `OURO_BACKLOG_STALE_DAYS` is not set — thirty, mockup 09's `Stale > 30d`.
  *
@@ -1116,6 +1137,16 @@ export interface Configuration {
   /** How many due watches one tick checks. From `OURO_RESEARCH_WATCH_BATCH` (#616). */
   readonly researchWatchBatch: number;
   /**
+   * How long one code & git mining call may wait for the engine, in milliseconds. From
+   * `OURO_RESEARCH_CODE_TIMEOUT_MS` (#617).
+   */
+  readonly researchCodeTimeoutMs: number;
+  /**
+   * How often running bisects are checked for a step to resume, in milliseconds; `0` when the
+   * resume tick is off. From `OURO_RESEARCH_BISECT_TICK_MS` (#617).
+   */
+  readonly researchBisectTickMs: number;
+  /**
    * Days without a tracker update after which an open ticket counts as stale on the Backlog Health
    * card. From `OURO_BACKLOG_STALE_DAYS`, {@link DEFAULT_BACKLOG_STALE_DAYS} when unset.
    */
@@ -1321,6 +1352,8 @@ export const VARIABLES = {
   researchFetchInternalAllowlist: "OURO_RESEARCH_FETCH_INTERNAL_ALLOWLIST",
   researchWatchTickMs: "OURO_RESEARCH_WATCH_TICK_MS",
   researchWatchBatch: "OURO_RESEARCH_WATCH_BATCH",
+  researchCodeTimeoutMs: "OURO_RESEARCH_CODE_TIMEOUT_MS",
+  researchBisectTickMs: "OURO_RESEARCH_BISECT_TICK_MS",
   backlogStaleDays: "OURO_BACKLOG_STALE_DAYS",
   reestimationHourUtc: "OURO_REESTIMATION_HOUR_UTC",
   reestimationJitterMinutes: "OURO_REESTIMATION_JITTER_MINUTES",
@@ -1992,6 +2025,21 @@ const environmentShape = z.object({
     MAX_RESEARCH_WATCH_BATCH,
     "watches",
   ),
+  OURO_RESEARCH_CODE_TIMEOUT_MS: boundedWhole(
+    MIN_RESEARCH_CODE_TIMEOUT_MS,
+    DEFAULT_RESEARCH_CODE_TIMEOUT_MS,
+    MAX_RESEARCH_CODE_TIMEOUT_MS,
+    "milliseconds",
+  ),
+  OURO_RESEARCH_BISECT_TICK_MS: boundedWhole(
+    0,
+    DEFAULT_RESEARCH_BISECT_TICK_MS,
+    MAX_RESEARCH_BISECT_TICK_MS,
+    "milliseconds",
+  ).refine(
+    (value) => value === 0 || value >= MIN_RESEARCH_BISECT_TICK_MS,
+    `expected 0 (off) or between ${MIN_RESEARCH_BISECT_TICK_MS} and ${MAX_RESEARCH_BISECT_TICK_MS} milliseconds`,
+  ),
   OURO_RESEARCH_FETCH_INTERNAL_ALLOWLIST: z
     .string()
     .default("")
@@ -2365,6 +2413,8 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     researchFetchInternalAllowlist: values.OURO_RESEARCH_FETCH_INTERNAL_ALLOWLIST,
     researchWatchTickMs: values.OURO_RESEARCH_WATCH_TICK_MS,
     researchWatchBatch: values.OURO_RESEARCH_WATCH_BATCH,
+    researchCodeTimeoutMs: values.OURO_RESEARCH_CODE_TIMEOUT_MS,
+    researchBisectTickMs: values.OURO_RESEARCH_BISECT_TICK_MS,
     backlogStaleDays: values.OURO_BACKLOG_STALE_DAYS,
     reestimationHourUtc: values.OURO_REESTIMATION_HOUR_UTC,
     reestimationJitterMinutes: values.OURO_REESTIMATION_JITTER_MINUTES,

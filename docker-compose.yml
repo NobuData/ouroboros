@@ -179,6 +179,12 @@ services:
       # call — which is why both read one variable rather than two.
       OURO_ENGINE_SHARED_SECRET: ${OURO_ENGINE_SHARED_SECRET:-dev-engine-shared-secret-change-me}
       OURO_LOG_LEVEL: ${OURO_LOG_LEVEL:-info}
+      # The code & git mining tool's clones (CL.4, #617) — on the named volume below, so a
+      # restart does not re-clone every enabled repository. The image creates the directory
+      # owned by the service's user, which is what a fresh named volume inherits.
+      OURO_ENGINE_CLONE_DIR: /var/lib/ouroboros-engine/clones
+    volumes:
+      - ouroboros-engine-clones:/var/lib/ouroboros-engine/clones
     # The image's HEALTHCHECK decides *what* is probed and how often once it is up; this
     # adds the one thing a long-lived deployment does not need and a cold `up` does. The
     # image probes every 30 seconds, which is right for a scheduler watching a service
@@ -627,3 +633,6 @@ volumes:
   ouroboros-artifacts:
   # The `minio` profile's object store (#330).
   ouroboros-minio-data:
+  # The engine's bare repository clones (#617). Named so `down` keeps them — a first clone of a
+  # large repository takes minutes — and `down -v` drops them; nothing in them is not on GitHub.
+  ouroboros-engine-clones:

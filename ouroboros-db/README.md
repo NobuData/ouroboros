@@ -1634,6 +1634,21 @@
 > `content_hash`; never updated; cascades with the snapshot; `ouroboros_app` may select and
 > insert. An unchanged check writes no snapshot.
 >
+> `V118` ([#617](https://github.com/NobuData/ouroboros/issues/617), CL.4) is the bisect
+> primitive's state. `code_bisects` holds one bisect — repository, pool, `test_ref` and optional
+> argv `command`, the good and bad refs and commits, the ref each build fetches, the first-parent
+> candidate line (`commits`, 1–10 000, oldest first) and the **checkpoint** `lo`..`hi` the culprit
+> is still among (`code_bisects_window`), so a restart resumes rather than starts again;
+> `max_steps` (⌊log₂ n⌋ + 1, ≤ 32), `status` `running | converged | inconclusive | failed |
+> canceled`, `culprit_sha` exactly when converged, `finished_at` exactly when not running.
+> `code_bisect_steps` holds one farm job per step — the candidate, its commit, the job (the
+> workspace's own, by a composite foreign key) and `verdict` `good | bad` with `decided_at`;
+> `code_bisect_steps_guard` refuses a step past `max_steps` or a commit that is not the candidate
+> it names. Both cascade with the workspace; `ouroboros_app` may select, insert and update.
+> `source_locator_valid()` is widened so a `code` source may also be
+> `bisect://<owner>/<name>@<culprit sha>?jobs=<uuid>[,…]` (1–32 jobs) — the converged bisect,
+> cited with the jobs that proved it.
+>
 > [#558](https://github.com/NobuData/ouroboros/issues/558) seeds mockup 20 from those rows:
 > [`R__dev_seed_workspace_copilot.sql`](migrations/R__dev_seed_workspace_copilot.sql) — see
 > [What the copilot drafted, and what its dry run said](#what-the-copilot-drafted-and-what-its-dry-run-said).
@@ -3479,6 +3494,7 @@ ouroboros-db/
 │   ├── V115__regression_baselines_watch_items.sql # regression_baselines (release window stats per metric), regression_watch_items (signed drift + unit, err|warn|ok, detected→…→fixed_merged|dismissed with bisect/investigation/fix/PR refs), regression_watch_settings (thresholds over per-class defaults) — #611
 │   ├── V116__source_skips.sql        # source_skips (robots_denied|unsupported_type, note ≤ 500, one per investigation/tool/locator/reason, immutable) — #615
 │   ├── V117__competitor_watch_checks.sql # competitor_watches schedule (next/last check, outcome, note), competitor_snapshot_contents (scoped text under the snapshot's hash) — #616
+│   ├── V118__code_bisects.sql        # code_bisects (candidate line + lo..hi checkpoint, ≤ ⌊log₂ n⌋+1 steps), code_bisect_steps (one farm job each), bisect:// code locators — #617
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -3746,6 +3762,8 @@ outside this module alters it.
 | `regression_watch_items` | `V115` | A baseline's drift and its lifecycle ([#611](https://github.com/NobuData/ouroboros/issues/611), CK.4) — `current`, `drift_value`, `drift_unit`, `drift_display`, `severity`, `status`, `bisect_result`, `investigation_id`, `fix_ticket_ref`, `pr_ref`, `note`, `dismissed_by`/`dismissed_at`/`dismiss_reason` | opened `detected`; transitions held by `regression_watch_items_transition`; `bisected` needs a bisect result, `investigation_open` a `regression_watch` investigation, the fix states a ticket or draft ref, `fixed_merged` a PR ref, `dismissed` who/when/why; refs resolve in the workspace; one open item per baseline; indexed `(organization_id, severity, status)`; `ouroboros_app` may select, insert and update |
 | `source_skips` | `V116` | A page a research tool would not read ([#615](https://github.com/NobuData/ouroboros/issues/615), CL.2, decision **V3**) — `investigation_id`, `tool_slug`, `locator`, `reason`, `note`, `meta`, `skipped_at` | `reason` `robots_denied\|unsupported_type`; `locator` non-blank, ≤ 2048, no whitespace; `note` non-blank ≤ 500; `meta` an object ≤ 8 KiB; unique per investigation, tool, locator and reason; never updated; cascades with the investigation; `ouroboros_app` may select and insert |
 | `competitor_snapshot_contents` | `V117` | A competitor snapshot's archived, selector-scoped text ([#616](https://github.com/NobuData/ouroboros/issues/616), CL.3, decision **V9**) — `snapshot_id`, `content`, `created_at` | one per snapshot; at most 1 MiB; its sha256 must be the snapshot's `content_hash`; never updated; cascades with the snapshot; `ouroboros_app` may select and insert |
+| `code_bisects` | `V118` | One bisect between a good and a bad commit ([#617](https://github.com/NobuData/ouroboros/issues/617), CL.4) — `organization_id`, `investigation_id`, `github_repo_id`, `repository`, `pool`, `test_ref`, `command`, `good_ref`, `bad_ref`, `good_sha`, `bad_sha`, `build_ref`, `commits`, `lo`, `hi`, `max_steps`, `status`, `culprit_sha`, `note`, `created_by`, timestamps | `commits` an array of 1–10 000; `lo`..`hi` a non-empty window inside it; `max_steps` 1–32; `status` `running\|converged\|inconclusive\|failed\|canceled`; `culprit_sha` exactly when converged; `finished_at` exactly when not running; cascades with the workspace and the repository; `ouroboros_app` may select, insert and update |
+| `code_bisect_steps` | `V118` | One farm job per bisect step ([#617](https://github.com/NobuData/ouroboros/issues/617)) — `bisect_id`, `step`, `candidate`, `commit_sha`, `build_job_id`, `organization_id`, `verdict`, `created_at`, `decided_at` | at most the bisect's `max_steps`; `commit_sha` is `commits[candidate]`; the job is the same workspace's; `verdict` `good\|bad` with `decided_at`; `ouroboros_app` may select, insert and update |
 | `regression_watch_settings` | `V115` | A workspace's regression thresholds ([#611](https://github.com/NobuData/ouroboros/issues/611), CK.4) — `thresholds` `{classes, metrics}` | rules of `{direction, warn_pct + err_pct, min_spread_multiple, min_samples}` over `regression_threshold_defaults()`; one row per workspace; `ouroboros_app` may select, insert and update |
 
 Two **functions**, both `V012`'s and both documented in

@@ -158,6 +158,8 @@ describe("the development defaults", () => {
       researchFetchInternalAllowlist: [],
       researchWatchTickMs: 60_000,
       researchWatchBatch: 10,
+      researchCodeTimeoutMs: 120_000,
+      researchBisectTickMs: 60_000,
       // AL.5's (#281) four, written out in the template at their defaults for the same reason.
       backlogStaleDays: DEFAULT_BACKLOG_STALE_DAYS,
       reestimationHourUtc: DEFAULT_REESTIMATION_HOUR_UTC,
@@ -1351,6 +1353,23 @@ describe("the competitor tracker's scheduler", () => {
     ).toBe(100);
     expect(failureFor(testEnvironment({ OURO_RESEARCH_WATCH_BATCH: "0" }))).toContain(
       "OURO_RESEARCH_WATCH_BATCH",
+    );
+  });
+
+  it("reads the code tool's call deadline and the bisect resume tick (#617)", () => {
+    expect(
+      loadConfiguration(testEnvironment({ OURO_RESEARCH_CODE_TIMEOUT_MS: "300000" }))
+        .researchCodeTimeoutMs,
+    ).toBe(300_000);
+    expect(failureFor(testEnvironment({ OURO_RESEARCH_CODE_TIMEOUT_MS: "100" }))).toContain(
+      "OURO_RESEARCH_CODE_TIMEOUT_MS",
+    );
+    expect(
+      loadConfiguration(testEnvironment({ OURO_RESEARCH_BISECT_TICK_MS: "0" }))
+        .researchBisectTickMs,
+    ).toBe(0);
+    expect(failureFor(testEnvironment({ OURO_RESEARCH_BISECT_TICK_MS: "500" }))).toContain(
+      "OURO_RESEARCH_BISECT_TICK_MS",
     );
   });
 });

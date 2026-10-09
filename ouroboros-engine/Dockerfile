@@ -146,17 +146,25 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PORT=8000
 
 # Debian's tools rather than Alpine's, this not being an Alpine base. --system keeps the
-# account out of the login range, and --no-create-home is honest: this process writes
-# nothing, so a home directory would only be somewhere for it to try.
+# account out of the login range, and --no-create-home is honest: the one thing this process
+# writes is the code & git mining tool's clone cache (#617), so a home directory would only
+# be somewhere for it to try.
+#
+# That cache's directory is created here, owned by the service's user, because a named volume
+# mounted over it starts with the image directory's ownership — and the deployment's
+# OURO_ENGINE_CLONE_DIR points there (no default is baked in; unset, the clones go under the
+# temporary directory and do not outlive the container).
 RUN groupadd --system engine \
     && useradd --system --gid engine --no-create-home engine
+RUN mkdir -p /var/lib/ouroboros-engine/clones \
+    && chown -R engine:engine /var/lib/ouroboros-engine
 
 WORKDIR /app
 
-# Copied as root and *not* chowned to the user that runs it. The engine writes nothing —
-# no cache, no bytecode, no upload directory — so the service having no permission to
-# rewrite its own dependencies costs nothing and removes the most useful thing an attacker
-# who reaches this process could do with the filesystem.
+# Copied as root and *not* chowned to the user that runs it. Beyond the clone cache above,
+# the engine writes nothing — no bytecode, no upload directory — so the service having no
+# permission to rewrite its own dependencies costs nothing and removes the most useful thing
+# an attacker who reaches this process could do with the filesystem.
 COPY --from=build /app/.venv /app/.venv
 
 USER engine

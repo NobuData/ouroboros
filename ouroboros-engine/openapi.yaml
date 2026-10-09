@@ -14,7 +14,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-engine
-  version: 0.7.18
+  version: 0.7.19
   summary: Internal backend for Ouroboros — executes the work ouroboros-rest brokers.
   description: |-
     The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the
@@ -1183,6 +1183,446 @@ paths:
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
+  /v0/code/blame:
+    post:
+      tags:
+      - v0
+      summary: Who last changed a line range, and how long ago
+      description: 'Who last changed each line of a range (at most 500), the most recent of those changes,
+        and how long the range had gone **unchanged** — *"unchanged in 14 months"*, measured to the ref''s
+        own commit date so the sentence is the same whenever it is re-run. The end is clamped to the file''s
+        length; a start past it is `422 code_range_outside_file`.
+
+
+        Part of the **code & git mining tool** — CL.4 ([#617](https://github.com/NobuData/ouroboros/issues/617)),
+        mockup 22''s *⌥ Codebase & git mining* row. `ouroboros-rest`''s `code` research adapter calls it
+        with the repository, the workspace it is read for and, **for this call only**, the workspace''s
+        GitHub token; the token fetches the clone and is never stored or echoed. Clones are bare mirrors
+        under `OURO_ENGINE_CLONE_DIR`, one per workspace and repository, refreshed when older than `OURO_ENGINE_CLONE_REFRESH_SECONDS`;
+        a ref the clone lacks forces one fetch before it is a `404`. Nothing here writes to a repository.
+
+
+        Every answer names the 40-hex commit it was read at (`sha`), so the citation `ouroboros-rest` builds
+        from it — `git://owner/name@sha/path#Lnn` — re-runs to the same answer.'
+      operationId: codeBlame
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlameRequest'
+            example:
+              repository:
+                workspace: a7150000-0000-4000-8000-000000000617
+                slug: acme-robotics/helios-firmware
+                remote: https://github.com/acme-robotics/helios-firmware.git
+                token: ghs_example-installation-token
+              ref: nightly
+              path: src/dock/dock_ctrl.c
+              start: 213
+              end: 215
+      responses:
+        '200':
+          description: The answer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Blame'
+              example:
+                clone:
+                  repository: acme-robotics/helios-firmware
+                  fetched_at: '2026-10-09T06:00:00Z'
+                  stale: false
+                ref: nightly
+                sha: 5d610dcd6024306c6ada2831742a31522688badc
+                path: src/dock/dock_ctrl.c
+                start: 213
+                end: 215
+                lines:
+                - static const float approach_gain_213 = 0.213;
+                - static const float approach_kp = 1.40f; /* tuned 2025-06 */
+                - static const float approach_gain_215 = 0.215;
+                hunks:
+                - start: 213
+                  end: 215
+                  commit:
+                    sha: 7003ce0522ff737d756a8d6abd94101edcce41f7
+                    committed_at: '2025-06-02T12:00:00Z'
+                    author: Ana Ortiz
+                    summary: Tune approach controller gains
+                last_change:
+                  sha: 7003ce0522ff737d756a8d6abd94101edcce41f7
+                  committed_at: '2025-06-02T12:00:00Z'
+                  author: Ana Ortiz
+                  summary: Tune approach controller gains
+                as_of: '2026-08-15T12:00:00Z'
+                unchanged:
+                  months: 14
+                  days: 439
+                  phrase: unchanged in 14 months
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/CodeNotFound'
+        '422':
+          $ref: '#/components/responses/CodeUnprocessable'
+        '502':
+          $ref: '#/components/responses/CodeFetchFailed'
+  /v0/code/history:
+    post:
+      tags:
+      - v0
+      summary: Change frequency and churn over a window
+      description: 'How often a path — or a symbol, counted the way git''s pickaxe (`-S`) counts it — changed
+        over `window_days` ending at the ref''s commit, walking its first-parent line: the commits (newest
+        first, at most 200), lines added and deleted, distinct authors and changes per 30 days.
+
+
+        Part of the **code & git mining tool** — CL.4 ([#617](https://github.com/NobuData/ouroboros/issues/617)),
+        mockup 22''s *⌥ Codebase & git mining* row. `ouroboros-rest`''s `code` research adapter calls it
+        with the repository, the workspace it is read for and, **for this call only**, the workspace''s
+        GitHub token; the token fetches the clone and is never stored or echoed. Clones are bare mirrors
+        under `OURO_ENGINE_CLONE_DIR`, one per workspace and repository, refreshed when older than `OURO_ENGINE_CLONE_REFRESH_SECONDS`;
+        a ref the clone lacks forces one fetch before it is a `404`. Nothing here writes to a repository.
+
+
+        Every answer names the 40-hex commit it was read at (`sha`), so the citation `ouroboros-rest` builds
+        from it — `git://owner/name@sha/path#Lnn` — re-runs to the same answer.'
+      operationId: codeHistory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HistoryRequest'
+            example:
+              repository:
+                workspace: a7150000-0000-4000-8000-000000000617
+                slug: acme-robotics/helios-firmware
+                remote: https://github.com/acme-robotics/helios-firmware.git
+                token: ghs_example-installation-token
+              ref: nightly
+              path: src/motor/pid.c
+              window_days: 180
+      responses:
+        '200':
+          description: The answer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/History'
+              example:
+                clone:
+                  repository: acme-robotics/helios-firmware
+                  fetched_at: '2026-10-09T06:00:00Z'
+                  stale: false
+                ref: nightly
+                sha: 5d610dcd6024306c6ada2831742a31522688badc
+                path: src/motor/pid.c
+                symbol: null
+                window_days: 180
+                since: '2026-02-16T12:00:00Z'
+                until: '2026-08-15T12:00:00Z'
+                commits:
+                - commit:
+                    sha: c196da80fcbec673f61da0fd13b950a1b9ec09fd
+                    committed_at: '2026-07-09T12:00:00Z'
+                    author: Ana Ortiz
+                    summary: Retune PID derivative
+                  added: 1
+                  deleted: 1
+                  files:
+                  - src/motor/pid.c
+                - commit:
+                    sha: 47cb090e9f655c09fddc53c6614f215381db90d5
+                    committed_at: '2026-05-20T12:00:00Z'
+                    author: Ana Ortiz
+                    summary: Gust feed-forward in PID
+                  added: 1
+                  deleted: 0
+                  files:
+                  - src/motor/pid.c
+                - commit:
+                    sha: ec09cf6422bf42736baf00df475c9ded667a1afc
+                    committed_at: '2026-03-04T12:00:00Z'
+                    author: Bo Chen
+                    summary: Raise PID integral clamp
+                  added: 1
+                  deleted: 0
+                  files:
+                  - src/motor/pid.c
+                total_commits: 3
+                truncated: false
+                added: 3
+                deleted: 1
+                authors: 2
+                per_month: 0.5
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/CodeNotFound'
+        '422':
+          $ref: '#/components/responses/CodeUnprocessable'
+        '502':
+          $ref: '#/components/responses/CodeFetchFailed'
+  /v0/code/changed-between:
+    post:
+      tags:
+      - v0
+      summary: What moved between two commits
+      description: 'The regression-forensics staple: commits reachable from `head` and not from `base` that
+        touch `scope` (a directory or file; the whole tree when absent), and the files they touched ranked
+        by how many of those commits touched them.
+
+
+        Part of the **code & git mining tool** — CL.4 ([#617](https://github.com/NobuData/ouroboros/issues/617)),
+        mockup 22''s *⌥ Codebase & git mining* row. `ouroboros-rest`''s `code` research adapter calls it
+        with the repository, the workspace it is read for and, **for this call only**, the workspace''s
+        GitHub token; the token fetches the clone and is never stored or echoed. Clones are bare mirrors
+        under `OURO_ENGINE_CLONE_DIR`, one per workspace and repository, refreshed when older than `OURO_ENGINE_CLONE_REFRESH_SECONDS`;
+        a ref the clone lacks forces one fetch before it is a `404`. Nothing here writes to a repository.
+
+
+        Every answer names the 40-hex commit it was read at (`sha`), so the citation `ouroboros-rest` builds
+        from it — `git://owner/name@sha/path#Lnn` — re-runs to the same answer.'
+      operationId: codeChangedBetween
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangedBetweenRequest'
+            example:
+              repository:
+                workspace: a7150000-0000-4000-8000-000000000617
+                slug: acme-robotics/helios-firmware
+                remote: https://github.com/acme-robotics/helios-firmware.git
+                token: ghs_example-installation-token
+              base: v2.0.4
+              head: nightly
+              scope: src/motor
+      responses:
+        '200':
+          description: The answer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangedBetween'
+              example:
+                clone:
+                  repository: acme-robotics/helios-firmware
+                  fetched_at: '2026-10-09T06:00:00Z'
+                  stale: false
+                base: v2.0.4
+                head: nightly
+                base_sha: f37e8886147061e46a3d448f2cffe491d57b7aaf
+                head_sha: 5d610dcd6024306c6ada2831742a31522688badc
+                scope: src/motor
+                commits:
+                - commit:
+                    sha: c196da80fcbec673f61da0fd13b950a1b9ec09fd
+                    committed_at: '2026-07-09T12:00:00Z'
+                    author: Ana Ortiz
+                    summary: Retune PID derivative
+                  added: 1
+                  deleted: 1
+                  files:
+                  - src/motor/pid.c
+                - commit:
+                    sha: 47cb090e9f655c09fddc53c6614f215381db90d5
+                    committed_at: '2026-05-20T12:00:00Z'
+                    author: Ana Ortiz
+                    summary: Gust feed-forward in PID
+                  added: 1
+                  deleted: 0
+                  files:
+                  - src/motor/pid.c
+                - commit:
+                    sha: ec09cf6422bf42736baf00df475c9ded667a1afc
+                    committed_at: '2026-03-04T12:00:00Z'
+                    author: Bo Chen
+                    summary: Raise PID integral clamp
+                  added: 1
+                  deleted: 0
+                  files:
+                  - src/motor/pid.c
+                total_commits: 3
+                truncated: false
+                files:
+                - path: src/motor/pid.c
+                  commits: 3
+                  added: 3
+                  deleted: 1
+                total_files: 1
+                added: 3
+                deleted: 1
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/CodeNotFound'
+        '422':
+          $ref: '#/components/responses/CodeUnprocessable'
+        '502':
+          $ref: '#/components/responses/CodeFetchFailed'
+  /v0/code/dep-graph:
+    post:
+      tags:
+      - v0
+      summary: A module's dependency graph
+      description: 'File → file dependencies under `module`, resolved inside the repository, rolled up to
+        directory edges, plus what it imports from outside. `stack` is what repository detection (BB.1)
+        knows: `c` (`#include`), `python` (`import`), `javascript` (`import`/`require`, JS and TS). **With
+        no stack, or a module with no source of its stack, the answer is `status: unsupported` with the
+        reason — never an empty graph**, which would read as "no dependencies".
+
+
+        Part of the **code & git mining tool** — CL.4 ([#617](https://github.com/NobuData/ouroboros/issues/617)),
+        mockup 22''s *⌥ Codebase & git mining* row. `ouroboros-rest`''s `code` research adapter calls it
+        with the repository, the workspace it is read for and, **for this call only**, the workspace''s
+        GitHub token; the token fetches the clone and is never stored or echoed. Clones are bare mirrors
+        under `OURO_ENGINE_CLONE_DIR`, one per workspace and repository, refreshed when older than `OURO_ENGINE_CLONE_REFRESH_SECONDS`;
+        a ref the clone lacks forces one fetch before it is a `404`. Nothing here writes to a repository.
+
+
+        Every answer names the 40-hex commit it was read at (`sha`), so the citation `ouroboros-rest` builds
+        from it — `git://owner/name@sha/path#Lnn` — re-runs to the same answer.'
+      operationId: codeDepGraph
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DepGraphRequest'
+            example:
+              repository:
+                workspace: a7150000-0000-4000-8000-000000000617
+                slug: acme-robotics/helios-firmware
+                remote: https://github.com/acme-robotics/helios-firmware.git
+                token: ghs_example-installation-token
+              ref: nightly
+              module: src/dock
+              stack: c
+      responses:
+        '200':
+          description: The answer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepGraph'
+              example:
+                clone:
+                  repository: acme-robotics/helios-firmware
+                  fetched_at: '2026-10-09T06:00:00Z'
+                  stale: false
+                ref: nightly
+                sha: 5d610dcd6024306c6ada2831742a31522688badc
+                module: src/dock
+                stack: c
+                status: ok
+                reason: null
+                nodes:
+                - src/dock/dock_ctrl.c
+                - src/dock/dock_ctrl.h
+                edges:
+                - source: src/dock/dock_ctrl.c
+                  target: include/app/motor.h
+                  weight: 1
+                - source: src/dock/dock_ctrl.c
+                  target: src/dock/dock_ctrl.h
+                  weight: 1
+                - source: src/dock/dock_ctrl.h
+                  target: src/motor/pid.h
+                  weight: 1
+                module_edges:
+                - source: src/dock
+                  target: include/app
+                  weight: 1
+                - source: src/dock
+                  target: src/motor
+                  weight: 1
+                external:
+                - <zephyr/kernel.h>
+                truncated: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/CodeNotFound'
+        '422':
+          $ref: '#/components/responses/CodeUnprocessable'
+        '502':
+          $ref: '#/components/responses/CodeFetchFailed'
+  /v0/code/bisect-commits:
+    post:
+      tags:
+      - v0
+      summary: The commits a bisect between two refs walks
+      description: 'The first-parent line after `good` up to and including `bad` — the candidates a bisect
+        binary-searches — and its bound, `⌊log₂ n⌋ + 1` build-farm jobs. The bisect itself (one farm job
+        per step, checkpointed, cancellable) is orchestrated by `ouroboros-rest`; a `good` that is not on
+        `bad`''s first-parent line is `409 code_not_ancestor`.
+
+
+        Part of the **code & git mining tool** — CL.4 ([#617](https://github.com/NobuData/ouroboros/issues/617)),
+        mockup 22''s *⌥ Codebase & git mining* row. `ouroboros-rest`''s `code` research adapter calls it
+        with the repository, the workspace it is read for and, **for this call only**, the workspace''s
+        GitHub token; the token fetches the clone and is never stored or echoed. Clones are bare mirrors
+        under `OURO_ENGINE_CLONE_DIR`, one per workspace and repository, refreshed when older than `OURO_ENGINE_CLONE_REFRESH_SECONDS`;
+        a ref the clone lacks forces one fetch before it is a `404`. Nothing here writes to a repository.
+
+
+        Every answer names the 40-hex commit it was read at (`sha`), so the citation `ouroboros-rest` builds
+        from it — `git://owner/name@sha/path#Lnn` — re-runs to the same answer.'
+      operationId: codeBisectCommits
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BisectCommitsRequest'
+            example:
+              repository:
+                workspace: a7150000-0000-4000-8000-000000000617
+                slug: acme-robotics/helios-firmware
+                remote: https://github.com/acme-robotics/helios-firmware.git
+                token: ghs_example-installation-token
+              good: v2.0.4
+              bad: nightly
+      responses:
+        '200':
+          description: The answer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BisectCommits'
+              example:
+                clone:
+                  repository: acme-robotics/helios-firmware
+                  fetched_at: '2026-10-09T06:00:00Z'
+                  stale: false
+                good: v2.0.4
+                bad: nightly
+                good_sha: f37e8886147061e46a3d448f2cffe491d57b7aaf
+                bad_sha: 5d610dcd6024306c6ada2831742a31522688badc
+                bad_ref_name: refs/heads/nightly
+                commits:
+                - ecd512b0fd6bb45f7b54f4dc14148963247c9dc8
+                - ec09cf6422bf42736baf00df475c9ded667a1afc
+                - 47cb090e9f655c09fddc53c6614f215381db90d5
+                - 4f1fe54910885c92250b1a2e47709c7b2250eba6
+                - c196da80fcbec673f61da0fd13b950a1b9ec09fd
+                - 5d610dcd6024306c6ada2831742a31522688badc
+                max_steps: 3
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/CodeNotFound'
+        '409':
+          $ref: '#/components/responses/CodeNotAncestor'
+        '422':
+          $ref: '#/components/responses/CodeUnprocessable'
+        '502':
+          $ref: '#/components/responses/CodeFetchFailed'
+
 components:
   securitySchemes:
     InternalKey:
@@ -1237,6 +1677,59 @@ components:
             details:
               task_kind:
                 - String should match pattern '^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$'
+
+    CodeNotFound:
+      description: '`code_ref_not_found` — the ref names no commit even after a fresh fetch (or is an ambiguous
+        abbreviation); `code_path_not_found` — the path, file or module is not in the tree at that commit.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: code_path_not_found
+            message: There is no file src/dock/dock_ctl.c at 5d610dcd6024.
+            details:
+              path: src/dock/dock_ctl.c
+              sha: 5d610dcd6024306c6ada2831742a31522688badc
+    CodeNotAncestor:
+      description: '`code_not_ancestor` — `good` is `bad`, or is not on `bad`''s first-parent line, so there
+        is no line to bisect.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: code_not_ancestor
+            message: good is not on bad's first-parent line
+            details: {}
+    CodeUnprocessable:
+      description: '`validation_failed` — the body is malformed (a ref with revision syntax, a path with `..`,
+        a range that ends before it starts), with one entry per field; or a `code_*` refusal of a well-formed
+        request: `code_remote_refused` (the remote is not `https://host/owner/name`), `code_range_outside_file`,
+        `code_range_too_wide` (over 500 lines), `code_bisect_too_long` (over 10 000 candidates).'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: code_range_outside_file
+            message: VERSION has 1 lines; line 9 does not exist
+            details:
+              path: VERSION
+              start: 9
+              length: 1
+    CodeFetchFailed:
+      description: 'The clone could not be made: `code_remote_auth` (the remote refused the token) or `code_remote_unreachable`
+        (anything else). The message is constant. A clone that exists is read as it was when only its refresh
+        fails — `clone.stale` says so — so this answers only a repository never fetched.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: code_remote_auth
+            message: The repository could not be fetched.
+            details: {}
 
   schemas:
     Liveness:
@@ -2952,3 +3445,558 @@ components:
         failed:
           type: array
           items: {type: string}
+
+    CodeRepository:
+      type: object
+      title: CodeRepository
+      description: Which repository, for which workspace, from where. Closed.
+      additionalProperties: false
+      required:
+      - workspace
+      - slug
+      - remote
+      properties:
+        workspace:
+          pattern: ^[A-Za-z0-9_-]{1,64}$
+          type: string
+        slug:
+          maxLength: 201
+          pattern: ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$
+          type: string
+        remote:
+          maxLength: 2048
+          minLength: 1
+          type: string
+        token:
+          maxLength: 1024
+          minLength: 1
+          type:
+          - string
+          - 'null'
+          default: null
+    CloneInfo:
+      type: object
+      title: CloneInfo
+      description: The clone an answer was read from. Closed.
+      additionalProperties: false
+      required:
+      - repository
+      - fetched_at
+      - stale
+      properties:
+        repository:
+          type: string
+        fetched_at:
+          format: date-time
+          type: string
+        stale:
+          type: boolean
+    CommitInfo:
+      type: object
+      title: CommitInfo
+      description: The citable facts of one commit. Closed.
+      additionalProperties: false
+      required:
+      - sha
+      - committed_at
+      - author
+      - summary
+      properties:
+        sha:
+          pattern: ^[0-9a-f]{40}$
+          type: string
+        committed_at:
+          format: date-time
+          type: string
+        author:
+          type: string
+        summary:
+          type: string
+    Age:
+      type: object
+      title: Age
+      description: How long something has gone unchanged, as the brief says it. Closed.
+      additionalProperties: false
+      required:
+      - months
+      - days
+      - phrase
+      properties:
+        months:
+          minimum: 0
+          type: integer
+        days:
+          minimum: 0
+          type: integer
+        phrase:
+          type: string
+    BlameRequest:
+      type: object
+      title: BlameRequest
+      description: '``blame(path, range)`` at a ref. Closed.'
+      additionalProperties: false
+      required:
+      - repository
+      - ref
+      - path
+      - start
+      - end
+      properties:
+        repository:
+          $ref: '#/components/schemas/CodeRepository'
+        ref:
+          maxLength: 255
+          pattern: ^(?![-/.])(?!.*\.\.)(?!.*//)[A-Za-z0-9._/-]{1,255}(?<![/.])$
+          type: string
+        path:
+          maxLength: 1024
+          pattern: ^(?!.*(^|/)\.\.?(/|$))[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$
+          type: string
+        start:
+          minimum: 1
+          type: integer
+        end:
+          minimum: 1
+          type: integer
+    BlameHunk:
+      type: object
+      title: BlameHunk
+      description: Consecutive lines last changed by one commit. Closed.
+      additionalProperties: false
+      required:
+      - start
+      - end
+      - commit
+      properties:
+        start:
+          type: integer
+        end:
+          type: integer
+        commit:
+          $ref: '#/components/schemas/CommitInfo'
+    Blame:
+      type: object
+      title: Blame
+      description: Who last changed a line range, and when. Closed.
+      additionalProperties: false
+      required:
+      - clone
+      - ref
+      - sha
+      - path
+      - start
+      - end
+      - lines
+      - hunks
+      - last_change
+      - as_of
+      - unchanged
+      properties:
+        clone:
+          $ref: '#/components/schemas/CloneInfo'
+        ref:
+          type: string
+        sha:
+          type: string
+        path:
+          type: string
+        start:
+          type: integer
+        end:
+          type: integer
+        lines:
+          items:
+            type: string
+          type: array
+        hunks:
+          items:
+            $ref: '#/components/schemas/BlameHunk'
+          type: array
+        last_change:
+          $ref: '#/components/schemas/CommitInfo'
+        as_of:
+          format: date-time
+          type: string
+        unchanged:
+          $ref: '#/components/schemas/Age'
+    HistoryRequest:
+      type: object
+      title: HistoryRequest
+      description: '``history(path | symbol, window)`` at a ref. Closed.'
+      additionalProperties: false
+      required:
+      - repository
+      - ref
+      properties:
+        repository:
+          $ref: '#/components/schemas/CodeRepository'
+        ref:
+          maxLength: 255
+          pattern: ^(?![-/.])(?!.*\.\.)(?!.*//)[A-Za-z0-9._/-]{1,255}(?<![/.])$
+          type: string
+        path:
+          maxLength: 1024
+          pattern: ^(?!.*(^|/)\.\.?(/|$))[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$
+          type:
+          - string
+          - 'null'
+          default: null
+        symbol:
+          pattern: ^[A-Za-z_][A-Za-z0-9_:.]{0,127}$
+          type:
+          - string
+          - 'null'
+          default: null
+        window_days:
+          default: 90
+          maximum: 3650
+          minimum: 1
+          type: integer
+    ChangedCommit:
+      type: object
+      title: ChangedCommit
+      description: One commit and the lines it moved in scope. Closed.
+      additionalProperties: false
+      required:
+      - commit
+      - added
+      - deleted
+      - files
+      properties:
+        commit:
+          $ref: '#/components/schemas/CommitInfo'
+        added:
+          type: integer
+        deleted:
+          type: integer
+        files:
+          items:
+            type: string
+          type: array
+    History:
+      type: object
+      title: History
+      description: Change frequency and churn over a window ending at ``sha``. Closed.
+      additionalProperties: false
+      required:
+      - clone
+      - ref
+      - sha
+      - path
+      - symbol
+      - window_days
+      - since
+      - until
+      - commits
+      - total_commits
+      - truncated
+      - added
+      - deleted
+      - authors
+      - per_month
+      properties:
+        clone:
+          $ref: '#/components/schemas/CloneInfo'
+        ref:
+          type: string
+        sha:
+          type: string
+        path:
+          type:
+          - string
+          - 'null'
+        symbol:
+          type:
+          - string
+          - 'null'
+        window_days:
+          type: integer
+        since:
+          format: date-time
+          type: string
+        until:
+          format: date-time
+          type: string
+        commits:
+          items:
+            $ref: '#/components/schemas/ChangedCommit'
+          type: array
+        total_commits:
+          type: integer
+        truncated:
+          type: boolean
+        added:
+          type: integer
+        deleted:
+          type: integer
+        authors:
+          type: integer
+        per_month:
+          type: number
+    ChangedBetweenRequest:
+      type: object
+      title: ChangedBetweenRequest
+      description: '``changed_between(ref_a, ref_b, scope)``. Closed.'
+      additionalProperties: false
+      required:
+      - repository
+      - base
+      - head
+      properties:
+        repository:
+          $ref: '#/components/schemas/CodeRepository'
+        base:
+          maxLength: 255
+          pattern: ^(?![-/.])(?!.*\.\.)(?!.*//)[A-Za-z0-9._/-]{1,255}(?<![/.])$
+          type: string
+        head:
+          maxLength: 255
+          pattern: ^(?![-/.])(?!.*\.\.)(?!.*//)[A-Za-z0-9._/-]{1,255}(?<![/.])$
+          type: string
+        scope:
+          maxLength: 1024
+          pattern: ^(?!.*(^|/)\.\.?(/|$))[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$
+          type:
+          - string
+          - 'null'
+          default: null
+    ChangedFile:
+      type: object
+      title: ChangedFile
+      description: One file's movement across a range. Closed.
+      additionalProperties: false
+      required:
+      - path
+      - commits
+      - added
+      - deleted
+      properties:
+        path:
+          type: string
+        commits:
+          type: integer
+        added:
+          type: integer
+        deleted:
+          type: integer
+    ChangedBetween:
+      type: object
+      title: ChangedBetween
+      description: What moved between a baseline and a later commit. Closed.
+      additionalProperties: false
+      required:
+      - clone
+      - base
+      - head
+      - base_sha
+      - head_sha
+      - scope
+      - commits
+      - total_commits
+      - truncated
+      - files
+      - total_files
+      - added
+      - deleted
+      properties:
+        clone:
+          $ref: '#/components/schemas/CloneInfo'
+        base:
+          type: string
+        head:
+          type: string
+        base_sha:
+          type: string
+        head_sha:
+          type: string
+        scope:
+          type:
+          - string
+          - 'null'
+        commits:
+          items:
+            $ref: '#/components/schemas/ChangedCommit'
+          type: array
+        total_commits:
+          type: integer
+        truncated:
+          type: boolean
+        files:
+          items:
+            $ref: '#/components/schemas/ChangedFile'
+          type: array
+        total_files:
+          type: integer
+        added:
+          type: integer
+        deleted:
+          type: integer
+    DepGraphRequest:
+      type: object
+      title: DepGraphRequest
+      description: '``dep_graph(module)`` at a ref, for the stack repository detection knows. Closed.'
+      additionalProperties: false
+      required:
+      - repository
+      - ref
+      properties:
+        repository:
+          $ref: '#/components/schemas/CodeRepository'
+        ref:
+          maxLength: 255
+          pattern: ^(?![-/.])(?!.*\.\.)(?!.*//)[A-Za-z0-9._/-]{1,255}(?<![/.])$
+          type: string
+        module:
+          maxLength: 1024
+          pattern: ^(?!.*(^|/)\.\.?(/|$))[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$
+          type:
+          - string
+          - 'null'
+          default: null
+        stack:
+          enum:
+          - c
+          - python
+          - javascript
+          - null
+          type:
+          - string
+          - 'null'
+          default: null
+    DepEdge:
+      type: object
+      title: DepEdge
+      description: One dependency. Closed.
+      additionalProperties: false
+      required:
+      - source
+      - target
+      properties:
+        source:
+          type: string
+        target:
+          type: string
+        weight:
+          default: 1
+          minimum: 1
+          type: integer
+    DepGraph:
+      type: object
+      title: DepGraph
+      description: A module's dependency graph — or an honest ``unsupported``. Closed.
+      additionalProperties: false
+      required:
+      - clone
+      - ref
+      - sha
+      - module
+      - stack
+      - status
+      - reason
+      - nodes
+      - edges
+      - module_edges
+      - external
+      - truncated
+      properties:
+        clone:
+          $ref: '#/components/schemas/CloneInfo'
+        ref:
+          type: string
+        sha:
+          type: string
+        module:
+          type:
+          - string
+          - 'null'
+        stack:
+          enum:
+          - c
+          - python
+          - javascript
+          - null
+          type:
+          - string
+          - 'null'
+        status:
+          enum:
+          - ok
+          - unsupported
+          type: string
+        reason:
+          type:
+          - string
+          - 'null'
+        nodes:
+          items:
+            type: string
+          type: array
+        edges:
+          items:
+            $ref: '#/components/schemas/DepEdge'
+          type: array
+        module_edges:
+          items:
+            $ref: '#/components/schemas/DepEdge'
+          type: array
+        external:
+          items:
+            type: string
+          type: array
+        truncated:
+          type: boolean
+    BisectCommitsRequest:
+      type: object
+      title: BisectCommitsRequest
+      description: The commits a bisect between two refs walks. Closed.
+      additionalProperties: false
+      required:
+      - repository
+      - good
+      - bad
+      properties:
+        repository:
+          $ref: '#/components/schemas/CodeRepository'
+        good:
+          maxLength: 255
+          pattern: ^(?![-/.])(?!.*\.\.)(?!.*//)[A-Za-z0-9._/-]{1,255}(?<![/.])$
+          type: string
+        bad:
+          maxLength: 255
+          pattern: ^(?![-/.])(?!.*\.\.)(?!.*//)[A-Za-z0-9._/-]{1,255}(?<![/.])$
+          type: string
+    BisectCommits:
+      type: object
+      title: BisectCommits
+      description: The first-parent line from a good commit to a bad one. Closed.
+      additionalProperties: false
+      required:
+      - clone
+      - good
+      - bad
+      - good_sha
+      - bad_sha
+      - bad_ref_name
+      - commits
+      - max_steps
+      properties:
+        clone:
+          $ref: '#/components/schemas/CloneInfo'
+        good:
+          type: string
+        bad:
+          type: string
+        good_sha:
+          type: string
+        bad_sha:
+          type: string
+        bad_ref_name:
+          type:
+          - string
+          - 'null'
+        commits:
+          items:
+            type: string
+          type: array
+        max_steps:
+          type: integer

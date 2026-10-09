@@ -501,7 +501,10 @@ describe("TABLE_COLUMNS", () => {
     // The hundred-and-forty-ninth to hundred-and-fifty-second are V112's competitor registry —
     // `competitors`, `competitor_watches`, `competitor_snapshots` — which #616 is the first code to
     // read and write, and V117's `competitor_snapshot_contents`, the archive its diffs run against.
-    expect(TABLE_NAMES).toHaveLength(152);
+    //
+    // The hundred-and-fifty-third and fourth are V118's `code_bisects` and `code_bisect_steps`
+    // (#617) — the bisect primitive's checkpoints and the farm jobs that prove its culprit.
+    expect(TABLE_NAMES).toHaveLength(154);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

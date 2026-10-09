@@ -32,6 +32,12 @@ const ISSUE_INDEX = /^issue-index:\/\/[a-z0-9][a-z0-9_-]*(\/[A-Za-z0-9._#-]+)+$/
 const GIT =
   /^git:\/\/[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)?@[0-9a-f]{7,40}(\/[A-Za-z0-9._-]+)*(#L[1-9][0-9]*(-L[1-9][0-9]*)?)?$/;
 const GIT_DOT_SEGMENT = /\/\.\.?(\/|#|$)/;
+const UUID_TEXT = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+/** V118: a converged bisect — the culprit and the 1–32 farm jobs that proved it (#617). */
+const BISECT = new RegExp(
+  `^bisect://[A-Za-z0-9._-]+/[A-Za-z0-9._-]+@[0-9a-f]{40}\\?jobs=${UUID_TEXT}(,${UUID_TEXT}){0,31}$`,
+);
+const BISECT_DOT_SEGMENT = /\/\.\.?@/;
 const DATE = "[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}(:[0-9]{2})?Z)?";
 const TELEMETRY = new RegExp(
   `^telemetry://[a-z0-9][a-z0-9_.-]*(/[a-z0-9][a-z0-9_.-]*)*/([1-9][0-9]*[hdw]|${DATE}\\.\\.${DATE})$`,
@@ -40,7 +46,8 @@ const SHA256 = /^sha256:[0-9a-f]{64}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Whether a locator is well-formed for its kind — V108's `source_locator_valid()`.
+ * Whether a locator is well-formed for its kind — V108's `source_locator_valid()`, as V118 widened
+ * it: a `code` source is a `git://` URI or a converged bisect's `bisect://` one.
  *
  * @param kind - The source kind.
  * @param locator - The URL or internal URI.
@@ -59,7 +66,10 @@ export function locatorValid(kind: SourceRecordKind, locator: string): boolean {
     case "ticket":
       return ISSUE_INDEX.test(locator) || HTTP.test(locator);
     case "code":
-      return GIT.test(locator) && !GIT_DOT_SEGMENT.test(locator);
+      return (
+        (GIT.test(locator) && !GIT_DOT_SEGMENT.test(locator)) ||
+        (BISECT.test(locator) && !BISECT_DOT_SEGMENT.test(locator))
+      );
     case "telemetry":
       return TELEMETRY.test(locator);
   }
