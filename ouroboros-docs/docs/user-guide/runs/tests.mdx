@@ -5,11 +5,170 @@ sidebar_position: 2
 description: "Telling a real failure from a flake, and what Ouroboros does next."
 ---
 
-Telling a real failure from a flake, and what Ouroboros does next.
+Every time a loop builds and tests its change, the run gets a **build** with test results: how
+many cases passed, failed or were flaky, which suites ran, what a hardware rig measured, and
+the files the build uploaded. Use this page to decide whether a failure is real, and to tell
+Ouroboros what to do about it.
 
-:::info[Being written]
+Open it from the run console — **Test results ↗** on the test stage of the
+[stage timeline](./console.mdx#the-stage-timeline) — or at `/runs/<id>/tests`. The breadcrumb
+takes you back to the run and to where you came from.
 
-This page is being written in
-[#1183](https://github.com/NobuData/ouroboros/issues/1183).
+<Screenshot id="user-guide.tests" />
+
+## Builds and the summary
+
+The header names the run and the build you are reading — **Test Results · Run #1847 · Build 3**
+— with the issue, the workflow, a pill such as **61/63 passed**, the runner and rig that ran it
+and how long it took, and a link to the pull request, such as **PR #514**.
+
+**Build attempts** lists every build of the loop, oldest first, each with its result —
+**49/63 · 14 failed ✗**, **63/63 · all passed ✓**, or **running tests** while it runs — its
+start time and its commit. Select a build to read its results; the page opens on the latest. The
+last card, **Next**, says what happens once the tests are green — **Publish to PR #514 when
+green**, gated on every case passing.
+
+Below it, five figures sum up the build you selected:
+
+| Figure | What it tells you |
+| --- | --- |
+| **Total tests** | Cases reported, **across 5 suites**. |
+| **Passed** | Cases that passed, and how that moved since an earlier build — **▲ 12 vs build 1**. |
+| **Failed** | Cases that failed, naming the first — **overshoot_under_load · HIL** for a rig test. |
+| **Flaky** | Cases that failed and then passed on a retry — see [Flaky tests](#flaky-tests). |
+| **Wall time** | How long the build took, split into simulated and physical time. |
+
+While a build is still running, its figures are marked **partial**: they are what has parsed so
+far, not the result, and they move until the build completes.
+
+## Suites and physical tests
+
+**Suites** lists each suite with the platform it ran on and its pass count. Select a suite to
+scope the failure detail to it, and expand it to see its cases with their status, duration and
+retries. A suite run on a hardware rig is labelled **PHYSICAL**.
+
+**Physical tests** shows what the rig measured, case by case: the bench, what the case did, and
+the measurement against its limit — **measured: overshoot 2.4% vs limit 2.0%**, or
+**measured: reordered frames 0 vs limit 0 (was 37 in build 1)**. A value past its limit — above a maximum, below a minimum — is a
+**FAIL**. A rig that reports only pass or fail says **This rig reported pass/fail only — structured measurements need the HIL schema.**
+Select a case to show its failure.
+
+**Artifacts** lists the files the build uploaded — the JUnit report, rig captures, logs and the
+coverage report, with **coverage 87.4% (+0.6%)** against the previous build — and how long they
+are kept, such as **retained 30d**. Open a text file in place, or download it. A file past its
+retention is listed as **expired**.
+
+## Reading a failure
+
+**Failure detail** shows one failure at a time — every failure of the build, those of the suite
+you selected, or the one case you selected. Page through them with **‹** and **›**
+(**1 of 2**). Each shows the test's path and the log it wrote, with the assertion highlighted.
+
+<Screenshot id="user-guide.tests.failure" />
+
+Under the log, **Triage** says what Ouroboros makes of the failure. It is a set of fixed rules,
+and the card names the one that fired — it never shows a confidence score:
+
+| Rule | Suggests |
+| --- | --- |
+| **passed on a sanctioned retry** | **Flake — retry** |
+| **job, runner or failure text names infrastructure** | **Infra — rig issue** |
+| **new failure ∩ diff-path overlap** — the case did not fail before and sits in a path the loop changed | **Product bug** |
+
+When no rule fires, it says **No heuristic rule fired for this failure.** — read the log and
+decide yourself. **AI triage arrives with the provider stack**: a model's explanation of the
+failure is not available yet.
+
+## Flaky tests
+
+A case is **flaky** when it failed and then passed on a retry that was **sanctioned** — allowed
+in advance. **Flaky** in the summary counts them and says how — **passed on retry 2/3** — and
+the case's row shows its runs. A retry nothing allowed is not counted: the case stays **failed**,
+and its extra runs are kept with it.
+
+:::note
+
+Builds do not yet carry an allowance for retries, so results uploaded today never mark a case
+flaky — a case that passed only on a re-run of its own is reported as **failed**.
 
 :::
+
+Ouroboros also keeps a score for each case across runs, weighting recent ones most. A case that
+passes on retry often enough is **watching**; one that has been clean for long enough is
+healthy again. **quarantine watching (1) ↗** in the summary counts the flaky cases being watched
+and opens [Insights](../insights.mdx), where the flaky tests are listed. Watching is a warning,
+not an exclusion: a watched case still runs and still counts, and nothing moves a case into
+quarantine on its own.
+
+## Deciding what happens next
+
+**Mark & Route** is where you tell the loop what a failure is. It works on the failure shown in
+the failure detail, one failure at a time. Owners, admins and members can use it; viewers can
+read the decisions but not make them.
+
+<Screenshot id="user-guide.tests.flaky" />
+
+Under **Classify this failure**, the class a triage rule suggested is selected and marked
+**heuristic**, with the rule beside it. Choose a different one if you disagree:
+
+| Class | The button | What happens |
+| --- | --- | --- |
+| **Product bug** | **Queue correction round** | The loop goes back to fix the code. |
+| **Test needs update** | **Queue correction round** | The loop goes back to fix the test. |
+| **Flake — retry** | **Mark as flake & re-run the case** | The case is marked flaky and re-run. |
+| **Infra — rig issue** | **Flag the rig's runner** | The rig's runner is flagged and the build requeued. |
+
+A correction round needs a **Correction note to the loop** — what is wrong and what to do about
+it, up to 4,096 characters. The note is injected into the next attempt's planning context, so
+the loop starts its next attempt with it. For the other two classes the note is optional; for a
+rig issue it is written on the runner as its health note.
+
+Once you decide, the card shows the **Recorded decision** and a **Routed receipt** — what was
+dispatched, such as **Correction round queued**, and the attempt it opens, linked to the run
+console. **Re-classify** lets you decide again.
+
+Two toggles shape what happens to the pull request:
+
+- **Block PR #514 until green** — the pull request's test gate is required, so it cannot merge
+  while tests fail. Its **ⓘ** says whether this is enforced now or stored until the run opens a
+  pull request.
+- **Auto re-run physical suite after fix** — stored, but nothing acts on it yet. Use the re-run
+  buttons instead.
+
+**Waive & annotate PR** — for owners and admins — lets a failure through. Write why it is waived;
+the waiver is kept with your name and reason and cannot be edited. The waiver is not yet posted
+on the pull request itself.
+
+## Re-running and sending failures back
+
+The header has three actions, for owners, admins and members:
+
+- **Re-run failed (1)** queues a build of the failed cases only.
+- **Re-run full suite** queues a build of every case.
+- **Send failures back to loop ⟳** gathers the build's failures in Mark & Route as a list, so
+  you can classify each in turn. Each one is decided on its own.
+
+A re-run needs a runner in the build farm that can take it. When none can, the buttons are off
+and a note says why — for example **No farm build produced Build 3, so there is nothing to
+re-run.** for a build that did not come from the farm. Once queued, a line reports the build job
+and whether a runner has taken it.
+
+The loop also uses test results itself: a workflow can send a failing loop back to an earlier
+stage on its own, which the run console shows as another attempt of that stage.
+
+## What can go wrong
+
+- **"No test results yet."** No build of the run has uploaded results. They appear as soon as
+  the first build does.
+- **"This run's workflow has no test stage."** The workflow never tests, so there will be no
+  results. **Open the workflow** to add a test stage.
+- **"… could not be fully read — Build 3's results are incomplete."** A report file was
+  malformed or cut short. The banner lists each file, what failed to parse and what is missing
+  as a result.
+- **"No results received since … — Build 3's uploads have gone quiet."** A running build has
+  stopped reporting: it may be on a long test, its job may have died, or ingestion may have
+  stalled. Choose **Check again**.
+- **The re-run buttons are off.** You are a viewer, nothing failed, or no runner can take the
+  build — the note under the buttons says which.
+- **"Write the correction first — a correction round with no correction is not one."** A
+  correction round needs a note.
