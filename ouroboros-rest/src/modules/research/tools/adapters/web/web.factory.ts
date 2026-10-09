@@ -10,13 +10,15 @@ import { WebResearchTool, fetchSearchHttp } from "./web.tool";
 import { GuardedPageTransport } from "./web.transport";
 
 /**
- * The production web tool.
+ * The production page reader — one per process, shared by every tool that reads pages, so its
+ * robots.txt cache and per-host pacing hold across them (the web tool and the competitor
+ * tracker's snapshots, #616).
  *
  * @param config - The deployment's configuration.
- * @returns The tool, with its page reader, provider client and bounds.
+ * @returns The reader.
  */
-export function buildWebTool(config: AppConfigService): WebResearchTool {
-  const fetcher = new PageFetcher(
+export function buildPageFetcher(config: AppConfigService): PageFetcher {
+  return new PageFetcher(
     new GuardedPageTransport(new InternalAllowlist(config.researchFetchInternalAllowlist)),
     {
       timeoutMs: config.researchFetchTimeoutMs,
@@ -25,7 +27,16 @@ export function buildWebTool(config: AppConfigService): WebResearchTool {
       hostIntervalMs: config.researchHostIntervalMs,
     },
   );
+}
 
+/**
+ * The production web tool.
+ *
+ * @param config - The deployment's configuration.
+ * @param fetcher - The shared page reader.
+ * @returns The tool, with its page reader, provider client and bounds.
+ */
+export function buildWebTool(config: AppConfigService, fetcher: PageFetcher): WebResearchTool {
   return new WebResearchTool({
     fetcher,
     http: fetchSearchHttp,

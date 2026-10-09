@@ -28,6 +28,7 @@ import {
   TOOL_OPERATIONS,
   declaredOperations,
   type ResearchToolAdapter,
+  type SubLineValue,
   type ToolCallContext,
   type ToolOperation,
 } from "./research-tool.adapter";
@@ -142,7 +143,7 @@ export function displayViolations(adapter: ResearchToolAdapter): string[] {
  */
 export function countsViolations(
   adapter: ResearchToolAdapter,
-  counts: Readonly<Record<string, number | null>>,
+  counts: Readonly<Record<string, SubLineValue>>,
 ): string[] {
   const violations: string[] = [];
   const slots = subLineSlots(adapter.displayMeta().subLine);
@@ -156,8 +157,12 @@ export function countsViolations(
     if (!slots.includes(key)) {
       violations.push(`counts() answers ${key}, which the sub-line does not name`);
     }
-    if (value !== null && (!Number.isInteger(value) || value < 0)) {
-      violations.push(`counts().${key} must be a non-negative integer or null`);
+    if (typeof value === "string") {
+      if (value.trim() === "" || value.length > 200) {
+        violations.push(`counts().${key} must be a non-blank phrase of at most 200 characters`);
+      }
+    } else if (value !== null && (!Number.isInteger(value) || value < 0)) {
+      violations.push(`counts().${key} must be a non-negative integer, a phrase or null`);
     }
   }
 
@@ -372,7 +377,7 @@ export function describeToolConformance(name: string, build: () => ToolConforman
 
     it("reports not_configured — the idle dot — when the workspace has not configured it", async () => {
       const harness = build();
-      const health = await harness.adapter.healthCheck(null, null);
+      const health = await harness.adapter.healthCheck(null, null, "org-conformance");
 
       expect(health.state).toBe("not_configured");
       expect(healthDot(health)).toBe("idle");

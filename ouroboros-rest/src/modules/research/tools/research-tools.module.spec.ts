@@ -2,6 +2,7 @@ import { Test } from "@nestjs/testing";
 
 import { ConfigurationModule } from "../../config/config.module";
 import { testConfiguration } from "../../config/configuration.fixture";
+import { CompetitorsController } from "../competitors/competitors.controller";
 import { FakeResearchTool } from "./adapters/fake.tool.fixture";
 import { ResearchToolInvoker } from "./research-tool.invoker";
 import { RESEARCH_TOOL_ADAPTERS, ResearchToolRegistry } from "./research-tool.registry";
@@ -13,7 +14,7 @@ import { ResearchToolsInternalController } from "./tools.internal.controller";
  * The wiring. Nothing connects: `pg` connects lazily, and no query is issued.
  */
 describe("the research tools module", () => {
-  it("compiles, with the internal route and the web tool registered", async () => {
+  it("compiles, with the internal route, the registry routes and both tools registered", async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [ConfigurationModule.forRoot(testConfiguration()), ResearchToolsModule],
     }).compile();
@@ -22,8 +23,10 @@ describe("the research tools module", () => {
       ResearchToolsInternalController,
     );
     expect(moduleRef.get(ResearchToolInvoker)).toBeInstanceOf(ResearchToolInvoker);
-    // CL.2 (#615) registers the web tool; CL.3–CL.6 each register one more.
-    expect(moduleRef.get(ResearchToolRegistry).slugs()).toEqual(["web"]);
+    // CL.2 (#615) registers the web tool, CL.3 (#616) the competitor tracker; CL.4–CL.6 each
+    // register one more.
+    expect(moduleRef.get(ResearchToolRegistry).slugs()).toEqual(["competitor", "web"]);
+    expect(moduleRef.get(CompetitorsController)).toBeInstanceOf(CompetitorsController);
 
     await moduleRef.close();
   });

@@ -23,8 +23,11 @@ tool reports its own health, so a broken setup shows before an investigation dep
 | Tool | What it does | What it cites | Setup |
 | --- | --- | --- | --- |
 | ◍ **Web search & page reader** | Searches the web, then reads whole pages: the main content, without navigation, banners or footers | Each search result, with its snippet. Each page read, at the address it was read from, with an excerpt and a fingerprint of its content. | Nothing, on a deployment that runs SearXNG. A hosted search provider needs a key. See [Research tools](../administration/research.mdx). |
+| ⌖ **Competitor tracker** | Watches your rivals' release notes, changelogs, GitHub releases and feeds on a schedule, and keeps every change | Each change, as the archived difference between two dated snapshots | An owner or admin adds rivals and their watches. See [Competitor watch](#competitor-watch). |
 
-The web tool's row reads *search API + full-page extraction, robots-aware*.
+The web tool's row reads *search API + full-page extraction, robots-aware*. The competitor
+tracker's row counts what is watched, for example *4 rivals watched · release notes, changelogs,
+filings*. A rival counts once it has an enabled watch that can be read.
 
 ### Pages the web tool does not read
 
@@ -38,3 +41,55 @@ the skip with a note saying why, and carries on. The skip is never hidden.
 
 A page that fails to load, because the site is down or slow, is not a skip. The investigation
 may try it again.
+
+## Competitor watch
+
+The competitor tracker keeps an eye on your rivals so an investigation can cite what they
+shipped, and when. It does not cite a live page, which a rival can reword tomorrow. It cites the
+**change** between two snapshots it archived, with both dates behind it.
+
+### Rivals and watches
+
+A **rival** is a competitor by name, such as *Skylink*, with an optional site, other names it
+goes by, and notes. An investigation can name a rival by any of those names.
+
+A **watch** is one source of a rival that the tracker checks on a schedule:
+
+| Source kind | What is watched | How it is read |
+| --- | --- | --- |
+| `release_notes` | A release-notes page | The page, optionally narrowed to one region |
+| `changelog` | A changelog page | The page, optionally narrowed to one region |
+| `page` | Any other page | The page, optionally narrowed to one region |
+| `github_releases` | A GitHub repository's releases, such as `https://github.com/skylink/firmware` | GitHub's API, with the workspace's GitHub token |
+| `rss` | An RSS or Atom feed | Each item's title, date, link and summary |
+| `filings` | A rival's filings or investor page | Not read yet. It is counted on the card and waits for the filings reader in a later release. |
+
+A page watch can carry a **selector**, a CSS selector such as `main .release-list`, that names
+the region to watch. Without one, the tracker watches the page's main content. Narrowing to a
+region is what keeps a new banner or a footer's date from counting as a change. GitHub releases
+leave out drafts and mark pre-releases.
+
+### Cadence
+
+Each watch is checked **hourly**, **daily** (the default) or **weekly**. Checks are spread out,
+each landing within a quarter of the cadence either side, so a restart or a hundred new watches
+never check everything at once. A check that fails is tried again sooner, within the hour.
+
+### What a check finds
+
+- **A change.** The tracker archives a snapshot of the region and the difference from the last
+  one. Added lines start with `+`, removed lines with `-`. This is what an investigation cites.
+- **No change.** Nothing is archived, so an unchanged page never shows up as a change.
+- **A page that needs JavaScript.** Some pages show nothing until a script runs. The tracker
+  marks the watch with the note *the page renders its content with JavaScript — it needs the
+  render tier, arriving in v2*. It never archives an empty snapshot.
+- **A page it may not read.** If robots.txt forbids it, the watch says so and names the rule.
+- **A failure.** The watch keeps a note saying why, such as *the selector matched nothing on the
+  page*.
+
+### Citing a change
+
+During an investigation, the loop asks the tracker for a rival's **changes** over a window, 90
+days by default, or for the **latest** change of one source kind. Each change becomes a source
+in the brief, titled like *Skylink · release notes · changed 2026-10-01*. Its excerpt is the
+difference itself.

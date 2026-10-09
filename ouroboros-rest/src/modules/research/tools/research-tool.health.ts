@@ -76,17 +76,20 @@ export function subLineSlots(template: string): string[] {
  * The sub-line, its slots filled from live counts.
  *
  * @param template - The tool's {@link import("./research-tool.adapter").ToolDisplayMeta.subLine}.
- * @param counts - What `counts()` answered. A null — or missing — count renders as an em dash
+ * @param counts - What `counts()` answered. A count is formatted, a phrase (`release notes,
+ *   changelogs`) is kept as written, and a null — or missing — value renders as an em dash
  *   rather than as zero: an unknown count and an empty registry are different facts.
  * @returns `4 rivals watched · release notes, changelogs, filings`; `3,412 issues · …`.
  */
 export function renderSubLine(
   template: string,
-  counts: Readonly<Record<string, number | null>>,
+  counts: Readonly<Record<string, number | string | null>>,
 ): string {
   return template.replaceAll(SLOT, (_match, slot: string) => {
     const count = counts[slot];
 
-    return typeof count === "number" ? count.toLocaleString("en-US") : UNKNOWN_COUNT;
+    if (typeof count === "number") return count.toLocaleString("en-US");
+    if (typeof count === "string" && count.trim() !== "") return count;
+    return UNKNOWN_COUNT;
   });
 }

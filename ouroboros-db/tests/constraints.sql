@@ -38872,6 +38872,83 @@ select pg_temp.must_hold(
   'a deleted workspace takes its investigations'' skips with it');
 
 -- ===========================================================================
+-- V117 — the competitor tracker's schedule and archive (#616, CL.3)
+-- ===========================================================================
+--
+-- A watch remembers its last check and its next, and a snapshot's scoped text is archived under
+-- the hash it was taken with — never edited, never a copy of something else.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v117', 'Watch Works', 'watch-works-v117', now());
+
+insert into ouroboros.competitors (id, organization_id, name) values
+  ('a1170000-0000-0000-0000-000000000001', 'org-v117', 'Skylink');
+insert into ouroboros.competitor_watches (id, competitor_id, source_kind, url, selector, cadence) values
+  ('a1170000-0000-0000-0000-000000000011', 'a1170000-0000-0000-0000-000000000001', 'changelog',
+   'https://skylink.example.com/changelog', 'main .entries', 'daily');
+
+select pg_temp.must_hold(
+  (select next_check_at is null and last_checked_at is null and last_outcome is null
+     from ouroboros.competitor_watches where id = 'a1170000-0000-0000-0000-000000000011'),
+  'a new watch has never been checked and is due as soon as the scheduler can');
+
+update ouroboros.competitor_watches
+   set last_checked_at = now(), last_success_at = now(), last_outcome = 'first',
+       next_check_at = now() + interval '1 day'
+ where id = 'a1170000-0000-0000-0000-000000000011';
+update ouroboros.competitor_watches
+   set last_checked_at = now(), last_outcome = 'render_required', render_required = true,
+       last_note = 'the page renders its content with JavaScript — needs the render tier, arriving in v2'
+ where id = 'a1170000-0000-0000-0000-000000000011';
+select pg_temp.must_hold(
+  (select render_required and last_note like '%v2%'
+     from ouroboros.competitor_watches where id = 'a1170000-0000-0000-0000-000000000011'),
+  'a JS-rendered page is marked with its honest note');
+
+select pg_temp.must_reject(
+  $$update ouroboros.competitor_watches set last_outcome = 'exploded'
+     where id = 'a1170000-0000-0000-0000-000000000011'$$,
+  'an outcome is one the tracker knows', 'competitor_watches_last_outcome');
+select pg_temp.must_reject(
+  $$update ouroboros.competitor_watches set last_note = '  '
+     where id = 'a1170000-0000-0000-0000-000000000011'$$,
+  'a note says something', 'competitor_watches_last_note_present');
+select pg_temp.must_reject(
+  $$update ouroboros.competitor_watches set last_checked_at = null
+     where id = 'a1170000-0000-0000-0000-000000000011'$$,
+  'an outcome belongs to a check', 'competitor_watches_checked_together');
+
+insert into ouroboros.competitor_snapshots (id, watch_id, content_hash, content_ref, taken_at) values
+  ('a1170000-0000-0000-0000-000000000101', 'a1170000-0000-0000-0000-000000000011',
+   'sha256:' || encode(sha256(convert_to('6.1 — beacon approach', 'UTF8')), 'hex'),
+   'archive://competitor-snapshot/a1170000-0000-0000-0000-000000000101', now() - interval '1 day');
+insert into ouroboros.competitor_snapshot_contents (snapshot_id, content) values
+  ('a1170000-0000-0000-0000-000000000101', '6.1 — beacon approach');
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.competitor_snapshot_contents
+    where snapshot_id = 'a1170000-0000-0000-0000-000000000101'),
+  'a snapshot''s scoped text is archived under it');
+
+insert into ouroboros.competitor_snapshots (id, watch_id, content_hash, content_ref, taken_at, previous_id, diff) values
+  ('a1170000-0000-0000-0000-000000000102', 'a1170000-0000-0000-0000-000000000011',
+   'sha256:' || encode(sha256(convert_to('6.2 — gust-adaptive final approach', 'UTF8')), 'hex'),
+   'archive://competitor-snapshot/a1170000-0000-0000-0000-000000000102', now(),
+   'a1170000-0000-0000-0000-000000000101', '+ 6.2 — gust-adaptive final approach');
+select pg_temp.must_reject(
+  $$insert into ouroboros.competitor_snapshot_contents (snapshot_id, content)
+    values ('a1170000-0000-0000-0000-000000000102', 'something else entirely')$$,
+  'the archive is what the snapshot''s hash describes', 'competitor_snapshot_contents_hash');
+select pg_temp.must_reject(
+  $$update ouroboros.competitor_snapshot_contents set content = 'rewritten'
+     where snapshot_id = 'a1170000-0000-0000-0000-000000000101'$$,
+  'an archive is never edited', 'competitor_snapshot_contents_immutable');
+
+delete from ouroboros.organization where "id" = 'org-v117';
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.competitor_snapshot_contents
+               where snapshot_id = 'a1170000-0000-0000-0000-000000000101'),
+  'a deleted workspace takes its rivals'' archives with it');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

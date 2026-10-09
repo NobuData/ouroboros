@@ -52,4 +52,14 @@ describe("the sub-line", () => {
     expect(renderSubLine("{rivals} rivals watched", {})).toBe(`${UNKNOWN_COUNT} rivals watched`);
     expect(renderSubLine("{rivals} rivals watched", { rivals: 0 })).toBe("0 rivals watched");
   });
+
+  it("keeps a phrase the registry computed as written, and a blank one as an em dash", () => {
+    expect(
+      renderSubLine("{watched} · {kinds}", {
+        watched: "4 rivals watched",
+        kinds: "release notes, changelogs, filings",
+      }),
+    ).toBe("4 rivals watched · release notes, changelogs, filings");
+    expect(renderSubLine("{kinds}", { kinds: "  " })).toBe(UNKNOWN_COUNT);
+  });
 });

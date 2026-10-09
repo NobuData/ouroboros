@@ -24,13 +24,19 @@ export interface ExtractedPage {
   readonly text: string;
 }
 
-interface Element {
+/** One element of the tolerant tree — exported for readers that scope a page themselves (#616). */
+export interface HtmlElement {
   readonly tag: string;
+  /** The raw attribute text, as written. */
   readonly attrs: string;
-  readonly children: Node[];
+  readonly children: HtmlNode[];
 }
 
-type Node = Element | string;
+/** An element, or a run of text. */
+export type HtmlNode = HtmlElement | string;
+
+type Element = HtmlElement;
+type Node = HtmlNode;
 
 /** Elements with no end tag. */
 const VOID = new Set([
@@ -177,6 +183,52 @@ function codePoint(value: number, fallback: string): string {
   return Number.isInteger(value) && value > 0 && value <= 0x10ffff
     ? String.fromCodePoint(value)
     : fallback;
+}
+
+/**
+ * The page as a forgiving tree — what the competitor tracker's selectors run over (#616).
+ *
+ * @param html - The document.
+ * @returns A synthetic `#root` element holding it. Script, style and similar elements are kept
+ *   as empty elements: their content is never text.
+ */
+export function parseHtml(html: string): HtmlElement {
+  return parse(html);
+}
+
+/**
+ * An attribute's value.
+ *
+ * @param element - The element.
+ * @param name - The attribute, case-insensitively.
+ * @returns Its value, entity-decoded; `""` for a bare attribute; null when absent.
+ */
+export function htmlAttribute(element: HtmlElement, name: string): string | null {
+  const value = attribute(element, name);
+  if (value !== null) return decodeEntities(value);
+  return new RegExp(`(?:^|\\s)${name}(?:\\s|=|/|$)`, "i").test(element.attrs) ? "" : null;
+}
+
+/**
+ * An element's text, as the extractor renders content — blocks on their own lines.
+ *
+ * @param element - The element.
+ * @returns Its text.
+ */
+export function renderText(element: HtmlElement): string {
+  return render(element);
+}
+
+/**
+ * The text a reader would see in a page's body, without scripts and page furniture.
+ *
+ * @param html - The document.
+ * @returns The body's text — short for a page whose content a script renders.
+ */
+export function visibleText(html: string): string {
+  const root = parse(html);
+  const body = find(root, (element) => element.tag === "body") ?? root;
+  return render(strip(body));
 }
 
 /**

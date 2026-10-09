@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.41.0",
+    "version": "0.41.1",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -39492,6 +39492,930 @@
           }
         }
       }
+    },
+    "/api/v1/research/competitors": {
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "The competitor registry — rivals, their watches, and the tracker's sub-line",
+        "description": "The competitor tracker's registry ([#616](https://github.com/NobuData/ouroboros/issues/616),\ndecision **V9**): every rival of the workspace with its watched sources, each watch's\nschedule and what its latest check found, and `summary` — mockup 22's tools-card sub-line,\n`4 rivals watched · release notes, changelogs, filings`, computed from the registry (a rival\ncounts when it has an enabled watch that does not need the render tier). Every member,\na `viewer` included. **The workspace is the session's.**",
+        "operationId": "listCompetitors",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rivals, by name, and the summary.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompetitorList"
+                },
+                "examples": {
+                  "seeded": {
+                    "summary": "One rival watching its release notes",
+                    "value": {
+                      "items": [
+                        {
+                          "id": "5eed0094-0000-4000-8000-000000000001",
+                          "name": "Skylink",
+                          "site": "https://skylink.example.com",
+                          "aliases": [
+                            "Skylink Robotics"
+                          ],
+                          "notes": null,
+                          "createdAt": "2026-08-02T00:00:00.000Z",
+                          "watches": [
+                            {
+                              "id": "5eed0094-0000-4000-8000-000000000011",
+                              "competitorId": "5eed0094-0000-4000-8000-000000000001",
+                              "sourceKind": "release_notes",
+                              "url": "https://skylink.example.com/releases",
+                              "selector": "main .release-list",
+                              "cadence": "daily",
+                              "enabled": true,
+                              "renderRequired": false,
+                              "lastSnapshotAt": "2026-10-01T06:12:00.000Z",
+                              "lastCheckedAt": "2026-10-08T06:03:00.000Z",
+                              "lastSuccessAt": "2026-10-08T06:03:00.000Z",
+                              "lastOutcome": "unchanged",
+                              "lastNote": null,
+                              "nextCheckAt": "2026-10-09T05:41:00.000Z",
+                              "createdAt": "2026-08-02T00:00:00.000Z"
+                            }
+                          ]
+                        }
+                      ],
+                      "summary": {
+                        "rivalsWatched": 1,
+                        "watchesEnabled": 1,
+                        "sourceKinds": [
+                          "release_notes"
+                        ],
+                        "subLine": "1 rival watched · release notes"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Add a rival",
+        "description": "**`owner` or `admin`.** A rival's name is unique in the workspace however it is\ncapitalised; `aliases` are the other names the research loop may call it by. It starts\nwith no watches.",
+        "operationId": "createCompetitor",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompetitorCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The rival.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Competitor"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is not an `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`competitor_name_taken` — the workspace already has a rival by that name. `details.name` echoes it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the request is malformed: a field outside its shape, or one\nthis operation does not take. `details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/research/competitors/{competitorId}": {
+      "patch": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Edit a rival",
+        "description": "**`owner` or `admin`.** A field given replaces, `null` removes `site` or `notes`, and an\nomitted field is kept; `aliases` replaces the list (`[]` clears it).",
+        "operationId": "updateCompetitor",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "competitorId",
+            "in": "path",
+            "required": true,
+            "description": "The rival.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompetitorUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The rival after the change, with its watches.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Competitor"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is not an `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`competitor_not_found` — this workspace has no such rival.\n\n`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`competitor_name_taken` — another rival of the workspace has that name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the request is malformed: a field outside its shape, or one\nthis operation does not take. `details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Remove a rival and its watches",
+        "description": "**`owner` or `admin`.** Its watches and their archived snapshots go with it — unless an\ninvestigation cites one of its changes, which keeps it: disable its watches instead.",
+        "operationId": "deleteCompetitor",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "competitorId",
+            "in": "path",
+            "required": true,
+            "description": "The rival.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is not an `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`competitor_not_found` — this workspace has no such rival.\n\n`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`competitor_cited` — an investigation cites a change archived for this rival.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the request is malformed: a field outside its shape, or one\nthis operation does not take. `details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/research/competitors/{competitorId}/watches": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Watch a source of a rival",
+        "description": "**`owner` or `admin`.** The kinds:\n\n- `release_notes`, `changelog`, `page` — read through the page reader (robots.txt, per-host\n  pacing, size caps). An optional CSS `selector` scopes the diff to a region (type,\n  `.class`, `#id`, `[attr]`/`[attr=value]`, descendant and `>` child, comma lists); without\n  one the page's main content is diffed. XPath and pseudo-classes are refused.\n- `github_releases` — a `https://github.com/<owner>/<repo>` URL, read through the GitHub\n  API with the workspace's GitHub token.\n- `rss` — an RSS or Atom feed.\n- `filings` — registered and counted, and read by v2's filings tier: its checks record\n  that note.\n\n`cadence` is `hourly`, `daily` (the default) or `weekly`; each check lands within ±25 % of\nit. A new watch is checked at the scheduler's next tick. Kind, URL and selector are fixed\nonce created. At most 25 watches per rival.",
+        "operationId": "createCompetitorWatch",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "competitorId",
+            "in": "path",
+            "required": true,
+            "description": "The rival.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompetitorWatchCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The watch, due at the next tick.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompetitorWatch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is not an `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`competitor_not_found` — this workspace has no such rival.\n\n`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`competitor_watch_exists` — the rival already watches that kind, URL and selector.\n\n`competitor_watch_limit` — the rival has 25 watches already.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`competitor_selector_invalid` — the selector is outside the supported CSS subset, or the kind\ntakes none. `details.fields.selector` says why.\n\n`competitor_watch_url_invalid` — the URL does not suit the kind (a `github_releases` watch names\na repository). `details.fields.url` says why.\n\n`validation_failed` — the request is malformed: a field outside its shape, or one\nthis operation does not take. `details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/research/competitors/{competitorId}/watches/{watchId}": {
+      "patch": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Change a watch's schedule",
+        "description": "**`owner` or `admin`.** `cadence` and `enabled` change freely. `renderRequired: false`\nasks for a page the tracker marked JS-rendered to be tried again at the next tick; only\nthe tracker sets it `true`.",
+        "operationId": "updateCompetitorWatch",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "competitorId",
+            "in": "path",
+            "required": true,
+            "description": "The rival.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "watchId",
+            "in": "path",
+            "required": true,
+            "description": "The watch.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompetitorWatchUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The watch after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompetitorWatch"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is not an `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`competitor_not_found` — this workspace has no such rival.\n\n`competitor_watch_not_found` — the rival has no such watch.\n\n`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the request is malformed: a field outside its shape, or one\nthis operation does not take. `details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Stop watching a source",
+        "description": "**`owner` or `admin`.** Its archived snapshots go with it — unless an investigation cites\none of its changes, which keeps it: disable it instead.",
+        "operationId": "deleteCompetitorWatch",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "competitorId",
+            "in": "path",
+            "required": true,
+            "description": "The rival.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "watchId",
+            "in": "path",
+            "required": true,
+            "description": "The watch.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is not an `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`competitor_not_found` — this workspace has no such rival.\n\n`competitor_watch_not_found` — the rival has no such watch.\n\n`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`competitor_cited` — an investigation cites a change archived for this watch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the request is malformed: a field outside its shape, or one\nthis operation does not take. `details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/research/competitor-changes": {
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "The competitor change feed",
+        "description": "Every archived change of the workspace's rivals, newest first — each one a snapshot whose\n`diff` (`+ ` added, `- ` removed lines, scoped by the watch's selector) is what a research\nbrief cites as a `competitor_diff` source. Content that did not change between two checks\nwrites nothing, so nothing here is noise. The read surface v2's matrix-staleness alerts\nsubscribe to. Every member.\n\nNarrow by `competitor`, `sourceKind` and `since`; page with `before`, the previous page's\n`nextBefore`.",
+        "operationId": "listCompetitorChanges",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "competitor",
+            "in": "query",
+            "required": false,
+            "description": "One rival.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "sourceKind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/CompetitorSourceKind"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "description": "Changes taken at or after this instant.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "description": "Changes taken before this instant — the previous page's `nextBefore`.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of changes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompetitorChangeFeed"
+                },
+                "examples": {
+                  "seeded": {
+                    "summary": "Skylink's 6.2 release notes",
+                    "value": {
+                      "items": [
+                        {
+                          "snapshotId": "5eed0094-0000-4000-8000-000000000102",
+                          "previousSnapshotId": "5eed0094-0000-4000-8000-000000000101",
+                          "watchId": "5eed0094-0000-4000-8000-000000000011",
+                          "competitorId": "5eed0094-0000-4000-8000-000000000001",
+                          "competitorName": "Skylink",
+                          "sourceKind": "release_notes",
+                          "url": "https://skylink.example.com/releases",
+                          "selector": "main .release-list",
+                          "contentHash": "sha256:5f4dcc3b5aa765d61d8327deb882cf995f4dcc3b5aa765d61d8327deb882cf99",
+                          "diff": "+ 6.2 — Gust-adaptive final approach: wind feedforward is applied over the last 2 m of descent.",
+                          "takenAt": "2026-10-01T06:12:00.000Z"
+                        }
+                      ],
+                      "nextBefore": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the request is malformed: a field outside its shape, or one\nthis operation does not take. `details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -58753,6 +59677,468 @@
             "examples": [
               "est. 40–60 sources · ~$6"
             ]
+          }
+        }
+      },
+      "CompetitorSourceKind": {
+        "type": "string",
+        "title": "CompetitorSourceKind",
+        "description": "What a watch reads: a page scoped by a selector (`release_notes`, `changelog`, `page`), the\nGitHub releases API (`github_releases`), a feed (`rss`), or `filings` — registered and\ncounted, read by v2's filings tier.",
+        "enum": [
+          "release_notes",
+          "changelog",
+          "github_releases",
+          "rss",
+          "filings",
+          "page"
+        ]
+      },
+      "CompetitorCadence": {
+        "type": "string",
+        "title": "CompetitorCadence",
+        "description": "How often a watch is checked, each check within ±25 % of it.",
+        "enum": [
+          "hourly",
+          "daily",
+          "weekly"
+        ]
+      },
+      "CompetitorCheckOutcome": {
+        "type": "string",
+        "title": "CompetitorCheckOutcome",
+        "description": "What a watch's latest check found: its `first` read, a `changed` region (a citable diff\narchived), `unchanged`, `failed` (the note says why; tried again sooner),\n`render_required` (a JS-rendered page — needs v2's render tier), `unsupported` (filings,\nor a type the reader does not read) or `robots_denied` (the note names the rule).",
+        "enum": [
+          "first",
+          "changed",
+          "unchanged",
+          "failed",
+          "render_required",
+          "unsupported",
+          "robots_denied"
+        ]
+      },
+      "CompetitorWatch": {
+        "type": "object",
+        "title": "CompetitorWatch",
+        "description": "A rival's watched source, its schedule, and what its latest check found.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "competitorId",
+          "sourceKind",
+          "url",
+          "selector",
+          "cadence",
+          "enabled",
+          "renderRequired",
+          "lastSnapshotAt",
+          "lastCheckedAt",
+          "lastSuccessAt",
+          "lastOutcome",
+          "lastNote",
+          "nextCheckAt",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "competitorId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceKind": {
+            "$ref": "#/components/schemas/CompetitorSourceKind"
+          },
+          "url": {
+            "type": "string"
+          },
+          "selector": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The CSS region the diff is scoped to; null diffs the page's main content."
+          },
+          "cadence": {
+            "$ref": "#/components/schemas/CompetitorCadence"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "renderRequired": {
+            "type": "boolean",
+            "description": "The page is JS-rendered and waits for v2's render tier; the scheduler skips it."
+          },
+          "lastSnapshotAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastCheckedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastSuccessAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a check last read the source — what the tracker's health ages."
+          },
+          "lastOutcome": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CompetitorCheckOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastNote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the latest check failed, or why the source cannot be read yet."
+          },
+          "nextCheckAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Competitor": {
+        "type": "object",
+        "title": "Competitor",
+        "description": "A rival and its watches.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "site",
+          "aliases",
+          "notes",
+          "createdAt",
+          "watches"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "site": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "watches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompetitorWatch"
+            }
+          }
+        }
+      },
+      "CompetitorSummary": {
+        "type": "object",
+        "title": "CompetitorSummary",
+        "description": "The tracker's tools-card sub-line, from the registry.",
+        "additionalProperties": false,
+        "required": [
+          "rivalsWatched",
+          "watchesEnabled",
+          "sourceKinds",
+          "subLine"
+        ],
+        "properties": {
+          "rivalsWatched": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "watchesEnabled": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sourceKinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompetitorSourceKind"
+            }
+          },
+          "subLine": {
+            "type": "string",
+            "description": "`4 rivals watched · release notes, changelogs, filings`."
+          }
+        }
+      },
+      "CompetitorList": {
+        "type": "object",
+        "title": "CompetitorList",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "summary"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Competitor"
+            }
+          },
+          "summary": {
+            "$ref": "#/components/schemas/CompetitorSummary"
+          }
+        }
+      },
+      "CompetitorCreateRequest": {
+        "type": "object",
+        "title": "CompetitorCreateRequest",
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "site": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "An absolute http(s) URL."
+          },
+          "aliases": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          },
+          "notes": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        }
+      },
+      "CompetitorUpdateRequest": {
+        "type": "object",
+        "title": "CompetitorUpdateRequest",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "site": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2048
+          },
+          "aliases": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          },
+          "notes": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        }
+      },
+      "CompetitorWatchCreateRequest": {
+        "type": "object",
+        "title": "CompetitorWatchCreateRequest",
+        "additionalProperties": false,
+        "required": [
+          "sourceKind",
+          "url"
+        ],
+        "properties": {
+          "sourceKind": {
+            "$ref": "#/components/schemas/CompetitorSourceKind"
+          },
+          "url": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "An absolute http(s) URL."
+          },
+          "selector": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500,
+            "description": "A CSS selector — page kinds only."
+          },
+          "cadence": {
+            "$ref": "#/components/schemas/CompetitorCadence"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CompetitorWatchUpdateRequest": {
+        "type": "object",
+        "title": "CompetitorWatchUpdateRequest",
+        "additionalProperties": false,
+        "properties": {
+          "cadence": {
+            "$ref": "#/components/schemas/CompetitorCadence"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "renderRequired": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "description": "`false` asks for a page marked JS-rendered to be tried again."
+          }
+        }
+      },
+      "CompetitorChange": {
+        "type": "object",
+        "title": "CompetitorChange",
+        "description": "One archived change — the snapshot that carries the diff, which a `competitor_diff` source\ncites.",
+        "additionalProperties": false,
+        "required": [
+          "snapshotId",
+          "previousSnapshotId",
+          "watchId",
+          "competitorId",
+          "competitorName",
+          "sourceKind",
+          "url",
+          "selector",
+          "contentHash",
+          "diff",
+          "takenAt"
+        ],
+        "properties": {
+          "snapshotId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "previousSnapshotId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "watchId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "competitorId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "competitorName": {
+            "type": "string"
+          },
+          "sourceKind": {
+            "$ref": "#/components/schemas/CompetitorSourceKind"
+          },
+          "url": {
+            "type": "string"
+          },
+          "selector": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "contentHash": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "diff": {
+            "type": "string",
+            "description": "`+ ` added and `- ` removed lines, scoped by the watch's selector. At most 64 KiB."
+          },
+          "takenAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CompetitorChangeFeed": {
+        "type": "object",
+        "title": "CompetitorChangeFeed",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "nextBefore"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompetitorChange"
+            }
+          },
+          "nextBefore": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Pass as `before` for the next page; null on the last."
           }
         }
       },

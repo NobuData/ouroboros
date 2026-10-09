@@ -156,6 +156,8 @@ describe("the development defaults", () => {
       researchFetchMaxRedirects: 5,
       researchHostIntervalMs: 1_000,
       researchFetchInternalAllowlist: [],
+      researchWatchTickMs: 60_000,
+      researchWatchBatch: 10,
       // AL.5's (#281) four, written out in the template at their defaults for the same reason.
       backlogStaleDays: DEFAULT_BACKLOG_STALE_DAYS,
       reestimationHourUtc: DEFAULT_REESTIMATION_HOUR_UTC,
@@ -1322,6 +1324,33 @@ describe("the deployment's data region (BQ.4, #483, decision S6)", () => {
   it.each(["EU West", "-eu", "eu;rm", "a".repeat(65)])("rejects %s", (value) => {
     expect(failureFor(testEnvironment({ OURO_DATA_REGION: value }))).toContain(
       "OURO_DATA_REGION: expected a region label without spaces",
+    );
+  });
+});
+
+describe("the competitor tracker's scheduler", () => {
+  it("turns off with 0 and takes a tick of ten seconds to an hour", () => {
+    expect(
+      loadConfiguration(testEnvironment({ OURO_RESEARCH_WATCH_TICK_MS: "0" })).researchWatchTickMs,
+    ).toBe(0);
+    expect(
+      loadConfiguration(testEnvironment({ OURO_RESEARCH_WATCH_TICK_MS: "10000" }))
+        .researchWatchTickMs,
+    ).toBe(10_000);
+    expect(failureFor(testEnvironment({ OURO_RESEARCH_WATCH_TICK_MS: "500" }))).toContain(
+      "OURO_RESEARCH_WATCH_TICK_MS",
+    );
+    expect(failureFor(testEnvironment({ OURO_RESEARCH_WATCH_TICK_MS: "3600001" }))).toContain(
+      "OURO_RESEARCH_WATCH_TICK_MS",
+    );
+  });
+
+  it("checks one to a hundred watches a tick", () => {
+    expect(
+      loadConfiguration(testEnvironment({ OURO_RESEARCH_WATCH_BATCH: "100" })).researchWatchBatch,
+    ).toBe(100);
+    expect(failureFor(testEnvironment({ OURO_RESEARCH_WATCH_BATCH: "0" }))).toContain(
+      "OURO_RESEARCH_WATCH_BATCH",
     );
   });
 });
