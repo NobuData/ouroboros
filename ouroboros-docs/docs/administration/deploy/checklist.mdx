@@ -5,11 +5,69 @@ sidebar_position: 6
 description: "Everything to check before users sign in."
 ---
 
-Everything to check before users sign in.
+Work through this once the stack is up and before you give people the address. Each item
+names the page that explains it. Most take one command.
 
-:::info[Being written]
+## Secrets
 
-This page is being written in
-[#1190](https://github.com/NobuData/ouroboros/issues/1190).
+- [ ] **No placeholder secret is deployed.** Every secret in `.env` was generated; none is a
+      value from the repository's `.env.example`. The REST service refuses a secret shorter
+      than 16 characters, but it cannot tell a published one from a real one.
+- [ ] <EnvVar name="OURO_VAULT_MASTER_KEY" /> **is backed up** somewhere other than the
+      database. Losing it loses every stored provider credential.
+- [ ] **The `.env` file is not in a repository**, and is readable only by the account that runs
+      the stack.
 
-:::
+## Network
+
+- [ ] **Only the proxy publishes a port.** `docker compose ps` shows published ports on
+      `proxy` and on nothing else.
+- [ ] **The REST service is unreachable from outside.** From a machine outside your network,
+      `curl https://app.example.com/internal/runs` is the app's 404, not a REST answer, and
+      the same path on `farm.example.com` is the gateway's 404 —
+      [The application host](./app-host.mdx), [The farm gateway](./farm-gateway.mdx).
+- [ ] **The engine and the database are unreachable from the host's public interfaces.**
+      Nothing answers on 8000 or 5432.
+- [ ] **TLS is real.** The browser trusts `app.example.com`'s certificate without a warning.
+
+## Sign-in
+
+- [ ] **A full GitHub sign-in works**, from **Continue with GitHub** to the dashboard —
+      [The application host](./app-host.mdx#checking-it).
+- [ ] **The session cookie is secure:** `__Secure-better-auth.session_token`, for
+      `app.example.com`.
+- [ ] **No development seed.** The only people in the workspace are those who have signed
+      in — no `ken@acme-robotics.dev`, no `acme-robotics` workspace you did not create. If
+      you see them, the seed was run; start again from an empty database volume.
+- [ ] **Email and password sign-in is absent.** The sign-in page offers GitHub (and SSO, if
+      configured) and nothing else. The password form exists only on a non-production build.
+
+## Health
+
+- [ ] **Every service is healthy:** `docker compose ps` reads `healthy` for `engine`, `rest`,
+      `ui` and `db`, and `exited (0)` for `migrate`.
+- [ ] **Readiness is green:** inside the network, `GET /health/ready` on the REST service
+      answers `200` with the database and the engine both `up` —
+      [Operations](../operations.mdx#health-checks).
+- [ ] **The engine secret matches.** Readiness cannot tell: queue one small issue and confirm
+      the run starts rather than failing at once —
+      [Operations](../operations.mdx#troubleshooting).
+
+## The build farm — only with build machines
+
+- [ ] **The installer answers:** `curl -sI https://farm.example.com/install.sh` is `200`, so
+      the releases volume holds a release.
+- [ ] **One runner shows online** on the Build Farm page after enrolling, which proves the
+      gateway passes the client certificate through —
+      [The farm gateway](./farm-gateway.mdx#checking-it).
+- [ ] **The gateway forwards only the farm paths.**
+      `curl -s https://farm.example.com/api/v1/runs` is the gateway's 404.
+
+## Before the first loop
+
+- [ ] **A provider and a key are set up**, under <UiPath path="Settings > Providers" /> —
+      [Providers](../providers.mdx).
+- [ ] **Dry-run is on** for the workspace, so the first loops open draft pull requests and
+      merge nothing — [Policies](../policies.mdx).
+- [ ] **Backups are scheduled** for the database and the artifact store —
+      [Operations](../operations.mdx#backups).

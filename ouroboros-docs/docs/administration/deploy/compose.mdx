@@ -5,11 +5,229 @@ sidebar_position: 3
 description: "Bringing the whole stack up with Docker Compose."
 ---
 
-Bringing the whole stack up with Docker Compose.
+This page brings Ouroboros up on one host with Docker Compose: the published images, a
+PostgreSQL container, and an nginx proxy that is the only thing with a published port. It
+ends with a sign-in page on `https://app.example.com`.
 
-:::info[Being written]
+The repository's own `docker-compose.yml` is for development: it builds from source, publishes
+the REST service and the app on `localhost`, loads the demonstration seed and uses placeholder
+secrets. Don't deploy it. The file below is adapted from it for production.
 
-This page is being written in
-[#1190](https://github.com/NobuData/ouroboros/issues/1190).
+## Before you start
 
-:::
+You need the items from [Deploying Ouroboros](./overview.mdx#what-you-need-before-you-start):
+a host with Docker Compose, your hostnames and TLS certificates, a GitHub OAuth app for
+`https://app.example.com`, and a login for `registry.apiome.dev`.
+
+## The files
+
+Make a directory for the deployment, holding:
+
+```text
+ouroboros/
+├── compose.yml        # below
+├── .env               # the secrets — never committed
+└── proxy/
+    ├── app.conf       # from "The application host"
+    ├── farm.conf      # from "The farm gateway" — only with a build farm
+    └── certs/         # app.example.com.pem/.key, farm.example.com.pem/.key
+```
+
+### `.env`
+
+Generate every value. `docker compose` reads this file and substitutes the `${…}` references
+in `compose.yml`; nothing else reads it.
+
+```bash
+OURO_DB_USER=ouroboros
+OURO_DB_PASSWORD=<openssl rand -base64 32>
+OURO_ENGINE_SHARED_SECRET=<openssl rand -base64 32>
+BETTER_AUTH_SECRET=<openssl rand -base64 32>
+OURO_VAULT_MASTER_KEY=<openssl rand -base64 32>
+OURO_GITHUB_CLIENT_ID=<from your GitHub OAuth app>
+OURO_GITHUB_CLIENT_SECRET=<from your GitHub OAuth app>
+```
+
+Keep <EnvVar name="OURO_VAULT_MASTER_KEY" /> backed up somewhere other than the database: it
+encrypts every stored provider credential, and without it they cannot be read.
+
+### `compose.yml`
+
+Replace `app.example.com` and `farm.example.com` with your hostnames. The four build-farm
+variables and the farm server block are only for a deployment with build machines; remove
+them otherwise.
+
+```yaml
+name: ouroboros
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${OURO_DB_USER}
+      POSTGRES_PASSWORD: ${OURO_DB_PASSWORD}
+      POSTGRES_DB: ouroboros
+    volumes:
+      - ouroboros-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${OURO_DB_USER} -d ouroboros"]
+      interval: 2s
+      retries: 30
+    restart: unless-stopped
+
+  # The migrations: a task that runs once the database is healthy, then exits. It runs
+  # again whenever its image changes, which is how an upgrade migrates before anything
+  # that reads the new schema starts.
+  migrate:
+    image: registry.apiome.dev/ouroboros-db:latest
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      OURO_DB_HOST: db
+      OURO_DB_USER: ${OURO_DB_USER}
+      OURO_DB_PASSWORD: ${OURO_DB_PASSWORD}
+    restart: "no"
+
+  engine:
+    image: registry.apiome.dev/ouroboros-engine:latest
+    environment:
+      OURO_ENGINE_SHARED_SECRET: ${OURO_ENGINE_SHARED_SECRET}
+      OURO_LOG_LEVEL: info
+    restart: unless-stopped
+
+  rest:
+    image: registry.apiome.dev/ouroboros-rest:latest
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      engine:
+        condition: service_healthy
+    environment:
+      OURO_DATABASE_URL: postgresql://${OURO_DB_USER}:${OURO_DB_PASSWORD}@db:5432/ouroboros
+      OURO_ENGINE_URL: http://engine:8000
+      OURO_ENGINE_SHARED_SECRET: ${OURO_ENGINE_SHARED_SECRET}
+      OURO_REST_URL: http://rest:4000
+      OURO_UI_URL: https://app.example.com
+      BETTER_AUTH_URL: https://app.example.com
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      OURO_CORS_ORIGINS: https://app.example.com
+      OURO_GITHUB_CLIENT_ID: ${OURO_GITHUB_CLIENT_ID}
+      OURO_GITHUB_CLIENT_SECRET: ${OURO_GITHUB_CLIENT_SECRET}
+      OURO_VAULT_MASTER_KEY: ${OURO_VAULT_MASTER_KEY}
+      # The build farm — remove these four if you run no build machines.
+      OURO_FARM_PUBLIC_URL: https://farm.example.com
+      OURO_FARM_CLIENT_CERT_HEADER: x-ouro-client-cert
+      OURO_FARM_RELEASES_DIR: /runner-releases
+      OURO_FARM_MIN_AGENT_VERSION: 0.5.0
+    volumes:
+      - ouroboros-runner-releases:/runner-releases:ro
+      - ouroboros-artifacts:/app/.artifacts
+    restart: unless-stopped
+    # No `ports:` — the REST service is internal.
+
+  ui:
+    image: registry.apiome.dev/ouroboros-ui:latest
+    depends_on:
+      rest:
+        condition: service_healthy
+    environment:
+      OURO_REST_URL: http://rest:4000
+    restart: unless-stopped
+
+  # The only service with a published port. app.conf and farm.conf are the two server
+  # blocks from the next two pages; nginx:alpine includes every file in conf.d/.
+  proxy:
+    image: nginx:alpine
+    depends_on: [ui, rest]
+    ports: ["443:443"]
+    volumes:
+      - ./proxy/app.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./proxy/farm.conf:/etc/nginx/conf.d/farm.conf:ro
+      - ./proxy/certs:/etc/ssl/ouroboros:ro
+    restart: unless-stopped
+
+volumes:
+  ouroboros-db-data:
+  ouroboros-runner-releases:
+  ouroboros-artifacts:
+```
+
+What the file does, service by service, is on [Container images](./containers.mdx). Three
+choices in it are worth knowing:
+
+- **Only `proxy` publishes a port.** Everything else is reachable by name on the compose
+  network and from nowhere else — which is what keeps the REST service's `/internal/*` and the
+  engine off the internet.
+- **`migrate` gates `rest`.** The REST service does not start until the migrations have
+  exited successfully, and the app does not start until the REST service is healthy. There is
+  no sleep anywhere: each step waits on the previous one's own health check.
+- **The runner releases volume is empty** until you put releases in it. The farm's installer
+  serves what it finds there, one directory per version — see
+  [Build farm administration](../build-farm.mdx).
+
+## Bringing it up
+
+```bash
+docker login registry.apiome.dev
+docker compose pull
+docker compose up -d --wait
+```
+
+`--wait` returns once every service reports healthy, or fails naming the one that did not.
+Then:
+
+```bash
+docker compose ps
+```
+
+Every service should read `healthy`, and `migrate` should read `exited (0)`. From the host,
+the proxy answers and nothing else does:
+
+```bash
+curl -sI https://app.example.com/login | head -1      # HTTP/1.1 200 OK
+curl -s  https://app.example.com/healthz              # nothing: the app has no such path (404)
+curl -s  http://localhost:4000/health/live            # connection refused: REST is not published
+```
+
+Open `https://app.example.com` in a browser. You land on the sign-in page, with **Continue
+with GitHub**. Sign in — someone with no workspace yet gets a personal one, named after them,
+and invites the others from there ([Sign-in and workspace](../sign-in-and-workspace.mdx#who-can-sign-in))
+— and work through the [Go-live checklist](./checklist.mdx).
+
+## Upgrading
+
+```bash
+docker compose pull
+docker compose up -d --wait
+```
+
+A changed `ouroboros-db` image makes compose run `migrate` again, before the new REST service
+starts. To run the migrations by hand, `docker compose run --rm migrate`; to see what is
+applied and pending, `docker compose run --rm migrate info`. Back up the database first —
+migrations only move forward. [Operations](../operations.mdx#upgrading) has the order and the
+rollback rule.
+
+## What can go wrong
+
+- **`docker compose pull` fails with `no basic auth credentials`** — log in to the registry
+  first, on this host.
+- **`--wait` fails on `migrate`** — read `docker compose logs migrate`. A wrong database user or
+  password, or a database that is not yet accepting connections, are the usual causes. Fix the
+  `.env` and run `docker compose up -d --wait` again; the migrations are safe to repeat.
+- **`--wait` fails on `rest`, and its log names a variable** — that variable is missing or
+  malformed in `compose.yml` or `.env`. [Container images](./containers.mdx#ouroboros-rest)
+  says what each takes.
+- **`rest` is healthy but `ui` never becomes healthy** — the app cannot reach
+  `http://rest:4000`. Check the `ui` service is on the same compose network and that
+  <EnvVar name="OURO_REST_URL" /> names the service.
+- **The browser shows the nginx welcome page** — `app.conf` is not mounted over
+  `default.conf`. Check the `proxy` volumes.
+- **`https://app.example.com` answers but sign-in goes to `localhost`** — the REST service's
+  <EnvVar name="BETTER_AUTH_URL" /> or <EnvVar name="OURO_UI_URL" /> still holds a development
+  value. Both must be `https://app.example.com`.
+- **You see demonstration data** — the development seed was run against this database. That
+  only happens when it is named on `migrate`'s command line; this file never does. Start again
+  from an empty volume.

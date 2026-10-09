@@ -5,11 +5,185 @@ sidebar_position: 2
 description: "Each image Ouroboros ships and the variables it needs."
 ---
 
-Each image Ouroboros ships and the variables it needs.
+Ouroboros ships as four images, published to `registry.apiome.dev`. This page lists each one:
+what it runs, the port and user it runs as, and the variables it needs. Every variable links
+to its entry in the [Configuration reference](../configuration/index.mdx), which is generated
+from the services' own configuration file and is the complete list.
 
-:::info[Being written]
+## The registry
 
-This page is being written in
-[#1190](https://github.com/NobuData/ouroboros/issues/1190).
+| Image | What it runs |
+| --- | --- |
+| `registry.apiome.dev/ouroboros-db` | The database migrations. Runs once per deploy, then exits. |
+| `registry.apiome.dev/ouroboros-engine` | The engine: estimation and the work the REST service hands it. |
+| `registry.apiome.dev/ouroboros-rest` | The REST service: the API, sign-in, scheduling and the farm gateway's paths. |
+| `registry.apiome.dev/ouroboros-ui` | The web app people use. |
+
+Each is tagged `latest`, and with the full commit hash it was built from. Pin a deployment to the
+commit tags, and pin each image to its own: the images are rebuilt only when their own part of
+Ouroboros changes, so they usually carry different hashes — see
+[Operations](../operations.mdx#the-images).
+
+The registry asks for a login before it serves anything:
+
+```bash
+docker login registry.apiome.dev
+```
+
+The credentials come from whoever provides your Ouroboros images. Log in on every host that
+pulls, and in the deploy pipeline that runs `docker compose pull`.
+
+Two more images come from Docker Hub and need no login: `postgres:17-alpine` for the database,
+and `ollama/ollama` if you run a local model.
+
+## Values you choose
+
+Values in `<angle brackets>` below are yours to pick. **Generate every secret**, for example with
+`openssl rand -base64 32`. The development values in the repository's `.env.example` are
+placeholders and must not be deployed.
+
+The two secrets that are checked for length, <EnvVar name="OURO_ENGINE_SHARED_SECRET" /> and
+<EnvVar name="BETTER_AUTH_SECRET" />, need at least 16 characters. The vault key is special:
+<EnvVar name="OURO_VAULT_MASTER_KEY" /> must be exactly 32 bytes, base64-encoded, which is what
+`openssl rand -base64 32` gives you.
+
+## `db` — PostgreSQL 17
+
+Image `postgres:17-alpine`, from Docker Hub. Keep its data on a volume at
+`/var/lib/postgresql/data`.
+
+| Variable | Value | Notes |
+| --- | --- | --- |
+| `POSTGRES_USER` | `<db user>` | Read on the volume's **first** start only. |
+| `POSTGRES_PASSWORD` | `<db password>` | Secret. |
+| `POSTGRES_DB` | `ouroboros` | |
+
+A PostgreSQL server you already run works just as well. Create the database and a user who owns
+it, and point the migrations and the REST service at it with the variables below.
+
+## `ouroboros-db` — the migrations
+
+This image is a **task, not a service**. It holds the migrations and the Flyway configuration
+that applies them. It starts, applies whatever is pending, and exits; its exit status is the
+answer, so it has no health check. Run it once per deploy, after the database is up and before
+the REST service starts.
+
+It runs as the unprivileged `nobody` user and connects by host and port:
+
+| Variable | Required | Value |
+| --- | --- | --- |
+| <EnvVar name="OURO_DB_HOST" /> | **yes** | `db` — the database's name on the network. There is no default, on purpose: `localhost` inside a container is the container itself. |
+| <EnvVar name="OURO_DB_USER" /> | **yes** | `<db user>` |
+| <EnvVar name="OURO_DB_PASSWORD" /> | **yes** | `<db password>`. It is passed to Flyway through the environment, never on a command line. |
+| <EnvVar name="OURO_DB_PORT" /> | no | `5432` |
+| <EnvVar name="OURO_DB_NAME" /> | no | `ouroboros` |
+| <EnvVar name="OURO_DB_SCHEMA" /> | no | `ouroboros` |
+
+Its default command is `migrate`. Give it `info` instead to list applied and pending
+migrations, or `validate` to check them, as in `docker run --rm … ouroboros-db:latest info`.
+
+:::caution[Never run the development seed in production]
+
+The image also carries the development seed — demonstration workspaces, people and passwords.
+It is inert unless you name it on the command line, and the compose page never does. Do not
+pass `-configFiles=…flyway.seed.toml` to a production database.
 
 :::
+
+## `ouroboros-engine`
+
+Listens on `8000` on all interfaces, as the `engine` user. Its container health check calls
+`GET /healthz`.
+
+| Variable | Required | Value | Notes |
+| --- | --- | --- | --- |
+| <EnvVar name="OURO_ENGINE_SHARED_SECRET" /> | **yes** | `<engine secret>` | Must equal the REST service's value. The engine refuses to start without it. |
+| <EnvVar name="OURO_LOG_LEVEL" /> | no | `info` | `debug`, `info`, `warning` or `error`. |
+| `PORT` | no | `8000` | Already set in the image. |
+
+Leave <EnvVar name="OURO_RUN_SIMULATOR_SECRET" /> **unset**. It exists for a development-only
+simulated-run driver that is not in the production image.
+
+## `ouroboros-rest`
+
+Listens on `4000`, as the `nestjs` user. The image sets `NODE_ENV=production`, which is what
+makes it listen on all interfaces rather than loopback. Its container health check calls
+`GET /health/live`; `GET /health/ready` also checks the database and the engine — see
+[Health checks](../operations.mdx#health-checks).
+
+### Required
+
+The REST service refuses to start without any of these, and names the one at fault.
+
+| Variable | Value | Notes |
+| --- | --- | --- |
+| <EnvVar name="OURO_DATABASE_URL" /> | `postgresql://<db user>:<db password>@db:5432/ouroboros` | Secret. |
+| <EnvVar name="OURO_ENGINE_URL" /> | `http://engine:8000` | The engine's internal address. |
+| <EnvVar name="OURO_ENGINE_SHARED_SECRET" /> | `<engine secret>` | The same value as the engine. |
+| <EnvVar name="OURO_UI_URL" /> | `https://app.example.com` | Where a browser lands after signing in or out. |
+| <EnvVar name="OURO_REST_URL" /> | `http://rest:4000` | The REST service's own address. It also stands in for <EnvVar name="OURO_FARM_PUBLIC_URL" /> when that is unset, so set that too if you run a farm. |
+| <EnvVar name="BETTER_AUTH_URL" /> | `https://app.example.com` | The address sign-in URLs are built from — the **app's public address** in this layout, not the REST service's. Being `https://` is also what gives the session cookie its `__Secure-` prefix. |
+| <EnvVar name="BETTER_AUTH_SECRET" /> | `<auth secret>` | Signs sessions. Rotating it signs everyone out. |
+| <EnvVar name="OURO_CORS_ORIGINS" /> | `https://app.example.com` | The browser origins the service trusts, comma-separated. No wildcard. |
+| <EnvVar name="OURO_GITHUB_CLIENT_ID" /> | `<from your GitHub OAuth app>` | Register the app with the callback `https://app.example.com/api/auth/callback/github`. |
+| <EnvVar name="OURO_GITHUB_CLIENT_SECRET" /> | `<from your GitHub OAuth app>` | Secret. |
+| <EnvVar name="OURO_VAULT_MASTER_KEY" /> | `<exactly 32 bytes, base64>` | Encrypts every stored provider credential. **Losing it loses every stored credential**, so back it up separately from the database. |
+
+### The build farm
+
+Only if you run `ouroboros-runner` on build machines. Leave all four unset otherwise.
+
+| Variable | Value | Notes |
+| --- | --- | --- |
+| <EnvVar name="OURO_FARM_PUBLIC_URL" /> | `https://farm.example.com` | The address written into the installer. `https://` only. |
+| <EnvVar name="OURO_FARM_CLIENT_CERT_HEADER" /> | `x-ouro-client-cert` | The header your farm gateway forwards the client certificate in. Set it **only** if that header can reach the REST service through your gateway and from nowhere else — see [The farm gateway](./farm-gateway.mdx). |
+| <EnvVar name="OURO_FARM_RELEASES_DIR" /> | `/runner-releases` | A volume holding the `ouroboros-runner` releases the installer serves, one directory per version. |
+| <EnvVar name="OURO_FARM_MIN_AGENT_VERSION" /> | for example `0.5.0` | The oldest agent version accepted. |
+
+Build jobs upload their artifacts — test reports, captures, logs — to the REST service:
+
+| Variable | Value | Notes |
+| --- | --- | --- |
+| <EnvVar name="OURO_ARTIFACT_STORE" /> | `local` or `s3` | `local` keeps them on a volume at <EnvVar name="OURO_ARTIFACT_DIR" />, which defaults to `/app/.artifacts` in the image — **mount a volume there**, or they are lost with the container. A volume is one disk, so with more than one REST replica use `s3`, with <EnvVar name="OURO_ARTIFACT_S3_ENDPOINT" />, <EnvVar name="OURO_ARTIFACT_S3_BUCKET" />, <EnvVar name="OURO_ARTIFACT_S3_ACCESS_KEY_ID" /> and <EnvVar name="OURO_ARTIFACT_S3_SECRET_ACCESS_KEY" />. The bucket must exist. |
+
+### Optional
+
+| Variable | Value | Notes |
+| --- | --- | --- |
+| <EnvVar name="OURO_LOCAL_PROVIDER_URLS" /> | `ollama=http://ollama:11434` | Only with a local model host. The address must be reachable from the engine. |
+| <EnvVar name="OURO_GITHUB_API_BASE_URL" /> | `https://ghe.example.com/api/v3` | GitHub Enterprise Server only. |
+| <EnvVar name="OURO_SMTP_URL" />, <EnvVar name="OURO_MAIL_FROM" /> | `smtps://user:password@smtp.example.com:465`, `no-reply@example.com` | Only for the weekly Insights digest and decision mail. Set both or neither — see [Notifications](../notifications-and-webhooks.mdx). |
+
+Everything else — poll intervals, sweeps, retention, budgets — has a working default. The
+[Configuration reference](../configuration/index.mdx) lists them all.
+
+## `ouroboros-ui`
+
+Listens on `3000`, as the `nextjs` user. Its container health check calls `GET /`. The image
+holds no service address: it reads the REST service's address at request time, so one image
+serves every environment.
+
+| Variable | Required | Value | Notes |
+| --- | --- | --- | --- |
+| <EnvVar name="OURO_REST_URL" /> | **yes** | `http://rest:4000` | The REST service's **internal** address. The app calls it from its own server and never sends it to a browser. |
+| `PORT` | no | `3000` | Already set in the image. |
+
+## `ollama` — optional
+
+Image `ollama/ollama`, from Docker Hub, with a volume at `/root/.ollama` for the models it
+pulls. It needs no Ouroboros configuration of its own; the REST service learns its address from
+<EnvVar name="OURO_LOCAL_PROVIDER_URLS" />. Do not publish its port.
+
+## What can go wrong
+
+- **`docker pull` answers `no basic auth credentials`** — the registry needs a login. Run
+  `docker login registry.apiome.dev` on that host first.
+- **The REST service exits at start naming a variable** — it is missing or malformed. The
+  tables above say what each one takes; the
+  [Configuration reference](../configuration/index.mdx) has the details.
+- **`ouroboros-db` exits `2` naming `OURO_DB_HOST`** — the variable is unset. It has no
+  default.
+- **The engine reports up, but every run fails at once** — the two copies of
+  <EnvVar name="OURO_ENGINE_SHARED_SECRET" /> differ. Set the same value on both services.
+- **The app says it cannot reach the REST service** — <EnvVar name="OURO_REST_URL" /> on
+  `ouroboros-ui` must be the internal address, `http://rest:4000`, not the app's public one.

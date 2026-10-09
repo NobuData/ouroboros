@@ -5,11 +5,135 @@ sidebar_position: 4
 description: "Exposing the farm gateway to build runners over mTLS."
 ---
 
-Exposing the farm gateway to build runners over mTLS.
+Build machines run `ouroboros-runner`, which connects out to your deployment over HTTPS and
+proves who it is with a **client certificate**. The REST service speaks plain HTTP, so a
+TLS-terminating proxy has to sit in front of it on a hostname of its own, `farm.example.com`.
+This page is that proxy. You need it only if you run build machines; otherwise skip it and
+leave the four `OURO_FARM_*` variables unset.
 
-:::info[Being written]
+How runners enroll and authenticate is on
+[Build farm administration](../build-farm.mdx#how-runners-authenticate); this page is the
+network in front of them.
 
-This page is being written in
-[#1190](https://github.com/NobuData/ouroboros/issues/1190).
+## What the gateway must do
 
-:::
+Three things, and the second is the one that silently breaks when it is missed:
+
+1. **Terminate TLS** with a certificate for `farm.example.com`. The runner speaks `https://`
+   and `wss://` only, and refuses a server it cannot verify — a private CA works if you give
+   the runner `--server-ca` when you install it.
+2. **Forward the client certificate in a header.** Terminating TLS consumes the runner's
+   certificate, so the proxy must pass it on to the REST service in the header named by
+   <EnvVar name="OURO_FARM_CLIENT_CERT_HEADER" />. If it doesn't, the TLS handshake still
+   succeeds, the REST service sees no certificate, and the runner is refused — it shows
+   **offline** on the Build Farm page and nothing says why.
+3. **Forward only the farm paths.** Everything else on this hostname answers 404. The product
+   UI and the rest of the API are not this hostname's business, and `/internal/*` must never
+   be reachable through it.
+
+The proxy must also **overwrite** that header on every request, whether or not a certificate
+was presented. A runner, or anyone else, must never be able to supply the header themselves.
+That is why the variable is set **only** when the header can reach the REST service through
+this gateway and from nowhere else.
+
+## The paths
+
+| Path | Used for | Needs |
+| --- | --- | --- |
+| `GET /install.sh` | The installer one-liner the Build Farm page mints | — |
+| `/runner/*` | The agent releases the installer downloads | — |
+| `/api/v1/farm/registrations*` | Enrollment, and certificate renewal | — |
+| `/api/v1/farm/agent` | The agent's WebSocket connection | The upgrade headers, and a read timeout well above the 10-second heartbeat |
+| `POST /api/v1/farm/jobs/<id>/artifacts` | A finished job's artifact upload | A body limit above the per-job cap (nginx's 1 MiB default refuses every real upload), unbuffered streaming, and a read timeout of minutes |
+
+## `proxy/farm.conf`
+
+An nginx server block, for the `proxy` service on the [compose page](./compose.mdx). It is the
+gateway the repository's own end-to-end suite runs, with a real certificate in place of the
+test one.
+
+```nginx
+server {
+  listen 443 ssl;
+  server_name farm.example.com;
+  ssl_certificate     /etc/ssl/ouroboros/farm.example.com.pem;
+  ssl_certificate_key /etc/ssl/ouroboros/farm.example.com.key;
+  # Ask for a client certificate and check only that the client holds its key. Which
+  # workspace's farm CA signed it is the REST service's judgement, not nginx's.
+  ssl_verify_client   optional_no_ca;
+
+  # Always overwrite the header, so a client can never supply its own. Empty when no
+  # certificate was presented, which nginx then does not send at all.
+  proxy_set_header X-Ouro-Client-Cert $ssl_client_escaped_cert;
+  proxy_set_header X-Forwarded-Proto  https;
+  proxy_set_header Host               $host;
+
+  location = /install.sh               { proxy_pass http://rest:4000; }
+  location /runner/                    { proxy_pass http://rest:4000; }
+  location /api/v1/farm/registrations  { proxy_pass http://rest:4000; }
+
+  location = /api/v1/farm/agent {
+    proxy_http_version 1.1;
+    proxy_set_header   Upgrade    $http_upgrade;
+    proxy_set_header   Connection "upgrade";
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Forwarded-Proto https;
+    proxy_set_header   X-Ouro-Client-Cert $ssl_client_escaped_cert;
+    proxy_read_timeout 120s;
+    proxy_pass http://rest:4000;
+  }
+
+  # Artifact uploads: the per-job cap (256 MiB by default) plus multipart framing.
+  location ~ ^/api/v1/farm/jobs/[0-9a-f-]+/artifacts$ {
+    client_max_body_size    300m;
+    proxy_request_buffering off;
+    proxy_read_timeout      900s;
+    proxy_pass http://rest:4000;
+  }
+
+  location / { return 404; }
+}
+```
+
+The header name here, `X-Ouro-Client-Cert`, must match the REST service's
+<EnvVar name="OURO_FARM_CLIENT_CERT_HEADER" /> (header names are case-insensitive, so
+`x-ouro-client-cert` in the compose file matches). If you raised
+<EnvVar name="OURO_ARTIFACT_MAX_JOB_BYTES" />, raise `client_max_body_size` with it.
+
+Another proxy — Caddy, Traefik, a cloud load balancer — works if it does the same three
+things. The variable it needs to forward is the client's PEM certificate, URL-encoded, the way
+nginx's `$ssl_client_escaped_cert` writes it.
+
+If your build machines sit on a known network, restrict `farm.example.com` to it with a
+firewall rule as well.
+
+## Checking it
+
+With the gateway up and <EnvVar name="OURO_FARM_PUBLIC_URL" /> set to its address:
+
+1. **The installer answers.** `curl -sI https://farm.example.com/install.sh | head -1` is
+   `200`. If it is `404` from the REST service, the releases volume is empty — see
+   [Build farm administration](../build-farm.mdx).
+2. **Everything else is refused.** `curl -s https://farm.example.com/api/v1/runs` and
+   `curl -s https://farm.example.com/internal/runs` both answer the gateway's `404`.
+3. **The certificate really arrives.** Enroll one runner and confirm it shows **online** on the
+   Build Farm page. A gateway that drops the header fails the certificate check, and the
+   runner's log says
+   `the gateway received no client certificate` — see
+   [`ouroboros-runner run`](../../cli/runner/run.mdx#when-the-deployment-refuses-the-runner).
+
+## What can go wrong
+
+- **A runner enrolls, then shows offline with `the gateway received no client certificate`** —
+  the proxy terminates TLS without forwarding the certificate. Add the `proxy_set_header`
+  line, and check the header's name matches <EnvVar name="OURO_FARM_CLIENT_CERT_HEADER" />.
+- **A runner cannot install:** `could not download …` — the machine cannot reach
+  `farm.example.com` over HTTPS, or does not trust its certificate. For a private CA, install
+  with `--server-ca` — see [`install.sh`](../../cli/install-sh.mdx).
+- **Artifact uploads fail with `413`** — nginx's body limit. Set `client_max_body_size` above
+  the per-job cap on the artifacts location.
+- **The agent connects and drops every minute or two** — the WebSocket location's
+  `proxy_read_timeout` is shorter than the heartbeat interval, or the upgrade headers are
+  missing.
+- **The Build Farm page refuses to mint an enroll command** — <EnvVar name="OURO_FARM_PUBLIC_URL" />
+  or <EnvVar name="OURO_FARM_RELEASES_DIR" /> is unset, or the releases directory is empty.

@@ -12,6 +12,13 @@ This document covers only what you have to decide to stand a deployment up.
 > is derived from the code and the compose files as they stand, not from a deployment that
 > has been run in production. Read [Things to verify](#things-to-verify-before-going-live)
 > before you rely on it.
+>
+> **Operators: start with the documentation site.** The *Deploying Ouroboros* section of
+> `ouroboros-docs` ([`docs/administration/deploy/`](ouroboros-docs/docs/administration/deploy/overview.mdx),
+> [#1190](https://github.com/NobuData/ouroboros/issues/1190)) is this file as a guided
+> deployment — the published images, a compose file that has been brought up as written, the
+> two proxies and a go-live checklist. This file stays the engineering source: the two agree on
+> every fact, and a change to the topology or a variable lands here first.
 
 ---
 
