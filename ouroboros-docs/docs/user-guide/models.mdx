@@ -5,11 +5,159 @@ sidebar_position: 9
 description: "Which model runs which stage, and why; browsing the model registry."
 ---
 
-Which model runs which stage, and why; browsing the model registry.
+**Models** decides which model does each kind of work. It has two halves:
 
-:::info[Being written]
+- **Routing** (`/models`) — each kind of work, such as planning or implementing, is sent to a
+  primary model with ordered fallbacks, and escalation rules can send harder work to a stronger
+  one.
+- **Model registry** (`/models/registry`) — every model your workspace may use gets a short
+  name, an **alias**, such as `coder-max`. Routes point at aliases, never at raw model ids, so
+  you can swap the provider behind an alias and nothing else has to change.
 
-This page is being written in
-[#1181](https://github.com/NobuData/ouroboros/issues/1181).
+The tabs at the top move between **Routing**, **Model registry** and **Providers & keys**.
+**Spend** is marked **soon**: it is not available yet. Adding providers and their keys is an
+administrator's job — see [Model providers & keys](../administration/providers.mdx).
 
-:::
+Everyone in the workspace can read both pages. Only owners and admins change routes, escalation
+rules and aliases; for anyone else the page says so and its controls are greyed out.
+
+## Routing
+
+<Screenshot id="user-guide.models.routing" />
+
+### Provider health
+
+The strip under the tabs shows each connected provider and whether it is answering: a green dot
+and its latency, or a red dot with what is wrong — such as **GitHub Copilot error · elevated
+latency**. A route whose primary provider is struggling falls back down its chain.
+
+### The routing matrix
+
+The **Routing matrix** has one row per **task kind** — `analyze`, `estimate`, `plan`,
+`implement`, and so on — and shows:
+
+| Column | What it shows |
+| --- | --- |
+| **Task** | The task kind, what it does, and the route it uses (such as `implement-primary`). |
+| **Primary model** | The alias tried first, and the model and provider it resolves to. |
+| **Fallback** | The alias tried next when the primary cannot answer. |
+| **Escalation** | Any escalation rule that applies to this task kind. |
+| **$/run avg** | What a run of this task kind has cost on average. |
+| **p50 latency** | The middle response time. |
+
+### Editing a route
+
+Select a row to open its **Route** card. It shows the chain — the primary and its fallbacks, in
+order — and **→ resolves:** to the model each alias reaches today. Owners and admins can:
+
+- **Reorder the chain** — drag a hop by ⠿, or use its move buttons. The first hop is the
+  primary.
+- **+ Add hop** — add another alias as a fallback. A route always keeps at least one hop.
+- **Allow fallback to local models** — whether the chain may end on a model running on your own
+  hardware.
+- **Fail run instead of degrading below fallback N** — the floor: past this hop, the run fails
+  rather than dropping to a weaker model.
+- **Max cost per run** — a cap in dollars and cents, such as `$2.50`. Leave it empty for no cap.
+
+Changes are held until you choose **Save routes** at the top of the page; **Discard** drops
+them. If the server refuses a route, nothing is saved and the refused row says why.
+
+**Open registry →** in the card opens the [model registry](#the-model-registry), where aliases
+are defined.
+
+### Escalation rules
+
+<Screenshot id="user-guide.models.routing.escalation" />
+
+**Escalation rules** change routing when a condition holds — for example
+**effort ≥ L → implement uses coder-max (max thinking)**. Each rule has a condition and an
+action:
+
+- **Conditions** — **Effort is at least** a size, **Issue carries the label** (a GitHub label,
+  matched exactly), or **The diff is** **docs-only**.
+- **Actions** — **Use an alias for a task kind** (optionally with a thinking level),
+  **Add a vote to a task kind** (a second model gives an opinion), or **Route everything
+  local**.
+
+Owners and admins choose **+ Add rule** to build one and **Save rule** to add it; the card then
+prints the rule as a sentence. Each rule has a switch to suspend it without losing its place,
+and **Delete** to remove it (**Delete this rule?** asks first). With no rules, routing simply
+follows the matrix.
+
+### Simulating routing
+
+**Simulate routing** at the top of the page — or **Simulate this route** in a route card — asks
+what would run for a piece of work, and why. Choose a **Task kind**, an **Effort**, any
+**Labels** (comma-separated, as GitHub spells them) and a **Diff** kind, then
+**Run simulation**. The answer shows the **Chain**, the **Rules that matched**, any **Second
+opinions**, the **Floor**, the **Max cost per run** and whether **Local fallback** is allowed —
+worked out exactly as a real run would be.
+
+## The model registry
+
+<Screenshot id="user-guide.models.registry" />
+
+**Allowed models** lists every alias in the workspace:
+
+| Column | What it shows |
+| --- | --- |
+| **Alias** | The name routes and workflows use, such as `coder-std`. |
+| **Provider** | The connection it resolves through, or **no provider** when it is not bound yet. |
+| **Model** | The model id as the provider spells it, such as `claude-sonnet-5`. |
+| **Params** | What the alias tunes, such as **max thinking** or **ctx 32k**. |
+| **Health** | Whether the model answers — **ok**, **degraded**, **model missing**, or **no key — connect a provider** with **Fix in Providers →**. |
+| **$ per 1M in·out** | The price per million input and output tokens, as the provider reports it. |
+| **Used by** | How many routes and rules point at it. |
+| **On** | Whether it can be used. An alias with no provider stays off. |
+
+Owners and admins switch an alias on or off with **On**. Switching off an alias that routes or rules still use asks first and lists them — **Switch off** confirms.
+
+Aliases are unique in a workspace. One that any route or workflow uses cannot be deleted or
+renamed until nothing points at it.
+
+### Inspecting an alias
+
+<Screenshot id="user-guide.models.registry.detail" />
+
+Select a row to see it in detail:
+
+- **Resolution chain** — how a route through this alias resolves, hop by hop:
+  `route.task("implement")` → route → alias → provider (with the last characters of its key) →
+  model, and whether it resolved. *Every hop is inspectable in the run console transcript.*
+- **Edit** — the alias's name, its **Provider** and **Model**, its **Parameters**, and its
+  **Restrictions** (such as **Review vote only** — it may give second opinions but not do work
+  itself — or **Batch ok**). **Used by** lists the routes and rules that reference it. Owners
+  and admins choose **Save alias**, **Duplicate** (a copy, switched off) or **Remove**.
+
+### Adding aliases
+
+Owners and admins can:
+
+- **+ New alias** — give it a name (lower-case letters, digits and single hyphens, such as
+  `coder-max`), then **Bind now** to a connected provider and one of its models, or **Bind
+  later** to reserve the name until a key arrives. **Create alias** adds it.
+- **Import from provider** — choose a connected provider, tick the models it reports (with their
+  prices and capabilities), adjust the suggested names, **Review**, then **Create aliases**.
+  Models that already have an alias are skipped.
+
+With no provider connected, both point you to **Providers & keys** first.
+
+## What can go wrong
+
+- **"Only an owner or an admin can change routes."** Routes, rules and aliases are changed by
+  owners and admins.
+- **"Nothing was saved: the server refused some of these routes."** Each refused row in the
+  matrix says why; fix it and save again.
+- **"A route needs at least one hop"** — swap the last hop for another alias instead of removing
+  it.
+- **"A cap of $0.00 is a route that can never run."** Leave **Max cost per run** empty for no
+  cap. Amounts are whole cents, such as `$2.50`.
+- **"Name the GitHub label the rule fires on."** A label condition needs a label.
+- **"This workspace already has an alias by that name. Aliases are unique per workspace."**
+  Choose another name.
+- **"Renaming is blocked while anything references this alias"** — repoint the routes and
+  workflows that use it first.
+- **An alias shows no key — connect a provider.** Its provider has no key; choose
+  **Fix in Providers →** or ask an administrator.
+- **"Routing could not be read."** or **"The registry could not be read."** The banner gives the
+  reason and a retry.

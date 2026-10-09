@@ -940,6 +940,59 @@
       "capturedAt": "2026-10-09T01:23:03.050Z",
       "uiVersion": "0.144.1",
       "seedRef": "2631a297583496a87a0ddace271b0fb29777909f"
+    },
+    {
+      "id": "user-guide.models.routing",
+      "route": "/models",
+      "workspace": "acme-robotics",
+      "ready": "table",
+      "clip": "page",
+      "caption": "Model routing: each task kind's route, the provider health strip, and the escalation rules.",
+      "alt": "The Models routing page, headed Route every kind of work to the model that earns it., with Simulate routing and Save routes, and the Routing, Model registry, Providers & keys and Spend (soon) tabs; the provider health strip with Anthropic Claude, Cursor, GitHub Copilot in error with elevated latency, Ollama · workstation and OpenAI-compatible · local vLLM; the Routing matrix of 10 task kinds — analyze, estimate, plan and implement in view — each with its primary and fallback alias and the model behind it; and beside it the empty Route card and Escalation rules, 3 active.",
+      "capturedAt": "2026-10-09T01:28:46.437Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "5ad618f6e116449565b5c52cf181a9f18d4fa0b1"
+    },
+    {
+      "id": "user-guide.models.routing.escalation",
+      "route": "/models",
+      "workspace": "acme-robotics",
+      "ready": "section:has(h2:has-text('Escalation rules'))",
+      "clip": "section:has(h2:has-text('Escalation rules'))",
+      "caption": "Escalation rules: when a task kind is sent to a stronger model, given a second opinion, or kept local.",
+      "alt": "Escalation rules, 3 active: effort ≥ L → implement uses coder-max (max thinking); security label → review adds second-opinion vote; docs-only diff → everything routes local; each switched on with a Delete button, and + Add rule.",
+      "capturedAt": "2026-10-09T01:28:46.437Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "5ad618f6e116449565b5c52cf181a9f18d4fa0b1"
+    },
+    {
+      "id": "user-guide.models.registry",
+      "route": "/models/registry",
+      "workspace": "acme-robotics",
+      "ready": "table",
+      "clip": "page",
+      "caption": "The model registry: every alias, the provider and model it resolves to, its price, and whether it is on.",
+      "alt": "The Model registry, headed Every model gets a name. Every route points at the name., with Import from provider and + New alias: Allowed models, 9 aliases, with Manage providers — coder-fallback on GitHub Copilot gpt-5-codex, degraded; coder-max and coder-std on Anthropic Claude; gpt5-experiments with no provider and no key, with Fix in Providers; local-docs on Ollama and local-free on local vLLM; researcher-long-ctx with model missing; second-opinion on Cursor composer-2, review vote only; and sizer on claude-haiku-4-5 — each with its params and health.",
+      "capturedAt": "2026-10-09T01:28:46.437Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "5ad618f6e116449565b5c52cf181a9f18d4fa0b1"
+    },
+    {
+      "id": "user-guide.models.registry.detail",
+      "route": "/models/registry",
+      "workspace": "acme-robotics",
+      "actions": [
+        {
+          "click": "table tbody tr:has-text('coder-max')"
+        }
+      ],
+      "ready": ".registry-chain__hop",
+      "clip": "section:has(.registry-chain__hop)",
+      "caption": "An alias selected: the resolution chain a route through it follows, hop by hop.",
+      "alt": "The Resolution chain for coder-max, from run #482: route.task(\"implement\") → route implement-primary → alias coder-max → provider Anthropic (key …Xq4A) → model claude-fable-5, resolved in 42ms; and Every hop is inspectable in the run console transcript.",
+      "capturedAt": "2026-10-09T01:29:46.972Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "5ad618f6e116449565b5c52cf181a9f18d4fa0b1"
     }
   ]
 }
