@@ -29,6 +29,10 @@ export default defineConfig({
     deviceScaleFactor: 2,
     locale: "en-US",
     timezoneId: "UTC",
+    // A capture that presses a copy button — the build farm's Copy command — must land as a
+    // person sees it. Without the grant Chromium refuses the write, and the page shows its
+    // blocked-copy refusal instead (and, for an enroll command, revokes the token it minted).
+    permissions: ["clipboard-read", "clipboard-write"],
   },
   projects: THEMES.map((theme) => ({ name: theme, use: { colorScheme: theme } })),
 });

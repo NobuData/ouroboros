@@ -1221,6 +1221,67 @@
       "capturedAt": "2026-10-09T03:00:17.303Z",
       "uiVersion": "0.144.1",
       "seedRef": "1ee435039da79c08e6262beac270c640ae935a99"
+    },
+    {
+      "id": "administration.build-farm",
+      "route": "/build-farm",
+      "workspace": "acme-robotics",
+      "ready": "text=forge-02",
+      "clip": "page",
+      "caption": "The build farm: the fleet's figures, the live build, the runners table, the pools and the enroll card.",
+      "alt": "The Build Farm page for Acme Robotics, headed 5 runners. 2 pools. 78% cache hits., with Submit build, Build Analyzer, Pool settings and + Enroll runner. Four figures read Runners online 4/5 with forge-03 offline · 2h, Builds today 25, Avg build time 4m 00s and Cache hit rate 78%. The Runners table lists forge-01 building #479 zephyr build, forge-02 idle, forge-03 offline last seen 2h ago, anvil-mac idle with a shield mark, and bigiron draining #472 HIL test rig · finishing, with their pools and CPU. Beside it the Enroll a runner card shows the pool picker set to pool-a, the enroll command with a masked token, Copy command and Manage tokens, and the Pools card begins below.",
+      "capturedAt": "2026-10-09T03:05:51.567Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "7203ed53486e6e861a848b47897eb8cab75dd082"
+    },
+    {
+      "id": "administration.build-farm.runner-detail",
+      "route": "/build-farm",
+      "workspace": "acme-robotics",
+      "ready": "role=dialog >> text=Security",
+      "clip": ".shell-overlay__panel",
+      "actions": [
+        {
+          "click": "role=button[name='Runner actions for anvil-mac']"
+        },
+        {
+          "click": "role=menuitem[name='View details']"
+        }
+      ],
+      "caption": "A runner's details: the machine, how it authenticates, and its last telemetry.",
+      "alt": "The details of runner anvil-mac. Machine: pool-b, idle, darwin/arm64, agent version 1.0.0, enrolled Sep 19, 2026, last seen 0s ago. Security: Bearer-token fallback — this runner connected without a client certificate, which is less secure than mTLS; certificate None — a runner on the bearer-token fallback holds no certificate. Telemetry snapshot: CPU 6%, RAM 5.0/64 GB, queues 0 and uptime 12d. A Close button.",
+      "capturedAt": "2026-10-09T03:06:08.470Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "7203ed53486e6e861a848b47897eb8cab75dd082"
+    },
+    {
+      "id": "administration.farm-tokens",
+      "route": "/settings/farm-tokens",
+      "workspace": "acme-robotics",
+      "ready": "text=Enrollment tokens",
+      "clip": "page",
+      "caption": "Farm tokens: every enrollment token, its pool, window, uses and who minted it.",
+      "alt": "The Enrollment tokens settings page, headed Every token minted to enrol a runner — which pool it admits into, how long it stays good, how many machines it has let in, and who minted it. Values are never shown again., with Open Build Farm and the Farm tokens tab selected. Two tokens are listed: orb_enroll_••••0002 for pool-b, revoked, minted by Maya Chen; and orb_enroll_••••0001 for pool-a, expires in 6d, 2 of 5 uses left, minted by Ken Suenobu, with Revoke. A note says revoking stops a token enrolling anything further, and machines it already enrolled keep their certificates.",
+      "capturedAt": "2026-10-09T03:06:10.845Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "7203ed53486e6e861a848b47897eb8cab75dd082"
+    },
+    {
+      "id": "administration.farm-tokens.mint",
+      "route": "/build-farm",
+      "workspace": "acme-robotics",
+      "ready": "text=Copied — treat this as a secret.",
+      "clip": "section:has(#enroll-runner-copy)",
+      "actions": [
+        {
+          "click": "#enroll-runner-copy"
+        }
+      ],
+      "caption": "Minting a token: Copy command puts the whole enroll command, with a fresh single-use token, on your clipboard.",
+      "alt": "The Enroll a runner card after Copy command: Run this on any machine that can reach ouroboros.acme.dev:443, pool-a chosen, the command curl -fsSL 'https://ouroboros.acme.dev/install.sh?version=0.5.0' | sh -s -- with --tenant 'acme-robotics', --pool 'pool-a' and a masked --token, the line Token orb_enroll_••••0909: expires in 24h · 1 of 1 use left, and the notice Copied — treat this as a secret.",
+      "capturedAt": "2026-10-09T03:07:16.109Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "7203ed53486e6e861a848b47897eb8cab75dd082"
     }
   ]
 }

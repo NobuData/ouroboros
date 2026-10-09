@@ -36,4 +36,8 @@ describe("screenshots/playwright.config.ts", () => {
   it("pins the locale and time zone, so dates render the same on every machine", () => {
     expect(config.use).toMatchObject({ locale: "en-US", timezoneId: "UTC" });
   });
+
+  it("grants the clipboard, so a copy button captures as a person sees it", () => {
+    expect(config.use?.permissions).toEqual(["clipboard-read", "clipboard-write"]);
+  });
 });

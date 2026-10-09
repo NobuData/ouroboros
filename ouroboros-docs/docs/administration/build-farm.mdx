@@ -5,11 +5,228 @@ sidebar_position: 9
 description: "Pools, enrollment tokens, enrolling runners and keeping them healthy."
 ---
 
-Pools, enrollment tokens, enrolling runners and keeping them healthy.
+Ouroboros builds and tests code on **your own machines**. Each machine runs the
+`ouroboros-runner` agent. The agent makes an outbound connection to your deployment and takes the
+builds Ouroboros sends it, so your machines need no open inbound ports. Together the runners are
+the **build farm**.
 
-:::info[Being written]
+This page covers setting the farm up and keeping it healthy: pools, enrollment tokens,
+enrolling a machine, reading a runner's health, and draining or removing runners. It also covers
+how runners authenticate. The agent's commands are described in
+[`ouroboros-runner enroll`](../cli/runner/enroll.mdx) and [`run`](../cli/runner/run.mdx).
 
-This page is being written in
-[#1196](https://github.com/NobuData/ouroboros/issues/1196).
+Everyone in the workspace can read <UiPath path="Build Farm" /> (`/build-farm`). Only an
+**Owner** or a **Maintainer** can create pools, enroll, drain or remove runners, or mint and
+revoke enrollment tokens. Anyone else sees the switches in their real positions, switched off,
+and a runner's menu holds **View details** alone.
+
+<Screenshot id="administration.build-farm" />
+
+The page shows:
+
+- **Runners online**, **Builds today**, **Avg build time** and **Cache hit rate** — the fleet in
+  four figures. Under **Runners online**, the runners that are offline and for how long.
+- **Runners** — the fleet table, described under [Runner health](#runner-health).
+- **Enroll a runner** — the command that adds a machine.
+- **Pools** — each pool, its switch, and **Configure →**.
+
+## Pools
+
+A runner always belongs to one pool, and the pool says how its builds run. Create a pool before
+you enroll the first runner. Choose **Pool settings**, or **Configure →** on the **Pools** card,
+to open **Configure pools**. Then choose **+ New pool**:
+
+| Field | What it means |
+| --- | --- |
+| **Name** | What `--pool` says on an enroll command and what a build selects. Lower-case letters, digits and dashes, up to 64. |
+| **Description** | One line on the card, such as *firmware builds*. Up to 200 characters. |
+| **Executor** | **container** — builds run in a pinned image; or **shell** — builds run on the machine itself. |
+| **Image** | For a container pool, the image every build runs in — registry, path and tag. |
+| **Env allow-list** | One variable name per line. A build's environment holds only these; the runner drops every other variable. |
+| **Concurrency** | How many builds one runner of this pool may run at once — per runner, not per pool. From 1 to 64. |
+
+Choose **Create pool**. Changing a pool's executor affects only builds submitted afterwards.
+
+- **The switch** on a pool's row turns it off: it takes no new builds and keeps its runners and
+  history.
+- **Delete pool** works only on an empty pool. A pool that runners or builds still name can only
+  be switched off.
+- **Auto-scale to cloud** is shown on each pool, switched off — *arrives with cloud runners
+  (v2)*. Builds stay on your machines.
+
+### A hosted runner pool
+
+This version of Ouroboros has no hosted runners: every runner is a machine you enroll.
+<EnvVar name="OURO_HOSTED_RUNNER_POOL" /> is reserved for one. Today it changes only what the
+**Smart Defaults** card on Get Started offers a new workspace. Leave it `false`.
+
+## Enrolling a runner
+
+1. On the **Enroll a runner** card, choose the **Pool**.
+2. Choose **Copy command**. Ouroboros mints a new enrollment token and puts the whole command,
+   with the token, on your clipboard: *Copied — treat this as a secret.*
+3. On the machine, paste and run it. It downloads the agent from your deployment, enrolls it
+   into the pool and connects.
+
+<Screenshot id="administration.farm-tokens.mint" />
+
+The command looks like this, with the token masked on the card:
+
+```bash
+curl -fsSL 'https://ouroboros.example.com/install.sh?version=0.5.0' | sh -s -- \
+  --tenant 'acme-robotics' \
+  --pool 'pool-a' \
+  --token 'orb_enroll_…'
+```
+
+The new runner's row appears in the table within a few seconds of the agent connecting.
+
+The card needs two settings from your deployment administrator before it can mint anything:
+
+- <EnvVar name="OURO_FARM_PUBLIC_URL" /> — the `https://` address runner machines reach your
+  deployment at.
+- <EnvVar name="OURO_FARM_RELEASES_DIR" /> — where the runner releases the installer serves are
+  kept.
+
+Without them, minting is refused: *This deployment does not know the https address runner
+machines reach it at, or serves no runner release, so a command would install nothing. Nothing
+was minted.*
+
+:::caution[The enroll command is a secret]
+
+Until it expires or is used up, the token in the command can add a machine to your farm. Paste
+it only on the machine you are enrolling. Don't put it in a ticket, a chat or a script that is
+checked in. If it may have leaked, revoke it under **Farm tokens**.
 
 :::
+
+If your browser blocks the copy, nothing is left live: *Your browser blocked the copy, so the
+token that was just minted has been revoked.* Allow clipboard access for the page and copy again.
+
+## Enrollment tokens
+
+Each **Copy command** mints a token that enrolls **one** machine and expires after **24
+hours**. Every token is listed on <UiPath path="Settings > Farm tokens" />
+(`/settings/farm-tokens`), which only Owners and Maintainers can read.
+
+<Screenshot id="administration.farm-tokens" />
+
+Each row shows the token's last characters, its pool, how long it stays good — or **revoked** —
+how many of its uses are left, and who minted it. The token's value is never shown again.
+
+**Revoke** stops a token enrolling anything further, at once. *Machines it already enrolled keep
+their certificates — retire those from the runners table.*
+
+## Runner health
+
+The **Runners** table lists the fleet:
+
+| Column | What it shows |
+| --- | --- |
+| **Runner** | The machine's name and architecture, such as `linux/arm64`. |
+| **Pool** | The pool it belongs to. |
+| **Status** | **building**, **idle**, **draining**, **offline** or **removed**. An offline row says when the machine was last seen: *last seen 2h ago*. |
+| **Current job** | The build it is running, if any. |
+| **CPU**, **RAM** | Its last reported load. |
+| **Queue** | Builds waiting for it, such as `q:2`. |
+| **Uptime** | How long the agent has run. |
+
+A runner sends a heartbeat every 10 seconds. If none arrives for about half a minute, its status
+turns to **offline**. It turns back as soon as the agent reconnects. When no runner is online,
+the page warns that *Nothing can build until a runner reconnects: submitted builds wait in the
+queue.*
+
+To see everything about one runner, open its **⋯** menu and choose **View details**:
+
+<Screenshot id="administration.build-farm.runner-detail" />
+
+- **Machine** — pool, status, architecture, host name, agent version, when it was enrolled and
+  its last heartbeat.
+- **Security** — how it authenticates (see [How runners authenticate](#how-runners-authenticate))
+  and its certificate's serial and validity.
+- **Telemetry snapshot** — its last CPU, RAM, queues and uptime. An offline runner shows no
+  snapshot rather than an old one.
+
+## Draining and removing a runner
+
+Open the runner's **⋯** menu:
+
+- **Drain** — the runner finishes the build it is running and accepts nothing new until you
+  return it to service. The build is not interrupted, and there is no deadline. The row reads
+  **drain requested** until the runner's next heartbeat, then **draining**. Drain a machine
+  before maintenance.
+- **Undrain** — the runner accepts new builds again.
+- **Remove** — takes the runner out of the fleet for good. It is offered only for a runner that
+  is **offline** or **draining**: removing a connected machine would orphan what it is
+  building. When you confirm:
+  - it leaves the table and every count on the page;
+  - its certificate is revoked, so the machine cannot reconnect — bringing it back means
+    enrolling it again;
+  - the builds it ran keep their history and their logs;
+  - the removal is recorded in the audit trail, with your name.
+
+To retire a machine: **Drain** it, wait for its build to finish, stop the agent, then **Remove**
+it.
+
+## How runners authenticate
+
+When a runner enrolls, your workspace's own certificate authority issues it a **client
+certificate**, valid for 90 days; the runner renews it on its own once 30 days remain. Every
+connection after that is **mTLS**: the runner proves
+who it is with the certificate, and it checks the deployment's certificate in return. This is
+the normal mode, and the runner's details read **mTLS — client certificate**.
+
+Runners connect to the **farm gateway**, the address in `OURO_FARM_PUBLIC_URL`. For mTLS to
+work, client certificates must reach the REST service:
+
+- **TLS ends at the REST service** — nothing to configure.
+- **A reverse proxy in front ends TLS** — the proxy must pass each client certificate on in a
+  header, and <EnvVar name="OURO_FARM_CLIENT_CERT_HEADER" /> names it. Set it only when nothing
+  but your proxy can reach the REST service. See [The farm gateway](./deploy/farm-gateway.mdx).
+
+### The bearer-token fallback
+
+Some corporate proxies strip client certificates and cannot be changed. For those, a runner can
+enroll with `--bearer-fallback`: instead of a certificate, it authenticates with a long random
+secret sent in each request.
+
+This is less secure than mTLS: anyone who copies the secret from the machine can impersonate the
+runner. Ouroboros therefore shows it plainly: the runner's row
+carries a shield mark, and its details read **Bearer-token fallback** with *this runner connected
+without a client certificate, which is less secure than mTLS.*
+
+The fallback is **off** in every workspace, and a runner that asks for it is refused. There is no
+screen to turn it on. If you must, the deployment administrator switches it on for one workspace
+in the database:
+
+```sql
+insert into ouroboros.workspace_settings (organization_id, runner_bearer_fallback)
+select id, true from ouroboros.organization where slug = 'acme-robotics'
+on conflict (organization_id) do update set runner_bearer_fallback = true;
+```
+
+Prefer fixing the proxy so client certificates reach the REST service. The setting covers every
+fallback runner in the workspace, not just enrollment: switching it off again (`set
+runner_bearer_fallback = false`) cuts every fallback runner off at its next connection. Move
+those machines to a certificate — **Remove** them and enroll them again without
+`--bearer-fallback` — before you switch it off.
+
+## What can go wrong
+
+- **Copy command is switched off with *Create a pool first*.** A token always names a pool.
+  Create one under **Pool settings**.
+- **Minting is refused because the deployment does not know its https address.** Set
+  `OURO_FARM_PUBLIC_URL` and `OURO_FARM_RELEASES_DIR` on the REST service.
+- **The install fails on the machine.** The machine cannot reach `OURO_FARM_PUBLIC_URL`, or the
+  token expired or was used up. Copy a fresh command.
+- **A runner is refused because it asked for the bearer-token fallback.** The workspace does not
+  permit it. Enroll with a client certificate, or see
+  [The bearer-token fallback](#the-bearer-token-fallback).
+- **A runner is refused as too old.** Its agent is older than
+  <EnvVar name="OURO_FARM_MIN_AGENT_VERSION" />. Install a newer agent on the machine.
+- **A runner shows offline.** The agent stopped or lost its connection. Check the agent on the
+  machine; it reconnects on its own once it can reach the deployment.
+- **Remove is not offered.** The runner is connected and not draining. **Drain** it first.
+- **A pool cannot be deleted.** Runners or builds still name it. Switch it off instead.
+- **Builds wait in the queue.** No runner in the build's pool is online, or every one is busy or
+  draining.
