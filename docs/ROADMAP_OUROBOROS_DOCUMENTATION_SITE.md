@@ -1309,7 +1309,7 @@ All DC issues are **[STD]**; screenshots here are terminal captures only where t
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |---|---|---|---|---|---|---|---|---|---|
 | DC.1 | #1201 ✅ | 🟢 Done | ouroboros-docs: [DC.1] CLI overview & conventions | Which tools exist, where they run, exit codes, env-var fallbacks | mvp, docs-site, documentation | Y | Y | S | ouroboros-docs |
-| DC.2 | #1202 | 🟡 Open | ouroboros-docs: [DC.2] Runner installer (install.sh) reference | Flags, service install, verification, uninstall/purge | mvp, docs-site, documentation, build-farm | Y | Y | S | ouroboros-docs |
+| DC.2 | #1202 ✅ | 🟢 Done | ouroboros-docs: [DC.2] Runner installer (install.sh) reference | Flags, service install, verification, uninstall/purge | mvp, docs-site, documentation, build-farm | Y | Y | S | ouroboros-docs |
 | DC.3 | #1203 | 🟡 Open | ouroboros-docs: [DC.3] ouroboros-runner command reference | enroll/run/version/hello/heartbeat/help, env, state dir, drift check | mvp, docs-site, documentation, build-farm, ci | Y | Y | M | ouroboros-docs |
 | DC.4 | #1204 | 🟡 Open | ouroboros-docs: [DC.4] Stack & operator commands | yarn setup/dev/dev:stop/dev:reset/verify, setup.sh flags | mvp, docs-site, documentation | Y | Y | S | ouroboros-docs |
 | DC.5 | #1205 | 🟡 Open | ouroboros-docs: [DC.5] Using the REST API from the shell | API tokens, curl recipes, error envelope, polling, OpenAPI | mvp, docs-site, documentation, rest | Y | Y | M | ouroboros-docs |
@@ -1328,6 +1328,10 @@ and a note that `/ouro` chat commands arrive with Chat Ops (D12, DF.5).
 **Acceptance Criteria.** [STD].
 
 ### Issue DC.2 (#1202) — ouroboros-docs: [DC.2] Runner installer (install.sh) reference
+
+> **GitHub issue:** #1202 ✅ · **Status:** 🟢 Done · **Parent epic:** #1160
+>
+> **Delivered (#1202):** `cli/install-sh.mdx` — synopsis (install and uninstall one-liners; the deployment fills `--server`, `?version=` pins the release, newest stable otherwise; `sudo` only for the writing steps), all 15 options with `--option=value`, `OURO_RUNNER_TOKEN` as the one environment setting, the eight install steps (platform detection incl. Rosetta, https-only download, `SHA256SUMS` verification with `sha256sum`/`shasum`/`openssl` and its refusals, the version self-check, no token spent when already enrolled, restart of a stopped agent on a failed upgrade), the sample summary, the systemd unit (restart 10 s, 5 starts in 300 s, 30 s stop) and launchd daemon (KeepAlive, no start limit, HOME/PATH, log file), upgrade recipe (options are re-applied each run; CA kept), uninstall/`--purge` (state directory asked on the terminal; certificate stays valid until the runner is removed on the Build Farm page), exit statuses, and refusals. **Drift check:** `tests/install-sh.test.ts` fails if the Options table and `parse_arguments` disagree (DC.3 has not landed, so the check lives here), and holds the paths, unit/plist timings, platforms, quoted refusals and exits to `install.sh`. No screenshots listed. No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.37.
 
 **Problem Statement.** The one-liner from the farm-tokens page runs `install.sh`; operators
 need every flag and what it changes on the machine.
