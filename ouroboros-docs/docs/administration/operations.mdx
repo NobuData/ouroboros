@@ -2,14 +2,166 @@
 title: "Operations — upgrades, backups, health & troubleshooting"
 sidebar_label: "Operations"
 sidebar_position: 13
-description: "Upgrading, backing up, checking health and fixing common failures."
+description: "Upgrading, backing up, checking health, reading logs and fixing common failures."
 ---
 
-Upgrading, backing up, checking health and fixing common failures.
+This page is for the deployment administrator, once Ouroboros is running. It covers:
 
-:::info[Being written]
+- upgrading to a new version;
+- backing up and restoring;
+- checking each service's health and reading its logs;
+- fixing the failures you are most likely to meet.
 
-This page is being written in
-[#1200](https://github.com/NobuData/ouroboros/issues/1200).
+How the services fit together, and how to stand them up the first time, is in
+[Deploying Ouroboros](./deploy/overview.mdx).
+
+## The images
+
+Ouroboros ships as four container images:
+
+| Image | What it runs |
+| --- | --- |
+| `ouroboros-db` | The database migrations — run once per deploy, then exits. |
+| `ouroboros-rest` | The REST service: the API, sign-in, scheduling, the farm gateway. |
+| `ouroboros-engine` | The engine: estimation and the work REST hands it. Internal only. |
+| `ouroboros-ui` | The web app people use. |
+
+Each image is published with two tags:
+
+- **`latest`** — the newest build of that image. Use it to track the main line.
+- **The commit it was built from** — a full git commit hash, such as `:9c7f54cf…`. It never moves,
+  so use it to pin a deployment, to roll back, and to record exactly what you ran.
+
+Each image is rebuilt only when its own part of Ouroboros changes, so the four images usually
+carry **different** commit tags. When you pin, pin each image to its own tag.
+
+## Upgrading
+
+The database schema must be migrated **before** the services that read it start. Upgrade in this
+order:
+
+1. **Back up the database** — see [Backups](#backups). Migrations move forward only.
+2. **Pull the new images**, for example with `docker compose pull`.
+3. **Run the migrations.** Start `ouroboros-db` with the database's address (`OURO_DB_HOST`,
+   `OURO_DB_USER`, `OURO_DB_PASSWORD`, and `OURO_DB_PORT` and `OURO_DB_NAME` if they differ
+   from `5432` and `ouroboros`). It applies any new migrations and exits. Check that it exited
+   with status `0`.
+4. **Restart the engine, then REST, then the UI.** REST needs the migrated database and the
+   engine, and the UI talks only to REST.
+5. **Check health** — see [Health checks](#health-checks).
+
+Never run the migrations with the development seed in production. The image's default command
+runs the production configuration; the seed is a separate file you would have to ask for
+explicitly, and it creates demonstration workspaces, people and passwords.
+
+**Rolling back.** There is no "down" migration. To go back to an earlier version after its
+migrations have run, restore the database backup you took in step 1, then run the earlier images.
+Running an older `ouroboros-db` against a newer database changes nothing — it does not undo the
+newer migrations — so older services would meet a schema they were not built for.
+
+## Backups
+
+:::note
+
+What follows is guidance from how Ouroboros stores its data. A full production runbook — TLS,
+backups and upgrades on a single host — has not been written yet.
 
 :::
+
+A complete backup is three things, and each is needed to restore:
+
+| What | Where | Why it matters |
+| --- | --- | --- |
+| **The PostgreSQL database** `ouroboros` | Your database server | Every workspace's data, sealed credentials, audit trail and build logs. |
+| **<EnvVar name="OURO_VAULT_MASTER_KEY" />** | REST's environment | Unseals every stored credential. A database restored without it cannot open a single key, token or secret. |
+| **Artifact storage** | The directory or S3 bucket in <EnvVar name="OURO_ARTIFACT_STORE" /> | Files builds uploaded. Not in the database. |
+
+**Backing up the database.** Use PostgreSQL's own tools, for example a nightly `pg_dump` in
+custom format:
+
+```bash
+pg_dump --format=custom --file=ouroboros-$(date -u +%F).dump \
+  "postgresql://<db user>:<db password>@<db host>:5432/ouroboros"
+```
+
+Or use continuous archiving if you need point-in-time recovery. Store dumps away from the
+database host.
+
+**Keep the master key separately**, with your other production secrets — never in the same place
+as the database dumps. Anyone holding both can read every stored credential. Losing the key loses
+every stored credential, and there is no recovery.
+
+**Restoring.**
+
+1. Stop REST, the engine and the UI.
+2. Restore into an empty database, for example with
+   `pg_restore --dbname=<url> ouroboros-<date>.dump`.
+3. Run `ouroboros-db` from the same version as the backup, or a newer one, to bring the schema up
+   to date.
+4. Start the services with the **same** `OURO_VAULT_MASTER_KEY` the backup was taken with.
+
+A restored backup brings back everything it held — including any workspace that has since been
+deleted and purged. See [Deleting a workspace](./retention-audit-lifecycle.mdx#deleting-a-workspace)
+for what a purge does and does not reach.
+
+## Health checks
+
+Each image runs its own container health check. You can also call these addresses yourself:
+
+| Service | Address | Answers |
+| --- | --- | --- |
+| `ouroboros-rest` | `GET /health/live` | `200` while the process is running. |
+| `ouroboros-rest` | `GET /health/ready` | `200` when the database and the engine both answer; `503` when either does not, saying which. |
+| `ouroboros-engine` | `GET /healthz` | `200` with `{"status":"ok"}` while the process is running. |
+| `ouroboros-ui` | `GET /` | A redirect to the app (`307`), which is how its container check knows it is serving. |
+
+`ouroboros-db` has no health check: it runs the migrations and exits, and its exit status is the
+answer.
+
+The REST health addresses are at the root of the service, not under `/api/v1`, and need no sign-in.
+A failing readiness check names the dependency and the reason:
+
+```json
+{
+  "status": "error",
+  "info": { "database": { "status": "up" } },
+  "error": { "engine": { "status": "down", "message": "GET /healthz failed (ECONNREFUSED)" } }
+}
+```
+
+The dashboard's system card is drawn from the same readiness check, so anyone signed in sees
+when the engine or the database is down.
+
+**What readiness does not check.** It asks the engine only whether it is running. A mismatched
+engine secret still reports the engine **up** — see
+[Troubleshooting](#troubleshooting).
+
+## Logs
+
+Every service writes its log to standard output, so read it with your container runtime, for
+example `docker compose logs rest`.
+
+- **`ouroboros-rest`** writes one line per event. At start-up it prints its configuration with
+  every secret replaced by `[redacted]`. A start-up failure names the variable at fault.
+- **`ouroboros-engine`** writes one JSON object per line, at the level set by
+  <EnvVar name="OURO_LOG_LEVEL" /> (`info` by default).
+- **`ouroboros-ui`** writes the web server's log.
+- **`ouroboros-db`** writes Flyway's report of the migrations it applied, or why it refused.
+
+The services are written never to log a credential, a token or a key.
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `ouroboros-db` exits non-zero with *Validate failed* and a **checksum mismatch** | A migration already applied to this database differs from the one in the image — usually an image from a different build than the database has run, or an edited migration. | Run the `ouroboros-db` image matching what you deployed. Do not edit applied migrations, and do not "repair" the history to make the error go away. If you cannot tell which is right, restore your backup. |
+| `ouroboros-db` warns that the schema *has a version … that is newer than the latest available migration*, and applies nothing | The image is **older** than the database. It does not undo anything. | Run the `ouroboros-db` matching the services you deploy. To go back a version, restore a backup. |
+| `ouroboros-db` exits with *no database to migrate* | `OURO_DB_HOST` (and the user and password) are not set. | Set them, or pass `-url=`, `-user=` and `-password=`. |
+| REST exits at start-up naming a variable | A required variable is missing or malformed. | Fix it in REST's environment; look it up in the [Configuration reference](./configuration/index.mdx). |
+| Things that need the engine fail with *The engine is not available right now*, while `/health/ready` says the engine is **up**; REST's log says *OURO_ENGINE_SHARED_SECRET does not match the value ouroboros-engine holds*; the engine logs *rejected an internal request without a valid key* | REST and the engine have different values for <EnvVar name="OURO_ENGINE_SHARED_SECRET" />. | Set the same value on both and restart them. |
+| `/health/ready` answers `503` naming the engine | The engine is not running, or REST cannot reach <EnvVar name="OURO_ENGINE_URL" />. | Start the engine; check the address from REST's network. |
+| `/health/ready` answers `503` naming the database | REST cannot reach the database at <EnvVar name="OURO_DATABASE_URL" />. | Check the database is running and the address and password are right. |
+| After approving on GitHub, sign-in fails with *The redirect_uri is not associated with this application* | The OAuth app's callback does not match `BETTER_AUTH_URL`. | See [Sign-in & workspace settings](./sign-in-and-workspace.mdx#what-can-go-wrong). |
+| A runner's install or enrollment fails, or a runner shows **offline** | The machine cannot reach <EnvVar name="OURO_FARM_PUBLIC_URL" />, or a proxy in front of REST drops the runner's client certificate. | Check the address from the machine, and that the proxy passes the certificate — see [Build farm administration](./build-farm.mdx#how-runners-authenticate) and [The farm gateway](./deploy/farm-gateway.mdx). |
+| Every stored key stops working after a restart | `OURO_VAULT_MASTER_KEY` changed. | Restore the previous value. A changed key cannot open what the old one sealed. |
+| Everyone is signed out after a restart | `BETTER_AUTH_SECRET` changed. | Expected after a rotation; otherwise restore the previous value. |

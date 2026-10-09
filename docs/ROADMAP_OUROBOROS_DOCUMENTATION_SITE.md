@@ -1005,7 +1005,7 @@ since other pages link variables to it).
 | DB.9 | #1197 ✅ | 🟢 Done | ouroboros-docs: [DB.9] Policies & guardrails | Org policy, protected paths, spend guard, dry-run, decision TTLs, exceptions | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
 | DB.10 | #1198 ✅ | 🟢 Done | ouroboros-docs: [DB.10] Notifications, email & webhooks | SMTP, digests, channels, webhook endpoints, signing, retries | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
 | DB.11 | #1199 ✅ | 🟢 Done | ouroboros-docs: [DB.11] Data retention, audit & workspace lifecycle | Retention, audit trail, disconnect, purge, security model summary | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
-| DB.12 | #1200 | 🟡 Open | ouroboros-docs: [DB.12] Operations — upgrades, backups, health & troubleshooting | Migrations on upgrade, PG backups, health endpoints, common failures | mvp, docs-site, documentation, infra | Y | Y | M | ouroboros-docs |
+| DB.12 | #1200 ✅ | 🟢 Done | ouroboros-docs: [DB.12] Operations — upgrades, backups, health & troubleshooting | Migrations on upgrade, PG backups, health endpoints, common failures | mvp, docs-site, documentation, infra | Y | Y | M | ouroboros-docs |
 
 ### Issue DB.1 (#1189) — ouroboros-docs: [DB.1] Administration overview, roles & capabilities
 
@@ -1265,6 +1265,32 @@ events and where to read them, disconnect (pause + clear token + pause sources) 
 **Problem Statement.** Compliance and offboarding questions need precise answers.
 
 ### Issue DB.12 (#1200) — ouroboros-docs: [DB.12] Operations — upgrades, backups, health & troubleshooting
+
+> **GitHub issue:** #1200 ✅ · **Status:** 🟢 Done · **Parent epic:** #1159
+>
+> **Delivered (#1200):** `administration/operations.mdx` covers:
+>
+> - **The four images and their tags:** `latest` plus the commit SHA. Each image is rebuilt only when its module changes, so the SHAs differ and each is pinned separately.
+> - **Upgrading:** back up → pull → run `ouroboros-db` (exit 0) → engine, REST, UI → health. Never use the dev seed. Rollback is restoring a backup; there's no down migration.
+> - **Backups**, framed as guidance because `HOSTING.md`'s production runbook is still unwritten. The database, `OURO_VAULT_MASTER_KEY` (kept apart) and artifact storage; `pg_dump`/`pg_restore`; restore with the same master key, and a pointer to the purge/backup caveat.
+> - **Health checks.**
+> - **Logs per service.**
+> - **A symptom → cause → fix table:** migration checksum, an older db image, missing DB env, boot variable, engine secret mismatch, engine/db readiness 503, OAuth callback, runner/gateway, master-key and auth-secret changes.
+>
+> **Every health endpoint was verified live** on 2026-10-08 against REST from `dist`, the engine under uvicorn and the UI from `yarn start`:
+>
+> - REST `GET /health/live` 200;
+> - REST `GET /health/ready` 200, and 503 naming `engine` with *GET /healthz failed (ECONNREFUSED)* once the engine was stopped;
+> - engine `GET /healthz` 200 `{"status":"ok"}`;
+> - UI `GET /` 307 → `/dashboard`.
+>
+> **Failures reproduced:**
+>
+> - **Engine secret mismatch:** `/health/ready` still reports the engine up, a call gets 502 *The engine is not available right now*, REST logs the mismatch and the engine logs *rejected an internal request without a valid key*.
+> - **An altered applied migration:** *Validate failed … Migration checksum mismatch*.
+> - **An older db image:** warns the schema *has a version (114) that is newer than the latest available migration* and applies nothing, rather than failing.
+>
+> `tests/administration.test.ts` pins the health paths and the Dockerfile `HEALTHCHECK`s, the absence of one on `ouroboros-db`, the workflow tags, and every quoted message. No screenshots are listed for this issue. No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.35.
 
 **Solution / Scope.** Upgrading (pull images, run flyway first, then REST/engine/UI; reading
 image tags), PostgreSQL backup/restore guidance, health endpoints per service, logs, common
