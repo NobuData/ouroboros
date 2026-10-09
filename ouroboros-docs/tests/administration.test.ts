@@ -42,6 +42,9 @@ const MEMBERS = page("members-and-tokens.mdx");
 /** The ticket sources & repositories page. */
 const SOURCES = page("sources.mdx");
 
+/** The model providers & keys page. */
+const PROVIDERS = page("providers.mdx");
+
 /**
  * Reads the value of one exported string constant of the UI, joining a value written as
  * several `"…" +` pieces — e.g. `export const NOTE =\n  "One " +\n  "two.";`.
@@ -223,7 +226,7 @@ describe("the roles & capabilities page (#1189)", () => {
   });
 
   it("carries no internal issue references or migration numbers in its prose", () => {
-    for (const text of [OVERVIEW, ROLES, SIGN_IN, MEMBERS, SOURCES]) {
+    for (const text of [OVERVIEW, ROLES, SIGN_IN, MEMBERS, SOURCES, PROVIDERS]) {
       const prose = text
         .replace(/^--- .*? --- /, "")
         .replace(/\*\*[^*]+\*\*/g, "")
@@ -660,6 +663,160 @@ describe("the ticket sources & repositories page (#1194)", () => {
       "administration.sources.error",
     ]) {
       expect(SOURCES).toContain(`<Screenshot id="${id}" />`);
+    }
+  });
+});
+
+describe("the model providers & keys page (#1195)", () => {
+  /**
+   * Reads a file of the REST service's providers module.
+   *
+   * @param path the file's path segments, from `ouroboros-rest/src/modules/providers/`.
+   * @returns its text.
+   */
+  function providers(...path: string[]): string {
+    return source("ouroboros-rest", "src", "modules", "providers", ...path);
+  }
+
+  it("lists exactly the adapters registered on main, with their form titles' kinds", () => {
+    const adapters = readdirSync(
+      join(REPO_ROOT, "ouroboros-rest", "src", "modules", "providers", "adapters"),
+    )
+      .filter((name) => name.endsWith(".adapter.ts"))
+      .sort();
+    expect(adapters).toEqual([
+      "anthropic.adapter.ts",
+      "copilot.adapter.ts",
+      "cursor.adapter.ts",
+      "ollama.adapter.ts",
+      "openai-compatible.adapter.ts",
+    ]);
+    for (const kind of ["Anthropic", "OpenAI-compatible", "Ollama", "GitHub Copilot", "Cursor"]) {
+      expect(PROVIDERS).toContain(`| **${kind}**`);
+    }
+    expect(constant("providers/catalog.ts", "ADD_CARD_NOTE")).toContain(
+      "OpenAI, Google and Bedrock are on their way.",
+    );
+    expect(PROVIDERS).toContain(
+      "**OpenAI**,\n**Google** and **Bedrock** are not available yet.".replace("\n", " "),
+    );
+  });
+
+  it("says which kinds discover and which pull, as each adapter declares", () => {
+    const declared = (file: string): string =>
+      /discovery: (true|false), pull: (true|false)/.exec(providers("adapters", file))?.[0] ?? "";
+    expect(declared("anthropic.adapter.ts")).toBe("discovery: true, pull: false");
+    expect(declared("openai-compatible.adapter.ts")).toBe("discovery: true, pull: false");
+    expect(declared("ollama.adapter.ts")).toBe("discovery: true, pull: true");
+    expect(declared("copilot.adapter.ts")).toBe("discovery: false, pull: false");
+    expect(declared("cursor.adapter.ts")).toBe("discovery: false, pull: false");
+  });
+
+  it("describes model invocation as not available yet, as the internal route answers", () => {
+    expect(source("ouroboros-rest", "src", "modules", "internal", "llm.controller.ts")).toContain(
+      "throw invocationNotImplemented();",
+    );
+    expect(PROVIDERS).toContain("Calling a model through a connection is not available yet.");
+  });
+
+  it("names the page's controls and dialogs as the UI draws them", () => {
+    for (const [file, name] of [
+      ["providers/view.ts", "PROVIDERS_TITLE"],
+      ["providers/view.ts", "ADD_PROVIDER_LABEL"],
+      ["providers/view.ts", "AUDIT_LOG_LABEL"],
+      ["providers/view.ts", "AUDIT_SHEET_TITLE"],
+      ["providers/view.ts", "SECURITY_MODEL_LINK"],
+      ["providers/catalog.ts", "ADD_DIALOG_TITLE"],
+      ["providers/catalog.ts", "NAME_LABEL"],
+      ["providers/catalog.ts", "CONNECT"],
+      ["providers/catalog.ts", "CONNECT_ANYWAY"],
+      ["providers/cards.ts", "REVEAL"],
+      ["providers/cards.ts", "ROTATE"],
+      ["providers/cards.ts", "TEST_CONNECTION"],
+      ["providers/cards.ts", "CAP_LABEL"],
+      ["providers/cards.ts", "MODELS_LABEL"],
+      ["providers/cards.ts", "DETECTED_LABEL"],
+      ["providers/keys.ts", "STEP_UP_TITLE"],
+      ["providers/keys.ts", "STEP_UP_SIGN_IN"],
+      ["providers/keys.ts", "DELETE_ITEM"],
+      ["providers/keys.ts", "OPEN_ROUTING"],
+      ["providers/live.ts", "REFRESH_MODELS"],
+      ["providers/live.ts", "PULL_LATEST"],
+      ["providers/live.ts", "UNLISTED_FLAG"],
+    ] as const) {
+      expect(PROVIDERS).toContain(`**${constant(file, name)}**`);
+    }
+  });
+
+  it("quotes the key, address, delete and audit sentences as the UI words them", () => {
+    for (const [file, name] of [
+      ["providers/keys.ts", "OLD_KEY_ACTIVE"],
+      ["providers/keys.ts", "REVEAL_RECORDED"],
+      ["providers/keys.ts", "ADDRESS_KEPT"],
+      ["providers/keys.ts", "IN_USE_NOTE"],
+      ["providers/live.ts", "MODELS_NOT_REFRESHED"],
+      ["providers/cards.ts", "NO_METERED_SPEND"],
+    ] as const) {
+      expect(PROVIDERS).toContain(constant(file, name));
+    }
+    expect(constant("providers/view.ts", "AUDIT_SHEET_NOTE")).toContain(
+      "No entry ever holds a key.",
+    );
+    expect(PROVIDERS).toContain("*No entry ever holds a key.*");
+    const keys = source("ouroboros-ui", "app", "providers", "keys.ts");
+    expect(keys).toContain("export const STEP_UP_DEFAULT_WINDOW_SECONDS = 5 * 60;");
+    expect(keys).toContain(
+      "return `Revealing ${displayName}'s key needs a sign-in from the last ${minutes} minute${",
+    );
+    expect(PROVIDERS).toContain("needs a sign-in from the last 5 minutes.");
+    expect(source("ouroboros-ui", "app", "providers", "catalog.ts")).toContain(
+      '"Connecting it a second time is allowed, but it is usually a mistake."',
+    );
+    expect(PROVIDERS).toContain(
+      "Connecting it a\nsecond time is allowed, but it is usually a mistake.".replace("\n", " "),
+    );
+  });
+
+  it("calls the monthly cap a warning, as the card does and as nothing enforces it", () => {
+    expect(constant("providers/caps.ts", "CAP_WARNING_ONLY")).toBe(
+      "Warning only — enforcement arrives with invocation.",
+    );
+    const internal = readdirSync(join(REPO_ROOT, "ouroboros-rest", "src", "modules", "internal"))
+      .filter((name) => name.endsWith(".ts"))
+      .map((name) => source("ouroboros-rest", "src", "modules", "internal", name));
+    expect(internal.some((text) => text.includes("monthly_cap_cents"))).toBe(false);
+    expect(PROVIDERS).toContain(
+      "The cap is a **warning only**: it\ndoes not stop loops.".replace("\n", " "),
+    );
+  });
+
+  it("describes the managed key pool as reserved, as only the Smart Defaults card reads it", () => {
+    const readers = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) return readers(path);
+        return entry.name.endsWith(".ts") && !/\.(spec|fixture)\.ts$/.test(entry.name)
+          ? [path]
+          : [];
+      });
+    const modules = join(REPO_ROOT, "ouroboros-rest", "src", "modules");
+    const reading = readers(modules)
+      .filter((file) => readFileSync(file, "utf8").includes("config.managedKeyPool"))
+      .map((file) => file.slice(modules.length + 1));
+    expect(reading).toEqual([join("onboarding", "defaults.service.ts")]);
+    for (const name of ["OURO_MANAGED_KEY_POOL", "OURO_MANAGED_KEY_TRIAL_CENTS"]) {
+      expect(PROVIDERS).toContain(`<EnvVar name="${name}" />`);
+    }
+    expect(PROVIDERS).toContain("**This version of Ouroboros has no managed key pool**");
+  });
+
+  it("shows the screenshots the issue lists", () => {
+    for (const id of [
+      "administration.providers",
+      "administration.providers.add-key",
+      "administration.providers.discovery",
+    ]) {
+      expect(PROVIDERS).toContain(`<Screenshot id="${id}" />`);
     }
   });
 });
