@@ -605,6 +605,7 @@ docs/RUNNER_PROTOCOL.md
 docs/design/tokens.css · docs/brand/**   ─▶ ci/docs   the brand copies the site checks for drift
 mockup logos · ouroboros-ui's tab icons
 .env.example                             ─▶ ci/docs   the sources its reference checks read
+ouroboros-ui/app/**/page.tsx             ─▶ ci/docs   the routes its coverage gate holds to docs-coverage.json
 ouroboros-runner/{cmd/…/main.go,install.sh}
 ```
 
@@ -846,8 +847,14 @@ What travels with the page:
   reference is stale.
 - **CLI flags** are listed in each command page's `flags:` front matter;
   `yarn check:cli-flags` fails `ci/docs` when a flag in a tool's usage text has no page.
-- **Coverage** of UI routes by pages is `docs-coverage.json`, once DE.4
-  ([#1212](https://github.com/NobuData/ouroboros/issues/1212)) creates it.
+- **Coverage** of UI routes by pages is `ouroboros-docs/docs-coverage.json`
+  ([#1212](https://github.com/NobuData/ouroboros/issues/1212)): every `page.tsx` under the
+  UI's `(app)`, `(auth)` and `(wizard)` route groups maps to the page id that documents it, or
+  to `{"undocumented": "<reason>"}` — which every `/workshop/*` route is. `yarn check:coverage`
+  fails `ci/docs` on a route with no entry, an entry naming a page that does not exist, or an
+  entry for a route that no longer does, and runs the variable and flag checks beside it; the
+  route files are in `ci/docs`' path filter, so the failure lands on the change that added the
+  route.
 
 The module's version moves with the pages (§ 8): a **patch** for edits to existing pages or
 screenshots, a **minor** for a new page. A pull request that touches the site runs the site's

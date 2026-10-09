@@ -1,6 +1,6 @@
 {
   "name": "ouroboros-docs",
-  "version": "0.1.47",
+  "version": "0.1.48",
   "private": true,
   "description": "The Ouroboros documentation site — User Guide, Administration and CLI, built with Docusaurus. Not a workspace (CONVENTIONS.md § 1, limit 6).",
   "license": "Apache-2.0",
@@ -19,6 +19,7 @@
     "gen:config-reference": "node scripts/gen-config-reference.ts",
     "check:config-reference": "node scripts/gen-config-reference.ts --check",
     "check:cli-flags": "node scripts/check-cli-flags.ts",
+    "check:coverage": "node scripts/check-coverage.ts",
     "lint": "eslint . && stylelint \"src/**/*.css\" && markdownlint-cli2",
     "typecheck": "tsc",
     "test": "vitest run",

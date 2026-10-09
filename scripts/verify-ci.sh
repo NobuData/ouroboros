@@ -203,7 +203,7 @@ done
 printf '\nRouting\n'
 # The acceptance criterion: a change confined to one module runs that module's workflow
 # and nothing else — including nothing belonging to ouroboros-web.
-check_route ouroboros-ui/app/page.tsx 'ui.yml'
+check_route ouroboros-ui/app/dashboard/table.tsx 'ui.yml'
 check_route ouroboros-ui/README.md 'ui.yml'
 check_route ouroboros-rest/src/main.ts 'rest.yml'
 check_route ouroboros-engine/src/ouroboros_engine/api/health.py 'engine.yml'
@@ -396,6 +396,9 @@ check_route ouroboros-ui/public/favicon-32-dark.png 'docs.yml ui.yml'
 # …named file by file, so the rest of ouroboros-ui stays ci/ui's alone — the acceptance
 # criterion that a UI-only change does not queue the docs.
 check_route ouroboros-ui/public/manifest.webmanifest 'ui.yml'
+# …except the route files: a page.tsx is a product route the docs coverage gate holds to
+# docs-coverage.json (#1212), so adding one runs ci/docs on the change that added it.
+check_route 'ouroboros-ui/app/(app)/dashboard/page.tsx' 'docs.yml ui.yml'
 # The two runner files the CLI reference's flag drift check reads (#1203); main.go is routed
 # above. The rest of the module stays ci/runner's.
 check_route ouroboros-runner/install.sh 'docs.yml runner.yml'
@@ -545,6 +548,9 @@ check_contains "$WORKFLOWS/docs.yml" '^        run: yarn check:config-reference$
 # The CLI reference pages document every flag main.go's and install.sh's usage texts name (#1203).
 check_contains "$WORKFLOWS/docs.yml" '^        run: yarn check:cli-flags$' \
   'docs.yml checks the CLI flags are documented'
+# The coverage gate (#1212): every UI route maps to a page in docs-coverage.json.
+check_contains "$WORKFLOWS/docs.yml" '^        run: yarn check:coverage$' \
+  'docs.yml runs the docs coverage gate'
 
 # The image is built and probed inside ci/docs (#1208), so the gate publish/docs waits on covers
 # an image that serves nothing. Loaded, never pushed: a pull request has no credential to use.

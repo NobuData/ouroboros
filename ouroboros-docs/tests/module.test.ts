@@ -121,6 +121,10 @@ describe("yarn screenshots", () => {
     );
   });
 
+  it("runs the docs coverage gate under Node's own TypeScript support", () => {
+    expect(manifest.scripts["check:coverage"]).toBe("node scripts/check-coverage.ts");
+  });
+
   it("checks the CLI pages document every flag, under Node's own TypeScript support", () => {
     expect(manifest.scripts["check:cli-flags"]).toBe("node scripts/check-cli-flags.ts");
   });

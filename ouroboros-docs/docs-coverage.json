@@ -1,0 +1,45 @@
+{
+  "//": "Every route ouroboros-ui serves — each page.tsx under app/(app), app/(auth) and app/(wizard) — mapped to the doc page that documents it (its path under docs/, without the extension), or to {\"undocumented\": \"<reason>\"}. Workshop routes are always undocumented. yarn check:coverage holds this file to the routes and the pages (DE.4, #1212).",
+  "routes": {
+    "/": {
+      "undocumented": "redirects to /dashboard, or to /login when signed out; nothing to read"
+    },
+    "/analyzer": "user-guide/analyzer",
+    "/build-farm": "administration/build-farm",
+    "/dashboard": "user-guide/dashboard",
+    "/get-started": "user-guide/getting-started/wizard",
+    "/inbox": "user-guide/inbox",
+    "/insights": "user-guide/insights",
+    "/issues": "user-guide/issues",
+    "/knowledge": "user-guide/knowledge",
+    "/login": "user-guide/getting-started/sign-in",
+    "/models": "user-guide/models",
+    "/models/providers": "administration/providers",
+    "/models/registry": "user-guide/models",
+    "/planning": "user-guide/planning",
+    "/prs/[id]": "user-guide/pull-requests",
+    "/prs/[id]/evidence/[evidenceId]": "user-guide/pull-requests",
+    "/runs/[id]": "user-guide/runs/console",
+    "/runs/[id]/tests": "user-guide/runs/tests",
+    "/settings": "administration/index",
+    "/settings/farm-tokens": "administration/build-farm",
+    "/settings/policies": "administration/policies",
+    "/settings/sources": "administration/sources",
+    "/workflows": "user-guide/workflows/studio",
+    "/workflows/[slug]": "user-guide/workflows/studio",
+    "/workflows/[slug]/code": "user-guide/workflows/code",
+    "/workspace-recovery": "user-guide/getting-started/sign-in",
+    "/workshop/charts": {
+      "undocumented": "a developer workshop for the chart components; not a product screen"
+    },
+    "/workshop/chrome": {
+      "undocumented": "a developer workshop for the app chrome; not a product screen"
+    },
+    "/workshop/providers-audit": {
+      "undocumented": "a developer workshop for the providers audit; not a product screen"
+    },
+    "/workshop/settings-save": {
+      "undocumented": "a developer workshop for the settings save flow; not a product screen"
+    }
+  }
+}

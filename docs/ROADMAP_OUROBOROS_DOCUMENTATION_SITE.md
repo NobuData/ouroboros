@@ -1505,7 +1505,7 @@ docs added.
 | DE.1 | #1209 ✅ | 🟢 Done | ouroboros: [DE.1] /implement requires documentation updates | New documentation step, audit item, docs build, version bump, PR section | mvp, docs-site, documentation | Y (after CY.2, CZ.1) | Y | S | .claude/skills/implement, AGENTS.md |
 | DE.2 | #1210 ✅ | 🟢 Done | ouroboros: [DE.2] Roadmap skills add a Documentation section to every issue | create-roadmap / update-roadmap / create-issues | mvp, docs-site, documentation | Y | Y | S | .claude/skills |
 | DE.3 | #1211 ✅ | 🟢 Done | ouroboros: [DE.3] PR template, issue form & CONVENTIONS documentation rule | Checkbox, "Documentation impact" field, § Documentation | mvp, docs-site, documentation | Y | Y | XS | .github, docs |
-| DE.4 | #1212 | 🟡 Open | ouroboros-docs: [DE.4] Docs coverage gate | UI routes / runner flags / OURO_* vars must map to pages | mvp, docs-site, ci | N (after CY.5, DB.3, DC.3) | Y | M | ouroboros-docs, .github, scripts |
+| DE.4 | #1212 ✅ | 🟢 Done | ouroboros-docs: [DE.4] Docs coverage gate | UI routes / runner flags / OURO_* vars must map to pages | mvp, docs-site, ci | N (after CY.5, DB.3, DC.3) | Y | M | ouroboros-docs, .github, scripts |
 | DE.5 | #1213 | 🟡 Open | ouroboros: [DE.5] Amend open roadmap issues with documentation scope | Add a Documentation section to every open issue in every roadmap (all areas) | mvp, docs-site, documentation | N (after DE.2, content epics) | Y | L | docs (roadmaps), GitHub issues |
 
 ### Issue DE.1 (#1209) — ouroboros: [DE.1] /implement requires documentation updates
@@ -1564,6 +1564,10 @@ coverage gate, versioning); `scripts/verify-github-config.sh` learns the new che
 **Problem Statement.** Human contributors need the same rule as the skills.
 
 ### Issue DE.4 (#1212) — ouroboros-docs: [DE.4] Docs coverage gate
+
+> **GitHub issue:** #1212 ✅ · **Status:** 🟢 Done · **Parent epic:** #1162
+>
+> **Delivered (#1212):** `ouroboros-docs/docs-coverage.json` — `routes`: all 30 routes of `ouroboros-ui` (every `page.tsx` under `(app)`, `(auth)`, `(wizard)`; groups dropped, dynamic segments kept) → the page id that documents each (26 mapped, e.g. `/runs/[id]` → `user-guide/runs/console`, `/settings` → `administration/index`, `/models/providers` → `administration/providers`) or `{"undocumented": …}` (`/` redirects; the four `/workshop/*`, which must be undocumented). `scripts/coverage.ts` (pure: `routeOf`, `routesOf`, `parseCoverage` — refuses any other shape, naming the route — and `checkRoutes`: no entry, page missing, route gone, workshop mapped) and `scripts/check-coverage.ts` → **`yarn check:coverage`**, which also reuses DB.3 (`variablesOf(parseEnvExample)` → every variable has its `###` entry in `_generated.mdx`) and DC.3 (`checkFlags(expectations())`), exit 0/1/2. `ci/docs` runs it, and its path filter now includes **`ouroboros-ui/app/**/page.tsx`** — the rest of the UI stays `ci/ui`'s: `verify-ci.sh` routes `ouroboros-ui/app/(app)/dashboard/page.tsx` to `docs.yml ui.yml` and `app/dashboard/table.tsx` to `ui.yml` alone, and asserts the step; the test fixture carries the path with a break case. **Verified:** the committed tree passes; a stray `app/(app)/zz-probe/page.tsx` fails with `route /zz-probe: no entry in docs-coverage.json` (exit 1) — also a Vitest case, which creates and removes the probe. `tests/coverage.test.ts`. CONVENTIONS § 9 routing table and § 11 coverage bullet rewritten for the file that now exists; the `/implement` skill's coverage bullet likewise; README § *The docs coverage gate*. Module 0.1.48.
 
 **Problem Statement.** A rule nobody checks erodes. New routes, flags and variables must not
 ship undocumented.
