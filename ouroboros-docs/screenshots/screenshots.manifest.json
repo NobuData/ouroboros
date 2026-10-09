@@ -814,6 +814,42 @@
       "capturedAt": "2026-10-09T01:05:53.938Z",
       "uiVersion": "0.144.1",
       "seedRef": "4d6781653dff112f4cfea1e9869a4e670463b9f3"
+    },
+    {
+      "id": "user-guide.knowledge",
+      "route": "/knowledge",
+      "workspace": "acme-robotics",
+      "ready": "#skills-drafts table",
+      "clip": "page",
+      "caption": "Knowledge: the skills you write, the facts the loop learns and you approve, and playbooks you can aim at any issue.",
+      "alt": "The Knowledge page headed Teach the loop once. Every run remembers., with Import CLAUDE.md / .cursorrules and + New skill: the Skills table, 5 active, listing commit-style, hil-safety (required — cannot disable), power-budget-checks (draft, tinted), pr-etiquette, repo-map and zephyr-conventions with their scope, used by and updated columns, and two repo-map rows pending first generation; beside it, Playbooks with 3 recipes — CVE bump, Flaky test hunt and New driver bring-up, each with Run on issue… — and + New playbook from a past run…; and the top of the Repo profile card.",
+      "capturedAt": "2026-10-09T01:14:05.426Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "fecea49993b29fc637ae1a8a2e6ee68e0ef0c345"
+    },
+    {
+      "id": "user-guide.knowledge.fact",
+      "route": "/knowledge",
+      "workspace": "acme-robotics",
+      "ready": "section[aria-labelledby='facts-awaiting-title'] li",
+      "clip": "section[aria-labelledby='facts-awaiting-title']",
+      "caption": "Learned by the loop: each fact with where it came from, how often it was used, and what you can do with it.",
+      "alt": "Learned by the loop, 2 awaiting review, with + Add fact and Review all: two facts awaiting review with Confirm and Reject — Team prefers k_msgq over k_fifo in ISR paths, from correction note (run #1847), and PID gains live in config/control.yaml, not in headers; two confirmed facts used 12× and 48×, each naming who confirmed it; and an expired fact, struck through — Zephyr 4.0 needs CONFIG_LEGACY_TIMER, expired on Zephyr 4.1 migration, was used 31×, from CLAUDE.md § Kconfig — with Re-learn; under them, Confirmed facts are injected into every run's context. Facts expire when the code that taught them changes.",
+      "capturedAt": "2026-10-09T01:14:05.426Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "fecea49993b29fc637ae1a8a2e6ee68e0ef0c345"
+    },
+    {
+      "id": "user-guide.knowledge.repo-profile",
+      "route": "/knowledge?repo=acme-robotics/helios-firmware#repo-profile",
+      "workspace": "acme-robotics",
+      "ready": "section[aria-labelledby='repo-profile-title']",
+      "clip": "section[aria-labelledby='repo-profile-title']",
+      "caption": "The repository profile: what detection found, the protected paths, and the environment recipe the farm runs.",
+      "alt": "Repo profile — helios-firmware, not scanned, with the Repository select: Not scanned yet. with the note that detection runs from the Get Started wizard; Protected paths none with an edit control; Environment v3, edited by Ken Suenobu, with Edit and four commands — west init, west update, zephyr-sdk-install and ccache — each with a comment; the note on the order they run in; and Warm snapshot, not available yet.",
+      "capturedAt": "2026-10-09T01:14:19.121Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "fecea49993b29fc637ae1a8a2e6ee68e0ef0c345"
     }
   ]
 }
