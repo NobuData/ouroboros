@@ -5,11 +5,181 @@ sidebar_position: 13
 description: "Reading the insight cards and trends correctly."
 ---
 
-Reading the insight cards and trends correctly.
+**Insights**, at `/insights`, measures every loop in your workspace: how much merged without a
+person touching it, what it cost, how long it took, and where people still had to step in. Use
+it to see whether the loops are getting better, and where the next improvement is.
 
-:::info[Being written]
+Every figure is computed from what Ouroboros recorded — pull requests, runs, builds, tests and
+model usage — not from anything you report. Each one says how it is calculated, so you can
+check what a number means before you act on it.
 
-This page is being written in
-[#1186](https://github.com/NobuData/ouroboros/issues/1186).
+<Screenshot id="user-guide.insights" />
 
-:::
+## The headline
+
+The headline always describes the **last seven days**, whatever range the cards show — for
+example **21 PRs merged this week. 15 needed a human.** A quiet week says so:
+**No PRs merged this week. Nothing needed a human.**
+
+Three buttons sit beside it:
+
+- **✦ Build Analyzer** — opens the [Build Analyzer](./analyzer.mdx).
+- **Email weekly digest** — subscribe to this page by email (see
+  [The weekly digest](#the-weekly-digest)).
+- **Send to Slack** — marked **soon**; it is not available yet.
+
+## Choosing a range
+
+The **Time range** control above the cards chooses the window every card measures: **7d**,
+**30d** (the default) or **90d**. **custom** is shown but cannot be chosen yet.
+
+<Screenshot id="user-guide.insights.range" />
+
+The range is kept in the address — `/insights?range=90d` — so a link opens on the same range;
+plain `/insights` is 30 days. An address with any other value opens on 30 days.
+
+Each card compares its window with the one just before it of the same length: the last 30 days
+against the 30 before them. When Ouroboros has no data for that earlier window, the card says
+**No prior 90d to compare.** instead of a change.
+
+The page refreshes itself; you do not need to reload it.
+
+## The five headline figures
+
+| Card | What it measures |
+| --- | --- |
+| **Autonomous merge rate** | Loop pull requests that merged without a person stepping in, out of all loop pull requests that closed — merged or not — in the window. |
+| **Merged w/o human edits** | Merged pull requests with no pushes or file edits by a person after the loop's last revision, out of all merged pull requests. The line under it reads **of all merged PRs**. |
+| **Median cycle** | The middle time from a loop starting to it finishing merged, over loops that merged. |
+| **Cost per merged PR** | Priced model spend in the window divided by the pull requests that merged. |
+| **Human interventions** | Moments a person was needed, shown as a rate per week — **5/wk**. |
+
+Choose a card's caption to open its method: the **Formula**, its **Sources**, its
+**Caveats**, and the version of the definition that produced the figure. Some caveats worth
+knowing before you compare numbers:
+
+- **Merged w/o human edits** sees only edits made through your git host. A squash or rewrite
+  made outside it is not seen.
+- **Median cycle** counts only loops that merged. A loop handed to a person, or one that
+  failed, is not in it, and time spent queued before the loop starts is not counted.
+- **Cost per merged PR** includes spend on loops that did not merge — failure has a cost. When
+  none of the usage has a price, the card reads **Tokens per merged PR** and shows tokens
+  instead of dollars.
+- **Human interventions** counts moments, not minutes: a loop handed to a person and the
+  failure classification that explains it are two events. The weekly rate is the window's
+  count scaled to seven days, so it can be compared across ranges.
+
+A figure that could not be measured shows **—** and **Nothing measured in this range yet.**
+
+### Reading the trend
+
+The line under a figure shows how it moved against the prior window — **▲ 3pts vs prior 30d**,
+**▼ $0.41 vs prior 30d**, or for the cycle **▼ 2m faster**. **No change vs prior 30d** means it
+did not move.
+
+The colour says whether the move is **good or bad**, not which way it went. A falling cost
+or cycle time is green; a falling merge rate is red; a rising intervention rate is red. Read the
+colour for the verdict and the arrow for the direction.
+
+The **Human interventions** figure itself turns amber whenever there were any.
+
+## Where loops still need humans
+
+**Where loops still need humans** groups the window's interventions by cause, largest first,
+with the total in the corner — **30d · 21 total**. The causes are **Flaky env / rig**,
+**Ambiguous ticket**, **Policy gate**, **Model disagreement** and **Other**.
+
+An intervention is any of: a loop handed to a person, a person's failure classification or
+waiver, the first failure of a guardrail or policy-gate check on a loop, or a blocking review
+vote. Each one is given a cause by a mapping rule.
+
+Under the bars, a line can say what fixing the top cause is worth — for example
+**Fix the top row and interventions drop ~38%.** It is arithmetic on the figures above, shown
+only when there is something to compute.
+
+### Correcting a cause
+
+When a rule put an intervention under the wrong cause, owners, admins and members can move it:
+
+1. Choose **Re-categorize…** under the bars.
+2. Pick the **Bar** it is under, then the **Intervention**.
+3. Under **Move it to**, choose the cause it really was.
+4. Under **Why**, say why in a sentence — the reason is required and is kept in the audit
+   trail.
+5. Choose **Re-categorize**, then **Done**.
+
+From then on the event counts under your cause, on this card and in **Human interventions**.
+
+## The rest of the page
+
+Below the headline figures, each card covers one question. All of them follow the range.
+
+- **Merged PRs per day** — a line of merges per day. Point at a day to see its merges, cost
+  and interventions.
+- **Cycle time by stage · median** — the middle time each stage took, so you can see where
+  loops spend their time.
+- **Model scoreboard** — **Merge-untouched rate and cost per success, by task and serving
+  model**, with a **Trend** column. A row with too few merges to trust carries
+  **low sample**. **Routing rules →** and **Apply in Models →** take you to
+  [Models](./models.mdx) to change which model serves a task.
+- **Flaky tests** — the tests that pass and fail on the same code, with their history and
+  whether they are **rising**, **falling** or **steady**. One still being watched is
+  **under threshold**; one that stopped flaking is **healthy again**. When your workspace has a
+  **Flaky test hunt** playbook, the card links to it; otherwise **Playbooks →** opens
+  [Knowledge](./knowledge.mdx).
+- **Build & test performance** — six figures across **all workflows** and
+  **all repositories**: **Builds**, **Build success**, **Test cases run**,
+  **Test pass rate**, **Tokens** and **Total cost**. Total cost reads **unpriced** when no
+  price covers the usage.
+- **Builds per day — succeeded vs failed** — each day's builds, stacked.
+- **Test failures by suite**, **Time to completion by effort** (**median · issue→merge**) and
+  **Tokens by stage** — ranked bars.
+- **Daily cost · all providers** — spend per day across every model provider, and a
+  **Projected month** figure, with your spending cap when one is set.
+- **Delivery health · DORA-ish** — **Deploy frequency**, **Lead time · issue→merge**,
+  **Change failure rate** and **MTTR**. Its caption says how they are made:
+  *Computed from your GitHub + build farm events, not self-reported.* A figure marked **proxy** stands in for something Ouroboros cannot measure
+  directly; its method says what. A figure without enough history reads
+  **Not enough data to measure yet.**
+
+Each card says what fills it when it is empty — for example
+**No builds ran in this range** — rather than showing a blank chart.
+
+## The weekly digest
+
+**Email weekly digest** opens a sheet to subscribe to this page by email:
+*a summary of this page's last seven days — the same figures, by email, once a week.*
+
+- **Send me the weekly digest** — the switch. The line under it says when and where it is sent,
+  such as **Sent Mondays at 09:00 UTC to `you@example.com`.** with the date of the next one.
+- **Preview — what the next digest says now** — the digest as it would read if it were sent
+  now, with its subject line.
+
+To stop it, turn the switch off; every digest also carries a one-click unsubscribe link. The
+digest goes to your own address only, and subscribing is per workspace.
+
+When your deployment has no mail server, the switch cannot be turned on and says so:
+**This deployment has no mail server configured, so it cannot send the weekly digest.** An
+operator sets it up — see
+[Notifications, email & webhooks](../administration/notifications-and-webhooks.mdx).
+
+This digest is separate from the daily digest of open decisions, which you set in the
+[Needs-you inbox](./inbox.mdx#notification-settings).
+
+## What can go wrong
+
+- **"Not enough data to measure yet"** on every card. The workspace has not run enough loops
+  to measure — nothing has merged, built or used a model yet. The cards fill in as loops run.
+- **"These figures are behind."** The daily figures have not caught up; the banner says which
+  day they run through and when they were last filled.
+- **"The latest metrics refresh failed."** The figures are current but the last refresh did not
+  finish; it retries every hour.
+- **"Insights could not be read."** The page could not load its figures; the banner offers a
+  retry.
+- **"This card could not be drawn"** One card failed to display; the rest of the page is
+  unaffected. Reload to try again.
+- **A cost card shows tokens, not dollars.** No price covers the models that were used, so
+  Ouroboros does not invent one.
+- **"Only owners, admins and members can re-categorize an intervention."** Viewers can read the
+  causes but not change them.
+- **"Say why in a sentence — the reason is required."** Add a reason before re-categorizing.

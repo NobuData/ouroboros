@@ -652,6 +652,30 @@
       "capturedAt": "2026-10-09T00:49:01.606Z",
       "uiVersion": "0.144.1",
       "seedRef": "7d6076d3b0f02f2a608f241f7fcd49e6e8bde7a7"
+    },
+    {
+      "id": "user-guide.insights",
+      "route": "/insights",
+      "workspace": "acme-robotics",
+      "ready": ".insights-kpi",
+      "clip": "page",
+      "caption": "Insights: what merged untouched, what it cost and where humans still stepped in, over the range you choose.",
+      "alt": "The Insights page at 30 days, headed 21 PRs merged this week. 15 needed a human., with the Time range control on 30d and the ✦ Build Analyzer, Email weekly digest and Send to Slack (soon) buttons; five cards — Autonomous merge rate 92% ▲ 3pts vs prior 30d, Merged w/o human edits 78% of all merged PRs, Median cycle 14m 20s ▼ 2m faster, Cost per merged PR $1.87 ▼ $0.41 vs prior 30d, and Human interventions 5/wk ▼ 0.9/wk vs prior 30d; a line of merged PRs per day from Sep 10 to Oct 9; Where loops still need humans, 30d · 21 total, led by Flaky env / rig, with Fix the top row and interventions drop ~38%. and Re-categorize…; and the tops of Cycle time by stage · median and Model scoreboard.",
+      "capturedAt": "2026-10-09T00:57:29.751Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "0c60e4e7139622b20e51dfbca54b2b0b93fcf306"
+    },
+    {
+      "id": "user-guide.insights.range",
+      "route": "/insights?range=90d",
+      "workspace": "acme-robotics",
+      "ready": ".insights-kpi",
+      "clip": "page",
+      "caption": "The same page over 90 days: every card and its comparison follow the range; the headline stays on this week.",
+      "alt": "The same page with 90d chosen: the headline still reads 21 PRs merged this week. 15 needed a human.; Autonomous merge rate 89%, Median cycle 16m 20s and Cost per merged PR $2.19 each say No prior 90d to compare.; Human interventions 6/wk is marked ▲ 6/wk vs prior 90d in red; the merged-PRs chart runs from Jul 12 to Oct 9; and Where loops still need humans reads 90d · 73 total.",
+      "capturedAt": "2026-10-09T00:57:29.751Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "0c60e4e7139622b20e51dfbca54b2b0b93fcf306"
     }
   ]
 }
