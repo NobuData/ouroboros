@@ -1011,6 +1011,42 @@
       "capturedAt": "2026-10-09T01:42:15.394Z",
       "uiVersion": "0.144.1",
       "seedRef": "e9976688c49b506701552d03639742160357173c"
+    },
+    {
+      "id": "administration.workspace",
+      "route": "/settings",
+      "workspace": "acme-robotics",
+      "ready": "#settings-workspace-field-domain",
+      "clip": "section:has(.settings-workspace)",
+      "masks": [
+        ".settings-workspace__note"
+      ],
+      "caption": "The Workspace card: the name and tenant domain you can change, and the data region and training row this deployment sets.",
+      "alt": "The Workspace card for Acme Robotics: the Workspace name field, the Tenant domain field holding acme-robotics.dev with the note that changing it changes how sign-in finds this workspace for everyone who uses it, the Data region self-hosted with the sentence that the operator has not named it (OURO_DATA_REGION) and a Data residency link, Data retention set to 30 days for transcripts, logs and artifacts with Advanced: set each class, and Training on this workspace's data reading Off — this deployment never trains on your data.",
+      "capturedAt": "2026-10-09T02:27:29.127Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "caed2437bc4861981f5ff9edb2b7d157f38127fb"
+    },
+    {
+      "id": "administration.workspace.domain",
+      "route": "/settings",
+      "workspace": "acme-robotics",
+      "ready": ".settings-workspace__consequence",
+      "clip": "section:has(.settings-workspace)",
+      "masks": [
+        ".settings-workspace__note"
+      ],
+      "actions": [
+        {
+          "fill": "#settings-workspace-field-domain",
+          "value": "acme.example.com"
+        }
+      ],
+      "caption": "Editing the tenant domain: before you save, the card says what moves.",
+      "alt": "The Workspace card marked 1 unsaved, with the Tenant domain field changed to acme.example.com and a warning under it: Changing the tenant domain changes how sign-in finds this workspace for everyone who uses it. After saving, sign-in finds this workspace at acme.example.com instead of acme-robotics.dev.",
+      "capturedAt": "2026-10-09T02:27:29.127Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "caed2437bc4861981f5ff9edb2b7d157f38127fb"
     }
   ]
 }

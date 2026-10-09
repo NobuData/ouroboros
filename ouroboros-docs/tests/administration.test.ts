@@ -33,6 +33,9 @@ const OVERVIEW = page("index.mdx");
 /** The roles page. */
 const ROLES = page("roles.mdx");
 
+/** The sign-in & workspace settings page. */
+const SIGN_IN = page("sign-in-and-workspace.mdx");
+
 /**
  * Reads the value of one exported string constant of the UI, joining a value written as
  * several `"…" +` pieces — e.g. `export const NOTE =\n  "One " +\n  "two.";`.
@@ -214,12 +217,147 @@ describe("the roles & capabilities page (#1189)", () => {
   });
 
   it("carries no internal issue references or migration numbers in its prose", () => {
-    for (const text of [OVERVIEW, ROLES]) {
+    for (const text of [OVERVIEW, ROLES, SIGN_IN]) {
       const prose = text
         .replace(/^--- .*? --- /, "")
         .replace(/\*\*[^*]+\*\*/g, "")
         .replace(/`[^`]+`/g, "");
       expect(prose).not.toMatch(/#\d{2,}|\[[A-Z]{1,2}\.\d+\]|\bV\d{3}\b/);
+    }
+  });
+});
+
+describe("the sign-in & workspace settings page (#1192)", () => {
+  /**
+   * Reads a file of the REST service's source.
+   *
+   * @param path the file's path segments, from `ouroboros-rest/src/`.
+   * @returns its text.
+   */
+  function rest(...path: string[]): string {
+    return source("ouroboros-rest", "src", ...path);
+  }
+
+  it("lists the variables sign-in needs, each linked to the configuration reference", () => {
+    const config = rest("modules", "config", "configuration.ts");
+    for (const name of [
+      "OURO_GITHUB_CLIENT_ID",
+      "OURO_GITHUB_CLIENT_SECRET",
+      "BETTER_AUTH_SECRET",
+      "BETTER_AUTH_URL",
+      "OURO_UI_URL",
+      "OURO_CORS_ORIGINS",
+      "OURO_DATA_REGION",
+    ]) {
+      expect(config).toContain(`"${name}"`);
+      expect(SIGN_IN).toContain(`<EnvVar name="${name}" />`);
+    }
+  });
+
+  it("names the callback, scopes and secret length as the service configures them", () => {
+    expect(rest("auth", "auth.options.ts")).toContain('export const AUTH_BASE_PATH = "/api/auth";');
+    const github = rest("auth", "github.provider.ts");
+    expect(github).toContain('export const GITHUB_PROVIDER_ID = "github";');
+    expect(github).toContain('export const GITHUB_SCOPES = ["read:user", "user:email"] as const;');
+    expect(SIGN_IN).toContain("`http://localhost:4000/api/auth/callback/github`");
+    expect(SIGN_IN).toContain("`https://app.example.com/api/auth/callback/github`");
+    expect(SIGN_IN).toContain("- `read:user`");
+    expect(SIGN_IN).toContain("- `user:email`");
+
+    expect(rest("modules", "config", "configuration.ts")).toContain(
+      "export const MINIMUM_SECRET_LENGTH = 16;",
+    );
+    expect(SIGN_IN).toContain("At least 16 characters.");
+  });
+
+  it("states the session lifetime and refresh the service sets", () => {
+    const session = rest("auth", "session.options.ts");
+    expect(session).toContain("export const SESSION_EXPIRES_IN_SECONDS = 7 * 24 * 60 * 60;");
+    expect(session).toContain("export const SESSION_UPDATE_AGE_SECONDS = 24 * 60 * 60;");
+    expect(SIGN_IN).toContain("A session lasts seven days.");
+    expect(SIGN_IN).toContain("at most once a day");
+  });
+
+  it("limits email and password to non-production, as both services do", () => {
+    expect(rest("auth", "password.provider.ts")).toContain(
+      'const enabled = configuration.nodeEnv !== "production";',
+    );
+    expect(source("ouroboros-ui", "app", "login", "sign-in-card.tsx")).toContain(
+      'process.env.NODE_ENV !== "production" && <DevSignInForm />',
+    );
+    for (const dockerfile of ["ouroboros-rest", "ouroboros-ui"]) {
+      expect(source(dockerfile, "Dockerfile")).toMatch(/ENV NODE_ENV=production/);
+    }
+    expect(SIGN_IN).toContain("`NODE_ENV=production`");
+  });
+
+  it("describes enterprise SSO as absent, quoting the answer every domain gets", () => {
+    const discovery = rest("modules", "auth", "discovery.service.ts");
+    const message = /export const NO_SSO_MESSAGE = "([^"]+)";/.exec(discovery)?.[1];
+    expect(message).toBeDefined();
+    expect(discovery).toContain("return { ssoAvailable: false, message: NO_SSO_MESSAGE };");
+    expect(SIGN_IN).toContain(`*${message ?? ""}*`);
+    expect(rest("modules", "settings", "workspace.sso.ts")).toContain(
+      "return Promise.resolve(false);",
+    );
+    expect(SIGN_IN).toContain(constant("settings/workspace.ts", "SSO_ENFORCED_TAG"));
+  });
+
+  it("names the Workspace card's rows and sentences as the card draws them", () => {
+    for (const name of [
+      "NAME_LABEL",
+      "DOMAIN_LABEL",
+      "REGION_LABEL",
+      "RETENTION_LABEL",
+      "TRAINING_LABEL",
+      "RESIDENCY_LINK",
+    ]) {
+      expect(SIGN_IN).toContain(`**${constant("settings/workspace.ts", name)}**`);
+    }
+    expect(SIGN_IN).toContain(constant("settings/workspace.ts", "DOMAIN_INVALID"));
+
+    const card = source("ouroboros-ui", "app", "settings", "workspace.ts");
+    for (const sentence of [
+      "Changing it takes an owner or an admin.",
+      "Self-hosted — single region. The operator has not named it (OURO_DATA_REGION).",
+      "Off — this deployment never trains on your data.",
+    ]) {
+      expect(card).toContain(sentence);
+      expect(SIGN_IN).toContain(sentence);
+    }
+    expect(card).toContain("export const NAME_MAX_LENGTH = 100;");
+    expect(SIGN_IN).toContain("Up to 100 characters.");
+    expect(rest("modules", "settings", "workspace.truth.ts")).toContain(
+      'export const UNNAMED_REGION_LABEL = "self-hosted";',
+    );
+    expect(constant("settings/save-model.ts", "SAVE_LABEL")).toBe("Save changes");
+    expect(SIGN_IN).toContain("**Save changes**");
+  });
+
+  it("quotes the domain refusal as the service words it", () => {
+    const service = rest("modules", "settings", "workspace.service.ts");
+    const message = /const DOMAIN_TAKEN_MESSAGE = "([^"]+)";/.exec(service)?.[1];
+    expect(message).toBe("That domain belongs to another workspace.");
+    expect(SIGN_IN).toContain(`*${message ?? ""}*`);
+  });
+
+  it("describes workspace recovery with the recovery screen's own words", () => {
+    const recovery = source("ouroboros-ui", "app", "lifecycle", "recovery.ts");
+    expect(recovery).toContain("is scheduled for deletion`;");
+    expect(SIGN_IN).toContain("***Workspace* is scheduled for deletion**");
+    expect(SIGN_IN).toContain(`**${constant("lifecycle/recovery.ts", "RESTORE_LABEL")}**`);
+    expect(constant("lifecycle/recovery.ts", "WINDOW_UNKNOWN")).toBe("30-day recovery window");
+    expect(SIGN_IN).toContain("30-day recovery window");
+    expect(constant("lifecycle/recovery.ts", "NON_OWNER_NOTE")).toMatch(
+      /^Only an owner of this workspace can restore it\./,
+    );
+    expect(SIGN_IN).toContain("*Only an owner of this workspace can restore it.*");
+    expect(source("ouroboros-ui", "app", "paths.ts")).toContain('"/workspace-recovery"');
+  });
+
+  it("shows the screenshots the issue lists", () => {
+    for (const id of ["administration.workspace", "administration.workspace.domain"]) {
+      expect(SIGN_IN).toContain(`<Screenshot id="${id}" />`);
     }
   });
 });
