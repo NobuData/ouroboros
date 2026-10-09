@@ -3019,25 +3019,26 @@ select pg_temp.must_hold(
 -- ---------------------------------------------------------------------------
 -- Tracker Sync and Backlog Health — `42 open`, `38/42`, `4`, `6` on mockup 09; 46 and 39/46 since
 -- #460 filed the canonical twins of #465, #479, #486 and #490 (open; #486 sized) for the inbox's
--- ticket refs; 47 and 40/47 since #558 filed #489's (open, sized) for mockup 20's dry run.
+-- ticket refs; 47 and 40/47 since #558 filed #489's (open, sized) for mockup 20's dry run; 55 and
+-- 45/55 since #613 filed mockup 22's (#498, #512, #517 open and unsized; #743–#747 open and sized).
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
-  (select count(*) = 47
+  (select count(*) = 55
      from ouroboros.tickets t
      join ouroboros.ticket_sources src on src.id = t.source_id
      join ouroboros.organization org on org."id" = t.organization_id
     where org."slug" = 'acme-robotics'
       and src.kind = 'github'
       and t.state = 'open'),
-  'the GitHub source holds 47 open tickets — the sync row''s count and the health card''s tag');
+  'the GitHub source holds 55 open tickets — the sync row''s count and the health card''s tag');
 
 select pg_temp.must_hold(
-  (select count(*) filter (where t.sizing_status = 'sized') = 40 and count(*) = 47
+  (select count(*) filter (where t.sizing_status = 'sized') = 45 and count(*) = 55
      from ouroboros.tickets t
      join ouroboros.organization org on org."id" = t.organization_id
     where org."slug" = 'acme-robotics'
       and t.state = 'open'),
-  'Sized computes to 40 of 47 open tickets');
+  'Sized computes to 45 of 55 open tickets');
 
 -- Over the planning seed's own rows: `#482` (below) is a closed, sized ticket of the same
 -- workspace, so counting the whole workspace reads 49 of 53 and would say nothing about this
@@ -7221,6 +7222,215 @@ select pg_temp.must_hold(
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.dry_runs where cost_cents = 0 and tokens is null),
   'no seeded dry run carries a fabricated zero cost for a run nothing was metered for');
+
+-- ===========================================================================
+-- R__dev_seed_workspace_research.sql — the rest of mockup 22, from seeds alone (#613, CK.6)
+-- ===========================================================================
+--
+-- Every region of the Research page, read back as the page reads it — and every number computed
+-- from rows: `4 active · 23 this quarter`, `18` / `9` / `312` / `44 sources`, `4 rivals watched`,
+-- `6 issues · 2 milestones`, `1/3 done`. Nothing in the seed is a stored total.
+
+-- The four kinds, with their playbooks (V106 gives every workspace them).
+select pg_temp.must_hold(
+  (select array_agg(k.slug || ':' || (k.playbook -> 'deliverables')::text order by k.slug)
+          = array['bug_root_cause:["brief", "fix_draft"]', 'gap_analysis:["brief", "matrix"]',
+                  'regression_forensics:["brief", "fix_draft"]', 'roadmap_improvements:["brief", "roadmap_doc"]']
+     from ouroboros.investigation_kinds k
+     join ouroboros.organization org on org."id" = k.organization_id and org."slug" = 'acme-robotics'),
+  'the four investigation kinds carry their playbooks'' deliverable sets');
+
+-- The card head, computed: this quarter by created_at, active as not failed or cancelled.
+select pg_temp.must_hold(
+  (select count(*) filter (where inv.created_at >= date_trunc('quarter', now())) = 23
+          and count(*) filter (where inv.created_at >= date_trunc('quarter', now())
+                                 and inv.status not in ('failed', 'cancelled')) = 4
+     from ouroboros.investigations inv
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'),
+  'the investigations card head computes to 4 active · 23 this quarter');
+
+select pg_temp.must_hold(
+  (select array_agg(inv.display_id order by inv.seq) = array(select 'RS-' || n from generate_series(101, 127) n)
+     from ouroboros.investigations inv
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'),
+  'RS-101…RS-127 are dense — no gap in the workspace''s investigation numbers');
+
+-- The four rows: kind, status, source count — counted.
+select pg_temp.must_hold(
+  (select array_agg(inv.display_id || ' ' || kind.tint_key || ' ' || inv.status || ' '
+                    || (select count(*) from ouroboros.source_records s where s.investigation_id = inv.id)
+                    order by inv.seq)
+          = array['RS-118 bug brief_ready 18', 'RS-121 reg queued 9', 'RS-124 road issues_filed 312',
+                  'RS-127 gap brief_ready 44']
+     from ouroboros.investigations inv
+     join ouroboros.investigation_kinds kind on kind.id = inv.kind_id
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'
+    where inv.created_at >= date_trunc('quarter', now()) and inv.status not in ('failed', 'cancelled')),
+  'the four active rows are RS-118 · RS-121 · RS-124 · RS-127 with 18 · 9 · 312 · 44 sources');
+
+-- RS-124's ledger at scale: 312 ticket-kind records, numbered densely, seven themes.
+select pg_temp.must_hold(
+  (select array_agg(s.cite_no order by s.cite_no) = array(select generate_series(1, 312))
+          and bool_and(s.kind = 'ticket' and ouroboros.source_locator_valid(s.kind, s.locator))
+          and count(distinct s.meta ->> 'theme') = 7
+     from ouroboros.source_records s
+     join ouroboros.investigations inv on inv.id = s.investigation_id and inv.seq = 124
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'),
+  'RS-124''s 312 sources are compact ticket records, numbered 1…312, clustered into 7 themes');
+
+-- RS-121's evidence is the failing HIL measurement the test-results seed recorded.
+select pg_temp.must_hold(
+  (select m.metric = 'overshoot_pct' and m.verdict = 'fail'
+          and suite.test_run_id = (s.meta ->> 'test_run_id')::uuid
+     from ouroboros.source_records s
+     join ouroboros.investigations inv on inv.id = s.investigation_id and inv.seq = 121
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'
+     join ouroboros.hil_measurements m on m.id = (s.meta ->> 'hil_measurement_id')::uuid
+     join ouroboros.test_cases tc on tc.id = m.test_case_id
+     join ouroboros.test_suites suite on suite.id = tc.test_suite_id
+    where s.cite_no = 1),
+  'RS-121''s evidence → is the failing HIL overshoot measurement and its test run');
+
+-- RS-118's deliverable is a fix draft with a repro test; RS-124's are the batch and the doc.
+select pg_temp.must_hold(
+  (select d.push_state = 'pending' and d.body like '%repro test%'
+     from ouroboros.briefs b
+     join ouroboros.investigations inv on inv.id = b.investigation_id and inv.seq = 118
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'
+     join ouroboros.ticket_drafts d on d.id = (b.deliverables ->> 'fix_draft')::uuid)
+  and (select doc.investigation_id = inv.id and batch.status = 'pushed'
+         from ouroboros.briefs b
+         join ouroboros.investigations inv on inv.id = b.investigation_id and inv.seq = 124
+         join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'
+         join ouroboros.roadmap_docs doc on doc.id = (b.deliverables ->> 'roadmap_doc')::uuid
+         join ouroboros.draft_batches batch on batch.id = (b.deliverables ->> 'draft_batch')::uuid),
+  'RS-118 delivers a fix draft with a repro test; RS-124 delivers its pushed batch and ROADMAP.md');
+
+-- The capability matrix, cell by cell, with the honest unknown and the cited rest.
+select pg_temp.must_hold(
+  (select array_agg(r.capability || ': ' || (
+            select string_agg(c.status || coalesce(' (' || c.note || ')', ''), ' | '
+                              order by coalesce(array_position(m.rivals, c.competitor_id), 0))
+              from ouroboros.matrix_cells c where c.row_id = r.id) || ' → ' || upper(r.gap_severity)
+          order by r.sort_order)
+          = array['Docking in >8 m/s gusts: partial | shipping | partial | none → HIGH',
+                  'Visual-inertial approach (no beacon): none | shipping | shipping | partial (beta) → HIGH',
+                  'Abort & retry recovery logic: partial | shipping | partial | none → MED',
+                  'OTA resilience (A/B + rollback): wip (in flight) | shipping | none | none → WIP',
+                  'Recovery beacon over BLE: shipping | none | unknown | none → LEAD']
+     from ouroboros.capability_matrices m
+     join ouroboros.matrix_rows r on r.matrix_id = m.id
+     join ouroboros.investigations inv on inv.id = m.investigation_id and inv.seq = 127
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'),
+  'the capability matrix reproduces mockup 22 — five rows × Helios · Skylink · AeroMesh · Novum, gaps HIGH · HIGH · MED · WIP · LEAD');
+
+select pg_temp.must_hold(
+  (select count(*) filter (where c.status = 'unknown') = 1
+          and bool_and(c.status = 'unknown'
+                       or exists (select 1 from ouroboros.matrix_cell_sources l where l.cell_id = c.id))
+          and bool_and(c.status <> 'unknown'
+                       or not exists (select 1 from ouroboros.matrix_cell_sources l where l.cell_id = c.id))
+     from ouroboros.matrix_cells c
+     join ouroboros.investigations inv on inv.id = c.investigation_id and inv.seq = 127
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'),
+  'every matrix cell but the one honest ? unknown cites RS-127''s ledger');
+
+-- The competitor tracker: four rivals, three source kinds, and a citable archived diff.
+select pg_temp.must_hold(
+  (select sub_line = '4 rivals watched · release notes, changelogs, filings'
+     from ouroboros.competitor_tracker_summary s
+     join ouroboros.organization org on org."id" = s.organization_id and org."slug" = 'acme-robotics')
+  and (select count(*) = 1 and bool_and(s.diff like '%Gust-adaptive final approach%' and s.previous_id is not null)
+         from ouroboros.competitor_snapshots s
+         join ouroboros.competitor_watches w on w.id = s.watch_id
+         join ouroboros.competitors c on c.id = w.competitor_id
+         join ouroboros.organization org on org."id" = c.organization_id and org."slug" = 'acme-robotics'
+        where s.diff is not null),
+  'the tracker reads 4 rivals watched · release notes, changelogs, filings, and one archived pair carries the 6.2 diff');
+
+-- The regression watch card, row by row.
+select pg_temp.must_hold(
+  (select array_agg(i.severity || ' | ' || i.drift_display || ' | ' || b.release_tag || ' | '
+                    || coalesce(left(i.bisect_result ->> 'culprit_sha', 7), '—') || ' | '
+                    || coalesce(i.fix_ticket_ref ->> 'key', '—') || ' | ' || coalesce(i.pr_ref ->> 'key', '—')
+                    || ' | ' || i.status
+                    order by i.detected_at desc)
+          = array['warn | +230 ms | v2.1.0-rc1 | 7c03d1e | #517 | — | fix_drafted',
+                  'err | +14% | v2.0.4 | a41f2c9 | #512 | — | fix_running',
+                  'ok | +2.8% | v2.0.4 | e19b6a4 | #639 | #641 | fixed_merged']
+     from ouroboros.regression_watch_items i
+     join ouroboros.regression_baselines b on b.id = i.baseline_id
+     join ouroboros.organization org on org."id" = i.organization_id and org."slug" = 'acme-robotics'),
+  'the regression watch rows read #512 fixing · #517 queued · PR #641 merged, with their bisect shas');
+
+select pg_temp.must_hold(
+  (select bool_and(t.organization_id = i.organization_id and t.external_key = i.fix_ticket_ref ->> 'key')
+     from ouroboros.regression_watch_items i
+     join ouroboros.tickets t on t.id = (i.fix_ticket_ref ->> 'id')::uuid
+     join ouroboros.organization org on org."id" = i.organization_id and org."slug" = 'acme-robotics')
+  and (select pr.state = 'merged' and pr.external_number = 641
+         from ouroboros.regression_watch_items i
+         join ouroboros.pull_requests pr on pr.id = (i.pr_ref ->> 'pull_request_id')::uuid
+         join ouroboros.organization org on org."id" = i.organization_id and org."slug" = 'acme-robotics'),
+  'every watch row''s ticket and PR reference resolves to a seeded row');
+
+-- The pipeline document and the issues it filed.
+select pg_temp.must_hold(
+  (select doc.current_version = 1 and v.repo_projection ->> 'state' = 'committed'
+          and v.repo_projection ->> 'committed_sha' = '8c1b2e4'
+          and (select count(*) from ouroboros.roadmap_structure_refs(v.structure)) = 6
+          and jsonb_array_length(v.structure -> 'milestones') = 2
+          and (select array_agg(r.ticket_key order by r.ticket_key) from ouroboros.roadmap_structure_refs(v.structure) r)
+                = array['#742', '#743', '#744', '#745', '#746', '#747']
+          and v.markdown like '%- [x] #742 Wind-feedforward MPC in final approach `MVP` `L`%'
+          and v.markdown like '%- [ ] #747 Operator recovery playbook docs `XS`%'
+     from ouroboros.roadmap_docs doc
+     join ouroboros.roadmap_doc_versions v on v.doc_id = doc.id and v.version = doc.current_version
+     join ouroboros.investigations inv on inv.id = doc.investigation_id and inv.seq = 124
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'),
+  'RS-124''s ROADMAP.md is committed at 8c1b2e4 with 6 issues · 2 milestones, rendered and raw');
+
+select pg_temp.must_hold(
+  (select array_agg(s.author_kind || ':' || s.status order by s.created_at) = array['user:open', 'ai:open']
+     from ouroboros.doc_suggestions s
+     join ouroboros.roadmap_docs doc on doc.id = s.doc_id
+     join ouroboros.investigations inv on inv.id = doc.investigation_id and inv.seq = 124
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'),
+  'the document has two open suggestions, one a person''s and one the AI''s');
+
+select pg_temp.must_hold(
+  (select array_agg(m.key || ' ' || m.done || '/' || m.total order by m.key) = array['m1 1/3', 'm2 0/3']
+     from (select r.milestone_key as key,
+                  count(*) filter (where t.state = 'closed') as done, count(*) as total
+             from ouroboros.roadmap_docs doc
+             join ouroboros.roadmap_doc_versions v on v.doc_id = doc.id and v.version = doc.current_version
+             join ouroboros.investigations inv on inv.id = doc.investigation_id and inv.seq = 124
+             join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'
+             cross join lateral ouroboros.roadmap_structure_refs(v.structure) r
+             join ouroboros.tickets t on t.id = r.ticket_id
+            group by r.milestone_key) m),
+  'the milestone heads compute to 1/3 done and 0/3 done');
+
+select pg_temp.must_hold(
+  (select array_agg(t.external_key || ' ' || e.effort || ' ' || e.risk order by t.external_key)
+          = array['#742 l high', '#743 m medium', '#744 m medium', '#745 m high', '#746 s low', '#747 xs low']
+     from ouroboros.tickets t
+     join ouroboros.issue_estimates e on e.ticket_id = t.id
+     join ouroboros.organization org on org."id" = t.organization_id and org."slug" = 'acme-robotics'
+    where t.external_key in ('#742', '#743', '#744', '#745', '#746', '#747')),
+  'each filed issue carries the estimator''s effort and complexity — L · M · M · M · S · XS');
+
+-- The personal workspace is the empty-state fixture.
+select pg_temp.must_hold(
+  exists (select 1 from ouroboros.organization org where org."slug" = 'kensuenobu' and org.metadata like '%"personal": true%')
+  and not exists (select 1 from ouroboros.investigations inv
+                    join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'kensuenobu')
+  and not exists (select 1 from ouroboros.competitors c
+                    join ouroboros.organization org on org."id" = c.organization_id and org."slug" = 'kensuenobu')
+  and not exists (select 1 from ouroboros.regression_baselines b
+                    join ouroboros.organization org on org."id" = b.organization_id and org."slug" = 'kensuenobu'),
+  'Ken''s personal workspace has no research rows — the empty state #633 verifies against');
+
 
 \o
 \echo 'seed.sql: all assertions passed'
