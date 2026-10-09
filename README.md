@@ -397,7 +397,7 @@ only the checks it can affect:
 | `ouroboros-engine/**` | `ci/engine` → `publish/engine` | `uv sync --locked` → `ruff check` → `ruff format --check` → `pytest` |
 | `ouroboros-db/**` | `ci/db` → `publish/db` | the migration and data-tier contract, then the module's tooling tests, then a live migration pass |
 | `ouroboros-runner/**` | `ci/runner` → `cross/runner` → `package/runner` → `release/runner` | `make install` → format → lint (with shellcheck over `install.sh`) → typecheck → test → the protocol contract → build, then a cross-compile of all three target architectures; `make release` and its checksums on every event, published as the GitHub release `ouroboros-runner-v<VERSION>` from `main` only ([#248](https://github.com/NobuData/ouroboros/issues/248)) |
-| `ouroboros-docs/**` | `ci/docs` | the same pipeline, against the documentation site's own lockfile — lint (ESLint, Stylelint, markdownlint over the pages) → typecheck → test → a build in which a broken link or anchor fails ([#1168](https://github.com/NobuData/ouroboros/issues/1168)) |
+| `ouroboros-docs/**` | `ci/docs` → `publish/docs` | the same pipeline, against the documentation site's own lockfile — lint (ESLint, Stylelint, markdownlint over the pages) → typecheck → test → a build in which a broken link or anchor fails ([#1168](https://github.com/NobuData/ouroboros/issues/1168)) |
 | `ouroboros-web/**` | `ouroboros-web · build & publish` | the marketing site's own build and image push |
 | `package.json`, `yarn.lock`, `turbo.json`, `.yarnrc.yml` | `ci/ui` + `ci/rest` | the workspace both TypeScript modules resolve through |
 | `schemas/runner-protocol/**`, `docs/RUNNER_PROTOCOL.md` | `ci/runner` | the wire contract the Go agent and the TypeScript gateway both implement |
@@ -408,7 +408,10 @@ stops building fails the pull request that broke it — and pushes it as
 `ouroboros-<module>:latest` and `ouroboros-<module>:<sha>` only once its `ci/` job is green
 on `main`. `ouroboros-runner` has no such job: it ships a **binary** rather than an image,
 and the tagged release with a checksum per architecture arrives with
-[#248](https://github.com/NobuData/ouroboros/issues/248).
+[#248](https://github.com/NobuData/ouroboros/issues/248). `publish/docs` differs too
+([#1207](https://github.com/NobuData/ouroboros/issues/1207)): it does not run on a pull
+request at all, and pushes `registry.apiome.dev/ouroboros-docs` as `latest`, `<sha>` and the
+site's `package.json` version — see [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md) § 9.
 
 A change to `docs/` or to `scripts/` queues none of them, save the brand sources above; a change to the pipeline the
 TypeScript modules share queues both of the modules that run it, and so does a change to

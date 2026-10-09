@@ -416,9 +416,13 @@ The documentation is a static site in its own image, [`ouroboros-docs/Dockerfile
 address, no secret and no volume. Host it if you want the documentation on your own domain or
 inside a network without internet access.
 
+Every push to `main` publishes it as `registry.apiome.dev/ouroboros-docs`, tagged `latest`, with
+the commit sha and with the site's version. Pull it — after `docker login registry.apiome.dev`
+— or build your own, which you need to do to bake in your own address:
+
 ```bash
+docker run -d -p 127.0.0.1:8080:8080 registry.apiome.dev/ouroboros-docs:latest
 docker build -t ouroboros-docs --build-arg DOCS_SITE_URL=https://docs.example.com ouroboros-docs
-docker run -d -p 127.0.0.1:8080:8080 ouroboros-docs
 ```
 
 - **Port 8080**, as the image's non-root user (uid 101). Put it behind the same kind of HTTPS

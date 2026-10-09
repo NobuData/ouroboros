@@ -545,6 +545,37 @@ check_contains "$WORKFLOWS/docs.yml" '^        run: yarn check:config-reference$
 # The CLI reference pages document every flag main.go's and install.sh's usage texts name (#1203).
 check_contains "$WORKFLOWS/docs.yml" '^        run: yarn check:cli-flags$' \
   'docs.yml checks the CLI flags are documented'
+
+# publish/docs (#1207, roadmap decision D9) is not one of IMAGE_MODULES below, on purpose: D9
+# names its registry in the workflow, skips the whole job on a pull request rather than its
+# credentialed steps, and adds the module's version as a third tag. Each of those is checked
+# here instead. The job is read alone — from `  publish:` to the next job or the end — so a
+# guard written on another job cannot satisfy it.
+DOCS_PUBLISH=$(sed -n '/^  publish:$/,/^  [a-z][a-z-]*:$/p' "$WORKFLOWS/docs.yml" 2>/dev/null |
+  sed '1!{/^  [a-z][a-z-]*:$/d;}')
+check_contains "$WORKFLOWS/docs.yml" '^  publish:$' 'docs.yml has a publish job'
+check_matches "$DOCS_PUBLISH" '^    name: publish/docs$' 'it reports as publish/docs'
+# The gate: without it a red ci/docs still ships a tag.
+check_matches "$DOCS_PUBLISH" '^    needs: ci$' 'nothing is published until ci/docs has passed'
+# The PR guard, on the job itself: a pull request runs ci/docs only, and a fork's never
+# reaches the login.
+check_matches "$DOCS_PUBLISH" "^    if: github\.event_name != 'pull_request'\$" \
+  'publish/docs never runs on a pull request'
+check_matches "$DOCS_PUBLISH" '^      REGISTRY: registry\.apiome\.dev$' \
+  'it publishes to registry.apiome.dev (D9)'
+check_matches "$DOCS_PUBLISH" '^      IMAGE: ouroboros-docs$' 'as the image ouroboros-docs'
+check_matches "$DOCS_PUBLISH" '^          registry: \$\{\{ env\.REGISTRY \}\}$' \
+  'and logs in to that registry'
+check_matches "$DOCS_PUBLISH" '^          username: \$\{\{ secrets\.DOCKER_USERNAME \}\}$' \
+  'with the DOCKER_USERNAME build secret'
+check_matches "$DOCS_PUBLISH" '^          password: \$\{\{ secrets\.DOCKER_PASSWORD \}\}$' \
+  'and the DOCKER_PASSWORD build secret'
+check_matches "$DOCS_PUBLISH" '^          context: ouroboros-docs$' \
+  'the image is built from the module alone (DD.1)'
+for tag in latest '\$\{\{ github\.sha \}\}' '\$\{\{ steps\.meta\.outputs\.version \}\}'; do
+  check_matches "$DOCS_PUBLISH" "^            \\\$\\{\\{ env\\.REGISTRY \\}\\}/\\\$\\{\\{ env\\.IMAGE \\}\\}:$tag\$" \
+    "it is tagged $(printf '%s' "$tag" | tr -d '\\')"
+done
 # Not a workspace (§ 1, limit 6): it installs from its own lockfile, so the root workspace
 # files are no input of ci/docs.
 for workspace_file in $WORKSPACE_FILES; do
