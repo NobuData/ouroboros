@@ -571,7 +571,7 @@ dev seeds (e.g. acme-robotics; `acme-onboarding` for the wizard).
 | DA.7 | #1179 ✅ | 🟢 Done | ouroboros-docs: [DA.7] Workflows — Studio canvas | Build/edit/publish workflows visually | mvp, docs-site, documentation, workflow | Y | Y | M | ouroboros-docs |
 | DA.8 | #1180 ✅ | 🟢 Done | ouroboros-docs: [DA.8] Workflows as code | TS-DSL editor, completions, round-trip with the canvas | mvp, docs-site, documentation, code-view | Y | Y | M | ouroboros-docs |
 | DA.9 | #1181 | 🟡 Open | ouroboros-docs: [DA.9] Models — routing & the model registry | Routes, aliases, escalation; browsing models | mvp, docs-site, documentation, routing, registry | Y | Y | M | ouroboros-docs |
-| DA.10 | #1182 | 🟡 Open | ouroboros-docs: [DA.10] Runs — the run console | Transcript, stages, guardrails, pause/abort/steer | mvp, docs-site, documentation, runs | Y | Y | M | ouroboros-docs |
+| DA.10 | #1182 ✅ | 🟢 Done | ouroboros-docs: [DA.10] Runs — the run console | Transcript, stages, guardrails, pause/abort/steer | mvp, docs-site, documentation, runs | Y | Y | M | ouroboros-docs |
 | DA.11 | #1183 | 🟡 Open | ouroboros-docs: [DA.11] Test results | Results, flakes, triage, classification | mvp, docs-site, documentation, tests | Y | Y | S | ouroboros-docs |
 | DA.12 | #1184 | 🟡 Open | ouroboros-docs: [DA.12] Pull requests — verification, evidence & merge | Gates, criteria matrix, evidence, merge | mvp, docs-site, documentation, pr | Y | Y | M | ouroboros-docs |
 | DA.13 | #1185 | 🟡 Open | ouroboros-docs: [DA.13] Needs-you inbox | Decision cards, allow once/deny, snooze, resolved list, channel prefs | mvp, docs-site, documentation, inbox | Y | Y | M | ouroboros-docs |
@@ -777,6 +777,33 @@ providers/keys is admin (DB.7) — linked.
 `.models.registry`, `.registry.detail`.
 
 ### Issue DA.10 (#1182) — ouroboros-docs: [DA.10] Runs — the run console
+
+> **GitHub issue:** #1182 ✅ · **Status:** 🟢 Done · **Parent epic:** #1158
+>
+> **Delivered (#1182):** `user-guide/runs/console.mdx` — written to what `main` ships:
+> - **The page:**
+>   - header: status words, the workflow pin, model, elapsed, branch, PR verification and the merged PR link, and the Simulated-run note;
+>   - stage timeline: five marks, `attempt 2/3` with the gate note, the stage filter, and **Test results ↗**;
+>   - transcript: the actor kinds, streaming and **Jump to latest ↓**, **Raw JSONL ↗** and the entry cap;
+>   - Changes / Resources (tokens vs budget, cost vs cap, `—` when unpriced);
+>   - Guardrails: the three checks as a table plus the review-policy row, summary tags, evidence on a fail, the secrets ⓘ limitation, and no override on the console (allowances live in Needs You).
+> - **Controls actually delivered**, owner/admin on live runs only:
+>   - **Pause loop** / **Resume**, which appears after the acknowledgement, with delivery tags;
+>   - **Take over in IDE**, which pauses and hands you the branch; nothing opens an editor (D12);
+>   - **Abort run**, confirmed by typing the loop number.
+> - **Steering**: owner, admin or member; up to 4,096 characters.
+> - **Questions to the inbox:** the console shows only **needs human** and does not link the question, so the page says so.
+> - Finished runs, and what can go wrong.
+>
+> `tests/run-console.test.ts` checks labels against the console's constants and the guardrail rows against `cards.ts`.
+>
+> **Screenshots** (`acme-robotics`):
+> - `user-guide.run.live` — #482 / Loop #1847. Masked: elapsed, the last five transcript times, and the ingest-lag headline.
+> - `user-guide.run.completed` — merged #474 / Loop #1839. **No finished seeded run has stages or transcript** (only live #482/#479/#476 do), so its timeline and transcript are empty; the page says older runs may hold less.
+> - `user-guide.run.guardrail` — #479's Guardrails card, with the `allowed_paths` fail and its evidence.
+> - `user-guide.run.controls` — #482's header with the three controls, elapsed masked. Nothing clicked: Pause and Take over write on click. After capture, `run_controls` = 0 and #482 still has its 9 events.
+>
+> No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.16.
 
 **Problem Statement.** When a loop is running or failed, users live in the run console.
 **Solution / Scope.** `/runs/[id]`: header and stage timeline, transcript, guardrail events,
