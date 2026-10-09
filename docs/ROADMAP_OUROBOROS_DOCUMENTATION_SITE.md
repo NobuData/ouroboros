@@ -576,7 +576,7 @@ dev seeds (e.g. acme-robotics; `acme-onboarding` for the wizard).
 | DA.12 | #1184 ✅ | 🟢 Done | ouroboros-docs: [DA.12] Pull requests — verification, evidence & merge | Gates, criteria matrix, evidence, merge | mvp, docs-site, documentation, pr | Y | Y | M | ouroboros-docs |
 | DA.13 | #1185 ✅ | 🟢 Done | ouroboros-docs: [DA.13] Needs-you inbox | Decision cards, allow once/deny, snooze, resolved list, channel prefs | mvp, docs-site, documentation, inbox | Y | Y | M | ouroboros-docs |
 | DA.14 | #1186 ✅ | 🟢 Done | ouroboros-docs: [DA.14] Insights | Ranges, cards, trends, email digest | mvp, docs-site, documentation, insights | Y | Y | S | ouroboros-docs |
-| DA.15 | #1187 | 🟡 Open | ouroboros-docs: [DA.15] Build Analyzer | Duration chart, suggestions, predicted vs measured, drafted tickets | mvp, docs-site, documentation, analyzer | Y | Y | M | ouroboros-docs |
+| DA.15 | #1187 ✅ | 🟢 Done | ouroboros-docs: [DA.15] Build Analyzer | Duration chart, suggestions, predicted vs measured, drafted tickets | mvp, docs-site, documentation, analyzer | Y | Y | M | ouroboros-docs |
 | DA.16 | #1188 | 🟡 Open | ouroboros-docs: [DA.16] Knowledge | Skills, learned facts, playbooks, repo profile | mvp, docs-site, documentation, knowledge | Y | Y | S | ouroboros-docs |
 
 ### Issue DA.1 (#1173) — ouroboros-docs: [DA.1] User Guide overview, concepts & glossary
@@ -912,6 +912,20 @@ words, trend colouring, interventions, the weekly email digest (subscribing is i
 **Problem Statement.** Users need to interpret the numbers correctly.
 
 ### Issue DA.15 (#1187) — ouroboros-docs: [DA.15] Build Analyzer
+
+> **GitHub issue:** #1187 ✅ · **Status:** 🟢 Done · **Parent epic:** #1158
+>
+> **Delivered (#1187):** `user-guide/analyzer.mdx` — written to what `main` ships:
+> - the repository is the header chip's **Focus repository** (else the first enabled one, with its hint); the headline, **Schedule** and its sheet (members read, owner/admin save), **Run analysis now** (owner/admin) and progress; the summary strip (corpus, sampled, analyzed by, last run, confidence basis);
+> - the duration chart, change-point chips and their details — attribution is a ranking, not a verdict; **no recorded change**;
+> - the two suggestion cards, impact and confidence popovers, the three primary actions (**Apply**, **Draft as vN →**, **Draft spike ticket**) through the consequence preview, **Details**, permanent **Dismiss**, roles, resolved rows; **Simulate on last 50 loops** honest-soon per D12; a change no plane can make says **This cannot be applied yet**;
+> - predicted vs measured (14-day re-measurement, ✓ / amber miss, pending, confounded) and recalibration; drafted tickets (ticks, push, **Edit drafts**, retry, **Not drafted yet**); how it works and locality; the gated state at the service's `MINIMUM_DAYS_WITH_BUILDS` (10).
+>
+> `tests/analyzer.test.ts` holds labels to the UI constants, the card titles, strip labels and schedule fields to their sources, the primary-action labels to `primaryAction`, and the floor to `corpus.manifest.ts`.
+>
+> **Screenshots** (`acme-robotics`; each capture chooses the focus repository through the header chip — the harness has no storage hook): `user-guide.analyzer` (page), `.analyzer.duration`, `.analyzer.suggestion` (first build-process row), `.analyzer.predicted-vs-measured`, `.analyzer.tickets` (helios-firmware) and `.analyzer.gated` (helios-telemetry: 3 builds on 3 days). Nothing is applied, dismissed or pushed.
+>
+> No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.21.
 
 **Problem Statement.** The analyzer suggests build improvements with predicted impact;
 users must judge and act on them.

@@ -676,6 +676,144 @@
       "capturedAt": "2026-10-09T00:57:29.751Z",
       "uiVersion": "0.144.1",
       "seedRef": "0c60e4e7139622b20e51dfbca54b2b0b93fcf306"
+    },
+    {
+      "id": "user-guide.analyzer",
+      "route": "/analyzer",
+      "workspace": "acme-robotics",
+      "actions": [
+        {
+          "click": ".shell-tenant--control"
+        },
+        {
+          "click": "[role=menuitem]:has-text('Focus repository')"
+        },
+        {
+          "click": "[role=menuitemradio]:has-text('helios-firmware')"
+        }
+      ],
+      "ready": ".analyzer-sugg__row",
+      "clip": "page",
+      "caption": "The Build Analyzer: build duration with the shifts it detected, its suggestions, and the tickets it drafted.",
+      "alt": "The Build Analyzer for helios-firmware, headed Your last 1,284 builds have opinions., with Schedule: weekly + every 50 builds and Run analysis now; the summary strip — corpus 1,284 builds, 312 loops, 90 days, 4.1M log lines and 62 HIL sessions with a sampled tag, analyzed by deterministic analyzers v1, last run 1h ago taking 41 min, confidence high; the build-duration chart with three change-point chips; the first suggested build-process change; and the drafted-tickets card with BA-1 to BA-4 ticked.",
+      "capturedAt": "2026-10-09T01:05:53.938Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "4d6781653dff112f4cfea1e9869a4e670463b9f3"
+    },
+    {
+      "id": "user-guide.analyzer.duration",
+      "route": "/analyzer",
+      "workspace": "acme-robotics",
+      "actions": [
+        {
+          "click": ".shell-tenant--control"
+        },
+        {
+          "click": "[role=menuitem]:has-text('Focus repository')"
+        },
+        {
+          "click": "[role=menuitemradio]:has-text('helios-firmware')"
+        }
+      ],
+      "ready": ".analyzer-duration .chart-ts__line",
+      "clip": ".analyzer-duration",
+      "caption": "Build duration over the analysis window, with a chip for each detected shift and what it is attributed to.",
+      "alt": "Build duration · 90 days, with detected change-points, median per build from Jul 12 to Oct 8: the line jumps from about 4m to 5m 45s at Jul 19 · Zephyr 4.1 migration +1m 30s, drops to about 3m 30s at Aug 23 · ccache enabled −2m 10s (green), and rises to 4m 05s at Sep 30 · twister suite growth +40s; under it, The analyzer attributes every shift in the curve to a merge, a config change, or infrastructure drift.",
+      "capturedAt": "2026-10-09T01:05:53.938Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "4d6781653dff112f4cfea1e9869a4e670463b9f3"
+    },
+    {
+      "id": "user-guide.analyzer.suggestion",
+      "route": "/analyzer",
+      "workspace": "acme-robotics",
+      "actions": [
+        {
+          "click": ".shell-tenant--control"
+        },
+        {
+          "click": "[role=menuitem]:has-text('Focus repository')"
+        },
+        {
+          "click": "[role=menuitemradio]:has-text('helios-firmware')"
+        }
+      ],
+      "ready": ".analyzer-sugg__row",
+      "clip": ".analyzer-sugg__row >> nth=0",
+      "caption": "A suggestion: what to change, its predicted impact, how confident the analyzer is, and the evidence behind it.",
+      "alt": "The suggestion Split the test gate: native_sim every build, QEMU + HIL only before merge, with the evidence qemu_cortex_m3 caught 0 unique failures in 214 builds; HIL caught 9 — all at merge gates, a −3m 40s per loop impact pill and conf 91%, each with an info button, and the Apply, Details and Dismiss buttons.",
+      "capturedAt": "2026-10-09T01:05:53.938Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "4d6781653dff112f4cfea1e9869a4e670463b9f3"
+    },
+    {
+      "id": "user-guide.analyzer.predicted-vs-measured",
+      "route": "/analyzer",
+      "workspace": "acme-robotics",
+      "actions": [
+        {
+          "click": ".shell-tenant--control"
+        },
+        {
+          "click": "[role=menuitem]:has-text('Focus repository')"
+        },
+        {
+          "click": "[role=menuitemradio]:has-text('helios-firmware')"
+        }
+      ],
+      "ready": ".analyzer-pv__row",
+      "clip": ".analyzer-pv",
+      "caption": "Predicted vs measured: each applied suggestion re-measured against what the analyzer predicted.",
+      "alt": "Predicted vs measured, applied earlier: Test-suite split (applied Sep 2) predicted −3m 40s and measured −3m 55s with a check mark; ccache warm-up (applied Sep 9) predicted −1m 50s and measured −1m 12s in amber, under-delivered — analyzer revised its cache model; and Every applied suggestion is re-measured for 14 days. The analyzer's model retrains on its own misses.",
+      "capturedAt": "2026-10-09T01:05:53.938Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "4d6781653dff112f4cfea1e9869a4e670463b9f3"
+    },
+    {
+      "id": "user-guide.analyzer.tickets",
+      "route": "/analyzer",
+      "workspace": "acme-robotics",
+      "actions": [
+        {
+          "click": ".shell-tenant--control"
+        },
+        {
+          "click": "[role=menuitem]:has-text('Focus repository')"
+        },
+        {
+          "click": "[role=menuitemradio]:has-text('helios-firmware')"
+        }
+      ],
+      "ready": ".analyzer-tix__group",
+      "clip": ".analyzer-tix",
+      "caption": "Drafted tickets: the analyzer's findings as a planning batch, ready to push to your tracker.",
+      "alt": "Drafted tickets — from patterns, not people, with All drafts ticked and four ticked drafts — BA-1 Refactor tests/ota fixtures (M), BA-2 Bump ccache 4.9 → 4.11 (XS), BA-3 Add thermal chamber to rig helios-rig-02 (L) and BA-4 Delete 12 dead Kconfig options (S) — each with its evidence line; est. total ~1.5 days of loop time; and the Push 4 tickets to backlog and Edit drafts buttons.",
+      "capturedAt": "2026-10-09T01:05:53.938Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "4d6781653dff112f4cfea1e9869a4e670463b9f3"
+    },
+    {
+      "id": "user-guide.analyzer.gated",
+      "route": "/analyzer",
+      "workspace": "acme-robotics",
+      "actions": [
+        {
+          "click": ".shell-tenant--control"
+        },
+        {
+          "click": "[role=menuitem]:has-text('Focus repository')"
+        },
+        {
+          "click": "[role=menuitemradio]:has-text('helios-telemetry')"
+        }
+      ],
+      "ready": ".analyzer-state",
+      "clip": "page",
+      "caption": "A repository with too little build history: the analyzer says what it needs before it shows a chart or suggestions.",
+      "alt": "The Build Analyzer for helios-telemetry, headed The analyzer needs more history., with Schedule: manual only and Run analysis now; the strip says No analysis yet — the corpus, provenance and confidence appear after the first run.; the card The analyzer needs more history reads 3 builds on 3 days in the last 90. It needs builds on at least 10 days before it can tell a shift from noise., and lists what it reads; beside it, How it works with its ingest, correlate and synthesize steps and Runs on your build farm's data. Nothing leaves the tenant.",
+      "capturedAt": "2026-10-09T01:05:53.938Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "4d6781653dff112f4cfea1e9869a4e670463b9f3"
     }
   ]
 }
