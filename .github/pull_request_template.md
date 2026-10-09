@@ -39,5 +39,6 @@ Closes #
 - [ ] Roadmap status marker updated (🟡 Open → 🟢 Done) for the issue this closes
 - [ ] `scripts/verify-layout.sh` and `scripts/verify-github-config.sh` pass
 - [ ] Module documentation updated where behaviour changed
+- [ ] User documentation in `ouroboros-docs` updated (or not user-visible) — `docs/CONVENTIONS.md` § 11
 - [ ] Module version bumped (semver, in its own manifest) if its code changed
 - [ ] No credentials, tokens or real `.env` values are committed

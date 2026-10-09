@@ -83,6 +83,9 @@
 # ── Product areas ─────────────────────────────────────────────────────────────
 # One per designed screen or subsystem, from the mockup roadmaps in docs/.
 
+- name: "docs-site"
+  color: "0b5394"
+  description: "Documentation site (ouroboros-docs) — Docusaurus, sections, screenshots, publishing"
 - name: "shell"
   color: "0366d6"
   description: "Application shell & UI/UX standards — header, sidebar, scroll containment, type scale"

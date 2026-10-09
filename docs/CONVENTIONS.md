@@ -861,5 +861,10 @@ written. The work is named earlier than that: the roadmap skills (`create-roadma
 the screenshot ids, or "none — internal-only change" — and list `ouroboros-docs` among the
 affected modules of anything user-visible, and `create-issues` carries that section into the
 GitHub issue ([#1210](https://github.com/NobuData/ouroboros/issues/1210)). An implementer
-reads what to document from the ticket rather than deciding it alone.
+reads what to document from the ticket rather than deciding it alone. Human contributors meet
+the same rule in the same two places ([#1211](https://github.com/NobuData/ouroboros/issues/1211)):
+the feature issue form's required **Documentation impact** field, and the pull-request
+template's checkbox *User documentation in `ouroboros-docs` updated (or not user-visible)*.
+`scripts/verify-github-config.sh` asserts both, and the `docs-site` label marks work on the
+site itself.
 

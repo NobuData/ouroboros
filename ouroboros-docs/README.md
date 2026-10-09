@@ -423,7 +423,8 @@ step: name the page paths, write or update the pages, recapture only the affecte
 run this module's checks, bump its version, and list what changed under **Documentation** in
 the pull request. The ticket itself says what to document: the roadmap skills give every issue a
 **Documentation** section naming the pages and screenshot ids, and `create-issues` carries it
-into GitHub. What follows is how a page is written.
+into GitHub; a hand-filed issue has the same field, and the pull-request template a checkbox
+for it. What follows is how a page is written.
 
 ### Where a page goes
 
