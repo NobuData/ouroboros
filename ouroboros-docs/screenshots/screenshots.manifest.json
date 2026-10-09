@@ -115,9 +115,9 @@
       "clip": "page",
       "caption": "A new workspace's dashboard offers the Get Started wizard until you run a first loop or dismiss it.",
       "alt": "The Mission Control dashboard of a new workspace, with a banner reading New workspace — your first loop in about 4 minutes, and Get started and Dismiss buttons.",
-      "capturedAt": "2026-10-08T21:13:42.748Z",
+      "capturedAt": "2026-10-09T01:23:03.050Z",
       "uiVersion": "0.144.1",
-      "seedRef": "010fb287e1c459cdc1d703473959cc3bb408a31f"
+      "seedRef": "2631a297583496a87a0ddace271b0fb29777909f"
     },
     {
       "id": "user-guide.shell",
@@ -850,6 +850,96 @@
       "capturedAt": "2026-10-09T01:14:19.121Z",
       "uiVersion": "0.144.1",
       "seedRef": "fecea49993b29fc637ae1a8a2e6ee68e0ef0c345"
+    },
+    {
+      "id": "user-guide.dashboard",
+      "route": "/dashboard",
+      "workspace": "acme-robotics",
+      "ready": ".dash-runs",
+      "clip": "page",
+      "caption": "Mission Control: what the loops are doing now, what is waiting, and how the week is going.",
+      "alt": "Mission Control for acme-robotics, headed Good evening, Ken — the loop is turning., with 3 issues in flight, 12 queued behind them. Nothing has merged since midnight UTC., and the Edit workflows and Pull next issue buttons; the figures Loops live 3 (1 coding · 1 building · 1 in review), Queued issues 12 (est. 9h 40m of autonomous work), PRs merged · 7d 21 (▼ 4 vs last week) and Token spend · today 4.2M (≈ $18.60 across 4 providers); Active loops with three running loops; Loop pulse with its three bars and the auto-merge switch on; and the tops of System and Recently closed by the loop.",
+      "capturedAt": "2026-10-09T01:24:07.579Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "2631a297583496a87a0ddace271b0fb29777909f",
+      "masks": [
+        ".dash-runs tbody tr td:nth-child(5)"
+      ]
+    },
+    {
+      "id": "user-guide.dashboard.loops",
+      "route": "/dashboard",
+      "workspace": "acme-robotics",
+      "ready": ".dash-runs",
+      "clip": ".dash-col--8:has(.dash-runs)",
+      "caption": "Active loops: each running loop, the stage it is in and how long it has been going.",
+      "alt": "Active loops, live, with Open run console: #482 Fix flaky CAN-bus telemetry test on standard-fix, Implementing · 4/6, claude-fable-5, coding; #479 Add OTA rollback on failed checksum on feature-loop, Build farm · 5/7, claude-sonnet-5, building; and #476 Bump MQTT client, migrate deprecated API on deps-refresh, Self-review · 6/6, ollama/qwen3-coder, review. The elapsed column is masked.",
+      "capturedAt": "2026-10-09T01:24:04.945Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "2631a297583496a87a0ddace271b0fb29777909f",
+      "masks": [
+        ".dash-runs tbody tr td:nth-child(5)"
+      ]
+    },
+    {
+      "id": "user-guide.dashboard.pulse",
+      "route": "/dashboard",
+      "workspace": "acme-robotics",
+      "ready": ".dash-pulse",
+      "clip": ".dash-col--4:has(.dash-pulse)",
+      "caption": "The week's pulse, with the workspace's auto-merge switch.",
+      "alt": "Loop pulse over 7 days: Autonomous merge rate 95%, Median cycle time 12m 40s and Human interventions 15 this week, each with a bar, and Auto-merge when checks pass switched on.",
+      "capturedAt": "2026-10-09T01:23:03.050Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "2631a297583496a87a0ddace271b0fb29777909f"
+    },
+    {
+      "id": "user-guide.dashboard.system",
+      "route": "/dashboard",
+      "workspace": "acme-robotics",
+      "ready": ".dash-system",
+      "clip": ".dash-col--4:has(.dash-system)",
+      "caption": "System: whether the services behind the loops are reachable.",
+      "alt": "System, operational: REST API up, Serving requests.; Database up, Accepting queries.; Engine up, Build 0.7.17.",
+      "capturedAt": "2026-10-09T01:23:03.050Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "2631a297583496a87a0ddace271b0fb29777909f"
+    },
+    {
+      "id": "user-guide.dashboard.closed",
+      "route": "/dashboard",
+      "workspace": "acme-robotics",
+      "ready": ".dash-closed",
+      "clip": ".dash-col--7:has(.dash-closed)",
+      "caption": "Recently closed: the loops that finished, and what became of them.",
+      "alt": "Recently closed by the loop, with All issues: #474 → PR #512 Debounce e-stop interrupt handler, claude-fable-5, 11m, 14/14, merged; #471 → PR #509 Unit tests for motor PID edge cases, 19m, 14/14, merged; #468 → PR #507 i18n strings for pairing screen, 6m, 12/12, merged; and #465 → PR #504 Refactor telemetry buffer allocation, claude-sonnet-5, 42m, 13/14 tinted, needs human.",
+      "capturedAt": "2026-10-09T01:23:03.050Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "2631a297583496a87a0ddace271b0fb29777909f"
+    },
+    {
+      "id": "user-guide.dashboard.queue",
+      "route": "/dashboard",
+      "workspace": "acme-robotics",
+      "ready": ".dash-queue",
+      "clip": ".dash-col--5:has(.dash-queue)",
+      "caption": "The queue: issues waiting for a loop, in the order they will be picked.",
+      "alt": "Up next in queue, with Manage queue: #485 Watchdog reset on I²C bus lockup (M, standard-fix), #486 Expose battery health over BLE GATT (L, feature-loop), #488 Typo sweep in operator manual (XS, docs-loop), #490 Migrate build to Zephyr 4.2 (XL, deps-refresh) and #491 Add CRC to config persistence layer (S, standard-fix), then +7 queued.",
+      "capturedAt": "2026-10-09T01:23:03.050Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "2631a297583496a87a0ddace271b0fb29777909f"
+    },
+    {
+      "id": "user-guide.dashboard.empty",
+      "route": "/dashboard",
+      "workspace": "kensuenobu",
+      "ready": "section.offer-banner",
+      "clip": "page",
+      "caption": "A fresh workspace: every card says what will fill it, and the banner offers the Get Started wizard.",
+      "alt": "Mission Control for a new workspace, headed Good evening, Ken — the loop is idle., with the banner New workspace — your first loop in about 4 minutes. and its Get started and Dismiss buttons; every figure reads 0 with a line saying what will fill it; Active loops reads Nothing is running right now; and Loop pulse reads No runs have finished yet, so these three have nothing to measure.",
+      "capturedAt": "2026-10-09T01:23:03.050Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "2631a297583496a87a0ddace271b0fb29777909f"
     }
   ]
 }
