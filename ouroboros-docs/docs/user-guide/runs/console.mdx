@@ -5,11 +5,153 @@ sidebar_position: 1
 description: "Reading a run's stages, transcript, guardrails and spend, and controlling it."
 ---
 
-Reading a run's stages, transcript, guardrails and spend, and controlling it.
+Every loop that works on an issue is a **run**, and every run has a **run console** at
+`/runs/<id>`. It is where you watch a loop work, see why it stopped or failed, and — while it
+runs — pause, steer or abort it. Open it from a loop on the [dashboard](../dashboard.mdx), the
+Build Farm, Issues, Workflows, Knowledge or Insights; the breadcrumb at the top takes you back
+to where you came from.
 
-:::info[Being written]
+<Screenshot id="user-guide.run.live" />
 
-This page is being written in
-[#1182](https://github.com/NobuData/ouroboros/issues/1182).
+## The header
 
-:::
+The header names the loop and the issue it is working on — **Run Console · Loop #1847**, then
+**#482 — Fix flaky CAN-bus telemetry test**, which links to the issue in your tracker. Below
+it:
+
+- **The status** — **coding**, **building** or **review** while the loop runs (the dot
+  pulses); **merged**, **needs human**, **failed** or **canceled** once it has finished.
+- **The workflow and version** the run is pinned to, such as **standard-fix v14** — the version
+  that was published when the issue was queued (see
+  [Which version runs](../workflows/studio.mdx#which-version-runs)).
+- **The model** the run is routed to.
+- **elapsed** — how long the run has taken; it keeps counting while the loop runs and stops
+  when it finishes.
+- **branch** — the branch the loop pushes to, with a button to copy its name; **no branch
+  yet** until it has pushed one.
+- **PR verification** — once the loop has opened a pull request, a link to its
+  [verification page](../pull-requests.mdx). A merged run also links to the pull request
+  itself, such as **PR #512 ↗**.
+
+A run started by the development simulator carries a **Simulated run.** note: nothing real did
+the work it shows.
+
+## The stage timeline
+
+The **Stage timeline** shows the workflow's stages in order, each marked **✓** done (with how
+long it took), **●** in progress, **○** pending, **✕** failed or **–** skipped. A stage the loop
+is repeating shows its attempt — **attempt 2/3** — and a note says why it went round again,
+such as **attempt 1 failed tests — loop returned from gate ↺**.
+
+Select a stage to show only its entries in the transcript; select it again, or choose
+**Show all**, to see everything. Once the loop reaches its test stage, **Test results ↗** on
+that stage opens the run's [test results](./tests.mdx).
+
+## The agent transcript
+
+The **Agent transcript** is what the loop did, entry by entry, each with its time and who
+wrote it:
+
+- **PLAN** — what the loop intends to do next.
+- **TOOL** — an action: reading or editing a file (with the diff), running a command or the
+  tests (with the result, and a progress bar while they run).
+- **The model's name**, such as **CLAUDE-FABLE-5** — the model's reasoning.
+- **GATE** — a decision the workflow took, such as sending the loop back to an earlier stage.
+- **USER** — a note someone sent with **Steer the loop**.
+- **SYSTEM** — the platform's own notes.
+
+While the loop runs, the card is marked **streaming** and new entries appear at the bottom; it
+follows them unless you scroll up, when **Jump to latest ↓** takes you back. **Raw JSONL ↗**
+downloads the whole transcript. The card keeps the most recent entries; for a very long run,
+a note says how many earlier ones are only in the download.
+
+## Changes, resources and guardrails
+
+Beside the transcript:
+
+- **Changes so far** — the files the loop has changed, with lines added and removed, its
+  commits, and how the pull request will be merged (**will squash on merge**).
+- **Resources** — what the run has used: **Tokens** against the run's token budget
+  (**212k / 400k budget**), **Est. cost** against the spend cap (**$1.14 / $2.50 cap**), the
+  **Build farm** runner it holds, and **Wall clock**. A cost shown as **—** means the model has
+  no price set; Ouroboros does not guess one.
+- **Guardrails** — the checks every change must pass, one row each:
+
+| Check | Passed | Failed |
+| --- | --- | --- |
+| Allowed paths | **Diff confined to allowed paths** | **Diff outside allowed paths** |
+| CI configuration | **No CI config touched** | **CI config touched** |
+| Secrets | **Secrets scan clean** | **Possible secret in the diff** |
+
+A fourth row reports the review policy: **Human review not required** (auto-merge eligible),
+or **Human review required** — either routed to a person, or, when it fails, because auto-merge
+is not permitted for this change.
+
+The card's tag sums them up: **clean**, **violations**, **pending** while a check is still
+running, or **not evaluated**. A failed check opens its **Evidence** — the path, the rule and
+the protected-path pattern it matched:
+
+<Screenshot id="user-guide.run.guardrail" />
+
+The secrets scan looks for known credential formats; a pass means none was found, not that the
+diff holds no secret. Its **ⓘ** says so. A failed guardrail is a question for a person — answer
+it in [Needs You](../inbox.mdx), where a one-time allowance can be granted. The console itself
+has no allow or override control.
+
+## Controlling a live run
+
+Owners and admins see three controls in the header while a run is live. A finished run has
+none.
+
+<Screenshot id="user-guide.run.controls" />
+
+- **Pause loop** asks the loop to stop at its next safe point. A tag beside the controls
+  follows the request — **Pause · sending**, **sent**, **received**, **acknowledged** — and
+  once the loop has acknowledged, the button becomes **Resume**. If the loop does not answer,
+  the tag reads **no response — run may be between stages**.
+- **Take over in IDE** pauses the loop and shows you how to carry on by hand: the commands to
+  check out its branch (**Copy commands**), and links to the ticket and the transcript. Press
+  **Resume** when you want the loop back. Nothing opens in your editor by itself.
+- **Abort run** stops the loop for good. It asks first — **Abort Loop #1847?** — and you type
+  the loop number to confirm. Work the loop has not committed is discarded; the run is marked
+  **canceled** and its branch is kept. This cannot be undone.
+
+**Steering** is open to owners, admins and members: type a note in **Steer the loop** under
+the transcript and choose **Send**. It nudges the current attempt without pausing it — for
+example, `prefer a fix inside the ISR; do not touch the test timeouts`. Your note appears in the
+transcript as a **USER** entry, with a tag that follows it to **acknowledged**. A note can be
+up to 4,096 characters. Viewers can read the transcript but not steer.
+
+## When a run needs you
+
+A run that is waiting for a decision shows the status **needs human**: it has stopped, and the
+console offers no controls or steering. The question it is waiting on is in
+[Needs You](../inbox.mdx) — answer it there and the loop carries on. The console does not link
+to the question itself.
+
+## Finished runs
+
+<Screenshot id="user-guide.run.completed" />
+
+Once a run has finished, its console is a record: the status is final, **elapsed** stops,
+the transcript is no longer **streaming**, and the controls and the steer box are gone — the
+steer box says **This run has ended, so there is no loop left to steer. The transcript stays
+readable.** A merged run links to its pull request.
+
+Older runs may hold less than the console can show — no stages or transcript entries recorded,
+as in the example above — in which case the cards say so rather than showing nothing.
+
+## What can go wrong
+
+- **"No new activity since … — the run's events have gone quiet."** Nothing has arrived for
+  more than two minutes. The loop may be paused, working on something long, or the events may
+  have stalled. Choose **Check again**; what is shown may be out of date.
+- **"This run could not be read."** The console could not reach the service. Choose
+  **Retry**; while it retries, the page keeps what it last showed.
+- **"This run does not exist."** The link is mistyped, or the run belongs to another
+  workspace. Check the workspace in the header.
+- **A control stays at "sent".** The loop has not picked it up yet — it answers between
+  stages. If it expires with **no response**, try again.
+- **The controls are missing.** The run has finished, or you are not an owner or admin.
+- **"Type the loop number to enable the abort."** The number you typed does not match the
+  loop; type it exactly, with or without the **#**.

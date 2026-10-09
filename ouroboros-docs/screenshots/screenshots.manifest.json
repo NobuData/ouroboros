@@ -419,6 +419,62 @@
       "capturedAt": "2026-10-09T00:03:46.093Z",
       "uiVersion": "0.144.1",
       "seedRef": "eb60d576d3ac95aedf50aa934055a9e1ba8724b7"
+    },
+    {
+      "id": "user-guide.run.live",
+      "route": "/runs/5eed0009-0000-4000-8000-000000000482?from=dashboard",
+      "workspace": "acme-robotics",
+      "ready": ".run-entry",
+      "clip": "page",
+      "masks": [
+        ".run__banner .ou-retry__headline",
+        ".run-head__elapsed",
+        ".run-transcript__list > li:nth-last-child(-n+5) .run-entry__time"
+      ],
+      "caption": "A live loop in the run console: the stage timeline, the agent's transcript, and the changes, resources and guardrails beside it.",
+      "alt": "The run console for Loop #1847, #482 Fix flaky CAN-bus telemetry test, marked as a simulated run: the header with its coding status, standard-fix v14, claude-fable-5, the elapsed time, the branch, a PR verification link and the Pause loop, Take over in IDE and Abort run controls; the stage timeline with Queued, Analyze and Plan done and Implementing on attempt 2/3 after an attempt failed its tests; the streaming agent transcript with tool, gate and model entries; and the Changes so far card listing three files and two commits.",
+      "capturedAt": "2026-10-09T00:16:13.070Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "5a61bd193e8b806e20bfea70bddd1d3860c9509c"
+    },
+    {
+      "id": "user-guide.run.completed",
+      "route": "/runs/5eed0009-0000-4000-8000-000000000474?from=dashboard",
+      "workspace": "acme-robotics",
+      "ready": ".run-head__meta :text('PR #512')",
+      "clip": "page",
+      "caption": "A finished loop: merged, with its pull request linked, and no controls or steering left to offer.",
+      "alt": "The run console for Loop #1839, #474 Debounce e-stop interrupt handler: the merged status, standard-fix, claude-fable-5, a fixed elapsed time of 11m 00s and a PR #512 link; a stage timeline and a transcript with nothing recorded, the steer box closed because the run has ended; and the Changes so far, Resources and Guardrails cards.",
+      "capturedAt": "2026-10-09T00:16:15.564Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "5a61bd193e8b806e20bfea70bddd1d3860c9509c"
+    },
+    {
+      "id": "user-guide.run.guardrail",
+      "route": "/runs/5eed0009-0000-4000-8000-000000000479?from=dashboard",
+      "workspace": "acme-robotics",
+      "ready": "section.run-guardrails .run-guard__evidence",
+      "clip": "section.run-guardrails",
+      "caption": "A guardrail that failed: the diff touches a protected path, with the evidence beneath it.",
+      "alt": "The Guardrails card marked violations: Diff outside allowed paths has failed, with its evidence open — path boot/rollback_flag.c, rule protected-path, glob boot/**, and the detail that the path is protected by the workspace policy and needs a one-time allowance — above the line Policy: feature-loop · tenant acme-robotics.",
+      "capturedAt": "2026-10-09T00:16:18.233Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "5a61bd193e8b806e20bfea70bddd1d3860c9509c"
+    },
+    {
+      "id": "user-guide.run.controls",
+      "route": "/runs/5eed0009-0000-4000-8000-000000000482?from=dashboard",
+      "workspace": "acme-robotics",
+      "ready": "role=group[name='Run controls']",
+      "clip": ".run-head",
+      "masks": [
+        ".run-head__elapsed"
+      ],
+      "caption": "The run header: the loop's status, workflow, model and branch, and the controls an owner or admin has over a live run.",
+      "alt": "The run header for Loop #1847, #482 Fix flaky CAN-bus telemetry test: the coding status, standard-fix v14, claude-fable-5, the elapsed time, the branch loop/482-canbus-flake with a copy button, a PR verification link, and the Pause loop, Take over in IDE and Abort run buttons.",
+      "capturedAt": "2026-10-09T00:16:22.967Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "5a61bd193e8b806e20bfea70bddd1d3860c9509c"
     }
   ]
 }
