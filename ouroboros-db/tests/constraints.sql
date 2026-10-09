@@ -38263,6 +38263,560 @@ select pg_temp.must_hold(
   'deleting a workspace deletes its review replays');
 
 -- ===========================================================================
+-- V115 — regression baselines, watch items and thresholds (#611, CK.4)
+-- ===========================================================================
+--
+-- Mockup 22's regression watch card as rows: hover drift (+14%, err, fix loop running on #512),
+-- boot time (+230 ms, warn, fix ticket drafted as #517) and battery estimate error (ok, fixed &
+-- merged as PR #641) — each walked through the lifecycle the way CM.4 (#623) will walk it, with
+-- its bisect sha, ticket and PR resolved in the workspace. Beside them: a metric with no
+-- replayable test resting at `detected` with `needs repro`, a dismissal with who, when and why,
+-- the threshold defaults and a workspace's overrides, and every write the schema refuses.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v115', 'Watch Works', 'watch-works-v115', now()),
+  ('org-v115b', 'Elsewhere', 'elsewhere-v115', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v115', 'Ken Suenobu', 'ken@watch-works-v115.dev', true);
+
+-- The forensics the watch opened, and one a person opened.
+insert into ouroboros.investigations (id, organization_id, kind_id, seq, question, depth, tools_enabled,
+                                      status, provenance, origin)
+select v.id, v.org, k.id, v.seq, v.question, 'standard', '["telemetry"]', 'running',
+       '{"researcher": "loop-v1", "alias": "researcher-long-ctx", "resolution_ref": null}', v.origin
+  from (values ('a1150000-0000-0000-0000-000000000001'::uuid, 'org-v115', 131,
+                'Why did hover drift in gusts grow 14% since v2.0.4?', 'regression_watch'),
+               ('a1150000-0000-0000-0000-000000000002'::uuid, 'org-v115', 132,
+                'Why does battery estimation drift?', 'regression_watch'),
+               ('a1150000-0000-0000-0000-000000000003'::uuid, 'org-v115', 133,
+                'Is boot time worth a look?', 'user'),
+               ('a1150000-0000-0000-0000-000000000004'::uuid, 'org-v115b', 1,
+                'Elsewhere''s forensics', 'regression_watch')) as v(id, org, seq, question, origin)
+  join ouroboros.investigation_kinds k on k.organization_id = v.org and k.slug = 'regression_forensics';
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('a1150000-0000-0000-0000-00000000000a', 'org-v115',  'github', 'GitHub · watch works'),
+  ('a1150000-0000-0000-0000-00000000000b', 'org-v115b', 'github', 'GitHub · elsewhere');
+
+insert into ouroboros.tickets (id, organization_id, source_id, external_id, external_key, external_url, title,
+                               state, source_created_at, source_updated_at) values
+  ('a1150000-0000-0000-0000-000000000512', 'org-v115', 'a1150000-0000-0000-0000-00000000000a', '512', '#512',
+   'https://github.com/watch-works-v115/helios-firmware/issues/512', 'Hover drift in gusts regressed', 'open', now(), now()),
+  ('a1150000-0000-0000-0000-000000000517', 'org-v115', 'a1150000-0000-0000-0000-00000000000a', '517', '#517',
+   'https://github.com/watch-works-v115/helios-firmware/issues/517', 'Boot time regressed', 'open', now(), now()),
+  ('a1150000-0000-0000-0000-000000000530', 'org-v115', 'a1150000-0000-0000-0000-00000000000a', '530', '#530',
+   'https://github.com/watch-works-v115/helios-firmware/issues/530', 'Battery estimate drift', 'closed', now(), now()),
+  ('a1150000-0000-0000-0000-000000000999', 'org-v115b', 'a1150000-0000-0000-0000-00000000000b', '999', '#999',
+   'https://github.com/elsewhere-v115/x/issues/999', 'Elsewhere', 'open', now(), now());
+
+insert into ouroboros.draft_batches (id, organization_id, source_prompt, planner, target_source_id, created_by) values
+  ('a1150000-0000-0000-0000-000000000011', 'org-v115', 'RS-133 → fix', 'create-roadmap-v1',
+   'a1150000-0000-0000-0000-00000000000a', 'user-v115');
+insert into ouroboros.ticket_drafts (id, batch_id, local_key, title) values
+  ('a1150000-0000-0000-0000-000000000021', 'a1150000-0000-0000-0000-000000000011', 'FIX-1', 'Trim boot-time init');
+
+insert into ouroboros.pull_requests (id, organization_id, source_id, external_number, external_url, title,
+                                     head_branch, base_branch, ticket_id, state, merged_at) values
+  ('a1150000-0000-0000-0000-000000000641', 'org-v115', 'a1150000-0000-0000-0000-00000000000a', 641,
+   'https://github.com/watch-works-v115/helios-firmware/pull/641', 'battery: fix estimator regression',
+   'loop/530', 'main', 'a1150000-0000-0000-0000-000000000530', 'merged', '2026-10-01T12:00:00Z'),
+  ('a1150000-0000-0000-0000-000000000642', 'org-v115b', 'a1150000-0000-0000-0000-00000000000b', 642,
+   'https://github.com/elsewhere-v115/x/pull/642', 'elsewhere', 'loop/999', 'main', null, 'open', null);
+
+-- The farm jobs the bisects dispatched (AH.4).
+insert into ouroboros.github_orgs (id, organization_id, login) values
+  ('a1150010-0000-4000-8000-000000000001', 'org-v115', 'watch-works-v115'),
+  ('a1150010-0000-4000-8000-000000000002', 'org-v115b', 'elsewhere-v115');
+insert into ouroboros.github_repos (id, org_id, name) values
+  ('a1150011-0000-4000-8000-000000000001', 'a1150010-0000-4000-8000-000000000001', 'helios-firmware'),
+  ('a1150011-0000-4000-8000-000000000002', 'a1150010-0000-4000-8000-000000000002', 'x');
+insert into ouroboros.runner_pools (id, organization_id, name, executor, image, tags) values
+  ('a1150001-0000-4000-8000-000000000001', 'org-v115', 'hil-rig', 'shell', null, '[]'),
+  ('a1150001-0000-4000-8000-000000000002', 'org-v115b', 'pool', 'shell', null, '[]');
+insert into ouroboros.build_jobs
+  (id, organization_id, number, pool_id, github_repo_id, git_ref, label, title, executor, command, status,
+   log_cap_bytes)
+select ('a1150004-0000-4000-8000-00000000000' || n)::uuid, 'org-v115', n, 'a1150001-0000-4000-8000-000000000001',
+       'a1150011-0000-4000-8000-000000000001', 'refs/heads/main', 'bisect', 'bisect step ' || n, 'shell',
+       'west build && hil run', 'queued', 65536
+  from generate_series(1, 6) n;
+insert into ouroboros.build_jobs
+  (id, organization_id, number, pool_id, github_repo_id, git_ref, label, title, executor, command, status,
+   log_cap_bytes) values
+  ('a1150004-0000-4000-8000-000000000099', 'org-v115b', 1, 'a1150001-0000-4000-8000-000000000002',
+   'a1150011-0000-4000-8000-000000000002', 'refs/heads/main', 'bisect', 'elsewhere', 'shell', 'make', 'queued', 65536);
+
+-- pg_temp.v115_window(n, median, spread, unit) — a window of samples over the night of 1 October.
+create function pg_temp.v115_window(n int, median numeric, spread numeric, unit text)
+returns jsonb language sql as $$
+  select jsonb_build_object('n', n, 'median', median, 'spread', spread, 'spread_kind', 'iqr', 'unit', unit,
+                            'from', '2026-09-30T22:00:00Z', 'to', '2026-10-01T04:00:00Z');
+$$;
+
+-- pg_temp.v115_bisect(sha, jobs) — a bisect's outcome over the named farm jobs.
+create function pg_temp.v115_bisect(sha text, jobs int[])
+returns jsonb language sql as $$
+  select jsonb_build_object(
+    'culprit_sha', sha,
+    'farm_job_ids', (select jsonb_agg('a1150004-0000-4000-8000-00000000000' || j order by j) from unnest(jobs) j),
+    'steps', cardinality(jobs),
+    'confidence_basis', jsonb_build_object('method', 'git_bisect_hil',
+                                           'inputs', jsonb_build_object('replays_per_step', 3)));
+$$;
+
+-- --- shapes ---------------------------------------------------------------------------------
+
+select pg_temp.must_hold(
+  ouroboros.regression_window_valid(pg_temp.v115_window(48, 3.1, 0.4, 'cm'))
+  and not ouroboros.regression_window_valid(pg_temp.v115_window(0, 3.1, 0.4, 'cm'))
+  and not ouroboros.regression_window_valid(pg_temp.v115_window(48, 3.1, -0.1, 'cm'))
+  and not ouroboros.regression_window_valid(pg_temp.v115_window(48, 3.1, 0.4, 'c m'))
+  and not ouroboros.regression_window_valid(pg_temp.v115_window(48, 3.1, 0.4, 'cm') || '{"spread_kind": "range"}')
+  and not ouroboros.regression_window_valid(pg_temp.v115_window(48, 3.1, 0.4, 'cm') || '{"to": "2026-09-01T00:00:00Z"}')
+  and not ouroboros.regression_window_valid(pg_temp.v115_window(48, 3.1, 0.4, 'cm') || '{"from": "2026-09-30"}')
+  and not ouroboros.regression_window_valid(pg_temp.v115_window(48, 3.1, 0.4, 'cm') || '{"p95": 4}'),
+  'a window is n ≥ 1, median, spread ≥ 0 of a known kind, a unit and ordered ISO bounds — and nothing else');
+
+select pg_temp.must_hold(
+  ouroboros.regression_bisect_result_valid(pg_temp.v115_bisect(repeat('a', 40), array[1, 2]))
+  and not ouroboros.regression_bisect_result_valid(pg_temp.v115_bisect('a41f2c9', array[1, 2]))
+  and not ouroboros.regression_bisect_result_valid(pg_temp.v115_bisect(repeat('a', 40), array[1, 2]) - 'confidence_basis')
+  and not ouroboros.regression_bisect_result_valid(pg_temp.v115_bisect(repeat('a', 40), array[1, 2]) || '{"steps": 0}')
+  and not ouroboros.regression_bisect_result_valid(pg_temp.v115_bisect(repeat('a', 40), array[1, 2]) || '{"farm_job_ids": []}')
+  and not ouroboros.regression_bisect_result_valid(
+        pg_temp.v115_bisect(repeat('a', 40), array[1, 2]) || '{"confidence_basis": {"method": " ", "inputs": {}}}'),
+  'a bisect result is a full sha, at least one farm job, steps ≥ 1 and a confidence basis');
+
+select pg_temp.must_hold(
+  ouroboros.regression_drift_display(14, '%') = '+14%'
+  and ouroboros.regression_drift_display(230, 'ms') = '+230 ms'
+  and ouroboros.regression_drift_display(-3.50, 'cm') = '-3.5 cm'
+  and ouroboros.regression_drift_display(0, '%') = '+0%',
+  'drift renders signed, with % attached and other units after a space, from the same two columns');
+
+select pg_temp.must_hold(
+  ouroboros.regression_metric_key_valid('bi_metric', 'merge_rate')
+  and ouroboros.regression_metric_key_valid('case_metric', repeat('0', 64) || ':hover_drift_gusts')
+  and not ouroboros.regression_metric_key_valid('bi_metric', repeat('0', 64) || ':hover_drift_gusts')
+  and not ouroboros.regression_metric_key_valid('case_metric', 'hover_drift_gusts')
+  and ouroboros.regression_metric_key_valid(null, 'merge_rate')
+  and not ouroboros.regression_metric_key_valid(null, 'Merge Rate'),
+  'a metric key is a BI metric id or <case_key>:<measurement>, by its source');
+
+-- --- baselines --------------------------------------------------------------------------------
+
+create temp table v115_keys (metric text, key text) on commit drop;
+insert into v115_keys values
+  ('hover',   repeat('1', 64) || ':hover_drift_gusts'),
+  ('boot',    repeat('2', 64) || ':boot_time_ms'),
+  ('battery', repeat('3', 64) || ':battery_est_error'),
+  ('wind',    repeat('4', 64) || ':wind_tunnel_yaw');
+
+insert into ouroboros.regression_baselines (id, organization_id, repo_ref, release_tag, metric_source, metric_key,
+                                            metric_class, "window", captured_via, captured_by, captured_at)
+select v.id, 'org-v115', 'watch-works-v115/helios-firmware', v.tag, 'case_metric', k.key, v.class,
+       pg_temp.v115_window(v.n, v.median, v.spread, v.unit), v.via, v.who, v.at
+  from (values
+    ('a1150100-0000-0000-0000-000000000001'::uuid, 'hover',   'v2.0.4',     'accuracy', 48, 3.1,    0.4,  'cm', 'release', null,        '2026-08-02T00:00:00Z'::timestamptz),
+    ('a1150100-0000-0000-0000-000000000002'::uuid, 'boot',    'v2.1.0-rc1', 'timing',   30, 4120,   35,   'ms', 'release', null,        '2026-09-10T00:00:00Z'),
+    ('a1150100-0000-0000-0000-000000000003'::uuid, 'battery', 'v2.0.4',     'accuracy', 60, 4.2,    0.6,  '%',  'release', null,        '2026-08-02T00:00:00Z'),
+    ('a1150100-0000-0000-0000-000000000004'::uuid, 'wind',    'v2.0.4',     'accuracy', 12, 1.8,    0.3,  'deg', 'manual', 'user-v115', '2026-08-03T00:00:00Z')
+  ) as v(id, metric, tag, class, n, median, spread, unit, via, who, at)
+  join pg_temp.v115_keys k on k.metric = v.metric;
+
+insert into ouroboros.regression_baselines (id, organization_id, repo_ref, release_tag, metric_source, metric_key,
+                                            metric_class, "window", captured_via) values
+  ('a1150100-0000-0000-0000-000000000005', 'org-v115', 'watch-works-v115/helios-firmware', 'v2.0.4',
+   'bi_metric', 'merge_rate', 'rate', pg_temp.v115_window(14, 61, 4, '%'), 'release');
+
+select pg_temp.must_hold(
+  (select bi_metric_id = 'merge_rate' from ouroboros.regression_baselines where id = 'a1150100-0000-0000-0000-000000000005')
+  and (select bi_metric_id is null from ouroboros.regression_baselines where id = 'a1150100-0000-0000-0000-000000000001'),
+  'a BI baseline carries its catalogue key, a case baseline none');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.regression_baselines (organization_id, repo_ref, release_tag, metric_source, metric_key,
+                                                metric_class, "window", captured_via)
+    values ('org-v115', 'watch-works-v115/helios-firmware', 'v2.0.4', 'bi_metric', 'not_a_metric', 'rate',
+            pg_temp.v115_window(14, 61, 4, '%'), 'release')$$,
+  'a BI baseline names a catalogued metric', 'regression_baselines_bi_metric_fk');
+select pg_temp.must_reject(
+  $$insert into ouroboros.regression_baselines (organization_id, repo_ref, release_tag, metric_source, metric_key,
+                                                metric_class, "window", captured_via)
+    values ('org-v115', 'watch-works-v115/helios-firmware', 'v2.0.4', 'case_metric', 'hover_drift_gusts', 'accuracy',
+            pg_temp.v115_window(14, 61, 4, 'cm'), 'release')$$,
+  'a case baseline names <case_key>:<measurement>', 'regression_baselines_metric_key_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.regression_baselines (organization_id, repo_ref, release_tag, metric_source, metric_key,
+                                                metric_class, "window", captured_via)
+    values ('org-v115', 'watch-works-v115/helios-firmware', 'v2.0.4', 'case_metric',
+            repeat('1', 64) || ':hover_drift_gusts', 'accuracy', pg_temp.v115_window(9, 3, 1, 'cm'), 'release')$$,
+  'one baseline per repository, release and metric', 'regression_baselines_release_metric_key');
+select pg_temp.must_reject(
+  $$insert into ouroboros.regression_baselines (organization_id, repo_ref, release_tag, metric_source, metric_key,
+                                                metric_class, "window", captured_via)
+    values ('org-v115', 'watch-works-v115/helios-firmware', 'v2.0.5', 'bi_metric', 'merge_rate', 'latency',
+            pg_temp.v115_window(14, 61, 4, '%'), 'release')$$,
+  'a metric class is timing, accuracy, resource or rate', 'regression_baselines_metric_class');
+select pg_temp.must_reject(
+  $$insert into ouroboros.regression_baselines (organization_id, repo_ref, release_tag, metric_source, metric_key,
+                                                metric_class, "window", captured_via)
+    values ('org-v115', 'watch-works-v115/helios-firmware', 'v2.0.5', 'bi_metric', 'merge_rate', 'rate',
+            '{"median": 61}', 'release')$$,
+  'a baseline is a window of statistics, not a number', 'regression_baselines_window_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.regression_baselines (organization_id, repo_ref, release_tag, metric_source, metric_key,
+                                                metric_class, "window", captured_via, captured_by)
+    values ('org-v115', 'watch-works-v115/helios-firmware', 'v2.0.5', 'bi_metric', 'merge_rate', 'rate',
+            pg_temp.v115_window(14, 61, 4, '%'), 'release', 'user-v115')$$,
+  'a release capture has no person behind it', 'regression_baselines_release_unattended');
+select pg_temp.must_reject(
+  $$insert into ouroboros.regression_baselines (organization_id, repo_ref, release_tag, metric_source, metric_key,
+                                                metric_class, "window", captured_via)
+    values ('org-v115', 'watch-works-v115/helios-firmware', 'v 2', 'bi_metric', 'merge_rate', 'rate',
+            pg_temp.v115_window(14, 61, 4, '%'), 'release')$$,
+  'a release tag has no whitespace', 'regression_baselines_release_tag_format');
+select pg_temp.must_reject(
+  $$update ouroboros.regression_baselines set "window" = pg_temp.v115_window(48, 3.0, 0.4, 'cm')
+     where id = 'a1150100-0000-0000-0000-000000000001'$$,
+  'a baseline is a measurement and is never edited', 'regression_baselines_immutable');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.regression_baselines
+    where organization_id = 'org-v115' and repo_ref = 'watch-works-v115/helios-firmware'
+      and metric_key = (select key from pg_temp.v115_keys where metric = 'hover')),
+  'the latest baseline of a metric is one indexed read');
+
+-- --- row 1: hover drift, +14%, err — bisected, investigated, fix #512 running -----------------
+
+insert into ouroboros.regression_watch_items (id, organization_id, baseline_id, current, drift_value, drift_unit,
+                                              severity) values
+  ('a1150200-0000-0000-0000-000000000001', 'org-v115', 'a1150100-0000-0000-0000-000000000001',
+   pg_temp.v115_window(52, 3.53, 0.42, 'cm'), 14, '%', 'err');
+
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set status = 'bisected', bisect_result = pg_temp.v115_bisect(repeat('a', 40), array[1])
+     where id = 'a1150200-0000-0000-0000-000000000001'$$,
+  'detected cannot skip the bisect it has not run', 'regression_watch_items_transition');
+
+update ouroboros.regression_watch_items set status = 'bisecting' where id = 'a1150200-0000-0000-0000-000000000001';
+
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set status = 'bisected' where id = 'a1150200-0000-0000-0000-000000000001'$$,
+  'bisected requires a bisect result', 'regression_watch_items_bisected_has_result');
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items
+       set status = 'bisected',
+           bisect_result = jsonb_set(pg_temp.v115_bisect('a41f2c9' || repeat('0', 33), array[1]),
+                                     '{farm_job_ids}', '["a1150004-0000-4000-8000-000000000099"]')
+     where id = 'a1150200-0000-0000-0000-000000000001'$$,
+  'a bisect''s farm jobs are the workspace''s', 'regression_watch_items_bisect_jobs');
+
+update ouroboros.regression_watch_items
+   set status = 'bisected', bisect_result = pg_temp.v115_bisect('a41f2c9' || repeat('0', 33), array[1, 2, 3, 4])
+ where id = 'a1150200-0000-0000-0000-000000000001';
+
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set bisect_result = pg_temp.v115_bisect(repeat('b', 40), array[1])
+     where id = 'a1150200-0000-0000-0000-000000000001'$$,
+  'a recorded bisect result is never rewritten', 'regression_watch_items_bisect_result_kept');
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set status = 'investigation_open' where id = 'a1150200-0000-0000-0000-000000000001'$$,
+  'an investigation is opened by naming it', 'regression_watch_items_investigation_named');
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set status = 'investigation_open', investigation_id = 'a1150000-0000-0000-0000-000000000003'
+     where id = 'a1150200-0000-0000-0000-000000000001'$$,
+  'the forensics are the regression watch''s own, not a person''s investigation', 'regression_watch_items_investigation_origin');
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set status = 'investigation_open', investigation_id = 'a1150000-0000-0000-0000-000000000004'
+     where id = 'a1150200-0000-0000-0000-000000000001'$$,
+  'the forensics are the workspace''s', 'regression_watch_items_investigation_fk');
+
+update ouroboros.regression_watch_items set status = 'investigation_open', investigation_id = 'a1150000-0000-0000-0000-000000000001'
+ where id = 'a1150200-0000-0000-0000-000000000001';
+
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set status = 'fix_drafted' where id = 'a1150200-0000-0000-0000-000000000001'$$,
+  'a drafted fix names its ticket', 'regression_watch_items_fix_has_ticket');
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set status = 'fix_drafted',
+           fix_ticket_ref = '{"kind": "ticket", "id": "a1150000-0000-0000-0000-000000000999", "key": "#999"}'
+     where id = 'a1150200-0000-0000-0000-000000000001'$$,
+  'the fix ticket is the workspace''s', 'regression_watch_items_fix_ticket_ref');
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set status = 'fix_drafted',
+           fix_ticket_ref = '{"kind": "ticket", "id": "a1150000-0000-0000-0000-000000000512", "key": "#513"}'
+     where id = 'a1150200-0000-0000-0000-000000000001'$$,
+  'the fix ticket is shown by its own key', 'regression_watch_items_fix_ticket_key');
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set status = 'fix_drafted',
+           fix_ticket_ref = '{"kind": "issue", "id": "a1150000-0000-0000-0000-000000000512", "key": "#512"}'
+     where id = 'a1150200-0000-0000-0000-000000000001'$$,
+  'a fix is a ticket or a draft', 'regression_watch_items_fix_ticket_ref_shape');
+
+update ouroboros.regression_watch_items
+   set status = 'fix_drafted',
+       fix_ticket_ref = '{"kind": "ticket", "id": "a1150000-0000-0000-0000-000000000512", "key": "#512"}'
+ where id = 'a1150200-0000-0000-0000-000000000001';
+update ouroboros.regression_watch_items set status = 'fix_running' where id = 'a1150200-0000-0000-0000-000000000001';
+
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set investigation_id = 'a1150000-0000-0000-0000-000000000002'
+     where id = 'a1150200-0000-0000-0000-000000000001'$$,
+  'an item keeps the investigation it opened', 'regression_watch_items_investigation_kept');
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set detected_at = detected_at - interval '1 day'
+     where id = 'a1150200-0000-0000-0000-000000000001'$$,
+  'an item keeps when it was detected', 'regression_watch_items_transition');
+
+-- --- row 2: boot time, +230 ms, warn — bisected, fix ticket #517 drafted ------------------------
+
+insert into ouroboros.regression_watch_items (id, organization_id, baseline_id, current, drift_value, drift_unit,
+                                              severity) values
+  ('a1150200-0000-0000-0000-000000000002', 'org-v115', 'a1150100-0000-0000-0000-000000000002',
+   pg_temp.v115_window(30, 4350, 40, 'ms'), 230, 'ms', 'warn');
+update ouroboros.regression_watch_items set status = 'bisecting' where id = 'a1150200-0000-0000-0000-000000000002';
+update ouroboros.regression_watch_items
+   set status = 'bisected', bisect_result = pg_temp.v115_bisect('7c03d1e' || repeat('0', 33), array[5, 6])
+ where id = 'a1150200-0000-0000-0000-000000000002';
+update ouroboros.regression_watch_items
+   set status = 'fix_drafted',
+       fix_ticket_ref = '{"kind": "ticket", "id": "a1150000-0000-0000-0000-000000000517", "key": "#517"}'
+ where id = 'a1150200-0000-0000-0000-000000000002';
+
+-- A Planning draft names the fix just as well, by its local key — and the fix loop failing puts
+-- the item back in the queue.
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items
+       set fix_ticket_ref = '{"kind": "draft", "id": "a1150000-0000-0000-0000-000000000021", "key": "#517"}'
+     where id = 'a1150200-0000-0000-0000-000000000002'$$,
+  'a draft is shown by its local key', 'regression_watch_items_fix_ticket_key');
+
+-- --- row 3: battery estimate error, ok — root-caused, fixed & merged as PR #641 -----------------
+
+insert into ouroboros.regression_watch_items (id, organization_id, baseline_id, current, drift_value, drift_unit,
+                                              severity) values
+  ('a1150200-0000-0000-0000-000000000003', 'org-v115', 'a1150100-0000-0000-0000-000000000003',
+   pg_temp.v115_window(60, 6.1, 0.7, '%'), 1.9, '%', 'err');
+update ouroboros.regression_watch_items set status = 'investigation_open', investigation_id = 'a1150000-0000-0000-0000-000000000002'
+ where id = 'a1150200-0000-0000-0000-000000000003';
+update ouroboros.regression_watch_items
+   set status = 'fix_drafted',
+       fix_ticket_ref = '{"kind": "draft", "id": "a1150000-0000-0000-0000-000000000021", "key": "FIX-1"}'
+ where id = 'a1150200-0000-0000-0000-000000000003';
+update ouroboros.regression_watch_items set status = 'fix_running' where id = 'a1150200-0000-0000-0000-000000000003';
+update ouroboros.regression_watch_items set status = 'fix_drafted' where id = 'a1150200-0000-0000-0000-000000000003';
+update ouroboros.regression_watch_items
+   set status = 'fix_running',
+       fix_ticket_ref = '{"kind": "ticket", "id": "a1150000-0000-0000-0000-000000000530", "key": "#530"}'
+ where id = 'a1150200-0000-0000-0000-000000000003';
+
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set status = 'fixed_merged' where id = 'a1150200-0000-0000-0000-000000000003'$$,
+  'fixed_merged requires a PR reference', 'regression_watch_items_merged_has_pr');
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set status = 'fixed_merged',
+           pr_ref = '{"pull_request_id": "a1150000-0000-0000-0000-000000000642", "key": "#642"}'
+     where id = 'a1150200-0000-0000-0000-000000000003'$$,
+  'the merged PR is the workspace''s', 'regression_watch_items_pr_ref');
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set status = 'fixed_merged',
+           pr_ref = '{"pull_request_id": "a1150000-0000-0000-0000-000000000641", "key": "#640"}'
+     where id = 'a1150200-0000-0000-0000-000000000003'$$,
+  'the merged PR is shown by its own number', 'regression_watch_items_pr_key');
+
+update ouroboros.regression_watch_items
+   set status = 'fixed_merged', severity = 'ok',
+       pr_ref = '{"pull_request_id": "a1150000-0000-0000-0000-000000000641", "key": "#641"}'
+ where id = 'a1150200-0000-0000-0000-000000000003';
+
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set note = 'reopened' where id = 'a1150200-0000-0000-0000-000000000003'$$,
+  'a merged item is final', 'regression_watch_items_transition');
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set status = 'dismissed', dismissed_by = 'user-v115', dismissed_at = now(),
+           dismiss_reason = 'x' where id = 'a1150200-0000-0000-0000-000000000003'$$,
+  'a merged item cannot be dismissed', 'regression_watch_items_transition');
+
+-- --- the card, exactly ----------------------------------------------------------------------------
+
+select pg_temp.must_hold(
+  (select array_agg(i.severity || ' | ' || i.drift_display || ' | ' || b.release_tag || ' | '
+                    || coalesce(left(i.bisect_result ->> 'culprit_sha', 7), '—') || ' | '
+                    || coalesce(i.fix_ticket_ref ->> 'key', '—') || ' | '
+                    || coalesce(i.pr_ref ->> 'key', '—') || ' | ' || i.status
+                    order by i.id)
+     from ouroboros.regression_watch_items i
+     join ouroboros.regression_baselines b on b.id = i.baseline_id
+    where i.organization_id = 'org-v115')
+  = array['err | +14% | v2.0.4 | a41f2c9 | #512 | — | fix_running',
+          'warn | +230 ms | v2.1.0-rc1 | 7c03d1e | #517 | — | fix_drafted',
+          'ok | +1.9% | v2.0.4 | — | #530 | #641 | fixed_merged'],
+  'the card''s three rows round-trip: drift, baseline, bisect sha, ticket, PR and pill');
+
+select pg_temp.must_hold(
+  (select status_changed_at >= detected_at from ouroboros.regression_watch_items
+    where id = 'a1150200-0000-0000-0000-000000000001'),
+  'an item records when its status last moved');
+
+-- --- units ------------------------------------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.regression_watch_items (organization_id, baseline_id, current, drift_value, drift_unit, severity)
+    values ('org-v115', 'a1150100-0000-0000-0000-000000000004', pg_temp.v115_window(12, 2.1, 0.3, 'rad'), 16, '%', 'warn')$$,
+  'the comparison window is in the baseline''s unit', 'regression_watch_items_current_unit');
+select pg_temp.must_reject(
+  $$insert into ouroboros.regression_watch_items (organization_id, baseline_id, current, drift_value, drift_unit, severity)
+    values ('org-v115', 'a1150100-0000-0000-0000-000000000004', pg_temp.v115_window(12, 2.1, 0.3, 'deg'), 0.3, 'rad', 'warn')$$,
+  'drift is in % or the baseline''s unit', 'regression_watch_items_drift_unit');
+select pg_temp.must_reject(
+  $$insert into ouroboros.regression_watch_items (organization_id, baseline_id, current, drift_value, drift_unit, severity)
+    values ('org-v115', 'a1150100-0000-0000-0000-000000000004', pg_temp.v115_window(12, 2.1, 0.3, 'deg'), 16, '%', 'info')$$,
+  'severity is err, warn or ok', 'regression_watch_items_severity');
+select pg_temp.must_reject(
+  $$insert into ouroboros.regression_watch_items (organization_id, baseline_id, current, drift_value, drift_unit, severity, status)
+    values ('org-v115', 'a1150100-0000-0000-0000-000000000004', pg_temp.v115_window(12, 2.1, 0.3, 'deg'), 16, '%', 'warn', 'bisecting')$$,
+  'an item is opened detected', 'regression_watch_items_opened_detected');
+select pg_temp.must_reject(
+  $$insert into ouroboros.regression_watch_items (organization_id, baseline_id, current, drift_value, drift_unit, severity)
+    values ('org-v115b', 'a1150100-0000-0000-0000-000000000004', pg_temp.v115_window(12, 2.1, 0.3, 'deg'), 16, '%', 'warn')$$,
+  'an item is of its baseline''s workspace', 'regression_watch_items_baseline_fk');
+
+-- --- no repro: an honest rest at detected ---------------------------------------------------------
+
+insert into ouroboros.regression_watch_items (id, organization_id, baseline_id, current, drift_value, drift_unit,
+                                              severity) values
+  ('a1150200-0000-0000-0000-000000000004', 'org-v115', 'a1150100-0000-0000-0000-000000000004',
+   pg_temp.v115_window(12, 2.1, 0.3, 'deg'), 0.3, 'deg', 'warn');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.regression_watch_items (organization_id, baseline_id, current, drift_value, drift_unit, severity)
+    values ('org-v115', 'a1150100-0000-0000-0000-000000000004', pg_temp.v115_window(12, 2.2, 0.3, 'deg'), 0.4, 'deg', 'warn')$$,
+  'one open item per baseline — the nightly comparison updates it', 'regression_watch_items_one_open');
+
+update ouroboros.regression_watch_items set status = 'bisecting' where id = 'a1150200-0000-0000-0000-000000000004';
+update ouroboros.regression_watch_items set status = 'detected', note = 'needs repro'
+ where id = 'a1150200-0000-0000-0000-000000000004';
+update ouroboros.regression_watch_items set current = pg_temp.v115_window(14, 2.15, 0.3, 'deg'), drift_value = 0.35
+ where id = 'a1150200-0000-0000-0000-000000000004';
+
+select pg_temp.must_hold(
+  (select status = 'detected' and note = 'needs repro' and bisect_result is null and drift_display = '+0.35 deg'
+     from ouroboros.regression_watch_items where id = 'a1150200-0000-0000-0000-000000000004'),
+  'a metric with no replayable test rests at detected with needs repro, still compared nightly');
+
+-- --- dismissal: who, when, why ------------------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set status = 'dismissed', dismissed_at = now(), dismiss_reason = 'wind tunnel retired'
+     where id = 'a1150200-0000-0000-0000-000000000004'$$,
+  'a dismissal names who', 'regression_watch_items_dismissed_by');
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set status = 'dismissed', dismissed_by = 'user-v115', dismissed_at = now()
+     where id = 'a1150200-0000-0000-0000-000000000004'$$,
+  'a dismissal says why', 'regression_watch_items_dismissal');
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set dismiss_reason = 'early' where id = 'a1150200-0000-0000-0000-000000000004'$$,
+  'only a dismissed item has a reason', 'regression_watch_items_dismissal');
+
+update ouroboros.regression_watch_items
+   set status = 'dismissed', dismissed_by = 'user-v115', dismissed_at = '2026-10-02T09:00:00Z',
+       dismiss_reason = 'wind tunnel retired; metric no longer measured'
+ where id = 'a1150200-0000-0000-0000-000000000004';
+
+select pg_temp.must_hold(
+  (select dismissed_by = 'user-v115' and dismissed_at = '2026-10-02T09:00:00Z'
+          and dismiss_reason = 'wind tunnel retired; metric no longer measured'
+     from ouroboros.regression_watch_items where id = 'a1150200-0000-0000-0000-000000000004'),
+  'a dismissal records who, when and why');
+
+-- A dismissed item frees its baseline for the next drift.
+insert into ouroboros.regression_watch_items (organization_id, baseline_id, current, drift_value, drift_unit, severity)
+values ('org-v115', 'a1150100-0000-0000-0000-000000000004', pg_temp.v115_window(12, 2.4, 0.3, 'deg'), 0.6, 'deg', 'err');
+
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_items set dismiss_reason = 'changed my mind'
+     where id = 'a1150200-0000-0000-0000-000000000004'$$,
+  'a dismissal is final', 'regression_watch_items_transition');
+
+-- --- the card's index ------------------------------------------------------------------------------
+
+select pg_temp.must_hold(
+  exists (select 1 from pg_indexes where schemaname = 'ouroboros'
+           and indexname = 'regression_watch_items_organization_severity_status_idx'
+           and indexdef like '%(organization_id, severity, status)%')
+  and exists (select 1 from pg_indexes where schemaname = 'ouroboros'
+               and indexname = 'regression_baselines_metric_captured_idx'),
+  'the card reads by workspace, severity and status; a metric''s latest baseline by captured_at');
+
+-- --- thresholds -------------------------------------------------------------------------------------
+
+select pg_temp.must_hold(
+  ouroboros.regression_threshold('org-v115', 'merge_rate', 'rate')
+    = '{"direction": "lower_is_worse", "warn_pct": 2, "err_pct": 5, "min_spread_multiple": 2, "min_samples": 10}'
+  and ouroboros.regression_threshold('org-v115', 'x', 'timing') ->> 'err_pct' = '15'
+  and ouroboros.regression_threshold('org-v115', 'x', 'latency') is null,
+  'without settings a metric gets its class''s documented default');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.regression_watch_settings (organization_id, thresholds)
+    values ('org-v115', '{"classes": {"timing": {"warn_pct": 20}}, "metrics": {}}')$$,
+  'warn and err are tuned together', 'regression_watch_settings_thresholds_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.regression_watch_settings (organization_id, thresholds)
+    values ('org-v115', '{"classes": {"timing": {"warn_pct": 20, "err_pct": 10}}, "metrics": {}}')$$,
+  'warn is never above err', 'regression_watch_settings_thresholds_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.regression_watch_settings (organization_id, thresholds)
+    values ('org-v115', '{"classes": {"latency": {"min_samples": 3}}, "metrics": {}}')$$,
+  'only known classes are tuned', 'regression_watch_settings_thresholds_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.regression_watch_settings (organization_id, thresholds)
+    values ('org-v115', '{"classes": {}, "metrics": {"Merge Rate": {"min_samples": 3}}}')$$,
+  'a metric override names a metric key', 'regression_watch_settings_thresholds_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.regression_watch_settings (organization_id, thresholds)
+    values ('org-v115', '{"classes": {}, "metrics": {"merge_rate": {"direction": "sideways"}}}')$$,
+  'a direction is higher_is_worse, lower_is_worse or either', 'regression_watch_settings_thresholds_shape');
+
+insert into ouroboros.regression_watch_settings (organization_id, thresholds, updated_by)
+select 'org-v115',
+       jsonb_build_object('classes', '{"accuracy": {"min_samples": 20}}'::jsonb,
+                          'metrics', jsonb_build_object(k.key, '{"warn_pct": 12, "err_pct": 20, "direction": "either"}'::jsonb)),
+       'user-v115'
+  from pg_temp.v115_keys k where k.metric = 'hover';
+
+select pg_temp.must_hold(
+  ouroboros.regression_threshold('org-v115', (select key from pg_temp.v115_keys where metric = 'hover'), 'accuracy')
+    = '{"direction": "either", "warn_pct": 12, "err_pct": 20, "min_spread_multiple": 2, "min_samples": 20}'
+  and ouroboros.regression_threshold('org-v115', (select key from pg_temp.v115_keys where metric = 'battery'), 'accuracy')
+    = '{"direction": "higher_is_worse", "warn_pct": 5, "err_pct": 10, "min_spread_multiple": 2, "min_samples": 20}'
+  and ouroboros.regression_threshold('org-v115b', 'merge_rate', 'accuracy') ->> 'min_samples' = '10',
+  'a noisy metric is tuned without code: metric over class over default, per workspace');
+
+-- --- deletion ----------------------------------------------------------------------------------------
+
+delete from ouroboros.investigations where id = 'a1150000-0000-0000-0000-000000000002';
+select pg_temp.must_hold(
+  (select status = 'fixed_merged' and investigation_id is null
+     from ouroboros.regression_watch_items where id = 'a1150200-0000-0000-0000-000000000003'),
+  'deleting the forensics clears the reference and keeps the item''s place in the lifecycle');
+
+delete from ouroboros."user" where "id" = 'user-v115';
+select pg_temp.must_hold(
+  (select dismissed_by is null and dismiss_reason is not null
+     from ouroboros.regression_watch_items where id = 'a1150200-0000-0000-0000-000000000004')
+  and (select captured_by is null from ouroboros.regression_baselines where id = 'a1150100-0000-0000-0000-000000000004'),
+  'a removed person leaves the dismissal''s when and why, and the manual baseline');
+
+delete from ouroboros.organization where "id" in ('org-v115', 'org-v115b');
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.regression_baselines where organization_id like 'org-v115%')
+  and not exists (select 1 from ouroboros.regression_watch_items where organization_id like 'org-v115%')
+  and not exists (select 1 from ouroboros.regression_watch_settings where organization_id like 'org-v115%'),
+  'a deleted workspace takes its baselines, watch items and thresholds with it');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

@@ -1586,6 +1586,31 @@
 > every suggestion's `proposed_ops` to the DSL, and the seeded-definitions step the draft each one
 > produces.
 >
+> `V115` ([#611](https://github.com/NobuData/ouroboros/issues/611), CK.4) makes mockup 22's
+> regression watch card data (decision **V6**). `regression_baselines` hold one baseline per
+> workspace, repository, `release_tag` and `metric_key` — a BI metric id (`bi_metric`, held to
+> `metric_definitions` through the generated `bi_metric_id`) or an AS/AT case metric
+> `<case_key>:<measurement>` (`case_metric`) — with a `metric_class` (`timing | accuracy | resource |
+> rate`) and the release's **window as statistics** (`{n, median, spread, spread_kind, unit, from,
+> to}`), captured by the release trigger or by a person, and never edited.
+> `regression_watch_items` hold a baseline's drift: the latest `current` window (in the baseline's
+> unit), the **signed drift with its unit** (`drift_value` + `drift_unit`, `%` or the baseline's
+> unit, rendered `+14%` / `+230 ms` by the generated `drift_display`), `severity` `err | warn | ok`,
+> and `status` `detected → bisecting → bisected → investigation_open → fix_drafted → fix_running →
+> fixed_merged`, or `dismissed`. `regression_watch_items_transition` holds every edge: an item opens
+> `detected`; `bisected` needs a `bisect_result` (`{culprit_sha, farm_job_ids, steps,
+> confidence_basis}`, the farm jobs the workspace's), `investigation_open` an investigation of the
+> workspace with `origin` `regression_watch`, `fix_drafted` / `fix_running` a `fix_ticket_ref`
+> (`{kind: ticket | draft, id, key}`, the key the row's own), `fixed_merged` a `pr_ref`
+> (`{pull_request_id, key}`), and `dismissed` who, when and why; the bisect result and investigation
+> are kept once recorded, and the two terminal states are final. A metric with no replayable test
+> rests at `detected` with a `note` (`needs repro`) — or returns there from `bisecting`. One open
+> item per baseline. `regression_watch_settings.thresholds` tunes per class and per metric over
+> `regression_threshold_defaults()` (timing 5/15 %, accuracy 5/10 %, resource 10/25 %, rate 2/5 %
+> lower-is-worse, each beyond 2× the baseline's spread over 5 or 10 samples);
+> `regression_threshold(org, metric_key, metric_class)` answers the effective rule. V115 also gives
+> `investigations` the `(id, organization_id)` key the item's composite foreign key needs.
+>
 > [#558](https://github.com/NobuData/ouroboros/issues/558) seeds mockup 20 from those rows:
 > [`R__dev_seed_workspace_copilot.sql`](migrations/R__dev_seed_workspace_copilot.sql) — see
 > [What the copilot drafted, and what its dry run said](#what-the-copilot-drafted-and-what-its-dry-run-said).
@@ -3402,6 +3427,7 @@ ouroboros-db/
 │   ├── V112__capability_matrices_competitor_watches.sql # competitors, watches, snapshot chain + diffs, competitor_diff → snapshot, matrices/rows/cells (cited, complete), tracker sub-line view — #610
 │   ├── V113__roadmap_docs_suggestions.sql # roadmap_docs, immutable roadmap_doc_versions (structure, markdown projection, repo projection state machine), doc_suggestions (user|ai, applied@vN|dismissed) — #612
 │   ├── V114__dry_run_suggestions.sql  # dry_run_suggestions (rule|llm, evidence, proposed_ops, confidence + basis, open→applied|ignored), review_replay_pairs, draft_operations.suggestion_id FK — #558
+│   ├── V115__regression_baselines_watch_items.sql # regression_baselines (release window stats per metric), regression_watch_items (signed drift + unit, err|warn|ok, detected→…→fixed_merged|dismissed with bisect/investigation/fix/PR refs), regression_watch_settings (thresholds over per-class defaults) — #611
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -3664,6 +3690,9 @@ outside this module alters it.
 | `doc_suggestions` | `V113` | A suggested change ([#612](https://github.com/NobuData/ouroboros/issues/612), CK.5) — `author_kind`, `author_user_id`/`author_agent`, `text`, `hint`, `status`, `applied_version`/`applied_at`/`applied_by`, `dismissed_at`/`dismissed_by` | `author_kind` `user\|ai` with the matching author; `status` `open → applied \| dismissed`, written open, terminal, recorded with actor and time, the applied version written after the suggestion; never edited (a person's deletion may clear an actor); `(doc_id, status)` index; `ouroboros_app` may select, insert and update |
 | `dry_run_suggestions` | `V114` | A dry run's suggestion ([#558](https://github.com/NobuData/ouroboros/issues/558), CC.4, decision **W5**) — `source`, `rule_id`/`rule_version`, `title`, `body`, `evidence`, `proposed_ops`, `confidence`, `confidence_basis`, `status`, `applied_op_batch_id`, `resolved_by`/`resolved_at` | `source` `rule\|llm` (a rule names itself, an LLM suggestion names none); `proposed_ops` 1–50 V110 operations; `confidence` 0–100 with a `{method, inputs}` basis; `status` `open → applied \| ignored`, written open, settled once, the applied batch a suggestion-actor Apply of it; never edited; cascades with the dry run; `ouroboros_app` may select, insert and update |
 | `review_replay_pairs` | `V114` | A reviewer-pair replay over a historical change ([#558](https://github.com/NobuData/ouroboros/issues/558), CC.4; CF.5 #574) — `replay_set`, `sample_ref`, `reviewer_stages`, `agreed`, `disagreement_class`, `replayed_at` | two different reviewer stages; `disagreement_class` `style\|substance` exactly when they disagreed; one sample per replay set; cascades with the workflow; `ouroboros_app` may select and insert |
+| `regression_baselines` | `V115` | A per-release metric baseline ([#611](https://github.com/NobuData/ouroboros/issues/611), CK.4, decision **V6**) — `repo_ref`, `release_tag`, `metric_source`, `metric_key`, `metric_class`, `window`, `captured_at`, `captured_via`, `captured_by` | one per workspace, repository, release and metric; `metric_key` shaped by its source, a BI metric held to `metric_definitions`; `window` `{n ≥ 1, median, spread ≥ 0, spread_kind, unit, from ≤ to}`; a release capture names no person; never updated; cascades with the workspace; `ouroboros_app` may select and insert |
+| `regression_watch_items` | `V115` | A baseline's drift and its lifecycle ([#611](https://github.com/NobuData/ouroboros/issues/611), CK.4) — `current`, `drift_value`, `drift_unit`, `drift_display`, `severity`, `status`, `bisect_result`, `investigation_id`, `fix_ticket_ref`, `pr_ref`, `note`, `dismissed_by`/`dismissed_at`/`dismiss_reason` | opened `detected`; transitions held by `regression_watch_items_transition`; `bisected` needs a bisect result, `investigation_open` a `regression_watch` investigation, the fix states a ticket or draft ref, `fixed_merged` a PR ref, `dismissed` who/when/why; refs resolve in the workspace; one open item per baseline; indexed `(organization_id, severity, status)`; `ouroboros_app` may select, insert and update |
+| `regression_watch_settings` | `V115` | A workspace's regression thresholds ([#611](https://github.com/NobuData/ouroboros/issues/611), CK.4) — `thresholds` `{classes, metrics}` | rules of `{direction, warn_pct + err_pct, min_spread_multiple, min_samples}` over `regression_threshold_defaults()`; one row per workspace; `ouroboros_app` may select, insert and update |
 
 Two **functions**, both `V012`'s and both documented in
 [The bundled price catalog](#the-bundled-price-catalog).
