@@ -54,6 +54,9 @@ const POLICIES = page("policies.mdx");
 /** The notifications, email & webhooks page. */
 const NOTIFY = page("notifications-and-webhooks.mdx");
 
+/** The data retention, audit & workspace lifecycle page. */
+const LIFECYCLE = page("retention-audit-lifecycle.mdx");
+
 /**
  * Reads the value of one exported string constant of the UI, joining a value written as
  * several `"…" +` pieces — e.g. `export const NOTE =\n  "One " +\n  "two.";`.
@@ -245,6 +248,7 @@ describe("the roles & capabilities page (#1189)", () => {
       FARM,
       POLICIES,
       NOTIFY,
+      LIFECYCLE,
     ]) {
       const prose = text
         .replace(/^--- .*? --- /, "")
@@ -1243,6 +1247,121 @@ describe("the notifications, email & webhooks page (#1198)", () => {
       "administration.notifications",
     ]) {
       expect(NOTIFY).toContain(`<Screenshot id="${id}" />`);
+    }
+  });
+});
+
+describe("the data retention, audit & workspace lifecycle page (#1199)", () => {
+  it("states the retention floors and ceilings the database enforces", () => {
+    const migrations = readdirSync(join(REPO_ROOT, "ouroboros-db", "migrations"))
+      .filter((name) => name.endsWith(".sql"))
+      .map((name) => source("ouroboros-db", "migrations", name))
+      .join("\n");
+    expect(migrations).toContain("retention_policies_days_ceiling");
+    for (const row of ["| 7 days | 365 days |", "| 90 days | 3650 days |"]) {
+      expect(LIFECYCLE).toContain(row);
+    }
+    expect(constant("settings/workspace.ts", "ADVANCED_LABEL")).toBe("Advanced: set each class");
+    expect(LIFECYCLE).toContain("**Advanced: set each class**");
+    expect(source("ouroboros-ui", "app", "settings", "workspace.ts")).toContain(
+      "so the record a quarterly review reads cannot be configured away.",
+    );
+  });
+
+  it("quotes the retention effect as the service words it", () => {
+    const effect =
+      "Saving deletes nothing. Each class's next sweep applies the new tier; data past it is removed then.";
+    const retention = readdirSync(join(REPO_ROOT, "ouroboros-rest", "src", "modules", "retention"))
+      .filter((name) => name.endsWith(".ts") && !name.endsWith(".spec.ts"))
+      .map((name) => source("ouroboros-rest", "src", "modules", "retention", name))
+      .join("\n");
+    expect(retention).toContain("Saving deletes nothing.");
+    expect(LIFECYCLE).toContain(`*${effect.slice("Saving deletes nothing. ".length)}*`);
+  });
+
+  it("names the sweep cadences the sweepers use", () => {
+    expect(source("ouroboros-rest", "src", "modules", "runs", "transcript.retention.ts")).toContain(
+      "export const TRANSCRIPT_SWEEP_INTERVAL_MS = 3_600_000;",
+    );
+    expect(source("ouroboros-rest", "src", "modules", "farm", "logs", "log.policy.ts")).toContain(
+      "export const LOG_SWEEP_INTERVAL_MS = 600_000;",
+    );
+    expect(LIFECYCLE).toContain("| Hourly.");
+    expect(LIFECYCLE).toContain("| Every ten minutes.");
+  });
+
+  it("names the audit card's filters and export as the UI draws them", () => {
+    for (const name of [
+      "FILTERS_TITLE",
+      "FROM_LABEL",
+      "TO_LABEL",
+      "ACTOR_KIND_LABEL",
+      "ACTOR_LABEL",
+      "PLANE_LABEL",
+      "REF_LABEL",
+      "EXPORT_LABEL",
+    ]) {
+      expect(LIFECYCLE).toContain(`**${constant("audit-log/view.ts", name)}**`);
+    }
+    expect(source("ouroboros-ui", "app", "audit-log", "view.ts")).toContain(
+      "export const EXPORT_MAX_DAYS = 366;",
+    );
+    expect(LIFECYCLE).toContain(constant("audit-log/view.ts", "EXPORT_LOGGED_NOTE"));
+    expect(LIFECYCLE).toContain(constant("audit-log/view.ts", "AUDIT_ADMINS_ONLY"));
+  });
+
+  it("describes the danger zone's actions with their own titles and sentences", () => {
+    for (const name of [
+      "PAUSE_TITLE",
+      "DISCONNECT_TITLE",
+      "DELETE_TITLE",
+      "DISCONNECT_BUTTON",
+      "DELETE_CONFIRM",
+    ]) {
+      expect(LIFECYCLE).toContain(`**${constant("lifecycle/danger.ts", name)}**`);
+    }
+    const why = constant("lifecycle/danger.ts", "PAUSE_WHY");
+    expect(source("ouroboros-ui", "app", "lifecycle", "danger.ts")).toContain(
+      "export const PAUSE_SEMANTICS = `Pausing is a hold, not a stop: ${PAUSE_WHY}.`;",
+    );
+    expect(LIFECYCLE).toContain(`*Pausing is a hold, not a stop: ${why}.*`);
+    expect(constant("lifecycle/recovery.ts", "RESTORE_LABEL")).toBe("Restore workspace");
+    expect(LIFECYCLE).toContain("**Restore workspace**");
+    const danger = source("ouroboros-ui", "app", "lifecycle", "danger.ts");
+    expect(danger).toContain("destroys the workspace's encryption key, then deletes its data.");
+    expect(LIFECYCLE).toContain(":::danger[A purge cannot be undone]");
+  });
+
+  it("states the purge order the service runs", () => {
+    const purge = source("ouroboros-rest", "src", "modules", "lifecycle", "lifecycle.purge.ts");
+    const order = [
+      "await this.vault.destroy(organizationId);",
+      "await this.deleteArtifacts(organizationId);",
+      "await this.auth.removeOrganization(organizationId);",
+      "await this.lifecycle.completePurge(organizationId,",
+    ].map((step) => purge.indexOf(step));
+    expect(order.every((at) => at > -1)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(LIFECYCLE).toMatch(
+      /1\. its encryption key is destroyed.*2\. the files its builds uploaded.*3\. all its data is deleted.*4\. a small record/,
+    );
+  });
+
+  it("does not claim the purge reaches backups taken before it", () => {
+    expect(source("docs", "SECURITY_MODEL.md").replace(/\s+/g, " ")).toContain(
+      "the backup's copy of the DEK is still openable by anyone who holds both that backup and the KEK",
+    );
+    expect(LIFECYCLE).not.toMatch(/even from a backup/i);
+    expect(LIFECYCLE).toContain("a database backup taken **before** the purge");
+  });
+
+  it("shows the screenshots the issue lists", () => {
+    for (const id of [
+      "administration.retention",
+      "administration.lifecycle.disconnect",
+      "administration.lifecycle.purge-confirm",
+    ]) {
+      expect(LIFECYCLE).toContain(`<Screenshot id="${id}" />`);
     }
   });
 });

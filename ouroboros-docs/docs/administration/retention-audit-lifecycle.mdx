@@ -2,14 +2,202 @@
 title: "Data retention, audit & workspace lifecycle"
 sidebar_label: "Retention, audit & lifecycle"
 sidebar_position: 12
-description: "Retention settings, the audit trail, disconnecting and purging a workspace."
+description: "Retention tiers, the audit trail, pausing, disconnecting and deleting a workspace, and the security model."
 ---
 
-Retention settings, the audit trail, disconnecting and purging a workspace.
+Compliance and offboarding questions need exact answers: how long is this kept, who did that,
+what happens if we leave. This page covers:
 
-:::info[Being written]
+- how long Ouroboros keeps a workspace's data, and how old data is swept;
+- the audit trail and where to read it;
+- pausing, disconnecting and deleting a workspace;
+- a summary of the security model for operators.
 
-This page is being written in
-[#1199](https://github.com/NobuData/ouroboros/issues/1199).
+## Data retention
+
+Retention is set on the **Workspace** card in <UiPath path="Settings" />, under **Data
+retention**. Everyone can read it; an Owner or Maintainer changes it and chooses **Save
+changes**.
+
+<Screenshot id="administration.retention" />
+
+**Data retention** sets one tier for all loop data — transcripts, build logs and artifacts —
+such as **30 days**. **Advanced: set each class** sets each class on its own:
+
+| Class | What it holds | Floor | Ceiling | Swept |
+| --- | --- | --- | --- | --- |
+| **Transcripts** | A run's transcript in the run console — every message, tool call and result. | 7 days | 365 days | Hourly. A finished run's whole transcript, once it finished before the cutoff. |
+| **Build logs** | The full log of each build on the farm. | 7 days | 365 days | Every ten minutes. A finished build's whole log, once every line is past the cutoff. |
+| **Artifacts** | Files builds upload, such as test reports and binaries. | 7 days | 365 days | On a schedule, shown on the card. |
+| **Audit log** | The audit trail described below. | 90 days | 3650 days | On a schedule, shown on the card. |
+
+Each field shows its bounds and when its next sweep runs, for example *7–365 days · next sweep in
+1h*. The audit log keeps at least 90 days, so the record a quarterly review reads cannot be
+configured away.
+
+**Saving deletes nothing.** *Each class's next sweep applies the new tier; data past it is removed
+then.* Lowering a tier therefore removes old data at the next sweep, not at once, and raising it
+cannot bring back anything already swept.
+
+A few more rules:
+
+- **A running build's log and a running loop's transcript are never swept.** Only finished
+  work is.
+- **Something removed by retention says so.** A swept build log reads as removed by retention,
+  not as an empty log.
+- **Build logs also have a size budget.** Each workspace keeps at most
+  <EnvVar name="OURO_FARM_LOG_BUDGET_BYTES" /> of finished builds' logs (2 GiB by default); past
+  it, the oldest builds' logs go first, whatever their age.
+- **A new workspace's artifacts** are kept for <EnvVar name="OURO_ARTIFACT_RETENTION_DAYS" />
+  (30 by default) until it sets its own tier.
+
+## The audit trail
+
+Every change made in a workspace is recorded in its **audit log**. That includes settings,
+members and roles, keys and providers, policies, decisions, pull requests, exports, and the
+lifecycle actions below. Each entry says what happened, who did it — a person, a bot, a service
+account or the system — what it was about, and when. No entry ever holds a secret, and entries
+cannot be edited.
+
+**Reading it.** The **Audit** section of <UiPath path="Settings" /> shows today's events, and
+**filters** opens **Filter the audit log**:
+
+- **From (UTC day)** and **To (UTC day, inclusive)**;
+- **Actor kind** and **Actor**;
+- **Plane or action** — `policy` for a whole plane, or `policy.published` for one action;
+- **Reference** — `#509` or `pr:509`, `run:<id>`, `repo:<owner/name>`, `key:<id>` or
+  `subject:<id>`.
+
+Only Owners and Maintainers can read the audit log. Anyone else sees *The audit log is read by
+owners and admins. Ask one of them for what you need from it.*
+
+**Exporting it.** **Export CSV** downloads the filtered view for a range of days. An export
+covers at most 366 days; export a longer history in parts. *This export is itself recorded in the
+audit log, with its range and filters.*
+
+**Streaming it.** To keep the trail in your own SIEM as it happens, add a webhook endpoint for
+`audit.*` and mark it as the SIEM stream — see
+[Notifications, email & webhooks](./notifications-and-webhooks.mdx#adding-an-endpoint). Its
+health appears on the Audit section as **Stream to SIEM**.
+
+**How long it is kept** is the **Audit log** retention class, at least 90 days. When the sweep
+removes old events, it records how many it removed. Expired events that something else still
+refers to are kept and counted as held, never dropped silently.
+
+## Pausing, disconnecting and deleting
+
+The **Danger zone** section of <UiPath path="Settings" /> (`/settings#danger`) holds three
+actions, from the mildest to the most final.
+
+| Action | Who | Undo |
+| --- | --- | --- |
+| **Pause all loops** | Owner, Maintainer | **Resume**, at any time. |
+| **Disconnect GitHub App** | Owner, Maintainer | Reconnect GitHub, then resume. |
+| **Delete workspace** | Owner | **Restore workspace** within 30 days; after that, nothing. |
+
+### Pausing all loops
+
+*Pausing is a hold, not a stop: queued issues stay queued; running loops finish their stage.*
+Choose **Pause all loops** and confirm. Every page then shows **All loops paused** until someone
+chooses **Resume** — on that banner or here.
+
+### Disconnecting GitHub
+
+Disconnect when you want Ouroboros to stop working in your GitHub organization but keep the
+workspace — when you move to another installation, say, or while you investigate something.
+Choose **Disconnect…**. The dialog reads what disconnecting would do as things stand, and you
+type the workspace's name to confirm:
+
+<Screenshot id="administration.lifecycle.disconnect" />
+
+Disconnecting:
+
+- leaves open pull requests on GitHub, untouched;
+- lets running loops finish their current stage, then stops them;
+- pauses the workspace's GitHub ticket sources, so its repositories stop syncing;
+- deletes the stored GitHub token the backlog reads with;
+- pauses all loops.
+
+Nothing in GitHub is changed or removed. To reconnect, set the backlog token again and resume the
+sources — see [Ticket sources & repositories](./sources.mdx#setting-the-backlog-token) — then
+**Resume** the workspace. Despite its name, the action removes Ouroboros' token: there is no
+GitHub App installation to remove, so uninstall nothing on GitHub's side.
+
+### Deleting a workspace
+
+Only an Owner can delete a workspace, and it needs a recent sign-in. Choose **Delete *name*…**,
+read what it does, type the workspace's name and choose **Delete workspace**.
+
+<Screenshot id="administration.lifecycle.purge-confirm" />
+
+Deleting happens in two stages:
+
+1. **At once**, the workspace becomes **pending deletion**. Every page of it is frozen behind a
+   recovery screen, everyone who is not an Owner is signed out of it, and nothing is dispatched.
+   For **30 days**, an Owner can choose **Restore workspace** on that screen to return it to
+   active — see [Workspace recovery](./sign-in-and-workspace.mdx#workspace-recovery).
+2. **After 30 days**, the workspace is **purged**, in this order:
+   1. its encryption key is destroyed, so nothing it stored can be decrypted from this
+      deployment again;
+   2. the files its builds uploaded are deleted from artifact storage;
+   3. all its data is deleted;
+   4. a small record that a workspace was purged, and when, is kept, so the deletion can be
+      shown to have happened.
+
+:::danger[A purge cannot be undone]
+
+Once the recovery window has passed, nobody can restore the workspace from the app — not an
+Owner, not the deployment administrator. Destroying the encryption key first is what makes the
+purge final. If the workspace's history matters, **Export CSV** its audit log and keep anything
+else you need **before** the window ends.
+
+One exception, for the deployment administrator: a database backup taken **before** the purge
+still holds the workspace's key, sealed with the master key. Anyone with both that backup and
+`OURO_VAULT_MASTER_KEY` could read it. The purge reaches your backups only once every earlier
+backup has aged out, or the master key that sealed it has been replaced and destroyed.
 
 :::
+
+## The security model, in brief
+
+For the full design, read
+[`SECURITY_MODEL.md`](https://github.com/NobuData/ouroboros/blob/main/docs/SECURITY_MODEL.md).
+In short:
+
+- **Tenancy.** Every request acts in exactly one workspace — the one your session is in, held on
+  the server. A token for one workspace reads nothing of another. Each workspace has its own
+  encryption key.
+- **The vault.** Every credential is sealed with the workspace's own data key, using AES-256-GCM
+  envelope encryption. Credentials include provider keys, ticket-source tokens, webhook secrets
+  and the farm's certificate authority key. The data keys are themselves sealed with the
+  deployment's master key, <EnvVar name="OURO_VAULT_MASTER_KEY" />, which is read from the
+  environment. **Anyone who can read that variable, and the database, can read every stored
+  credential**, so keep it with your most sensitive secrets. Losing it loses every stored
+  credential, so back it up separately. Keeping the master key in a cloud KMS or HashiCorp Vault
+  is not available yet.
+- **Secrets are shown once.** API tokens, webhook secrets and enrollment commands are shown
+  once and cannot be read back. A provider key can be revealed only by an Owner or Maintainer with
+  a recent sign-in. Every reveal is recorded.
+- **Runners.** Build machines connect out to your deployment over mTLS, with a certificate from
+  the workspace's own certificate authority. Each build sees only the environment variables its
+  pool allows. Workers never receive a cloud model key. See
+  [Build farm administration](./build-farm.mdx#how-runners-authenticate).
+- **Where data lives.** Everything is in your deployment's database and the artifact storage
+  you configured. Ouroboros keeps no copy elsewhere and trains on nothing. The model providers you
+  connect do receive what a run sends them, under their own terms.
+
+## What can go wrong
+
+- **Old data is still there after you lowered a tier.** Nothing is removed until that class's next
+  sweep; the card says when.
+- **A build log reads as removed although it is younger than the tier.** The workspace passed its
+  build-log size budget, so the oldest logs went first.
+- **The audit log will not go below 90 days.** That is its floor.
+- **An export is refused as too long.** Export at most 366 days at a time.
+- **After a disconnect, the backlog does not sync again.** The backlog token was deleted. Set it
+  again, resume the GitHub sources, then resume the workspace.
+- **Delete asks for a recent sign-in.** *Deleting a workspace needs a recent sign-in.* Confirm your
+  password, or sign out and in again and delete within five minutes.
+- **Delete is not offered.** Only an Owner can delete a workspace.
+- **A deleted workspace is needed back.** An Owner restores it from the recovery screen within 30
+  days. After that, it is gone.
