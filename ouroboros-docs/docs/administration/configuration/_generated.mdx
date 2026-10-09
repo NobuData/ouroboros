@@ -467,7 +467,7 @@ How many attempts a delivery gets before it lands in the dead-letter queue. Opti
 
 Internal collectors a webhook may reach despite the SSRF policy, comma-separated: hostnames, IP addresses or CIDR blocks (collector.internal,10.20.0.0/16). Optional; empty means none. By default a webhook may not reach loopback, link-local (including the cloud metadata address 169.254.169.254), RFC1918, carrier-grade NAT or unique-local addresses — at save and again at every delivery. This never relaxes https. Left commented: unset means no internal target is reachable, which is the only safe default for a template that may be copied anywhere.
 
-## Research — the web search & page reader
+## Research — the web search & page reader and the competitor tracker
 
 ### `OURO_RESEARCH_SEARXNG_URL`
 
@@ -504,6 +504,18 @@ The pause between two requests to the same host, in milliseconds (0–60000). A 
 **Development default:** unset. Example: `wiki.internal,10.20.0.0/16`
 
 Internal hosts the page reader may read despite the SSRF policy, comma-separated: hostnames, IP addresses or CIDR blocks (wiki.internal,10.20.0.0/16). Optional; empty means none. By default the reader refuses loopback, link-local (including the cloud metadata address 169.254.169.254), RFC1918, carrier-grade NAT and unique-local addresses, whatever a URL's name resolves to.
+
+### `OURO_RESEARCH_WATCH_TICK_MS`
+
+**Development default:** unset. Example: `60000`
+
+How often the competitor tracker looks for due watches, in milliseconds (10000–3600000), or 0 to turn its scheduler off on this replica. Each watch keeps its own cadence (hourly, daily or weekly, with ±25% jitter); this is only how often due ones are picked up. Optional; defaults to 60000.
+
+### `OURO_RESEARCH_WATCH_BATCH`
+
+**Development default:** unset. Example: `10`
+
+How many due competitor watches one tick checks (1–100), one at a time. Bounds the work a restart or a burst of new watches can start at once. Optional; defaults to 10.
 
 ### `OURO_SEARXNG_SECRET`
 

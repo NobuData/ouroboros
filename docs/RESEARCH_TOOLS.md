@@ -25,10 +25,10 @@ Everything lives in `ouroboros-rest/src/modules/research/tools/`:
 interface ResearchToolAdapter {
   slug;                       // a research_tools slug: web, competitor, code, tickets, telemetry, docs
   displayMeta();              // {name, glyph, subLine} — subLine is a template: "{rivals} rivals watched · …"
-  counts(org, config);        // live numbers for the template's {slots}; null = unknown (renders "—")
+  counts(org, config);        // live values for the template's {slots}: a count, a phrase, or null = unknown ("—")
   configSchema();             // workspace settings, in the ticket-source form dialect
   capabilities();             // {search, fetch, query, watch}
-  healthCheck(config, secret) // {state, detail}; config null → not_configured, with no network call
+  healthCheck(config, secret, org?) // {state, detail}; config null → not_configured, with no network call
   operationPriceCents?(config) // optional: cents per operation for #622's estimate; null = unpriced
 }
 // plus, gated by capabilities() like provider `pull`:
@@ -112,6 +112,7 @@ tool out — the estimate never guesses.
 | Slug | Adapter | Since |
 |---|---|---|
 | `web` | `adapters/web/` — search through SearXNG (default), Brave, Tavily or Firecrawl; our own robots-aware page reader | CL.2 #615 |
+| `competitor` | `adapters/competitor/` — the watch scheduler, its snapshots and scoped diffs; `query` ops `changes` / `latest` cite archived diffs | CL.3 #616 |
 
 ### `web` (CL.2, #615)
 
@@ -128,6 +129,27 @@ tool out — the estimate never guesses.
 - **Skips.** A fetch failing `robots_denied` or `unsupported` is not a 502: the invoker records it
   in `source_skips` (V116) with its note and answers `200` with `skipped`, so the investigation's
   record says honestly what was not read.
+
+### `competitor` (CL.3, #616)
+
+- **Registry** (core, `research/competitors/`): rivals and watches, owner/admin CRUD at
+  `/api/v1/research/competitors`, and the change feed at `/api/v1/research/competitor-changes`.
+  `competitor.kinds.ts`, `competitor.selector.ts` (the CSS subset a watch may carry) and
+  `competitor.diff.ts` (normalisation and the `+`/`-` line diff) are shared with the adapter.
+- **Scheduler** (`competitor.scheduler.ts`): every `OURO_RESEARCH_WATCH_TICK_MS` (jittered, never at
+  boot) claim at most `OURO_RESEARCH_WATCH_BATCH` due watches (`for update skip locked`, a 15-minute
+  lease) and check them one at a time.
+- **Snapshotter** (`competitor.snapshotter.ts`): page kinds through the shared `PageFetcher`
+  (`RESEARCH_PAGE_FETCHER` — one robots cache and host pace for both tools) scoped by the selector
+  or the main content; `rss` via `saxes`; `github_releases` via `GithubClientFactory`; `filings` →
+  `unsupported` with the v2 note; an empty region on a script-rendered page → `render_required` with
+  its note. Same hash → nothing written; a change → snapshot + diff + `competitor_snapshot_contents`
+  (V117).
+- **Tool** (`competitor.tool.ts`): sub-line `{watched} · {kinds}` from `competitor_tracker_summary`
+  (sub-line slots may be phrases since #616); `query` `{op: "changes", rival, windowDays?,
+  sourceKind?}` / `{op: "latest", rival, sourceKind}` → `competitor_diff` sources naming the snapshot;
+  health ages each readable watch's last read against two cadences (`healthCheck` takes the
+  workspace since #616).
 
 ## Writing an adapter
 

@@ -176,6 +176,16 @@ describe("the research tool conformance kit", () => {
       ]);
     });
 
+    it("accepts a phrase for a slot, and fails a blank one or a negative count", () => {
+      expect(countsViolations(new FakeResearchTool(), { documents: "three sets" })).toEqual([]);
+      expect(countsViolations(new FakeResearchTool(), { documents: " " })).toEqual([
+        "counts().documents must be a non-blank phrase of at most 200 characters",
+      ]);
+      expect(countsViolations(new FakeResearchTool(), { documents: -1 })).toEqual([
+        "counts().documents must be a non-negative integer, a phrase or null",
+      ]);
+    });
+
     it("fails a health detail that quotes the credential, and an unknown state", () => {
       expect(
         healthViolations({ state: "down", detail: `401 for ${FAKE_SECRET}` }, FAKE_SECRET, "down"),

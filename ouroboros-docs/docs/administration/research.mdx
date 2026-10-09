@@ -2,12 +2,13 @@
 title: "Research tools"
 sidebar_label: "Research"
 sidebar_position: 14
-description: "Choosing the web search provider and how the page reader stays polite, safe and honest."
+description: "Choosing the web search provider, how the page reader stays polite, safe and honest, and running the competitor tracker."
 ---
 
 Research investigations read the outside world through **research tools**. This page covers
-the first of them, **Web search & page reader**: where its searches go, how it reads a page,
-what it keeps, and the variables that bound it.
+**Web search & page reader**: where its searches go, how it reads a page, what it keeps, and the
+variables that bound it. It also covers the **competitor tracker**: who manages it, what it
+needs, and how it is scheduled.
 
 :::info[Not available yet]
 
@@ -132,6 +133,59 @@ hosts whose content every workspace may see.
 
 A refused address is a failed request, not a skipped page.
 
+## Competitor tracker
+
+The competitor tracker checks your rivals' sources on a schedule and archives every change for
+investigations to cite. What it watches is described in
+[Competitor watch](../user-guide/research.mdx#competitor-watch).
+
+### Who manages rivals
+
+Owners and admins add, edit and remove **rivals** and their **watches**. Every member can see
+them and the archived changes.
+
+:::info[Not available yet]
+
+The screen for managing rivals arrives with the Research page. Until then, rivals and watches
+are managed through the REST API, at `/api/v1/research/competitors`.
+
+:::
+
+A rival can have up to 25 watches. A watch's source kind, address and selector are fixed once it
+is created. To watch something else, add a new watch. A rival or watch whose change an
+investigation cites cannot be removed, so the citation keeps its evidence. Disable its watches
+instead.
+
+### What it needs
+
+- **Pages and feeds** are read by the same reader as the web tool. robots.txt, per-host pacing,
+  size caps and [network safety](#network-safety) all apply, and the two tools share one
+  robots.txt cache and one pace per host.
+- **GitHub releases** are read through GitHub's API with the workspace's backlog token. Set it as
+  described in [Setting the backlog token](./sources.mdx#setting-the-backlog-token). Without it,
+  a `github_releases` watch records *GitHub releases need this workspace's GitHub token*.
+- **Filings** are counted but not read until a later release.
+- **Pages that need JavaScript** are marked and skipped until a later release brings a reader
+  that runs scripts. An owner or admin can ask for a marked page to be tried again, for example
+  after the rival changes its site.
+
+### Scheduling
+
+Every REST replica runs the scheduler. Each tick, it claims the watches that are due, at most
+<EnvVar name="OURO_RESEARCH_WATCH_BATCH" />, and checks them one at a time. A claim holds a watch
+for 15 minutes, so two replicas never check the same watch. A watch whose replica stopped
+mid-check becomes due again when the claim runs out.
+
+Each watch's next check is stored, so a restart picks up the schedule where it was. Set
+<EnvVar name="OURO_RESEARCH_WATCH_TICK_MS" /> to `0` on a replica that should not check watches.
+
+### Tracker health
+
+The tracker's health ages each readable watch's last successful read against its cadence. A
+watch not read for two cadences is **stale**. The tool is **healthy** when no watch is stale,
+**degraded** when some are, and **down** when all are. Filings and pages that need JavaScript
+are left out.
+
 ## Variables
 
 All are set on the REST service. Each has a working default.
@@ -144,6 +198,8 @@ All are set on the REST service. Each has a working default.
 | <EnvVar name="OURO_RESEARCH_FETCH_MAX_REDIRECTS" /> | `5` | The most redirects followed for one page, from 0 to 20. |
 | <EnvVar name="OURO_RESEARCH_HOST_INTERVAL_MS" /> | `1000` | The least time between two requests to one host, up to 60 seconds. |
 | <EnvVar name="OURO_RESEARCH_FETCH_INTERNAL_ALLOWLIST" /> | empty | Internal hosts the reader may reach, comma-separated: hostnames, IP addresses or CIDR blocks. |
+| <EnvVar name="OURO_RESEARCH_WATCH_TICK_MS" /> | `60000` | How often the competitor tracker looks for due watches, from 10 seconds to an hour. `0` turns it off on that replica. |
+| <EnvVar name="OURO_RESEARCH_WATCH_BATCH" /> | `10` | How many due watches one tick checks, from 1 to 100. |
 
 The SearXNG container takes one variable of its own, <EnvVar name="OURO_SEARXNG_SECRET" />.
 See [Container images](./deploy/containers.mdx#searxng--web-search).

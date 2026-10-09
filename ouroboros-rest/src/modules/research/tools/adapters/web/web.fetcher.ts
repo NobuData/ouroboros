@@ -83,6 +83,11 @@ export interface FetchedPage {
   readonly contentHash: string;
   /** The extractor — `main-content-v1`, or `plain-text` for a text type. */
   readonly extractor: string;
+  /**
+   * The whole response body, decoded — the HTML before extraction, the feed before parsing. For
+   * a reader that scopes the page itself (the competitor tracker's selectors, #616).
+   */
+  readonly document: string;
 }
 
 /** The clock and the pause, injectable so politeness is testable without waiting. */
@@ -312,7 +317,13 @@ export class PageFetcher {
       contentType === ""
     ) {
       const extracted = extractMainContent(decoded);
-      return { ...base, title: extracted.title, text: extracted.text, extractor: EXTRACTOR };
+      return {
+        ...base,
+        title: extracted.title,
+        text: extracted.text,
+        extractor: EXTRACTOR,
+        document: decoded,
+      };
     }
 
     if (
@@ -321,7 +332,13 @@ export class PageFetcher {
       contentType.endsWith("+json") ||
       contentType.endsWith("xml")
     ) {
-      return { ...base, title: null, text: decoded.trim(), extractor: "plain-text" };
+      return {
+        ...base,
+        title: null,
+        text: decoded.trim(),
+        extractor: "plain-text",
+        document: decoded,
+      };
     }
 
     throw new ResearchToolError(

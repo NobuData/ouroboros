@@ -497,7 +497,11 @@ describe("TABLE_COLUMNS", () => {
     //
     // The hundred-and-forty-eighth is V116's `source_skips` (#615) — the pages an investigation
     // declined to read, which the internal tool surface records.
-    expect(TABLE_NAMES).toHaveLength(148);
+    //
+    // The hundred-and-forty-ninth to hundred-and-fifty-second are V112's competitor registry —
+    // `competitors`, `competitor_watches`, `competitor_snapshots` — which #616 is the first code to
+    // read and write, and V117's `competitor_snapshot_contents`, the archive its diffs run against.
+    expect(TABLE_NAMES).toHaveLength(152);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

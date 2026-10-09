@@ -6061,6 +6061,85 @@ export interface InvestigationsTable {
   updated_at: Stamped;
 }
 
+/** `competitor_watches.source_kind` (V112, #610). */
+export type CompetitorSourceKind =
+  "release_notes" | "changelog" | "github_releases" | "rss" | "filings" | "page";
+
+/** `competitor_watches.cadence` (V112). */
+export type CompetitorCadence = "hourly" | "daily" | "weekly";
+
+/** `competitor_watches.last_outcome` (V117, #616). */
+export type CompetitorCheckOutcome =
+  | "first"
+  | "changed"
+  | "unchanged"
+  | "failed"
+  | "render_required"
+  | "unsupported"
+  | "robots_denied";
+
+/**
+ * `ouroboros.competitors` — a workspace's rivals (V112, [#610](https://github.com/NobuData/ouroboros/issues/610)),
+ * managed by #616's registry. Name unique per workspace, case-insensitively.
+ */
+export interface CompetitorsTable {
+  id: Generated<string>;
+  organization_id: ColumnType<string, string, never>;
+  name: string;
+  /** `{site?, aliases?, notes?}`. Written as JSON text. */
+  meta: ColumnType<Record<string, unknown>, string | undefined, string>;
+  created_at: Stamped;
+}
+
+/**
+ * `ouroboros.competitor_watches` — what is watched for a rival (V112), and its schedule (V117,
+ * [#616](https://github.com/NobuData/ouroboros/issues/616)).
+ */
+export interface CompetitorWatchesTable {
+  id: Generated<string>;
+  competitor_id: ColumnType<string, string, never>;
+  source_kind: CompetitorSourceKind;
+  url: string;
+  /** The CSS region the diff is scoped to; null for the whole document. */
+  selector: string | null;
+  cadence: ColumnType<CompetitorCadence, CompetitorCadence | undefined, CompetitorCadence>;
+  /** Moved forward by the snapshot insert trigger. */
+  last_snapshot_at: ColumnType<Date | null, never, never>;
+  enabled: ColumnType<boolean, boolean | undefined, boolean>;
+  render_required: ColumnType<boolean, boolean | undefined, boolean>;
+  next_check_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  last_checked_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  last_success_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  last_outcome: CompetitorCheckOutcome | null;
+  last_note: string | null;
+  created_at: Stamped;
+}
+
+/**
+ * `ouroboros.competitor_snapshots` — a watch's archived snapshots, one chain per watch (V112). A
+ * successor carries a diff exactly when its content changed. Never updated.
+ */
+export interface CompetitorSnapshotsTable {
+  id: ColumnType<string, string | undefined, never>;
+  watch_id: ColumnType<string, string, never>;
+  previous_id: ColumnType<string | null, string | null | undefined, never>;
+  content_hash: ColumnType<string, string, never>;
+  content_ref: ColumnType<string, string, never>;
+  diff: ColumnType<string | null, string | null | undefined, never>;
+  taken_at: ColumnType<Date, Date | string, never>;
+  created_at: Stamped;
+}
+
+/**
+ * `ouroboros.competitor_snapshot_contents` — a snapshot's selector-scoped text, which its hash
+ * describes and the next snapshot is diffed against (V117, #616). Never updated.
+ */
+export interface CompetitorSnapshotContentsTable {
+  snapshot_id: ColumnType<string, string, never>;
+  content: ColumnType<string, string, never>;
+  created_at: Stamped;
+}
+
 /** A ledger row's kind (V108's `source_records_kind` CHECK). */
 export type SourceRecordKindColumn =
   "web" | "competitor_diff" | "code" | "ticket" | "telemetry" | "doc";
@@ -7094,6 +7173,10 @@ export interface Database {
   investigation_estimate_outcomes: InvestigationEstimateOutcomesTable;
   source_records: SourceRecordsTable;
   source_skips: SourceSkipsTable;
+  competitors: CompetitorsTable;
+  competitor_watches: CompetitorWatchesTable;
+  competitor_snapshots: CompetitorSnapshotsTable;
+  competitor_snapshot_contents: CompetitorSnapshotContentsTable;
   metric_definitions: MetricDefinitionsTable;
   metric_daily: MetricDailyTable;
   metric_rollup_state: MetricRollupStateTable;
@@ -8390,6 +8473,35 @@ export const TABLE_COLUMNS = {
     "meta",
     "skipped_at",
   ],
+  competitors: ["id", "organization_id", "name", "meta", "created_at"],
+  competitor_watches: [
+    "id",
+    "competitor_id",
+    "source_kind",
+    "url",
+    "selector",
+    "cadence",
+    "last_snapshot_at",
+    "enabled",
+    "render_required",
+    "next_check_at",
+    "last_checked_at",
+    "last_success_at",
+    "last_outcome",
+    "last_note",
+    "created_at",
+  ],
+  competitor_snapshots: [
+    "id",
+    "watch_id",
+    "previous_id",
+    "content_hash",
+    "content_ref",
+    "diff",
+    "taken_at",
+    "created_at",
+  ],
+  competitor_snapshot_contents: ["snapshot_id", "content", "created_at"],
   metric_definitions: [
     "metric_id",
     "family",

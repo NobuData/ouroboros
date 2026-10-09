@@ -155,6 +155,12 @@ export interface ToolDisplayMeta {
   readonly subLine: string;
 }
 
+/**
+ * One slot's value: a count, a phrase the registry computes, or null when it cannot be known.
+ * A phrase is rendered as written; it must be non-blank and at most 200 characters.
+ */
+export type SubLineValue = number | string | null;
+
 /** What a tool can do, as four flags. A total shape: `false` is an answer. */
 export interface ToolCapabilities {
   /** Implements {@link SearchCapableTool}. */
@@ -185,17 +191,18 @@ export interface ResearchToolAdapter {
   displayMeta(): ToolDisplayMeta;
 
   /**
-   * The live numbers the sub-line's slots name.
+   * The live values the sub-line's slots name.
    *
    * @param organizationId - The workspace whose card is being drawn.
    * @param config - Its configuration of this tool, or null when it has none.
-   * @returns One entry per slot in {@link ToolDisplayMeta.subLine} — a count, or null when it
+   * @returns One entry per slot in {@link ToolDisplayMeta.subLine} — a count, a phrase the
+   *   registry computes (the competitor tracker's `release notes, changelogs`), or null when it
    *   cannot be known right now (rendered as an em dash). Never rejects.
    */
   counts(
     organizationId: string,
     config: ResearchToolConfig | null,
-  ): Promise<Readonly<Record<string, number | null>>>;
+  ): Promise<Readonly<Record<string, SubLineValue>>>;
 
   /**
    * The workspace-level configuration this tool needs — keys, endpoints, scope.
@@ -214,10 +221,17 @@ export interface ResearchToolAdapter {
    * @param config - The configuration, or null when the workspace has not configured the tool;
    *   the answer is then `not_configured` (the idle dot), without a network call.
    * @param secret - The opened credential, or null.
+   * @param organizationId - The workspace whose card is being drawn — for a tool whose health is
+   *   per workspace (the competitor tracker ages that workspace's watches). Optional, so a tool
+   *   whose health is its provider's may ignore it.
    * @returns The state and a short detail. **Never rejects** — a refusal or a timeout is a
    *   `down` result, because a dot's colour must not depend on somebody's control flow.
    */
-  healthCheck(config: ResearchToolConfig | null, secret: string | null): Promise<ToolHealth>;
+  healthCheck(
+    config: ResearchToolConfig | null,
+    secret: string | null,
+    organizationId?: string,
+  ): Promise<ToolHealth>;
 
   /**
    * What one operation costs under a configuration, for the scope estimate (#622) — declared

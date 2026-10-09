@@ -406,6 +406,16 @@ export class AppConfigService {
     return this.config.getOrThrow<readonly string[]>("researchFetchInternalAllowlist");
   }
 
+  /** `OURO_RESEARCH_WATCH_TICK_MS` — how often the competitor tracker looks for due watches; 0 off (#616). */
+  get researchWatchTickMs(): number {
+    return this.config.getOrThrow<number>("researchWatchTickMs");
+  }
+
+  /** `OURO_RESEARCH_WATCH_BATCH` — how many due watches one tick checks (#616). */
+  get researchWatchBatch(): number {
+    return this.config.getOrThrow<number>("researchWatchBatch");
+  }
+
   /**
    * Days without a tracker update after which an open ticket is stale — `OURO_BACKLOG_STALE_DAYS`.
    *
@@ -611,6 +621,8 @@ export class AppConfigService {
       researchFetchMaxRedirects: this.researchFetchMaxRedirects,
       researchHostIntervalMs: this.researchHostIntervalMs,
       researchFetchInternalAllowlist: this.researchFetchInternalAllowlist,
+      researchWatchTickMs: this.researchWatchTickMs,
+      researchWatchBatch: this.researchWatchBatch,
       backlogStaleDays: this.backlogStaleDays,
       reestimationHourUtc: this.reestimationHourUtc,
       reestimationJitterMinutes: this.reestimationJitterMinutes,

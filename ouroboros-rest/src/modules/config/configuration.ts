@@ -514,6 +514,21 @@ export const DEFAULT_RESEARCH_HOST_INTERVAL_MS = 1_000;
 /** The longest pause between requests to one host an operator may set — one minute. */
 export const MAX_RESEARCH_HOST_INTERVAL_MS = 60_000;
 
+/** How often the competitor tracker looks for due watches, by default — every minute (#616). */
+export const DEFAULT_RESEARCH_WATCH_TICK_MS = 60_000;
+
+/** The shortest tick an operator may set — ten seconds; `0` turns the tracker's scheduler off. */
+export const MIN_RESEARCH_WATCH_TICK_MS = 10_000;
+
+/** The longest tick an operator may set — an hour. */
+export const MAX_RESEARCH_WATCH_TICK_MS = 3_600_000;
+
+/** How many due watches one tick checks, by default (#616). */
+export const DEFAULT_RESEARCH_WATCH_BATCH = 10;
+
+/** The most due watches one tick may check. */
+export const MAX_RESEARCH_WATCH_BATCH = 100;
+
 /**
  * How many days without a tracker update make an open ticket *stale* on the Backlog Health card,
  * when `OURO_BACKLOG_STALE_DAYS` is not set — thirty, mockup 09's `Stale > 30d`.
@@ -1094,6 +1109,13 @@ export interface Configuration {
    */
   readonly researchFetchInternalAllowlist: readonly string[];
   /**
+   * How often the competitor tracker looks for due watches, in milliseconds; `0` when its scheduler
+   * is off. From `OURO_RESEARCH_WATCH_TICK_MS` (#616).
+   */
+  readonly researchWatchTickMs: number;
+  /** How many due watches one tick checks. From `OURO_RESEARCH_WATCH_BATCH` (#616). */
+  readonly researchWatchBatch: number;
+  /**
    * Days without a tracker update after which an open ticket counts as stale on the Backlog Health
    * card. From `OURO_BACKLOG_STALE_DAYS`, {@link DEFAULT_BACKLOG_STALE_DAYS} when unset.
    */
@@ -1297,6 +1319,8 @@ export const VARIABLES = {
   researchFetchMaxRedirects: "OURO_RESEARCH_FETCH_MAX_REDIRECTS",
   researchHostIntervalMs: "OURO_RESEARCH_HOST_INTERVAL_MS",
   researchFetchInternalAllowlist: "OURO_RESEARCH_FETCH_INTERNAL_ALLOWLIST",
+  researchWatchTickMs: "OURO_RESEARCH_WATCH_TICK_MS",
+  researchWatchBatch: "OURO_RESEARCH_WATCH_BATCH",
   backlogStaleDays: "OURO_BACKLOG_STALE_DAYS",
   reestimationHourUtc: "OURO_REESTIMATION_HOUR_UTC",
   reestimationJitterMinutes: "OURO_REESTIMATION_JITTER_MINUTES",
@@ -1953,6 +1977,21 @@ const environmentShape = z.object({
     MAX_RESEARCH_HOST_INTERVAL_MS,
     "milliseconds",
   ),
+  OURO_RESEARCH_WATCH_TICK_MS: boundedWhole(
+    0,
+    DEFAULT_RESEARCH_WATCH_TICK_MS,
+    MAX_RESEARCH_WATCH_TICK_MS,
+    "milliseconds",
+  ).refine(
+    (value) => value === 0 || value >= MIN_RESEARCH_WATCH_TICK_MS,
+    `expected 0 (off) or between ${MIN_RESEARCH_WATCH_TICK_MS} and ${MAX_RESEARCH_WATCH_TICK_MS} milliseconds`,
+  ),
+  OURO_RESEARCH_WATCH_BATCH: boundedWhole(
+    1,
+    DEFAULT_RESEARCH_WATCH_BATCH,
+    MAX_RESEARCH_WATCH_BATCH,
+    "watches",
+  ),
   OURO_RESEARCH_FETCH_INTERNAL_ALLOWLIST: z
     .string()
     .default("")
@@ -2324,6 +2363,8 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     researchFetchMaxRedirects: values.OURO_RESEARCH_FETCH_MAX_REDIRECTS,
     researchHostIntervalMs: values.OURO_RESEARCH_HOST_INTERVAL_MS,
     researchFetchInternalAllowlist: values.OURO_RESEARCH_FETCH_INTERNAL_ALLOWLIST,
+    researchWatchTickMs: values.OURO_RESEARCH_WATCH_TICK_MS,
+    researchWatchBatch: values.OURO_RESEARCH_WATCH_BATCH,
     backlogStaleDays: values.OURO_BACKLOG_STALE_DAYS,
     reestimationHourUtc: values.OURO_REESTIMATION_HOUR_UTC,
     reestimationJitterMinutes: values.OURO_REESTIMATION_JITTER_MINUTES,
