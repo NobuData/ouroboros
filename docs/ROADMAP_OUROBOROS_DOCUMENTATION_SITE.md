@@ -994,7 +994,7 @@ since other pages link variables to it).
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |---|---|---|---|---|---|---|---|---|---|
-| DB.1 | #1189 | 🟡 Open | ouroboros-docs: [DB.1] Administration overview, roles & capabilities | Who administers what; Owner/Maintainer/Viewer matrix | mvp, docs-site, documentation, settings | Y | Y | S | ouroboros-docs |
+| DB.1 | #1189 ✅ | 🟢 Done | ouroboros-docs: [DB.1] Administration overview, roles & capabilities | Who administers what; Owner/Maintainer/Viewer matrix | mvp, docs-site, documentation, settings | Y | Y | S | ouroboros-docs |
 | DB.2 | #1190 | 🟡 Open | ouroboros-docs: [DB.2] Deploying Ouroboros (self-hosting) | Services, public/internal, compose, migrations, gateway, go-live checklist | mvp, docs-site, documentation, infra | Y | Y | L | ouroboros-docs |
 | DB.3 | #1191 | 🟡 Open | ouroboros-docs: [DB.3] Configuration reference — generated from .env.example | Every OURO_* variable, per service, generated + drift-checked | mvp, docs-site, documentation, ci | Y (first in DB) | Y | M | ouroboros-docs |
 | DB.4 | #1192 | 🟡 Open | ouroboros-docs: [DB.4] Sign-in & workspace settings | GitHub OAuth app, BetterAuth, domain, region, recovery | mvp, docs-site, documentation, auth, settings | Y | Y | M | ouroboros-docs |
@@ -1008,6 +1008,14 @@ since other pages link variables to it).
 | DB.12 | #1200 | 🟡 Open | ouroboros-docs: [DB.12] Operations — upgrades, backups, health & troubleshooting | Migrations on upgrade, PG backups, health endpoints, common failures | mvp, docs-site, documentation, infra | Y | Y | M | ouroboros-docs |
 
 ### Issue DB.1 (#1189) — ouroboros-docs: [DB.1] Administration overview, roles & capabilities
+
+> **GitHub issue:** #1189 ✅ · **Status:** 🟢 Done · **Parent epic:** #1159
+>
+> **Delivered (#1189):** `administration/index.mdx` — the deployment administrator (host, environment, no in-app role) vs the workspace administrator (Owner/Maintainer under **Settings**), a table of what each looks after linking the other DB pages, the hub's ten tabs (six sections + four mounted) with Appearance/Notifications, **Save changes** vs **applies instantly**, and what can go wrong. `administration/roles.mdx` — Owner/Maintainer/Viewer with their stored names (`owner`/`admin`/`viewer`), the last-owner and owner-only rules, the legacy `member` role (shown as Viewer, read-only in Settings, but may queue, sync, snooze and answer member-level decisions), **Can approve loops** (defaults by role, explicit setting wins, what it unlocks; inbox approver actions need only the capability while the PR page's approve/arm/merge also need owner/admin/member and waive needs owner/admin), and a per-section read/change matrix verified against the REST decorators: audit log, webhooks, service accounts and farm enrollment tokens are read by owners/admins only; `@Roles("owner")` is only lifecycle delete/restore, plus the service-level owner-only policy loosening.
+>
+> `tests/administration.test.ts` holds the tab rows to `settings/view.ts`, the role table to `ROLE_CHOICES` and `members.roles.ts`, the capability to `MEMBER_CAPABILITIES`/`APPROVING_ROLES`, the approval answers to the shipped approver actions in V093/V097, the owner-only routes to a scan of every REST controller, and quoted refusals to their UI constants.
+>
+> **Screenshot** (`acme-robotics`): `administration.settings` — the hub's head, tab row, Workspace and Members & roles cards (relative times masked). No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.25.
 
 **Problem Statement.** Admins need a map of their responsibilities and of who may do what.
 **Solution / Scope.** `administration/index.mdx` (deployment admin vs workspace admin),
