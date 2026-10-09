@@ -856,5 +856,10 @@ outside the turbo graph, and lists the pages and screenshot ids it changed under
 **Documentation** heading. The `/implement` skill
 ([`.claude/skills/implement/SKILL.md`](../.claude/skills/implement/SKILL.md)) carries each of
 these steps, so a ticket implemented through it produces the page paths before any code is
-written.
+written. The work is named earlier than that: the roadmap skills (`create-roadmap`,
+`update-roadmap`) give every issue a **Documentation** line — the pages by section and path,
+the screenshot ids, or "none — internal-only change" — and list `ouroboros-docs` among the
+affected modules of anything user-visible, and `create-issues` carries that section into the
+GitHub issue ([#1210](https://github.com/NobuData/ouroboros/issues/1210)). An implementer
+reads what to document from the ticket rather than deciding it alone.
 

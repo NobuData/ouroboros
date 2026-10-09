@@ -28,6 +28,7 @@ When user invokes **update-roadmap** with description, treat the description as 
   - Acceptance Criteria
   - Parallelism/Dependencies
   - Technical Stack
+  - Documentation — the `ouroboros-docs` pages to create or update, named by section (User Guide / Administration / CLI) and path, and the screenshot ids to capture; "none — internal-only change" when nothing a person meets changes (`docs/CONVENTIONS.md` § 11). Every issue has this line.
   - Epic grouping
   - ASCII or Mermaid drawing for visual detail
 - Each roadmap epic section must contain a table indicating:
@@ -38,7 +39,7 @@ When user invokes **update-roadmap** with description, treat the description as 
   - Parallelism Indicator (Y/N)
   - MVP Indicator (Y/N)
   - Complexity
-  - Affected Modules
+  - Affected Modules — list `ouroboros-docs` whenever the issue is user-visible (a UI route, label, flow or setting; a CLI flag; an `OURO_*` variable; an API behaviour), beside the module that changes
 - Do not be shy about number of issues to create: be thorough and descriptive
 - Do not create the issues, simply document them so the document can be validated before moving forward
 

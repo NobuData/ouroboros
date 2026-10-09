@@ -1503,7 +1503,7 @@ docs added.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |---|---|---|---|---|---|---|---|---|---|
 | DE.1 | #1209 ✅ | 🟢 Done | ouroboros: [DE.1] /implement requires documentation updates | New documentation step, audit item, docs build, version bump, PR section | mvp, docs-site, documentation | Y (after CY.2, CZ.1) | Y | S | .claude/skills/implement, AGENTS.md |
-| DE.2 | #1210 | 🟡 Open | ouroboros: [DE.2] Roadmap skills add a Documentation section to every issue | create-roadmap / update-roadmap / create-issues | mvp, docs-site, documentation | Y | Y | S | .claude/skills |
+| DE.2 | #1210 ✅ | 🟢 Done | ouroboros: [DE.2] Roadmap skills add a Documentation section to every issue | create-roadmap / update-roadmap / create-issues | mvp, docs-site, documentation | Y | Y | S | .claude/skills |
 | DE.3 | #1211 | 🟡 Open | ouroboros: [DE.3] PR template, issue form & CONVENTIONS documentation rule | Checkbox, "Documentation impact" field, § Documentation | mvp, docs-site, documentation | Y | Y | XS | .github, docs |
 | DE.4 | #1212 | 🟡 Open | ouroboros-docs: [DE.4] Docs coverage gate | UI routes / runner flags / OURO_* vars must map to pages | mvp, docs-site, ci | N (after CY.5, DB.3, DC.3) | Y | M | ouroboros-docs, .github, scripts |
 | DE.5 | #1213 | 🟡 Open | ouroboros: [DE.5] Amend open roadmap issues with documentation scope | Add a Documentation section to every open issue in every roadmap (all areas) | mvp, docs-site, documentation | N (after DE.2, content epics) | Y | L | docs (roadmaps), GitHub issues |
@@ -1536,6 +1536,10 @@ include documentation updates and creation for its changes. Today the skill only
 ticket shows the documentation step produces concrete page paths.
 
 ### Issue DE.2 (#1210) — ouroboros: [DE.2] Roadmap skills add a Documentation section to every issue
+
+> **GitHub issue:** #1210 ✅ · **Status:** 🟢 Done · **Parent epic:** #1162
+>
+> **Delivered (#1210):** `create-roadmap` and `update-roadmap` — the per-issue list gains **Documentation** (the `ouroboros-docs` pages by section and path, the screenshot ids, or "none — internal-only change", citing CONVENTIONS § 11; every issue has it) and the epic table's *Affected Modules* lists `ouroboros-docs` whenever the issue is user-visible. `create-issues` — *Affected systems* includes `ouroboros-docs` for user-visible issues, and the issue body carries the **Documentation** section from the roadmap entry. `docs/CONVENTIONS.md` § 11 and `ouroboros-docs/README.md` § Authoring say the ticket names the docs work first. `scripts/verify-layout.sh` asserts both phrases in each of the three skills. **This roadmap's own issues already follow the shape:** all 56 `docs-site` issues carry `## Documentation`; the eight without are the epics. Module 0.1.46 (README).
 
 **Problem Statement.** Tickets are written by the roadmap skills; if issues do not name their
 docs work, implementers will skip it.
