@@ -86,6 +86,15 @@ check_contains .claude/skills/implement/SKILL.md 'yarn screenshots --only <id>' 
   'and recaptures only the affected screenshots'
 check_contains .claude/skills/implement/SKILL.md '^- \*\*Documentation\*\*: the `ouroboros-docs` pages' \
   'and asks the PR body for a Documentation section'
+# The work is named on the ticket first (#1210): the roadmap skills give every issue a
+# Documentation line and list ouroboros-docs among the modules of anything user-visible, and
+# create-issues carries the section into the GitHub issue.
+for skill in create-roadmap update-roadmap create-issues; do
+  check_contains ".claude/skills/$skill/SKILL.md" '^  - Documentation — the `ouroboros-docs` pages' \
+    "the $skill skill gives every issue a Documentation section"
+  check_contains ".claude/skills/$skill/SKILL.md" 'include `ouroboros-docs` whenever the issue is user-visible|list `ouroboros-docs` whenever the issue is user-visible' \
+    "and lists ouroboros-docs among the modules of a user-visible issue"
+done
 
 printf '\nRoot README module map\n'
 for module in $MODULES ouroboros-web; do

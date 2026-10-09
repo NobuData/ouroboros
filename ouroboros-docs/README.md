@@ -421,7 +421,9 @@ Every user-visible change to the product updates this site in the same pull requ
 ([`.claude/skills/implement/SKILL.md`](../.claude/skills/implement/SKILL.md)) carries it step by
 step: name the page paths, write or update the pages, recapture only the affected screenshots,
 run this module's checks, bump its version, and list what changed under **Documentation** in
-the pull request. What follows is how a page is written.
+the pull request. The ticket itself says what to document: the roadmap skills give every issue a
+**Documentation** section naming the pages and screenshot ids, and `create-issues` carries it
+into GitHub. What follows is how a page is written.
 
 ### Where a page goes
 

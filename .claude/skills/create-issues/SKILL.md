@@ -20,7 +20,7 @@ When user invokes **create-issues**, refer to `docs/<roadmap-file>.md` as the de
 - Issues must contain:
   - Quick summary including:
     - Level of effort (shirt sizes: S, M, L, XL)
-    - Affected systems (UI/UX, REST, Database, Engine, etc)
+    - Affected systems (UI/UX, REST, Database, Engine, etc) — include `ouroboros-docs` whenever the issue is user-visible
   - Adjust the Fields:
     - Set Priority (Urgent, High, Medium, Low) as appropriate
     - Set Effort (High, Medium, Low) based on the Level of effort in the summary
@@ -29,6 +29,7 @@ When user invokes **create-issues**, refer to `docs/<roadmap-file>.md` as the de
   - Acceptance Criteria
   - Parallelism/Dependencies
   - Technical Stack
+  - Documentation — the `ouroboros-docs` pages to create or update, by section and path, and the screenshot ids to capture, carried from the roadmap's entry for the issue; "none — internal-only change" when nothing a person meets changes (`docs/CONVENTIONS.md` § 11). Every issue carries this section, so an implementer never has to guess
   - Epic grouping (Epic name is 3 letters of the major feature)
   - Relationship Reference where applicable
   - MVP indicator (v1) release candidate where applicable
