@@ -51,6 +51,9 @@ const FARM = page("build-farm.mdx");
 /** The policies & guardrails page. */
 const POLICIES = page("policies.mdx");
 
+/** The notifications, email & webhooks page. */
+const NOTIFY = page("notifications-and-webhooks.mdx");
+
 /**
  * Reads the value of one exported string constant of the UI, joining a value written as
  * several `"…" +` pieces — e.g. `export const NOTE =\n  "One " +\n  "two.";`.
@@ -232,7 +235,17 @@ describe("the roles & capabilities page (#1189)", () => {
   });
 
   it("carries no internal issue references or migration numbers in its prose", () => {
-    for (const text of [OVERVIEW, ROLES, SIGN_IN, MEMBERS, SOURCES, PROVIDERS, FARM, POLICIES]) {
+    for (const text of [
+      OVERVIEW,
+      ROLES,
+      SIGN_IN,
+      MEMBERS,
+      SOURCES,
+      PROVIDERS,
+      FARM,
+      POLICIES,
+      NOTIFY,
+    ]) {
       const prose = text
         .replace(/^--- .*? --- /, "")
         .replace(/\*\*[^*]+\*\*/g, "")
@@ -1130,6 +1143,106 @@ describe("the policies & guardrails page (#1197)", () => {
       "administration.policies.dry-run",
     ]) {
       expect(POLICIES).toContain(`<Screenshot id="${id}" />`);
+    }
+  });
+});
+
+describe("the notifications, email & webhooks page (#1198)", () => {
+  it("names the mail variables and says no SMTP means no mail", () => {
+    for (const name of ["OURO_SMTP_URL", "OURO_MAIL_FROM"]) {
+      expect(NOTIFY).toContain(`<EnvVar name="${name}" />`);
+    }
+    expect(NOTIFY).toContain("**Without `OURO_SMTP_URL`, Ouroboros sends no mail at all.**");
+  });
+
+  it("lists the four routes the service knows, locked where the channel cannot connect", () => {
+    const catalog = source(
+      "ouroboros-rest",
+      "src",
+      "modules",
+      "notification-routes",
+      "routes.catalog.ts",
+    );
+    for (const kind of ["needs_you_dm", "daily_digest", "loop_failures", "weekly_insights"]) {
+      expect(catalog).toContain(`"${kind}"`);
+    }
+    for (const row of [
+      "Needs-you decisions → Slack DM",
+      "Daily digest → email",
+      "Loop failures → PagerDuty",
+      "Weekly insights report → email",
+    ]) {
+      expect(NOTIFY).toContain(`| **${row}** |`);
+    }
+    for (const name of ["TIME_LABEL", "RECIPIENTS_LABEL"]) {
+      expect(NOTIFY).toContain(`**${constant("integrations/routes.ts", name)}**`);
+    }
+    expect(
+      source("ouroboros-rest", "src", "modules", "notification-routes", "routes.sender.ts"),
+    ).toContain("export const MAX_ROUTE_ATTEMPTS = 3;");
+    expect(NOTIFY).toContain("up to three times per address");
+  });
+
+  it("names the webhook sheet's controls and form as the UI draws them", () => {
+    for (const name of [
+      "ADD_ENDPOINT",
+      "PING",
+      "SHOW_DELIVERIES",
+      "EDIT",
+      "ROTATE",
+      "DELETE",
+      "FORM_NAME",
+      "FORM_URL",
+      "FORM_FAMILIES",
+      "FORM_SIEM",
+      "FORM_CREATE",
+      "REDELIVER",
+      "SIEM_LABEL",
+    ]) {
+      expect(NOTIFY).toContain(`**${constant("webhooks/view.ts", name)}**`);
+    }
+    expect(constant("webhooks/view.ts", "SECRET_WARNING")).toContain(
+      "This is the only time this secret is shown.",
+    );
+    expect(NOTIFY).toContain(constant("webhooks/view.ts", "SECRET_WARNING"));
+    expect(NOTIFY).toContain(":::caution[The signing secret is shown once]");
+  });
+
+  it("documents the four event families the registry serves", () => {
+    const registry = source("ouroboros-rest", "src", "modules", "webhooks", "webhook.registry.ts");
+    expect(registry).toContain(
+      'export const WEBHOOK_FAMILIES = ["audit", "decision", "run", "pr"] as const;',
+    );
+    for (const family of ["audit", "decision", "run", "pr"]) {
+      expect(NOTIFY).toContain(`| \`${family}.*\` |`);
+    }
+    for (const type of ["run.opened", "run.merged", "run.canceled"]) {
+      expect(registry).toContain(`"${type}"`);
+    }
+  });
+
+  it("states the delivery headers and retry policy the service uses", () => {
+    const signing = source("ouroboros-rest", "src", "modules", "webhooks", "webhook.signing.ts");
+    for (const header of [
+      "X-Ouro-Event",
+      "X-Ouro-Delivery",
+      "X-Ouro-Timestamp",
+      "X-Ouro-Signature",
+    ]) {
+      expect(signing).toContain(`"${header}"`);
+      expect(NOTIFY).toContain(`| \`${header}\` |`);
+    }
+    expect(NOTIFY).toContain('<EnvVar name="OURO_WEBHOOK_MAX_ATTEMPTS" />');
+    expect(NOTIFY).toContain('<EnvVar name="OURO_WEBHOOK_INTERNAL_ALLOWLIST" />');
+  });
+
+  it("shows the screenshots the issue lists", () => {
+    for (const id of [
+      "administration.webhooks",
+      "administration.webhooks.create",
+      "administration.notifications",
+    ]) {
+      expect(NOTIFY).toContain(`<Screenshot id="${id}" />`);
     }
   });
 });

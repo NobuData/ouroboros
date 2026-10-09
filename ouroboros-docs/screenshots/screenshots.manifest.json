@@ -1365,6 +1365,66 @@
       "capturedAt": "2026-10-09T03:27:14.646Z",
       "uiVersion": "0.144.1",
       "seedRef": "8f2b92e2906c78cf7f816d4c6f73d1bc7fe0889c"
+    },
+    {
+      "id": "administration.webhooks",
+      "route": "/settings",
+      "workspace": "acme-robotics",
+      "ready": "role=dialog[name='Webhook endpoints'] >> text=Release notes bot",
+      "clip": ".shell-overlay__panel",
+      "actions": [
+        {
+          "click": "section[aria-labelledby='settings-integrations-title'] >> role=button[name=/Manage/]"
+        }
+      ],
+      "caption": "Webhook endpoints: each endpoint, its event families and health, and its controls.",
+      "alt": "The Webhook endpoints sheet, headed Where this workspace's events are delivered, signed with a per-endpoint secret. Every control here acts at once., with 2 active and + Add endpoint. Two endpoints, both switched on: SIEM · Splunk HEC, tagged SIEM, at siem.acme-robotics.dev with audit.*, active and healthy; and Release notes bot at hooks.acme-robotics.dev with pr.* and run.*, active and healthy. Each shows its secret masked and the buttons Test ping, Deliveries, Edit, Rotate secret and Delete.",
+      "capturedAt": "2026-10-09T03:32:21.211Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "e924ed75bd6fe6b994e5995e5381615aede01064"
+    },
+    {
+      "id": "administration.webhooks.create",
+      "route": "/settings",
+      "workspace": "acme-robotics",
+      "ready": "role=button[name='Create endpoint']",
+      "clip": ".shell-overlay__panel",
+      "actions": [
+        {
+          "click": "section[aria-labelledby='settings-integrations-title'] >> role=button[name=/Manage/]"
+        },
+        {
+          "click": "role=button[name='+ Add endpoint']"
+        },
+        {
+          "fill": "role=dialog >> role=textbox[name='Name']",
+          "value": "Deploy tracker"
+        },
+        {
+          "fill": "role=dialog >> role=textbox[name='URL']",
+          "value": "https://hooks.example.com/ouroboros"
+        },
+        {
+          "click": "role=dialog >> role=checkbox[name='run.*']"
+        }
+      ],
+      "caption": "Adding an endpoint: a name, an https URL and the event families it receives. The signing secret is shown once, after it is created.",
+      "alt": "The Add endpoint form in the Webhook endpoints sheet: Name Deploy tracker, URL https://hooks.example.com/ouroboros with the hint https only. The host must resolve to an external address — internal targets are refused., Event families audit.*, decision.*, run.* (ticked) and pr.*, an unticked Use as the SIEM stream with its note that at most one endpoint is the SIEM stream and it must subscribe to audit.*, an empty Description, the note that the signing secret is minted by the service and shown once, and Cancel and Create endpoint. The two existing endpoints are listed below, the SIEM one now retrying.",
+      "capturedAt": "2026-10-09T03:34:44.332Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "e924ed75bd6fe6b994e5995e5381615aede01064"
+    },
+    {
+      "id": "administration.notifications",
+      "route": "/settings",
+      "workspace": "acme-robotics",
+      "ready": "#settings-notifications-title",
+      "clip": "section[aria-labelledby='settings-notifications-title']",
+      "caption": "Notifications: the workspace's notification routes, where each one goes and when.",
+      "alt": "The Notifications section: Needs-you decisions → Slack DM, locked — connect Slack first, with See Slack in Integrations; Daily digest 09:00 UTC → email, switched on, merges, spend, interventions since yesterday, with Daily digest time (UTC) set to 09:00; Loop failures → PagerDuty, locked — connect PagerDuty first; and Weekly insights report → email, switched on, Mondays, from the Insights screen to eng-leads@acme-robotics.dev, with the Weekly insights recipients field.",
+      "capturedAt": "2026-10-09T03:32:28.422Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "e924ed75bd6fe6b994e5995e5381615aede01064"
     }
   ]
 }

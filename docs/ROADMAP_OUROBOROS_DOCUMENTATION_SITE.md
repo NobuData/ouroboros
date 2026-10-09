@@ -1003,7 +1003,7 @@ since other pages link variables to it).
 | DB.7 | #1195 ✅ | 🟢 Done | ouroboros-docs: [DB.7] Model providers & keys | Adding providers, sealed keys, discovery, local Ollama, managed pool | mvp, docs-site, documentation, providers | Y | Y | M | ouroboros-docs |
 | DB.8 | #1196 ✅ | 🟢 Done | ouroboros-docs: [DB.8] Build farm administration | Pools, farm tokens, enrolling runners, gateway, health | mvp, docs-site, documentation, build-farm | Y | Y | M | ouroboros-docs |
 | DB.9 | #1197 ✅ | 🟢 Done | ouroboros-docs: [DB.9] Policies & guardrails | Org policy, protected paths, spend guard, dry-run, decision TTLs, exceptions | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
-| DB.10 | #1198 | 🟡 Open | ouroboros-docs: [DB.10] Notifications, email & webhooks | SMTP, digests, channels, webhook endpoints, signing, retries | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
+| DB.10 | #1198 ✅ | 🟢 Done | ouroboros-docs: [DB.10] Notifications, email & webhooks | SMTP, digests, channels, webhook endpoints, signing, retries | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
 | DB.11 | #1199 | 🟡 Open | ouroboros-docs: [DB.11] Data retention, audit & workspace lifecycle | Retention, audit trail, disconnect, purge, security model summary | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
 | DB.12 | #1200 | 🟡 Open | ouroboros-docs: [DB.12] Operations — upgrades, backups, health & troubleshooting | Migrations on upgrade, PG backups, health endpoints, common failures | mvp, docs-site, documentation, infra | Y | Y | M | ouroboros-docs |
 
@@ -1210,6 +1210,24 @@ grants, how policy shows up in the inbox.
 **Problem Statement.** Policies are what make autonomy safe; misconfiguration is costly.
 
 ### Issue DB.10 (#1198) — ouroboros-docs: [DB.10] Notifications, email & webhooks
+
+> **GitHub issue:** #1198 ✅ · **Status:** 🟢 Done · **Parent epic:** #1159
+>
+> **Delivered (#1198):** `administration/notifications-and-webhooks.mdx` covers:
+>
+> - **SMTP:** `OURO_SMTP_URL`/`OURO_MAIL_FROM`; no SMTP means no mail; mailpit for local tries.
+> - **The four notification routes** with their channels. Slack and PagerDuty are honest-absent as **locked**. The daily digest goes to owners/admins at **Daily digest time (UTC)**; weekly insights to **Weekly insights recipients**. Routes are separate from per-person inbox mail and Insights subscriptions, retried up to three times per address, with no unsubscribe link.
+> - **Webhook endpoints:** from the Integrations **Webhooks** tile; switch, **Test ping**, **Deliveries**, **Edit**, **Rotate secret**, **Delete**.
+> - **Adding an endpoint:** https only, external hosts only, the SSRF allowlist, the SIEM stream, and a `caution` that the secret is shown once.
+> - **What arrives:** the headers and the envelope.
+> - **The four families** (versioned registry, linking `WEBHOOKS.md`).
+> - **Verifying a delivery** with Node.js and Python snippets.
+> - **At-least-once delivery:** retries with backoff, the DLQ and **Redeliver**.
+> - **Secret rotation, and what can go wrong.**
+>
+> **Signature snippets are tested against a fixture:** `tests/fixtures/webhook-delivery.json` is a delivery signed by REST's own `signedHeaders`. `tests/webhook-verify.test.ts` reads both snippets out of the page and runs them: Node via dynamic import; Python via `python3 -I`, skipped where no python3 exists. Each accepts the fixture and refuses a tampered body, a wrong secret and a replay past 300 s. The suite also holds `webhook.signing.ts` to the formula. `tests/administration.test.ts` pins the routes, the UI labels, the families, the headers and the variables.
+>
+> **Screenshots** (`acme-robotics`): `administration.webhooks` (the sheet, opened by the tile's **Manage**), `administration.webhooks.create` (the form filled for *Deploy tracker* with `run.*` ticked) and `administration.notifications` (the routes). No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.33.
 
 **Solution / Scope.** SMTP setup (`OURO_SMTP_URL`, `OURO_MAIL_FROM`), digests, channel
 connections as delivered, notification routes; webhooks: creating an endpoint, the four event
