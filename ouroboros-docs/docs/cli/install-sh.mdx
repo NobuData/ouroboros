@@ -5,11 +5,194 @@ sidebar_position: 2
 description: "Every install.sh flag and what it changes on the build machine."
 ---
 
-Every `install.sh` flag and what it changes on the build machine.
+`install.sh` puts the runner agent, `ouroboros-runner`, on a build machine. It enrolls the
+machine into a pool and keeps the agent running as a service. You run it on the machine itself,
+usually as the one-liner the **Enroll a runner** card gives you — see
+[Build farm administration](../administration/build-farm.mdx#enrolling-a-runner). Run it again to
+upgrade the agent, and run it with `--uninstall` to remove it.
 
-:::info[Being written]
+## Synopsis
 
-This page is being written in
-[#1202](https://github.com/NobuData/ouroboros/issues/1202).
+```bash
+curl -fsSL 'https://<deployment>/install.sh?version=<version>' | sh -s -- \
+  --tenant <workspace> --pool <pool> --token orb_enroll_…
 
-:::
+curl -fsSL 'https://<deployment>/install.sh' | sh -s -- --uninstall [--purge]
+```
+
+Your deployment serves the script at `/install.sh`. It fills in its own address as `--server`.
+`?version=` picks the release, and the script it serves installs exactly that release. Without
+`?version=` you get the newest stable release the deployment holds.
+
+Run it as yourself. It works out what to install without special rights. It uses `sudo` only for
+the steps that write to the machine, so expect a password prompt.
+
+## Options
+
+Each option that takes a value accepts both `--option value` and `--option=value`.
+
+| Option | What it does |
+| --- | --- |
+| `--server URL` | The deployment to download from and enroll into. It must start `https://`. Filled in when your deployment served the script, so you only pass it to a copy you downloaded yourself. |
+| `--version X.Y.Z` | The release to install, as a semantic version. Filled in when the script came from a release, which `?version=` gives you. |
+| `--download-url URL` | Where the release's files are, `https://` only. Defaults to `<server>/runner/<version>`. Use it to download from a mirror. |
+| `--tenant NAME` | The workspace the runner joins, as the enroll command shows it. Needed for a first install. |
+| `--pool NAME` | The pool the runner joins. The token must belong to that pool. Needed for a first install. |
+| `--token TOKEN` | The enrollment token, `orb_enroll_…`. Needed for a first install, not for an upgrade. Instead of the flag you can export <EnvVar name="OURO_RUNNER_TOKEN" />, which keeps the token out of the process list. |
+| `--name NAME` | The runner's name in the Build Farm table. Defaults to the machine's hostname, as a slug. |
+| `--server-ca FILE` | A PEM file of CA certificates, for a deployment whose certificate this machine does not already trust. The downloads use it. It is installed as `/etc/ouroboros-runner/server-ca.pem` for the agent, and later runs keep using it. |
+| `--bearer-fallback` | Enrolls and runs in the weaker bearer-token mode instead of a client certificate. Use it only when the gateway cannot pass client certificates through — see [The bearer-token fallback](../administration/build-farm.mdx#the-bearer-token-fallback). |
+| `--no-shell` | The agent runs no job directly on this machine, only jobs in containers. |
+| `--user NAME` | The account the service runs as. Defaults to whoever ran the script, which is `SUDO_USER` under `sudo`. The account must exist. |
+| `--state-dir DIR` | Where the agent keeps its identity. An absolute path; defaults to `/var/lib/ouroboros-runner`. |
+| `--uninstall` | Stops and removes the service, the binary and `/etc/ouroboros-runner`. It asks before removing the state directory. |
+| `--purge` | With `--uninstall` only: removes the state directory without asking. |
+| `-h`, `--help` | Prints the usage and exits. |
+
+The script reads one setting from the environment: <EnvVar name="OURO_RUNNER_TOKEN" />. Every
+other option is a flag.
+
+## What an install does
+
+The script works in this order. Nothing it downloads runs, and nothing on the machine changes,
+until the download has been verified.
+
+1. **Checks the options.** A missing `--tenant`, `--pool` or `--token` on a machine that is not
+   enrolled yet stops it here, before anything is downloaded.
+2. **Picks the build for this machine.** It supports Linux on x86-64 and arm64, and macOS on Apple
+   silicon. A Rosetta shell on a Mac still gets the arm64 build. Any other machine is refused by
+   name.
+3. **Downloads the binary and `SHA256SUMS`** into a private temporary directory, over `https`
+   only. Redirects are followed only to `https`.
+4. **Verifies the checksum.** It computes the binary's SHA-256 with `sha256sum`, `shasum` or
+   `openssl`, whichever the machine has, and compares it with the binary's line in `SHA256SUMS`.
+   If that line is missing, appears twice, is malformed or does not match, the script stops. It
+   has installed nothing and stopped nothing.
+5. **Checks the version.** It asks the verified binary for its version. A binary that reports any
+   release but the one asked for is refused.
+6. **Installs.** It stops a running agent, installs the binary as
+   `/usr/local/bin/ouroboros-runner`, and creates the state directory, readable only by the
+   service's account.
+7. **Enrolls**, spending the token, unless the state directory already holds a runner. In that
+   case it keeps the existing identity and spends no token.
+8. **Installs and starts the service**, then prints a summary.
+
+When it finishes you see something like:
+
+```text
+ouroboros-runner 0.5.0 is installed and running.
+  service  systemd unit ouroboros-runner.service — starts at boot, restarts on failure
+  runs as  build, from /var/lib/ouroboros-runner
+  logs     journalctl -u ouroboros-runner -f
+  remove   curl -fsSL 'https://ouroboros.example.com/install.sh' | sh -s -- --uninstall
+```
+
+The runner's row appears on the Build Farm page within a few seconds of the agent connecting.
+
+If an upgrade fails after it stopped the running agent, the script starts the agent again before
+it exits. The machine is never left without its runner.
+
+## The service
+
+### Linux — systemd
+
+The script writes `/etc/systemd/system/ouroboros-runner.service`, enables it and starts it. The
+unit:
+
+- starts after the network is up, and at every boot;
+- runs `ouroboros-runner run` as the `--user` account, with your `--state-dir`, `--server-ca`,
+  `--bearer-fallback` and `--no-shell` choices;
+- restarts the agent 10 seconds after a crash. If the agent fails five times in five minutes,
+  systemd stops trying. This happens, for example, when the deployment has revoked the runner.
+  `systemctl status ouroboros-runner` shows why. A reboot or `systemctl restart` tries again;
+- gives the agent 30 seconds to stop. On `systemctl stop` it cancels its running jobs, reports
+  them, and stays stopped.
+
+Read its log with `journalctl -u ouroboros-runner -f`.
+
+### macOS — launchd
+
+The script writes the launch daemon `/Library/LaunchDaemons/dev.ouroboros.runner.plist` and loads
+it. The daemon:
+
+- starts at boot, with nobody logged in, and runs as the `--user` account;
+- runs `ouroboros-runner run` with the same arguments as on Linux. It sets `HOME` and a `PATH`
+  that includes Homebrew, so Docker Desktop and your build tools are found;
+- restarts the agent 10 seconds after any exit that is not a clean stop. Unlike systemd, launchd
+  never gives up. A runner the deployment has refused keeps restarting until you act, and the log
+  says why each time;
+- gives the agent 30 seconds to stop. `sudo launchctl bootout system/dev.ouroboros.runner` stops
+  it, and it stays stopped.
+
+Read its log with `tail -f /Library/Logs/ouroboros-runner/runner.log`.
+
+## Upgrading
+
+Run the installer again with the new version. An enrolled machine needs no token, tenant or pool:
+
+```bash
+curl -fsSL 'https://<deployment>/install.sh?version=<new version>' | sh -s --
+```
+
+The script verifies the new release and stops the agent. It then replaces the binary, keeps the
+runner's identity and rewrites the service. A trusted CA from an earlier install is kept.
+
+The service is rewritten from **this** run's options. Pass the same `--user`, `--state-dir`,
+`--no-shell` and `--bearer-fallback` you installed with. Anything you leave out goes back to its
+default.
+
+## Uninstalling
+
+```bash
+curl -fsSL 'https://<deployment>/install.sh' | sh -s -- --uninstall
+```
+
+This removes:
+
+- the service: the systemd unit, or the launchd daemon and its log directory;
+- `/usr/local/bin/ouroboros-runner`;
+- `/etc/ouroboros-runner`.
+
+Then it asks on your terminal whether to remove the state directory too. That directory is the
+runner's identity, and removing it cannot be undone. With no terminal to ask, the answer is no
+and the directory is kept. Add `--purge` to remove it without asking. If you installed with a
+different `--state-dir`, pass it here too.
+
+Uninstalling does not revoke the runner. Its certificate stays valid until it expires. To revoke
+it, remove the runner on the Build Farm page — see
+[Draining and removing a runner](../administration/build-farm.mdx#draining-and-removing-a-runner).
+
+## Exit status
+
+| Status | Meaning |
+| --- | --- |
+| `0` | Installed, upgraded or uninstalled; or `--help`. |
+| `1` | Refused or failed. The reason is on standard error, starting `install.sh:`. |
+
+## What can go wrong
+
+- **`no --token given, and /var/lib/ouroboros-runner holds no runner yet`** — this is a first
+  install. Copy a fresh command from the **Enroll a runner** card.
+- **`no --tenant given` or `no --pool given`** — the same: a first install needs the whole
+  command from the card.
+- **`checksum mismatch for …`** — the download was altered or corrupted on the
+  way. Nothing was installed or stopped. Try again. If it keeps happening, check for a proxy that
+  rewrites downloads.
+- **`SHA256SUMS … lists no checksum`** — the release on your deployment is incomplete. Ask your
+  deployment administrator to check the runner releases in
+  <EnvVar name="OURO_FARM_RELEASES_DIR" />.
+- **`could not download …`** — the machine cannot reach the deployment over `https`. If the
+  deployment's certificate comes from a private CA, pass `--server-ca`.
+- **`this machine is … and ouroboros-runner is released for linux/x86_64, linux/arm64 and darwin/arm64 only`**
+  — the agent has no build for this machine.
+- **`installing needs root, and this is not root and has no sudo`** — run it as root, or install
+  `sudo`.
+- **`enrollment failed`** — the agent's own message above it says why. A used or expired token is
+  the usual cause. The binary is installed but no service was set up, so mint a new token and run
+  the command again.
+- **The token is not picked up from <EnvVar name="OURO_RUNNER_TOKEN" />** — `sudo` clears the
+  environment. Run `sh` as yourself, as the synopsis does, not as `sudo sh`.
+- **The service runs as `root`** — you ran the script as root without `sudo`, so `--user`
+  defaulted to `root`. Run it again with `--user <account>`.
+- **After an upgrade, the runner lost `--no-shell` (or another choice)** — the service is
+  rewritten from each run's options. Run it again with the options you want.
