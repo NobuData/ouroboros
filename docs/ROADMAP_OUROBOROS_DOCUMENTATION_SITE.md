@@ -1312,7 +1312,7 @@ All DC issues are **[STD]**; screenshots here are terminal captures only where t
 | DC.2 | #1202 ✅ | 🟢 Done | ouroboros-docs: [DC.2] Runner installer (install.sh) reference | Flags, service install, verification, uninstall/purge | mvp, docs-site, documentation, build-farm | Y | Y | S | ouroboros-docs |
 | DC.3 | #1203 ✅ | 🟢 Done | ouroboros-docs: [DC.3] ouroboros-runner command reference | enroll/run/version/hello/heartbeat/help, env, state dir, drift check | mvp, docs-site, documentation, build-farm, ci | Y | Y | M | ouroboros-docs |
 | DC.4 | #1204 ✅ | 🟢 Done | ouroboros-docs: [DC.4] Stack & operator commands | yarn setup/dev/dev:stop/dev:reset/verify, setup.sh flags | mvp, docs-site, documentation | Y | Y | S | ouroboros-docs |
-| DC.5 | #1205 | 🟡 Open | ouroboros-docs: [DC.5] Using the REST API from the shell | API tokens, curl recipes, error envelope, polling, OpenAPI | mvp, docs-site, documentation, rest | Y | Y | M | ouroboros-docs |
+| DC.5 | #1205 ✅ | 🟢 Done | ouroboros-docs: [DC.5] Using the REST API from the shell | API tokens, curl recipes, error envelope, polling, OpenAPI | mvp, docs-site, documentation, rest | Y | Y | M | ouroboros-docs |
 
 ### Issue DC.1 (#1201) — ouroboros-docs: [DC.1] CLI overview & conventions
 
@@ -1373,6 +1373,10 @@ locally and contributors. Not documented: root `yarn test` (contributor-only; se
 **Problem Statement.** Evaluators start with these commands and need them in one place.
 
 ### Issue DC.5 (#1205) — ouroboros-docs: [DC.5] Using the REST API from the shell
+
+> **GitHub issue:** #1205 ✅ · **Status:** 🟢 Done · **Parent epic:** #1160
+>
+> **Delivered (#1205):** `cli/rest-api.mdx`. **"Member API token" as implemented is a service-account token** (`orb_svc_…`, `Authorization: Bearer`, <Since> ouroboros-rest 0.39.0): `api.read` = any GET a Viewer may make; person/admin reads and every write but `farm.submit` refuse with `403 service_principal_refused`. Base URL `<rest>/api/v1` — REST is internal in a deployment (the UI forwards no API), so scripts run where REST is reachable. Workspace selection: a token always reads its account's workspace; `X-Ouro-Tenant` naming another is `404 tenant_not_found`. Recipes, each run against the rebuilt seeded stack with a minted `api.read` token and the output trimmed in: list runs (`status=active|terminal` required, `limit` 1–100/25, `offset`, `total`), read a run (timeline, branch, guardrails), list Needs You (`head.sentence`; actions come back `allowed: false` with `role_required`/`capability_required`), **queue an issue — not available to tokens** (no write scope; `POST /backlog/queue` answers `service_principal_refused`, shown in an `info[Not available yet]`), read insights (`range` 7d/30d/90d, units `pct`/`duration_ms`/`cents`/`count`). The error envelope with the six codes a script meets; the polling contract on `GET /dashboard` (`ETag`/`If-None-Match` → `304`, `X-Ouro-Poll-After`) with a loop verified against the stack; `/api/openapi.json`, `/api/openapi.yaml`, `/api/docs` (no token, <Since> 0.1.0, `info.version`); `jq` tips; errors. `tests/rest-api.test.ts` holds every `$API` call to `openapi.json`, the paging and range bounds, scopes, error codes and messages, the poll header and the spec paths to the REST source, and keeps zsh-reserved names (`status`) out of the bash snippets. The scratch service account was revoked and deleted afterwards. **Found while doing it:** on the e2e-composed stack `GET /settings/service-accounts` answers `500` — the seeded `devops-bot`'s sealed token hint does not open under that stack's vault key (`vault: a sealed value carries a 12-byte nonce`); not addressed here. No screenshots listed. No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.40.
 
 **Problem Statement.** Integrators script against REST with API tokens and need working recipes.
 **Solution / Scope.** Authenticating with a member API token (header form as implemented),

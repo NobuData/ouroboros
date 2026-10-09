@@ -5,11 +5,302 @@ sidebar_position: 5
 description: "Calling the REST API with an API token, curl and jq."
 ---
 
-Calling the REST API with an API token, `curl` and `jq`.
+A script, a CI job or a bot can read Ouroboros through its REST API, using `curl` and `jq`. This
+page shows you how to authenticate and which workspace a call reads. It gives five recipes, then
+covers the error format, polling without wasting requests, and where to get the full API
+description.
 
-:::info[Being written]
+## Before you start
 
-This page is being written in
-[#1205](https://github.com/NobuData/ouroboros/issues/1205).
+You need three things:
+
+- **An API token.** In Ouroboros a token belongs to a *service account*, an identity of its own,
+  so what your script does is audited under its name. An Owner or Maintainer creates one on the **Members & roles** card in
+  <UiPath path="Settings" /> — see
+  [API tokens and service accounts](../administration/members-and-tokens.mdx#api-tokens-and-service-accounts).
+  Give it the `api.read` scope. The token starts with `orb_svc_` and is shown once.
+  <Since version="0.39.0" module="ouroboros-rest" />
+- **The REST service's address.** On a local stack it is `http://localhost:4000`. In a
+  deployment the REST service is internal: the app's public address does not forward the API,
+  so run your script somewhere that can reach REST's internal address, and ask your deployment
+  administrator for it — see [Deploying Ouroboros](../administration/deploy/overview.mdx).
+- **`curl` and `jq`.**
+
+Keep the token out of your script and your shell history. Read it from your secret store into an
+environment variable:
+
+```bash
+export API=http://localhost:4000/api/v1    # REST's address, plus /api/v1
+export TOKEN="$(cat ~/.config/ouroboros/token)"
+```
+
+Every recipe below uses these two variables.
+
+## Authenticating
+
+Send the token in the `Authorization` header, as a bearer token:
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" "$API/runs?status=active"
+```
+
+There is no other form: no query parameter, no cookie.
+
+### Which workspace a call reads
+
+A service account belongs to one workspace, and every call it makes reads that workspace. You
+don't choose it. The `X-Ouro-Tenant` header that a person's session can use to pick a workspace
+does nothing for a token. If you send it naming another workspace, the call is refused with
+`404 tenant_not_found`, exactly as for a workspace that does not exist.
+
+To script against two workspaces, create a service account in each.
+
+### What a token may do
+
+With `api.read`, a token can make any `GET` request that a workspace Viewer could. It cannot:
+
+- **read about a person or administer the workspace** — for example the members list, the
+  workspace settings, the audit log or the service accounts themselves;
+- **change anything.** The one write a token can be granted is submitting build-farm jobs, with
+  the `farm.submit` scope.
+
+Both are refused with `403 service_principal_refused`.
+
+## Recipes
+
+Each recipe was run against the demonstration data of a local stack, and its output is trimmed.
+
+### List runs
+
+`GET /runs` needs `status`, which names a family of runs rather than one status:
+
+- `active` — the runs still moving, oldest first within each stage;
+- `terminal` — the runs that have stopped, newest first.
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" "$API/runs?status=active" \
+  | jq -r '.items[] | "#\(.issueNumber)\t\(.stageLabel)\t\(.issueTitle)"'
+```
+
+```text
+#482  Implementing  Fix flaky CAN-bus telemetry test
+#479  Build farm    Add OTA rollback on failed checksum
+#476  Self-review   Bump MQTT client, migrate deprecated API
+```
+
+Results come a page at a time. `limit` sets the page size, from 1 to 100 (default 25), and
+`offset` skips rows. The answer says how many there are in all:
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" "$API/runs?status=terminal&limit=2" \
+  | jq -c '{total, limit, offset, items: [.items[] | {issueNumber, status, prNumber}]}'
+```
+
+```json
+{"total":347,"limit":2,"offset":0,"items":[{"issueNumber":474,"status":"merged","prNumber":512},{"issueNumber":471,"status":"merged","prNumber":509}]}
+```
+
+Add `repo=<repository id>` to narrow the list to one repository.
+
+### Read a run
+
+`GET /runs/{id}` returns what the run console shows: the run, its stage timeline, and its changes,
+resources and guardrails. Take the `id` from the list above.
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" "$API/runs/5eed0009-0000-4000-8000-000000000482" \
+  | jq '{issue: .run.issueNumber, status: .run.status, branch: .head.branchName,
+         stages: [.timeline.stages[] | "\(.label): \(.status)"], guardrails: .guardrails.status}'
+```
+
+```json
+{
+  "issue": 482,
+  "status": "coding",
+  "branch": "loop/482-canbus-flake",
+  "stages": [
+    "Queued: succeeded",
+    "Analyze: succeeded",
+    "Plan: succeeded",
+    "Implementing: active",
+    "Build farm: pending",
+    "Self-review: pending"
+  ],
+  "guardrails": "clean"
+}
+```
+
+### List the decisions waiting in Needs You
+
+`GET /inbox` returns the decisions waiting for a person, newest first, with a one-line summary:
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" "$API/inbox" \
+  | jq -r '.head.sentence, (.items[] | "\(.kindId)\t\(.question)")'
+```
+
+```text
+3 decisions. About 90 seconds of your time.
+fact_review                Should the loops trust this fact?
+merge_approval             Approve merge for a refactor PR?
+protected_path_allow_once  Allow a one-time edit to a protected path?
+```
+
+A token can read the decisions but not answer them. Every action comes back with
+`"allowed": false` and a `disabledReason`, such as `role_required` or `capability_required`.
+Decisions are answered by people — see [Needs You](../user-guide/inbox.mdx).
+
+### Queue an issue
+
+:::info[Not available yet]
+
+A token cannot queue an issue. No scope grants it, so `POST /backlog/queue` refuses every token:
+
+```json
+{"code":"service_principal_refused","message":"Service accounts cannot call this route; it needs a person's session.","details":{}}
+```
+
+Queue issues from the Issues page — see [Issues](../user-guide/issues.mdx).
 
 :::
+
+### Read insights
+
+`GET /insights` returns the Insights page's figures. `range` is `7d`, `30d` (the default) or
+`90d`: that many whole UTC days ending today. Each figure comes with the previous window's value
+and its unit.
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" "$API/insights?range=7d" \
+  | jq -c '.window, (.kpis[] | {key, unit, value, prior})'
+```
+
+```json
+{"from":"2026-10-03","to":"2026-10-09"}
+{"key":"autonomous_merge_rate","unit":"pct","value":100,"prior":95.7}
+{"key":"merged_untouched_rate","unit":"pct","value":76.9,"prior":72.7}
+{"key":"cycle_time","unit":"duration_ms","value":660000,"prior":860000}
+{"key":"cost_per_merged_pr","unit":"cents","value":208.9,"prior":276.7}
+{"key":"human_interventions","unit":"count","value":15,"prior":6}
+```
+
+Mind the units: `cycle_time` is in milliseconds and `cost_per_merged_pr` in cents. Each figure's
+`methodology` says how it is computed. Add `repo=<repository id>` to narrow it to one repository.
+
+## Errors
+
+Every error has the same shape, whichever call failed:
+
+```json
+{ "code": "service_token_invalid", "message": "This service token is not valid. It may have been rotated or revoked.", "details": {} }
+```
+
+- `code` is stable. Branch on it in your script.
+- `message` is for a person to read.
+- `details` is always an object. For a request that was refused as invalid, it names each field
+  that was wrong:
+
+```json
+{"code":"validation_failed","message":"The request is not valid. See `details` for each field.","details":{"status":["status must be one of the following values: active, terminal"]}}
+```
+
+The errors you are most likely to meet:
+
+| Status | `code` | Meaning |
+| --- | --- | --- |
+| `401` | `unauthenticated` | No token was sent. |
+| `401` | `service_token_invalid` | The token is unknown, rotated or revoked, or its account was revoked. |
+| `403` | `service_scope_missing` | The account lacks the scope this call needs. `details.scope` names it. |
+| `403` | `service_principal_refused` | No token may make this call: it is a person's read, or a write. |
+| `404` | `tenant_not_found` | `X-Ouro-Tenant` named a workspace other than the token's. |
+| `422` | `validation_failed` | A parameter was missing or wrong. `details` says which. |
+
+A `5xx` never explains itself in the body. The reason is in the REST service's log.
+
+## Polling without wasting requests
+
+To watch for change, poll the dashboard summary, `GET /dashboard`. It is built to be polled
+cheaply:
+
+- Every answer carries an `ETag`. Send it back in `If-None-Match`, and an unchanged dashboard
+  answers `304 Not Modified` with no body.
+- Every answer, `200` or `304`, carries `X-Ouro-Poll-After`: how many seconds the server wants
+  you to wait before asking again. It is `15` by default, and a busy deployment can raise it.
+  Follow it.
+
+```bash
+etag='' wait=15
+while true; do
+  curl -s -D headers.txt -o dashboard.json \
+       -H "Authorization: Bearer $TOKEN" ${etag:+-H "If-None-Match: $etag"} "$API/dashboard"
+  if head -1 headers.txt | grep -q ' 200'; then
+    etag=$(grep -i '^etag:' headers.txt | cut -d' ' -f2 | tr -d '\r')
+    echo "changed"   # read dashboard.json here
+  fi
+  wait=$(grep -i '^x-ouro-poll-after:' headers.txt | cut -d' ' -f2 | tr -d '\r')
+  sleep "${wait:-15}"
+done
+```
+
+```text
+HTTP/1.1 200 OK
+ETag: "eae1ae8c6a53fc21b5c16237811d0b81"
+Cache-Control: private, no-cache
+X-Ouro-Poll-After: 15
+
+HTTP/1.1 304 Not Modified
+ETag: "eae1ae8c6a53fc21b5c16237811d0b81"
+X-Ouro-Poll-After: 15
+```
+
+## The API description
+
+The REST service publishes a full OpenAPI description of every call, parameter and answer. It
+needs no token. <Since version="0.1.0" module="ouroboros-rest" />
+
+| Address | What it is |
+| --- | --- |
+| `/api/openapi.json` | The description as JSON, for a client generator. |
+| `/api/openapi.yaml` | The same description as YAML. |
+| `/api/docs` | A browsable page of it. |
+
+Its `info.version` is the REST service's version. Check it before you rely on a call:
+
+```bash
+curl -s http://localhost:4000/api/openapi.json | jq -r .info.version
+```
+
+These addresses sit beside `/api/v1`, not under it.
+
+## `jq` tips
+
+- **`-r`** prints strings without quotes. Combine it with `"\(.a)\t\(.b)"` for tab-separated
+  lines you can pipe to `column -t`.
+- **`-c`** prints one JSON value per line, which suits logs and `grep`.
+- **`-e`** makes `jq` exit non-zero when the result is `null` or `false`, so a script can test a
+  field: `jq -e '.items | length > 0'`.
+- **`.items[]?`** yields nothing, rather than failing, when an error came back instead of a page.
+- **Check the status first.** `curl -s -w '%{http_code}'` prints the HTTP status, and `--fail`
+  makes `curl` exit non-zero on an error status. With `--fail`, though, the error body is lost. To
+  keep it, write the body to a file and branch on the status code:
+
+```bash
+http=$(curl -s -o body.json -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$API/runs?status=active")
+if [ "$http" != 200 ]; then jq -r '"\(.code): \(.message)"' body.json >&2; exit 1; fi
+```
+
+## What can go wrong
+
+- **`401 unauthenticated`** — the header is missing or malformed. Check that `$TOKEN` is set and
+  that the header reads `Authorization: Bearer orb_svc_…`.
+- **`401 service_token_invalid`** — the token was rotated or the account revoked. Ask an Owner or
+  Maintainer for the current token.
+- **`403 service_principal_refused`** — tokens cannot make this call. Use a person's session in
+  the app instead.
+- **`403 service_scope_missing`** — the account needs the scope named in `details.scope`. Ask an
+  Owner or Maintainer to grant it.
+- **`404 tenant_not_found`** — remove `X-Ouro-Tenant`. A token always reads its own workspace.
+- **`422 validation_failed` on `/runs`** — `status` is required: add `?status=active` or
+  `?status=terminal`.
+- **The connection is refused or times out** — your script cannot reach the REST service. In a
+  deployment it is internal, so run the script inside the network.
