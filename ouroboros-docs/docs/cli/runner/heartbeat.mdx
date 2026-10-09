@@ -2,14 +2,73 @@
 title: "ouroboros-runner heartbeat"
 sidebar_label: "heartbeat"
 sidebar_position: 6
-description: "Sending one heartbeat by hand."
+description: "Measuring the machine once and printing the heartbeat the agent would send."
+flags:
+  - "--window"
 ---
 
-Sending one heartbeat by hand.
+`heartbeat` measures this machine for one window and prints the heartbeat
+[`run`](./run.mdx) would send. The figures are the ones the Build Farm table shows. It needs no
+network and no enrollment, and it sends nothing.
 
-:::info[Being written]
+Use it when the CPU or memory figures on the Build Farm page look wrong. Run it beside `top` and
+the two should agree.
 
-This page is being written in
-[#1203](https://github.com/NobuData/ouroboros/issues/1203).
+## Synopsis
 
-:::
+```text
+ouroboros-runner heartbeat [--window 5s]
+```
+
+## Flags
+
+| Flag | What it does |
+| --- | --- |
+| `--window DURATION` | How long the CPU is watched for the reading, from `100ms` to `1m`. Defaults to `5s`, the window the running agent uses. Set it to `top`'s delay to compare the two. |
+
+It has no environment variable.
+
+## Example
+
+```text
+$ ouroboros-runner heartbeat
+{
+  "v": 1,
+  "type": "heartbeat",
+  "id": "00000000000000000000000000",
+  "payload": {
+    "sent_at": "2026-10-09T15:08:43.948Z",
+    "state": "idle",
+    "uptime_s": 5,
+    "cpu_pct": 1.1,
+    "memory_used_mb": 12320,
+    "memory_total_mb": 29853,
+    "queue_depth": 0,
+    "job": null
+  }
+}
+```
+
+| Field | Where it comes from |
+| --- | --- |
+| `cpu_pct` | The busy share of CPU time, averaged over the window. Linux reads `/proc/stat`; macOS runs `top`. |
+| `memory_used_mb` | Installed memory less what the system can reclaim without paging, so the file cache does not count as used. On macOS this matches Activity Monitor's *Memory Used*. |
+| `memory_total_mb` | The installed memory. |
+| `uptime_s` | How long this command ran. In the running agent, how long the agent has run. |
+| `queue_depth`, `job`, `state` | Always `0`, `null` and `idle` here, because the command runs no jobs. The running agent reports the jobs it has accepted but not started, and the job it is running. |
+
+To compare with `top`, run `top -bn2 -d5` on Linux, or `top -l 2 -n 0 -s 5` on macOS. Activity
+Monitor works on macOS too.
+
+**A figure the machine cannot provide is `null`, never `0`.** The reason goes to standard error.
+The Build Farm table shows a dash for it rather than a number nobody would doubt. A container
+that cannot see the host's CPU is a common cause.
+
+## What can go wrong
+
+- **`no such command: --window … is outside 100ms–1m`** — choose a window in the range, such as
+  `--window 2s`.
+- **`cpu_pct` is `null`** — the machine refused the CPU reading, and the message on standard
+  error says why.
+- **`interrupted before the window closed`** — you stopped the command before it finished
+  measuring. Let the window run out.

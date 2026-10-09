@@ -1310,7 +1310,7 @@ All DC issues are **[STD]**; screenshots here are terminal captures only where t
 |---|---|---|---|---|---|---|---|---|---|
 | DC.1 | #1201 ✅ | 🟢 Done | ouroboros-docs: [DC.1] CLI overview & conventions | Which tools exist, where they run, exit codes, env-var fallbacks | mvp, docs-site, documentation | Y | Y | S | ouroboros-docs |
 | DC.2 | #1202 ✅ | 🟢 Done | ouroboros-docs: [DC.2] Runner installer (install.sh) reference | Flags, service install, verification, uninstall/purge | mvp, docs-site, documentation, build-farm | Y | Y | S | ouroboros-docs |
-| DC.3 | #1203 | 🟡 Open | ouroboros-docs: [DC.3] ouroboros-runner command reference | enroll/run/version/hello/heartbeat/help, env, state dir, drift check | mvp, docs-site, documentation, build-farm, ci | Y | Y | M | ouroboros-docs |
+| DC.3 | #1203 ✅ | 🟢 Done | ouroboros-docs: [DC.3] ouroboros-runner command reference | enroll/run/version/hello/heartbeat/help, env, state dir, drift check | mvp, docs-site, documentation, build-farm, ci | Y | Y | M | ouroboros-docs |
 | DC.4 | #1204 | 🟡 Open | ouroboros-docs: [DC.4] Stack & operator commands | yarn setup/dev/dev:stop/dev:reset/verify, setup.sh flags | mvp, docs-site, documentation | Y | Y | S | ouroboros-docs |
 | DC.5 | #1205 | 🟡 Open | ouroboros-docs: [DC.5] Using the REST API from the shell | API tokens, curl recipes, error envelope, polling, OpenAPI | mvp, docs-site, documentation, rest | Y | Y | M | ouroboros-docs |
 
@@ -1343,6 +1343,10 @@ recipes.
 **Acceptance Criteria.** [STD]; flag list checked by DC.3's drift check.
 
 ### Issue DC.3 (#1203) — ouroboros-docs: [DC.3] ouroboros-runner command reference
+
+> **GitHub issue:** #1203 ✅ · **Status:** 🟢 Done · **Parent epic:** #1160
+>
+> **Delivered (#1203):** `cli/runner/index.mdx` (the commands; every flag ↔ `OURO_RUNNER_*` pair with default and which commands use it; `--bearer-fallback`/`--tenant`/`--pool`/`--name`/`--window` flag-only; true/false parsing; exit status — `0`, or `1` for both kinds of failure, told apart by the message: usage errors read `ouroboros-runner: no such command: …`, runtime failures name the problem; the state directory layout incl. `.lock` and `cache/`; inspecting a machine, adapted from the runner README) and one page per command — `enroll`, `run` (what it does, decline reasons, the seven permanent refusals and what to do), `version`, `hello` (fields, `pool`/`security_mode` once enrolled; it also takes `--state-dir`, which the usage omits), `heartbeat` (fields, `--window` 100ms–1m, `top` parity) and `help` (`-h` exits 0, `<command> -h` exits 1). Output examples are from a binary built from `main` (`golang:1.24-alpine`); exit statuses and error lines verified by running it. **Drift check:** `scripts/cli-flags.ts` (pure) + `scripts/check-cli-flags.ts` → `yarn check:cli-flags`, a `ci/docs` step (asserted by `scripts/verify-ci.sh`): reads each command's synopsis lines from the `usage` const in `main.go` (descriptions ignored) and the options of `install.sh`'s `usage` heredoc, and fails — naming page and flag — when a flag is missing from its page's `flags:` front matter, a listed flag is accepted nowhere, a flag is listed twice, or a page or list is missing (exit 1; 2 for an unreadable source). Verified: adding `[--json]` to `heartbeat`'s synopsis fails the check. `install-sh.mdx` gained its `flags:` list. `tests/cli-flags.test.ts` (28 tests) also holds every listed flag to appear in its page's body. README § *The CLI flag check*. No screenshots listed. No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.38.
 
 **Problem Statement.** The agent's `usage` text is the truth; the docs must expand it without
 drifting from it.

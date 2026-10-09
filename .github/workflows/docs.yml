@@ -99,3 +99,9 @@ jobs:
       - name: Configuration reference is current
         working-directory: ouroboros-docs
         run: yarn check:config-reference
+
+      # The CLI reference pages list their flags in front matter (#1203). A flag added to the
+      # runner's usage text in main.go, or to install.sh's, without documenting it fails here.
+      - name: CLI flags are documented
+        working-directory: ouroboros-docs
+        run: yarn check:cli-flags

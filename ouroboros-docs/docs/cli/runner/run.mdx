@@ -3,13 +3,111 @@ title: "ouroboros-runner run"
 sidebar_label: "run"
 sidebar_position: 3
 description: "Running the agent so it takes build jobs."
+flags:
+  - "--state-dir"
+  - "--server-ca"
+  - "--bearer-fallback"
+  - "--no-shell"
+  - "--keep-workspace-on-failure"
+  - "--log-cap-bytes"
 ---
 
-Running the agent so it takes build jobs.
+`run` is the agent itself: the long-lived process that keeps the machine connected to your
+deployment and runs the build jobs its pool is offered. A service manager starts it, and it runs
+until it is stopped. [`install.sh`](../install-sh.mdx) writes that service for you. The machine
+must be [enrolled](./enroll.mdx) first.
 
-:::info[Being written]
+## Synopsis
 
-This page is being written in
-[#1203](https://github.com/NobuData/ouroboros/issues/1203).
+```text
+ouroboros-runner run [--state-dir DIR] [--server-ca FILE] [--bearer-fallback]
+                     [--no-shell] [--keep-workspace-on-failure]
+                     [--log-cap-bytes N]
+```
 
-:::
+`run` takes no server address. It connects to the deployment the state directory recorded at
+enrollment.
+
+## Flags
+
+| Flag | Variable | What it does |
+| --- | --- | --- |
+| `--state-dir DIR` | <EnvVar name="OURO_RUNNER_STATE_DIR" /> | The enrolled state directory. Defaults to `/var/lib/ouroboros-runner`. |
+| `--server-ca FILE` | <EnvVar name="OURO_RUNNER_SERVER_CA" /> | A PEM file of CA certificates for a deployment whose certificate the system does not trust. |
+| `--bearer-fallback` | — | Lets a runner enrolled with `--bearer-fallback` connect. Such a runner needs it on every start, so the weaker mode is visible wherever the agent is started. |
+| `--no-shell` | <EnvVar name="OURO_RUNNER_NO_SHELL" /> | Runs no job directly on this machine. Shell jobs are declined, and container jobs still run. Use it on a machine that holds keys you don't want a build command to reach. |
+| `--keep-workspace-on-failure` | <EnvVar name="OURO_RUNNER_KEEP_WORKSPACE_ON_FAILURE" /> | Leaves the workspace of a job that failed, timed out or errored, so you can look at what the build left behind. The log says where it is. The next run of the same job replaces it. |
+| `--log-cap-bytes N` | <EnvVar name="OURO_RUNNER_LOG_CAP_BYTES" /> | The most of one job's output to send, from `65536` to `268435456` bytes. Defaults to `67108864` (64 MiB). The rest is reported as dropped, and the run console shows an elision. A value outside the range stops the agent. |
+
+## What it does
+
+- **Connects out.** It opens one connection to the deployment's `https` address, presenting its
+  client certificate. Then it says hello: its version, architecture, hostname, pool and
+  capabilities. Run [`hello`](./hello.mdx) to see exactly what it sends.
+- **Sends heartbeats** about every 10 seconds, with the CPU and memory figures the Build Farm
+  table shows. [`heartbeat`](./heartbeat.mdx) prints one.
+- **Reconnects** when the connection drops. It waits a random time that grows from 1 up to 60
+  seconds, so a fleet that dropped together does not return all at once. When it reconnects, it
+  resends any job result the deployment had not yet confirmed.
+- **Renews its certificate** before it expires, over the connection it already has. No new token
+  is needed.
+- **Runs jobs.** It answers every offer at once, accepting it or declining it with a reason:
+  - **Container jobs** run in the pool's image through the Docker or Podman daemon on this
+    machine.
+  - **Shell jobs** run directly on the machine as the service's account, unless you passed
+    `--no-shell`.
+  - Each job gets a workspace in `work/` under the state directory, removed when the job ends.
+  - A pool's compiler cache in `cache/` is kept between jobs.
+- **Stops cleanly.** On `SIGTERM` or `SIGINT` it cancels its running jobs and reports them
+  cancelled. It tells the deployment it is going, so the runner shows offline at once, then exits
+  `0`.
+
+An offer is declined when the runner is draining, the offer has expired, the runner is full, or
+the job needs something this machine cannot do. A container job is declined with no Docker or
+Podman daemon. A shell job is declined under `--no-shell`.
+
+## Example
+
+```bash
+ouroboros-runner run --state-dir /var/lib/ouroboros-runner
+```
+
+It logs to standard error as `key=value` lines, which the service's journal keeps:
+
+```text
+level=INFO msg="accepted a job offer" job=job_01KE7J4EZ3204KQXMHJRPQPWQ6 executor=container image=zephyr-sdk:0.17
+level=INFO msg="preparing a job" job=job_01KE7J4EZ3204KQXMHJRPQPWQ6 pct=0 note="pulling zephyr-sdk:0.17"
+level=INFO msg="a job started" job=job_01KE7J4EZ3204KQXMHJRPQPWQ6 executor=container workspace=/var/lib/ouroboros-runner/work/job_01KE7J4EZ3204KQXMHJRPQPWQ6
+level=WARN msg="a job finished" job=job_01KE7J4EZ3204KQXMHJRPQPWQ6 outcome=failed exit_code=2 duration=4m12.117s error=executor.exit detail="the command exited with status 2"
+```
+
+## When the deployment refuses the runner
+
+Most connection problems are temporary, and the agent keeps retrying. A few are final. Then it
+logs one `level=ERROR` line saying what to do and exits `1` without retrying:
+
+| The line starts | What to do |
+| --- | --- |
+| `the control plane refused this runner's certificate: it has been revoked, superseded or has expired, or was not issued by this farm` | Enroll the machine again with a new token. |
+| `the control plane has revoked this runner's certificate (identity.revoked)` | The same: enroll again. |
+| `the control plane does not know this runner (identity.unknown)` | Enroll again. |
+| `this runner's certificate expired at …` | Enroll again. An expired certificate cannot be renewed, which happens when the machine was off past its expiry. |
+| `the gateway refused this agent's protocol` | Upgrade the agent — run [`install.sh`](../install-sh.mdx#upgrading) with the newer version. |
+| `the gateway received no client certificate` | A proxy in front of the deployment drops the certificate. Fix the proxy — see [The farm gateway](../../administration/deploy/farm-gateway.mdx). |
+| `this runner was enrolled in bearer-fallback mode` | Add `--bearer-fallback` to the command. |
+
+Under systemd, the unit `install.sh` writes stops restarting after five failures in five minutes,
+so the reason stays at the end of `journalctl -u ouroboros-runner`.
+
+## What can go wrong
+
+- **`this machine is not enrolled (no runner.json in …)`** — run [`enroll`](./enroll.mdx) first, or
+  point `--state-dir` at the directory you enrolled into.
+- **`no such command: --log-cap-bytes is …; it must be between 65536 and 268435456`** — choose a
+  value in the range.
+- **Container jobs are declined** — no Docker or Podman daemon answered when the agent started.
+  Start the daemon, make sure the service's account can reach its socket, then restart the agent.
+  `hello` shows `"docker": false` until it can.
+- **The runner shows offline on the Build Farm page, but the service is running** — the agent
+  cannot reach the deployment and is retrying. Its log says why. Check the address, the network
+  and the proxy in front of the deployment.
