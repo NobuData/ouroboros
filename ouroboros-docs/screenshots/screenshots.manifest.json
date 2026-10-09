@@ -573,6 +573,85 @@
       "capturedAt": "2026-10-09T00:33:59.544Z",
       "uiVersion": "0.144.1",
       "seedRef": "d99f80084fc24397f66aea98c83b9915cb4f175d"
+    },
+    {
+      "id": "user-guide.inbox",
+      "route": "/inbox",
+      "workspace": "acme-robotics",
+      "ready": "article.inbox-card",
+      "clip": "page",
+      "masks": [
+        ".inbox-card__age"
+      ],
+      "caption": "Needs You: the decisions loops are waiting on, newest first, with the channels and policies beside them.",
+      "alt": "The Needs You page headed 2 decisions. About 50 seconds of your time., with Snooze all 1h and Notification settings: a blocking card, Approve merge for a refactor PR?, tagged loop #1830, PR #504, issue #465 and refactor, with Approve & merge, Open PR verification, Return to loop with note and Snooze; a waiting card, Allow a one-time edit to a protected path?, for boot/rollback_flag.c on loop #1844, with Allow once, View diff, Deny, Edit protected paths and Snooze; one snoozed FYI card, Should the loops trust this fact?, that wakes in 1d, with Wake now; the start of Resolved today · 6; and the side column, where Answer from anywhere lists Slack and Mobile push as not yet, Email as not connected because the deployment has no mail server, and GitHub as connected, above What needs a human with refactor label, effort L+, protected paths and unverifiable claims.",
+      "capturedAt": "2026-10-09T00:49:01.606Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "7d6076d3b0f02f2a608f241f7fcd49e6e8bde7a7"
+    },
+    {
+      "id": "user-guide.inbox.card",
+      "route": "/inbox",
+      "workspace": "acme-robotics",
+      "ready": "article.inbox-card",
+      "clip": "article.inbox-card >> nth=1",
+      "masks": [
+        ".inbox-card__age"
+      ],
+      "caption": "A decision card: the question, what it refers to, why it was asked, and the answers you can give.",
+      "alt": "The decision card Allow a one-time edit to a protected path?, tagged loop #1844, issue #479 and boot/rollback_flag.c, explaining that Add OTA rollback on failed checksum wants to change 3 lines to the protected path boot/rollback_flag.c and that the diff is shown in the run console, with the buttons Allow once, View diff and Deny, the quiet link Edit protected paths and Snooze.",
+      "capturedAt": "2026-10-09T00:49:01.606Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "7d6076d3b0f02f2a608f241f7fcd49e6e8bde7a7"
+    },
+    {
+      "id": "user-guide.inbox.snooze",
+      "route": "/inbox",
+      "workspace": "acme-robotics",
+      "actions": [
+        {
+          "click": "article.inbox-card >> nth=1 >> button:has-text('Snooze')"
+        }
+      ],
+      "ready": ".inbox-card__snooze-choices",
+      "clip": "article.inbox-card >> nth=1",
+      "masks": [
+        ".inbox-card__age"
+      ],
+      "caption": "Snoozing one decision: choose how long it stays out of the queue.",
+      "alt": "The same protected-path card after pressing Snooze: the Snooze button is replaced by Snooze for, with 1 hour, 4 hours, 1 day and Cancel.",
+      "capturedAt": "2026-10-09T00:49:01.606Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "7d6076d3b0f02f2a608f241f7fcd49e6e8bde7a7"
+    },
+    {
+      "id": "user-guide.inbox.resolved",
+      "route": "/inbox",
+      "workspace": "acme-robotics",
+      "ready": ".inbox-resolved__rows",
+      "clip": "section.inbox-resolved",
+      "caption": "Resolved today: what was decided, by whom or by which policy, and where it was answered from.",
+      "alt": "Resolved today · 6 with an Earlier button: a waiver closed — settled elsewhere; Debounce e-stop interrupt handler needed a human — retried with a note, tagged push; Estimator re-size #479 M→L — kept the old size, tagged Slack; Plan sign-off for Unit tests for motor PID edge cases — signed off, tagged GitHub; Split #490 into 6 tickets — approved; and Estimator re-size #486 L→M — auto-accepted by policy, with an info button; each with the time it was resolved.",
+      "capturedAt": "2026-10-09T00:49:01.606Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "7d6076d3b0f02f2a608f241f7fcd49e6e8bde7a7"
+    },
+    {
+      "id": "user-guide.inbox.preferences",
+      "route": "/inbox",
+      "workspace": "acme-robotics",
+      "actions": [
+        {
+          "click": ".inbox__actions button:has-text('Notification settings')"
+        }
+      ],
+      "ready": ".inbox-prefs__form",
+      "clip": ".shell-overlay__panel",
+      "caption": "Notification settings: the daily digest, instant mail for blocking decisions, and the kinds you never want mailed.",
+      "alt": "The Notification settings sheet: How decisions reach you by mail in this workspace. Each mail's links answer once, only for you.; Daily digest switched off, Off — nothing is mailed daily.; Send at (UTC) 09:00; Instant mail for blocking decisions switched on; Never mail me about with unticked boxes for Merge approvals, Protected-path edits, Claim waivers, Plan sign-offs, Loops that need a human, Ticket splits, Re-sizes and Fact reviews; and Save.",
+      "capturedAt": "2026-10-09T00:49:01.606Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "7d6076d3b0f02f2a608f241f7fcd49e6e8bde7a7"
     }
   ]
 }

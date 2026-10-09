@@ -5,11 +5,302 @@ sidebar_position: 12
 description: "Answering the decisions blocked loops wait on."
 ---
 
-Answering the decisions blocked loops wait on.
+A loop works on its own until it reaches a question only a person may answer — a merge your
+policy keeps for a human, an edit to a protected path, a claim the bench cannot verify. It
+stops and asks. **Needs You**, at `/inbox`, is where every one of those questions waits, and
+where you answer them so the loop can carry on.
 
-:::info[Being written]
+The sidebar's **Needs You** entry carries the number of decisions waiting.
 
-This page is being written in
-[#1185](https://github.com/NobuData/ouroboros/issues/1185).
+<Screenshot id="user-guide.inbox" />
 
-:::
+## The page at a glance
+
+The headline counts what is waiting and estimates how long answering will take you — such as
+**2 decisions. About 50 seconds of your time.** The estimate comes from how quickly decisions
+of the same kind were answered this week. When nothing is waiting it reads
+**No decisions waiting.**
+
+Below it, the queue lists one card per decision, newest first. Under the cards come the
+decisions that are snoozed, then everything resolved today. The column on the right says where
+else you can answer from, which rules send a decision to a person, and how this week went.
+
+The page refreshes itself every few seconds; you never need to reload it. Two buttons sit at
+the top: **Snooze all 1h** (see [Snoozing](#snoozing)) and **Notification settings** (see
+[Notification settings](#notification-settings)).
+
+## Reading a decision card
+
+<Screenshot id="user-guide.inbox.card" />
+
+Each card has the same parts, whatever it asks:
+
+- **The question** — such as **Allow a one-time edit to a protected path?** A dot and the
+  card's left edge show how urgent it is: **Blocking** (red), **Waiting** (amber) or **FYI**.
+- **How long it has waited** — at the right, such as **6m**. It keeps counting while the page
+  is open, and a snooze does not stop it.
+- **What it is about** — tags for the loop, issue, pull request or file, such as **loop
+  #1844**, **issue #479** and **boot/rollback_flag.c**. A tag you can open is a link: a loop
+  opens its run console, a pull request its verification page, an issue the
+  [Issues](./issues.mdx) page searched for it, and a file the run's changes. Some cards
+  carry a plain label, such as **refactor**, that is not a link.
+- **Why it was asked** — one sentence with the facts behind it. Paths, labels and other exact
+  values are set in a fixed-width font.
+- **The answers** — the buttons that decide, then links that let you look first.
+
+### Answering
+
+Press an answer to give it. What happens next depends on the answer:
+
+- **Most answers go through at once.** **Allow once**, **Deny**, **Confirm** and
+  **Cancel loop** answer on the first press.
+- **An answer that takes a note asks for it first.** **Return to loop with note**,
+  **Waive & annotate**, **Retry with note** and **Retire** open a panel under the card. It says
+  what the answer will do, then asks for a **Note** — *It travels with your answer.* — of up to
+  2,000 characters. The answer's own button in the panel confirms it; **Cancel** closes the
+  panel without answering. The note cannot be empty.
+- **A link decides nothing.** **Open PR verification →**, **View diff →**, **See evidence →**
+  and the other arrows take you to the page behind the decision. The card stays waiting.
+
+Every button has a description, read out by screen readers, of what pressing it does — for
+example, **Allow once** *grants a single-use exception for this path on this run; the run
+resumes.*
+
+While an answer is on its way the button reads **answering…** and the rest of the card waits.
+Then the card shows one of three endings:
+
+- **A receipt** — a **✓** and what was done, such as
+  **exception granted · resume sent to loop #1844**, with links to where it happened.
+- **Someone else answered first** — such as **Answered by Maya Chen 10s ago — Allow once.**
+  Nothing you pressed was carried out. A decision settled by the work itself — the claim was
+  waived on the pull request page, say — reads **Settled at its source 2m ago — nothing is
+  left to answer.**
+- **A refusal** — the reason appears under the buttons, and the card is still waiting, so you
+  can try again. See [What can go wrong](#what-can-go-wrong).
+
+Answered cards stay on screen with their receipt until you leave the page; the next time you
+open it they are under [Resolved today](#resolved-decisions).
+
+### Who can answer
+
+Every answer and link is always shown. One you may not use is greyed out, and hovering or
+focusing it says why:
+
+- Answers marked *approver* below need the approve-loops capability. Owners and admins have it
+  by default; one you lack says **Needs the approve-loops capability — an owner or admin can
+  grant it.**
+- Other answers need a role, such as **Needs the member role in this workspace.**
+- Viewers can read the inbox but not answer, snooze or wake decisions.
+
+See [Roles & capabilities](../administration/roles.mdx).
+
+## Decision kinds
+
+Each kind of question has its own card. These are the kinds a loop or the work around it can
+ask today:
+
+| The card asks | Answers | Links |
+| --- | --- | --- |
+| **Approve merge for a refactor PR?** (the label varies) | **Approve & merge** (approver) · **Return to loop with note** (member) | **Open PR verification →** |
+| **Allow a one-time edit to a protected path?** | **Allow once** · **Deny** (both approver) | **View diff →** · **Edit protected paths →** (admin) |
+| **Waive a claim the bench can't verify?** | **Waive & annotate** · **Require bench upgrade** (both approver) | **See evidence →** |
+| **Sign off a plan before the loop builds it?** | **Sign off** (approver) · **Return to loop with note** (member) | **View plan →** |
+| **Should the loops trust this fact?** | **Confirm** · **Retire** (both member) | **Open in Knowledge →** |
+| **Take over a loop that needs a human?** | **Retry with note** · **Cancel loop** (both member) | **Open run →** |
+| **Approve a split into 6 tickets?** (the count varies) | **Approve & push** · **Discard** (both admin) | **Open in Planning →** |
+| **Accept a re-size of #486 from L to M?** (the issue and sizes vary) | **Accept new size** · **Keep the old size** (both member) | **Open ticket →** |
+
+What the answers do:
+
+- **Approve & merge** records your approval and merges the pull request by its merge plan; if
+  a gate is still running, the merge is armed and lands once every gate is green. **Return to
+  loop with note** sends the loop back with your note as steering; the pull request stays
+  unmerged.
+- **Allow once** grants a single-use exception for that one path on that run, and the run
+  resumes. **Deny** returns the loop with the path still protected. To change which paths are
+  protected, use **Edit protected paths →**, which opens your repository profile in
+  [Knowledge](./knowledge.mdx).
+- **Waive & annotate** waives the claim with your reason and annotates the pull request
+  publicly. **Require bench upgrade** drafts a ticket for the missing bench capability and
+  leaves the claim unverified.
+- **Confirm** tells the loops the fact from now on; **Retire** rejects it, with your reason.
+- **Retry with note** retries the stage with your note as steering; **Cancel loop** cancels the
+  loop and keeps its branch.
+- **Approve & push** pushes the drafted tickets to your tracker.
+
+Some answers cannot be given from the inbox yet: **Sign off**, **Discard**, **Accept new size**
+and **Keep the old size** are refused with a sentence saying so. Use the card's link to answer
+on the page behind it.
+
+A re-size can also be answered by a policy: when your org policy auto-accepts re-sizes, the
+decision is resolved without asking anyone and shows in the resolved list as
+**auto-accepted by policy**. A merge decision is never answered by a policy.
+
+## Snoozing
+
+A snooze says *not now*. A snoozed decision leaves the queue and the **Needs You** count for
+everyone in the workspace, then comes back on its own. How long it has waited keeps counting
+while it is snoozed.
+
+<Screenshot id="user-guide.inbox.snooze" />
+
+- **Snooze** on a card offers **Snooze for** **1 hour**, **4 hours** or **1 day**; **Cancel**
+  closes the choice. The card dims and says
+  **Snoozed until 14:20 — it returns to the queue then.**
+- **Snooze all 1h** snoozes every waiting decision for an hour. It asks first — such as
+  **Snooze 2 decisions until 14:20?** — because one of them may be blocking a deployment.
+  Confirm with **Snooze until 14:20**.
+
+Snoozed decisions are listed under **Snoozed**, dimmed, each with a countdown such as
+**wakes in 42m** and the time it returns. **Wake now** puts one back in the queue straight
+away.
+
+Owners, admins and members can snooze and wake decisions. A viewer's **Snooze** and **Wake now**
+are greyed out: **Viewers can read the inbox but not snooze it.**
+
+## Resolved decisions
+
+<Screenshot id="user-guide.inbox.resolved" />
+
+**Resolved today · 6** lists every decision answered today (UTC), newest first: what it was
+about, then the answer — **Split #490 into 6 tickets — approved**. Each row ends with the time
+it was resolved. It is how you see what was decided while you were away, and by whom:
+
+- **A policy's answer is set in bold**, such as **auto-accepted by policy**. Its **ⓘ**
+  (**Why nobody was asked**) names the rule that fired and the org policy version, with
+  **Configure →** to change it.
+- **An answer from somewhere else is tagged** with where it came from — **email**,
+  **GitHub**, **Slack**, **push** or **API**. Answers given on this page carry no tag.
+- **closed — settled elsewhere** means the question was settled where it came from, so nobody
+  needed to answer it here.
+
+Choose the heading to fold or unfold the list; this browser remembers your choice.
+**‹ Earlier** jumps to the last earlier day that had any resolutions, **Later ›** steps forward
+a day and **Today** returns. A day with nothing resolved says so in one line.
+
+## The side column
+
+### Answer from anywhere
+
+**Answer from anywhere** lists the channels a decision can reach you on, and how each one
+stands in your deployment. Only a channel that can deliver is marked **✓ connected**:
+
+- **Slack** — **not yet**. Answering from Slack arrives with Chat Ops; the **Chat Ops**
+  button beside the title is marked **soon**.
+- **Email** — instant mail for each blocking decision, and an optional daily digest (see
+  [Answering by email](#answering-by-email)). It reads **not connected** until the deployment
+  has a mail server; the row then says **This deployment has no mail server: set
+  OURO_SMTP_URL.**
+- **Mobile push** — **not yet**.
+- **GitHub** — every decision about a pull request is mirrored as a comment on it, posted when
+  it is asked and edited when it is answered. **✓ connected** once a git host is connected.
+
+While email is connected, its row carries the **Daily digest** switch, the time it is sent —
+such as **daily · 09:00 UTC** — and **Digest time (UTC)** with **Set time** to change it.
+**All notification settings** opens the same sheet as the button at the top of the page.
+
+### What needs a human
+
+**What needs a human** lists the rules that send a decision to a person, read from the policies
+that enforce them — such as **refactor label → human review** and
+**protected paths → allow-once**, with the protected patterns under it. Each row's **ⓘ** says
+**Where this is enforced**, and **edit →** opens the setting that owns it. **Edit policies →**
+opens your workspace's policies.
+
+The caption under the list says what happens to everything else — such as
+**Everything else merges itself when gates are green.** It changes when your policy changes,
+for example while dry-run is on. A rule nothing enforces is not listed.
+
+### This week
+
+**This week** counts the decisions answered this week, by a person or a policy, with the
+**median answer time** and how long a loop waited at most —
+**median answer time 41s · loops never waited longer than 6m**. They are different measures:
+the first is how long people took to answer, the second the longest any run sat blocked. The
+**ⓘ** (**How these figures are measured**) explains both. Weeks are counted in UTC.
+
+## Notification settings
+
+**Notification settings** — at the top of the page, or **All notification settings** in the
+side column — opens your mail preferences for this workspace. They are yours alone; changing
+them changes nobody else's.
+
+<Screenshot id="user-guide.inbox.preferences" />
+
+- **Daily digest** — on or off. The line under it says when the next one is sent, or
+  **Off — nothing is mailed daily.**
+- **Send at (UTC)** — the digest's time, as `HH:MM` in UTC, such as `09:00`.
+- **Instant mail for blocking decisions** — a mail the moment a **Blocking** decision you can
+  answer is asked.
+- **Never mail me about** — tick a kind to stop mail about it: **Merge approvals**,
+  **Protected-path edits**, **Claim waivers**, **Plan sign-offs**, **Loops that need a
+  human**, **Ticket splits**, **Re-sizes** or **Fact reviews**. Those decisions still appear in
+  the inbox.
+
+Choose **Save**; the sheet says **Saved.** Until you change anything, instant mail is on and
+the digest is off, set for 09:00 UTC.
+
+## Answering by email
+
+When your deployment can send mail, decisions come to you two ways:
+
+- **Instant mail** — one blocking decision: its question, why it was asked, and one link per
+  answer you may give.
+- **The daily digest** — every open decision, most urgent and oldest first, each with its
+  answer links; then what was resolved in the last day; then a link to the inbox.
+
+Opening an answer link changes nothing. It shows the decision, what the answer will do and —
+when the answer takes one — a note field, with a single button: pressing that button is the
+answer. A link works once, and only for you. **Approve & merge** also asks you to sign in
+first, because a merge to a protected branch needs more than a link in a mailbox; the mail
+says so beside that link.
+
+After you answer, a page confirms what was done, with **Open the inbox →**. A link that can no
+longer answer says why:
+
+| The page says | Why |
+| --- | --- |
+| **This link has expired** | Answer links stop working after a while — 48 hours by default. |
+| **This link was already used** | Each link works once; your answer was recorded the first time. |
+| **This decision was already answered** | Someone answered it — in Ouroboros, by mail or on GitHub — so every link for it stopped working. |
+| **A newer mail replaced this link** | Use the link in your most recent mail about this decision. |
+| **This link was withdrawn** | It was switched off before anyone used it. |
+| **This link was sent to someone else** | You are signed in as another person, so nothing was done. |
+
+In every case, nothing was done — answer the decision in the inbox instead.
+
+## Time limits and escalation
+
+- **A decision waits until it is answered.** Each kind has an escalation window — 30 minutes
+  for most, a day for splits and re-sizes, a week for facts — but nothing escalates an
+  unanswered decision yet; escalation arrives with Chat Ops. Snoozing never extends anything:
+  the wait keeps counting.
+- **A one-time allowance is narrow.** **Allow once** covers one file on one run. It is used up
+  as soon as the run checks that path again, and lapses if it is not used within a day.
+- **Mail links are short-lived.** They stop working after 48 hours by default, and as soon as
+  the decision is answered anywhere.
+
+## What can go wrong
+
+- **A button is greyed out.** Hover or focus it to read why — usually a role or the
+  approve-loops capability you do not have. Ask an owner or admin.
+- **"Action sign_off cannot be answered from the inbox yet: …"** That answer has nothing behind
+  it yet (see [Decision kinds](#decision-kinds)). Open the card's link and act on the page
+  behind it.
+- **"The guardrails still block this run after the one-time allowance; nothing was granted."**
+  The run is blocked by something other than that one path. Open **View diff →** to see what
+  else it touches.
+- **"This PR has no ticket, so there is no tracker to draft the bench upgrade into."**
+  **Require bench upgrade** needs the pull request to come from an issue. Waive the claim or
+  return the loop instead.
+- **"The answer could not be delivered. The decision is still open — try again."** Nothing was
+  done; press the answer again.
+- **"The inbox could not be refreshed. Last refreshed 10:42:13."** The cards on screen may be
+  out of date. Choose **Retry**.
+- **"This card could not be drawn"** One card failed to display; the rest of the inbox is
+  unaffected. Reload the page to try again.
+- **No mail arrives.** Check that **Email** reads **✓ connected** in the side column, that
+  the kind is not ticked under **Never mail me about**, and that the decision is
+  **Blocking** — only those are mailed instantly. Setting up mail is covered in
+  [Notifications, email & webhooks](../administration/notifications-and-webhooks.mdx).
+- **"Your notification settings could not be read."** Close the sheet and open it again.

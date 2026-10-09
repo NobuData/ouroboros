@@ -574,7 +574,7 @@ dev seeds (e.g. acme-robotics; `acme-onboarding` for the wizard).
 | DA.10 | #1182 ✅ | 🟢 Done | ouroboros-docs: [DA.10] Runs — the run console | Transcript, stages, guardrails, pause/abort/steer | mvp, docs-site, documentation, runs | Y | Y | M | ouroboros-docs |
 | DA.11 | #1183 ✅ | 🟢 Done | ouroboros-docs: [DA.11] Test results | Results, flakes, triage, classification | mvp, docs-site, documentation, tests | Y | Y | S | ouroboros-docs |
 | DA.12 | #1184 ✅ | 🟢 Done | ouroboros-docs: [DA.12] Pull requests — verification, evidence & merge | Gates, criteria matrix, evidence, merge | mvp, docs-site, documentation, pr | Y | Y | M | ouroboros-docs |
-| DA.13 | #1185 | 🟡 Open | ouroboros-docs: [DA.13] Needs-you inbox | Decision cards, allow once/deny, snooze, resolved list, channel prefs | mvp, docs-site, documentation, inbox | Y | Y | M | ouroboros-docs |
+| DA.13 | #1185 ✅ | 🟢 Done | ouroboros-docs: [DA.13] Needs-you inbox | Decision cards, allow once/deny, snooze, resolved list, channel prefs | mvp, docs-site, documentation, inbox | Y | Y | M | ouroboros-docs |
 | DA.14 | #1186 | 🟡 Open | ouroboros-docs: [DA.14] Insights | Ranges, cards, trends, email digest | mvp, docs-site, documentation, insights | Y | Y | S | ouroboros-docs |
 | DA.15 | #1187 | 🟡 Open | ouroboros-docs: [DA.15] Build Analyzer | Duration chart, suggestions, predicted vs measured, drafted tickets | mvp, docs-site, documentation, analyzer | Y | Y | M | ouroboros-docs |
 | DA.16 | #1188 | 🟡 Open | ouroboros-docs: [DA.16] Knowledge | Skills, learned facts, playbooks, repo profile | mvp, docs-site, documentation, knowledge | Y | Y | S | ouroboros-docs |
@@ -865,6 +865,22 @@ looking a PR up from its run.
 `.pr.merge-confirm`.
 
 ### Issue DA.13 (#1185) — ouroboros-docs: [DA.13] Needs-you inbox
+
+> **GitHub issue:** #1185 ✅ · **Status:** 🟢 Done · **Parent epic:** #1158
+>
+> **Delivered (#1185):** `user-guide/inbox.mdx` — written to what `main` ships:
+> - the headline and its estimate, the queue, snoozed section and side column; the page polls, no reload;
+> - the card's parts (severity, ticking age, linked refs and their destinations, the why), answering — at once, note-taking actions' inline panel (no shipped kind is `danger`, so no confirm dialog is described), links; the receipt, race and refusal endings; who may press what (`approver` = approve-loops capability);
+> - the eight filing kinds with their declared answers and links; `spend_approval` is dormant and left out; the unbound answers (**Sign off**, **Discard**, **Accept new size**, **Keep the old size**) said to be refused; policy auto-accept for re-sizes only;
+> - snooze (per card 1 h / 4 h / 1 day, **Snooze all 1h** with its confirmation, workspace-wide, age keeps counting, **Wake now**, viewers cannot); the resolved list (policy note, channel tags, *settled elsewhere*, fold, pager, UTC days);
+> - **Answer from anywhere** (Slack/push "not yet" per D12, email needs `OURO_SMTP_URL`, GitHub mirror), **What needs a human**, **This week**; the preferences sheet; answering by email (confirm page, merge-class sign-in, the six link problem pages);
+> - time limits: escalation windows are declared but nothing escalates yet (escalation arrives with Chat Ops); allow-once is single-use and lapses within a day; mail links expire after 48 h by default.
+>
+> `tests/inbox.test.ts` holds labels to the UI constants, the kinds table to the V093/V097 action rows, channel labels to `channels.truth.ts`, link problems to `answer.pages.ts` and refusals to `inbox-actions.errors.ts`.
+>
+> **Screenshots** (`acme-robotics`, `/inbox`): `user-guide.inbox` (page), `.inbox.card` (the protected-path card), `.inbox.snooze` (its **Snooze for** choices), `.inbox.resolved` (Resolved today), `.inbox.preferences` (the sheet). Only menus and the sheet are opened; nothing is answered or saved. **Seed note:** once REST runs, the seeded claim-waiver card is settled at its source (its claim is already waived on PR #514), so the queue shows 2 decisions and the resolved list a *closed — settled elsewhere* row. Card ages are masked. Captured from a freshly built REST `dist` — an older one lacked the channel/notification routes.
+>
+> No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.19.
 
 **Problem Statement.** Blocked loops wait for humans; the inbox is how they answer.
 **Solution / Scope.** `/inbox`: queue and head card, decision kinds, actions (allow once, deny,
