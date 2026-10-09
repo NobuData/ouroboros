@@ -1394,7 +1394,7 @@ trimmed into the page.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |---|---|---|---|---|---|---|---|---|---|
 | DD.1 | #1206 ✅ | 🟢 Done | ouroboros-docs: [DD.1] Dockerfile & nginx runtime | Multi-stage build → nginx-unprivileged :8080, headers, caching, /healthz | mvp, docs-site, infra | Y (after CY.2) | Y | M | ouroboros-docs |
-| DD.2 | #1207 | 🟡 Open | ouroboros-docs: [DD.2] Publish workflow to registry.apiome.dev/ouroboros-docs | publish/docs job: latest, sha, version tags from main | mvp, docs-site, ci, infra | N (after DD.1, CY.5) | Y | M | .github, scripts, docs |
+| DD.2 | #1207 ✅ | 🟢 Done | ouroboros-docs: [DD.2] Publish workflow to registry.apiome.dev/ouroboros-docs | publish/docs job: latest, sha, version tags from main | mvp, docs-site, ci, infra | N (after DD.1, CY.5) | Y | M | .github, scripts, docs |
 | DD.3 | #1208 | 🟡 Open | ouroboros-docs: [DD.3] Image smoke test & deployment notes | Run the built image in CI and probe routes; HOSTING/README run docs | mvp, docs-site, ci | N (after DD.1) | Y | S | ouroboros-docs, .github, HOSTING.md |
 
 ### Issue DD.1 (#1206) — ouroboros-docs: [DD.1] Dockerfile & nginx runtime
@@ -1438,6 +1438,10 @@ runs as non-root; image < 120 MB.
 ```
 
 ### Issue DD.2 (#1207) — ouroboros-docs: [DD.2] Publish workflow to registry.apiome.dev/ouroboros-docs
+
+> **GitHub issue:** #1207 ✅ · **Status:** 🟢 Done · **Parent epic:** #1161
+>
+> **Delivered (#1207):** `.github/workflows/docs.yml` gains job `publish` (**`publish/docs`**): `needs: ci`, job-level `if: github.event_name != 'pull_request'` (a PR runs `ci/docs` only and never reaches the login), `env: REGISTRY: registry.apiome.dev`, `IMAGE: ouroboros-docs`. Steps: checkout; read `ouroboros-docs/package.json`'s version (and a UTC `created` stamp); `docker/setup-buildx-action@v3`; `docker/login-action@v3` with `DOCKER_USERNAME`/`DOCKER_PASSWORD`; `docker/build-push-action@v6`, `context: ouroboros-docs`, tags `latest` / `${{ github.sha }}` / `<version>`, build args `DOCS_SITE_URL=${{ vars.DOCS_SITE_URL }}` (empty → the config default), `VERSION`, `REVISION`, `CREATED`, `cache-from/to: type=gha,scope=ouroboros-docs`. `permissions: contents: read` and per-ref `concurrency` were already the workflow's; `cancel-in-progress` stays `true` because `verify-ci.sh` requires it of every workflow (a main push superseded mid-publish therefore leaves that commit's sha/version tags unpushed — noted in the PR). `scripts/verify-ci.sh` asserts, reading the publish job alone: the job, `publish/docs`, `needs: ci`, the PR guard, the registry literal, the image name, the login and both secrets, the module context and all three tags — it fails when the guard is removed, and when the guard is moved to the `ci` job (both verified). `scripts/tests/verify-ci.test.sh`'s fixture carries the job, with break cases for the guard, the gate, the registry and the version tag. Docs: `CONVENTIONS.md` § 9 (the three D9 departures), root `README.md` CI table and publish paragraph, `ouroboros-docs/README.md` § Run *Publishing*, `HOSTING.md` § 7 (pull the published image). The first real publish happens on merge — not runnable from a branch. Module 0.1.42.
 
 **Problem Statement.** The site must be published as an image to `registry.apiome.dev` under
 the name `ouroboros-docs`.

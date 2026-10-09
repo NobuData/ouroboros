@@ -776,6 +776,32 @@ jobs:
         with:
           module: ouroboros-docs
           scaffolded-by: "#1164"
+
+  publish:
+    name: publish/docs
+    runs-on: ubuntu-latest
+    needs: ci
+    if: github.event_name != 'pull_request'
+    env:
+      REGISTRY: registry.apiome.dev
+      IMAGE: ouroboros-docs
+    steps:
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push the image
+        uses: docker/build-push-action@v6
+        with:
+          context: ouroboros-docs
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
 YAML
   } > "$fixture/.github/workflows/docs.yml"
   mkdir -p "$fixture/ouroboros-docs"
@@ -1057,6 +1083,24 @@ check_break 'a docs workflow that stops watching .env.example is reported' \
 check_break 'a docs workflow that stops watching the runner installer is reported' \
   'install\.sh runs docs\.yml runner\.yml' \
   'sed -i "/ouroboros-runner\/install\.sh/d" "$root/.github/workflows/docs.yml"'
+
+# publish/docs (#1207): the PR guard, the gate and the registry are each what makes a tag
+# trustworthy, so losing any one of them is reported.
+check_break 'a docs publish job that runs on pull requests is reported' \
+  'publish/docs never runs on a pull request' \
+  "sed -i \"/^    if: github.event_name != 'pull_request'\$/d\" \"\$root/.github/workflows/docs.yml\""
+
+check_break 'a docs publish job that does not wait for ci/docs is reported' \
+  'nothing is published until ci/docs has passed' \
+  'sed -i "/^    needs: ci$/d" "$root/.github/workflows/docs.yml"'
+
+check_break 'a docs image pushed to another registry is reported' \
+  'it publishes to registry\.apiome\.dev' \
+  'sed -i "s|REGISTRY: registry.apiome.dev|REGISTRY: ghcr.io|" "$root/.github/workflows/docs.yml"'
+
+check_break 'a docs image without its version tag is reported' \
+  'it is tagged .*version' \
+  'sed -i "/steps.meta.outputs.version }}$/d" "$root/.github/workflows/docs.yml"'
 
 check_break 'the web pipeline watching the docs is reported' \
   'docker-publish\.yml does not watch the docs' \

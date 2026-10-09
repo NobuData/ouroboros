@@ -589,7 +589,7 @@ ouroboros-runner/** ─▶ ci/runner  make install · format · lint · typechec
                     ─▶ package/runner make release · sha256sum -c, every event
                     ─▶ release/runner ouroboros-runner-v<VERSION>, pushed from main
 ouroboros-docs/**   ─▶ ci/docs    lint (eslint · stylelint · markdownlint) · typecheck · test · build
-                    ─▶ publish/docs   the documentation site image, pushed from main (DD.2)
+                    ─▶ publish/docs   registry.apiome.dev/ouroboros-docs, pushed from main
 
 package.json        ─▶ ci/ui + ci/rest   the workspace both resolve through
 yarn.lock
@@ -640,7 +640,19 @@ Those inputs reach the site through `ci/docs` only, never through its image.
 its context, like `ouroboros-web`'s (§ 5), so the brand copies, the generated configuration
 reference and the screenshots are committed rather than produced at image build — and `ci/docs`
 is what holds each copy to its source. The image is `nginx-unprivileged` serving the static
-build on 8080, as roadmap decision D8 specifies; `publish/docs` pushes it.
+build on 8080, as roadmap decision D8 specifies.
+
+`publish/docs` ([#1207](https://github.com/NobuData/ouroboros/issues/1207), roadmap decision D9)
+pushes it, and departs from the application images' publish jobs in three ways, each D9's. The
+**whole job** is skipped on a pull request (`if: github.event_name != 'pull_request'`), so a pull
+request runs `ci/docs` alone and builds no image — a fork's never reaches the login. The
+registry is a literal in the job's `env`, `registry.apiome.dev`, rather than a secret: the
+documentation is published to one place. And it pushes three tags, not two —
+`latest`, the commit sha and the module's `package.json` version. It still `needs: ci`, so a red
+`ci/docs` publishes nothing, and logs in with the `DOCKER_USERNAME` / `DOCKER_PASSWORD` build
+secrets. `DOCS_SITE_URL` comes from the repository variable of that name when it is set.
+`scripts/verify-ci.sh` asserts the job, its gate, its guard, the registry, the image name and
+the three tags.
 
 `docs/RUNNER_PROTOCOL.md` is the other unusual entry, and the second document in this table
 after mockup 05: it is not documentation *about* the code, it is half of a contract, and

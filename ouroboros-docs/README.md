@@ -64,13 +64,22 @@ yarn check:config-reference   # fail if that reference is stale (yarn test check
 
 **CI.** [`ci/docs`](../.github/workflows/docs.yml) runs `yarn install --immutable`, `lint`,
 `typecheck`, `test` and `build` — exactly the commands above — then `yarn check:screenshots`
-(see "Checking screenshots") and `yarn check:config-reference`, on every pull request that
+(see "Checking screenshots"), `yarn check:config-reference` and `yarn check:cli-flags`, on every pull request that
 touches this module or one of its inputs: the brand sources it copies, `.env.example`, and the
 runner's `main.go` and `install.sh` ([#1168](https://github.com/NobuData/ouroboros/issues/1168)).
 A broken link, a lint error or a changed copyright line fails it. markdownlint reads
 [`.markdownlint-cli2.jsonc`](.markdownlint-cli2.jsonc): the default rules, less line length
 and inline HTML (MDX pages use components); a page's front matter `title` is its H1, so a
 page carries no `#` heading of its own.
+
+**Publishing.** On a push to `main` or a manual run, and only once `ci/docs` has passed,
+`publish/docs` builds [the image](#the-image) and pushes it to
+**`registry.apiome.dev/ouroboros-docs`** with three tags: `latest`, the commit sha, and this
+`package.json`'s version ([#1207](https://github.com/NobuData/ouroboros/issues/1207)). A pull
+request never publishes, and builds no image. Bump the version with a change you want released
+under a new tag — the version tag of an unchanged version is moved by every push. The site URL
+baked into the build is the repository variable `DOCS_SITE_URL` when set, the config's default
+otherwise.
 
 Port **3100** is the docs site's alone: `ouroboros-ui` and `ouroboros-web` both use 3000
 ([`CONVENTIONS.md`](../docs/CONVENTIONS.md) § 4 port map), so the docs can run beside the
@@ -556,4 +565,5 @@ page's title, headings, description and text are indexed. Build the site
 - [#1169](https://github.com/NobuData/ouroboros/issues/1169) — CY.6 landing page
 - [#1170](https://github.com/NobuData/ouroboros/issues/1170) — CZ.1 screenshot capture harness
 - [#1206](https://github.com/NobuData/ouroboros/issues/1206) — DD.1 Dockerfile & nginx runtime (the image)
+- [#1207](https://github.com/NobuData/ouroboros/issues/1207) — DD.2 publish workflow to registry.apiome.dev
 - [#1156](https://github.com/NobuData/ouroboros/issues/1156) — Epic CY · Docs Site Foundation
