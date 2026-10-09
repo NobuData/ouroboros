@@ -70,10 +70,11 @@ describe("the workflows module", () => {
     await moduleRef.close();
   });
 
-  it("exports the four services, and not the repositories", () => {
+  it("exports the five services, and not the repositories", () => {
     // A consumer that reached past them would be a consumer that had skipped the honesty
     // rules — the captions, the null share, the bootstrap vocabulary, which workflows may claim
-    // a ticket — which are the whole of what those files are.
+    // a ticket — which are the whole of what those files are. The catalog is exported for the
+    // Workflow Copilot (CD.1, #559), which grounds its proposals in the same reads.
     const exports = Reflect.getMetadata("exports", WorkflowsModule) as unknown[] | undefined;
 
     expect(exports).toEqual([
@@ -81,6 +82,7 @@ describe("the workflows module", () => {
       WorkflowRegistryService,
       TriggerService,
       WorkflowsService,
+      WorkflowCatalogService,
     ]);
   });
 

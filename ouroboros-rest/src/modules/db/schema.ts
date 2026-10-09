@@ -3807,6 +3807,139 @@ export type DraftEditor = "visual" | "code";
 /** The two, in the order the CHECK declares them. */
 export const DRAFT_EDITORS = ["visual", "code"] as const satisfies readonly DraftEditor[];
 
+/** `copilot_sessions.status` (V107, #555). */
+export type CopilotSessionStatus = "active" | "promoted" | "discarded";
+
+/** One entry of `copilot_sessions.model_provenance` — the alias an exchange resolved to (Z.1). */
+export interface CopilotModelProvenanceEntry {
+  /** The copilot reply's `copilot_messages.seq`. Strictly rising. */
+  readonly seq: number;
+  /** The routing alias the `copilot-workflow` task kind resolved to. */
+  readonly alias: string;
+  /** The model the chain's primary hop named. */
+  readonly model_id: string;
+}
+
+/**
+ * `ouroboros.copilot_sessions` — one Workflow Copilot conversation (V107,
+ * [#555](https://github.com/NobuData/ouroboros/issues/555), CC.1), bound to the workflow whose
+ * shared draft it edits. At most one active session per workflow (`copilot_sessions_one_active`).
+ */
+export interface CopilotSessionsTable {
+  id: Generated<string>;
+  organization_id: string;
+  /** The workflow whose draft this conversation edits, of the same workspace. */
+  workflow_id: string;
+  /** `active` while editing; `promoted` or `discarded` once closed — both terminal. */
+  status: Generated<CopilotSessionStatus>;
+  /**
+   * The resolved alias per exchange: `[{seq, alias, model_id}]`, appended to, never rewritten
+   * (`copilot_sessions_transition`). Written as a JSON string.
+   */
+  model_provenance: ColumnType<CopilotModelProvenanceEntry[], string | undefined, string>;
+  /** The `draft: security-patch` tag — the workflow slug grammar. */
+  draft_name: string;
+  /** Who started it; null once that person is removed. */
+  created_by: string | null;
+  created_at: Stamped;
+  /** When promoted or discarded; null exactly while active. */
+  closed_at: Date | null;
+  /** The highest `copilot_messages.seq` handed out. Written only by the allocating trigger. */
+  last_seq: ColumnType<number, never, never>;
+}
+
+/** `copilot_messages.role`. */
+export type CopilotMessageRole = "user" | "copilot";
+
+/** `copilot_messages.status`. */
+export type CopilotMessageStatus = "streaming" | "complete" | "interrupted";
+
+/** One `ask_user` question of a reply — a chip row — with its answer once given. */
+export interface CopilotChoice {
+  readonly prompt: string;
+  readonly options: readonly string[];
+  readonly selected: string | null;
+  readonly answered_at: string | null;
+}
+
+/** One operation of a reply's tool trace: what was proposed, and what became of it. */
+export interface CopilotTraceOperation {
+  /** The operation as proposed — `{kind, params}`. */
+  readonly op: { readonly kind: string; readonly params?: Record<string, unknown> };
+  readonly outcome: "proposed" | "applied" | "bounced";
+  /** The validator's message — present exactly on a bounce. */
+  readonly validator_message?: string;
+}
+
+/** `copilot_messages.tool_trace` — how a reply came to be. */
+export interface CopilotToolTrace {
+  readonly operations: readonly CopilotTraceOperation[];
+  readonly reads: readonly { readonly tool: string; readonly [key: string]: unknown }[];
+  readonly dry_run_proposals: readonly {
+    readonly ticket: string;
+    readonly [key: string]: unknown;
+  }[];
+}
+
+/**
+ * `ouroboros.copilot_messages` — the messages of a session in order (V107, CC.1): bubbles, the
+ * `ask_user` questions with their answers, and the tool trace behind each reply. `seq` is
+ * allocated in commit order by `copilot_messages_allocate_seq()` and never supplied.
+ */
+export interface CopilotMessagesTable {
+  id: Generated<string>;
+  organization_id: string;
+  session_id: string;
+  /** The message's place in its session, from 1. Allocated, never supplied. */
+  seq: ColumnType<number, never, never>;
+  role: CopilotMessageRole;
+  /** The bubble's text. Empty only while streaming or when interrupted. */
+  body: Generated<string>;
+  /** The chip rows, copilot replies only. Written as a JSON string or null. */
+  choices: ColumnType<CopilotChoice[] | null, string | null | undefined, string | null>;
+  /** `{operations, reads, dry_run_proposals}`. Written as a JSON string. */
+  tool_trace: ColumnType<CopilotToolTrace, string | undefined, string>;
+  /** Prompt tokens; null when not metered, and always for a user message. */
+  tokens_in: number | null;
+  /** Completion tokens; null with `tokens_in`. */
+  tokens_out: number | null;
+  /** Cents; null when not priced — never a fabricated 0 — and only on a metered exchange. */
+  cost_cents: number | null;
+  /** `streaming → complete | interrupted` only; a user message is always `complete`. */
+  status: Generated<CopilotMessageStatus>;
+  created_at: Stamped;
+}
+
+/** `draft_operations.actor` (V110, #556). */
+export type DraftOperationActor = "canvas" | "code" | "copilot" | "suggestion";
+
+/**
+ * `ouroboros.draft_operations` — per-operation provenance on a workflow's shared draft (V110,
+ * [#556](https://github.com/NobuData/ouroboros/issues/556), CC.2). Written only by
+ * `ouroboros.apply_draft_batch()`; the application role may read it and nothing else.
+ */
+export interface DraftOperationsTable {
+  id: GeneratedAlways<string>;
+  organization_id: string;
+  workflow_id: string;
+  /** The `workflows.current_version` the operation was applied over; null before the first publish. */
+  base_version: number | null;
+  /** The N of `v{base}.N` the operation's batch produced. */
+  draft_rev: number;
+  /** The atomic group — one `apply_draft_batch()` call. */
+  batch_id: string;
+  /** Position within the batch, from 1. */
+  seq: number;
+  /** `{kind, params}` — `draft_op_shape_valid()`. */
+  op: ColumnType<{ kind: string; params: Record<string, unknown> }, never, never>;
+  actor: DraftOperationActor;
+  actor_user_id: string | null;
+  /** The copilot session, for `copilot` and `suggestion` operations; null once the session is swept. */
+  session_id: string | null;
+  suggestion_id: string | null;
+  applied_at: GeneratedAlways<Date>;
+}
+
 /**
  * `ouroboros.workflow_versions` — a workflow's version history plus its one mutable draft
  * (V029, [#132](https://github.com/NobuData/ouroboros/issues/132)).
@@ -6881,6 +7014,9 @@ export interface Database {
   audit_events: AuditEventsTable;
   workflows: WorkflowsTable;
   workflow_versions: WorkflowVersionsTable;
+  copilot_sessions: CopilotSessionsTable;
+  copilot_messages: CopilotMessagesTable;
+  draft_operations: DraftOperationsTable;
   ticket_sources: TicketSourcesTable;
   tickets: TicketsTable;
   draft_batches: DraftBatchesTable;
@@ -7529,6 +7665,48 @@ export const TABLE_COLUMNS = {
     "edited_in",
     "created_at",
     "updated_at",
+  ],
+  copilot_sessions: [
+    "id",
+    "organization_id",
+    "workflow_id",
+    "status",
+    "model_provenance",
+    "draft_name",
+    "created_by",
+    "created_at",
+    "closed_at",
+    "last_seq",
+  ],
+  copilot_messages: [
+    "id",
+    "organization_id",
+    "session_id",
+    "seq",
+    "role",
+    "body",
+    "choices",
+    "tool_trace",
+    "tokens_in",
+    "tokens_out",
+    "cost_cents",
+    "status",
+    "created_at",
+  ],
+  draft_operations: [
+    "id",
+    "organization_id",
+    "workflow_id",
+    "base_version",
+    "draft_rev",
+    "batch_id",
+    "seq",
+    "op",
+    "actor",
+    "actor_user_id",
+    "session_id",
+    "suggestion_id",
+    "applied_at",
   ],
   ticket_sources: [
     "id",
@@ -9055,6 +9233,12 @@ export type NewWorkflow = Insertable<WorkflowsTable>;
 
 /** A row of `ouroboros.workflow_versions`, as a `select` returns it — one version, or the draft. */
 export type WorkflowVersion = Selectable<WorkflowVersionsTable>;
+/** A row of `ouroboros.copilot_sessions`, as a `select` returns it. */
+export type CopilotSession = Selectable<CopilotSessionsTable>;
+/** A row of `ouroboros.copilot_messages`, as a `select` returns it. */
+export type CopilotMessage = Selectable<CopilotMessagesTable>;
+/** A row of `ouroboros.draft_operations`, as a `select` returns it. */
+export type DraftOperation = Selectable<DraftOperationsTable>;
 /**
  * The columns an `insert` into `ouroboros.workflow_versions` may carry.
  *

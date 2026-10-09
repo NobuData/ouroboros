@@ -83,8 +83,9 @@ class Settings(BaseSettings):
             simulated (AP.1, #303). Optional. Set, a *development* engine mounts the
             simulated-run driver's ``/dev`` routes (AP.5, #307). A production image does
             not contain the driver, so there it mounts nothing and says so in the log.
-        rest_url: ``OURO_REST_URL``, where ``ouroboros-rest`` is. Read only by that
-            development driver, which reports runs to it.
+        rest_url: ``OURO_REST_URL``, where ``ouroboros-rest`` is. Read by that
+            development driver, which reports runs to it, and by the Workflow Copilot's
+            turn (CD.1, #559), which invokes models through its gateway.
     """
 
     model_config = SettingsConfigDict(

@@ -490,7 +490,11 @@ describe("TABLE_COLUMNS", () => {
     //
     // The hundred-and-forty-fourth is V108's `source_records` (V112's `snapshot_id`), mirrored by
     // CL.1 (#614) — the citation ledger the internal tool surface archives each source into.
-    expect(TABLE_NAMES).toHaveLength(144);
+    //
+    // Three more with the Workflow Copilot (CD.1, #559): V107's `copilot_sessions` and
+    // `copilot_messages`, and V110's `draft_operations` — read here, and written only through
+    // `apply_draft_batch()`.
+    expect(TABLE_NAMES).toHaveLength(147);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.40.8"
+  version: "0.40.9"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -547,6 +547,15 @@ tags:
       Reading is every member's, `viewer` included. Creating, renaming, pausing, saving a
       draft and publishing are `owner` or `admin` — a `member` is somebody who works here,
       and publishing changes what every future run of the workspace does.
+
+  - name: copilot
+    description: |-
+      **The Workflow Copilot** (mockup 20, epic
+      [#552](https://github.com/NobuData/ouroboros/issues/552)) — the conversational author of
+      the shared draft. One active session per workflow; every edit the copilot makes is a typed
+      operation on the same draft the canvas and the code editor edit (decision **W2**), validated
+      before it is applied and recorded with `copilot` provenance; questions are chip rows the
+      person answers; a reply streams as server-sent events so the draft is seen being built.
 
   - name: skills
     description: |-
@@ -22331,6 +22340,393 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/workflows/{id}/copilot/sessions:
+    post:
+      tags: [copilot]
+      summary: Start a copilot conversation on the workflow's draft
+      description: |-
+        CD.1 ([#559](https://github.com/NobuData/ouroboros/issues/559)). Opens the conversation
+        that edits this workflow's shared draft. **At most one active session per workflow**
+        (`copilot_sessions_one_active`): a second start answers `409 copilot_session_active`
+        naming the one to resume with `GET …/copilot/conversation`.
+
+        The `draft: security-patch` tag defaults to the workflow's slug.
+
+        Administrators only, like saving the draft: the conversation writes it.
+      operationId: startCopilotSession
+      parameters:
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartCopilotSessionRequest"
+            example:
+              draftName: security-patch
+      responses:
+        "201":
+          description: The session, active and empty.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CopilotSession"
+              example:
+                id: 5eed008a-0000-4000-8000-000000000001
+                workflowId: 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                status: active
+                draftName: security-patch
+                modelProvenance: []
+                createdAt: "2026-10-08T15:02:00.000Z"
+                closedAt: null
+                lastSeq: 0
+        "400":
+          description: "`organization_required` — this session is not acting in any workspace."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "`unauthenticated`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`forbidden` — a member below `admin`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "`workflow_not_found` — no such workflow for this caller."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `copilot_session_active` — the workflow already has an active session;
+            `details.sessionId` names it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: copilot_session_active
+                message: This workflow already has an active copilot session. Resume it instead.
+                details:
+                  sessionId: 5eed008a-0000-4000-8000-000000000001
+        "422":
+          description: "`validation_failed` — a draft name outside the slug grammar, or a property the body does not declare."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/workflows/{id}/copilot/conversation:
+    get:
+      tags: [copilot]
+      summary: Read the active conversation and the draft as it stands
+      description: |-
+        Decision **W9**: switching to the canvas or the code view and back preserves the
+        conversation. This is what a surface reads when it comes back — the active session, its
+        messages in order (chips with their answers, tool traces, per-exchange cost), and the
+        shared draft: its `etag` (the same one the canvas sends as `If-Match`), its `v0.N` label,
+        the provenance summary and the W7 unresolved-reference warnings.
+
+        Every member may read it, like the draft.
+      operationId: readCopilotConversation
+      parameters:
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The conversation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CopilotConversation"
+              example:
+                session:
+                  id: 5eed008a-0000-4000-8000-000000000001
+                  workflowId: 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                  status: active
+                  draftName: security-patch
+                  modelProvenance:
+                    - seq: 2
+                      alias: coder-max
+                      modelId: claude-fable-5
+                  createdAt: "2026-10-08T15:02:00.000Z"
+                  closedAt: null
+                  lastSeq: 2
+                messages:
+                  - id: 5eed008a-0000-4000-8000-000000000101
+                    seq: 1
+                    role: user
+                    body: "security patches: always a second model's review, never auto-merge, prove the CVE is actually fixed"
+                    choices: null
+                    toolTrace: {operations: [], reads: [], dryRunProposals: []}
+                    tokensIn: null
+                    tokensOut: null
+                    costCents: null
+                    status: complete
+                    createdAt: "2026-10-08T15:02:00.000Z"
+                  - id: 5eed008a-0000-4000-8000-000000000102
+                    seq: 2
+                    role: copilot
+                    body: "Drafted security-patch — I added an exploit-verify stage; that task kind does not exist yet, so the draft carries a warning until it does. Two questions:"
+                    choices:
+                      - prompt: What triggers it?
+                        options: ["label:security", "CVE pattern in title"]
+                        selected: null
+                        answeredAt: null
+                    toolTrace:
+                      operations:
+                        - op: {kind: add_stage, params: {node: {id: exploit-verify}}}
+                          outcome: applied
+                          validatorMessage: null
+                        - op: {kind: add_edge, params: {edge: {from: test, to: exploit_verify, kind: default}}}
+                          outcome: bounced
+                          validatorMessage: 'edge.to "exploit_verify" names no stage — did you mean "exploit-verify".'
+                      reads: [{tool: catalog}, {tool: skills}]
+                      dryRunProposals: []
+                    tokensIn: 18400
+                    tokensOut: 2100
+                    costCents: 12
+                    status: complete
+                    createdAt: "2026-10-08T15:02:10.000Z"
+                draft:
+                  etag: 2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0
+                  label: v0.2
+                  definition: {dsl_version: "1.0", trigger: {event: ticket_queued, conditions: {}}, nodes: [], edges: []}
+                  provenanceSummary: {canvas: 1, code: 0, copilot: 1, suggestion: 0}
+                  warnings:
+                    - code: reference.unknown_task
+                      node: exploit-verify
+                      name: exploit-verify
+                      path: /nodes/8/config/routing/inherit_task
+                      message: No task route named `exploit-verify` exists in this workspace yet.
+        "400":
+          description: "`organization_required`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "`unauthenticated`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "`workflow_not_found`, or `copilot_session_not_found` when no session is active."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "`validation_failed` — the id is not a uuid."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/workflows/{id}/copilot/sessions/{sessionId}/messages:
+    post:
+      tags: [copilot]
+      summary: Say something to the copilot, and watch the reply build
+      description: |-
+        One exchange. The message is recorded, the `copilot-workflow` task kind is resolved
+        through routing (the alias it resolves to is appended to the session's model
+        provenance), and the loop runs: the engine's turn streams reply text and structured tool
+        calls; each typed operation is **validated against the DSL before application** and
+        applied under the draft's etag with `copilot` provenance; an invalid one is bounced back
+        to the model with the validator's message, within a bounded budget; a question becomes a
+        chip row and ends the exchange until it is answered.
+
+        The answer is `text/event-stream`. Each event's `event:` field is its `kind` and its
+        `data:` the JSON object described by `CopilotStreamEvent`:
+
+        * `accepted` — always first: the recorded message, and the reply's id and seq;
+        * `delta` — a fragment of reply text;
+        * `operation` — an operation and what became of it, **in the order the model produced
+          them**: `applied` (with `draftRev`, the new `etag`, and the W7 `warnings` it
+          introduced), `bounced` (with `validatorMessage`) or `proposed` (a guard);
+        * `read`, `question`, `dry_run_proposal` — the other tools;
+        * `conflict` — the draft changed under the conversation (a canvas save); the copilot
+          re-read it and says so; no human edit is overwritten;
+        * `usage` — tokens and cost for the exchange, `null` when unmetered or unpriced;
+        * `error` — the reply could not be finished: `copilot_unrouted` (no route for the kind;
+          nothing was invoked), `gateway_unavailable` (until AF.2,
+          [#235](https://github.com/NobuData/ouroboros/issues/235), lands), `engine_unavailable`,
+          or the gateway's own per-hop codes;
+        * `done` — always last: the reply as recorded, and the draft as it stands.
+
+        **One exchange at a time**: a reply still streaming answers `409 copilot_exchange_busy`.
+        Administrators only.
+      operationId: sendCopilotMessage
+      parameters:
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/CopilotSessionId"
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CopilotMessageRequest"
+            example:
+              text: "label security. yes. also cap spend at $5 a run."
+      responses:
+        "200":
+          description: The exchange, streamed.
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/CopilotStreamEvent"
+              example: |
+                event: accepted
+                data: {"kind":"accepted","message":{"id":"5eed008a-0000-4000-8000-000000000103","seq":3,"role":"user","body":"label security. yes. also cap spend at $5 a run.","choices":null,"toolTrace":{"operations":[],"reads":[],"dryRunProposals":[]},"tokensIn":null,"tokensOut":null,"costCents":null,"status":"complete","createdAt":"2026-10-08T15:04:00.000Z"},"replyId":"5eed008a-0000-4000-8000-000000000104","replySeq":4}
+
+                event: operation
+                data: {"kind":"operation","op":{"kind":"set_trigger","params":{"trigger":{"event":"ticket_queued","conditions":{"labels":["security"]}}}},"outcome":"applied","validatorMessage":null,"draftRev":3,"etag":"7b1c…","warnings":[]}
+
+                event: operation
+                data: {"kind":"operation","op":{"kind":"set_guard","params":{"guard":"spend_guard","params":{"per_run_cap_cents":500}}},"outcome":"proposed","validatorMessage":null,"draftRev":null,"etag":null,"warnings":[]}
+
+                event: delta
+                data: {"kind":"delta","text":"Added a $5/run spend guard (proposed — guards are not a workflow construct yet). Want a dry run? #489 is the closest open issue."}
+
+                event: dry_run_proposal
+                data: {"kind":"dry_run_proposal","ticket":"#489","reason":"no CVE — exercises the skip path"}
+
+                event: usage
+                data: {"kind":"usage","tokensIn":9800,"tokensOut":600,"costCents":4}
+
+                event: done
+                data: {"kind":"done","message":{"id":"5eed008a-0000-4000-8000-000000000104","seq":4,"role":"copilot","body":"Added a $5/run spend guard (proposed — guards are not a workflow construct yet). Want a dry run? #489 is the closest open issue.","choices":null,"toolTrace":{"operations":[{"op":{"kind":"set_trigger","params":{"trigger":{"event":"ticket_queued","conditions":{"labels":["security"]}}}},"outcome":"applied","validatorMessage":null},{"op":{"kind":"set_guard","params":{"guard":"spend_guard","params":{"per_run_cap_cents":500}}},"outcome":"proposed","validatorMessage":null}],"reads":[],"dryRunProposals":[{"ticket":"#489","reason":"no CVE — exercises the skip path"}]},"tokensIn":9800,"tokensOut":600,"costCents":4,"status":"complete","createdAt":"2026-10-08T15:04:00.000Z"},"draft":{"etag":"7b1c…","label":"v0.3","definition":{"dsl_version":"1.0","nodes":[],"edges":[]},"provenanceSummary":{"canvas":1,"code":0,"copilot":2,"suggestion":0},"warnings":[]}}
+        "400":
+          description: "`organization_required`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "`unauthenticated`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`forbidden` — a member below `admin`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "`workflow_not_found`, or `copilot_session_not_found` — no such session on this workflow for this caller."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `copilot_session_closed` — the session was promoted or discarded;
+            `copilot_exchange_busy` — a reply is still streaming on it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "`validation_failed` — a blank or over-long message, an id that is not a uuid, or a property the body does not declare."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/workflows/{id}/copilot/sessions/{sessionId}/messages/{messageId}/answers:
+    post:
+      tags: [copilot]
+      summary: Answer one of a reply's questions — the chip
+      description: |-
+        The copilot's `ask_user` questions are first-class: this records the chosen option on the
+        reply's `choices` (each question may be answered once) and re-enters the loop with the
+        answer as the person's next message, spelled `<prompt> → <selected>`. The response is the
+        same `text/event-stream` as sending a message.
+
+        Administrators only.
+      operationId: answerCopilotQuestion
+      parameters:
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/CopilotSessionId"
+        - $ref: "#/components/parameters/CopilotMessageId"
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CopilotAnswerRequest"
+            example:
+              question: 0
+              selected: "label:security"
+      responses:
+        "200":
+          description: The exchange the answer started, streamed — see `sendCopilotMessage`.
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/CopilotStreamEvent"
+              example: |
+                event: accepted
+                data: {"kind":"accepted","message":{"id":"5eed008a-0000-4000-8000-000000000105","seq":5,"role":"user","body":"What triggers it? → label:security","choices":null,"toolTrace":{"operations":[],"reads":[],"dryRunProposals":[]},"tokensIn":null,"tokensOut":null,"costCents":null,"status":"complete","createdAt":"2026-10-08T15:04:30.000Z"},"replyId":"5eed008a-0000-4000-8000-000000000106","replySeq":6}
+
+                event: delta
+                data: {"kind":"delta","text":"Set the trigger to label:security."}
+
+                event: done
+                data: {"kind":"done","message":{"id":"5eed008a-0000-4000-8000-000000000106","seq":6,"role":"copilot","body":"Set the trigger to label:security.","choices":null,"toolTrace":{"operations":[],"reads":[],"dryRunProposals":[]},"tokensIn":null,"tokensOut":null,"costCents":null,"status":"complete","createdAt":"2026-10-08T15:04:31.000Z"},"draft":{"etag":"7b1c…","label":"v0.3","definition":{"dsl_version":"1.0","nodes":[],"edges":[]},"provenanceSummary":{"canvas":1,"code":0,"copilot":2,"suggestion":0},"warnings":[]}}
+        "400":
+          description: "`organization_required`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "`unauthenticated`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`forbidden` — a member below `admin`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "`workflow_not_found`, `copilot_session_not_found`, or `copilot_message_not_found`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "`copilot_session_closed` or `copilot_exchange_busy`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the body, or an id; `copilot_answer_invalid` — the reply asked
+            no such question, did not offer that option, or the question was already answered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/skills:
     get:
       tags: [skills]
@@ -34836,6 +35232,22 @@ components:
         format: uuid
       example: 5eed0009-0000-4000-8000-000000000482
 
+    CopilotSessionId:
+      name: sessionId
+      in: path
+      required: true
+      description: The copilot session — `copilot_sessions.id`, a uuid. Must be a session of the workflow in the path.
+      schema:
+        type: string
+        format: uuid
+    CopilotMessageId:
+      name: messageId
+      in: path
+      required: true
+      description: The copilot reply whose question is being answered — `copilot_messages.id`, a uuid.
+      schema:
+        type: string
+        format: uuid
     WorkflowId:
       name: id
       in: path
@@ -52005,6 +52417,393 @@ components:
             When the *entity* last changed — a rename, a pause, a publish moving the pointer.
             A draft edit does not move it; that stamp is `draft.updatedAt`.
           examples: ["2026-09-12T08:30:00.000Z"]
+
+    StartCopilotSessionRequest:
+      type: object
+      title: StartCopilotSessionRequest
+      description: The body of `POST …/copilot/sessions`. Closed.
+      additionalProperties: false
+      properties:
+        draftName:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+          description: "The `draft: …` tag the conversation card shows. Defaults to the workflow's slug."
+
+    CopilotMessageRequest:
+      type: object
+      title: CopilotMessageRequest
+      description: The body of `POST …/messages` — what the person typed. Closed.
+      additionalProperties: false
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 20000
+
+    CopilotAnswerRequest:
+      type: object
+      title: CopilotAnswerRequest
+      description: The body of `POST …/answers` — a chip the person chose. Closed.
+      additionalProperties: false
+      required: [question, selected]
+      properties:
+        question:
+          type: integer
+          minimum: 0
+          description: Which of the reply's questions, by position from 0.
+        selected:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: The option chosen, verbatim — one the question offered.
+
+    CopilotProvenance:
+      type: object
+      title: CopilotProvenance
+      description: The alias one exchange resolved to (Z.1) — the head's model pill.
+      additionalProperties: false
+      required: [seq, alias, modelId]
+      properties:
+        seq:
+          type: integer
+          description: The copilot reply's `seq`.
+        alias:
+          type: string
+        modelId:
+          type: string
+
+    CopilotSession:
+      type: object
+      title: CopilotSession
+      description: One conversation, bound to the workflow whose shared draft it edits (V107, CC.1).
+      additionalProperties: false
+      required: [id, workflowId, status, draftName, modelProvenance, createdAt, closedAt, lastSeq]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workflowId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [active, promoted, discarded]
+        draftName:
+          type: string
+          description: "The `draft: security-patch` tag."
+        modelProvenance:
+          type: array
+          items:
+            $ref: "#/components/schemas/CopilotProvenance"
+        createdAt:
+          type: string
+          format: date-time
+        closedAt:
+          type: [string, "null"]
+          format: date-time
+        lastSeq:
+          type: integer
+          description: The highest message `seq` handed out.
+
+    CopilotChoice:
+      type: object
+      title: CopilotChoice
+      description: One `ask_user` question — a chip row — and its answer once given.
+      additionalProperties: false
+      required: [prompt, options, selected, answeredAt]
+      properties:
+        prompt:
+          type: string
+        options:
+          type: array
+          minItems: 2
+          items: {type: string}
+        selected:
+          type: [string, "null"]
+          description: The option chosen, or `null` while open.
+        answeredAt:
+          type: [string, "null"]
+          format: date-time
+
+    CopilotTraceOperation:
+      type: object
+      title: CopilotTraceOperation
+      description: One operation a reply proposed, and what became of it.
+      additionalProperties: false
+      required: [op, outcome, validatorMessage]
+      properties:
+        op:
+          type: object
+          required: [kind]
+          properties:
+            kind:
+              type: string
+              description: "`add_stage`, `set_stage`, `remove_stage`, `add_edge`, `remove_edge`, `set_trigger`, or `set_guard`."
+            params:
+              type: object
+          additionalProperties: true
+        outcome:
+          type: string
+          enum: [proposed, applied, bounced]
+          description: "`applied` to the draft; `bounced` by the validator; `proposed` — a guard, recorded but not a document construct yet."
+        validatorMessage:
+          type: [string, "null"]
+          description: The validator's message — a string exactly on a bounce.
+
+    CopilotToolTrace:
+      type: object
+      title: CopilotToolTrace
+      description: How a reply came to be — the operations it proposed, the reads it made, the dry runs it suggested.
+      additionalProperties: false
+      required: [operations, reads, dryRunProposals]
+      properties:
+        operations:
+          type: array
+          items:
+            $ref: "#/components/schemas/CopilotTraceOperation"
+        reads:
+          type: array
+          items:
+            type: object
+            required: [tool]
+            properties:
+              tool: {type: string}
+            additionalProperties: true
+        dryRunProposals:
+          type: array
+          items:
+            type: object
+            required: [ticket]
+            properties:
+              ticket: {type: string}
+              reason: {type: string}
+            additionalProperties: true
+
+    CopilotMessage:
+      type: object
+      title: CopilotMessage
+      description: One message of the conversation (V107, CC.1).
+      additionalProperties: false
+      required: [id, seq, role, body, choices, toolTrace, tokensIn, tokensOut, costCents, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        seq:
+          type: integer
+          minimum: 1
+          description: The message's place in its session, allocated in commit order.
+        role:
+          type: string
+          enum: [user, copilot]
+        body:
+          type: string
+          description: The bubble's text. Empty only while a reply is streaming, or when it was interrupted before saying anything.
+        choices:
+          oneOf:
+            - type: array
+              items:
+                $ref: "#/components/schemas/CopilotChoice"
+            - type: "null"
+          description: The chip rows — copilot replies only; `null` for a reply that asked nothing.
+        toolTrace:
+          $ref: "#/components/schemas/CopilotToolTrace"
+        tokensIn:
+          type: [integer, "null"]
+          description: Prompt tokens; `null` when the exchange was not metered.
+        tokensOut:
+          type: [integer, "null"]
+        costCents:
+          type: [integer, "null"]
+          description: Cents; `null` when the exchange was not priced — never a fabricated `0`.
+        status:
+          type: string
+          enum: [streaming, complete, interrupted]
+        createdAt:
+          type: string
+          format: date-time
+
+    CopilotWarning:
+      type: object
+      title: CopilotWarning
+      description: A reference in the draft that resolves to nothing yet (decision W7) — P7's warning codes.
+      additionalProperties: false
+      required: [code, node, name, path, message]
+      properties:
+        code:
+          type: string
+          enum: [reference.unknown_skill, reference.unknown_alias, reference.unknown_task]
+        node:
+          type: string
+          description: The stage that names it.
+        name:
+          type: string
+          description: The name that resolved to nothing.
+        path:
+          type: string
+          description: An RFC 6901 pointer to the value.
+        message:
+          type: string
+
+    CopilotDraft:
+      type: object
+      title: CopilotDraft
+      description: The shared draft as the conversation sees it.
+      additionalProperties: false
+      required: [etag, label, definition, provenanceSummary, warnings]
+      properties:
+        etag:
+          type: string
+          description: The draft slot's etag — the same value the canvas sends as `If-Match`.
+        label:
+          type: string
+          description: "`v{published}.{rev}` — the head's `draft v0.3`."
+          examples: [v0.3]
+        definition:
+          oneOf:
+            - $ref: "#/components/schemas/WorkflowDefinition"
+            - type: "null"
+          description: The stored document, or `null` before the first operation.
+        provenanceSummary:
+          type: object
+          description: Operation batches per actor — the footer's `2 copilot edits applied`.
+          additionalProperties: false
+          required: [canvas, code, copilot, suggestion]
+          properties:
+            canvas: {type: integer}
+            code: {type: integer}
+            copilot: {type: integer}
+            suggestion: {type: integer}
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/CopilotWarning"
+
+    CopilotConversation:
+      type: object
+      title: CopilotConversation
+      description: The whole conversation, for a surface switching back to it (decision W9).
+      additionalProperties: false
+      required: [session, messages, draft]
+      properties:
+        session:
+          $ref: "#/components/schemas/CopilotSession"
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/CopilotMessage"
+        draft:
+          $ref: "#/components/schemas/CopilotDraft"
+
+    CopilotStreamEvent:
+      type: object
+      title: CopilotStreamEvent
+      description: |-
+        One server-sent event of an exchange — the `data:` of an event whose `event:` field is
+        its `kind`. See `sendCopilotMessage` for the sequence.
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [accepted, delta, operation, read, question, dry_run_proposal, conflict, usage, error, done]
+      oneOf:
+        - type: object
+          title: accepted
+          required: [kind, message, replyId, replySeq]
+          properties:
+            kind: {const: accepted}
+            message:
+              $ref: "#/components/schemas/CopilotMessage"
+            replyId: {type: string, format: uuid}
+            replySeq: {type: integer}
+        - type: object
+          title: delta
+          required: [kind, text]
+          properties:
+            kind: {const: delta}
+            text: {type: string}
+        - type: object
+          title: operation
+          required: [kind, op, outcome, validatorMessage, draftRev, etag, warnings]
+          properties:
+            kind: {const: operation}
+            op:
+              type: object
+              required: [kind, params]
+              properties:
+                kind: {type: string}
+                params: {type: object}
+            outcome:
+              type: string
+              enum: [applied, bounced, proposed]
+            validatorMessage: {type: [string, "null"]}
+            draftRev:
+              type: [integer, "null"]
+              description: The revision the operation produced — `applied` only.
+            etag:
+              type: [string, "null"]
+              description: The draft slot's etag afterwards — `applied` only.
+            warnings:
+              type: array
+              items:
+                $ref: "#/components/schemas/CopilotWarning"
+        - type: object
+          title: read
+          required: [kind, tool]
+          properties:
+            kind: {const: read}
+            tool: {type: string, enum: [draft, catalog, skills, tickets]}
+        - type: object
+          title: question
+          required: [kind, index, prompt, options]
+          properties:
+            kind: {const: question}
+            index: {type: integer}
+            prompt: {type: string}
+            options:
+              type: array
+              items: {type: string}
+        - type: object
+          title: dry_run_proposal
+          required: [kind, ticket, reason]
+          properties:
+            kind: {const: dry_run_proposal}
+            ticket: {type: string}
+            reason: {type: string}
+        - type: object
+          title: conflict
+          required: [kind, message, etag]
+          properties:
+            kind: {const: conflict}
+            message: {type: string}
+            etag: {type: string}
+        - type: object
+          title: usage
+          required: [kind, tokensIn, tokensOut, costCents]
+          properties:
+            kind: {const: usage}
+            tokensIn: {type: [integer, "null"]}
+            tokensOut: {type: [integer, "null"]}
+            costCents: {type: [integer, "null"]}
+        - type: object
+          title: error
+          required: [kind, code, message]
+          properties:
+            kind: {const: error}
+            code: {type: string}
+            message: {type: string}
+        - type: object
+          title: done
+          required: [kind, message, draft]
+          properties:
+            kind: {const: done}
+            message:
+              $ref: "#/components/schemas/CopilotMessage"
+            draft:
+              $ref: "#/components/schemas/CopilotDraft"
 
     WorkflowDraft:
       type: object

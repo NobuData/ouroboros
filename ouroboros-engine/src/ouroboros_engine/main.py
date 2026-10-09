@@ -23,6 +23,7 @@ from fastapi import FastAPI
 from ouroboros_engine.analysis.registry import default_registry
 from ouroboros_engine.api import (
     analysis,
+    copilot,
     estimate,
     health,
     learn,
@@ -32,6 +33,9 @@ from ouroboros_engine.api import (
     tasks,
     workflows,
 )
+from ouroboros_engine.control_plane.client import ControlPlaneClient
+from ouroboros_engine.copilot.gateway import UrllibGateway
+from ouroboros_engine.copilot.turn import CopilotTurnRunner
 from ouroboros_engine.core.errors import register_error_handlers
 from ouroboros_engine.core.logging import configure_logging
 from ouroboros_engine.core.security import InternalKeyMiddleware
@@ -144,6 +148,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # rather than vanishing from every run. A test installs its own registry the same way.
     app.state.analyzer_registry = default_registry()
 
+    # And the Workflow Copilot's turn runner (CD.1, #559): the control-plane client built
+    # against `OURO_REST_URL` with this service's own internal key — the one principal
+    # `ouroboros-rest`'s internal surface accepts from the executor — and the standard-library
+    # gateway that puts an invocation on a socket. Until AF.2 (#235) lands the gateway answers
+    # `501`, which a turn reports as `gateway_unavailable` rather than hiding. A test installs
+    # a runner over a fake gateway the same way.
+    app.state.copilot = CopilotTurnRunner(
+        ControlPlaneClient(resolved.rest_url, resolved.shared_secret), UrllibGateway()
+    )
+
     # Added before any route is registered, and the only middleware there is, so it is
     # the outermost thing a request meets: the guard cannot be bypassed by a path that
     # is added later, and an unauthenticated request never reaches routing at all.
@@ -168,6 +182,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(plan.router)
     app.include_router(learn.router)
     app.include_router(analysis.router)
+    app.include_router(copilot.router)
     _mount_simulator(app, resolved)
     return app
 

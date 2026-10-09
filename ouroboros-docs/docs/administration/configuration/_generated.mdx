@@ -61,7 +61,7 @@ Nothing in ouroboros-rest reads this. An Ollama connection's address is a **Host
 
 **Development default:** `http://localhost:4000`
 
-Base URL of ouroboros-rest, read by ouroboros-ui. The UI reaches nothing else. ouroboros-rest reads it too, for one thing: the GitHub OAuth redirect_uri, which has to be the URL registered against the OAuth app rather than whatever Host header a request arrived with. An origin — scheme, host and optional port, no path, no trailing slash. ouroboros-engine's simulated-run driver reads it as where to report the runs it scripts.
+Base URL of ouroboros-rest, read by ouroboros-ui. The UI reaches nothing else. ouroboros-rest reads it too, for one thing: the GitHub OAuth redirect_uri, which has to be the URL registered against the OAuth app rather than whatever Host header a request arrived with. An origin — scheme, host and optional port, no path, no trailing slash. ouroboros-engine's simulated-run driver reads it as where to report the runs it scripts, and its Workflow Copilot turn reads it as where the model invocation gateway is.
 
 ### `OURO_UI_URL`
 

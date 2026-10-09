@@ -81,6 +81,14 @@ import {
   type AnalyzerSet,
   type EngineAnalysisRequest,
 } from "./engine.analysis";
+import {
+  COPILOT_TURN_TIMEOUT_MS,
+  ENGINE_COPILOT_ROUTE,
+  copilotTurnRequestBody,
+  engineCopilotEventSchema,
+  type EngineCopilotEvent,
+  type EngineCopilotTurnRequest,
+} from "./engine.copilot";
 import { engineUnavailable } from "./engine.errors";
 
 /**
@@ -375,6 +383,52 @@ export class EngineClient {
   }
 
   /**
+   * Run one turn of the Workflow Copilot, yielding its events as they stream (CD.1,
+   * [#559](https://github.com/NobuData/ouroboros/issues/559)).
+   *
+   * An async generator rather than a callback, because the caller is itself a stream: the
+   * exchange loop forwards reply text to the browser as it arrives and acts on each tool call in
+   * order, and it can only do both from a loop it owns. **Bounded by
+   * {@link COPILOT_TURN_TIMEOUT_MS}**, not {@link ENGINE_TIMEOUT_MS}: a model turn streams while
+   * it runs, and the deadline is for a gateway that stopped answering.
+   *
+   * @param request - The turn, in this service's names.
+   * @yields Each event, in order — `delta`, `tool_call`, `usage`, then one `error` or `done`.
+   * @throws {UpstreamError} `engine_unavailable` when the engine could not be reached, refused
+   *   the request, streamed a line that is not the contract, or broke off mid-stream (the deadline
+   *   included). Events already yielded stay yielded.
+   */
+  async *copilotTurn(request: EngineCopilotTurnRequest): AsyncGenerator<EngineCopilotEvent> {
+    const url = engineRouteUrl(this.config.engineUrl, ENGINE_COPILOT_ROUTE);
+    const init: RequestInit = {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: NDJSON_MEDIA_TYPE },
+      body: JSON.stringify(copilotTurnRequestBody(request)),
+    };
+    const response = await this.send(url, init, COPILOT_TURN_TIMEOUT_MS);
+
+    if (!response.ok || response.body === null) {
+      await this.refuse(response, url, init);
+    }
+
+    const lines = ndjsonLines(response.body as AsyncIterable<Uint8Array>);
+    for (;;) {
+      let next: IteratorResult<string>;
+      try {
+        next = await lines.next();
+      } catch (error) {
+        this.logger.error(`POST ${url} broke off mid-stream`, describeForLog(error));
+        throw engineUnavailable();
+      }
+      if (next.done === true) {
+        return;
+      }
+
+      yield this.parseLine(url, next.value, engineCopilotEventSchema);
+    }
+  }
+
+  /**
    * One line of an analysis stream, parsed.
    *
    * @param url - The route, for the log.
@@ -383,6 +437,19 @@ export class EngineClient {
    * @throws {UpstreamError} `engine_unavailable` for a line that is not JSON or not an event.
    */
   private parseEvent(url: string, line: string): AnalysisEvent {
+    return this.parseLine(url, line, analysisEventSchema);
+  }
+
+  /**
+   * One line of a stream, parsed against its contract.
+   *
+   * @param url - The route, for the log.
+   * @param line - The line.
+   * @param schema - What the line must be.
+   * @returns The event, in this service's names.
+   * @throws {UpstreamError} `engine_unavailable` for a line that is not JSON or not an event.
+   */
+  private parseLine<T>(url: string, line: string, schema: ZodType<T>): T {
     let payload: unknown;
     try {
       payload = JSON.parse(line);
@@ -391,7 +458,7 @@ export class EngineClient {
       throw engineUnavailable();
     }
 
-    const parsed = analysisEventSchema.safeParse(payload);
+    const parsed = schema.safeParse(payload);
     if (!parsed.success) {
       this.logger.error(
         `POST ${url} streamed an event outside the /v0 contract: ` +
