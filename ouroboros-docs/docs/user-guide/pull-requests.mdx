@@ -5,11 +5,214 @@ sidebar_position: 11
 description: "What the verification gates prove, reading evidence, and merging."
 ---
 
-What the verification gates prove, reading evidence, and merging.
+When a loop opens a pull request, Ouroboros verifies it before anything merges. The **PR
+verification** page at `/prs/<id>` is where you see what has been proved, what is still
+missing, and where you decide to merge, send the pull request back, or wait.
 
-:::info[Being written]
+Merging is the step you cannot take back, so this page states what each check proves and what
+a merge will do before you confirm it.
 
-This page is being written in
-[#1184](https://github.com/NobuData/ouroboros/issues/1184).
+<Screenshot id="user-guide.pr" />
 
-:::
+## Finding a pull request
+
+There is no list of pull requests in the sidebar. You open one from the work that produced
+it:
+
+- the run console — **PR verification** in the header, and **PR #512 ↗** on a merged run (see
+  [the run console](./runs/console.mdx#the-header));
+- test results — the **PR #514** link in the header (see [Test results](./runs/tests.mdx));
+- the dashboard's completed loops.
+
+Ouroboros finds a pull request by the run that opened it, so start from the run. A run whose
+pull request Ouroboros has not mirrored from your repository host has no link. The `<id>` in
+the address is Ouroboros's own, not the number on your host.
+
+## The header
+
+The header reads **PR Verification · PR #514 · Revision 2**, then the pull request's title,
+the loop and issue it came from, and its state with a gate count — such as
+**verifying — 5 of 7 gates green**. The state is one of:
+
+- **verifying** — gates are being evaluated on the latest revision.
+- **armed** — a merge is set to happen once every required gate is green.
+- **blocked** — a required gate is red.
+- **merged** or **closed** — the page is now a record; nothing can be armed, waived or
+  approved.
+
+Three actions sit beside it:
+
+- **Request human review** — makes **Human approval** required on this pull request.
+- **Return to loop** — sends a blocked pull request back to the loop for a correction round.
+- **Merge when all gates green** — takes you to the [merge plan](#merging).
+
+Owners, admins and members can request a review and return a pull request; only owners and
+admins merge. Viewers read the page. None of the actions appear once a pull request has merged
+or closed.
+
+## Revisions
+
+**Revision cycle** shows the pull request's history —
+**publish → verify → correct → re-publish**. Each push is a new **revision** with its own commit and gate results:
+**Revision 1 … — blocked: Test suite, Physical HIL ✗**, then a **Correction round**, then
+**Revision 2 … — pushed, re-verification running**. The last step says how the pull request
+will merge, such as **Auto-merge (squash)** **on all gates green**.
+
+Select a revision to see its gates as they stood — the step is marked **gates scoped here**.
+**Follow the latest revision** takes you back. Approvals and returns only apply to the latest
+revision.
+
+## Verification gates
+
+**Verification gates** lists every check the revision must pass, with the count of green ones
+(**5 / 7 green**) and a link to the **Run console →**:
+
+| Gate | What it proves |
+| --- | --- |
+| **Build** | The change builds on a farm runner — with the runner, the image and its size. |
+| **Test suite** | The tests passed — **63/63 after attempt 4**. Links to the test results. |
+| **Physical HIL** | The hardware-in-the-loop measurements are within their limits. |
+| **Diff-vs-plan conformance** | Every changed file is one the plan named; out-of-scope edits are counted. |
+| **Secrets & license scan** | No secret or disallowed license was found in the diff. |
+| **Second-model review** | A second model reviewed the change. |
+| **Human approval** | A person approved, when your policy or a review request requires one. |
+
+Each gate shows its result and a line of evidence from the check itself, and links to where
+you can look closer — **build farm →**, **test results →**, **physical tests →** or
+**guardrails →**. A gate is:
+
+- **✓** green, or **✗** red — a red gate says why.
+- **in progress** while it is being evaluated.
+- **–** **unavailable** — nothing can evaluate it yet. **Second-model review** shows
+  **arrives with the provider stack**: no review provider is connected, so it does not turn
+  green on its own.
+- **○** **not required** — your policy does not ask for it. **Human approval** marked
+  **auto-merge eligible** means the pull request can merge without a person.
+- **⊘** **waived** — let through on purpose. Choose **waived** to read the waiver's reason.
+
+Neither **not required** nor **waived** counts as a pass; they are policy decisions, shown as
+such.
+
+### Human approval
+
+When a review is required, the **Human approval** row waits for an owner or admin: they see
+**Approve** and **Decline**. Declining asks **Why it is declined** — the gate turns red with
+your reason. A member who wants a review chooses **Request review**; the row then says it is
+**waiting for an owner or admin**.
+
+## Does the PR do what the ticket says?
+
+The criteria matrix lists each **claim** the pull request must satisfy — taken from the
+issue's plan (**plan**) or added by hand (**manual**) — with the evidence for it and its
+status: **✓ verified**, **unverified**, or waived.
+
+<Screenshot id="user-guide.pr.criteria" />
+
+Each piece of evidence leads to what it cites. A test or a measurement opens the test results
+of the attempt that ran it, with that row selected. A hunk, such as
+**hunk telemetry_buf.c:41–66**, jumps to those lines under **Changed files**.
+
+To work through the matrix, as an owner, admin or member:
+
+- **+ Add claim** — write one claim in the ticket's words. It starts **unverified**.
+- **Import from plan** — copy the claims from the issue's plan, when it has one. Claims already
+  in the matrix are skipped.
+- **Attach evidence** — cite proof for a claim (below).
+- **Verify** — mark a claim verified. It stays off until evidence is attached: a claim is
+  verified by what is cited for it.
+
+<Screenshot id="user-guide.pr.evidence" />
+
+**Attach evidence** asks **What to cite**:
+
+- **Test** — a test case from the run's latest test attempt.
+- **Measurement** — a rig measurement from that attempt.
+- **Hunk** — a changed file and the first and last line of the hunk.
+
+Add an optional **Qualifier**, shown in parentheses after the evidence — for example
+`10⁶ frames, 0 reordered`.
+
+### Waiving a claim
+
+Some claims cannot be proved here — the rig has no thermal chamber, say. An owner or admin
+chooses **Waive** and writes **Why it cannot be verified here**, for example
+`rig runs at 22°C only — thermal chamber not in bench`. **Waive & annotate PR** records the
+waiver and posts the reason as a comment on the pull request. The claim then shows:
+
+- **waived · annotated on PR** — the comment is on the pull request; select it to open it.
+- **waived · annotation failed** — your host refused the comment. **Waive again** retries.
+- **waived · not annotated** — the waiver was recorded without a comment. **Waive again**
+  posts one.
+
+## Changed files and the review thread
+
+**Changed files** lists each file with lines added and removed, a stored excerpt of the diff,
+and **Full diff on the host ↗**. A file outside the plan is tagged
+**outside the planned file list**.
+
+**Review thread** collects the reviews of the pull request: model reviews, the policy bot's
+notes and people's replies. A reviewer marks an entry **blocking** when it needs an answer;
+**Reply & resolve** answers it, marks it **✓ resolved**, and the entry then reads
+**was blocking**. An entry marked **simulated** is
+demonstration data — no model wrote it.
+
+**Spend** shows the tokens and cost of the loop and of verification, against the loop's cap.
+
+## Returning a pull request to the loop
+
+When a gate is red, **Return to loop** opens **Return PR #514 to the loop**. Select the red
+gates to send — **Red gates to send as context** — and confirm. The loop starts a correction
+round with them. Nothing is discarded: the branch and the pull request stay as they are, and
+the next push is verified as a new revision.
+
+## Merging
+
+**Merge plan** says how the pull request will merge: the **Strategy** (such as
+**squash · delete branch**), the **Commit message**, and what happens afterwards —
+**Close issue #482 on merge**, **Comment evidence summary on the host PR**, and
+**Back-annotate roadmap** with a **Roadmap epic**. **Edit policy →** opens the policy these
+defaults come from. Owners and admins change the plan; members read it.
+
+Edit the commit message and choose **Save message** — the saved message is what merges.
+
+When you choose **Merge when all gates green**, a confirmation states exactly what you are
+agreeing to:
+
+<Screenshot id="user-guide.pr.merge-confirm" />
+
+- **Which gates it still waits on**, and what each one's state means — a gate that is
+  **unavailable** will not turn green on its own, so the merge waits until it is green, waived
+  or no longer required.
+- The revision and commit it merges, the strategy, and what happens afterwards.
+- That gates, head commit and mergeability are re-checked at merge time. If any check fails,
+  the plan disarms and says why — nothing merges.
+- **A merge cannot be undone from here.**
+
+**Arm the merge** sets it going; the pull request is then **armed** and merges by itself once
+every required gate is green. **Disarm** stops it — members can disarm too. When every required
+gate is already green, the button reads **Merge now** and merges straight away, after the same
+re-check.
+
+The merge is made with your workspace's configured token, not a bot account.
+
+## What can go wrong
+
+- **"PR #514 has never been synced with its host."** or **"… may be out of date."** Ouroboros
+  could not read the pull request from your host — the host may be unreachable, the
+  credential refused, or sync stalled. What you see is what was last recorded. Choose
+  **Check again**.
+- **The plan disarmed itself.** A re-check at merge time failed, and the plan says why:
+  - **A gate went red** — fix it, or return the pull request to the loop, then arm again.
+  - **The head moved** — a new revision was pushed after arming. Review its gates, then arm
+    again.
+  - **The host reports a conflict** — resolve it on the host, or return the pull request.
+  - **Dry-run is on** — nothing merges while the dry-run policy is active. An owner or admin
+    can turn it off in **Settings → Policies**.
+  - **The host refused the merge** — nothing was retried; arm again once the host would accept
+    it.
+- **"This PR changed while the confirmation was open."** Close it and review the gates again.
+- **Verify stays off.** Attach evidence to the claim first.
+- **"No gate is red on revision 2 — there is nothing to send back."** **Return to loop** only
+  works while a required gate is red.
+- **"This pull request does not exist."** The link belongs to another workspace — check the
+  workspace in the header.
