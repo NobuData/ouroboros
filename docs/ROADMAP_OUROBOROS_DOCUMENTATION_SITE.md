@@ -575,7 +575,7 @@ dev seeds (e.g. acme-robotics; `acme-onboarding` for the wizard).
 | DA.11 | #1183 ✅ | 🟢 Done | ouroboros-docs: [DA.11] Test results | Results, flakes, triage, classification | mvp, docs-site, documentation, tests | Y | Y | S | ouroboros-docs |
 | DA.12 | #1184 ✅ | 🟢 Done | ouroboros-docs: [DA.12] Pull requests — verification, evidence & merge | Gates, criteria matrix, evidence, merge | mvp, docs-site, documentation, pr | Y | Y | M | ouroboros-docs |
 | DA.13 | #1185 ✅ | 🟢 Done | ouroboros-docs: [DA.13] Needs-you inbox | Decision cards, allow once/deny, snooze, resolved list, channel prefs | mvp, docs-site, documentation, inbox | Y | Y | M | ouroboros-docs |
-| DA.14 | #1186 | 🟡 Open | ouroboros-docs: [DA.14] Insights | Ranges, cards, trends, email digest | mvp, docs-site, documentation, insights | Y | Y | S | ouroboros-docs |
+| DA.14 | #1186 ✅ | 🟢 Done | ouroboros-docs: [DA.14] Insights | Ranges, cards, trends, email digest | mvp, docs-site, documentation, insights | Y | Y | S | ouroboros-docs |
 | DA.15 | #1187 | 🟡 Open | ouroboros-docs: [DA.15] Build Analyzer | Duration chart, suggestions, predicted vs measured, drafted tickets | mvp, docs-site, documentation, analyzer | Y | Y | M | ouroboros-docs |
 | DA.16 | #1188 | 🟡 Open | ouroboros-docs: [DA.16] Knowledge | Skills, learned facts, playbooks, repo profile | mvp, docs-site, documentation, knowledge | Y | Y | S | ouroboros-docs |
 
@@ -890,6 +890,21 @@ column (channels and policy cards), notification preferences sheet, email channe
 `.inbox.snooze`, `.inbox.resolved`, `.inbox.preferences`.
 
 ### Issue DA.14 (#1186) — ouroboros-docs: [DA.14] Insights
+
+> **GitHub issue:** #1186 ✅ · **Status:** 🟢 Done · **Parent epic:** #1158
+>
+> **Delivered (#1186):** `user-guide/insights.mdx` — written to what `main` ships:
+> - the headline (always the last seven days) and its three actions (**Send to Slack** is honest-soon per D12); the range control (7d/30d/90d, `custom` inert), `?range=` with bare `/insights` = 30d, the prior-window comparison;
+> - the five headline cards with their formulas and caveats in plain words (from the service's metric registry), the method popover, **Tokens per merged PR** when unpriced, interventions as a weekly rate; trend colour = good/bad, not direction;
+> - interventions by cause, the computed "fix the top row" line, and re-categorizing (owner/admin/member, reason required);
+> - the remaining cards in one list (merges per day, stages, model scoreboard, flaky tests, build & test performance, builds per day, ranked bars, daily cost, DORA-ish with **proxy**);
+> - the weekly digest sheet (switch, schedule line, preview, unsubscribe, no-mail-server refusal), per workspace, and how it differs from the inbox's daily decision digest. The issue says "subscribing is in prefs"; on `main` it is this sheet, so the page documents the sheet.
+>
+> `tests/insights.test.ts` holds labels to the UI constants, card captions to `KPI_LABEL`, causes to `CAUSE_NAMES`, performance and DORA figures to their label records, and ranges to `RANGES`.
+>
+> **Screenshots** (`acme-robotics`): `user-guide.insights` (`/insights`, 30d) and `user-guide.insights.range` (`/insights?range=90d` — every card says "No prior 90d to compare." because the seed holds no earlier window; the headline stays on this week). Nothing is clicked.
+>
+> No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.20.
 
 **Solution / Scope.** `/insights`: range selector, stat cards and their formulas in plain
 words, trend colouring, interventions, the weekly email digest (subscribing is in prefs).
