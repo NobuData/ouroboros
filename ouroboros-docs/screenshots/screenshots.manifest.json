@@ -475,6 +475,46 @@
       "capturedAt": "2026-10-09T00:16:22.967Z",
       "uiVersion": "0.144.1",
       "seedRef": "5a61bd193e8b806e20bfea70bddd1d3860c9509c"
+    },
+    {
+      "id": "user-guide.tests",
+      "route": "/runs/5eed0009-0000-4000-8000-000000000482/tests?from=dashboard&attempt=3",
+      "workspace": "acme-robotics",
+      "ready": ".tests-strip",
+      "clip": "page",
+      "masks": [
+        ".tests-timeline__meta",
+        ".tests-timeline__loop"
+      ],
+      "caption": "The test results of one build: its attempts, the summary of what passed, failed and was flaky, and the suites it ran.",
+      "alt": "The Test results page for Run #1847, Build 3, of #482 Fix flaky CAN-bus telemetry test: standard-fix v14, 61/63 passed and still running, rig helios-rig-02 and PR #514; the Re-run failed (1), Re-run full suite and Send failures back to loop buttons with the note that no farm build produced Build 3; the Build attempts strip from Build 1 (49/63, 14 failed) to Build 4 (63/63, all passed) and the Next card; the partial note; the summary of 63 total tests, 61 passed, 1 failed (overshoot_under_load, HIL), 1 flaky (passed on retry 2/3, quarantine watching) and a wall time of 6m 12s; and the first suites.",
+      "capturedAt": "2026-10-09T00:27:13.040Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "a1632ba7005caabfd7ec5e575cdb557b3c28ad65"
+    },
+    {
+      "id": "user-guide.tests.failure",
+      "route": "/runs/5eed0009-0000-4000-8000-000000000482/tests?from=dashboard&attempt=3&case=overshoot_under_load",
+      "workspace": "acme-robotics",
+      "ready": ".tests-failure__log",
+      "clip": ".tests-failure",
+      "caption": "A real failure: a hardware-in-the-loop measurement past its limit, with the log the test wrote.",
+      "alt": "The Failure detail card for Build 3, showing 1 of 1: the test path tests/hil/test_estop_release.py::overshoot_under_load, its log of three rig trials peaking at 2.1%, 2.4% and 2.3% overshoot and the assertion max overshoot 2.4% > limit 2.0%, and a Triage section saying no heuristic rule fired, above the slot where AI triage will appear once a provider is connected.",
+      "capturedAt": "2026-10-09T00:27:13.040Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "a1632ba7005caabfd7ec5e575cdb557b3c28ad65"
+    },
+    {
+      "id": "user-guide.tests.flaky",
+      "route": "/runs/5eed0009-0000-4000-8000-000000000482/tests?from=dashboard&attempt=3",
+      "workspace": "acme-robotics",
+      "ready": ".tests-route__affix",
+      "clip": ".tests-route",
+      "caption": "A flaky case in Mark & Route: the rule that pre-selected Flake — retry, and what pressing the button will do.",
+      "alt": "The Mark & Route card for ring buffer drains under burst: the four classes Product bug, Test needs update, Flake — retry and Infra — rig issue, with Flake — retry pre-selected and marked heuristic · passed on a sanctioned retry; an empty Correction note to the loop marked optional; the Block PR #514 until green and Auto re-run physical suite after fix toggles, both on; and the Mark as flake & re-run the case and Waive & annotate PR buttons.",
+      "capturedAt": "2026-10-09T00:27:13.040Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "a1632ba7005caabfd7ec5e575cdb557b3c28ad65"
     }
   ]
 }

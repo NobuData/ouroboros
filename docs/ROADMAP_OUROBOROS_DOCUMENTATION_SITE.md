@@ -572,7 +572,7 @@ dev seeds (e.g. acme-robotics; `acme-onboarding` for the wizard).
 | DA.8 | #1180 ✅ | 🟢 Done | ouroboros-docs: [DA.8] Workflows as code | TS-DSL editor, completions, round-trip with the canvas | mvp, docs-site, documentation, code-view | Y | Y | M | ouroboros-docs |
 | DA.9 | #1181 | 🟡 Open | ouroboros-docs: [DA.9] Models — routing & the model registry | Routes, aliases, escalation; browsing models | mvp, docs-site, documentation, routing, registry | Y | Y | M | ouroboros-docs |
 | DA.10 | #1182 ✅ | 🟢 Done | ouroboros-docs: [DA.10] Runs — the run console | Transcript, stages, guardrails, pause/abort/steer | mvp, docs-site, documentation, runs | Y | Y | M | ouroboros-docs |
-| DA.11 | #1183 | 🟡 Open | ouroboros-docs: [DA.11] Test results | Results, flakes, triage, classification | mvp, docs-site, documentation, tests | Y | Y | S | ouroboros-docs |
+| DA.11 | #1183 ✅ | 🟢 Done | ouroboros-docs: [DA.11] Test results | Results, flakes, triage, classification | mvp, docs-site, documentation, tests | Y | Y | S | ouroboros-docs |
 | DA.12 | #1184 | 🟡 Open | ouroboros-docs: [DA.12] Pull requests — verification, evidence & merge | Gates, criteria matrix, evidence, merge | mvp, docs-site, documentation, pr | Y | Y | M | ouroboros-docs |
 | DA.13 | #1185 | 🟡 Open | ouroboros-docs: [DA.13] Needs-you inbox | Decision cards, allow once/deny, snooze, resolved list, channel prefs | mvp, docs-site, documentation, inbox | Y | Y | M | ouroboros-docs |
 | DA.14 | #1186 | 🟡 Open | ouroboros-docs: [DA.14] Insights | Ranges, cards, trends, email digest | mvp, docs-site, documentation, insights | Y | Y | S | ouroboros-docs |
@@ -813,6 +813,27 @@ inbox, links to tests and PR.
 `.run.guardrail`, `.run.controls`.
 
 ### Issue DA.11 (#1183) — ouroboros-docs: [DA.11] Test results
+
+> **GitHub issue:** #1183 ✅ · **Status:** 🟢 Done · **Parent epic:** #1158
+>
+> **Delivered (#1183):** `user-guide/runs/tests.mdx` — written to what `main` ships:
+> - builds and the five-figure summary (`partial` while running), suites, physical tests, artifacts;
+> - failure detail with the three heuristic triage rules stated; no confidence, AI triage slot only;
+> - flake truth: only a **sanctioned** retry is flaky, and the farm upload passes no flake policy
+>   (`NO_RETRIES`), so uploads today never mark a case flaky — said in a note; `watching` is a
+>   score state, nothing quarantines;
+> - Mark & Route: four classes with their buttons and routes, correction note, receipt,
+>   Re-classify, the two toggles (auto re-run is stored only), owner/admin waiver not posted to the PR;
+> - re-run failed / full / send back, and the gate's reasons; what can go wrong.
+>
+> `tests/test-results.test.ts` checks labels, classes, buttons, triage rules and figures against the UI source.
+>
+> **Screenshots** (`acme-robotics`, run #482 `?attempt=3` — the latest seeded build, Build 4, is all green):
+> - `user-guide.tests` — page; attempt times and the loop's start masked.
+> - `user-guide.tests.failure` — `&case=overshoot_under_load`, the failure card (no rule fires for it).
+> - `user-guide.tests.flaky` — the Mark & Route card on the flaky telemetry case, `heuristic` pick.
+>
+> No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.17.
 
 **Solution / Scope.** `/runs/[id]/tests`: summary, failures, flake truth, triage and
 classification/routing, how results feed retries.
