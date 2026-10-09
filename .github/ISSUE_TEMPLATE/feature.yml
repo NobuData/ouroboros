@@ -110,6 +110,15 @@ body:
       required: true
 
   - type: textarea
+    id: documentation
+    attributes:
+      label: Documentation impact
+      description: "The `ouroboros-docs` pages to create or update, by section (User Guide / Administration / CLI) and path, and the screenshot ids to capture — or why nothing a person meets changes. See `docs/CONVENTIONS.md` § 11."
+      placeholder: "docs/user-guide/finding-your-way.mdx (the account menu); recapture user-guide.appearance — or: none, internal-only change"
+    validations:
+      required: true
+
+  - type: textarea
     id: diagram
     attributes:
       label: Diagram

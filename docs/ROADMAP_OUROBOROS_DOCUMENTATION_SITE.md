@@ -1504,7 +1504,7 @@ docs added.
 |---|---|---|---|---|---|---|---|---|---|
 | DE.1 | #1209 ✅ | 🟢 Done | ouroboros: [DE.1] /implement requires documentation updates | New documentation step, audit item, docs build, version bump, PR section | mvp, docs-site, documentation | Y (after CY.2, CZ.1) | Y | S | .claude/skills/implement, AGENTS.md |
 | DE.2 | #1210 ✅ | 🟢 Done | ouroboros: [DE.2] Roadmap skills add a Documentation section to every issue | create-roadmap / update-roadmap / create-issues | mvp, docs-site, documentation | Y | Y | S | .claude/skills |
-| DE.3 | #1211 | 🟡 Open | ouroboros: [DE.3] PR template, issue form & CONVENTIONS documentation rule | Checkbox, "Documentation impact" field, § Documentation | mvp, docs-site, documentation | Y | Y | XS | .github, docs |
+| DE.3 | #1211 ✅ | 🟢 Done | ouroboros: [DE.3] PR template, issue form & CONVENTIONS documentation rule | Checkbox, "Documentation impact" field, § Documentation | mvp, docs-site, documentation | Y | Y | XS | .github, docs |
 | DE.4 | #1212 | 🟡 Open | ouroboros-docs: [DE.4] Docs coverage gate | UI routes / runner flags / OURO_* vars must map to pages | mvp, docs-site, ci | N (after CY.5, DB.3, DC.3) | Y | M | ouroboros-docs, .github, scripts |
 | DE.5 | #1213 | 🟡 Open | ouroboros: [DE.5] Amend open roadmap issues with documentation scope | Add a Documentation section to every open issue in every roadmap (all areas) | mvp, docs-site, documentation | N (after DE.2, content epics) | Y | L | docs (roadmaps), GitHub issues |
 
@@ -1550,6 +1550,10 @@ created by `create-issues` carry the section.
 **Acceptance Criteria.** Skill texts updated; this roadmap's own issues already follow the shape.
 
 ### Issue DE.3 (#1211) — ouroboros: [DE.3] PR template, issue form & CONVENTIONS documentation rule
+
+> **GitHub issue:** #1211 ✅ · **Status:** 🟢 Done · **Parent epic:** #1162
+>
+> **Delivered (#1211):** `.github/pull_request_template.md` gains the checkbox *User documentation in `ouroboros-docs` updated (or not user-visible)*, citing CONVENTIONS § 11; `.github/ISSUE_TEMPLATE/feature.yml` gains the **required** textarea `documentation` (*Documentation impact*: pages by section and path, screenshot ids, or why nothing a person meets changes), before the diagram. CONVENTIONS § 11 already existed (DE.1) with where pages go, screenshots, the coverage gate and versioning; it gains a paragraph on the form field, the checkbox, the verify script and the `docs-site` label. `scripts/verify-github-config.sh` asserts the `docs-site` label, the `documentation` field and its label, and the checkbox — it fails when the checkbox is removed (verified; the two added `(`/`)` needed escaping for `grep -E`). `.github/labels.yml` gains `docs-site` (`0b5394`, the description GitHub already carried); `scripts/sync-labels.sh` was run: 0 created, 0 updated, 37 unchanged — the label already existed on GitHub from the roadmap's issues, so the file now records it. `ouroboros-docs/README.md` § Authoring mentions the field and the checkbox. Module 0.1.47 (README).
 
 **Solution / Scope.** `.github/pull_request_template.md` checkbox "User documentation in
 `ouroboros-docs` updated (or not user-visible)"; `.github/ISSUE_TEMPLATE/feature.yml` field

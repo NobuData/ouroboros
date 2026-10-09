@@ -43,6 +43,8 @@ for label in $ROADMAP_LABELS; do
   check_contains "$LABELS" "^- name: \"$label\"\$" "$LABELS defines the $label label"
 done
 check_contains "$LABELS" '^- name: "epic"$' "$LABELS defines the epic label for parent issues"
+# The documentation site's own label (#1211), beside the older `documentation`.
+check_contains "$LABELS" '^- name: "docs-site"$' "$LABELS defines the docs-site label"
 # The accent cyan is the brand nod called for by the issue; it is also what tells the
 # roadmap's MVP scope apart at a glance.
 check_contains "$LABELS" '^  color: "3dd6f5"' "$LABELS keeps mvp on the brand accent cyan"
@@ -69,9 +71,12 @@ check_contains "$FORMS/bug.yml" '^type: Bug' 'the bug form files a Bug'
 check_contains "$FORMS/feature.yml" '^title: "<project>: \[<epic>\.<issue>\] ' 'the feature form seeds <project>: [<epic>.<issue>]'
 
 # The anatomy every roadmap issue shares — see docs/CONVENTIONS.md § 7.
-for field in release effort systems problem scope acceptance dependencies stack; do
+for field in release effort systems problem scope acceptance dependencies stack documentation; do
   check_contains "$FORMS/feature.yml" "^    id: $field\$" "the feature form collects $field"
 done
+# Every issue names its documentation work (#1211, docs/CONVENTIONS.md § 11) — the field is
+# required, so it cannot be skipped.
+check_contains "$FORMS/feature.yml" '^      label: Documentation impact$' 'the feature form asks for the documentation impact'
 for field in module summary steps expected actual; do
   check_contains "$FORMS/bug.yml" "^    id: $field\$" "the bug form collects $field"
 done
@@ -97,5 +102,8 @@ check_contains "$PR_TEMPLATE" '^## Risk & notes' 'the PR template asks for risks
 check_contains "$PR_TEMPLATE" '^Closes #' 'the PR template links the issue it closes'
 check_contains "$PR_TEMPLATE" 'ticket-<issue-number>' 'the PR template states the branch convention'
 check_contains "$PR_TEMPLATE" 'Fix #<number> - <concise title>' 'the PR template states the commit convention'
+# A user-visible change updates the site in the same pull request (docs/CONVENTIONS.md § 11).
+check_contains "$PR_TEMPLATE" '^- \[ \] User documentation in `ouroboros-docs` updated \(or not user-visible\)' \
+  'the PR template asks whether user documentation was updated'
 
 check_summary
