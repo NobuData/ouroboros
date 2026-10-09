@@ -570,7 +570,7 @@ dev seeds (e.g. acme-robotics; `acme-onboarding` for the wizard).
 | DA.6 | #1178 ✅ | 🟢 Done | ouroboros-docs: [DA.6] Planning — roadmaps, generated tickets & timeline | Plans, ticket generation, gantt, tracker write-back | mvp, docs-site, documentation, planning | Y | Y | M | ouroboros-docs |
 | DA.7 | #1179 ✅ | 🟢 Done | ouroboros-docs: [DA.7] Workflows — Studio canvas | Build/edit/publish workflows visually | mvp, docs-site, documentation, workflow | Y | Y | M | ouroboros-docs |
 | DA.8 | #1180 ✅ | 🟢 Done | ouroboros-docs: [DA.8] Workflows as code | TS-DSL editor, completions, round-trip with the canvas | mvp, docs-site, documentation, code-view | Y | Y | M | ouroboros-docs |
-| DA.9 | #1181 | 🟡 Open | ouroboros-docs: [DA.9] Models — routing & the model registry | Routes, aliases, escalation; browsing models | mvp, docs-site, documentation, routing, registry | Y | Y | M | ouroboros-docs |
+| DA.9 | #1181 ✅ | 🟢 Done | ouroboros-docs: [DA.9] Models — routing & the model registry | Routes, aliases, escalation; browsing models | mvp, docs-site, documentation, routing, registry | Y | Y | M | ouroboros-docs |
 | DA.10 | #1182 ✅ | 🟢 Done | ouroboros-docs: [DA.10] Runs — the run console | Transcript, stages, guardrails, pause/abort/steer | mvp, docs-site, documentation, runs | Y | Y | M | ouroboros-docs |
 | DA.11 | #1183 ✅ | 🟢 Done | ouroboros-docs: [DA.11] Test results | Results, flakes, triage, classification | mvp, docs-site, documentation, tests | Y | Y | S | ouroboros-docs |
 | DA.12 | #1184 ✅ | 🟢 Done | ouroboros-docs: [DA.12] Pull requests — verification, evidence & merge | Gates, criteria matrix, evidence, merge | mvp, docs-site, documentation, pr | Y | Y | M | ouroboros-docs |
@@ -782,6 +782,19 @@ the published schema (not copying `WORKFLOW_CODE_DSL.md` wholesale).
 `.code.diagnostic`.
 
 ### Issue DA.9 (#1181) — ouroboros-docs: [DA.9] Models — routing & the model registry
+
+> **GitHub issue:** #1181 ✅ · **Status:** 🟢 Done · **Parent epic:** #1158
+>
+> **Delivered (#1181):** `user-guide/models.mdx` — written to what `main` ships:
+> - the two halves and the tabs (**Spend** honest-soon per D12), roles, and a link to the administrators' providers page for adding providers and keys;
+> - routing: the provider health strip, the routing matrix's six columns, the route card (reorder, **+ Add hop**, local fallback, the floor sentence, **Max cost per run**, **Save routes** / **Discard**), escalation rules (the three conditions and three actions, switch, delete), and **Simulate routing**;
+> - the registry: the eight **Allowed models** columns (prices as the provider reports them, health states, **Fix in Providers →**), switching an alias off, the **Resolution chain** and the alias editor (restrictions, **Used by**, duplicate, remove, rename blocked while referenced), **+ New alias** (bind now / later) and **Import from provider**.
+>
+> `tests/models.test.ts` holds labels to the UI constants, both tables' columns to their `header:` definitions, rule conditions and actions to `rules.ts`, the floor sentence to `inspector.ts`, and the providers link.
+>
+> **Screenshots** (`acme-robotics`): `user-guide.models.routing` (page), `.routing.escalation` (the rules card), `user-guide.models.registry` (page) and `.registry.detail` — the **Resolution chain** card for `coder-max` (selected by a row click); the alias editor is taller than the 900 px viewport and captures cut off, so the chain card is the detail shot. Nothing is saved.
+>
+> No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.24.
 
 **Problem Statement.** Which model does which stage, and why, is a frequent question.
 **Solution / Scope.** `/models` routing (routes per stage/task kind, aliases, escalation,
