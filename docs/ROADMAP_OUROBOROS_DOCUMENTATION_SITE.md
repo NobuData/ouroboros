@@ -577,7 +577,7 @@ dev seeds (e.g. acme-robotics; `acme-onboarding` for the wizard).
 | DA.13 | #1185 ✅ | 🟢 Done | ouroboros-docs: [DA.13] Needs-you inbox | Decision cards, allow once/deny, snooze, resolved list, channel prefs | mvp, docs-site, documentation, inbox | Y | Y | M | ouroboros-docs |
 | DA.14 | #1186 ✅ | 🟢 Done | ouroboros-docs: [DA.14] Insights | Ranges, cards, trends, email digest | mvp, docs-site, documentation, insights | Y | Y | S | ouroboros-docs |
 | DA.15 | #1187 ✅ | 🟢 Done | ouroboros-docs: [DA.15] Build Analyzer | Duration chart, suggestions, predicted vs measured, drafted tickets | mvp, docs-site, documentation, analyzer | Y | Y | M | ouroboros-docs |
-| DA.16 | #1188 | 🟡 Open | ouroboros-docs: [DA.16] Knowledge | Skills, learned facts, playbooks, repo profile | mvp, docs-site, documentation, knowledge | Y | Y | S | ouroboros-docs |
+| DA.16 | #1188 ✅ | 🟢 Done | ouroboros-docs: [DA.16] Knowledge | Skills, learned facts, playbooks, repo profile | mvp, docs-site, documentation, knowledge | Y | Y | S | ouroboros-docs |
 
 ### Issue DA.1 (#1173) — ouroboros-docs: [DA.1] User Guide overview, concepts & glossary
 
@@ -936,6 +936,21 @@ confidence, applying a suggestion, predicted vs measured, drafted tickets and pu
 `.analyzer.suggestion`, `.analyzer.predicted-vs-measured`, `.analyzer.tickets`, `.analyzer.gated`.
 
 ### Issue DA.16 (#1188) — ouroboros-docs: [DA.16] Knowledge
+
+> **GitHub issue:** #1188 ✅ · **Status:** 🟢 Done · **Parent epic:** #1158
+>
+> **Delivered (#1188):** `user-guide/knowledge.mdx` — written to what `main` ships:
+> - who may do what; scope (org-wide / repo / workflow, *Closest scope wins on conflict.*, the ladder filter) and **Preview injection ▾** (consumers, trims, required);
+> - skills: the table and its tags (draft, required, auto-generated `repo-map` with ↻ and pending maps), **+ New skill**, **Import CLAUDE.md / .cursorrules**; per-row editor opening is honest-absent per D12 (**Open in editor →** opens the Workflow Studio);
+> - learned facts: provenance links, the four statuses and their actions, expire reason, Re-learn as a new linked proposal, **Review all →** to the inbox, **+ Add fact** with anchors;
+> - playbooks: **Run on issue… ▾** picker and **+ New playbook from a past run…**;
+> - the repository profile at `#repo-profile`: detection (from the wizard), protected paths, the environment recipe and its editing (**Save as vN**); the inert **edit** controls and **Warm snapshot** described as not available.
+>
+> `tests/knowledge.test.ts` holds labels to the UI constants, the status table to the fact chips, scopes, anchor kinds and consumers to their records, the import's rules files, and the `repo-profile` anchor to `paths.ts`.
+>
+> **Screenshots** (`acme-robotics`): `user-guide.knowledge` (page), `.knowledge.fact` (Learned by the loop) and `.knowledge.repo-profile` (`/knowledge?repo=acme-robotics/helios-firmware#repo-profile` — the seeded environment recipe v3; detection is seeded in `acme-onboarding`, so this card reads "Not scanned yet."). Nothing is clicked.
+>
+> No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.22.
 
 **Solution / Scope.** `/knowledge`: skills, learned facts and their provenance, playbooks,
 repository profile/environment (`#repo-profile`), editing and retiring entries.

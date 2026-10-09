@@ -5,11 +5,181 @@ sidebar_position: 15
 description: "Seeing and correcting what Ouroboros has learned about your repositories."
 ---
 
-Seeing and correcting what Ouroboros has learned about your repositories.
+**Knowledge**, at `/knowledge`, is what every loop is told before it starts work: the
+**skills** you write, the **facts** the loop learns and you approve, and the **playbooks** you
+keep from runs that went well. It is also where each repository's profile and build
+environment live. *Teach the loop once. Every run remembers.*
 
-:::info[Being written]
+Use this page to see what the loops know, to approve or correct what they have learned, and to
+add what they should know.
 
-This page is being written in
-[#1188](https://github.com/NobuData/ouroboros/issues/1188).
+<Screenshot id="user-guide.knowledge" />
 
-:::
+Everyone in the workspace can read the page. Owners and admins write skills, import rules
+files, switch skills on and off, create playbooks and edit the environment; owners, admins and
+members decide facts and run playbooks. Controls you cannot use are greyed out and say why.
+
+## Scope: who is told what
+
+Everything here applies at a scope:
+
+- **org-wide** — every repository in the workspace;
+- **repo** — one repository;
+- **workflow** — one workflow, overriding the others.
+
+The **Scope** card shows the ladder, farthest to closest, with how many active skills and
+confirmed facts each step holds. *Closest scope wins on conflict.* A workflow's skill overrides
+a repository's, which overrides an org-wide one. The step matching the repository chosen in
+the header chip is marked **current**. Choose a step to show only that scope's skills and
+facts; **Show every scope** clears it.
+
+### Previewing what a run gets
+
+**Preview injection ▾** opens **What would be injected**: choose a **Repository**, a
+**Workflow** and a **Consumer** — **Run stage**, **Playbook launch** or **Estimator** — and see
+the exact skills and **Confirmed facts** a run would be handed. It also lists what was
+**Trimmed** to fit the consumer's limits (org first, then repo, then workflow) and what is
+**Not in this manifest**, and why. A skill marked **required** is never switched off or trimmed.
+
+## Skills
+
+A skill is a page of instructions in markdown — conventions, safety rules, how a repository is
+built — that the loop is handed at the start of every run in its scope.
+
+The **Skills** table lists each one with its **Scope**, **Used by** (how many runs it reached,
+such as **every run** or **85% of runs**; the **ⓘ** says how it is counted), when it was
+**Updated**, and its **On** switch. Choose a column heading to sort.
+
+- **draft** — a skill that has not been published. Drafts never inject: it does nothing to any
+  run until it is published and promoted out of draft.
+- **required — cannot disable** — required by policy; its switch is locked on.
+- **auto-generated nightly** — the `repo-map` skill, rebuilt from the repository every night.
+  Edits to it are overwritten; choose **↻** to regenerate it now instead (owners and admins).
+  A repository whose map has not been built yet shows **pending first generation** — the
+  nightly job has not reached it.
+
+Owners and admins switch a skill on or off with **On**.
+
+### Adding skills
+
+- **+ New skill** opens **New skill**: a **Name** (such as *Power budget checks*), a **Slug** it
+  is filed under, a one-line **Description**, and a **Scope** — **Org-wide — every repository
+  in this workspace** or **Repo — one repository**. **Create draft** files it as a draft.
+- **Import CLAUDE.md / .cursorrules** opens **Import rules files**: choose a **Repository** and
+  **Preview**. Ouroboros reads the repository's `CLAUDE.md`, `AGENTS.md`, `.cursorrules` and
+  `.github/copilot-instructions.md` and shows what it would create. **Apply** creates them.
+  Nothing imported is switched on: sections arrive as skill drafts and rules as facts awaiting
+  review. Importing again only adds what changed.
+
+### Editing a skill
+
+**Open in editor →** opens the Workflow Studio. Opening a single skill from its row in an
+editor is not available yet; the row's control says so.
+
+## Learned by the loop
+
+<Screenshot id="user-guide.knowledge.fact" />
+
+As it works, the loop proposes **facts** — single sentences it should remember, such as
+**CI needs `west update` before first build of the day**. They come from correction notes,
+waivers and steers it is told to remember, and from imported rules files. *Confirmed facts are
+injected into every run's context.* Nothing a loop proposes is used until a person confirms it.
+
+Each fact shows where it came from — such as *from correction note (run #1847)* — with links to
+the run, pull request, ticket or file behind it, and its status:
+
+| Status | What it means | What you can do |
+| --- | --- | --- |
+| **awaiting review** | Proposed, not yet used. | **Confirm** or **Reject**. |
+| **✓ confirmed** | Told to every run in its scope. Shows who confirmed it and **used 12×** — how many runs it reached. | Nothing to decide. |
+| **stale** | Something it depends on changed — the row says what. *Something near this changed*, not *this is wrong*. | **Re-confirm** or **Expire**. |
+| **expired** | No longer used. Struck through, with why and how often it was used. | **Re-learn**. |
+
+- **Expire** asks **Why it expired** — the reason is required — then **Expire fact**, or
+  **Keep it** to back out.
+- **Re-learn** makes a **new** proposal awaiting review at the top of the card, linked to the
+  old one. The expired fact stays expired.
+- **Review all →** opens the [Needs-you inbox](./inbox.mdx), where facts waiting on review are
+  answered alongside every other decision.
+
+### Adding a fact
+
+**+ Add fact** opens **Add a fact**:
+
+- **Fact** — one sentence the loop should know. Backticks render as code: `` `west update` ``.
+- **Applies to** — **The whole workspace** or one repository.
+- **Where it came from** — optional; left empty, it reads as added by hand.
+- **Anchors — why it can expire** — what the fact depends on: a **Path glob** (such as
+  `tests/hil/**`), a **Dependency** (such as `west`) or a **Platform version** (such as
+  `zephyr-4.0`). A nightly check watches each anchor and flags the fact **stale** when one
+  changes. A fact with no anchors is never flagged stale.
+
+**Propose fact** adds it as **awaiting review**, like every other fact — someone still has to
+confirm it.
+
+## Playbooks
+
+A **playbook** is a run that went well, kept: its workflow pin, its skill overrides and its
+steer notes, ready to aim at another issue. The **Playbooks** card lists each one with how many
+runs it has launched, such as **CVE bump** — *Patch a vulnerable dep + prove no API break* —
+and which issues it offers.
+
+- **Run on issue… ▾** opens a picker of open issues the playbook accepts, safest first. **Find
+  an issue** by a word of the title or a number (`485` or `#485`), then **Queue** to run the
+  playbook on it. Issues that cannot launch yet say why. Owners, admins and members can run a
+  playbook.
+- **+ New playbook from a past run…** opens **New playbook from a past run**: choose one of the
+  **Recent runs that finished** with **Use this run**, check **What the run captured** — the
+  **Workflow pin**, **Skill overrides** and **Steer notes** — then give it a **Name**, a
+  **Description** and, optionally, **Only offer issues labelled** (comma-separated). **Save
+  playbook** creates it. Only owners and admins can create a playbook, because it changes which
+  skills a run is given.
+
+## Repository profile and environment
+
+<Screenshot id="user-guide.knowledge.repo-profile" />
+
+The **Repo profile — helios-firmware** card (the name follows the repository), at `/knowledge#repo-profile`, describes one repository — choose it
+from **Repository**. It shows:
+
+- **What detection found** — the platform, build system and conventions that detection
+  recorded for the repository. Detection runs from the [Get Started
+  wizard](./getting-started/wizard.mdx); until a scan exists the card reads **Not scanned
+  yet.** and never scans on its own.
+- **Protected paths** — the paths loops may not edit without a person's one-time allowance
+  (see [Needs-you inbox](./inbox.mdx)), or **none**.
+- **Environment** — the commands that prepare the repository before any stage runs, such as
+  `west update` and toolchain installs. They run in order at the repository root, by the build
+  farm's container-pool setup and before execution, stopping at the first failure. The
+  heading says which version is in use and who edited it last.
+
+The **edit** controls beside detection rows and protected paths are greyed out: this card shows
+detection and policy but does not change them.
+
+### Editing the environment
+
+Owners and admins choose **Edit** (or **Add environment recipe** when there is none) and write
+**Commands, one per line**. Text after ` # ` on a line is a comment for people and is never
+run; blank lines are skipped. **Save as v4** (the next version number) saves it as a new version; **Cancel** discards your changes. Until a recipe exists, the farm and
+execution run nothing before the first stage.
+
+**Warm snapshot** — prebuilt, warmed environments are not available yet; the row says so.
+
+## What can go wrong
+
+- **"Only an owner, an admin or a member can decide a fact; a viewer reads."** Ask someone
+  with a member role or higher.
+- **"Say why it expired."** An expiry needs a reason.
+- **"Say what the loop should know."** A proposed fact cannot be empty. Each anchor needs a
+  value: **"Give the anchor a value, or remove it."**
+- **"A skill in this workspace already has this slug."** Choose another slug. A slug follows one
+  rule: *Lower-case letters and digits, words separated by single hyphens.*
+- **"No rules files found"** or **"Nothing has changed since the last import"** — there is
+  nothing new to import; **"Nothing was imported."**
+- **"This workspace already has a playbook with that name."** Choose another name.
+- **"No run has finished yet — a playbook is learned from one that has."** Run a loop first.
+- **A fact you expected is not in a run's context.** Check that it is **✓ confirmed** and in
+  the run's scope, then use **Preview injection ▾** to see what that run would get and what was
+  trimmed.
+- **A `repo-map` skill reads "generation failed"** — choose **↻** to try again (owners and
+  admins).
