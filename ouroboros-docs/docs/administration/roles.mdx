@@ -5,11 +5,121 @@ sidebar_position: 2
 description: "Owner, Maintainer and Viewer, their capabilities, and what each settings section requires."
 ---
 
-Owner, Maintainer and Viewer, their capabilities, and what each settings section requires.
+Everyone in a workspace holds a **role**, and the role decides what they may change. One
+**capability**, **Can approve loops**, is set per person on top of the role and decides who may
+approve and merge what loops produce. Use this page to decide what to give someone, and to work
+out why somebody cannot do what they expected.
 
-:::info[Being written]
+Roles belong to a workspace, not to a person: you can be an Owner in one workspace and a
+Viewer in the next.
 
-This page is being written in
-[#1189](https://github.com/NobuData/ouroboros/issues/1189).
+## The three roles
 
-:::
+The Members card lists each person's role, and its footer sums them up:
+**Owner > Maintainer (approve/merge) > Viewer (read-only)**.
+
+| Role | Stored as | What it may do |
+| --- | --- | --- |
+| **Owner** | `owner` | Everything, including deleting the workspace. |
+| **Maintainer** | `admin` | Approve and merge, and change every setting except deleting the workspace. |
+| **Viewer** | `viewer` | Read everything; change nothing. |
+
+The **stored as** name is the one the API and its error messages use — a refusal that says
+*takes an owner or an admin* means an Owner or a Maintainer.
+
+- **Owner** — whoever creates a workspace is its first Owner. Only an Owner can make someone
+  else an Owner, and a workspace always keeps at least one: the last Owner can be neither
+  demoted nor removed (*This is the workspace's last owner. Make someone else an owner before
+  changing this role.*). Only an Owner can delete a workspace, restore one that is pending
+  deletion, or publish a policy change that loosens a rule.
+- **Maintainer** — runs the workspace day to day: invites people, sets roles up to
+  Maintainer, connects sources and providers, enrolls build runners, edits policies that
+  tighten or keep a rule, reads the audit log, pauses and disconnects.
+- **Viewer** — sees every page, including all of <UiPath path="Settings" />, with every control
+  that would change something switched off. A Viewer cannot start work or answer inbox
+  decisions — unless you tick their **Can approve loops** box, below. New invitations start as
+  Viewer.
+
+### The member role
+
+Some people hold a fourth stored role, `member`. The **Role** picker never assigns it, and the
+Members card shows it as **Viewer**, but it is not quite read-only: a `member` may start work
+that a Viewer may not — queue issues for a loop, sync the backlog, snooze inbox decisions, and
+answer the ones open to members (such as **Return to loop with note**, **Confirm** on a fact,
+or **Retry with note**). In Settings, a `member` is read-only, exactly like a Viewer. To make such a
+person a true Viewer, open their role and choose **Viewer**.
+
+## The approve-loops capability
+
+**Can approve loops** is a column of the Members card with a box per person. Holding it lets
+someone:
+
+- answer the approval decisions in the Needs-you inbox — **Approve & merge**, **Allow once**,
+  **Deny**, **Waive & annotate**, **Require bench upgrade** and **Sign off**;
+- approve a pull request, arm its merge plan, and merge it, on the pull request's verification
+  page;
+- waive an acceptance criterion the bench cannot verify — this one also needs the Owner or
+  Maintainer role.
+
+By default it follows the role: Owners and Maintainers hold it, Viewers do not. Once you tick
+or untick someone's box, your setting wins, and a later role change does not reset it. The box
+says what it does before you use it: *Grants approve and merge: answering approval items in the
+Needs-You inbox, and approving, waiving, arming and merging on pull requests. Unticking removes
+it at once.*
+
+Some uses:
+
+- **Keep an Owner out of approvals** — untick their box; they keep every other power.
+- **Let a `member` approve** — tick their box; they can then approve and merge, but still
+  cannot waive a criterion or change settings.
+- **Ticking it for a Viewer** lets them answer the inbox's approval decisions only. The pull
+  request page's own approve, arm and merge also need a role that may start work, so a Viewer
+  still cannot use them.
+- **Service accounts never hold it** — *Service accounts never approve or merge loops.* An API
+  token can read and submit, but no automation can approve on a person's behalf.
+
+Changing the box applies at once and needs an Owner or Maintainer. Someone who lacks it sees
+the approve buttons greyed out, with *Needs the approve-loops capability — an owner or admin can
+grant it.*
+
+## What each settings section requires
+
+Reading is open to everyone in the workspace unless the table says otherwise; changing anything
+needs the role shown. The service checks every change itself, so a control drawn switched off
+is never the only thing standing in the way.
+
+| Section | Who may read | Who may change | Notes |
+| --- | --- | --- | --- |
+| **Workspace** | Everyone | Owner, Maintainer | **Data region** is set by the deployment, not from this page. |
+| **Members & roles** | Everyone | Owner, Maintainer | Only an Owner can make someone an Owner. Service accounts and their tokens are listed only for Owners and Maintainers. |
+| **Appearance** | You | You | Your own theme and font size, whatever your role. |
+| **Autonomy policies** | Everyone | Owner, Maintainer | An edit that loosens a rule needs an Owner to publish it. The dry-run switch takes an Owner or Maintainer. |
+| **Audit log** | Owner, Maintainer | — | Nothing on it is edited. **Export audit CSV** is for Owners and Maintainers too. |
+| **Integrations** | Everyone | Owner, Maintainer | The status tiles are read-only. Webhook endpoints are listed and changed only by Owners and Maintainers. |
+| **Notifications** | Everyone | Owner, Maintainer | The workspace's digest time and insights recipients. Your own mail preferences, on the inbox's **Notification settings**, are yours to change whatever your role. |
+| **Danger zone** | Everyone | Owner, Maintainer to pause, resume and disconnect; Owner to delete and restore | Deleting also asks for a recent sign-in. |
+| **Sources** | Everyone | Owner, Maintainer | Adding, configuring, testing, syncing and pausing a source. |
+| **Providers** | Everyone | Owner, Maintainer | Keys are masked for everyone; revealing one takes an Owner or Maintainer. |
+| **Farm tokens** | Owner, Maintainer | Owner, Maintainer | Pools, enrollment tokens and the enroll command. Everyone can see the build farm itself. |
+| **Knowledge / env** | Everyone | Owner, Maintainer | A repository's environment recipe. |
+
+## What can go wrong
+
+- **Every control in Settings is switched off.** You are a Viewer (or hold the `member` role).
+  The page says **Viewing workspace settings as a viewer.** — or *as a member* — *Every setting
+  on this page can be read. Changing one takes an owner or an admin.*
+- **The Owner choice is greyed out.** *Only an owner can make someone an owner.* Ask an Owner.
+- **You cannot demote or remove someone.** They are the last Owner. Make another person an
+  Owner first.
+- **A policy edit will not publish.** It loosens a rule: *Not published — this edit loosens a
+  rule, and only an owner can publish that.* Ask an Owner to publish it, or keep the rule as
+  strict as it was.
+- **The approve buttons are greyed out for a Maintainer.** Their **Can approve loops** box was
+  unticked. Tick it again on the Members card.
+- **The audit log says it is for owners and admins.** *The audit log is read by owners and
+  admins. Ask one of them for what you need from it.*
+- **Delete is not offered.** *Only an owner can delete the workspace.* Maintainers can pause or
+  disconnect instead — see [Data retention, audit & lifecycle](./retention-audit-lifecycle.mdx).
+
+To invite people, change roles and issue API tokens, see
+[Members, invites, roles & API tokens](./members-and-tokens.mdx).

@@ -5,11 +5,79 @@ sidebar_position: 1
 description: "What deployment administrators and workspace administrators each look after."
 ---
 
-What deployment administrators and workspace administrators each look after.
+Two kinds of people administer Ouroboros, and this section is for both. You may be one, the
+other, or both at once:
 
-:::info[Being written]
+- **The deployment administrator** runs the installation — the machines, the containers, the
+  database and the configuration every workspace on it shares.
+- **A workspace administrator** runs one workspace — who is in it, what may merge on its
+  own, which trackers and models it uses and where its record lives.
 
-This page is being written in
-[#1189](https://github.com/NobuData/ouroboros/issues/1189).
+They hold their power in different places. Deployment administration happens on the host:
+whoever can edit the services' environment and restart them administers the deployment.
+Nothing in the app makes you one, and the app has no screen for it. Workspace administration
+happens in the app, under **Settings**, and needs the **Owner** or **Maintainer** role in that
+workspace — see [Roles & capabilities](./roles.mdx).
 
-:::
+## What the deployment administrator looks after
+
+You set up and keep running everything the workspaces stand on:
+
+| You look after | What it means | Read |
+| --- | --- | --- |
+| **The services** | The UI, REST and engine containers, which of them are public, the database and its migrations | [Deploying Ouroboros](./deploy/overview.mdx) |
+| **Configuration** | The `OURO_*` variables each service reads at start-up — the addresses services reach each other on, secrets, mail and limits | [Configuration reference](./configuration/index.mdx) |
+| **Sign-in** | The GitHub OAuth app every person signs in through | [Sign-in & workspace settings](./sign-in-and-workspace.mdx) |
+| **The farm gateway** | The address build runners reach the installation on, over mutual TLS | [The farm gateway](./deploy/farm-gateway.mdx) |
+| **Mail** | The mail server that sends decision mail, digests and invitations | [Notifications, email & webhooks](./notifications-and-webhooks.mdx) |
+| **Upgrades and backups** | Applying new versions, migrating the database and keeping backups you can restore | [Operations](./operations.mdx) |
+
+A setting made here applies to every workspace on the installation, and a service reads it
+when it starts — change one and restart that service. Before anyone signs in for the first
+time, work through the [Go-live checklist](./deploy/checklist.mdx).
+
+## What a workspace administrator looks after
+
+Anyone who signs in gets a personal workspace of their own and can create more. Whoever
+creates a workspace is its first **Owner**. From then on the workspace's Owners and Maintainers
+run it from <UiPath path="Settings" />, reached from the sidebar's **Settings** entry or the
+account menu's **Workspace settings**.
+
+<Screenshot id="administration.settings" />
+
+The page is headed **Workspace settings** — *Who can do what, what merges on its own, and
+where the record lives.* Its tab row leads to each part:
+
+| Tab | What you do there | Read |
+| --- | --- | --- |
+| **Workspace** | The workspace's name, its tenant domain, its data region and how long its data is kept | [Sign-in & workspace settings](./sign-in-and-workspace.mdx) |
+| **Members** | Invite people, change their roles, decide who may approve loops, and issue service-account tokens | [Members, invites, roles & API tokens](./members-and-tokens.mdx) |
+| **Policies** | What may merge without a person, protected paths, the spend guard and dry-run | [Policies & guardrails](./policies.mdx) |
+| **Integrations** | Whether each connected system is working, and the webhook endpoints the workspace reports to | [Notifications, email & webhooks](./notifications-and-webhooks.mdx) |
+| **Audit** | The workspace's audit trail, and **Export audit CSV** | [Data retention, audit & lifecycle](./retention-audit-lifecycle.mdx) |
+| **Danger zone** | Pausing the workspace, disconnecting it, and deleting it | [Data retention, audit & lifecycle](./retention-audit-lifecycle.mdx) |
+| **Sources** | The trackers and repositories the workspace takes issues from | [Ticket sources & repositories](./sources.mdx) |
+| **Providers** | The model providers and keys loops run on | [Model providers & keys](./providers.mdx) |
+| **Farm tokens** | The pools of build runners and the tokens that enroll them | [Build farm administration](./build-farm.mdx) |
+| **Knowledge / env** | Each repository's environment recipe, on the Knowledge page | [Knowledge](../user-guide/knowledge.mdx) |
+
+The hub also holds two cards with no tab of their own — scroll to them: **Appearance**, your own
+theme and font size, which only you see; and **Notifications**, the workspace's daily digest
+time and who receives the weekly insights mail.
+
+Fields you edit on the hub wait for **Save changes**. A control marked **applies instantly** —
+everything on **Members** and **Danger zone** — acts as soon as you confirm it.
+
+## What can go wrong
+
+- **Every field is read-only.** You are a Viewer in this workspace. The page says so under the
+  tab row — **Viewing workspace settings as a viewer.** *Every setting on this page can be
+  read. Changing one takes an owner or an admin.* Ask one of the workspace's Owners or
+  Maintainers. ("Admin" is the stored name of the Maintainer role.)
+- **A setting you need is not on the page.** It is probably a deployment setting, made in the
+  services' environment rather than in the app — look it up in the
+  [Configuration reference](./configuration/index.mdx) and ask whoever runs the installation.
+- **A section says it could not be read.** The hub shows the rest of the page and a
+  **Retry** button above it; press it once the service is reachable again.
+- **You cannot delete the workspace.** Deleting is for Owners only, and so is making someone
+  an Owner. See [Roles & capabilities](./roles.mdx).

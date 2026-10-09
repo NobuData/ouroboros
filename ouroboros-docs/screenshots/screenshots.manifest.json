@@ -993,6 +993,24 @@
       "capturedAt": "2026-10-09T01:29:46.972Z",
       "uiVersion": "0.144.1",
       "seedRef": "5ad618f6e116449565b5c52cf181a9f18d4fa0b1"
+    },
+    {
+      "id": "administration.settings",
+      "route": "/settings",
+      "workspace": "acme-robotics",
+      "ready": "#settings-members-title",
+      "clip": "page",
+      "masks": [
+        "#members tbody td:nth-child(4)",
+        "#members tbody td .members__muted",
+        ".members__service-meta > span:last-child",
+        ".settings-workspace__note"
+      ],
+      "caption": "Workspace settings: the tab row across the top, then one card per part of the workspace you administer.",
+      "alt": "The Workspace settings page for Acme Robotics, headed Who can do what, what merges on its own, and where the record lives., with Export audit CSV and Save changes, and the tab row Workspace, Members, Policies, Integrations, Audit and Danger zone, then Sources, Providers, Farm tokens and Knowledge / env. Below it the Workspace card shows the workspace name, the tenant domain acme-robotics.dev, the self-hosted data region, 30 days of data retention and training switched off; the Members & roles card, marked applies instantly, lists Ken Suenobu as Owner and Maya Chen as Maintainer, both able to approve loops, Jorge Reyes as Viewer, the devops-bot service account and a pending Maintainer invitation for priya@acme.dev, above the footer Owner > Maintainer (approve/merge) > Viewer (read-only); the Appearance card begins underneath.",
+      "capturedAt": "2026-10-09T01:42:15.394Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "e9976688c49b506701552d03639742160357173c"
     }
   ]
 }
