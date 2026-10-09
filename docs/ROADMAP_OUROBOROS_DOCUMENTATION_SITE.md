@@ -1311,7 +1311,7 @@ All DC issues are **[STD]**; screenshots here are terminal captures only where t
 | DC.1 | #1201 ✅ | 🟢 Done | ouroboros-docs: [DC.1] CLI overview & conventions | Which tools exist, where they run, exit codes, env-var fallbacks | mvp, docs-site, documentation | Y | Y | S | ouroboros-docs |
 | DC.2 | #1202 ✅ | 🟢 Done | ouroboros-docs: [DC.2] Runner installer (install.sh) reference | Flags, service install, verification, uninstall/purge | mvp, docs-site, documentation, build-farm | Y | Y | S | ouroboros-docs |
 | DC.3 | #1203 ✅ | 🟢 Done | ouroboros-docs: [DC.3] ouroboros-runner command reference | enroll/run/version/hello/heartbeat/help, env, state dir, drift check | mvp, docs-site, documentation, build-farm, ci | Y | Y | M | ouroboros-docs |
-| DC.4 | #1204 | 🟡 Open | ouroboros-docs: [DC.4] Stack & operator commands | yarn setup/dev/dev:stop/dev:reset/verify, setup.sh flags | mvp, docs-site, documentation | Y | Y | S | ouroboros-docs |
+| DC.4 | #1204 ✅ | 🟢 Done | ouroboros-docs: [DC.4] Stack & operator commands | yarn setup/dev/dev:stop/dev:reset/verify, setup.sh flags | mvp, docs-site, documentation | Y | Y | S | ouroboros-docs |
 | DC.5 | #1205 | 🟡 Open | ouroboros-docs: [DC.5] Using the REST API from the shell | API tokens, curl recipes, error envelope, polling, OpenAPI | mvp, docs-site, documentation, rest | Y | Y | M | ouroboros-docs |
 
 ### Issue DC.1 (#1201) — ouroboros-docs: [DC.1] CLI overview & conventions
@@ -1360,6 +1360,10 @@ and fails when a flag is missing from the docs pages' front matter `flags:` list
 **Acceptance Criteria.** [STD]; adding a flag to `main.go` without documenting it fails `ci/docs`.
 
 ### Issue DC.4 (#1204) — ouroboros-docs: [DC.4] Stack & operator commands
+
+> **GitHub issue:** #1204 ✅ · **Status:** 🟢 Done · **Parent epic:** #1160
+>
+> **Delivered (#1204):** `cli/stack-commands.mdx` — prerequisites and a quick start (`corepack enable`, `yarn install`, `yarn setup`, `docker compose up -d`, `yarn dev`; the seeded sign-in `ken@acme-robotics.dev` / `ouroboros-dev-password`), a verb table, and a section per verb: `yarn install`; `yarn setup` (what it renders, generated and shared secrets, never overwriting, the synopsis, `--dry-run`/`--force`/`--db-port`/`--root`/`--help`, exit 0/1/2, the busy-port warning, GitHub OAuth optional locally); `yarn dev` (addresses; it migrates but **does not start** PostgreSQL — `ouroboros-db`'s `dev` is `run.sh`, a migration of a running server, so the page says to start it with `docker compose up -d` as `setup.sh`'s closing notes do; the root README's "starts PostgreSQL" is stale and was left alone); `dev:stop`; `dev:reset` with a `caution` naming every volume it deletes; `dev:web` (shares :3000); `dev:docs` (:3100); `yarn verify` (`run-tests.sh`, directories, exit 0/1/2); `yarn e2e` (cold build, `--wait`, `--keep`/`--no-build`/`-- ARGS`, exit 0/1/2). Root `yarn test` not documented, as scoped. `tests/stack-commands.test.ts` holds every `yarn` verb named to the root `package.json`, the wrapped commands, setup's synopsis and options, and the three scripts' exit statuses to their headers. No screenshots listed. No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.39.
 
 **Solution / Scope.** `yarn install`, `yarn setup` (`scripts/setup.sh` `--dry-run`, `--force`,
 `--db-port`, `--root`, exit codes), `yarn dev`, `dev:stop`, `dev:reset` (`caution`: deletes
