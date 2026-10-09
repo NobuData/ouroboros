@@ -60,6 +60,8 @@ yarn check:screenshots        # manifest ↔ files ↔ pages, size budgets, stal
 yarn gen:config-reference     # regenerate the configuration reference from .env.example
 yarn check:config-reference   # fail if that reference is stale (yarn test checks it too) —
                               # see "The configuration reference" below
+yarn check:coverage           # fail if a UI route, a variable or a flag is undocumented —
+                              # see "The docs coverage gate" below
 ```
 
 **CI.** [`ci/docs`](../.github/workflows/docs.yml) runs `yarn install --immutable`, `lint`,
@@ -577,6 +579,28 @@ missing from its page's list (`cli/runner/<command>.mdx`, or `cli/install-sh.mdx
 listed flag is accepted nowhere, or when a page has no list. A runner page may list a flag its
 command takes but its synopsis omits, such as `hello`'s `--state-dir`. Adding a flag to either
 usage text therefore means adding it to the page — its front matter and its body.
+
+### The docs coverage gate
+
+[`docs-coverage.json`](docs-coverage.json) maps every route the product serves — each
+`page.tsx` under `ouroboros-ui/app/(app)`, `(auth)` and `(wizard)` — to the page that documents
+it, as the page's path under `docs/` without its extension, or to
+`{"undocumented": "<reason>"}` (which every `/workshop/*` route is):
+
+```json
+"/runs/[id]": "user-guide/runs/console",
+"/workshop/charts": { "undocumented": "a developer workshop; not a product screen" }
+```
+
+`yarn check:coverage` ([`scripts/check-coverage.ts`](scripts/check-coverage.ts), a step of
+`ci/docs`, [#1212](https://github.com/NobuData/ouroboros/issues/1212)) enumerates the routes from
+the UI's files and fails on a route with no entry, an entry naming a page that does not exist,
+an entry for a route that no longer exists, or a workshop route mapped to a page — and runs the
+variable check (every `.env.example` variable in the generated reference) and the flag check
+beside it, so one command answers whether anything shipped undocumented. `ci/docs` watches
+`ouroboros-ui/app/**/page.tsx`, so a new route fails the pull request that adds it until the
+entry is there. The reading is [`scripts/coverage.ts`](scripts/coverage.ts), pure, and
+`tests/coverage.test.ts` holds it.
 
 ### Diagrams
 

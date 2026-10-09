@@ -747,7 +747,7 @@ YAML
       "ouroboros-ui/public/favicon.ico" "ouroboros-ui/public/favicon-32-light.png" \
       "ouroboros-ui/public/favicon-32-dark.png" "ouroboros-ui/public/apple-touch-icon.png" \
       ".env.example" "ouroboros-runner/cmd/ouroboros-runner/main.go" \
-      "ouroboros-runner/install.sh" ".github/actions/node-module/**" \
+      "ouroboros-runner/install.sh" "ouroboros-ui/app/**/page.tsx" ".github/actions/node-module/**" \
       ".github/actions/scaffold-gate/**" ".github/workflows/docs.yml"; do
       printf '      - "%s"\n' "$path"
     done
@@ -1083,6 +1083,10 @@ check_break 'a shared pipeline only one module watches is reported' \
 check_break 'a docs workflow that stops watching the tokens it copies is reported' \
   'docs/design/tokens\.css runs docs\.yml' \
   'sed -i "/docs\/design\/tokens\.css/d" "$root/.github/workflows/docs.yml"'
+
+check_break 'a docs workflow that stops watching the UI routes is reported' \
+  'ouroboros-ui/app/\(app\)/dashboard/page\.tsx runs docs\.yml ui\.yml' \
+  'sed -i "/ouroboros-ui\/app\/\*\*\/page\.tsx/d" "$root/.github/workflows/docs.yml"'
 
 check_break 'a docs workflow watching all of ouroboros-ui is reported' \
   'manifest\.webmanifest runs ui\.yml' \

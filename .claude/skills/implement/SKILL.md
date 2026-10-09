@@ -57,7 +57,7 @@ git checkout -b ticket-<number>
   - Name the **concrete page paths** before editing (e.g. `ouroboros-docs/docs/user-guide/finding-your-way.mdx`), and keep every label, route, flag and variable on the page exactly as implemented.
   - **Screenshots:** add or refresh the entry in `ouroboros-docs/screenshots/screenshots.manifest.json` and recapture **only the affected ids** with `yarn screenshots --only <id>` from `ouroboros-docs/`, against the seeded stack already running for the UI checks. Never recapture unrelated ids; Read both theme PNGs afterwards.
   - A new or changed `OURO_*` variable: edit `.env.example` (and the top-level one), then `yarn gen:config-reference`. A new CLI flag: add it to the command page's `flags:` front matter (`yarn check:cli-flags`).
-  - Update the `docs-coverage` entries once `ouroboros-docs/docs-coverage.json` exists (DE.4, #1212); until then say so in the PR.
+  - A new or moved UI route (`page.tsx`): add its entry to `ouroboros-docs/docs-coverage.json` — the page id that documents it, or `{"undocumented": "<reason>"}` — and run `yarn check:coverage`, which `ci/docs` runs too.
   - An **internal-only change** needs no docs — say so in the PR's Documentation section.
 - Lint the code.
 - DO NOT RUN END TO END TESTS
@@ -92,7 +92,7 @@ yarn test
 
 Run package-specific tests the issue touches, per READMEs.
 
-- When `ouroboros-docs/**` changed, run from `ouroboros-docs/` (it is outside the turbo graph): `yarn lint`, `yarn typecheck`, `yarn test`, every `yarn check:*` (`check:brand`, `check:screenshots`, `check:config-reference`, `check:cli-flags`) and `yarn build` — a broken link or anchor fails the build.
+- When `ouroboros-docs/**` changed, run from `ouroboros-docs/` (it is outside the turbo graph): `yarn lint`, `yarn typecheck`, `yarn test`, every `yarn check:*` (`check:brand`, `check:screenshots`, `check:config-reference`, `check:cli-flags`, `check:coverage`) and `yarn build` — a broken link or anchor fails the build.
 - DO NOT RUN END TO END TESTS
 - Test all code, not just changes, so regressions are checked.  Tests should limit the number of threads run at the same time to 1/2 the threads available on the CPU.
 - Fix **any failures introduced that block ticket** and **any tests or build issues** before proceeding.

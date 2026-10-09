@@ -17,6 +17,9 @@ name: ouroboros-docs · ci
 # - .env.example, the runner's main.go and its install.sh feed the generated configuration
 #   reference (#1191), the CLI flag drift check (#1203) and the docs coverage gate (#1212).
 #   They are watched from the start so those checks are routed the day they land.
+# - ouroboros-ui's page.tsx files are the product's routes, which the coverage gate holds to
+#   docs-coverage.json (#1212): a new route without a doc page fails here, on the change that
+#   added it. Only the page files are watched; the rest of the UI stays ci/ui's alone.
 #
 # The site is not a Yarn workspace (docs/CONVENTIONS.md § 1, limit 6): it installs from its
 # own ouroboros-docs/yarn.lock, so the root workspace files are not inputs either.
@@ -40,6 +43,7 @@ on:
       - ".env.example"
       - "ouroboros-runner/cmd/ouroboros-runner/main.go"
       - "ouroboros-runner/install.sh"
+      - "ouroboros-ui/app/**/page.tsx"
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/docs.yml"
@@ -58,6 +62,7 @@ on:
       - ".env.example"
       - "ouroboros-runner/cmd/ouroboros-runner/main.go"
       - "ouroboros-runner/install.sh"
+      - "ouroboros-ui/app/**/page.tsx"
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/docs.yml"
@@ -104,6 +109,14 @@ jobs:
       - name: CLI flags are documented
         working-directory: ouroboros-docs
         run: yarn check:cli-flags
+
+      # The coverage gate (#1212): every UI route has an entry in docs-coverage.json naming
+      # its page (or why it has none), every variable is in the reference and every flag on
+      # its page — one command over the three, so an undocumented route fails the build that
+      # added it.
+      - name: Docs coverage
+        working-directory: ouroboros-docs
+        run: yarn check:coverage
 
       # A green build can still produce an image that serves nothing (#1208). So the image is
       # built here, on every event, loaded into this runner's daemon and never pushed — no
