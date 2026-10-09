@@ -370,6 +370,55 @@
       "capturedAt": "2026-10-08T23:46:01.836Z",
       "uiVersion": "0.144.1",
       "seedRef": "05111ae944803270844598a92960dce6fb331961"
+    },
+    {
+      "id": "user-guide.workflow.code",
+      "route": "/workflows/standard-fix/code",
+      "workspace": "acme-robotics",
+      "ready": "section.code-workbench .cm-content .code-editor__callee",
+      "clip": "page",
+      "caption": "The code view: the same workflow as the canvas, as a typed file, with the explorer, the editor and the loop checks.",
+      "alt": "The Workflow Studio's Code tab open on standard-fix.loop.ts: the Explorer listing the workspace's workflow files, skills and the read-only ouroboros.config.ts; the editor showing the file's defineLoop call with its trigger and first stages, under the line Printed from the draft · Saves as you type.; and the Loop Checks, Types and Outline panel on the right, above the editor's status bar.",
+      "capturedAt": "2026-10-09T00:00:33.927Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "eb60d576d3ac95aedf50aa934055a9e1ba8724b7"
+    },
+    {
+      "id": "user-guide.workflow.code.completion",
+      "route": "/workflows/standard-fix/code",
+      "workspace": "acme-robotics",
+      "ready": "aside.code-panel .code-hover-doc",
+      "clip": "aside.code-panel",
+      "actions": [
+        {
+          "click": ".cm-content .code-editor__callee:text-is('alias')"
+        }
+      ],
+      "caption": "The Types card follows your cursor: here it documents route.alias, the call that pins a stage's model.",
+      "alt": "The panel beside the code editor: Loop Checks reading Graph acyclic except declared gate loop and 1 reference does not resolve; the Types card for the symbol under the cursor, route.alias(name: AliasName): ModelRoute, explaining that it pins the stage to one model registry alias; and the Outline of the twelve stages, with checks-green marked as the back-edge to 07.",
+      "capturedAt": "2026-10-09T00:00:36.535Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "eb60d576d3ac95aedf50aa934055a9e1ba8724b7"
+    },
+    {
+      "id": "user-guide.workflow.code.diagnostic",
+      "route": "/workflows/standard-fix/code",
+      "workspace": "acme-robotics",
+      "ready": ".code-save__strip",
+      "clip": "section.code-workbench",
+      "actions": [
+        {
+          "click": ".cm-content .code-editor__callee:text-is('llm')"
+        },
+        {
+          "press": "x"
+        }
+      ],
+      "caption": "A line the DSL cannot read: the save is refused, the place is marked, and the draft is left as it was.",
+      "alt": "The code workbench after a stage call was mistyped as lxlm: the word is underlined in red with a marker in the gutter, the line above the editor reads Not saved — this file does not parse yet. The draft is unchanged., and the strip below the editor counts 1 error with the message Line 15, column 5: lxlm is not a stage call, and lists the stage calls the DSL knows.",
+      "capturedAt": "2026-10-09T00:03:46.093Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "eb60d576d3ac95aedf50aa934055a9e1ba8724b7"
     }
   ]
 }

@@ -569,7 +569,7 @@ dev seeds (e.g. acme-robotics; `acme-onboarding` for the wizard).
 | DA.5 | #1177 ✅ | 🟢 Done | ouroboros-docs: [DA.5] Issues — intake, sizing & queuing | Backlog sync view, estimates, queue a loop | mvp, docs-site, documentation, intake | Y | Y | M | ouroboros-docs |
 | DA.6 | #1178 ✅ | 🟢 Done | ouroboros-docs: [DA.6] Planning — roadmaps, generated tickets & timeline | Plans, ticket generation, gantt, tracker write-back | mvp, docs-site, documentation, planning | Y | Y | M | ouroboros-docs |
 | DA.7 | #1179 ✅ | 🟢 Done | ouroboros-docs: [DA.7] Workflows — Studio canvas | Build/edit/publish workflows visually | mvp, docs-site, documentation, workflow | Y | Y | M | ouroboros-docs |
-| DA.8 | #1180 | 🟡 Open | ouroboros-docs: [DA.8] Workflows as code | TS-DSL editor, completions, round-trip with the canvas | mvp, docs-site, documentation, code-view | Y | Y | M | ouroboros-docs |
+| DA.8 | #1180 ✅ | 🟢 Done | ouroboros-docs: [DA.8] Workflows as code | TS-DSL editor, completions, round-trip with the canvas | mvp, docs-site, documentation, code-view | Y | Y | M | ouroboros-docs |
 | DA.9 | #1181 | 🟡 Open | ouroboros-docs: [DA.9] Models — routing & the model registry | Routes, aliases, escalation; browsing models | mvp, docs-site, documentation, routing, registry | Y | Y | M | ouroboros-docs |
 | DA.10 | #1182 | 🟡 Open | ouroboros-docs: [DA.10] Runs — the run console | Transcript, stages, guardrails, pause/abort/steer | mvp, docs-site, documentation, runs | Y | Y | M | ouroboros-docs |
 | DA.11 | #1183 | 🟡 Open | ouroboros-docs: [DA.11] Test results | Results, flakes, triage, classification | mvp, docs-site, documentation, tests | Y | Y | S | ouroboros-docs |
@@ -734,6 +734,31 @@ which version runs. Not-yet-delivered Studio items described per D12.
 (standard-fix seed), `.workflow.inspector`, `.workflow.validation-error`, `.workflow.publish`.
 
 ### Issue DA.8 (#1180) — ouroboros-docs: [DA.8] Workflows as code
+
+> **GitHub issue:** #1180 ✅ · **Status:** 🟢 Done · **Parent epic:** #1158
+>
+> **Delivered (#1180):** `user-guide/workflows/code.mdx` — the code view at `/workflows/<slug>/code`:
+> - **The page:** Explorer (with read-only `ouroboros.config.ts`), the editor with its source/save line, Loop Checks / Types / Outline, the status-bar sync words, and who can type.
+> - **A short DSL primer:** the DSL's own `minimal.loop.ts` fixture verbatim; stage calls, edges (`next`/`branches`/`onFail`), `route.task`/`route.alias`, conditions and the layout block. It links to `schemas/workflow-dsl/v1.json` **on GitHub**, because the schema is not published anywhere else: its `$id` URL does not resolve, and neither ouroboros-web nor the docs site serves it.
+> - **Help while you type:** the **Types** card follows the caret. **Completions and hover pop-ups are not available yet:** `dslIntelligence` is built but not mounted in the editor, so the page says so (D12).
+> - **Saving and the round trip:** one shared draft, autosave about a second after typing or ⌘S, a file that does not parse is never saved (squiggle, gutter marker, error strip), the switch-to-Visual guard, what does not round-trip (comments, formatting, out-of-grammar code, layout lines), and "Not readable as code yet".
+> - **Validate and Publish:** no Dry run button in the code view.
+> - **What can go wrong.**
+>
+> `tests/workflow-code.test.ts` checks:
+> - quoted copy against the code view's constants;
+> - the stage-call list against REST `STAGE_CALLEES`;
+> - the primer example against the fixture;
+> - that the schema link names a file that exists.
+>
+> **Screenshots** (`acme-robotics`, `standard-fix`):
+> - `user-guide.workflow.code` is the page.
+> - `user-guide.workflow.code.completion` is **the Types card for `route.alias`**, under the issue's id, since there is no completion popup. The maintainer chose this.
+> - `user-guide.workflow.code.diagnostic` is the workbench after typing one character into `llm` → `lxlm`. The save is refused (422) and the draft hash was unchanged before and after.
+>   - It shows the squiggle and the "1 error" strip, but no hover tooltip. CodeMirror's hover delay is measured with `Date.now()`, which the harness's `page.clock.setFixedTime` freezes, so a lint tooltip never opens in a capture.
+>   - **Validate** on security-patch was tried first: it needs the engine, and it came back green, because reference warnings are not findings.
+>
+> No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.15.
 
 **Problem Statement.** Some users prefer editing the workflow DSL as TypeScript.
 **Solution / Scope.** `/workflows/[slug]/code`: editor, completions and hover docs, diagnostics,

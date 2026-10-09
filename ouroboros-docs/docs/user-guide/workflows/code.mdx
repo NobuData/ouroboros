@@ -5,11 +5,157 @@ sidebar_position: 2
 description: "Editing a workflow as TypeScript, and how it round-trips with the canvas."
 ---
 
-Editing a workflow as TypeScript, and how it round-trips with the canvas.
+Every workflow can also be read and edited as code. The **Code** tab of the
+[Workflow Studio](./studio.mdx), at `/workflows/<slug>/code`, prints the workflow as a typed
+TypeScript file — `standard-fix.loop.ts` — and saves your edits back to the same draft the
+canvas edits. Use it when text is quicker than dragging: renaming many stages, reviewing a
+whole workflow at once, or copying a stage from one workflow to another.
 
-:::info[Being written]
+<Screenshot id="user-guide.workflow.code" />
 
-This page is being written in
-[#1180](https://github.com/NobuData/ouroboros/issues/1180).
+## The code view
 
-:::
+- **Explorer** — the workspace's files: one `workflows/<slug>.loop.ts` per workflow (a paused
+  one carries a dot), the workspace's skills under `skills/`, and `ouroboros.config.ts`,
+  which is printed from the model registry and marked **read-only**. Choose a workflow file
+  to open it in a tab.
+- **The editor** — the file, with the line above it saying where it came from and how it
+  saves: **Printed from the draft · Saves as you type.**, or **Printed from v14 · no draft
+  open** when the workflow has no draft.
+- **Loop Checks**, **Types** and **Outline** — on the right: checks over the whole file, the
+  documentation of the symbol under your cursor, and the list of stages, with the loop's
+  back-edge marked.
+- **The status bar** — whether the file is in step with the canvas
+  (**synced with visual editor**, **saving…**, **parse error**, **conflict** or **not saved**),
+  which draft or version you are looking at, and your line and column.
+- **Validate** and **Publish vN** — see [Checking and publishing](#checking-and-publishing).
+
+Only owners and admins can type in the editor. Everyone else reads the file, with the note
+that the Studio is read-only for them.
+
+## A short primer on the DSL
+
+A workflow file is one call to `defineLoop`: the workflow's slug, the DSL version, its trigger
+and its stages. Nothing in the file is run — Ouroboros reads it as a description of the
+workflow, the same description the canvas draws.
+
+```ts
+import { defineLoop, trigger, needsReview } from "@ouroboros/sdk";
+
+export default defineLoop("minimal", {
+  dsl: "1.0",
+  trigger: {
+    on: "issue.queued",
+  },
+  stages: [
+    trigger("start", {
+      title: "Issue queued",
+      next: "done",
+    }),
+    needsReview("done", {
+      title: "Needs review",
+    }),
+  ],
+});
+```
+
+- **Stages** are calls named after their kind — `trigger`, `llm`, `infra`, `decision`,
+  `gate`, `openPr`, `backToQueue` and `needsReview` — each with an id and an options object:
+  a `title`, an optional `description`, and the kind's own settings, such as an `llm` stage's
+  `skill`, `prompt`, `model`, `retries` and `tokenBudget`.
+- **Edges** are written on the stage they leave: `next: "plan"` for the next stage,
+  `branches: [{ to, when }]` for a decision's outcomes, and `onFail: "implement"` for a loop
+  back up the graph.
+- **Models** are referenced by route: `route.task("implement")` uses the model your workspace
+  routes that task to, and `route.alias("coder-std")` pins a registry alias.
+- **Conditions** are small arrow functions over the issue, such as
+  `(i) => i.effort.lte(effort.M)`.
+- **Layout.** The file ends with a generated block, `// @ouroboros/layout v1`, holding the
+  canvas positions of each stage — one `// node <id> <x> <y>` line per stage. The canvas owns
+  these lines; leave them alone unless you add a stage, which needs a `node` line of its own.
+
+The DSL is a closed language: helper functions, other imports, extra statements and
+expressions outside it are refused with a message saying so. The full definition is the
+[workflow DSL schema](https://github.com/NobuData/ouroboros/blob/main/schemas/workflow-dsl/v1.json)
+in the Ouroboros repository.
+
+## Help while you type
+
+**Types** follows your cursor: put the cursor on a call such as `route.alias` or `llm` and the
+card shows its signature and what it does.
+
+<Screenshot id="user-guide.workflow.code.completion" />
+
+The editor does not offer completions or hover pop-ups yet — the **Types** card is where the
+documentation appears. The editor has no search, folding or minimap either.
+
+## Saving and the round trip with the canvas
+
+The code view and the canvas edit **one draft**. Each change you type is saved about a second
+after you stop — **Edited — saving shortly.**, **Saving…**, **All changes saved.** — or at
+once with **⌘S** / **Ctrl+S**. Switch to **Visual** and the canvas shows your change; edit the
+canvas and the code view prints it on its next load. As on the canvas, the draft is not what
+runs until you publish it.
+
+**A file that does not parse is never saved.** Ouroboros reads the file on the server; if it
+cannot, the draft is left as it was and the place is marked: a red underline and a gutter
+marker on the line, and a strip below the editor that counts the problems and links to each —
+**Line 15, column 5: …**. The line above the editor says
+**Not saved — this file does not parse yet. The draft is unchanged.** Your text is kept in the
+tab until you fix it.
+
+<Screenshot id="user-guide.workflow.code.diagnostic" />
+
+If you switch to **Visual** while the file does not parse, you are asked first —
+**Discard code that has not parsed?** — because the canvas can only show the last draft that
+saved. Choose **Keep editing** to stay, or **Discard and open Visual** to drop your text.
+
+### What does not round-trip
+
+The draft stores the workflow, not your text. After a save, the next time the file is printed
+it is written out in its standard form:
+
+- **Comments you add are dropped.** Only the generated comments are printed back.
+- **Formatting is normalised** — indentation, key order, and spellings such as `400000`,
+  printed back as `400_000`.
+- **Anything outside the DSL is refused**, not kept: helper functions, other imports, and
+  statements outside `defineLoop`.
+- **Layout lives in the layout block.** A `node` line for a stage that no longer exists is
+  dropped; a stage with no `node` line is an error.
+
+A draft the canvas can hold but the code view cannot print — a blank canvas, for example —
+shows **Not readable as code yet**, with **Finish it in Visual**.
+
+## Checking and publishing
+
+- **Validate** saves your latest edit, then checks the whole draft — the same checks a publish
+  runs — and marks any findings in the file and in **Loop Checks**. It publishes nothing:
+  **Validated — every check is green. Nothing was published.** Anyone in the workspace can
+  validate.
+- **Publish vN** opens the same publish dialog as the canvas; see
+  [Publishing a version](./studio.mdx#publishing-a-version). Choosing a finding in it moves
+  your cursor to that stage.
+
+**Loop Checks** also lists warnings that do not stop a publish, such as
+**1 reference does not resolve** — a skill, task route or model alias the file names that
+your workspace does not have yet.
+
+Dry runs are started from the canvas; the code view has no **Dry run** button.
+
+## What can go wrong
+
+- **"Not saved — this file does not parse yet."** Fix the marked lines; nothing reaches the
+  draft until the file parses.
+- **"Autosave paused — the draft changed in another editor."** Someone changed the draft —
+  on the canvas, in another tab, or another person. **The draft changed in another editor**
+  asks you to choose: **Reload theirs** opens the draft as it is now and drops your text;
+  **Keep mine** holds your text in the tab beside what changed, so you can compare and save it
+  over theirs.
+- **"Your code is not saved yet — it is kept in this tab and tried again."** The save could
+  not reach the service. Ouroboros keeps retrying; your text stays in the tab.
+- **"The engine could not check this file, so it was not validated."** Try **Validate** again
+  in a moment.
+- **"… is not a stage call."** A stage call is misspelled, or uses a kind the DSL does not
+  have. The message lists the kinds it knows.
+- **Your comments disappeared.** Comments you add are not kept — see
+  [What does not round-trip](#what-does-not-round-trip).
