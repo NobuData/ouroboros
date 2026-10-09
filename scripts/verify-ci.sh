@@ -546,6 +546,12 @@ check_contains "$WORKFLOWS/docs.yml" '^        run: yarn check:config-reference$
 check_contains "$WORKFLOWS/docs.yml" '^        run: yarn check:cli-flags$' \
   'docs.yml checks the CLI flags are documented'
 
+# The image is built and probed inside ci/docs (#1208), so the gate publish/docs waits on covers
+# an image that serves nothing. Loaded, never pushed: a pull request has no credential to use.
+check_contains "$WORKFLOWS/docs.yml" '^          load: true$' 'ci/docs builds the docs image locally'
+check_contains "$WORKFLOWS/docs.yml" '^        run: scripts/smoke-image\.sh ouroboros-docs:smoke$' \
+  'and smoke-tests it before anything is published'
+
 # publish/docs (#1207, roadmap decision D9) is not one of IMAGE_MODULES below, on purpose: D9
 # names its registry in the workflow, skips the whole job on a pull request rather than its
 # credentialed steps, and adds the module's version as a third tag. Each of those is checked

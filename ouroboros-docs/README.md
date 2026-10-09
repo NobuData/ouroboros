@@ -117,6 +117,51 @@ What the server does is [`nginx.conf`](nginx.conf):
 | Any page | `Cache-Control: no-cache`, so a new deployment is seen at once |
 | `GET /healthz` | `200 ok`, from nginx without reading the disk — the image's `HEALTHCHECK` |
 
+**Running the published image.** Every push to `main` publishes it (see *Publishing* above):
+
+```bash
+docker login registry.apiome.dev
+docker run -p 8080:8080 registry.apiome.dev/ouroboros-docs:latest     # http://localhost:8080
+```
+
+Or as a compose service beside anything else you run — it needs no volume, secret or other
+service, and its own `HEALTHCHECK` is what `docker compose ps` reports:
+
+```yaml
+services:
+  docs:
+    image: registry.apiome.dev/ouroboros-docs:latest   # or pin :<version> / :<sha>
+    ports: ["127.0.0.1:8080:8080"]                    # only the reverse proxy reaches it
+    read_only: true
+    tmpfs: [/tmp]                                       # nginx's pid and temp files
+    restart: unless-stopped
+```
+
+**Behind a reverse proxy.** Terminate TLS at the proxy and forward everything to port 8080:
+
+- **Serve it at the root of its own host** (`docs.example.com`), not under a path such as
+  `example.com/docs/` — the site is built with `baseUrl: "/"`, so every asset and link is
+  absolute from the root.
+- **Pass its headers through.** The Content-Security-Policy, `X-Frame-Options` and the
+  `Cache-Control` values are the image's own; a proxy that adds a second CSP narrows both, and
+  one that rewrites `Cache-Control` loses the immutable assets or serves stale pages.
+- **Redirects are relative** (`absolute_redirect off`), so `/cli/` → `/cli` stays on the
+  proxy's host and scheme without any `X-Forwarded-*` handling.
+- **Build with your own address** — `--build-arg DOCS_SITE_URL=https://docs.example.com` — if
+  canonical links and the sitemap should name it; the published image names the default.
+- `/healthz` is there for the proxy's or orchestrator's liveness probe.
+
+**Smoke test.** `ci/docs` builds the image on every run — loaded into the runner, never pushed —
+and [`scripts/smoke-image.sh`](scripts/smoke-image.sh) runs it and probes `/healthz`, the three
+section roots, `/cli/runner/enroll`, an unknown path (404 and the not-found page), the footer's
+copyright line and the main script's `immutable` caching
+([#1208](https://github.com/NobuData/ouroboros/issues/1208)). A failure fails `ci/docs`, so
+`publish/docs` never publishes an image that serves nothing. Run it yourself:
+
+```bash
+docker build -t ouroboros-docs:smoke . && scripts/smoke-image.sh ouroboros-docs:smoke   # from here
+```
+
 Text is gzipped, and every answer carries
 [`nginx-headers.conf`](nginx-headers.conf)'s security headers. The Content-Security-Policy admits
 scripts from the site and, inline, **only the theme script** — the lines that set the colour
@@ -566,4 +611,5 @@ page's title, headings, description and text are indexed. Build the site
 - [#1170](https://github.com/NobuData/ouroboros/issues/1170) — CZ.1 screenshot capture harness
 - [#1206](https://github.com/NobuData/ouroboros/issues/1206) — DD.1 Dockerfile & nginx runtime (the image)
 - [#1207](https://github.com/NobuData/ouroboros/issues/1207) — DD.2 publish workflow to registry.apiome.dev
+- [#1208](https://github.com/NobuData/ouroboros/issues/1208) — DD.3 image smoke test & deployment notes
 - [#1156](https://github.com/NobuData/ouroboros/issues/1156) — Epic CY · Docs Site Foundation

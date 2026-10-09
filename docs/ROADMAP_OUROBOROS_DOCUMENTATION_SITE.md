@@ -1395,7 +1395,7 @@ trimmed into the page.
 |---|---|---|---|---|---|---|---|---|---|
 | DD.1 | #1206 ✅ | 🟢 Done | ouroboros-docs: [DD.1] Dockerfile & nginx runtime | Multi-stage build → nginx-unprivileged :8080, headers, caching, /healthz | mvp, docs-site, infra | Y (after CY.2) | Y | M | ouroboros-docs |
 | DD.2 | #1207 ✅ | 🟢 Done | ouroboros-docs: [DD.2] Publish workflow to registry.apiome.dev/ouroboros-docs | publish/docs job: latest, sha, version tags from main | mvp, docs-site, ci, infra | N (after DD.1, CY.5) | Y | M | .github, scripts, docs |
-| DD.3 | #1208 | 🟡 Open | ouroboros-docs: [DD.3] Image smoke test & deployment notes | Run the built image in CI and probe routes; HOSTING/README run docs | mvp, docs-site, ci | N (after DD.1) | Y | S | ouroboros-docs, .github, HOSTING.md |
+| DD.3 | #1208 ✅ | 🟢 Done | ouroboros-docs: [DD.3] Image smoke test & deployment notes | Run the built image in CI and probe routes; HOSTING/README run docs | mvp, docs-site, ci | N (after DD.1) | Y | S | ouroboros-docs, .github, HOSTING.md |
 
 ### Issue DD.1 (#1206) — ouroboros-docs: [DD.1] Dockerfile & nginx runtime
 
@@ -1478,6 +1478,10 @@ flowchart LR
 ```
 
 ### Issue DD.3 (#1208) — ouroboros-docs: [DD.3] Image smoke test & deployment notes
+
+> **GitHub issue:** #1208 ✅ · **Status:** 🟢 Done · **Parent epic:** #1161
+>
+> **Delivered (#1208):** the smoke test lives **inside `ci/docs`** — `publish/docs` is skipped on pull requests (DD.2), so that is where an image can be proven on every event and where its failure blocks the publish (`needs: ci`). Steps after the module checks: `docker/setup-buildx-action@v3`, `docker/build-push-action@v6` (`context: ouroboros-docs`, `push: false`, **`load: true`**, tag `ouroboros-docs:smoke`, cache scope shared with `publish/docs`), then `ouroboros-docs/scripts/smoke-image.sh ouroboros-docs:smoke` (POSIX sh, curl): starts the image on 127.0.0.1:18080, waits ≤ 30 s for `/healthz`, probes `/healthz` (200 `ok`), `/`, `/user-guide`, `/administration`, `/cli` (200 + the footer's copyright line), `/cli/runner/enroll` (200), an unknown path (404 + "Page Not Found") and the main script's `immutable` Cache-Control; prints the container log on failure; always removes the container; exit 0/1/2. **Mutation-checked:** an nginx syntax error (`listen 8080` without `;`) never answers `/healthz` → exit 1 with nginx's `[emerg]` line; D8's original `try_files $uri $uri/ $uri.html` order fails 6 checks (403 on the section roots). `tests/smoke-image.test.ts` holds its copyright string to `site.constants.ts`, its probes and argument errors. `scripts/verify-ci.sh` asserts the local load and the smoke step; `verify-ci.test.sh`'s fixture carries them with a break case. Docs: `ouroboros-docs/README.md` § Run — running the published image, a compose service (`read_only` + `tmpfs: /tmp`, verified), reverse-proxy notes (root of its own host, pass the headers through, relative redirects, `DOCS_SITE_URL`), the smoke test; `HOSTING.md` § 7 (root-of-host, read-only, smoke); `CONVENTIONS.md` § 9. Module 0.1.43.
 
 **Problem Statement.** A green build can still produce an image that serves nothing.
 **Solution / Scope.** In `docs.yml`, after the image builds (load locally with `load: true` on
