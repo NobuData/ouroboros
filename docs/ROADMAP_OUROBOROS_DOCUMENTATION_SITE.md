@@ -573,7 +573,7 @@ dev seeds (e.g. acme-robotics; `acme-onboarding` for the wizard).
 | DA.9 | #1181 | 🟡 Open | ouroboros-docs: [DA.9] Models — routing & the model registry | Routes, aliases, escalation; browsing models | mvp, docs-site, documentation, routing, registry | Y | Y | M | ouroboros-docs |
 | DA.10 | #1182 ✅ | 🟢 Done | ouroboros-docs: [DA.10] Runs — the run console | Transcript, stages, guardrails, pause/abort/steer | mvp, docs-site, documentation, runs | Y | Y | M | ouroboros-docs |
 | DA.11 | #1183 ✅ | 🟢 Done | ouroboros-docs: [DA.11] Test results | Results, flakes, triage, classification | mvp, docs-site, documentation, tests | Y | Y | S | ouroboros-docs |
-| DA.12 | #1184 | 🟡 Open | ouroboros-docs: [DA.12] Pull requests — verification, evidence & merge | Gates, criteria matrix, evidence, merge | mvp, docs-site, documentation, pr | Y | Y | M | ouroboros-docs |
+| DA.12 | #1184 ✅ | 🟢 Done | ouroboros-docs: [DA.12] Pull requests — verification, evidence & merge | Gates, criteria matrix, evidence, merge | mvp, docs-site, documentation, pr | Y | Y | M | ouroboros-docs |
 | DA.13 | #1185 | 🟡 Open | ouroboros-docs: [DA.13] Needs-you inbox | Decision cards, allow once/deny, snooze, resolved list, channel prefs | mvp, docs-site, documentation, inbox | Y | Y | M | ouroboros-docs |
 | DA.14 | #1186 | 🟡 Open | ouroboros-docs: [DA.14] Insights | Ranges, cards, trends, email digest | mvp, docs-site, documentation, insights | Y | Y | S | ouroboros-docs |
 | DA.15 | #1187 | 🟡 Open | ouroboros-docs: [DA.15] Build Analyzer | Duration chart, suggestions, predicted vs measured, drafted tickets | mvp, docs-site, documentation, analyzer | Y | Y | M | ouroboros-docs |
@@ -841,6 +841,21 @@ classification/routing, how results feed retries.
 **Problem Statement.** Users must tell a real failure from a flake and know what Ouroboros does next.
 
 ### Issue DA.12 (#1184) — ouroboros-docs: [DA.12] Pull requests — verification, evidence & merge
+
+> **GitHub issue:** #1184 ✅ · **Status:** 🟢 Done · **Parent epic:** #1158
+>
+> **Delivered (#1184):** `user-guide/pull-requests.mdx` — written to what `main` ships:
+> - finding a PR: no sidebar entry; reached from the run console, test results and the dashboard, looked up by run (no link when the PR is not mirrored);
+> - header states and actions by role; revision cycle and `?rev=` scoping;
+> - the seven gates (service titles), verdict marks, `unavailable` second-model review, not-required/waived as policy, human approval answered by owner/admin;
+> - criteria matrix: claims, Import from plan (only with plan context), Attach evidence (test / measurement / hunk) and where evidence links lead — `/prs/[id]/evidence/[evidenceId]` redirects to the test-results row; claim waivers and their three pills;
+> - changed files, review thread, spend; return to loop; merge plan, arm vs merge now, re-check refusals; merges as the configured token (no bot identity).
+>
+> `tests/pull-requests.test.ts` checks labels against the UI constants, gate titles against `gate.definitions.ts`, refusal headlines against `merge-terms.ts`.
+>
+> **Screenshots** (`acme-robotics`, PR #514): `user-guide.pr` (page, with the never-synced banner the seed shows), `.pr.criteria` (matrix card), `.pr.evidence` (Attach evidence dialog on the first claim), `.pr.merge-confirm` (merge-plan arm confirmation). Only dialogs are opened; nothing is submitted.
+>
+> No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.18.
 
 **Problem Statement.** Merge is the riskiest step; users need to know what the gates prove.
 **Solution / Scope.** `/prs/[id]`: gates, criteria matrix, evidence pages

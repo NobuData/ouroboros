@@ -515,6 +515,64 @@
       "capturedAt": "2026-10-09T00:27:13.040Z",
       "uiVersion": "0.144.1",
       "seedRef": "a1632ba7005caabfd7ec5e575cdb557b3c28ad65"
+    },
+    {
+      "id": "user-guide.pr",
+      "route": "/prs/5eed003a-0000-4000-8000-000000000514?from=dashboard",
+      "workspace": "acme-robotics",
+      "ready": "section.prv-gates",
+      "clip": "page",
+      "caption": "PR verification: the revision cycle and the gates the pull request must pass before it merges.",
+      "alt": "The PR verification page for PR #514, can: fix flaky telemetry frame order under ISR load: a banner saying PR #514 has never been synced with its host, with Check again; the header with loop #1847, issue #482, verifying — 5 of 7 gates green, the branch loop/482-canbus-flake into main and +68 −15 across 3 files, and the Request human review, Return to loop and Merge when all gates green buttons; the revision cycle from Revision 1, blocked on Test suite and Physical HIL, through a correction round to Revision 2 re-verifying; and the verification gates, with Build, Test suite, Physical HIL, Diff-vs-plan conformance and Secrets & license scan green, Second-model review unavailable, and Human approval not required by policy and auto-merge eligible.",
+      "capturedAt": "2026-10-09T00:33:59.544Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "d99f80084fc24397f66aea98c83b9915cb4f175d"
+    },
+    {
+      "id": "user-guide.pr.criteria",
+      "route": "/prs/5eed003a-0000-4000-8000-000000000514?from=dashboard",
+      "workspace": "acme-robotics",
+      "ready": "section.prv-criteria .prv-crit__evidence",
+      "clip": "section.prv-criteria",
+      "caption": "The criteria matrix: each claim from the issue, the evidence cited for it, and whether it is verified or waived.",
+      "alt": "The criteria matrix headed Does the PR do what the ticket says?, linking Issue #482 and counting 4 verified, 1 waived and 0 unverified: four plan claims, each with its evidence — a test and a hunk, a HIL measurement, and two notes — marked verified with Attach evidence and Waive buttons; the claim Flake must not reappear across temperature range, waived as not annotated with the reason rig runs at 22°C only — thermal chamber not in bench and a Waive again button; and + Add claim.",
+      "capturedAt": "2026-10-09T00:33:59.544Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "d99f80084fc24397f66aea98c83b9915cb4f175d"
+    },
+    {
+      "id": "user-guide.pr.evidence",
+      "route": "/prs/5eed003a-0000-4000-8000-000000000514?from=dashboard",
+      "workspace": "acme-robotics",
+      "actions": [
+        {
+          "click": "section.prv-criteria button:has-text('Attach evidence') >> nth=0"
+        }
+      ],
+      "ready": ".shell-overlay__panel select",
+      "clip": ".shell-overlay__panel",
+      "caption": "Attaching evidence to a claim: cite a test, a rig measurement or a hunk of the diff.",
+      "alt": "The Attach evidence dialog for the claim Telemetry frames must arrive in ISR order under load: What to cite with Test selected and Measurement and Hunk beside it, a Test to cite list from attempt 4, an optional Qualifier, and the Attach evidence and Keep on this page buttons.",
+      "capturedAt": "2026-10-09T00:33:59.544Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "d99f80084fc24397f66aea98c83b9915cb4f175d"
+    },
+    {
+      "id": "user-guide.pr.merge-confirm",
+      "route": "/prs/5eed003a-0000-4000-8000-000000000514?from=dashboard",
+      "workspace": "acme-robotics",
+      "actions": [
+        {
+          "click": "#merge-plan button:has-text('Merge when all gates green')"
+        }
+      ],
+      "ready": ".shell-overlay__panel .prv-arm",
+      "clip": ".shell-overlay__panel",
+      "caption": "Arming the merge: the confirmation states which gates it still waits on and that everything is checked again at merge time.",
+      "alt": "The confirmation Merge PR #514 when all gates are green: it merges automatically when Second-model review turns green, gates, head commit and mergeability are re-checked at merge time, and a merge cannot be undone from here; Second-model review is unavailable, so the merge waits until it is green, waived or no longer required; against Revision 2 b7e41d0, strategy squash and delete branch, then close issue #482, comment the evidence summary and delete the branch; merges as the workspace's configured token; and the Arm the merge and Keep on this page buttons.",
+      "capturedAt": "2026-10-09T00:33:59.544Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "d99f80084fc24397f66aea98c83b9915cb4f175d"
     }
   ]
 }
