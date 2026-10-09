@@ -539,6 +539,9 @@ check_contains ouroboros-docs/package.json '"lint": "eslint \. && stylelint .* &
 # Screenshots are checked, never captured, in CI (#1172).
 check_contains "$WORKFLOWS/docs.yml" '^        run: yarn check:screenshots$' \
   'docs.yml checks screenshot integrity'
+# The configuration reference is generated from .env.example and fails when stale (#1191).
+check_contains "$WORKFLOWS/docs.yml" '^        run: yarn check:config-reference$' \
+  'docs.yml checks the configuration reference is current'
 # Not a workspace (§ 1, limit 6): it installs from its own lockfile, so the root workspace
 # files are no input of ci/docs.
 for workspace_file in $WORKSPACE_FILES; do

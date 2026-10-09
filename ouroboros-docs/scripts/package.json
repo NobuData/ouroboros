@@ -1,0 +1,5 @@
+{
+  "//": "scripts/ is ES modules under Node's own TypeScript support (DB.3); not a package.",
+  "type": "module",
+  "private": true
+}
