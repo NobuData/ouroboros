@@ -57,6 +57,9 @@ const NOTIFY = page("notifications-and-webhooks.mdx");
 /** The data retention, audit & workspace lifecycle page. */
 const LIFECYCLE = page("retention-audit-lifecycle.mdx");
 
+/** The operations page. */
+const OPERATIONS = page("operations.mdx");
+
 /**
  * Reads the value of one exported string constant of the UI, joining a value written as
  * several `"…" +` pieces — e.g. `export const NOTE =\n  "One " +\n  "two.";`.
@@ -249,6 +252,7 @@ describe("the roles & capabilities page (#1189)", () => {
       POLICIES,
       NOTIFY,
       LIFECYCLE,
+      OPERATIONS,
     ]) {
       const prose = text
         .replace(/^--- .*? --- /, "")
@@ -1363,5 +1367,75 @@ describe("the data retention, audit & workspace lifecycle page (#1199)", () => {
     ]) {
       expect(LIFECYCLE).toContain(`<Screenshot id="${id}" />`);
     }
+  });
+});
+
+describe("the operations page (#1200)", () => {
+  it("names each health address the services serve and their images check", () => {
+    const paths = source("ouroboros-rest", "src", "modules", "health", "health.paths.ts");
+    expect(paths).toContain('export const HEALTH_PATH = "health";');
+    expect(paths).toContain('export const LIVE_ROUTE = "live";');
+    expect(paths).toContain('export const READY_ROUTE = "ready";');
+    expect(source("ouroboros-rest", "Dockerfile")).toContain(
+      '"http://127.0.0.1:${PORT}/health/live"',
+    );
+    expect(source("ouroboros-engine", "Dockerfile")).toContain("/healthz',timeout=3)");
+    expect(source("ouroboros-engine", "src", "ouroboros_engine", "api", "__init__.py")).toContain(
+      "``/healthz``",
+    );
+    expect(source("ouroboros-ui", "Dockerfile")).toContain('"http://127.0.0.1:${PORT}/"');
+    expect(source("ouroboros-db", "Dockerfile")).not.toMatch(/^HEALTHCHECK/m);
+    for (const row of [
+      "| `ouroboros-rest` | `GET /health/live` |",
+      "| `ouroboros-rest` | `GET /health/ready` |",
+      "| `ouroboros-engine` | `GET /healthz` |",
+      "| `ouroboros-ui` | `GET /` |",
+    ]) {
+      expect(OPERATIONS).toContain(row);
+    }
+  });
+
+  it("describes the image tags the publish workflows push", () => {
+    for (const image of ["db", "rest", "engine", "ui"]) {
+      const workflow = source(".github", "workflows", `${image}.yml`);
+      expect(workflow).toContain(`/ouroboros-${image}:latest`);
+      expect(workflow).toContain(`/ouroboros-${image}:\${{ github.sha }}`);
+      expect(OPERATIONS).toContain(`| \`ouroboros-${image}\` |`);
+    }
+  });
+
+  it("quotes the failures in the words the services print", () => {
+    expect(source("ouroboros-rest", "src", "modules", "engine", "engine.errors.ts")).toContain(
+      "The engine is not available right now.",
+    );
+    expect(source("ouroboros-rest", "src", "modules", "engine", "engine.client.ts")).toContain(
+      "was refused: OURO_ENGINE_SHARED_SECRET does not ",
+    );
+    expect(source("ouroboros-engine", "src", "ouroboros_engine", "core", "security.py")).toContain(
+      '"rejected an internal request without a valid key"',
+    );
+    expect(source("ouroboros-db", "docker-entrypoint.sh")).toContain("'no database to migrate:");
+    for (const quoted of [
+      "*The engine is not available right now*",
+      "*OURO_ENGINE_SHARED_SECRET does not match the value ouroboros-engine holds*",
+      "*rejected an internal request without a valid key*",
+      "*no database to migrate*",
+      "*Validate failed*",
+    ]) {
+      expect(OPERATIONS).toContain(quoted);
+    }
+  });
+
+  it("names the readiness check's dependencies as the probe reports them", () => {
+    const engine = source("ouroboros-rest", "src", "modules", "health", "engine.health.ts");
+    expect(engine).toContain('export const ENGINE_HEALTH_ROUTE = "healthz";');
+    expect(OPERATIONS).toContain('"GET /healthz failed (ECONNREFUSED)"');
+  });
+
+  it("frames backups as guidance, since the production runbook is not written", () => {
+    expect(source("HOSTING.md")).toContain(
+      "The single-host production runbook (TLS, backups, upgrades)",
+    );
+    expect(OPERATIONS).toContain("A full production runbook");
   });
 });
