@@ -1308,13 +1308,17 @@ All DC issues are **[STD]**; screenshots here are terminal captures only where t
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |---|---|---|---|---|---|---|---|---|---|
-| DC.1 | #1201 | 🟡 Open | ouroboros-docs: [DC.1] CLI overview & conventions | Which tools exist, where they run, exit codes, env-var fallbacks | mvp, docs-site, documentation | Y | Y | S | ouroboros-docs |
+| DC.1 | #1201 ✅ | 🟢 Done | ouroboros-docs: [DC.1] CLI overview & conventions | Which tools exist, where they run, exit codes, env-var fallbacks | mvp, docs-site, documentation | Y | Y | S | ouroboros-docs |
 | DC.2 | #1202 | 🟡 Open | ouroboros-docs: [DC.2] Runner installer (install.sh) reference | Flags, service install, verification, uninstall/purge | mvp, docs-site, documentation, build-farm | Y | Y | S | ouroboros-docs |
 | DC.3 | #1203 | 🟡 Open | ouroboros-docs: [DC.3] ouroboros-runner command reference | enroll/run/version/hello/heartbeat/help, env, state dir, drift check | mvp, docs-site, documentation, build-farm, ci | Y | Y | M | ouroboros-docs |
 | DC.4 | #1204 | 🟡 Open | ouroboros-docs: [DC.4] Stack & operator commands | yarn setup/dev/dev:stop/dev:reset/verify, setup.sh flags | mvp, docs-site, documentation | Y | Y | S | ouroboros-docs |
 | DC.5 | #1205 | 🟡 Open | ouroboros-docs: [DC.5] Using the REST API from the shell | API tokens, curl recipes, error envelope, polling, OpenAPI | mvp, docs-site, documentation, rest | Y | Y | M | ouroboros-docs |
 
 ### Issue DC.1 (#1201) — ouroboros-docs: [DC.1] CLI overview & conventions
+
+> **GitHub issue:** #1201 ✅ · **Status:** 🟢 Done · **Parent epic:** #1160
+>
+> **Delivered (#1201):** `cli/index.mdx` — the four tools (runner agent and `install.sh` on build machines, the stack `yarn` verbs in a checkout, the REST API via `curl`/`jq` for integrators), who each is for and where it runs; conventions: the agent's seven flag ↔ `OURO_RUNNER_*` pairs (flag wins; `--tenant`/`--pool`/`--name` and `--bearer-fallback` flag-only), `install.sh` reading only `OURO_RUNNER_TOKEN`, stack verbs reading the `.env` files, the bearer header; exit statuses (agent `0`/`1`, `0` on SIGTERM; `install.sh` `0`/`1`; `yarn setup` `0`/`1`/`2`; other verbs pass through; `curl --fail`); where state lives (the state directory, the installed binary/unit/plist/CA, `.env` files and Docker volumes); `/ouro` chat commands as *Not available yet* (D12). `tests/cli-overview.test.ts` holds the page to the agent's usage text, `install.sh`'s paths and exits, `setup.sh`'s documented statuses and the root `package.json` scripts. No screenshots listed. No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.36.
 
 **Problem Statement.** Readers need to know which command-line tools exist and for whom.
 **Solution / Scope.** `cli/index.mdx`: table of tools (runner agent — build machines;

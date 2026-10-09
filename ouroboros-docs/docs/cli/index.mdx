@@ -5,11 +5,100 @@ sidebar_position: 1
 description: "Which command-line tools exist, who they are for, and the conventions they share."
 ---
 
-Which command-line tools exist, who they are for, and the conventions they share.
+Ouroboros has a few command-line tools. Each one is for a different person and runs in a
+different place. This page tells you which tool you need. It also covers the conventions
+they share: flags and their `OURO_*` variables, exit statuses, and where each tool keeps its
+state.
 
-:::info[Being written]
+## The tools
 
-This page is being written in
-[#1201](https://github.com/NobuData/ouroboros/issues/1201).
+| Tool | Who it is for | Where it runs | What you use it for |
+| --- | --- | --- | --- |
+| [`ouroboros-runner`](./runner/index.mdx) — the runner agent | Build-farm operators | Your build machines | Enrolling a machine into a pool, then running as a service that takes build jobs. It connects out to your deployment and listens on no port. |
+| [`install.sh`](./install-sh.mdx) — the runner installer | Build-farm operators | Your build machines | Downloading and verifying `ouroboros-runner`, enrolling it and installing it as a service. This is the one-liner the Build Farm page gives you. `--uninstall` removes it again. |
+| [Stack commands](./stack-commands.mdx) — `yarn setup`, `yarn dev`, `yarn dev:stop`, `yarn dev:reset`, `yarn verify` | Self-hosters trying Ouroboros out, and contributors | A checkout of the Ouroboros repository | Creating the `.env` files, running a local stack, stopping and resetting it, and running the checks. |
+| [The REST API from the shell](./rest-api.mdx) — `curl` and `jq` | Integrators: scripts, CI jobs and bots | Wherever your script runs, as long as it can reach the REST service | Calling the REST API with a service account's API token. |
+
+To deploy Ouroboros for a team, see [Deploying Ouroboros](../administration/deploy/overview.mdx).
+To set up the build farm in the app, see
+[Build farm administration](../administration/build-farm.mdx).
+
+:::info[Not available yet]
+
+Chat commands (`/ouro …` typed in Slack or another chat tool) arrive with Chat Ops. They are
+not part of Ouroboros yet.
 
 :::
+
+## Conventions
+
+### Flags and `OURO_*` variables
+
+Everything that configures Ouroboros is named `OURO_…`. The runner agent takes most of its
+settings as a flag or as an environment variable. The flag wins when you give both. The
+variable suits a service unit, where you set a value once and every start uses it.
+
+| Flag | Variable |
+| --- | --- |
+| `--server` | <EnvVar name="OURO_RUNNER_SERVER" /> |
+| `--token` | <EnvVar name="OURO_RUNNER_TOKEN" /> |
+| `--state-dir` | <EnvVar name="OURO_RUNNER_STATE_DIR" /> |
+| `--server-ca` | <EnvVar name="OURO_RUNNER_SERVER_CA" /> |
+| `--no-shell` | <EnvVar name="OURO_RUNNER_NO_SHELL" /> |
+| `--keep-workspace-on-failure` | <EnvVar name="OURO_RUNNER_KEEP_WORKSPACE_ON_FAILURE" /> |
+| `--log-cap-bytes` | <EnvVar name="OURO_RUNNER_LOG_CAP_BYTES" /> |
+
+Some flags have no variable. `--tenant`, `--pool` and `--name` belong only to `enroll`, which
+you run once. `--bearer-fallback` is deliberately flag-only: the weaker sign-in mode has to be
+asked for on the command line.
+
+`install.sh` passes the enrollment flags on to the agent under the same names. It reads only one
+setting from the environment: `OURO_RUNNER_TOKEN`. Export the enrollment token rather than passing `--token`, and it stays
+out of the machine's process list.
+
+The stack commands take nothing of their own from the environment. They read the `.env` files
+`yarn setup` writes, and every service reads its `OURO_*` variables from those files. The
+[Configuration reference](../administration/configuration/index.mdx) lists every variable.
+
+A script calling the REST API sends its token in a header, `Authorization: Bearer <token>`. Keep
+the token in an environment variable or your CI's secret store, never in the script itself —
+see [API tokens](../administration/members-and-tokens.mdx#api-tokens-and-service-accounts).
+
+### Exit statuses
+
+Each tool exits `0` when it succeeds. A non-zero status means it stopped, and it prints the
+reason on standard error.
+
+| Tool | `0` | Non-zero |
+| --- | --- | --- |
+| `ouroboros-runner` | The command succeeded. `run` also exits `0` when stopped with `SIGTERM` or `SIGINT`, after telling the deployment it is going. | `1` for any failure, a mistyped command or flag included. The message starts `ouroboros-runner:`. A runner whose certificate was revoked exits `1` when it connects. |
+| `install.sh` | Installed, upgraded or uninstalled; or `--help`. | `1` for any refusal. A checksum mismatch is refused before anything is installed or stopped. |
+| `yarn setup` | Every missing `.env` file now exists, or `--dry-run` reported cleanly. | `1`: a file could not be written, with each reason. `2`: bad command-line usage. |
+| Other `yarn` commands | The command they run succeeded. | The status of the command they run. |
+| `curl` | The request was sent and an answer came back. | `curl`'s own statuses, for example when it cannot connect. Add `--fail` so that an HTTP error status such as `401` or `404` also exits non-zero. |
+
+`ouroboros-runner help` prints the usage and exits `0`. With no command at all, the runner prints
+what it expected and exits `1`, so a typo in a service unit never looks like success.
+
+### Where state lives
+
+| Tool | What it keeps | Where |
+| --- | --- | --- |
+| `ouroboros-runner` | Its identity: the key it generated, its client certificate and its record. Also unsent job results, job workspaces under `work/` and per-pool caches under `cache/`. | The state directory, `/var/lib/ouroboros-runner` unless you set `--state-dir`. Remove it and the machine forgets its enrollment; enrolling again needs a new token. |
+| `install.sh` | The binary, the service and a trusted CA file if you gave `--server-ca`. | `/usr/local/bin/ouroboros-runner`. The service is a systemd unit, `/etc/systemd/system/ouroboros-runner.service`, on Linux. On macOS it is a launchd daemon, `/Library/LaunchDaemons/dev.ouroboros.runner.plist`. The CA file goes in `/etc/ouroboros-runner/`. |
+| Stack commands | The `.env` files, and the database and other data. | The `.env` files sit in your checkout, each beside its `.env.example`. The data lives in Docker volumes. `yarn dev:stop` keeps it; `yarn dev:reset` deletes it. |
+| The REST API | Nothing on your machine. | Your token lives wherever you keep it. Everything else lives in the deployment. |
+
+## What can go wrong
+
+- **`ouroboros-runner` exits `1` saying `no such command`.** The command is mistyped, or a
+  service unit runs the agent without one. Run `ouroboros-runner help` for the list.
+- **A flag seems to be ignored.** Check that the same setting is not given both ways. The flag
+  wins over the variable, so a stale flag in a service unit beats the value you exported.
+- **A second enrollment is refused.** The state directory already holds a runner. Running
+  `install.sh` again on an enrolled machine upgrades it. To enroll it as a new runner, remove
+  the state directory first.
+- **`yarn dev:reset` lost your local data.** That is what it does: it deletes the stack's
+  volumes. Use `yarn dev:stop` to stop the stack and keep them.
+- **A script's `curl` call "succeeds" but nothing happened.** Without `--fail`, `curl` exits `0`
+  on an HTTP error. Add `--fail`, or check the status code.
