@@ -1,0 +1,13 @@
+{
+  "secret": "whsec_docs_example_not_a_real_secret",
+  "receivedAt": "2026-10-04T12:00:05.000Z",
+  "headers": {
+    "content-type": "application/json",
+    "user-agent": "Ouroboros-Webhooks/1",
+    "x-ouro-event": "audit.provider.rotated",
+    "x-ouro-delivery": "5f0c2b9e-7d41-4c8a-9a13-6e2d1b0c4f77",
+    "x-ouro-timestamp": "1791115205",
+    "x-ouro-signature": "v1=7981e7801b51b7a14949e4cb49955f8baa8b99134e0cf4a22b8b437a0580fb28"
+  },
+  "body": "{\"id\":\"5f0c2b9e-7d41-4c8a-9a13-6e2d1b0c4f77\",\"type\":\"audit.provider.rotated\",\"eventId\":\"8a6e0d2c-1b3f-4e5a-9c7d-2f1e0a9b8c76\",\"occurredAt\":\"2026-10-04T12:00:00.000Z\",\"workspaceId\":\"5eed0001-0000-4000-8000-000000000001\",\"registryVersion\":1,\"data\":{\"id\":\"8a6e0d2c-1b3f-4e5a-9c7d-2f1e0a9b8c76\",\"action\":\"provider.rotated\",\"actorKind\":\"human\",\"actorId\":\"5eed0003-0000-4000-8000-000000000001\",\"actorService\":null,\"subjectType\":\"provider_connection\",\"subjectId\":\"5eed0040-0000-4000-8000-000000000001\",\"ip\":null,\"detail\":{},\"occurredAt\":\"2026-10-04T12:00:00.000Z\"}}"
+}

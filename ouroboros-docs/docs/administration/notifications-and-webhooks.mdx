@@ -2,14 +2,271 @@
 title: "Notifications, email & webhooks"
 sidebar_label: "Notifications & webhooks"
 sidebar_position: 11
-description: "Mail, digests, channels and signed webhook endpoints."
+description: "SMTP, digests, notification routes, webhook endpoints, signing and retries."
 ---
 
-Mail, digests, channels and signed webhook endpoints.
+Ouroboros tells people what needs them by email, and tells your other systems what happened
+by webhook. This page covers both:
 
-:::info[Being written]
+- setting up the mail server;
+- the workspace's notification routes and digests;
+- webhook endpoints, the events they receive, and how a receiver checks that a delivery is
+  genuine.
 
-This page is being written in
-[#1198](https://github.com/NobuData/ouroboros/issues/1198).
+Each person's own mail preferences, and how they answer decisions from a mailbox, are in the
+User Guide's [Needs-you inbox](../user-guide/inbox.mdx).
+
+## Setting up email
+
+Ouroboros sends mail through an SMTP server you provide. The deployment administrator sets two
+variables on the REST service:
+
+- <EnvVar name="OURO_SMTP_URL" /> — the server: `smtp://host:port`, or
+  `smtps://user:password@host:port` for a relay that wants TLS and a login.
+- <EnvVar name="OURO_MAIL_FROM" /> — the sender address mail comes from.
+
+**Without `OURO_SMTP_URL`, Ouroboros sends no mail at all.** Digests are off, subscribing to
+one is refused rather than accepted into silence, and the inbox's email row says the deployment
+has no mail server. Nothing else stops working.
+
+To try mail locally, the development stack includes **mailpit**, which catches every message and
+shows it at `http://localhost:8025` instead of sending it: `docker compose --profile mail up -d
+mailpit`, with `OURO_SMTP_URL=smtp://localhost:1025`.
+
+## Notification routes
+
+The **Notifications** section of <UiPath path="Settings" /> holds the workspace's
+**notification routes**: what the workspace sends, where, and when. Everyone can read it; an
+Owner or Maintainer changes it and chooses **Save changes**.
+
+<Screenshot id="administration.notifications" />
+
+| Route | What it carries | Goes to |
+| --- | --- | --- |
+| **Needs-you decisions → Slack DM** | Approvals, waivers, allow-once requests. | Slack — **locked**: connect Slack first. |
+| **Daily digest → email** | Merges, spend and interventions since yesterday. | The workspace's Owners and Maintainers, at **Daily digest time (UTC)** — 09:00 unless you change it. |
+| **Loop failures → PagerDuty** | A loop that stops and cannot recover on its own. | PagerDuty — **locked**: connect PagerDuty first. |
+| **Weekly insights report → email** | The week's figures from [Insights](../user-guide/insights.mdx). | **Weekly insights recipients** — addresses separated by commas or new lines; left empty, the Owners and Maintainers. Mondays. |
+
+Switch a route on or off with its switch. A **locked** route cannot be switched on: its channel
+cannot be connected in this version. Slack and PagerDuty are not available yet.
+
+The routes are the workspace's own mail, and they are separate from each person's mail:
+
+- **Each person's daily digest and instant mails** are set on the inbox's
+  **Notification settings**, and are theirs to change whatever their role.
+- **A person subscribed to the weekly insights digest** on the Insights screen receives their
+  own copy. If they are also a route recipient, they receive both.
+
+A route mail that fails is retried for the same slot, up to three times per address. Mail sent
+through a route has no unsubscribe link; to stop it, switch the route off or change its
+recipients.
+
+## Webhooks
+
+A webhook endpoint is a URL of yours that Ouroboros sends events to as signed HTTP POSTs — for a
+SIEM, a chat bridge, a deploy tracker or your own automation. Endpoints are managed by Owners
+and Maintainers, from the **Webhooks** tile on the **Integrations** section of
+<UiPath path="Settings" /> — **Manage**, or **Add endpoint** when there is none.
+
+<Screenshot id="administration.webhooks" />
+
+Each endpoint shows its host, its event families, whether it is **active** or **paused**, and its
+health — **healthy**, **retrying**, **dead-lettering**, or **no deliveries yet**. Its controls:
+
+- **The switch** pauses or enables it. A paused endpoint receives nothing; events for it wait
+  until it is enabled again.
+- **Test ping** sends a `ping` event, to check the receiver end to end.
+- **Deliveries** opens its delivery log — see [Retries and dead letters](#retries-and-dead-letters).
+- **Edit** changes its name, URL, families and description.
+- **Rotate secret** — see [The signing secret](#the-signing-secret).
+- **Delete** removes it and its delivery log. This cannot be undone.
+
+### Adding an endpoint
+
+1. Choose **+ Add endpoint**.
+2. Fill in **Name**, the **URL** events go to, and an optional **Description**.
+3. Tick its **Event families**: `audit.*`, `decision.*`, `run.*`, `pr.*`.
+4. Tick **Use as the SIEM stream** for the endpoint that feeds your SIEM. A workspace has at
+   most one, and it must take `audit.*`. The Audit section's **Stream to SIEM** row then shows
+   its health.
+5. Choose **Create endpoint**.
+
+<Screenshot id="administration.webhooks.create" />
+
+The URL must be `https`, with no user name or password in it. Its host must resolve only to
+external addresses: loopback, private, link-local (including cloud metadata addresses) and
+reserved ranges are refused — when you save, and again at every delivery. To allow a genuine
+internal collector, the deployment administrator lists it in
+<EnvVar name="OURO_WEBHOOK_INTERNAL_ALLOWLIST" />. That never relaxes `https`.
+
+The endpoint's **signing secret** is shown once, right after it is created.
+
+:::caution[The signing secret is shown once]
+
+*This is the only time this secret is shown. It is stored sealed and cannot be read back — if it
+is lost, rotate the secret to get a new one.* Put it straight into your receiver's secret store.
+Anyone with it can forge deliveries your receiver will trust.
 
 :::
+
+### What arrives
+
+Every delivery is a `POST` with a JSON body and these headers:
+
+| Header | Value |
+| --- | --- |
+| `X-Ouro-Event` | The event type, such as `audit.provider.rotated`. |
+| `X-Ouro-Delivery` | The delivery's id — the same on every attempt. Use it to drop duplicates. |
+| `X-Ouro-Timestamp` | When this attempt was signed, in seconds since 1970. |
+| `X-Ouro-Signature` | `v1=` and the signature — see [Verifying a delivery](#verifying-a-delivery). |
+| `User-Agent` | `Ouroboros-Webhooks/1` |
+
+```json
+{
+  "id": "5f0c2b9e-7d41-4c8a-9a13-6e2d1b0c4f77",
+  "type": "audit.provider.rotated",
+  "eventId": "8a6e0d2c-1b3f-4e5a-9c7d-2f1e0a9b8c76",
+  "occurredAt": "2026-10-04T12:00:00.000Z",
+  "workspaceId": "5eed0001-0000-4000-8000-000000000001",
+  "registryVersion": 1,
+  "data": { "action": "provider.rotated", "actorKind": "human", "subjectType": "provider_connection" }
+}
+```
+
+- `id` is the same value as `X-Ouro-Delivery`.
+- `eventId` is the event itself: two endpoints receiving one event see the same `eventId` and
+  different `id`s.
+- `data` holds the event's facts, never a credential.
+
+The body is identical on every attempt; only the timestamp and signature change.
+
+### Event families
+
+| Family | Events | `data` |
+| --- | --- | --- |
+| `audit.*` | One per audit-log entry — `audit.provider.rotated`, `audit.workspace.paused`, `audit.policy.published`, … | The audit entry: action, who did it, what it was about, when. |
+| `decision.*` | A decision filed, refreshed, answered, snoozed or settled at its source. | The audit entry. |
+| `pr.*` | Criteria verified or waived, approvals requested and answered, threads resolved, `pr.merged`. | The audit entry; for `pr.merged`, the run's facts. |
+| `run.*` | `run.opened`, `run.merged`, `run.canceled`. | The run: id, loop number, repository, issue, status, pull request, start and finish. |
+
+A family receives its own events and nothing else. The list of event types is **versioned**: an
+endpoint keeps receiving what it subscribed to, and a new kind of event never starts arriving
+unannounced. The full list, and how to move an endpoint to a newer version, are in
+[`WEBHOOKS.md`](https://github.com/NobuData/ouroboros/blob/main/docs/WEBHOOKS.md).
+
+### Verifying a delivery
+
+Every delivery is signed with **HMAC-SHA256**, using the endpoint's secret, over the timestamp, a
+full stop and the **raw** body:
+
+```text
+X-Ouro-Signature = "v1=" + hex(HMAC-SHA256(secret, X-Ouro-Timestamp + "." + raw body))
+```
+
+Your receiver must, in this order:
+
+1. Reject the request if `X-Ouro-Timestamp` is not a whole number or is more than **300
+   seconds** from your clock. A captured request is then useless five minutes later.
+2. Compute the signature over the body **exactly as received** — before parsing it as JSON.
+3. Compare it, in constant time, with every `v1=` value in `X-Ouro-Signature` (there may be
+   several, separated by commas). Reject the request if none matches.
+4. Only then parse the body, and drop it if you have already processed its `X-Ouro-Delivery`.
+
+In Node.js:
+
+```js
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+export function verify(secret, headers, rawBody, now = Date.now()) {
+  const timestamp = headers["x-ouro-timestamp"];
+  if (!/^\d+$/.test(timestamp ?? "")) return false;
+  if (Math.abs(Math.floor(now / 1000) - Number(timestamp)) > 300) return false;
+
+  const expected = Buffer.from(
+    createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex"),
+  );
+  return (headers["x-ouro-signature"] ?? "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.startsWith("v1="))
+    .some((part) => {
+      const given = Buffer.from(part.slice(3));
+      return given.length === expected.length && timingSafeEqual(given, expected);
+    });
+}
+```
+
+In Python:
+
+```python
+import hashlib
+import hmac
+import re
+import time
+
+
+def verify(secret, headers, raw_body, now=None):
+    timestamp = headers.get("x-ouro-timestamp", "")
+    if not re.fullmatch(r"\d+", timestamp):
+        return False
+    if abs(int(time.time() if now is None else now) - int(timestamp)) > 300:
+        return False
+
+    signed = timestamp.encode() + b"." + raw_body
+    expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+    given = [
+        part.strip()[3:]
+        for part in headers.get("x-ouro-signature", "").split(",")
+        if part.strip().startswith("v1=")
+    ]
+    return any(hmac.compare_digest(value, expected) for value in given)
+```
+
+Both take the headers with lower-case names and the body exactly as it arrived — a string in
+Node.js, bytes in Python.
+
+### Retries and dead letters
+
+Ouroboros delivers **at least once**. An event is recorded in the same transaction as the change
+it describes, so a crash cannot lose it — but a receiver can see the same delivery twice, which
+is what `X-Ouro-Delivery` is for. The order of events is not guaranteed.
+
+- **Success** is a `2xx` answer within ten seconds. Anything else is a failure, including a
+  redirect: redirects are never followed.
+- **A failure is retried** after 30 seconds, 1 minute, 2 minutes, 4 minutes and so on, up to an
+  hour apart, up to <EnvVar name="OURO_WEBHOOK_MAX_ATTEMPTS" /> attempts (5 by default).
+- **After the last attempt, the event is dead-lettered.** The endpoint's health turns to
+  **dead-lettering**, and for the SIEM endpoint, **Stream to SIEM** shows a warning.
+
+**Deliveries** shows every attempt, newest first: when, the event, the attempt number, its
+status, the HTTP code, the latency, and the start of the response. Choose **Dead-lettered** to see
+only those. Once the receiver is fixed, choose **Redeliver** on a dead-lettered event: it is sent
+again with the same `X-Ouro-Delivery` and gets one try.
+
+### The signing secret
+
+**Rotate secret** replaces an endpoint's secret at once. *Every delivery from this moment is
+signed with the new one, and a receiver still checking the old one will reject them.* The new
+secret is shown once. Update the receiver straight after rotating — or have it accept both
+secrets for a moment while you switch. Rotate whenever the secret may have been exposed.
+
+## What can go wrong
+
+- **No mail arrives at all.** `OURO_SMTP_URL` is not set, or the server refuses Ouroboros. Check
+  the REST service's log, and try the server with mailpit's settings first.
+- **The daily digest or weekly report never arrives.** Its route is switched off, or it went to
+  the Owners and Maintainers because **Weekly insights recipients** is empty.
+- **A route cannot be switched on.** It is **locked**: Slack and PagerDuty cannot be connected
+  yet.
+- **Saving an endpoint is refused because of its URL.** It is not `https`, or its host resolves
+  to an internal address. Use a public address, or ask the deployment administrator to allow
+  the collector in `OURO_WEBHOOK_INTERNAL_ALLOWLIST`.
+- **The receiver rejects every delivery.** Its secret is out of date — after a rotation, for
+  example — or it checks the signature over re-serialised JSON instead of the raw body.
+- **The receiver rejects deliveries as too old.** Its clock is more than five minutes off. Sync it
+  with NTP.
+- **The same event arrives twice.** Delivery is at least once. Drop repeats by
+  `X-Ouro-Delivery`.
+- **An endpoint shows dead-lettering.** The receiver was down or refused deliveries. Fix it, then
+  **Redeliver** each dead-lettered event from **Deliveries**.
