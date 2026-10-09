@@ -1170,6 +1170,57 @@
       "capturedAt": "2026-10-09T02:52:58.706Z",
       "uiVersion": "0.144.1",
       "seedRef": "10a8a54f42dc08ac9603b7e56168560c3dc26b84"
+    },
+    {
+      "id": "administration.providers",
+      "route": "/models/providers",
+      "workspace": "acme-robotics",
+      "ready": "role=button[name='+ Add provider']",
+      "clip": "page",
+      "caption": "Providers & keys: one card per connected provider, with its key, health, models, spend and cap.",
+      "alt": "The Providers & keys page for Acme Robotics, headed Credentials live in Acme Robotics's encrypted vault, scoped to this workspace. Keys never leave the control plane — workers never receive them at all., with Audit log and + Add provider, and the tabs Routing, Model registry, Providers & keys and Spend marked soon. Cards follow: Anthropic Claude, connected and switched on, with an empty key field and Save, Models available claude-fable-5, claude-haiku-4-5, claude-opus-5 and claude-sonnet-5 with a priority tier and claude-sonnet-4-6 flagged not listed upstream, This month $412.80 of $600 cap, a Monthly cap of $600 and Test connection; Cursor, connected, $64.10 of a $120 cap; GitHub Copilot in error; and Ollama · workstation, connected, with its Host field http://ken-station.local:11434. The added-by lines are masked.",
+      "capturedAt": "2026-10-09T03:00:17.303Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "1ee435039da79c08e6262beac270c640ae935a99",
+      "masks": [
+        ".providers-card__meta"
+      ]
+    },
+    {
+      "id": "administration.providers.add-key",
+      "route": "/models/providers",
+      "workspace": "acme-robotics",
+      "ready": "role=dialog >> text=API key",
+      "clip": ".shell-overlay__panel",
+      "actions": [
+        {
+          "click": "role=button[name='+ Add provider']"
+        },
+        {
+          "click": "role=dialog >> role=button[name=/Anthropic/]"
+        },
+        {
+          "fill": "role=dialog >> role=textbox[name='Name']",
+          "value": "Anthropic · platform team"
+        }
+      ],
+      "caption": "Connecting Anthropic: a name and the API key, checked with Anthropic before anything is stored.",
+      "alt": "The Connect Anthropic form with Name filled as Anthropic · platform team and the hint How this connection is listed. Two hosts on two machines are two names., an empty API key field, and Connect, Back to catalog and Cancel buttons.",
+      "capturedAt": "2026-10-09T03:00:17.303Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "1ee435039da79c08e6262beac270c640ae935a99"
+    },
+    {
+      "id": "administration.providers.discovery",
+      "route": "/models/providers",
+      "workspace": "acme-robotics",
+      "ready": ".providers-card__models",
+      "clip": ".providers-card__models",
+      "caption": "Discovered models: what the provider reports it serves, with any model it no longer lists flagged.",
+      "alt": "The Models available region of the Anthropic Claude card with Refresh models: chips for claude-fable-5, claude-haiku-4-5, claude-opus-5 and claude-sonnet-5, a priority tier pill, and claude-sonnet-4-6 flagged not listed upstream — alias researcher-long-ctx still points here.",
+      "capturedAt": "2026-10-09T03:00:17.303Z",
+      "uiVersion": "0.144.1",
+      "seedRef": "1ee435039da79c08e6262beac270c640ae935a99"
     }
   ]
 }

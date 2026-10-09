@@ -1000,7 +1000,7 @@ since other pages link variables to it).
 | DB.4 | #1192 ✅ | 🟢 Done | ouroboros-docs: [DB.4] Sign-in & workspace settings | GitHub OAuth app, BetterAuth, domain, region, recovery | mvp, docs-site, documentation, auth, settings | Y | Y | M | ouroboros-docs |
 | DB.5 | #1193 ✅ | 🟢 Done | ouroboros-docs: [DB.5] Members, invites, roles & API tokens | Inviting, roles, capabilities, API tokens and scopes | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
 | DB.6 | #1194 ✅ | 🟢 Done | ouroboros-docs: [DB.6] Ticket sources & repositories | Connecting trackers/repos, sync, write-back, troubleshooting | mvp, docs-site, documentation, sources | Y | Y | M | ouroboros-docs |
-| DB.7 | #1195 | 🟡 Open | ouroboros-docs: [DB.7] Model providers & keys | Adding providers, sealed keys, discovery, local Ollama, managed pool | mvp, docs-site, documentation, providers | Y | Y | M | ouroboros-docs |
+| DB.7 | #1195 ✅ | 🟢 Done | ouroboros-docs: [DB.7] Model providers & keys | Adding providers, sealed keys, discovery, local Ollama, managed pool | mvp, docs-site, documentation, providers | Y | Y | M | ouroboros-docs |
 | DB.8 | #1196 | 🟡 Open | ouroboros-docs: [DB.8] Build farm administration | Pools, farm tokens, enrolling runners, gateway, health | mvp, docs-site, documentation, build-farm | Y | Y | M | ouroboros-docs |
 | DB.9 | #1197 | 🟡 Open | ouroboros-docs: [DB.9] Policies & guardrails | Org policy, protected paths, spend guard, dry-run, decision TTLs, exceptions | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
 | DB.10 | #1198 | 🟡 Open | ouroboros-docs: [DB.10] Notifications, email & webhooks | SMTP, digests, channels, webhook endpoints, signing, retries | mvp, docs-site, documentation, settings | Y | Y | M | ouroboros-docs |
@@ -1122,6 +1122,27 @@ webhooks, write-back permissions, pausing a source, troubleshooting sync errors.
 **Problem Statement.** Without a source there is nothing to loop on.
 
 ### Issue DB.7 (#1195) — ouroboros-docs: [DB.7] Model providers & keys
+
+> **GitHub issue:** #1195 ✅ · **Status:** 🟢 Done · **Parent epic:** #1159
+>
+> **Delivered (#1195):** `administration/providers.mdx` covers:
+>
+> - **The page and its cards.**
+> - **The five registered adapters** (Anthropic, OpenAI-compatible, Ollama, GitHub Copilot, Cursor) with each form's fields and its declared discovery/pull. OpenAI, Google and Bedrock are honest-absent.
+> - **A D12 note that calling a model through a connection is not available yet** (`/internal/llm/invoke` is `501`; `invocation: false` on every adapter).
+> - **Connecting:** the check-before-store, and the **Connect anyway** duplicate warning.
+> - **Keys:** sealed with AES-256-GCM, Save/Rotate (old key kept on refusal), and Reveal with step-up (password, or sign out and in for GitHub users; a 5-minute window; auto-mask; audited), with a `caution` on revealing.
+> - **Test connection:** ✓ △ ✗ and the health strip.
+> - **Discovery:** **Refresh models**, *models not refreshed*, and **not listed upstream** with an alias still pointing at the model.
+> - **Ollama:** the compose `--profile ollama` on `OURO_OLLAMA_PORT`, **Host** editing with *The working address is unchanged.*, **Detected models** and **Pull latest**, and `OURO_LOCAL_PROVIDER_URLS` for the engine's direct reach.
+> - **Spend:** the monthly cap is **warning only** (nothing in `internal/` reads `monthly_cap_cents`), with pointers to the route's **Max cost per run** and the policy spend guard. The **Spend** tab is soon.
+> - **Switch off vs delete** (blocked while routes resolve through it), and the owner/admin-only credential audit log.
+> - **The managed key pool** is honest-absent: `OURO_MANAGED_KEY_POOL`/`OURO_MANAGED_KEY_TRIAL_CENTS` only change the Get Started Smart Defaults promise; keep `false`.
+> - **What can go wrong.**
+>
+> `tests/administration.test.ts` pins the adapter files, the declared capabilities, the 501 invoke, the UI labels and sentences, the warning-only cap and the single reader of `managedKeyPool`.
+>
+> **Screenshots** (`acme-robotics`): `administration.providers` (the page, added-by lines masked), `administration.providers.add-key` (the Connect Anthropic form, key left empty) and `administration.providers.discovery` (the Anthropic card's Models available region with the unlisted flag). No `docs-coverage.json` entries: DE.4 (#1212) has not created the file. Module 0.1.30.
 
 **Solution / Scope.** `/models/providers`: adding a provider, entering keys (sealed in the
 vault, never shown again), discovery, health/audit, local models via Ollama, the managed key

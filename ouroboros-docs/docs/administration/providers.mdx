@@ -2,14 +2,212 @@
 title: "Model providers & keys"
 sidebar_label: "Providers & keys"
 sidebar_position: 8
-description: "Adding model providers and keys, discovery, local models and spend caps."
+description: "Adding providers, sealed keys, discovery, local Ollama and the managed pool."
 ---
 
-Adding model providers and keys, discovery, local models and spend caps.
+A **provider** is a connection to a service that serves models — Anthropic, a GitHub Copilot
+seat, or an Ollama host on your own network. Routes and aliases in
+[Models](../user-guide/models.mdx) resolve to models through these connections. This page covers
+connecting providers and looking after their keys. It also covers discovering models, running
+models locally with Ollama, and watching spend.
 
-:::info[Being written]
+You manage providers on <UiPath path="Models > Providers & keys" /> (`/models/providers`).
+Everyone in the workspace can read the page. Only an **Owner** or a **Maintainer** can connect,
+test, switch, cap or delete a provider, or touch a key. Anyone else sees each control switched
+off, and the key actions are not drawn at all.
 
-This page is being written in
-[#1195](https://github.com/NobuData/ouroboros/issues/1195).
+<Screenshot id="administration.providers" />
+
+Each card shows:
+
+- the provider's name and status — **connected** or **error**;
+- a switch for routing through it;
+- its key, masked, or its **Host** or **Base URL**;
+- who added it and when it was last used;
+- the models it serves;
+- this month's spend against its **Monthly cap**;
+- a **Test connection** button.
+
+The ⋯ menu holds **Delete provider…**.
+
+:::note[Calling models through a provider]
+
+This version of Ouroboros stores, tests and discovers through these connections, and routing
+resolves to them. Calling a model through a connection is not available yet.
 
 :::
+
+## What you can connect
+
+| Kind | The form asks for | Discovers models | Pulls models |
+| --- | --- | --- | --- |
+| **Anthropic** | **API key** | Yes | No |
+| **OpenAI-compatible** endpoint (vLLM, LM Studio and the like) | **Base URL**, an optional **API key** | Yes | No |
+| **Ollama** host | **Host** | Yes | Yes |
+| **GitHub Copilot** | **GitHub token**, an optional **GitHub organization** | No | No |
+| **Cursor** | **API key** | No | No |
+
+Every form also takes a **Name**, and all but Anthropic take an optional **Capability note**: a
+line under the name, such as *zero-cost lane — used for docs & commit messages*. **OpenAI**,
+**Google** and **Bedrock** are not available yet.
+
+## Connecting a provider
+
+1. Choose **+ Add provider**, then choose a kind in **Add a provider**.
+2. Give it a **Name** — how the connection is listed. Two hosts on two machines need two names,
+   such as `Ollama · workstation` and `Ollama · gpu-box`.
+3. Fill in the kind's fields: the key, the address, or both.
+4. Choose **Connect**.
+
+<Screenshot id="administration.providers.add-key" />
+
+Ouroboros asks the provider whether the details work **before** anything is stored. If the
+provider refuses — *The provider refused it — …* — nothing was stored; correct the key or
+address and try again. If you connect the same kind at the same address twice, the dialog warns
+you once, for example *"Ollama · workstation" is already connected at http://… Connecting it a
+second time is allowed, but it is usually a mistake.*, and the button becomes
+**Connect anyway**.
+
+The new card appears **connected**, and its models are discovered straight away where the kind
+supports it.
+
+## Keys
+
+A key is sealed in the workspace's vault the moment it is stored, with envelope encryption
+(AES-256-GCM). It is never shown again unless an Owner or Maintainer deliberately reveals it.
+**Read the security model ↗** on the page links to the full design.
+
+- **Save** stores a key on a card that has none.
+- **Rotate** replaces a key. The new key is checked with the provider first: if the provider
+  refuses it, *Your existing key is still active — nothing was changed.*
+- **Reveal** shows the key for a short time. It needs a recent sign-in: *Revealing Anthropic
+  Claude's key needs a sign-in from the last 5 minutes.* If you signed in with a password, type
+  it under **Confirm it's you**. If you signed in with GitHub, choose **Sign out and sign in
+  again** — a fresh sign-in counts as confirmation. The revealed key masks itself again after a
+  countdown, or as soon as you leave the page. *This reveal was recorded in the audit log.*
+
+:::caution[Revealing a key puts it on your screen]
+
+Reveal a key only when you must, for example to move it to another system, and copy it straight
+into a secret store. Every reveal is recorded with your name. If a key may have been seen by
+someone who should not have it, rotate it with the provider and store the new one here.
+
+:::
+
+Deleting a provider deletes its key with it.
+
+## Testing and health
+
+**Test connection** asks the provider whether the stored details still work. The answer appears
+on the card with **✓** (it works), **△** (it works with a warning) or **✗** (it does not, with
+the reason). The provider's status and the health strip on [Models](../user-guide/models.mdx)
+are updated from the same check.
+
+A card in **error** stays usable for reading. Fix the key or address, then test it again.
+
+## Discovering models
+
+**Models available** lists what the provider says it serves, with its tier where the provider
+reports one. **Refresh models** asks again. If the provider cannot be reached, the list is left
+as it was and the card says *models not refreshed*.
+
+<Screenshot id="administration.providers.discovery" />
+
+A model the provider no longer lists is kept and flagged **not listed upstream**. When an alias
+still uses it, the flag says so — *alias researcher-long-ctx still points here*. Repoint that
+alias in the [Model registry](../user-guide/models.mdx) before the provider retires the model.
+
+GitHub Copilot and Cursor do not report a model list to Ouroboros, so their cards have no
+**Refresh models**.
+
+## Local models with Ollama
+
+An Ollama host serves models on your own hardware, with no key and no metered spend.
+
+1. Run Ollama on a machine the REST service can reach. To try it locally, the development
+   stack has a profile for it: `docker compose --profile ollama up -d`. It publishes Ollama on
+   <EnvVar name="OURO_OLLAMA_PORT" /> (11434), on the loopback interface only.
+2. Choose **+ Add provider**, then **Ollama**, and type the **Host**, such as
+   `http://ken-station.local:11434`.
+3. Choose **Connect**.
+
+The card lists the models already on the host under **Detected models**. **Pull latest** on a
+model pulls it onto the host, showing its progress as it downloads. To change the address,
+edit **Host** and choose **Save**: Ouroboros checks that Ollama answers at the new address, and
+keeps the old one if it does not — *The working address is unchanged.*
+
+Ollama authenticates nobody. Keep its port on a private network, never on a public interface.
+
+The engine's workers reach local model servers directly, at the addresses listed in
+<EnvVar name="OURO_LOCAL_PROVIDER_URLS" />. Set that variable to the same Ollama address if the
+engine should use it.
+
+## Spend and the monthly cap
+
+**This month** shows the spend recorded against a provider since the first of the month. A
+local provider shows *no metered spend*.
+
+**Monthly cap** sets the amount the meter measures against, such as `$600`. Clear the field for
+no cap. The meter turns to a warning as spend nears the cap. The cap is a **warning only**: it
+does not stop loops. To stop a loop that would spend too much, set **Max cost per run** on its
+[route](../user-guide/models.mdx), or a spend guard in [Policies](./policies.mdx).
+
+The **Spend** tab beside **Providers & keys** is marked **soon** and is not available yet.
+
+## Switching off and deleting
+
+- **The switch** on a card routes through the provider, or not. Switching it off keeps the
+  provider and its key; routing skips it, and any route that resolves through it fails until
+  you switch it on or repoint the route. The confirmation lists those routes first.
+- **⋯ → Delete provider…** removes the connection and its key. A provider that routes still
+  resolve through cannot be deleted — *These routes resolve through it. Repoint or remove them
+  in routing first — nothing was deleted.* — and the dialog offers **Open routing**.
+
+## The credential audit log
+
+**Audit log** opens the **Credential audit log**: every credential operation in the workspace,
+newest first, including refusals. It shows connecting, revealing, rotating, switching,
+testing, capping and deleting, and when a worker was given an address for a local provider.
+*No entry ever holds a key.* Only Owners and Maintainers can read it.
+
+## The managed key pool
+
+Some deployments could give new workspaces model access from a shared pool of keys, with a
+trial credit. **This version of Ouroboros has no managed key pool**, so every workspace brings
+its own keys.
+
+Two variables are reserved for it:
+
+- <EnvVar name="OURO_MANAGED_KEY_POOL" /> declares that the deployment runs a pool.
+- <EnvVar name="OURO_MANAGED_KEY_TRIAL_CENTS" /> sets the trial credit a new workspace gets,
+  in cents.
+
+Today they change only what the **Smart Defaults** card on Get Started offers a new workspace:
+with the pool declared, it offers managed keys and names the trial credit. Leave
+`OURO_MANAGED_KEY_POOL` at `false`. A pool you declare but do not run makes the card promise
+keys that do not exist.
+
+## What can go wrong
+
+- **Connecting is refused with *The provider refused it — key rejected (401)*.** The key is
+  wrong, revoked, or for another account. Nothing was stored; paste the right key.
+- **An Ollama or OpenAI-compatible connection is refused as unreachable.** The REST service
+  cannot reach the address. Check it from the machine REST runs on, for example with
+  `curl http://ken-station.local:11434/api/tags`.
+- **A card turned to error.** Choose **Test connection** for the reason. Rotate the key or fix
+  the address, then test again.
+- **Reveal asks you to sign in again.** Your sign-in is older than the window. Choose **Sign out
+  and sign in again**, then **Reveal** once more.
+- ***Too many reveal attempts.*** Reveals are rate-limited. Wait the seconds the message gives.
+- **A provider cannot be deleted.** Routes still resolve through it. Choose **Open routing** and
+  repoint them first, or switch the provider off instead.
+- **Spend passed the cap and nothing stopped.** The monthly cap is a warning. Use a per-run cap
+  or a spend guard to stop spending.
+- **An alias shows *no key — connect a provider*.** Its provider has no key stored. Store one
+  with **Save** on the provider's card.
+- **The REST service exits at start-up naming `OURO_VAULT_MASTER_KEY`.** The vault cannot open
+  without it, and if it changes, no stored key can be opened again. See
+  <EnvVar name="OURO_VAULT_MASTER_KEY" /> and back it up separately.
+
+For writing an adapter for another provider, see
+[`MODEL_PROVIDERS.md`](https://github.com/NobuData/ouroboros/blob/main/docs/MODEL_PROVIDERS.md).
