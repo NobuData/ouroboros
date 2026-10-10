@@ -24,6 +24,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 const { PaneRestoration } = await import("@/app/shell/pane-restoration");
+const { claimPaneLanding } = await import("@/app/shell/pane-anchor");
 const { resetPanePositions } = await import("@/app/shell/pane-position");
 const { CONTENT_ID } = await import("@/app/shell/regions");
 
@@ -102,6 +103,28 @@ describe("a push", () => {
     pushed(rerender, "/dashboard", "#anchors");
 
     expect(pane.scrollTop).toBe(800);
+  });
+
+  it("leaves the pane where a screen that claimed its own landing put it (#627)", () => {
+    // Research's `?view=library` names where the page opens in its query, not in a fragment.
+    const { rerender } = render(<PaneRestoration />);
+    const release = claimPaneLanding();
+    readerScrollsTo(800);
+
+    pushed(rerender, "/research");
+
+    expect(pane.scrollTop).toBe(800);
+    release();
+  });
+
+  it("resets again once the claim is released", () => {
+    const { rerender } = render(<PaneRestoration />);
+    claimPaneLanding()();
+    readerScrollsTo(800);
+
+    pushed(rerender, "/dashboard");
+
+    expect(pane.scrollTop).toBe(0);
   });
 });
 

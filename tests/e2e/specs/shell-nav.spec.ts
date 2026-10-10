@@ -121,6 +121,7 @@ const LIVE_ENTRIES = [
   "Build Farm",
   "Knowledge",
   "Planning",
+  "Research",
   "Insights",
 ] as const;
 
