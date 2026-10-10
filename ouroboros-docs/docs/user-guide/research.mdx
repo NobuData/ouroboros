@@ -2,7 +2,7 @@
 title: "Research"
 sidebar_label: "Research"
 sidebar_position: 16
-description: "The Research page, what an investigation is, what it reads and how every finding is cited."
+description: "The Research page, what an investigation is, what it reads, how every finding is cited and how to read and export a brief."
 ---
 
 **Research**, at `/research`, is where you ask Ouroboros a question instead of handing it a
@@ -319,3 +319,175 @@ Every answer is cited at a `telemetry://` address that holds the whole question:
 The dates in an address are always exact. If an investigation asks for "the last 7 days", the
 citation records the seven days that meant at the time, so reading the address again next month
 asks about the same week. An investigation only ever reads your own workspace's numbers.
+
+## Reading a brief
+
+A **brief** is an investigation's answer. An investigation that finishes delivers one, and the
+brief is made of the same parts whatever the question was:
+
+- **findings**, each followed by the sources that back it;
+- **open questions**: what the investigation could not back with a source;
+- the **sources** it read, numbered;
+- for a **Gap analysis**, a **capability matrix** and the tickets it proposes.
+
+:::info[Read a brief through the API for now]
+
+The **Featured brief** card arrives in a later release. Until then a brief is read from the
+[REST API](../cli/rest-api.mdx), at three addresses under
+`/api/v1/research/investigations/<investigation id>`:
+
+| Address | What it returns |
+| --- | --- |
+| `/brief` | The brief: its paragraphs and citations, the sources it cites, the capability matrix and the proposed tickets |
+| `/sources` | Every source the investigation read, with its excerpt and when it was retrieved |
+| `/brief/export` | The brief as a [Markdown file](#exporting-a-brief) |
+
+Everyone in the workspace can read all three. An investigation that has not finished answers
+`/brief` and `/brief/export` with `404 brief_not_found`; `/sources` already lists what it has
+read so far.
+
+:::
+
+### Findings and open questions
+
+A brief's text is a series of claims. Each one is either:
+
+- a **finding**: a claim backed by at least one source, which is named right after it; or
+- an **open question**: something the investigation asked, or wanted to say, and could not
+  back. It carries no source.
+
+A claim is never shown as a finding without a source. If the investigation writes one it cannot
+cite, the claim is kept as an open question and marked `demoted`, so you can see what it wanted
+to say and that it could not prove it. Open questions are kept apart from the findings: in the
+API each claim says which it is, and in the exported file they sit under their own heading.
+
+### Citations
+
+A citation is a marker in square brackets after the claim it backs:
+
+> The docking gap is not sensors: our IMU and rangefinder match Skylink's published
+> spec.`[07]` It is control — Skylink runs a wind-feedforward MPC in the final 2 m`[12][31]`
+> while ours is PID with fixed gains (`dock_ctrl.c:214`, unchanged in 14 months).`[git]`
+
+- `[07]` is source number 7 of this investigation. Numbers below ten are written with two
+  digits.
+- `[git]` is a source with a name instead of a number. It names the line of code the claim is
+  about.
+- `[12][31]` is one claim backed by two sources.
+
+**A source keeps its number.** Sources are numbered once, in the order the investigation read
+them, and are never renumbered. `[07]` means the same source in the brief's text, in the list
+of sources, in a matrix cell and in the exported file, today and next month. You can quote a
+citation in a review without it going stale.
+
+A reference to code, like `dock_ctrl.c:214` above, is shown in a fixed-width font and links to
+that file at the exact commit the investigation read. Only a file one of the claim's own
+sources cites is treated this way.
+
+### Sources
+
+A brief lists the sources its own claims cite. Each has its marker, a title and where it came
+from:
+
+| Marker | Title | From |
+| --- | --- | --- |
+| `[07]` | Skylink S4 docking module — teardown & sensor BOM | `droneanalysts.example.com/s4-teardown` |
+| `[19]` | Churn interviews Q2 — 9 of 14 cite docking reliability | `issue-index://support/churn-2026-q2` |
+| `[git]` | dock_ctrl.c blame — gains last tuned 14 months ago | `helios-firmware @ 8c1b2e4 · src/dock/dock_ctrl.c` |
+
+A web page and a file of code link to where they can be opened. A source inside Ouroboros, such
+as a set of tickets or a telemetry reading, shows its address and has no link.
+
+The full list, at `/sources`, holds every source the investigation read, including those no
+claim cites. Each entry adds:
+
+- the **excerpt**: the part that was read, saved at the time. It stays the same when the page
+  it came from changes or disappears;
+- **when it was retrieved**.
+
+### The capability matrix
+
+A **Gap analysis** also delivers a matrix: one row for each capability, one column for your
+product and one for each competitor.
+
+| Cell | Meaning |
+| --- | --- |
+| `● shipping` | It is released |
+| `◐ partial` | Part of it is there. A note may say more, such as `◐ beta` |
+| `◐ in flight` | It is being built now |
+| `○ none` | A source shows it is absent |
+| `? unknown` | The investigation did not find out |
+
+Every cell except `? unknown` cites at least one source. `? unknown` is an honest answer, not a
+blank: it does **not** mean the competitor lacks the capability.
+
+The last column is the **gap**: how far behind the best competitor you are on that row.
+
+| Gap | When |
+| --- | --- |
+| `WIP` | Yours is in flight |
+| `LEAD` | You are ahead of every competitor whose status is known |
+| `LOW` | You are level with the best competitor, or nothing can be measured because your own status or every competitor's is unknown |
+| `MED` | You are one step behind the best competitor |
+| `HIGH` | You are two steps behind: the best competitor ships it and you have none. Also one step behind, when the investigation judged the gap serious |
+
+The steps are `none`, then `partial`, then `shipping`. A competitor whose cell is `? unknown` is
+left out of the comparison.
+
+The investigation proposes a gap for each row, and Ouroboros checks it against the cells. The
+proposal only decides between `MED` and `HIGH` when you are one step behind. Anywhere else the
+cells decide, and a proposal they do not support is overruled. Each row stores how its gap was
+reached, for example:
+
+> Helios: partial · best rival: shipping (Skylink) · rivals: 1 shipping, 1 partial, 1 none ·
+> proposed: high · one step behind the best rival, proposed high → high
+
+### Proposed from gaps
+
+A gap analysis also proposes the work that would close its gaps: one **epic** and a list of
+**tickets**, each naming the row it closes.
+
+> EPIC · Docking parity · DOCK-1 wind-feedforward MPC · DOCK-2 re-planned retry · +3 more · L
+
+- Only tickets for a `HIGH` or `MED` row are proposed. A ticket for a row where you lead, or
+  one already in flight, is left out.
+- The first two tickets are named and the rest are counted, as `+3 more`.
+- The letter at the end is the **effort** of the whole epic. Each ticket's size is worth points
+  (`XS` 1, `S` 2, `M` 3, `L` 5, `XL` 8). The points are added up and read back as a size: up to
+  1 is `XS`, up to 3 `S`, up to 8 `M`, up to 20 `L` and more than that `XL`. The epic is never
+  smaller than its largest ticket.
+
+Nothing is filed. These are proposals for you to review.
+
+### Exporting a brief
+
+`/brief/export` downloads the brief as one Markdown file, named after the investigation, for
+example `RS-127-brief.md`. Use it to paste a brief into a document review with its evidence
+attached.
+
+The file holds, in order:
+
+1. the investigation's number and question, then its kind, depth, source count and brief
+   version;
+2. **Brief**: the text, with each citation marker after its claim, then **Open questions** as a
+   list;
+3. **Capability matrix**: a table whose cells carry their citations, then how each gap was
+   reached (gap analysis only);
+4. **Proposed from gaps**: the epic and every ticket (gap analysis only);
+5. **Sources**: every source on its own line, with its marker, title, address and the time it
+   was retrieved;
+6. a **provenance** line: the investigation, the researcher that wrote the brief, the model
+   alias it ran on, the brief's version and its date.
+
+```md
+## Sources
+
+- [07] Skylink S4 docking module — teardown & sensor BOM — `https://droneanalysts.example.com/s4-teardown` — retrieved 2026-10-07T12:07:00.000Z
+
+---
+
+_Provenance: investigation RS-127 · researcher loop-v1 · alias researcher-long-ctx · brief v1 · 2026-10-07_
+```
+
+The markers in the file are the same as everywhere else, so a citation you quote from the file
+points at the same source. Exporting the same brief twice gives the same file.

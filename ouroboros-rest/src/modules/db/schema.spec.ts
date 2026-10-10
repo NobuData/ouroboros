@@ -513,7 +513,11 @@ describe("TABLE_COLUMNS", () => {
     // `briefs`, `brief_claims` and `brief_claim_sources`, which delivery is the first code to
     // write, and V120's `investigation_loops`, `investigation_usage` and
     // `investigation_deliverable_inputs`.
-    expect(TABLE_NAMES).toHaveLength(163);
+    //
+    // The hundred-and-sixty-fourth to seventh are V112's `capability_matrices`, `matrix_rows`,
+    // `matrix_cells` and `matrix_cell_sources`, which the matrix builder (#621) is the first code
+    // to read and write.
+    expect(TABLE_NAMES).toHaveLength(167);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

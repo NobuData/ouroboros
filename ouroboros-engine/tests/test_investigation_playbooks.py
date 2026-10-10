@@ -60,3 +60,14 @@ def test_the_depth_presets_are_the_scope_estimates_calibration() -> None:
         depth: (preset.iterations, preset.synthesis_passes)
         for depth, preset in DEPTH_PRESETS.items()
     } == {"quick": (1, 1), "standard": (2, 2), "deep_dive": (4, 4)}
+
+
+def test_the_gap_analysis_template_asks_for_the_epic_and_its_ticket_stubs() -> None:
+    shape = TEMPLATES["gap_analysis@1"].deliverables["matrix"]
+
+    for asked in (
+        '"epic": string',
+        '"tickets": [{"key": string',
+        '"capability": string',
+    ):
+        assert asked in shape

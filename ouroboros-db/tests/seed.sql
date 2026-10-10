@@ -7395,6 +7395,74 @@ select pg_temp.must_hold(
      join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'),
   'every matrix cell but the one honest ? unknown cites RS-127''s ledger');
 
+-- RS-127's matrix input (#621): the deliverable input the matrix is built from — the same cells
+-- as the matrix, the proposed gaps the severity rule takes, and the epic and ticket stubs behind
+-- the card's "Proposed from gaps" chips.
+select pg_temp.must_hold(
+  (select d.payload ->> 'title' = 'Autonomous docking vs. the field'
+          and d.payload ->> 'us' = 'Helios'
+          and d.payload -> 'rivals' = '["Skylink", "AeroMesh", "Novum"]'::jsonb
+          and (select array_agg((r.value ->> 'capability') || ': ' || (
+                        select string_agg(c.value ->> 'status', ' | ' order by c.ord)
+                          from jsonb_array_elements(r.value -> 'cells') with ordinality as c (value, ord))
+                      || ' → ' || (r.value ->> 'gap') order by r.ord)
+                 from jsonb_array_elements(d.payload -> 'rows') with ordinality as r (value, ord))
+              = array['Docking in >8 m/s gusts: partial | shipping | partial | none → high',
+                      'Visual-inertial approach (no beacon): none | shipping | shipping | beta → high',
+                      'Abort & retry recovery logic: partial | shipping | partial | none → med',
+                      'OTA resilience (A/B + rollback): in_flight | shipping | none | none → wip',
+                      'Recovery beacon over BLE: shipping | none | unknown | none → lead']
+     from ouroboros.investigation_deliverable_inputs d
+     join ouroboros.investigations inv on inv.id = d.investigation_id and inv.seq = 127
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'
+    where d.deliverable = 'matrix'),
+  'RS-127''s matrix input carries the matrix''s cells as a playbook writes them, with each row''s proposed gap');
+
+select pg_temp.must_hold(
+  (select -- Every cell's sources are exactly the matrix cell's own links: 27 across 19 cited cells.
+          (select count(*) from jsonb_array_elements(d.payload -> 'rows') r,
+                               jsonb_array_elements(r.value -> 'cells') c,
+                               jsonb_array_elements_text(c.value -> 'sources') s) = 27
+          and (select count(*) from jsonb_array_elements(d.payload -> 'rows') r,
+                                   jsonb_array_elements(r.value -> 'cells') c
+                where jsonb_array_length(c.value -> 'sources') = 0) = 1
+          and not exists (
+                select 1 from jsonb_array_elements(d.payload -> 'rows') r,
+                              jsonb_array_elements(r.value -> 'cells') c,
+                              jsonb_array_elements_text(c.value -> 'sources') s
+                 where not exists (select 1 from ouroboros.source_records src
+                                    where src.id = s::uuid and src.investigation_id = d.investigation_id))
+     from ouroboros.investigation_deliverable_inputs d
+     join ouroboros.investigations inv on inv.id = d.investigation_id and inv.seq = 127
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'
+    where d.deliverable = 'matrix'),
+  'the matrix input cites RS-127''s own ledger — 27 links, and none for the one unknown cell');
+
+select pg_temp.must_hold(
+  (select d.payload ->> 'epic' = 'Docking parity'
+          and (select array_agg((t.value ->> 'key') || ' ' || (t.value ->> 'title') || ' ['
+                                || (t.value ->> 'effort') || '] ' || (t.value ->> 'capability')
+                                || ' ×' || jsonb_array_length(t.value -> 'sources') order by t.ord)
+                 from jsonb_array_elements(d.payload -> 'tickets') with ordinality as t (value, ord))
+              = array['DOCK-1 wind-feedforward MPC [m] Docking in >8 m/s gusts ×2',
+                      'DOCK-2 re-planned retry [m] Abort & retry recovery logic ×2',
+                      'DOCK-3 gust estimator from IMU residuals [m] Docking in >8 m/s gusts ×1',
+                      'DOCK-4 visual-inertial approach prototype [l] Visual-inertial approach (no beacon) ×1',
+                      'DOCK-5 HIL gust-profile regression suite [s] Docking in >8 m/s gusts ×1']
+          -- Each stub closes a row whose stored severity is HIGH or MED — what the chips count.
+          and (select bool_and(exists (
+                        select 1 from ouroboros.capability_matrices m
+                          join ouroboros.matrix_rows r on r.matrix_id = m.id
+                         where m.investigation_id = d.investigation_id
+                           and r.capability = t.value ->> 'capability'
+                           and r.gap_severity in ('high', 'med')))
+                 from jsonb_array_elements(d.payload -> 'tickets') as t (value))
+     from ouroboros.investigation_deliverable_inputs d
+     join ouroboros.investigations inv on inv.id = d.investigation_id and inv.seq = 127
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'
+    where d.deliverable = 'matrix'),
+  'the matrix input proposes EPIC · Docking parity and DOCK-1…5 — DOCK-1 wind-feedforward MPC, DOCK-2 re-planned retry, +3 more — each closing a HIGH or MED row');
+
 -- The competitor tracker: four rivals, three source kinds, and a citable archived diff.
 select pg_temp.must_hold(
   (select sub_line = '4 rivals watched · release notes, changelogs, filings'

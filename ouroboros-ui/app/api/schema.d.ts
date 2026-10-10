@@ -10951,6 +10951,100 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/research/investigations/{investigationId}/brief": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * An investigation's brief, as the card draws it
+         * @description The investigation's current brief — its highest version — made renderable: paragraphs of
+         *     spans, each claim span typed `finding` or `open_question` and followed by its cites; the
+         *     sources panel; the capability matrix; and the proposed-from-gaps summary.
+         *
+         *     **A citation has one label everywhere.** `[07]` is the ledger record's stored cite
+         *     number, and `[git]` its symbolic key; the same label is used in a span's `cites`, the
+         *     panel, a matrix cell, `/sources` and the Markdown export. Records are never updated, so
+         *     reading again never renumbers.
+         *
+         *     **A code reference is a segment, not a guess.** A span's `segments` split its text into
+         *     prose and `code` runs; a run is recognised only for a file one of the span's own `code`
+         *     sources cites, and links to that file at the cited commit.
+         *
+         *     **A gap severity carries its derivation.** Each matrix row's `gap.derivation` names the
+         *     inputs the rule used — our status, the best rival's, the proposed gap — and `matrix` is
+         *     null for a kind that produces none. `proposed` is derived from the rows whose stored
+         *     severity is `high` or `med`; it is what **Draft epic from gaps** would create.
+         *
+         *     Every member.
+         */
+        get: operations["getInvestigationBrief"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/investigations/{investigationId}/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * An investigation's whole citation ledger
+         * @description The listing behind the sources panel's `all ↗`: every record the investigation archived,
+         *     in cite-number order, each with its locator, **the archived excerpt** and **when it was
+         *     retrieved**. The excerpt is what was read at the time — it stays while the page it came
+         *     from moves on.
+         *
+         *     Readable as soon as the investigation has archived anything; it does not wait for the
+         *     brief. Every member.
+         */
+        get: operations["listInvestigationSources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/investigations/{investigationId}/brief/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export a brief as Markdown
+         * @description **Export brief ↗** — the brief as one Markdown document: the body with its citation
+         *     markers inline, the capability matrix as a table with each gap's derivation, the
+         *     proposed-from-gaps list, **every source numbered with its locator and retrieval time**,
+         *     and a provenance footer (investigation, researcher, alias, brief version, date).
+         *
+         *     The markers are the labels `/brief` returns, and each source is one line —
+         *     ``- [07] Title — `locator` — retrieved <ISO 8601>`` — under `## Sources`, so the document
+         *     can be read by a program as well as a person. The footer is dated by the brief, not by
+         *     the clock: exporting twice yields the same bytes.
+         *
+         *     Every member.
+         */
+        get: operations["exportInvestigationBrief"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -19256,6 +19350,257 @@ export interface components {
             format: components["schemas"]["DocumentImportFormat"];
             /** @description The file's text. At most 2 MiB. */
             content: string;
+        };
+        /**
+         * BriefCite
+         * @description One citation marker. `label` is what every surface prints — the ledger record's stored
+         *     cite number, zero-padded to two digits, or its symbolic key.
+         */
+        BriefCite: {
+            /** @description `[07]`, `[312]`, `[git]`. */
+            label: string;
+            citeNo: number;
+            /** @description The symbolic key — `git` — or null. */
+            citeKey: string | null;
+            /**
+             * Format: uuid
+             * @description The ledger record the marker resolves to.
+             */
+            sourceId: string;
+        };
+        /**
+         * BriefSourceKind
+         * @enum {string}
+         */
+        BriefSourceKind: "web" | "competitor_diff" | "code" | "ticket" | "telemetry" | "doc";
+        /**
+         * BriefSource
+         * @description A ledger record, as the sources panel lists it.
+         */
+        BriefSource: {
+            label: string;
+            citeNo: number;
+            citeKey: string | null;
+            /** Format: uuid */
+            sourceId: string;
+            kind: components["schemas"]["BriefSourceKind"];
+            /** @description The research tool that archived it. */
+            tool: string;
+            title: string;
+            /** @description A URL or an internal URI — `issue-index://…`, `git://…`, `telemetry://…`. */
+            locator: string;
+            /**
+             * @description The locator as the panel prints it: a URL without its scheme, a `git://` locator as
+             *     `repo @ sha · path`, anything else as it is.
+             */
+            locatorLabel: string;
+            /**
+             * @description Where it opens: the page, or the file at its commit on the repository's host. Null
+             *     for an internal locator with nowhere to go, or a repository the workspace lacks.
+             */
+            href: string | null;
+        };
+        /**
+         * BriefLedgerSource
+         * @description A ledger record with what was archived of it.
+         */
+        BriefLedgerSource: {
+            label: string;
+            citeNo: number;
+            citeKey: string | null;
+            /** Format: uuid */
+            sourceId: string;
+            kind: components["schemas"]["BriefSourceKind"];
+            tool: string;
+            title: string;
+            locator: string;
+            locatorLabel: string;
+            href: string | null;
+            /** @description The archived extract — at most 4 KiB. */
+            excerpt: string;
+            /** Format: date-time */
+            retrievedAt: string;
+            contentHash: string;
+        };
+        /**
+         * BriefLedger
+         * @description An investigation's whole ledger, in cite-number order.
+         */
+        BriefLedger: {
+            /** @description `RS-127`. */
+            investigation: string;
+            total: number;
+            items: components["schemas"]["BriefLedgerSource"][];
+        };
+        /**
+         * BriefSegment
+         * @description A run of a span's text — prose, or a code reference drawn mono.
+         */
+        BriefSegment: {
+            /** @enum {string} */
+            kind: "text" | "code";
+            text: string;
+            /** @description The file at the cited commit, for a `code` run whose repository resolves. */
+            href: string | null;
+        };
+        /**
+         * BriefSpan
+         * @description One span of a paragraph. `segments` concatenate to `text`; `cites` follow the span. A
+         *     span with a null `claim` is connective prose.
+         */
+        BriefSpan: {
+            text: string;
+            segments: components["schemas"]["BriefSegment"][];
+            claim: {
+                ref: string;
+                /** @enum {string} */
+                type: "finding" | "open_question";
+                /** @description Offered as a finding, cited nothing, written as an open question. */
+                demoted: boolean;
+            } | null;
+            cites: components["schemas"]["BriefCite"][];
+        };
+        /**
+         * BriefParagraph
+         * @description `findings` when it states any finding, `open_questions` when every claim it states is an
+         *     open question, `text` when it states none.
+         */
+        BriefParagraph: {
+            /** @enum {string} */
+            kind: "findings" | "open_questions" | "text";
+            spans: components["schemas"]["BriefSpan"][];
+        };
+        /**
+         * MatrixCell
+         * @description One cell. Every status but `unknown` carries at least one cite; `unknown` is the honest
+         *     *we did not find out*, never a blank.
+         */
+        MatrixCell: {
+            /** @enum {string} */
+            status: "shipping" | "partial" | "none" | "unknown" | "wip";
+            /** @description `●` shipping, `◐` partial or in flight, `○` none, `?` unknown. */
+            glyph: string;
+            /** @description The word beside the glyph — the note when there is one, otherwise the status. */
+            label: string;
+            /** @description `beta`, `in flight`. */
+            note: string | null;
+            cites: components["schemas"]["BriefCite"][];
+        };
+        /**
+         * MatrixGapSeverity
+         * @enum {string}
+         */
+        MatrixGapSeverity: "high" | "med" | "low" | "wip" | "lead";
+        /** MatrixRow */
+        MatrixRow: {
+            id: string;
+            capability: string;
+            /** @description One per column, in column order. */
+            cells: components["schemas"]["MatrixCell"][];
+            gap: {
+                severity: components["schemas"]["MatrixGapSeverity"];
+                /** @description `HIGH`, `MED`, `LOW`, `WIP`, `LEAD`. */
+                label: string;
+                /** @description The inputs that produced the severity. */
+                derivation: string;
+            };
+        };
+        /**
+         * CapabilityMatrix
+         * @description A gap analysis's matrix — capabilities × us and each rival.
+         */
+        CapabilityMatrix: {
+            id: string;
+            title: string;
+            columns: {
+                label: string;
+                /** @description Whether it is our own column. */
+                us: boolean;
+                competitorId: string | null;
+            }[];
+            rows: components["schemas"]["MatrixRow"][];
+        };
+        /**
+         * ProposedTicket
+         * @description A ticket stub proposed for a `high` or `med` gap.
+         */
+        ProposedTicket: {
+            /** @description `DOCK-1`. */
+            key: string;
+            title: string;
+            /** @description `DOCK-1 wind-feedforward MPC` — the chip. */
+            label: string;
+            /** @enum {string|null} */
+            effort: "xs" | "s" | "m" | "l" | "xl" | null;
+            /** @description The matrix row it closes. */
+            capability: string;
+            /** @enum {string} */
+            severity: "high" | "med";
+            sources: string[];
+        };
+        /**
+         * GapProposals
+         * @description What a gap analysis proposes from its `high` and `med` rows. `top` are the stubs the chip
+         *     row names and `more` the count behind `+N more`. `effort` rolls the stubs up by points —
+         *     `xs` 1 · `s` 2 · `m` 3 · `l` 5 · `xl` 8, read back as up to 1 `xs`, 3 `s`, 8 `m`, 20 `l`,
+         *     else `xl`, and never smaller than the largest stub.
+         */
+        GapProposals: {
+            epic: {
+                title: string;
+                /** @description `EPIC · Docking parity`. */
+                label: string;
+            };
+            tickets: components["schemas"]["ProposedTicket"][];
+            top: components["schemas"]["ProposedTicket"][];
+            more: number;
+            /** @enum {string|null} */
+            effort: "xs" | "s" | "m" | "l" | "xl" | null;
+        };
+        /**
+         * InvestigationBrief
+         * @description An investigation's current brief, with everything the card draws beside it.
+         */
+        InvestigationBrief: {
+            investigation: {
+                /** Format: uuid */
+                id: string;
+                /** @description `RS-127`. */
+                displayId: string;
+                question: string;
+                /** @description The kind's slug — `gap_analysis`. */
+                kind: string;
+                kindLabel: string;
+                /** @description The kind chip's hue key — `bug`, `reg`, `road`, `gap`. */
+                tintKey: string;
+                /** @enum {string} */
+                depth: "quick" | "standard" | "deep_dive";
+                /** @enum {string} */
+                status: "queued" | "running" | "brief_ready" | "issues_filed" | "failed" | "cancelled";
+            };
+            brief: {
+                /** Format: uuid */
+                id: string;
+                version: number;
+                /** Format: date-time */
+                createdAt: string;
+                paragraphs: components["schemas"]["BriefParagraph"][];
+            };
+            sources: {
+                /** @description How many records the ledger holds — the panel's `44 cited`. */
+                cited: number;
+                /** @description The records the brief's own claims cite, in cite-number order. */
+                panel: components["schemas"]["BriefSource"][];
+            };
+            matrix: components["schemas"]["CapabilityMatrix"] | null;
+            proposed: components["schemas"]["GapProposals"] | null;
+            provenance: {
+                /** @description `loop-v1`. */
+                researcher: string | null;
+                alias: string | null;
+            };
+            /** @description `RS-127-brief.md`. */
+            exportFilename: string;
         };
         /**
          * ResolvedProvider
@@ -80526,6 +80871,392 @@ export interface operations {
             };
             /**
              * @description `document_import_not_found` — this workspace has no such imported set; or
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the request is malformed: a field outside its shape, or one
+             *     this operation does not take. `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getInvestigationBrief: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The investigation. */
+                investigationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The brief. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvestigationBrief"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `investigation_not_found` — this workspace has no such investigation;
+             *     `brief_not_found` — the investigation has not delivered a brief; or
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the request is malformed: a field outside its shape, or one
+             *     this operation does not take. `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listInvestigationSources: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The investigation. */
+                investigationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The ledger. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BriefLedger"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `investigation_not_found` — this workspace has no such investigation; or
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the request is malformed: a field outside its shape, or one
+             *     this operation does not take. `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    exportInvestigationBrief: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The investigation. */
+                investigationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The document. */
+            200: {
+                headers: {
+                    /** @description `attachment; filename="RS-127-brief.md"`. */
+                    "Content-Disposition"?: string;
+                    /** @description `private, no-cache`. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example # RS-127 — Autonomous docking vs. Skylink / AeroMesh / Novum
+                     *
+                     *     > Gap analysis · deep dive · 44 sources · brief v1
+                     *
+                     *     ## Brief
+                     *
+                     *     The docking gap is not sensors: our IMU and rangefinder match Skylink's published spec.[07]
+                     *
+                     *     ## Sources
+                     *
+                     *     - [07] Skylink S4 docking module — teardown & sensor BOM — `https://droneanalysts.example.com/s4-teardown` — retrieved 2026-10-07T12:07:00.000Z
+                     *
+                     *     ---
+                     *
+                     *     _Provenance: investigation RS-127 · researcher loop-v1 · alias researcher-long-ctx · brief v1 · 2026-10-07_
+                     */
+                    "text/markdown": string;
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `investigation_not_found` — this workspace has no such investigation;
+             *     `brief_not_found` — the investigation has not delivered a brief; or
              *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
              *     a member of.
              */

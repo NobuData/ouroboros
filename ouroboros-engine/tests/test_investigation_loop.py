@@ -84,6 +84,36 @@ def test_a_gap_analysis_delivers_matrix_rows_gated_like_the_brief() -> None:
     assert all("cites" not in cell for cell in cells)
 
 
+def test_a_gap_analysis_delivers_the_epic_and_ticket_stubs_proposed_from_its_gaps() -> (
+    None
+):
+    control, model = FakeControl(), RecordedModel()
+    _run(control, model)
+
+    matrix = control.delivered.deliverables["matrix"]
+
+    assert matrix["epic"] == "Docking parity"
+    # A stub's cites are resolved like any other item's; one that cites nothing is marked,
+    # not dropped — a proposal is a suggestion, and the row it closes is its provenance.
+    assert matrix["tickets"] == [
+        {
+            "key": "DOCK-1",
+            "title": "wind-feedforward MPC",
+            "effort": "m",
+            "capability": "Docking in >8 m/s gusts",
+            "sources": ["src-2"],
+        },
+        {
+            "key": "DOCK-2",
+            "title": "gust estimator",
+            "effort": "s",
+            "capability": "Docking in >8 m/s gusts",
+            "sources": [],
+            "uncited": True,
+        },
+    ]
+
+
 # --- the demotion path -----------------------------------------------------------------------
 
 

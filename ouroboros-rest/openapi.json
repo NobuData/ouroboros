@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.41.6",
+    "version": "0.41.7",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -40841,6 +40841,476 @@
           }
         }
       }
+    },
+    "/api/v1/research/investigations/{investigationId}/brief": {
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "An investigation's brief, as the card draws it",
+        "description": "The investigation's current brief — its highest version — made renderable: paragraphs of\nspans, each claim span typed `finding` or `open_question` and followed by its cites; the\nsources panel; the capability matrix; and the proposed-from-gaps summary.\n\n**A citation has one label everywhere.** `[07]` is the ledger record's stored cite\nnumber, and `[git]` its symbolic key; the same label is used in a span's `cites`, the\npanel, a matrix cell, `/sources` and the Markdown export. Records are never updated, so\nreading again never renumbers.\n\n**A code reference is a segment, not a guess.** A span's `segments` split its text into\nprose and `code` runs; a run is recognised only for a file one of the span's own `code`\nsources cites, and links to that file at the cited commit.\n\n**A gap severity carries its derivation.** Each matrix row's `gap.derivation` names the\ninputs the rule used — our status, the best rival's, the proposed gap — and `matrix` is\nnull for a kind that produces none. `proposed` is derived from the rows whose stored\nseverity is `high` or `med`; it is what **Draft epic from gaps** would create.\n\nEvery member.",
+        "operationId": "getInvestigationBrief",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "investigationId",
+            "in": "path",
+            "required": true,
+            "description": "The investigation.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The brief.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestigationBrief"
+                },
+                "examples": {
+                  "seeded": {
+                    "summary": "RS-127, abridged — one span, one panel row, one matrix row",
+                    "value": {
+                      "investigation": {
+                        "id": "5eed0084-0000-4000-8000-000000000127",
+                        "displayId": "RS-127",
+                        "question": "Autonomous docking vs. Skylink / AeroMesh / Novum",
+                        "kind": "gap_analysis",
+                        "kindLabel": "Gap analysis",
+                        "tintKey": "gap",
+                        "depth": "deep_dive",
+                        "status": "brief_ready"
+                      },
+                      "brief": {
+                        "id": "5eed0086-0000-4000-8000-000000000001",
+                        "version": 1,
+                        "createdAt": "2026-10-07T12:31:00.000Z",
+                        "paragraphs": [
+                          {
+                            "kind": "findings",
+                            "spans": [
+                              {
+                                "text": " while ours is PID with fixed gains (dock_ctrl.c:214, unchanged in 14 months).",
+                                "segments": [
+                                  {
+                                    "kind": "text",
+                                    "text": " while ours is PID with fixed gains (",
+                                    "href": null
+                                  },
+                                  {
+                                    "kind": "code",
+                                    "text": "dock_ctrl.c:214",
+                                    "href": "https://github.com/acme-robotics/helios-firmware/blob/8c1b2e4/src/dock/dock_ctrl.c#L214"
+                                  },
+                                  {
+                                    "kind": "text",
+                                    "text": ", unchanged in 14 months).",
+                                    "href": null
+                                  }
+                                ],
+                                "claim": {
+                                  "ref": "pid-fixed-gains",
+                                  "type": "finding",
+                                  "demoted": false
+                                },
+                                "cites": [
+                                  {
+                                    "label": "[git]",
+                                    "citeNo": 44,
+                                    "citeKey": "git",
+                                    "sourceId": "5eed0085-0000-4000-8000-000000000044"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      "sources": {
+                        "cited": 44,
+                        "panel": [
+                          {
+                            "label": "[git]",
+                            "citeNo": 44,
+                            "citeKey": "git",
+                            "sourceId": "5eed0085-0000-4000-8000-000000000044",
+                            "kind": "code",
+                            "tool": "code",
+                            "title": "dock_ctrl.c blame — gains last tuned 14 months ago",
+                            "locator": "git://helios-firmware@8c1b2e4/src/dock/dock_ctrl.c#L214",
+                            "locatorLabel": "helios-firmware @ 8c1b2e4 · src/dock/dock_ctrl.c",
+                            "href": "https://github.com/acme-robotics/helios-firmware/blob/8c1b2e4/src/dock/dock_ctrl.c#L214"
+                          }
+                        ]
+                      },
+                      "matrix": {
+                        "id": "5eed0095-0000-4000-8000-000000000127",
+                        "title": "Autonomous docking vs. the field",
+                        "columns": [
+                          {
+                            "label": "Helios",
+                            "us": true,
+                            "competitorId": null
+                          },
+                          {
+                            "label": "Skylink",
+                            "us": false,
+                            "competitorId": "5eed0094-0000-4000-8000-000000000001"
+                          }
+                        ],
+                        "rows": [
+                          {
+                            "id": "5eed0095-0000-4000-8000-000000000005",
+                            "capability": "Recovery beacon over BLE",
+                            "cells": [
+                              {
+                                "status": "shipping",
+                                "glyph": "●",
+                                "label": "shipping",
+                                "note": null,
+                                "cites": [
+                                  {
+                                    "label": "[23]",
+                                    "citeNo": 23,
+                                    "citeKey": null,
+                                    "sourceId": "5eed0085-0000-4000-8000-000000000023"
+                                  }
+                                ]
+                              },
+                              {
+                                "status": "unknown",
+                                "glyph": "?",
+                                "label": "unknown",
+                                "note": null,
+                                "cites": []
+                              }
+                            ],
+                            "gap": {
+                              "severity": "lead",
+                              "label": "LEAD",
+                              "derivation": "We ship it; no rival is known to → lead. AeroMesh is unknown, not none."
+                            }
+                          }
+                        ]
+                      },
+                      "proposed": {
+                        "epic": {
+                          "title": "Docking parity",
+                          "label": "EPIC · Docking parity"
+                        },
+                        "tickets": [
+                          {
+                            "key": "DOCK-1",
+                            "title": "wind-feedforward MPC",
+                            "label": "DOCK-1 wind-feedforward MPC",
+                            "effort": "m",
+                            "capability": "Docking in >8 m/s gusts",
+                            "severity": "high",
+                            "sources": [
+                              "5eed0085-0000-4000-8000-000000000012"
+                            ]
+                          }
+                        ],
+                        "top": [
+                          {
+                            "key": "DOCK-1",
+                            "title": "wind-feedforward MPC",
+                            "label": "DOCK-1 wind-feedforward MPC",
+                            "effort": "m",
+                            "capability": "Docking in >8 m/s gusts",
+                            "severity": "high",
+                            "sources": [
+                              "5eed0085-0000-4000-8000-000000000012"
+                            ]
+                          }
+                        ],
+                        "more": 0,
+                        "effort": "m"
+                      },
+                      "provenance": {
+                        "researcher": "loop-v1",
+                        "alias": "researcher-long-ctx"
+                      },
+                      "exportFilename": "RS-127-brief.md"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`investigation_not_found` — this workspace has no such investigation;\n`brief_not_found` — the investigation has not delivered a brief; or\n`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the request is malformed: a field outside its shape, or one\nthis operation does not take. `details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/research/investigations/{investigationId}/sources": {
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "An investigation's whole citation ledger",
+        "description": "The listing behind the sources panel's `all ↗`: every record the investigation archived,\nin cite-number order, each with its locator, **the archived excerpt** and **when it was\nretrieved**. The excerpt is what was read at the time — it stays while the page it came\nfrom moves on.\n\nReadable as soon as the investigation has archived anything; it does not wait for the\nbrief. Every member.",
+        "operationId": "listInvestigationSources",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "investigationId",
+            "in": "path",
+            "required": true,
+            "description": "The investigation.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The ledger.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefLedger"
+                },
+                "examples": {
+                  "seeded": {
+                    "summary": "RS-127, one of its 44 records shown",
+                    "value": {
+                      "investigation": "RS-127",
+                      "total": 44,
+                      "items": [
+                        {
+                          "label": "[07]",
+                          "citeNo": 7,
+                          "citeKey": null,
+                          "sourceId": "5eed0085-0000-4000-8000-000000000007",
+                          "kind": "web",
+                          "tool": "web",
+                          "title": "Skylink S4 docking module — teardown & sensor BOM",
+                          "locator": "https://droneanalysts.example.com/s4-teardown",
+                          "locatorLabel": "droneanalysts.example.com/s4-teardown",
+                          "href": "https://droneanalysts.example.com/s4-teardown",
+                          "excerpt": "The S4 carries a 6-axis IMU and a 40 m time-of-flight rangefinder — the same sensor class as Helios.",
+                          "retrievedAt": "2026-10-07T12:07:00.000Z",
+                          "contentHash": "sha256:5f4dcc3b5aa765d61d8327deb882cf995f4dcc3b5aa765d61d8327deb882cf99"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`investigation_not_found` — this workspace has no such investigation; or\n`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the request is malformed: a field outside its shape, or one\nthis operation does not take. `details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/research/investigations/{investigationId}/brief/export": {
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Export a brief as Markdown",
+        "description": "**Export brief ↗** — the brief as one Markdown document: the body with its citation\nmarkers inline, the capability matrix as a table with each gap's derivation, the\nproposed-from-gaps list, **every source numbered with its locator and retrieval time**,\nand a provenance footer (investigation, researcher, alias, brief version, date).\n\nThe markers are the labels `/brief` returns, and each source is one line —\n``- [07] Title — `locator` — retrieved <ISO 8601>`` — under `## Sources`, so the document\ncan be read by a program as well as a person. The footer is dated by the brief, not by\nthe clock: exporting twice yields the same bytes.\n\nEvery member.",
+        "operationId": "exportInvestigationBrief",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "investigationId",
+            "in": "path",
+            "required": true,
+            "description": "The investigation.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The document.",
+            "headers": {
+              "Content-Disposition": {
+                "description": "`attachment; filename=\"RS-127-brief.md\"`.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "description": "`private, no-cache`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "# RS-127 — Autonomous docking vs. Skylink / AeroMesh / Novum\n\n> Gap analysis · deep dive · 44 sources · brief v1\n\n## Brief\n\nThe docking gap is not sensors: our IMU and rangefinder match Skylink's published spec.[07]\n\n## Sources\n\n- [07] Skylink S4 docking module — teardown & sensor BOM — `https://droneanalysts.example.com/s4-teardown` — retrieved 2026-10-07T12:07:00.000Z\n\n---\n\n_Provenance: investigation RS-127 · researcher loop-v1 · alias researcher-long-ctx · brief v1 · 2026-10-07_\n"
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`investigation_not_found` — this workspace has no such investigation;\n`brief_not_found` — the investigation has not delivered a brief; or\n`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the request is malformed: a field outside its shape, or one\nthis operation does not take. `details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -60829,6 +61299,781 @@
           "content": {
             "type": "string",
             "description": "The file's text. At most 2 MiB."
+          }
+        }
+      },
+      "BriefCite": {
+        "type": "object",
+        "title": "BriefCite",
+        "description": "One citation marker. `label` is what every surface prints — the ledger record's stored\ncite number, zero-padded to two digits, or its symbolic key.",
+        "additionalProperties": false,
+        "required": [
+          "label",
+          "citeNo",
+          "citeKey",
+          "sourceId"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "`[07]`, `[312]`, `[git]`."
+          },
+          "citeNo": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "citeKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The symbolic key — `git` — or null."
+          },
+          "sourceId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The ledger record the marker resolves to."
+          }
+        }
+      },
+      "BriefSourceKind": {
+        "type": "string",
+        "title": "BriefSourceKind",
+        "enum": [
+          "web",
+          "competitor_diff",
+          "code",
+          "ticket",
+          "telemetry",
+          "doc"
+        ]
+      },
+      "BriefSource": {
+        "type": "object",
+        "title": "BriefSource",
+        "description": "A ledger record, as the sources panel lists it.",
+        "additionalProperties": false,
+        "required": [
+          "label",
+          "citeNo",
+          "citeKey",
+          "sourceId",
+          "kind",
+          "tool",
+          "title",
+          "locator",
+          "locatorLabel",
+          "href"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "citeNo": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "citeKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sourceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/BriefSourceKind"
+          },
+          "tool": {
+            "type": "string",
+            "description": "The research tool that archived it."
+          },
+          "title": {
+            "type": "string"
+          },
+          "locator": {
+            "type": "string",
+            "description": "A URL or an internal URI — `issue-index://…`, `git://…`, `telemetry://…`."
+          },
+          "locatorLabel": {
+            "type": "string",
+            "description": "The locator as the panel prints it: a URL without its scheme, a `git://` locator as\n`repo @ sha · path`, anything else as it is."
+          },
+          "href": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Where it opens: the page, or the file at its commit on the repository's host. Null\nfor an internal locator with nowhere to go, or a repository the workspace lacks."
+          }
+        }
+      },
+      "BriefLedgerSource": {
+        "type": "object",
+        "title": "BriefLedgerSource",
+        "description": "A ledger record with what was archived of it.",
+        "additionalProperties": false,
+        "required": [
+          "label",
+          "citeNo",
+          "citeKey",
+          "sourceId",
+          "kind",
+          "tool",
+          "title",
+          "locator",
+          "locatorLabel",
+          "href",
+          "excerpt",
+          "retrievedAt",
+          "contentHash"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "citeNo": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "citeKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sourceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/BriefSourceKind"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "locator": {
+            "type": "string"
+          },
+          "locatorLabel": {
+            "type": "string"
+          },
+          "href": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "excerpt": {
+            "type": "string",
+            "description": "The archived extract — at most 4 KiB."
+          },
+          "retrievedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "contentHash": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        }
+      },
+      "BriefLedger": {
+        "type": "object",
+        "title": "BriefLedger",
+        "description": "An investigation's whole ledger, in cite-number order.",
+        "additionalProperties": false,
+        "required": [
+          "investigation",
+          "total",
+          "items"
+        ],
+        "properties": {
+          "investigation": {
+            "type": "string",
+            "description": "`RS-127`."
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BriefLedgerSource"
+            }
+          }
+        }
+      },
+      "BriefSegment": {
+        "type": "object",
+        "title": "BriefSegment",
+        "description": "A run of a span's text — prose, or a code reference drawn mono.",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "text",
+          "href"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "text",
+              "code"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "href": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The file at the cited commit, for a `code` run whose repository resolves."
+          }
+        }
+      },
+      "BriefSpan": {
+        "type": "object",
+        "title": "BriefSpan",
+        "description": "One span of a paragraph. `segments` concatenate to `text`; `cites` follow the span. A\nspan with a null `claim` is connective prose.",
+        "additionalProperties": false,
+        "required": [
+          "text",
+          "segments",
+          "claim",
+          "cites"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BriefSegment"
+            }
+          },
+          "claim": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "required": [
+              "ref",
+              "type",
+              "demoted"
+            ],
+            "properties": {
+              "ref": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "finding",
+                  "open_question"
+                ]
+              },
+              "demoted": {
+                "type": "boolean",
+                "description": "Offered as a finding, cited nothing, written as an open question."
+              }
+            }
+          },
+          "cites": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BriefCite"
+            }
+          }
+        }
+      },
+      "BriefParagraph": {
+        "type": "object",
+        "title": "BriefParagraph",
+        "description": "`findings` when it states any finding, `open_questions` when every claim it states is an\nopen question, `text` when it states none.",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "spans"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "findings",
+              "open_questions",
+              "text"
+            ]
+          },
+          "spans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BriefSpan"
+            }
+          }
+        }
+      },
+      "MatrixCell": {
+        "type": "object",
+        "title": "MatrixCell",
+        "description": "One cell. Every status but `unknown` carries at least one cite; `unknown` is the honest\n*we did not find out*, never a blank.",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "glyph",
+          "label",
+          "note",
+          "cites"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "shipping",
+              "partial",
+              "none",
+              "unknown",
+              "wip"
+            ]
+          },
+          "glyph": {
+            "type": "string",
+            "description": "`●` shipping, `◐` partial or in flight, `○` none, `?` unknown."
+          },
+          "label": {
+            "type": "string",
+            "description": "The word beside the glyph — the note when there is one, otherwise the status."
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`beta`, `in flight`."
+          },
+          "cites": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BriefCite"
+            }
+          }
+        }
+      },
+      "MatrixGapSeverity": {
+        "type": "string",
+        "title": "MatrixGapSeverity",
+        "enum": [
+          "high",
+          "med",
+          "low",
+          "wip",
+          "lead"
+        ]
+      },
+      "MatrixRow": {
+        "type": "object",
+        "title": "MatrixRow",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "capability",
+          "cells",
+          "gap"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "capability": {
+            "type": "string"
+          },
+          "cells": {
+            "type": "array",
+            "description": "One per column, in column order.",
+            "items": {
+              "$ref": "#/components/schemas/MatrixCell"
+            }
+          },
+          "gap": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "severity",
+              "label",
+              "derivation"
+            ],
+            "properties": {
+              "severity": {
+                "$ref": "#/components/schemas/MatrixGapSeverity"
+              },
+              "label": {
+                "type": "string",
+                "description": "`HIGH`, `MED`, `LOW`, `WIP`, `LEAD`."
+              },
+              "derivation": {
+                "type": "string",
+                "description": "The inputs that produced the severity."
+              }
+            }
+          }
+        }
+      },
+      "CapabilityMatrix": {
+        "type": "object",
+        "title": "CapabilityMatrix",
+        "description": "A gap analysis's matrix — capabilities × us and each rival.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "columns",
+          "rows"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "label",
+                "us",
+                "competitorId"
+              ],
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "us": {
+                  "type": "boolean",
+                  "description": "Whether it is our own column."
+                },
+                "competitorId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MatrixRow"
+            }
+          }
+        }
+      },
+      "ProposedTicket": {
+        "type": "object",
+        "title": "ProposedTicket",
+        "description": "A ticket stub proposed for a `high` or `med` gap.",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "title",
+          "label",
+          "effort",
+          "capability",
+          "severity",
+          "sources"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "`DOCK-1`."
+          },
+          "title": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string",
+            "description": "`DOCK-1 wind-feedforward MPC` — the chip."
+          },
+          "effort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "xs",
+              "s",
+              "m",
+              "l",
+              "xl",
+              null
+            ]
+          },
+          "capability": {
+            "type": "string",
+            "description": "The matrix row it closes."
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "high",
+              "med"
+            ]
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "GapProposals": {
+        "type": "object",
+        "title": "GapProposals",
+        "description": "What a gap analysis proposes from its `high` and `med` rows. `top` are the stubs the chip\nrow names and `more` the count behind `+N more`. `effort` rolls the stubs up by points —\n`xs` 1 · `s` 2 · `m` 3 · `l` 5 · `xl` 8, read back as up to 1 `xs`, 3 `s`, 8 `m`, 20 `l`,\nelse `xl`, and never smaller than the largest stub.",
+        "additionalProperties": false,
+        "required": [
+          "epic",
+          "tickets",
+          "top",
+          "more",
+          "effort"
+        ],
+        "properties": {
+          "epic": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "title",
+              "label"
+            ],
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string",
+                "description": "`EPIC · Docking parity`."
+              }
+            }
+          },
+          "tickets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposedTicket"
+            }
+          },
+          "top": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposedTicket"
+            }
+          },
+          "more": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "effort": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "xs",
+              "s",
+              "m",
+              "l",
+              "xl",
+              null
+            ]
+          }
+        }
+      },
+      "InvestigationBrief": {
+        "type": "object",
+        "title": "InvestigationBrief",
+        "description": "An investigation's current brief, with everything the card draws beside it.",
+        "additionalProperties": false,
+        "required": [
+          "investigation",
+          "brief",
+          "sources",
+          "matrix",
+          "proposed",
+          "provenance",
+          "exportFilename"
+        ],
+        "properties": {
+          "investigation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "displayId",
+              "question",
+              "kind",
+              "kindLabel",
+              "tintKey",
+              "depth",
+              "status"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "displayId": {
+                "type": "string",
+                "description": "`RS-127`."
+              },
+              "question": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "description": "The kind's slug — `gap_analysis`."
+              },
+              "kindLabel": {
+                "type": "string"
+              },
+              "tintKey": {
+                "type": "string",
+                "description": "The kind chip's hue key — `bug`, `reg`, `road`, `gap`."
+              },
+              "depth": {
+                "type": "string",
+                "enum": [
+                  "quick",
+                  "standard",
+                  "deep_dive"
+                ]
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "running",
+                  "brief_ready",
+                  "issues_filed",
+                  "failed",
+                  "cancelled"
+                ]
+              }
+            }
+          },
+          "brief": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "version",
+              "createdAt",
+              "paragraphs"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "paragraphs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/BriefParagraph"
+                }
+              }
+            }
+          },
+          "sources": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "cited",
+              "panel"
+            ],
+            "properties": {
+              "cited": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "How many records the ledger holds — the panel's `44 cited`."
+              },
+              "panel": {
+                "type": "array",
+                "description": "The records the brief's own claims cite, in cite-number order.",
+                "items": {
+                  "$ref": "#/components/schemas/BriefSource"
+                }
+              }
+            }
+          },
+          "matrix": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CapabilityMatrix"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "proposed": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/GapProposals"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "provenance": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "researcher",
+              "alias"
+            ],
+            "properties": {
+              "researcher": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "`loop-v1`."
+              },
+              "alias": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "exportFilename": {
+            "type": "string",
+            "description": "`RS-127-brief.md`."
           }
         }
       },
