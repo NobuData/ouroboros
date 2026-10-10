@@ -55,6 +55,7 @@ import {
   INTERNAL_RUN_CONTROLS_FETCH_PATH,
   INTERNAL_RUN_CONTROL_ACK_PATH,
   INTERNAL_RUN_STAGE_TRANSITIONS_PATH,
+  INTERNAL_DRY_RUN_REPLAY_ESTIMATES_PATH,
   INTERNAL_INVESTIGATION_BRIEF_PATH,
   INTERNAL_INVESTIGATION_CHECKPOINT_PATH,
   INTERNAL_INVESTIGATION_FINISH_PATH,
@@ -185,6 +186,10 @@ export const INTERNAL_SURFACE: readonly string[] = [
   `PUT ${INTERNAL_INVESTIGATION_CHECKPOINT_PATH}`,
   `POST ${INTERNAL_INVESTIGATION_BRIEF_PATH}`,
   `POST ${INTERNAL_INVESTIGATION_FINISH_PATH}`,
+  // The dry-run harness's replay estimates (CD.3, #561): how long builds and test runs like a
+  // stage's have taken. A stranger who could reach it could read a workspace's farm history by
+  // guessing a dry run's id.
+  `POST ${INTERNAL_DRY_RUN_REPLAY_ESTIMATES_PATH}`,
 ].sort();
 
 /** One route, as the enumeration sees it. */

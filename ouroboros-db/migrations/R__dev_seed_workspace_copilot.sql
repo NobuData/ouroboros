@@ -25,13 +25,14 @@
 --     `Yes ✓`), tool traces with the applied operations, one bounced-then-corrected edge, the
 --     `$5/run` spend guard as a *proposed* `set_guard` (DSL v1 has no guard construct; V110), and a
 --     cost on every copilot reply.
---   * **The dry run on `#489`** — seven rows with their exact `how` and notes, the overlay diff
---     (`drivers/can/arbitration.c +41 −9`), 2m 41s, $0.31, a clean guard audit, a pinned sha.
---   * **The two suggestions** (V114), both `source: rule` with typed `proposed_ops`: the
---     conditional exploit-verify at 93% — a `has-cve` decision node on the `cve` label, routing
---     around the stage, since DSL v1 has no `issue.cve` predicate — and pr-etiquette on both
---     reviewers at 81%, whose basis is **the ten seeded `review_replay_pairs`** (6 style
---     disagreements), the historical data CF.5 (#574) will produce for real.
+--   * **The dry run on `#489`** — left `running`, with six of its seven rows, their exact `how`
+--     and notes, the overlay diff (`drivers/can/arbitration.c +41 −9`) and a pinned sha. Its
+--     replayed **build row is computed from the farm's history**, which
+--     `dev_seed_workspace_metrics_analyzer` writes after this file — so
+--     R__dev_seed_workspace_replay.sql (#561) adds that row, completes the run (2m 41s, $0.31, a
+--     clean guard audit) and files the two suggestions a finished run takes.
+--   * **The ten `review_replay_pairs`** (6 style disagreements) the 81% suggestion's basis
+--     stands on — the historical data CF.5 (#574) will produce for real.
 --
 -- Every statement carries `${ouro_dev_seed}`, so it cannot run in production; every insert ends
 -- `on conflict do nothing`, and every write a trigger would refuse a second time is guarded too
@@ -42,8 +43,8 @@
 -- `dev_seed_workflows`; `dev_seed_workspace_copilot` does.
 --
 -- Ids: `5eed0088` the ticket twin, `5eed0089` the workflow, `5eed008a` the session and its
--- messages, `5eed008b` the dry run, its stages and its diff, `5eed008c` the suggestions,
--- `5eed008d` the replay pairs.
+-- messages, `5eed008b` the dry run, its stages and its diff, `5eed008d` the replay pairs
+-- (`5eed008c`, the suggestions, is R__dev_seed_workspace_replay.sql's).
 
 -- ---------------------------------------------------------------------------
 -- #489's canonical twin.
@@ -255,7 +256,8 @@ select m.id, s.organization_id, s.id, m.role, m.body,
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
--- The dry run on #489 — written running, its rows and diff added, then completed.
+-- The dry run on #489 — written running, with its rows and diff. The replayed build row and the
+-- completion are R__dev_seed_workspace_replay.sql's (#561).
 -- ---------------------------------------------------------------------------
 insert into ouroboros.dry_runs (id, organization_id, workflow_id, base_version, draft_rev, session_id,
                                 ticket_id, pinned_sha, mode, status, precheck_findings, started_at)
@@ -286,9 +288,6 @@ select st.id, r.organization_id, r.id, st.seq, st.stage_key, st.display_name, st
     ('5eed008b-0000-4000-8000-000000000103'::uuid, 3, 'implement', 'implement', 'ok', 'llm',
      'diff drafted +41 −9 (below) · 84k tokens',
      '{"tokens": 84000, "cost_cents": 14, "files_touched": 1, "simulated_writes": 1, "lines_added": 41, "lines_removed": 9}', null),
-    ('5eed008b-0000-4000-8000-000000000104'::uuid, 4, 'build', 'build', 'ok', 'replayed',
-     'est. 4m 02s (214 similar builds, ±20s)',
-     '{"estimate_ms": 242000, "sample_count": 214, "spread_ms": 20000, "similarity_class": "pool-a · helios-firmware · zephyr build"}', null),
     ('5eed008b-0000-4000-8000-000000000105'::uuid, 5, 'exploit-verify', 'exploit-verify', 'skipped', 'skipped',
      'no PoC exists: stage had nothing to do', '{}', 'no PoC exists: stage had nothing to do'),
     ('5eed008b-0000-4000-8000-000000000106'::uuid, 6, 'review', 'review ×2', 'ok', 'llm',
@@ -323,17 +322,6 @@ select '5eed008b-0000-4000-8000-000000000201'::uuid, r.organization_id, r.id, 'o
    and ${ouro_dev_seed}
 on conflict do nothing;
 
-update ouroboros.dry_runs r
-   set status = 'complete',
-       duration_ms = 161000,
-       cost_cents = 31,
-       tokens = 131200,
-       guard_audit = '[]',
-       finished_at = r.started_at + interval '161 seconds'
- where r.id = '5eed008b-0000-4000-8000-000000000001'
-   and r.status = 'running'
-   and ${ouro_dev_seed};
-
 -- ---------------------------------------------------------------------------
 -- The reviewer-pair replays the 81% suggestion stands on — ten historical changes of
 -- helios-firmware (the planning seed's closed #540–#549), six style disagreements.
@@ -349,76 +337,5 @@ select ('5eed008d-0000-4000-8000-' || lpad(p.n::text, 12, '0'))::uuid, wf.organi
   cross join (values (1, false), (2, true), (3, false), (4, false), (5, true),
                      (6, false), (7, true), (8, false), (9, true), (10, false)) as p (n, agreed)
  where wf.id = '5eed0089-0000-4000-8000-000000000001'
-   and ${ouro_dev_seed}
-on conflict do nothing;
-
--- ---------------------------------------------------------------------------
--- The two suggestions — both rule-derived, with typed operations and a confidence basis.
--- ---------------------------------------------------------------------------
-
--- 93%: deterministic-skip. exploit-verify skipped with nothing to do on a security-labelled issue
--- with no CVE; the operations put a `has-cve` decision ahead of it so such issues route around it.
-insert into ouroboros.dry_run_suggestions (id, organization_id, dry_run_id, source, rule_id, rule_version,
-                                           title, body, evidence, proposed_ops, confidence,
-                                           confidence_basis, created_at)
-select '5eed008c-0000-4000-8000-000000000001'::uuid, r.organization_id, r.id, 'rule',
-       'deterministic-skip', 1,
-       'Make exploit-verify conditional',
-       'Make exploit-verify conditional — it stalled with nothing to do because #489 has no CVE. Add when: issue.cve != null so security-labeled issues without a PoC skip it cleanly.',
-       '{"stage_key": "exploit-verify", "verdict": "skipped",
-         "skip_reason": "no PoC exists: stage had nothing to do",
-         "ticket": "#489", "ticket_labels": ["bug", "can-bus"], "trigger_labels": ["security"]}',
-       '[{"kind": "add_stage", "params": {"node": {"id": "has-cve", "type": "flow", "title": "has CVE?",
-          "position": {"x": 0, "y": 660},
-          "config": {"kind": "decision", "predicate": {"kind": "labels", "op": "any", "values": ["cve"]}}}}},
-         {"kind": "remove_edge", "params": {"from": "test", "to": "exploit-verify"}},
-         {"kind": "add_edge", "params": {"edge": {"from": "test", "to": "has-cve", "kind": "default"}}},
-         {"kind": "add_edge", "params": {"edge": {"from": "has-cve", "to": "exploit-verify", "kind": "branch",
-          "label": "cve", "condition": {"kind": "labels", "op": "any", "values": ["cve"]}}}},
-         {"kind": "add_edge", "params": {"edge": {"from": "has-cve", "to": "review-primary", "kind": "branch",
-          "label": "no cve", "condition": {"kind": "labels", "op": "none", "values": ["cve"]}}}},
-         {"kind": "add_edge", "params": {"edge": {"from": "has-cve", "to": "review-second", "kind": "branch",
-          "label": "no cve", "condition": {"kind": "labels", "op": "none", "values": ["cve"]}}}}]',
-       93,
-       '{"method": "rule_strength",
-         "inputs": {"rule": "deterministic-skip", "outcome": "skipped_nothing_to_do", "deterministic": true,
-                    "observations": 1, "base": 95, "single_observation_penalty": 2}}',
-       date_trunc('day', now() - interval '16 hours') + time '15:08'
-  from ouroboros.dry_runs r
- where r.id = '5eed008b-0000-4000-8000-000000000001'
-   and r.status = 'complete'
-   and ${ouro_dev_seed}
-on conflict do nothing;
-
--- 81%: replay-disagreement. 6 of the 10 replayed pairs disagreed on style; the operations load the
--- pr-etiquette skill (R__dev_seed_workspace_knowledge.sql) into both reviewer stages.
-insert into ouroboros.dry_run_suggestions (id, organization_id, dry_run_id, source, rule_id, rule_version,
-                                           title, body, evidence, proposed_ops, confidence,
-                                           confidence_basis, created_at)
-select '5eed008c-0000-4000-8000-000000000002'::uuid, r.organization_id, r.id, 'rule',
-       'replay-disagreement', 1,
-       'Pin the pr-etiquette skill to both reviewers',
-       'Pin the pr-etiquette skill to both reviewers — in 10 replayed review pairs, the two models disagreed on style nits 6 times; the shared skill removes the noise.',
-       jsonb_build_object('stage_keys', jsonb_build_array('review-primary', 'review-second'),
-                          'replay_set', '5eed008d-0000-4000-8000-000000000000',
-                          'pairs_replayed', 10, 'style_disagreements', 6,
-                          'substance_disagreements', 0, 'skill', 'pr-etiquette'),
-       (select jsonb_agg(jsonb_build_object('kind', 'set_stage', 'params', jsonb_build_object('node',
-                 jsonb_set(jsonb_set(n, '{config,mode}', '"skill"'), '{config,skill}', '"pr-etiquette"')))
-               order by n ->> 'id')
-          from jsonb_array_elements(v.definition -> 'nodes') n
-         where n ->> 'id' in ('review-primary', 'review-second')),
-       81,
-       '{"method": "replay_statistics",
-         "inputs": {"replay_set": "5eed008d-0000-4000-8000-000000000000", "pairs": 10,
-                    "style_disagreements": 6, "substance_disagreements": 0,
-                    "disagreement_rate": 0.6, "sample_penalty": 9}}',
-       date_trunc('day', now() - interval '16 hours') + time '15:08'
-  from ouroboros.dry_runs r
-  join ouroboros.workflow_versions v on v.workflow_id = r.workflow_id and v.version is null
- where r.id = '5eed008b-0000-4000-8000-000000000001'
-   and r.status = 'complete'
-   and exists (select 1 from ouroboros.review_replay_pairs p
-                where p.replay_set = '5eed008d-0000-4000-8000-000000000000')
    and ${ouro_dev_seed}
 on conflict do nothing;

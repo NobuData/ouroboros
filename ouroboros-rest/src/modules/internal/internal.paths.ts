@@ -157,6 +157,19 @@ export const INTERNAL_INVESTIGATION_BRIEF_PATH = `/${RESEARCH_INVESTIGATIONS_PAT
 export const INTERNAL_INVESTIGATION_FINISH_PATH = `/${RESEARCH_INVESTIGATIONS_PATH}/${INVESTIGATION_FINISH_ROUTE}`;
 
 /**
+ * The dry-run controller path (CD.3, [#561](https://github.com/NobuData/ouroboros/issues/561)):
+ * where the engine's dry-run harness asks the control plane about a dry run. The workspace is
+ * the dry run's, never the caller's.
+ */
+export const DRY_RUNS_PATH = `${INTERNAL_PATH}/dry-runs`;
+
+/** Route segment of a replay estimate, relative to {@link DRY_RUNS_PATH}. */
+export const DRY_RUN_REPLAY_ESTIMATES_ROUTE = ":id/replay-estimates";
+
+/** Estimate an infra stage from history: `/internal/dry-runs/:id/replay-estimates`. */
+export const INTERNAL_DRY_RUN_REPLAY_ESTIMATES_PATH = `/${DRY_RUNS_PATH}/${DRY_RUN_REPLAY_ESTIMATES_ROUTE}`;
+
+/**
  * Every internal path.
  *
  * The list `src/application.ts` adds to `setGlobalPrefix`'s exclusions, and the list the
@@ -186,6 +199,7 @@ export const INTERNAL_PATHS = [
   INTERNAL_INVESTIGATION_CHECKPOINT_PATH,
   INTERNAL_INVESTIGATION_BRIEF_PATH,
   INTERNAL_INVESTIGATION_FINISH_PATH,
+  INTERNAL_DRY_RUN_REPLAY_ESTIMATES_PATH,
 ] as const;
 
 /**

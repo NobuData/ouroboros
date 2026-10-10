@@ -24,6 +24,7 @@ from pydantic import ValidationError
 from ouroboros_engine.control_plane.contract import (
     CONTROL_ERRORS,
     CONTROL_KINDS,
+    DRY_RUN_REPLAY_ESTIMATES_PATH,
     EVENT_MODELS,
     INTERNAL_KEY_HEADER,
     INVOKE_ERROR_CODES,
@@ -93,6 +94,7 @@ def test_every_path_the_document_describes_is_one_this_package_mirrors() -> None
         | _openapi(controls)
         | {LEASE_PATH, INVOKE_PATH, RESEARCH_TOOL_PATH}
         | set(RESEARCH_INVESTIGATION_PATHS)
+        | {DRY_RUN_REPLAY_ESTIMATES_PATH}
     )
 
 
