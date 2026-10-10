@@ -41,6 +41,7 @@ import { RegistryReadModule } from "../registry-read/registry-read.module";
 import { RegistryModule } from "../registry/registry.module";
 import { ReplayEstimatesModule } from "../replay-estimates/replay-estimates.module";
 import { BriefsModule } from "../research/briefs/briefs.module";
+import { InvestigationLifecycleModule } from "../research/lifecycle/lifecycle.module";
 import { InvestigationLoopModule } from "../research/loop/investigation-loop.module";
 import { ResearchModule } from "../research/research.module";
 import { ResearchToolsModule } from "../research/tools/research-tools.module";
@@ -362,6 +363,7 @@ export class AppModule {
         // `/api/v1/research/investigations/:investigationId/*`, and the matrix builder the loop
         // calls. Its paths share no segment with the other `/research` controllers.
         BriefsModule,
+        InvestigationLifecycleModule,
         // CD.3 ([#561](https://github.com/NobuData/ouroboros/issues/561)) — the infra replay
         // estimators and the dry-run harness's one way to them, `POST
         // /internal/dry-runs/:id/replay-estimates`. Outside `/api`, behind the internal key, so

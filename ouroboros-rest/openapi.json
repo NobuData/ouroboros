@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.41.7",
+    "version": "0.41.8",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -41311,6 +41311,1138 @@
           }
         }
       }
+    },
+    "/api/v1/research/investigations": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Start an investigation",
+        "description": "Mockup 22's composer ([#625](https://github.com/NobuData/ouroboros/issues/625)): a\nquestion, a kind, a depth and (optionally) the enabled tools become an investigation\nwith the next `RS-###`, and the engine's loop is handed it.\n\n**Estimate, then create, then dispatch — and a refused start leaves nothing queued.**\nThe scope estimate (`POST /api/v1/research/estimates`) is computed first: it validates\nthe kind and the tools and names the researcher. With no researcher nothing could run,\nso the start is refused (`409 investigation_researcher_unavailable`) before anything\nexists. The investigation is then created `queued` with that estimate stored on it, and\ndispatched. If the dispatch is refused — the engine is unreachable (`502`), or none of\nthe enabled tools has an adapter in this build (`409 investigation_tools_unavailable`)\n— the new investigation is **cancelled** and the refusal is answered; its `RS-###` is\nspent, and it appears in History as cancelled.\n\n**Who may start is the workspace's setting** (`GET /api/v1/research/settings`):\n`member` — owners, admins and members, the default — or `admin`. A `viewer` never\nmay. A person only: a service account has nobody to start one for.\n\nWatch the run at `…/{investigationId}/progress`.",
+        "operationId": "startInvestigation",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvestigationStart"
+              },
+              "examples": {
+                "deepDive": {
+                  "summary": "A deep-dive gap analysis over five tools",
+                  "value": {
+                    "question": "Fleet OTA rollout vs. the field",
+                    "kind": "gap_analysis",
+                    "depth": "deep_dive",
+                    "tools": [
+                      "web",
+                      "competitor",
+                      "code",
+                      "tickets",
+                      "telemetry"
+                    ]
+                  }
+                },
+                "kindDefaults": {
+                  "summary": "A quick bug root cause with the kind's default tools",
+                  "value": {
+                    "question": "Why does the console drop pairing after sleep?",
+                    "kind": "bug_root_cause",
+                    "depth": "quick"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The investigation, dispatched, and the estimate stored on it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartedInvestigation"
+                },
+                "examples": {
+                  "started": {
+                    "summary": "RS-128, queued — the engine has it",
+                    "value": {
+                      "investigation": {
+                        "id": "0b6f6c1e-6d0b-4a53-9d0e-2f1f3c0a9128",
+                        "displayId": "RS-128",
+                        "kind": {
+                          "slug": "gap_analysis",
+                          "name": "Gap analysis",
+                          "tint": "gap"
+                        },
+                        "question": "Fleet OTA rollout vs. the field",
+                        "depth": "deep_dive",
+                        "tools": [
+                          "web",
+                          "competitor",
+                          "code",
+                          "tickets",
+                          "telemetry"
+                        ],
+                        "origin": "user",
+                        "status": "queued",
+                        "pill": {
+                          "state": "queued",
+                          "label": "queued",
+                          "tone": "warn",
+                          "live": false
+                        },
+                        "sources": 0,
+                        "link": null,
+                        "startedBy": {
+                          "id": "5eed0001-user-ken",
+                          "name": "Ken Suenobu"
+                        },
+                        "createdAt": "2026-10-10T12:00:00.000Z",
+                        "updatedAt": "2026-10-10T12:00:00.000Z",
+                        "estimate": {
+                          "sources": {
+                            "min": 40,
+                            "max": 60
+                          },
+                          "costCents": {
+                            "min": 522,
+                            "max": 687
+                          },
+                          "calibrationVersion": 1
+                        },
+                        "actuals": null,
+                        "provenance": null,
+                        "progress": {
+                          "status": "queued",
+                          "iteration": null,
+                          "iterations": 4,
+                          "sources": 0,
+                          "spendCents": 0,
+                          "cancelRequested": false,
+                          "updatedAt": "2026-10-10T12:00:00.000Z"
+                        },
+                        "brief": null,
+                        "deliverables": [],
+                        "ledger": {
+                          "total": 0,
+                          "byTool": []
+                        },
+                        "links": {
+                          "run": null,
+                          "roadmap": null,
+                          "brief": null,
+                          "evidence": null
+                        },
+                        "failure": null,
+                        "mayCancel": true
+                      },
+                      "estimate": {
+                        "depth": "deep_dive",
+                        "tools": [
+                          "web",
+                          "competitor",
+                          "code",
+                          "tickets",
+                          "telemetry"
+                        ],
+                        "researcher": {
+                          "taskKind": "research",
+                          "routeTag": "research-primary",
+                          "alias": "researcher-long-ctx",
+                          "modelId": "claude-sonnet-4-6"
+                        },
+                        "calibrationVersion": 1,
+                        "operations": {
+                          "total": 40,
+                          "byTool": [
+                            {
+                              "tool": "web",
+                              "operations": 12,
+                              "hostedCostCents": 0
+                            },
+                            {
+                              "tool": "competitor",
+                              "operations": 8,
+                              "hostedCostCents": 0
+                            },
+                            {
+                              "tool": "code",
+                              "operations": 8,
+                              "hostedCostCents": 0
+                            },
+                            {
+                              "tool": "tickets",
+                              "operations": 8,
+                              "hostedCostCents": 0
+                            },
+                            {
+                              "tool": "telemetry",
+                              "operations": 4,
+                              "hostedCostCents": 0
+                            }
+                          ]
+                        },
+                        "synthesisCalls": {
+                          "min": 44,
+                          "max": 64
+                        },
+                        "sources": {
+                          "min": 40,
+                          "max": 60
+                        },
+                        "costCents": {
+                          "min": 522,
+                          "max": 687
+                        },
+                        "label": "est. 40–60 sources · ~$6"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — your role in this workspace may not start an investigation.\n`details.required` lists the roles the workspace's setting admits: `owner`, `admin`\nand `member`, or `owner` and `admin`. Nothing is created. Also the answer for a\nservice account, which may not start one at all.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`investigation_kind_not_found` — this workspace has no investigation kind with that\nslug; or `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none\nyou are a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`investigation_researcher_unavailable` — routing resolves no model for the `research`\ntask kind, so nothing was created; or `investigation_tools_unavailable` — none of the\nenabled tools has an adapter in this build, and the new investigation was cancelled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the body is malformed (`details.fields` names each field);\n`research_tool_unknown` — `tools` names a tool this installation does not have; or\n`research_tools_required` — no tools were given and the kind turns none on by default.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`engine_unavailable` — `ouroboros-engine` could not take the investigation. The new\ninvestigation was cancelled; start it again once the engine answers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "The investigations list — the card, History and the library",
+        "description": "Mockup 22's investigations card, its **History** toggle and the head's **Research\nlibrary** button are this one list ([#625](https://github.com/NobuData/ouroboros/issues/625),\ndecision **V11**), newest first.\n\n**Both counts are computed, over the whole workspace, whatever the filters.**\n`counts.active` is every investigation that did not fail and was not cancelled —\n`queued`, `running`, `brief_ready` and `issues_filed`. `counts.thisQuarter` is every\ninvestigation started inside the current calendar quarter (UTC, `quarter.from`\ninclusive to `quarter.to` exclusive), read from the clock at request time — so it\nresets when the quarter turns.\n\n**Filters compose**: every one given must hold. `kind` is a kind's slug; `status` is\none status, or `active` for the four the card counts; `quarter` is `current` or a\nquarter such as `2026-Q4`. The card asks for `status=active`; History and the library\nask for whatever the facets say.\n\n**A row's `pill` and `link` are derived.** The pill is the status in the card's\nwords, except `fix loop live` (a finished investigation whose fix ticket has a run in\nflight) and `cancelling` (a running one asked to stop). The link is the furthest thing\nthe investigation led to: the live run, else the roadmap document, else the brief,\nelse the test run a ledger record measured — or `null`. `sources` is the ledger's row\ncount, kept when a run is cancelled or fails.\n\nEvery member.",
+        "operationId": "listInvestigations",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "description": "Only investigations of this kind — its slug, e.g. `gap_analysis`.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{0,47}$"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "Only investigations in this status; `active` is `queued`, `running`, `brief_ready`\nand `issues_filed` together.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "queued",
+                "running",
+                "brief_ready",
+                "issues_filed",
+                "failed",
+                "cancelled"
+              ]
+            }
+          },
+          {
+            "name": "quarter",
+            "in": "query",
+            "required": false,
+            "description": "Only investigations started in this calendar quarter (UTC): `current`, or a year\nand quarter such as `2026-Q4`.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:current|\\d{4}-Q[1-4])$"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "The most rows to return. 25 when absent.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "description": "How many rows to skip. 0 when absent.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of investigations under the two counts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestigationList"
+                },
+                "examples": {
+                  "seeded": {
+                    "summary": "The seeded card, abridged to one row — `4 active · 23 this quarter`",
+                    "value": {
+                      "items": [
+                        {
+                          "id": "5eed0084-0000-4000-8000-000000000127",
+                          "displayId": "RS-127",
+                          "kind": {
+                            "slug": "gap_analysis",
+                            "name": "Gap analysis",
+                            "tint": "gap"
+                          },
+                          "question": "Autonomous docking vs. Skylink / AeroMesh / Novum",
+                          "depth": "deep_dive",
+                          "tools": [
+                            "web",
+                            "competitor",
+                            "code",
+                            "tickets",
+                            "telemetry"
+                          ],
+                          "origin": "user",
+                          "status": "brief_ready",
+                          "pill": {
+                            "state": "brief_ready",
+                            "label": "✓ brief ready",
+                            "tone": "ok",
+                            "live": false
+                          },
+                          "sources": 44,
+                          "link": {
+                            "kind": "brief",
+                            "label": "brief ↑",
+                            "briefId": "5eed0086-0000-4000-8000-000000000127",
+                            "version": 1
+                          },
+                          "startedBy": {
+                            "id": "5eed0001-user-ken",
+                            "name": "Ken Suenobu"
+                          },
+                          "createdAt": "2026-10-07T12:00:00.000Z",
+                          "updatedAt": "2026-10-07T12:42:00.000Z"
+                        }
+                      ],
+                      "total": 4,
+                      "limit": 25,
+                      "offset": 0,
+                      "counts": {
+                        "active": 4,
+                        "thisQuarter": 23
+                      },
+                      "quarter": {
+                        "key": "2026-Q4",
+                        "from": "2026-10-01T00:00:00.000Z",
+                        "to": "2027-01-01T00:00:00.000Z"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the request is malformed: a field outside its shape, or one\nthis operation does not take. `details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/research/investigations/{investigationId}": {
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "One investigation, opened",
+        "description": "The row, and everything behind it ([#625](https://github.com/NobuData/ouroboros/issues/625)):\nthe estimate it started under and the actuals it finished with; which loop and alias\nran it; a `progress` reading; the newest brief's reference (read the brief itself at\n`…/brief`); the deliverables it produced; the ledger in summary — how many records,\nand from which tools; and every cross-plane `link` it has, by kind.\n\n`failure` says why a `failed` investigation failed. `mayCancel` is whether **this\ncaller** may cancel it **now**: it is queued or running, and they started it or are an\nowner or admin.\n\nA cancelled or failed investigation keeps its ledger: `sources` and `ledger` still\ncount what was gathered.\n\nEvery member.",
+        "operationId": "getInvestigation",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "investigationId",
+            "in": "path",
+            "required": true,
+            "description": "The investigation.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The investigation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestigationDetail"
+                },
+                "examples": {
+                  "seeded": {
+                    "summary": "RS-127 — brief ready, 44 sources",
+                    "value": {
+                      "id": "5eed0084-0000-4000-8000-000000000127",
+                      "displayId": "RS-127",
+                      "kind": {
+                        "slug": "gap_analysis",
+                        "name": "Gap analysis",
+                        "tint": "gap"
+                      },
+                      "question": "Autonomous docking vs. Skylink / AeroMesh / Novum",
+                      "depth": "deep_dive",
+                      "tools": [
+                        "web",
+                        "competitor",
+                        "code",
+                        "tickets",
+                        "telemetry"
+                      ],
+                      "origin": "user",
+                      "status": "brief_ready",
+                      "pill": {
+                        "state": "brief_ready",
+                        "label": "✓ brief ready",
+                        "tone": "ok",
+                        "live": false
+                      },
+                      "sources": 44,
+                      "link": {
+                        "kind": "brief",
+                        "label": "brief ↑",
+                        "briefId": "5eed0086-0000-4000-8000-000000000127",
+                        "version": 1
+                      },
+                      "startedBy": {
+                        "id": "5eed0001-user-ken",
+                        "name": "Ken Suenobu"
+                      },
+                      "createdAt": "2026-10-07T12:00:00.000Z",
+                      "updatedAt": "2026-10-07T12:42:00.000Z",
+                      "estimate": {
+                        "sources": {
+                          "min": 40,
+                          "max": 60
+                        },
+                        "costCents": {
+                          "min": 522,
+                          "max": 687
+                        },
+                        "calibrationVersion": 1
+                      },
+                      "actuals": {
+                        "sourcesUsed": 44,
+                        "spendCents": 612,
+                        "durationMs": 2520000
+                      },
+                      "provenance": {
+                        "researcher": "loop-v1",
+                        "alias": "researcher-long-ctx",
+                        "resolutionRef": null
+                      },
+                      "progress": {
+                        "status": "brief_ready",
+                        "iteration": null,
+                        "iterations": 4,
+                        "sources": 44,
+                        "spendCents": 612,
+                        "cancelRequested": false,
+                        "updatedAt": "2026-10-07T12:42:00.000Z"
+                      },
+                      "brief": {
+                        "id": "5eed0086-0000-4000-8000-000000000127",
+                        "version": 1,
+                        "createdAt": "2026-10-07T12:42:00.000Z"
+                      },
+                      "deliverables": [
+                        {
+                          "kind": "brief",
+                          "id": "5eed0086-0000-4000-8000-000000000127"
+                        },
+                        {
+                          "kind": "matrix",
+                          "id": "5eed0094-0000-4000-8000-000000000127"
+                        }
+                      ],
+                      "ledger": {
+                        "total": 44,
+                        "byTool": [
+                          {
+                            "tool": "web",
+                            "count": 16
+                          },
+                          {
+                            "tool": "code",
+                            "count": 9
+                          }
+                        ]
+                      },
+                      "links": {
+                        "run": null,
+                        "roadmap": null,
+                        "brief": {
+                          "kind": "brief",
+                          "label": "brief ↑",
+                          "briefId": "5eed0086-0000-4000-8000-000000000127",
+                          "version": 1
+                        },
+                        "evidence": null
+                      },
+                      "failure": null,
+                      "mayCancel": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`investigation_not_found` — this workspace has no such investigation (one of another\nworkspace reads exactly the same); or `tenant_not_found` — the `X-Ouro-Tenant` header\nnames no workspace, or none you are a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the request is malformed: a field outside its shape, or one\nthis operation does not take. `details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/research/investigations/{investigationId}/cancel": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Cancel an investigation, keeping what it gathered",
+        "description": "Stops an investigation that is queued or running\n([#625](https://github.com/NobuData/ouroboros/issues/625)).\n\nA **queued** one is cancelled at once: `state` is `cancelled`. A **running** one is\nasked to stop and its worker ends it between two operations: `state` is `cancelling`,\nthe pill reads `cancelling`, and the progress stream's last event is `done` with\n`status: cancelled`.\n\n**Nothing gathered is discarded.** The ledger, the checkpoint and the usage rows stay,\n`sources` still counts them, and the actuals record what the partial run used — a\ncancelled investigation cost real money and says so.\n\n**The person who started it, or an owner or admin.** Anybody else is `403\ninvestigation_cancel_forbidden`. Cancelling twice while it is still stopping is not an\nerror; once it has finished it is `409`.",
+        "operationId": "cancelInvestigation",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "investigationId",
+            "in": "path",
+            "required": true,
+            "description": "The investigation.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Whether it is cancelled already or stopping, and the investigation as it stands.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelledInvestigation"
+                },
+                "examples": {
+                  "stopping": {
+                    "summary": "A running investigation asked to stop — 31 sources kept",
+                    "value": {
+                      "state": "cancelling",
+                      "investigation": {
+                        "id": "0b6f6c1e-6d0b-4a53-9d0e-2f1f3c0a9128",
+                        "displayId": "RS-128",
+                        "kind": {
+                          "slug": "gap_analysis",
+                          "name": "Gap analysis",
+                          "tint": "gap"
+                        },
+                        "question": "Fleet OTA rollout vs. the field",
+                        "depth": "deep_dive",
+                        "tools": [
+                          "web",
+                          "competitor",
+                          "code",
+                          "tickets",
+                          "telemetry"
+                        ],
+                        "origin": "user",
+                        "status": "running",
+                        "pill": {
+                          "state": "cancelling",
+                          "label": "cancelling",
+                          "tone": "warn",
+                          "live": true
+                        },
+                        "sources": 31,
+                        "link": null,
+                        "startedBy": {
+                          "id": "5eed0001-user-ken",
+                          "name": "Ken Suenobu"
+                        },
+                        "createdAt": "2026-10-10T12:00:00.000Z",
+                        "updatedAt": "2026-10-10T12:00:00.000Z",
+                        "estimate": {
+                          "sources": {
+                            "min": 40,
+                            "max": 60
+                          },
+                          "costCents": {
+                            "min": 522,
+                            "max": 687
+                          },
+                          "calibrationVersion": 1
+                        },
+                        "actuals": null,
+                        "provenance": {
+                          "researcher": "loop-v1",
+                          "alias": "researcher-long-ctx",
+                          "resolutionRef": null
+                        },
+                        "progress": {
+                          "status": "running",
+                          "iteration": 3,
+                          "iterations": 4,
+                          "sources": 31,
+                          "spendCents": 390,
+                          "cancelRequested": true,
+                          "updatedAt": "2026-10-10T12:00:00.000Z"
+                        },
+                        "brief": null,
+                        "deliverables": [],
+                        "ledger": {
+                          "total": 31,
+                          "byTool": [
+                            {
+                              "tool": "web",
+                              "count": 19
+                            },
+                            {
+                              "tool": "code",
+                              "count": 12
+                            }
+                          ]
+                        },
+                        "links": {
+                          "run": null,
+                          "roadmap": null,
+                          "brief": null,
+                          "evidence": null
+                        },
+                        "failure": null,
+                        "mayCancel": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`investigation_cancel_forbidden` — you neither started this investigation nor hold\n`owner` or `admin` here. Nothing changes. `forbidden` — a service account may not\ncancel one.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`investigation_not_found` — this workspace has no such investigation (one of another\nworkspace reads exactly the same); or `tenant_not_found` — the `X-Ouro-Tenant` header\nnames no workspace, or none you are a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`investigation_not_cancellable` — the investigation has already finished: its brief is\nready, or it failed or was cancelled. `details.status` says which.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the request is malformed: a field outside its shape, or one\nthis operation does not take. `details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/research/investigations/{investigationId}/progress": {
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "An investigation's progress, live",
+        "description": "The composer's in-place progress and the card's pulsing rows\n([#625](https://github.com/NobuData/ouroboros/issues/625)): status, the round being\nworked, the **source count ticking** and the **spend so far**, as `text/event-stream`.\nEach event's `event:` field is its `kind` and its `data:` the JSON object described by\n`InvestigationProgressEvent`:\n\n* `progress` — a reading. The first is sent at once; another follows whenever the\n  reading changes (a source archived, a model call recorded, a round finished, a cancel\n  requested, the status moved);\n* `done` — always last: the final reading, once the investigation is no longer queued\n  or running — `brief_ready`, `failed`, or `cancelled` with its ledger kept. The\n  stream then closes;\n* `error` — the stream could not go on (`investigation_not_found` should the\n  investigation be deleted under it). The stream then closes.\n\nWhile nothing changes the stream carries a `: keep-alive` comment every fifteen\nseconds or so, which an `EventSource` ignores.\n\n**Any number of subscribers may watch one investigation.** Each stream is its own\nread of the stored state, about once a second, so a subscriber that connects late\nstarts from the current reading and all of them end with the same `done`. A stream\nopened on an investigation that has already ended answers one `progress` and `done`.\n\n**A stream lasts at most half an hour.** One still open then ends without a `done`;\nreconnect — an `EventSource` does by itself — to carry on from the current reading. A\nstream that ended with `done` or `error` has nothing more to say: close the client.\n\nAn investigation that does not exist is refused with the ordinary `404` envelope, not\nan event. Every member.",
+        "operationId": "streamInvestigationProgress",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "investigationId",
+            "in": "path",
+            "required": true,
+            "description": "The investigation.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The progress, streamed until the run ends.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestigationProgressEvent"
+                },
+                "example": "event: progress\ndata: {\"kind\":\"progress\",\"status\":\"queued\",\"iteration\":null,\"iterations\":4,\"sources\":0,\"spendCents\":0,\"cancelRequested\":false,\"updatedAt\":\"2026-10-10T12:00:00.000Z\"}\n\nevent: progress\ndata: {\"kind\":\"progress\",\"status\":\"running\",\"iteration\":1,\"iterations\":4,\"sources\":12,\"spendCents\":140,\"cancelRequested\":false,\"updatedAt\":\"2026-10-10T12:03:10.000Z\"}\n\nevent: progress\ndata: {\"kind\":\"progress\",\"status\":\"running\",\"iteration\":3,\"iterations\":4,\"sources\":31,\"spendCents\":390,\"cancelRequested\":false,\"updatedAt\":\"2026-10-10T12:11:42.000Z\"}\n\nevent: done\ndata: {\"kind\":\"done\",\"status\":\"brief_ready\",\"iteration\":4,\"iterations\":4,\"sources\":44,\"spendCents\":612,\"cancelRequested\":false,\"updatedAt\":\"2026-10-10T12:18:05.000Z\"}\n"
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`investigation_not_found` — this workspace has no such investigation (one of another\nworkspace reads exactly the same); or `tenant_not_found` — the `X-Ouro-Tenant` header\nnames no workspace, or none you are a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the request is malformed: a field outside its shape, or one\nthis operation does not take. `details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/research/settings": {
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Who may start an investigation in this workspace",
+        "description": "The lowest role that may start an investigation\n([#625](https://github.com/NobuData/ouroboros/issues/625)): `member` — owners, admins\nand members; the default for a workspace that never chose — or `admin` — owners and\nadmins. A `viewer` never may. Every member reads it, so the composer can say why\n**New investigation** is inert.",
+        "operationId": "getResearchSettings",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The setting.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchSettings"
+                },
+                "example": {
+                  "startRole": "member"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Change who may start an investigation",
+        "description": "Sets the lowest role that may start an investigation\n([#625](https://github.com/NobuData/ouroboros/issues/625)). It applies to the next\nstart; investigations already started are untouched, and who may cancel does not\nchange. A body carrying nothing changes nothing and reads back the current setting.\n\nOwners and admins only, and a person.",
+        "operationId": "updateResearchSettings",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchSettingsPatch"
+              },
+              "example": {
+                "startRole": "admin"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The setting as it now stands.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchSettings"
+                },
+                "example": {
+                  "startRole": "admin"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — changing this setting is for `owner` and `admin`. `details.required`\nlists them. Nothing is written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the request is malformed: a field outside its shape, or one\nthis operation does not take. `details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -61900,6 +63032,1109 @@
               "l",
               "xl",
               null
+            ]
+          }
+        }
+      },
+      "InvestigationStatus": {
+        "type": "string",
+        "title": "InvestigationStatus",
+        "description": "Where an investigation is: `queued` → `running` → `brief_ready` → `issues_filed`, or\n`failed` / `cancelled` from `queued` or `running`.",
+        "enum": [
+          "queued",
+          "running",
+          "brief_ready",
+          "issues_filed",
+          "failed",
+          "cancelled"
+        ]
+      },
+      "InvestigationStart": {
+        "type": "object",
+        "title": "InvestigationStart",
+        "description": "The composer's payload.",
+        "additionalProperties": false,
+        "required": [
+          "question",
+          "kind",
+          "depth"
+        ],
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "pattern": "\\S",
+            "description": "What to investigate. Surrounding white space is dropped."
+          },
+          "kind": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,47}$",
+            "description": "The investigation kind's slug — `gap_analysis`."
+          },
+          "depth": {
+            "type": "string",
+            "enum": [
+              "quick",
+              "standard",
+              "deep_dive"
+            ]
+          },
+          "tools": {
+            "type": "array",
+            "description": "The enabled tools. Omit for the kind's playbook defaults.",
+            "minItems": 1,
+            "maxItems": 32,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,31}$"
+            }
+          }
+        }
+      },
+      "InvestigationPill": {
+        "type": "object",
+        "title": "InvestigationPill",
+        "description": "The card's status pill. `state` is the status, except `fix_loop_live` — a finished\ninvestigation whose fix ticket has a run in flight — and `cancelling` — a running one\nasked to stop.",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "label",
+          "tone",
+          "live"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "brief_ready",
+              "issues_filed",
+              "failed",
+              "cancelled",
+              "fix_loop_live",
+              "cancelling"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "description": "The words, verbatim — `✓ brief ready`."
+          },
+          "tone": {
+            "type": "string",
+            "enum": [
+              "run",
+              "warn",
+              "ok",
+              "err",
+              "idle"
+            ]
+          },
+          "live": {
+            "type": "boolean",
+            "description": "Whether the pill pulses — something is running now."
+          }
+        }
+      },
+      "InvestigationLink": {
+        "title": "InvestigationLink",
+        "description": "Where a contextual link goes. It names the target; the client owns the address.",
+        "oneOf": [
+          {
+            "type": "object",
+            "title": "RunLink",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "label",
+              "runId"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "run"
+              },
+              "label": {
+                "type": "string",
+                "description": "`open run →`."
+              },
+              "runId": {
+                "type": "string",
+                "format": "uuid",
+                "description": "The run in flight on the fix ticket."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "RoadmapLink",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "label",
+              "roadmapDocId"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "roadmap"
+              },
+              "label": {
+                "type": "string",
+                "description": "`to roadmap →`."
+              },
+              "roadmapDocId": {
+                "type": "string",
+                "format": "uuid",
+                "description": "The roadmap document generated from the brief."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "BriefLink",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "label",
+              "briefId",
+              "version"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "brief"
+              },
+              "label": {
+                "type": "string",
+                "description": "`brief ↑`."
+              },
+              "briefId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "EvidenceLink",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "label",
+              "testRunId",
+              "runId"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "evidence"
+              },
+              "label": {
+                "type": "string",
+                "description": "`evidence →`."
+              },
+              "testRunId": {
+                "type": "string",
+                "format": "uuid",
+                "description": "The test run a ledger record measured."
+              },
+              "runId": {
+                "type": "string",
+                "format": "uuid",
+                "description": "The run that test run belongs to."
+              }
+            }
+          }
+        ]
+      },
+      "Investigation": {
+        "type": "object",
+        "title": "Investigation",
+        "description": "One row of the investigations card, History and the library.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "displayId",
+          "kind",
+          "question",
+          "depth",
+          "tools",
+          "origin",
+          "status",
+          "pill",
+          "sources",
+          "link",
+          "startedBy",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayId": {
+            "type": "string",
+            "description": "`RS-127` — the workspace's own number, never reused."
+          },
+          "kind": {
+            "type": "object",
+            "description": "The kind chip.",
+            "additionalProperties": false,
+            "required": [
+              "slug",
+              "name",
+              "tint"
+            ],
+            "properties": {
+              "slug": {
+                "type": "string",
+                "description": "`gap_analysis`."
+              },
+              "name": {
+                "type": "string",
+                "description": "`Gap analysis`."
+              },
+              "tint": {
+                "type": "string",
+                "description": "The chip's hue key — `bug`, `reg`, `road`, `gap`."
+              }
+            }
+          },
+          "question": {
+            "type": "string"
+          },
+          "depth": {
+            "type": "string",
+            "enum": [
+              "quick",
+              "standard",
+              "deep_dive"
+            ]
+          },
+          "tools": {
+            "type": "array",
+            "description": "The enabled research tools' slugs.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "user",
+              "regression_watch",
+              "scheduled"
+            ],
+            "description": "Who opened it."
+          },
+          "status": {
+            "$ref": "#/components/schemas/InvestigationStatus"
+          },
+          "pill": {
+            "$ref": "#/components/schemas/InvestigationPill"
+          },
+          "sources": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The ledger's row count — `44 sources`. Kept when a run is cancelled or fails."
+          },
+          "link": {
+            "description": "The row's contextual link, or null when it has nowhere to go yet.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InvestigationLink"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startedBy": {
+            "description": "Who started it; null for one a watch or a schedule opened, or once the person is\ndeleted.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "InvestigationProgress": {
+        "type": "object",
+        "title": "InvestigationProgress",
+        "description": "One reading of a run's progress.",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "iteration",
+          "iterations",
+          "sources",
+          "spendCents",
+          "cancelRequested",
+          "updatedAt"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/InvestigationStatus"
+          },
+          "iteration": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The round being worked, from 1; null before the loop's first checkpoint."
+          },
+          "iterations": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "How many rounds the depth runs — 1, 2 or 4."
+          },
+          "sources": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The ledger's row count so far."
+          },
+          "spendCents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Model spend so far, in cents; null when no call so far is priced."
+          },
+          "cancelRequested": {
+            "type": "boolean",
+            "description": "A cancel was asked for and the worker has not stopped yet."
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the run last wrote anything."
+          }
+        }
+      },
+      "InvestigationProgressEvent": {
+        "title": "InvestigationProgressEvent",
+        "description": "One event of the progress stream — `kind` is also the SSE `event:` field.",
+        "oneOf": [
+          {
+            "type": "object",
+            "title": "ProgressReading",
+            "description": "A reading (`progress`), or the final one (`done`).",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "status",
+              "iteration",
+              "iterations",
+              "sources",
+              "spendCents",
+              "cancelRequested",
+              "updatedAt"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "progress",
+                  "done"
+                ]
+              },
+              "status": {
+                "$ref": "#/components/schemas/InvestigationStatus"
+              },
+              "iteration": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1
+              },
+              "iterations": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "sources": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "spendCents": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "cancelRequested": {
+                "type": "boolean"
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "ProgressError",
+            "description": "The stream could not go on.",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "code",
+              "message"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "error"
+              },
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "InvestigationDetail": {
+        "type": "object",
+        "title": "InvestigationDetail",
+        "description": "An investigation, opened — its row and everything behind it.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "displayId",
+          "kind",
+          "question",
+          "depth",
+          "tools",
+          "origin",
+          "status",
+          "pill",
+          "sources",
+          "link",
+          "startedBy",
+          "createdAt",
+          "updatedAt",
+          "estimate",
+          "actuals",
+          "provenance",
+          "progress",
+          "brief",
+          "deliverables",
+          "ledger",
+          "links",
+          "failure",
+          "mayCancel"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayId": {
+            "type": "string",
+            "description": "`RS-127` — the workspace's own number, never reused."
+          },
+          "kind": {
+            "type": "object",
+            "description": "The kind chip.",
+            "additionalProperties": false,
+            "required": [
+              "slug",
+              "name",
+              "tint"
+            ],
+            "properties": {
+              "slug": {
+                "type": "string",
+                "description": "`gap_analysis`."
+              },
+              "name": {
+                "type": "string",
+                "description": "`Gap analysis`."
+              },
+              "tint": {
+                "type": "string",
+                "description": "The chip's hue key — `bug`, `reg`, `road`, `gap`."
+              }
+            }
+          },
+          "question": {
+            "type": "string"
+          },
+          "depth": {
+            "type": "string",
+            "enum": [
+              "quick",
+              "standard",
+              "deep_dive"
+            ]
+          },
+          "tools": {
+            "type": "array",
+            "description": "The enabled research tools' slugs.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "user",
+              "regression_watch",
+              "scheduled"
+            ],
+            "description": "Who opened it."
+          },
+          "status": {
+            "$ref": "#/components/schemas/InvestigationStatus"
+          },
+          "pill": {
+            "$ref": "#/components/schemas/InvestigationPill"
+          },
+          "sources": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The ledger's row count — `44 sources`. Kept when a run is cancelled or fails."
+          },
+          "link": {
+            "description": "The row's contextual link, or null when it has nowhere to go yet.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InvestigationLink"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startedBy": {
+            "description": "Who started it; null for one a watch or a schedule opened, or once the person is\ndeleted.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "estimate": {
+            "description": "The estimate it started under; null for one opened before estimates were stored.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "sources",
+                  "costCents",
+                  "calibrationVersion"
+                ],
+                "properties": {
+                  "sources": {
+                    "$ref": "#/components/schemas/InvestigationRange"
+                  },
+                  "costCents": {
+                    "description": "Null when the researcher was unpriced.",
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/InvestigationRange"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "calibrationVersion": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "actuals": {
+            "description": "What it used, once it has ended with a worker's accounting.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "sourcesUsed",
+                  "spendCents",
+                  "durationMs"
+                ],
+                "properties": {
+                  "sourcesUsed": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "spendCents": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  "durationMs": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "provenance": {
+            "description": "Which loop and alias ran it; null before it starts.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "researcher",
+                  "alias",
+                  "resolutionRef"
+                ],
+                "properties": {
+                  "researcher": {
+                    "type": "string",
+                    "description": "The loop version — `loop-v1`."
+                  },
+                  "alias": {
+                    "type": "string"
+                  },
+                  "resolutionRef": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "progress": {
+            "$ref": "#/components/schemas/InvestigationProgress"
+          },
+          "brief": {
+            "description": "The newest brief's reference; read the brief at `…/brief`.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "version",
+                  "createdAt"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "createdAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deliverables": {
+            "type": "array",
+            "description": "What it produced, the brief first. Empty before there is a brief.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "id"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "description": "`brief`, `matrix`, `fix_draft`, `roadmap_doc`, `draft_batch`, …"
+                },
+                "id": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "ledger": {
+            "type": "object",
+            "description": "The citation ledger in summary. Read it whole at `…/sources`.",
+            "additionalProperties": false,
+            "required": [
+              "total",
+              "byTool"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "byTool": {
+                "type": "array",
+                "description": "Records per tool, largest first.",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "tool",
+                    "count"
+                  ],
+                  "properties": {
+                    "tool": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "links": {
+            "type": "object",
+            "description": "Every link the investigation has, by kind; null where it has none.",
+            "additionalProperties": false,
+            "required": [
+              "run",
+              "roadmap",
+              "brief",
+              "evidence"
+            ],
+            "properties": {
+              "run": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/InvestigationLink"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "roadmap": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/InvestigationLink"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "brief": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/InvestigationLink"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "evidence": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/InvestigationLink"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "failure": {
+            "description": "Why it failed; null unless it failed and the loop recorded a reason.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "reason",
+                  "detail"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "tool_exhaustion",
+                      "budget_breach",
+                      "synthesis_failure",
+                      "engine_error"
+                    ]
+                  },
+                  "detail": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mayCancel": {
+            "type": "boolean",
+            "description": "Whether this caller may cancel it now: it is queued or running, and they started\nit or are an owner or admin."
+          }
+        }
+      },
+      "InvestigationRange": {
+        "type": "object",
+        "title": "InvestigationRange",
+        "description": "An inclusive range of non-negative integers.",
+        "additionalProperties": false,
+        "required": [
+          "min",
+          "max"
+        ],
+        "properties": {
+          "min": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "max": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "InvestigationList": {
+        "type": "object",
+        "title": "InvestigationList",
+        "description": "One page of investigations, newest first, under the card's two counts.",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset",
+          "counts",
+          "quarter"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Investigation"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many investigations match the filters."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "counts": {
+            "type": "object",
+            "description": "`4 active · 23 this quarter` — the whole workspace, whatever the filters.",
+            "additionalProperties": false,
+            "required": [
+              "active",
+              "thisQuarter"
+            ],
+            "properties": {
+              "active": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Investigations that did not fail and were not cancelled."
+              },
+              "thisQuarter": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Investigations started inside `quarter`."
+              }
+            }
+          },
+          "quarter": {
+            "type": "object",
+            "description": "The calendar quarter `thisQuarter` was counted over — the current one, UTC.",
+            "additionalProperties": false,
+            "required": [
+              "key",
+              "from",
+              "to"
+            ],
+            "properties": {
+              "key": {
+                "type": "string",
+                "pattern": "^\\d{4}-Q[1-4]$"
+              },
+              "from": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Inclusive."
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Exclusive."
+              }
+            }
+          }
+        }
+      },
+      "StartedInvestigation": {
+        "type": "object",
+        "title": "StartedInvestigation",
+        "description": "A started investigation and the estimate stored on it.",
+        "additionalProperties": false,
+        "required": [
+          "investigation",
+          "estimate"
+        ],
+        "properties": {
+          "investigation": {
+            "$ref": "#/components/schemas/InvestigationDetail"
+          },
+          "estimate": {
+            "$ref": "#/components/schemas/ScopeEstimate"
+          }
+        }
+      },
+      "CancelledInvestigation": {
+        "type": "object",
+        "title": "CancelledInvestigation",
+        "description": "What a cancel left.",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "investigation"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "cancelled",
+              "cancelling"
+            ],
+            "description": "`cancelled` at once, or `cancelling` while the worker finishes its current\noperation."
+          },
+          "investigation": {
+            "$ref": "#/components/schemas/InvestigationDetail"
+          }
+        }
+      },
+      "ResearchSettings": {
+        "type": "object",
+        "title": "ResearchSettings",
+        "description": "A workspace's research settings.",
+        "additionalProperties": false,
+        "required": [
+          "startRole"
+        ],
+        "properties": {
+          "startRole": {
+            "type": "string",
+            "enum": [
+              "member",
+              "admin"
+            ],
+            "description": "The lowest role that may start an investigation: `member` is owner, admin and\nmember; `admin` is owner and admin."
+          }
+        }
+      },
+      "ResearchSettingsPatch": {
+        "type": "object",
+        "title": "ResearchSettingsPatch",
+        "description": "A change to the research settings. Send what changed.",
+        "additionalProperties": false,
+        "properties": {
+          "startRole": {
+            "type": "string",
+            "enum": [
+              "member",
+              "admin"
             ]
           }
         }

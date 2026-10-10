@@ -1725,6 +1725,12 @@
 > stored. The other kinds' rules are unchanged, and the TypeScript mirror is
 > `ouroboros-rest`'s `research-tool.citations.ts`.
 >
+> `V123` ([#625](https://github.com/NobuData/ouroboros/issues/625), CM.6) adds
+> `workspace_settings.research_start_role` — the lowest role that may start an investigation:
+> `member` (owner, admin and member; the default) or `admin`. `workspace_settings_effective`
+> gains the column, so a workspace that never chose reads `member`. A `viewer` never starts
+> one, and there is no owner-only value.
+>
 > [#558](https://github.com/NobuData/ouroboros/issues/558) seeds mockup 20 from those rows:
 > [`R__dev_seed_workspace_copilot.sql`](migrations/R__dev_seed_workspace_copilot.sql) — see
 > [What the copilot drafted, and what its dry run said](#what-the-copilot-drafted-and-what-its-dry-run-said).
@@ -3584,6 +3590,7 @@ ouroboros-db/
 │   ├── V120__investigation_loop.sql  # investigation_loops (attempt, checkpoint ≤ 2 MiB, cancel request, failure reason), investigation_usage + investigation_spend_cents(), investigation_deliverable_inputs, brief_claims.demoted — #620
 │   ├── V121__infra_replay_estimates.sql # build_config_class / build_similarity_class, build_replay_sample + test_replay_sample (median, MAD, count; warm/cold cache context), replay_estimate_policy (30 d, floor 20), replay_estimate_note; a replayed stage row may carry window_days or insufficient_history — #561
 │   ├── V122__telemetry_locators.sql  # source_locator_valid(): a telemetry locator may name baseline:<tag>, compare <a>-vs-<b> and carry a ?query — #619
+│   ├── V123__research_start_role.sql # workspace_settings.research_start_role (member | admin) + the effective view — #625
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)

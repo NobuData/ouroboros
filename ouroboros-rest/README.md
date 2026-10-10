@@ -5126,6 +5126,60 @@ the stored derivation says so.
 matrix the builder refuses is logged with its reason and not stored in part. An investigation has
 one matrix, so a second build answers `exists`.
 
+## Investigation lifecycle
+
+Start, watch, cancel, list — the surface behind mockup 22's composer, its investigations card,
+**History** and the head's **Research library** button
+([#625](https://github.com/NobuData/ouroboros/issues/625)). The module composes what the earlier
+research tickets export — the estimate (`ResearchEstimateService`, #622) and dispatch and cancel
+(`InvestigationDispatchService`, #620) — and adds the reads.
+
+```
+POST  /api/v1/research/investigations               ─▶ 201 {investigation: RS-128 queued, estimate}
+GET   /api/v1/research/investigations?kind=&status=&quarter=
+                                                    ─▶ {items, total, counts: {active, thisQuarter}, quarter}
+GET   /api/v1/research/investigations/:id           ─▶ row + estimate · actuals · progress · brief ref
+                                                       · deliverables · ledger by tool · links
+POST  /api/v1/research/investigations/:id/cancel    ─▶ cancelled | cancelling · ledger kept
+GET   /api/v1/research/investigations/:id/progress  ─▶ SSE: progress … done
+GET   /api/v1/research/settings                     ─▶ {startRole: member | admin}
+PATCH /api/v1/research/settings                     ─▶ owners and admins
+
+start:  role gate ─▶ estimate (kind, tools, researcher) ─▶ insert queued ─▶ dispatch
+          no researcher ─▶ 409, nothing created
+          dispatch refused (engine down, no adapter) ─▶ the new row is cancelled, the refusal answered
+```
+
+| File | What it holds |
+| --- | --- |
+| `research/lifecycle/lifecycle.service.ts` | Start, cancel, list, detail, progress reading and the starter-role setting |
+| `research/lifecycle/lifecycle.repository.ts` | One record query (kind, ledger count, spend, newest brief, matrix, loop state, evidence, fix run), the two counts, the insert |
+| `research/lifecycle/lifecycle.resources.ts` | Row, detail, list and progress shapes; `pillOf()`, `linksOf()`, `primaryLink()` |
+| `research/lifecycle/progress.stream.ts` | `watchProgress()` — the poll — and its SSE framing |
+| `research/lifecycle/quarter.ts` | Calendar quarters in UTC: `quarterOf()`, `parseQuarter()` |
+| `research/lifecycle/lifecycle.fixture.ts` | Mockup 22's four rows as records, and an in-memory store |
+
+**The counts are computed.** `active` is every investigation not `failed` or `cancelled`;
+`thisQuarter` is every investigation created in the current UTC calendar quarter, from the clock
+at request time. Both cover the whole workspace whatever the filters, in one statement.
+
+**The pill and the link are derived.** The pill is the status in the card's words, except
+`fix loop live` (a finished investigation whose `fix_draft` was pushed as a ticket whose pull
+request has a run in flight) and `cancelling`. The link is the first of *run → roadmap → brief →
+evidence* the investigation has; evidence is the test run named by the first ledger record whose
+`meta.test_run_id` is a test run of the same workspace.
+
+**Who may start is `workspace_settings.research_start_role`** (V123): `member` — owner, admin
+and member, the default — or `admin`. It is checked in the service because it is data, not a
+fixed `@Roles()` list. Cancel is the starter's or an administrator's. Both writes are
+`@HumanOnly()`.
+
+**Progress is a poll per subscriber**, once a second (`POLL_MS`), of the same record the detail
+reads — so any number of subscribers on any instance may watch one investigation. An event is
+sent when the reading changes, `: keep-alive` otherwise, and `done` when the investigation is no
+longer queued or running, after which the stream ends. The shared live-update channel (#89) is
+not built; when it is, this stream can move to it without changing its events.
+
 ## Replay estimates
 
 `POST /internal/dry-runs/{id}/replay-estimates` is mockup 20's replayed row —
@@ -7405,6 +7459,7 @@ ouroboros-rest/
 │       ├── replay-estimates/ # POST /internal/dry-runs/:id/replay-estimates — infra estimates from farm and test history · #561
 │       ├── research/       # POST /research/estimates — sources & cost, researcher pill · #622
 │       │   ├── briefs/     # a brief, read: GET /research/investigations/:id/{brief,sources,brief/export}, the matrix builder, severity rule, proposed-from-gaps, Markdown export · #621
+│       │   ├── lifecycle/  # an investigation's public lifecycle: POST/GET /research/investigations, /:id, /:id/cancel, /:id/progress (SSE), /research/settings · #625
 │       │   ├── loop/       # the investigation loop's control-plane half — /internal/research/investigations/:id/{start,checkpoint,brief,finish}, dispatch, cancel, the resume pass · #620
 │       │   ├── telemetry/  # the telemetry tool's reads: windows, re-runnable telemetry:// locators, readings (ok | no_data), the read-only repository · #619
 │       │   └── tools/      # ResearchToolAdapter SPI, registry, conformance kit, POST /internal/research/tools/:slug/:op · #614

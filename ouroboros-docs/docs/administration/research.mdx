@@ -407,6 +407,48 @@ investigation names no window. It is 30 days unless changed.
 | **not configured** | Nothing has been measured yet. Telemetry appears once builds and tests have run. |
 | **down** | The measurements cannot be read |
 
+## Who may start an investigation
+
+An investigation spends the workspace's money, so each workspace chooses the lowest role that
+may start one. <Since version="0.41.8" module="ouroboros-rest" />
+
+| Setting | Who may start an investigation |
+| --- | --- |
+| `member` | Owners, Maintainers and people holding the [`member` role](./roles.mdx#the-member-role). The default. |
+| `admin` | Owners and Maintainers only. |
+
+A Viewer can never start one. Who may *cancel* an investigation is not a setting — see
+[Who can cancel an investigation](../user-guide/research.mdx#who-can-cancel-an-investigation).
+
+:::info[Change it through the API for now]
+
+<UiPath path="Settings" /> has no control for this yet. An Owner or a Maintainer changes it
+through the REST API, signed in as themselves — a
+[service account's token](./members-and-tokens.mdx#api-tokens-and-service-accounts) cannot:
+
+1. Sign in to Ouroboros in your browser and open the browser's developer tools. Copy the value of
+   the session cookie: `__Secure-better-auth.session_token` on an `https://` deployment, or
+   `better-auth.session_token` on a local one.
+2. From a machine that can reach the REST service, send the setting:
+
+   ```bash
+   curl -X PATCH "$OURO_REST_URL/api/v1/research/settings" \
+     -H "content-type: application/json" \
+     -H "Origin: https://app.example.com" \
+     -H "Cookie: __Secure-better-auth.session_token=<the cookie value>" \
+     -d '{"startRole": "admin"}'
+   ```
+
+   `Origin` is the UI's public address. The answer is the setting as it now stands:
+   `{"startRole":"admin"}`.
+
+The setting is changed for the workspace your session is in. `GET` on the same address reads it
+back, and everyone in the workspace may read it.
+
+:::
+
+The change applies to the next start. Investigations already started carry on.
+
 ## Investigations after a restart
 
 An investigation runs in the engine, but nothing about it is kept there. Its sources, its
