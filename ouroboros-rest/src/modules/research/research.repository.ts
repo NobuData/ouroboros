@@ -15,6 +15,7 @@ import {
   type InvestigationDepth,
   type InvestigationEstimateDocument,
   type InvestigationEstimateOutcome,
+  type InvestigationPlaybookDocument,
   type InvestigationStatus,
 } from "../db/schema";
 
@@ -22,6 +23,20 @@ import {
 export interface KindDefaults {
   readonly slug: string;
   readonly defaultTools: readonly string[];
+}
+
+/** A kind, as the composer's catalog needs it (CN.2, #628): label, hue and playbook. */
+export interface KindRow {
+  readonly slug: string;
+  readonly displayName: string;
+  readonly tintKey: string;
+  readonly playbook: InvestigationPlaybookDocument;
+}
+
+/** A registered tool slug and the tools card's title for it (V106). */
+export interface ToolRow {
+  readonly slug: string;
+  readonly displayName: string;
 }
 
 /** An investigation, as the estimator needs it. */
@@ -56,6 +71,46 @@ export class ResearchRepository {
     return row === undefined
       ? undefined
       : { slug: row.slug, defaultTools: row.playbook.default_tools };
+  }
+
+  /**
+   * Every kind of this workspace — the composer's segmented control (CN.2, #628).
+   *
+   * @param organizationId - The workspace.
+   * @returns Each kind's slug, label, hue key and playbook, by slug. The composer's order is
+   *   the resource's (`orderKinds`), not the database's: the built-in four were inserted in
+   *   one statement and share a timestamp.
+   */
+  async listKinds(organizationId: string): Promise<KindRow[]> {
+    const rows = await this.database.db
+      .selectFrom("investigation_kinds")
+      .select(["slug", "display_name", "tint_key", "playbook"])
+      .where("organization_id", "=", organizationId)
+      .orderBy("slug")
+      .execute();
+
+    return rows.map((row) => ({
+      slug: row.slug,
+      displayName: row.display_name,
+      tintKey: row.tint_key,
+      playbook: row.playbook,
+    }));
+  }
+
+  /**
+   * Every research tool this installation answers to — V106's registry table, which is what
+   * a kind's defaults and an investigation's selection are validated against.
+   *
+   * @returns Each slug with the tools card's title for it, by slug.
+   */
+  async listTools(): Promise<ToolRow[]> {
+    const rows = await this.database.db
+      .selectFrom("research_tools")
+      .select(["slug", "display_name"])
+      .orderBy("slug")
+      .execute();
+
+    return rows.map((row) => ({ slug: row.slug, displayName: row.display_name }));
   }
 
   /**

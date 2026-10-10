@@ -157,6 +157,13 @@ describe("every research route, isolated and gated, certified over the seeds", (
    * The claim made about each route, by signature.
    */
   const CASES: Readonly<Record<string, RouteCase>> = {
+    // ── the composer's catalogs (#628) ───────────────────────────────────────────────────────
+    [`GET ${API}/kinds`]: { about: "reads the caller's own kinds", kind: "collection" },
+    [`GET ${API}/tools`]: {
+      about: "is the installation's, and names no workspace",
+      kind: "stateless",
+    },
+
     // ── estimates, settings ──────────────────────────────────────────────────────────────────
     [`POST ${API}/estimates`]: {
       about: "estimates for the caller's own workspace only",

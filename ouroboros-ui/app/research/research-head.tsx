@@ -9,13 +9,15 @@ import {
   RESEARCH_HEADLINE,
   RESEARCH_LIBRARY_PATH,
   RESEARCH_SUBLINE,
-  VIEWER_START_REASON,
 } from "./view";
 
 /** What the head takes. */
 export interface ResearchHeadProps {
-  /** Whether this reader may start an investigation — `owner`, `admin` or `member`. */
-  readonly mayStart: boolean;
+  /**
+   * Why this reader may not start an investigation here, or null when they may — a `viewer`'s
+   * role, or a workspace that lets only owners and admins start (`composer.ts` § `startGate`).
+   */
+  readonly startReason: string | null;
   /** Put the reader in the composer. Called by **New investigation**. */
   readonly onNewInvestigation: () => void;
 }
@@ -31,12 +33,13 @@ export interface ResearchHeadProps {
  * (`RESEARCH_LIBRARY_PATH`), which lands on the investigations region. *New investigation* acts
  * on this page rather than opening a modal — the composer is the page's front door — so it is a
  * button, and what it does is the screen's (`onNewInvestigation`). For a reader who may not start
- * one it is inert and says why.
+ * one it is inert and says why — the same sentence the composer's own **Start investigation**
+ * gives (CN.2, [#628](https://github.com/NobuData/ouroboros/issues/628)).
  *
  * @param props See {@link ResearchHeadProps}.
  * @returns The head.
  */
-export function ResearchHead({ mayStart, onNewInvestigation }: ResearchHeadProps) {
+export function ResearchHead({ startReason, onNewInvestigation }: ResearchHeadProps) {
   return (
     <div className="research__head">
       <div className="research__headings">
@@ -48,11 +51,7 @@ export function ResearchHead({ mayStart, onNewInvestigation }: ResearchHeadProps
         <Button href={RESEARCH_LIBRARY_PATH} tone="ghost">
           {LIBRARY_LABEL}
         </Button>
-        <Button
-          onClick={onNewInvestigation}
-          reason={mayStart ? undefined : VIEWER_START_REASON}
-          tone="primary"
-        >
+        <Button onClick={onNewInvestigation} reason={startReason ?? undefined} tone="primary">
           {NEW_INVESTIGATION_LABEL}
         </Button>
       </div>

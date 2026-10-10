@@ -134,3 +134,339 @@
     grid-column: span 12;
   }
 }
+
+/* ---------- the composer (#628) ---------- */
+
+/*
+ * The card's body: the question, the kind and depth row, the chips, then the foot. The card,
+ * the field, the chip and the buttons are the primitives'; what is here is the mockup's
+ * `.seg`, `.src-chip` and the rows that hold them.
+ */
+.research__composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-7);
+}
+
+.research__composer-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-6);
+}
+
+/* The mockup's `.seg`: one bordered strip, each kind a segment. Wraps rather than clips. */
+.research__kinds {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--inset);
+  overflow: hidden;
+}
+
+.research__kind {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-7);
+  border: none;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-mut);
+  font-family: var(--f-ui);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.research__kind:last-child {
+  border-right: none;
+}
+
+.research__kind:hover {
+  color: var(--ink-dim);
+}
+
+.research__kind:focus-visible {
+  outline: var(--sp-1) solid var(--accent);
+  outline-offset: calc(-1 * var(--sp-1));
+}
+
+/*
+ * Each kind's hue, as custom properties the selected segment and the progress surface's chip
+ * both read — the kind chip's hue elsewhere on the page (`.kind.bug`, `.reg`, `.road`, `.gap`).
+ */
+.research__kind--bug {
+  --kind-ink: var(--err);
+  --kind-tint: var(--err-tint);
+  --kind-line: var(--err-line);
+}
+
+.research__kind--reg {
+  --kind-ink: var(--warn);
+  --kind-tint: var(--warn-tint);
+  --kind-line: var(--warn-line);
+}
+
+.research__kind--road {
+  --kind-ink: var(--ok);
+  --kind-tint: var(--ok-tint);
+  --kind-line: var(--ok-line);
+}
+
+.research__kind--gap {
+  --kind-ink: var(--model);
+  --kind-tint: var(--model-tint);
+  --kind-line: var(--model-line);
+}
+
+/* The mockup's `.sel`, in the kind's own hue; the accent for a kind with no hue mapped. */
+.research__kind--sel {
+  color: var(--kind-ink, var(--accent));
+  background: var(--kind-tint, var(--accent-tint));
+  box-shadow: inset 0 0 0 1px var(--kind-line, var(--accent-line));
+}
+
+/* The kind chip on the progress surface — the investigations card's `.kind`. */
+.research__kind-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--sp-1) var(--sp-5);
+  border: 1px solid var(--kind-line, var(--accent-line));
+  border-radius: var(--r-sm);
+  background: var(--kind-tint, var(--accent-tint));
+  color: var(--kind-ink, var(--accent));
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+}
+
+/*
+ * The Depth menu: the button in the row, its options in the flow under it while open — the
+ * studio's inline stage menu, not a floating panel, so nothing is clipped by the card and the
+ * reader sees the budgets beside the chips they chose.
+ */
+.research__depth {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-2);
+}
+
+.research__depth-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 18rem;
+  padding: var(--sp-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.research__depth-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  padding: var(--sp-4) var(--sp-6);
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.research__depth-option:hover,
+.research__depth-option:focus-visible {
+  background: var(--accent-wash);
+  outline: none;
+}
+
+.research__depth-option--sel {
+  color: var(--accent);
+}
+
+.research__depth-name {
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+/* The option's budget: the estimate line for that depth, in the line's own face. */
+.research__depth-budget {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/* The mockup's tool row: `Tools:` then the chips, wrapping. */
+.research__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.research__tools-label {
+  flex: none;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+/* The mockup's `.src-chip`: a toggle, a pill, the tick its pressed mark. */
+.research__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-6);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--raised);
+  color: var(--ink-mut);
+  font-family: var(--f-ui);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  line-height: var(--lh-body);
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.research__chip:focus-visible {
+  outline: var(--sp-1) solid var(--accent);
+  outline-offset: 1px;
+}
+
+.research__chip--on {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+/* A tool this build cannot call: not a toggle, a way to where it is connected. */
+.research__chip--idle {
+  border-style: dashed;
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: help;
+}
+
+.research__chip-glyph {
+  font-size: var(--t-2xs);
+}
+
+/* The foot: the deliverable line, then the estimate and the action at the trailing edge. */
+.research__composer-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-6);
+  padding-top: var(--sp-7);
+  border-top: 1px solid var(--line);
+}
+
+.research__deliverable {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.research__deliverable-link {
+  color: var(--accent);
+}
+
+.research__composer-end {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-6);
+  margin-left: auto;
+}
+
+/* The estimate line — the service's words, in the mockup's mono. */
+.research__estimate {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+
+.research__estimate[aria-busy="true"] {
+  opacity: 0.7;
+}
+
+/* A refusal the service made, under whichever surface made the request. */
+.research__refusal {
+  margin: var(--sp-6) 0 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the progress surface ---------- */
+
+.research__progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+/* The question being answered, under its kind chip and RS number. */
+.research__question-echo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.research__progress-id {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* The line: the pill, then `12 sources · $1.40`. */
+.research__progress-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-5);
+  margin: 0;
+}
+
+.research__progress-figures {
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+}
+
+/* Under it: the round, and the estimate the run started under. */
+.research__progress-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+  margin: 0;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.research__progress-note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.research__progress-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+}

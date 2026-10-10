@@ -16,9 +16,11 @@ tickets for the loop to pick up.
 
 :::info[The page is arriving in parts]
 
-The page's frame is here: its head, its two buttons and the six regions of its layout. Each
-region says what it will hold and is filled in by a later release. Until the composer arrives
-you cannot start an investigation from this page.
+The page's frame is here, and so is its composer: you can
+[start an investigation](#starting-an-investigation) and follow it as it runs. The other five
+regions say what they will hold and are filled in by later releases — until the brief view
+arrives, a finished investigation's **View brief ↑** lands on the **Featured brief** region's
+placeholder.
 
 :::
 
@@ -40,7 +42,7 @@ Below the head, the page has six regions:
 
 | Region | What it will hold |
 | --- | --- |
-| **Start an investigation** | The composer: your question, its kind, how deep to go and which tools to use, with an estimate before you start |
+| **Start an investigation** | The composer: your question, its kind, how deep to go and which tools to use, with an estimate before you start — see [Starting an investigation](#starting-an-investigation) |
 | **Research tools** | Each [research tool](#research-tools), with its health and how to enable it |
 | **Regression watch** | Drift against each release's baseline, from detection to a merged fix |
 | **Featured brief** | A cited brief, with its capability matrix and numbered sources |
@@ -101,6 +103,124 @@ investigation_not_cancellable`).
 | **Regression forensics** | What changed between a good version and a bad one |
 | **Roadmap & improvements** | What to build next: a product roadmap and improvement proposals |
 | **Gap analysis** | How a project compares with its competitors |
+
+## Starting an investigation
+
+**Start an investigation** is the card at the top left of the page. It asks for a question, a
+kind, a depth and the tools to use, tells you what the investigation will cost before you start
+it, and then follows the run in place. <Since version="0.146.0" module="ouroboros-ui" />
+
+<Screenshot id="user-guide.research.composer" />
+
+### The question
+
+Write it in the field labelled **Ask like you'd ask a principal engineer**. Say what you want
+to know and what would count as an answer; the example in the field, *Why are we losing
+autonomous-docking deals?*, is the shape. **Start investigation ⟳** stays off until the question
+has some text.
+
+### The kind
+
+Choose one of the four kinds with the segmented control under the question. Choosing a kind
+turns on the tools its playbook uses by default and changes the **Deliverable** line, which
+says what the investigation will leave behind and ends in [Planning](./planning.mdx), where
+drafted work goes:
+
+| Kind | Tools on by default | Deliverable |
+| --- | --- | --- |
+| **Bug root cause** | Codebase & git mining, Issue & PR history index, Build & test telemetry | cited research brief → drafted fix ticket in Planning |
+| **Regression forensics** | Codebase & git mining, Build & test telemetry, Issue & PR history index | cited research brief → drafted fix ticket in Planning |
+| **Roadmap & improvements** | Issue & PR history index, Web search & page reader, Competitor tracker | cited research brief → roadmap document → drafted epics & tickets in Planning |
+| **Gap analysis** | Web search & page reader, Competitor tracker, Codebase & git mining, Issue & PR history index, Build & test telemetry | cited research brief → capability matrix → drafted epics & tickets in Planning |
+
+The page opens on **Gap analysis**. A workspace owner can add kinds; one that was added appears
+after the four built-in ones.
+
+### The depth
+
+**Depth** is a menu beside the kinds. Each depth runs the investigation's research loop for a
+set number of rounds, and each option in the menu shows what that depth would cost for the
+tools you have on — the same figures the estimate line shows once you choose it:
+
+| Depth | Rounds | Synthesis passes |
+| --- | --- | --- |
+| **Quick** | 1 | 1 |
+| **Standard** | 2 | 2 |
+| **Deep dive** | 4 | 4 |
+
+The page opens on **Deep dive**.
+
+### The tools
+
+The **Tools:** row has one chip per [research tool](#research-tools). A chip with a ✓ is on; a
+chip with a · is off; press a chip to switch it. At least one tool must be on.
+
+A tool this deployment has no adapter for yet — **Docs, standards & papers**, whose adapter is a
+later release — is drawn faded and cannot be switched on. Hover it to read why, and press it to
+go to **Research tools**, where tools are enabled. Whether a tool that *is* available is healthy
+is shown in **Research tools**, not here.
+
+### The estimate line and the researcher
+
+Above **Start investigation ⟳** the card prints an estimate, for example
+`est. 40–60 sources · ~$6`: how many cited sources the investigation is expected to gather, and
+roughly what its model calls will cost. It is recomputed every time you change the kind, the
+depth or a tool, and it is never a guess: the source range comes from the depth and the tools,
+and the dollar figure from the per-token price of the model that will run the research.
+
+**When no dollar figure shows**, the line reads `est. 40–60 sources` alone. That means the
+researcher's model has no per-token price in this workspace — a seat-priced or unpriced model —
+so there is no cost Ouroboros can honestly compute. You can still start the investigation; its
+spend is simply unknown in advance. The line never shows `$0` in place of *unknown*.
+
+The pill in the card's corner, `researcher: researcher-long-ctx`, names the model alias that
+will run the investigation: what the workspace's [routing](./models.mdx) resolves the `research`
+task kind to right now, fallback included. If it changes in Models, the pill changes here. When
+it reads `researcher: none routed`, nothing in the workspace's routing can run the research and
+**Start investigation ⟳** stays off until that is fixed.
+
+While the estimate is being recomputed the line is dimmed and the button waits; if the estimate
+cannot be read at all the line says *estimate unavailable* and nothing can be started.
+
+### When Start is off
+
+**Start investigation ⟳** is switched off, with the reason as its tooltip, when:
+
+| Reason | What to do |
+| --- | --- |
+| *Starting an investigation is for workspace owners, admins and members — a viewer can read the research.* | Ask for the `member` role — see [Who can start an investigation](#who-can-start-an-investigation) |
+| *This workspace lets only owners and admins start an investigation.* | Ask an owner or admin to start it, or to change the setting |
+| *Write the question first.* | Type the question |
+| *Turn on at least one research tool.* | Press a chip |
+| *No researcher is routed: the research task kind resolves to nothing usable. See Models.* | Fix the `research` route in [Models](./models.mdx) |
+| *The estimate is still being read.* | Wait a moment |
+| *The estimate could not be read, so nothing can be started.* | Reload; if it persists, the research service is unavailable |
+
+**New investigation** in the page head is switched off for the first two reasons too, with the
+same words.
+
+### While it runs
+
+Pressing **Start investigation ⟳** starts the investigation and turns the card into its progress
+view, in place. It shows the kind, the investigation's number (`RS-128`), your question, and a
+line that updates as the run works:
+
+- a status pill — **queued**, then **running**; **cancelling** if you asked it to stop;
+- the sources gathered so far, for example `12 sources`, counting up as the ledger grows;
+- the spend so far, for example `$1.40` — what the run's model calls have cost. When nothing
+  priced has run yet, or the researcher is unpriced, no figure is shown at all;
+- the round being worked, for example `round 2 of 4`, and the estimate the run started under,
+  so the two can be compared.
+
+**Cancel** stops the run. The person who started it, and any owner or admin, may cancel; for
+anyone else the button is off and says who may. A cancelled run is kept, not discarded: the
+card reads **cancelled** with the sources it gathered and what it spent, and the investigation
+stays in the list — see [Who can cancel an investigation](#who-can-cancel-an-investigation).
+
+When the run finishes the pill reads **✓ brief ready** and the card offers **View brief ↑**,
+which takes you to the **Featured brief** region. A run that could not finish reads **failed**
+with the reason under it. **Start another** returns the card to a blank question with your kind,
+depth and tools kept.
 
 ## Research tools
 

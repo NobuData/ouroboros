@@ -7,6 +7,9 @@
  * (#625) stores estimates through and CM.1 (#620) reconciles actuals through.
  * {@link ResearchToolPricing} is bound to {@link RegistryToolPricing} (CL.2, #615), which asks each
  * registered tool what one operation costs under the workspace's configuration.
+ *
+ * CN.2 ([#628](https://github.com/NobuData/ouroboros/issues/628)) added the composer's two
+ * catalogs — `GET /research/kinds` and `GET /research/tools` ({@link ResearchCatalogService}).
  */
 
 import { Module } from "@nestjs/common";
@@ -14,6 +17,8 @@ import { Module } from "@nestjs/common";
 import { DbModule } from "../db/db.module";
 import { PricingModule } from "../pricing/pricing.module";
 import { RoutingModule } from "../routing/routing.module";
+import { ResearchCatalogController } from "./catalog.controller";
+import { ResearchCatalogService } from "./catalog.service";
 import { ResearchEstimateController } from "./estimate.controller";
 import { ResearchEstimateService } from "./estimate.service";
 import { ResearchRepository } from "./research.repository";
@@ -23,9 +28,10 @@ import { ResearchToolsModule } from "./tools/research-tools.module";
 
 @Module({
   imports: [DbModule, RoutingModule, PricingModule, ResearchToolsModule],
-  controllers: [ResearchEstimateController],
+  controllers: [ResearchEstimateController, ResearchCatalogController],
   providers: [
     ResearchEstimateService,
+    ResearchCatalogService,
     ResearchRepository,
     { provide: ResearchToolPricing, useClass: RegistryToolPricing },
   ],

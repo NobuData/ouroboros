@@ -1,14 +1,40 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ResearchScreen } from "@/app/research/research-screen";
-import { paneLandingClaimed } from "@/app/shell/pane-anchor";
+import { COMPOSER_TITLE, QUESTION_LABEL, START_LABEL, runOf } from "@/app/research/composer";
+import type { ResearchScreenProps } from "@/app/research/research-screen";
 import { RESEARCH_REGIONS, VIEWER_START_REASON } from "@/app/research/view";
+import { paneLandingClaimed } from "@/app/shell/pane-anchor";
+
+import {
+  FakeProgressSource,
+  SEEDED_LABEL,
+  composerReadings,
+  depthEstimates,
+  openFakeSource,
+  progress,
+  startedInvestigation,
+} from "../helpers/research";
 
 /**
  * The Research frame (#627): the head verbatim, two actions that land on a seat, six labelled
- * seats in the mockup's order, and no navigation chrome of the page's own.
+ * seats in the mockup's order, and no navigation chrome of the page's own — and, since #628, the
+ * composer's card in its seat, whose finished run lands the reader on the brief's.
  */
+
+const estimateComposer = vi.fn();
+const startInvestigation = vi.fn();
+const readInvestigation = vi.fn();
+
+vi.mock("@/app/research/composer-actions", () => ({
+  estimateComposer: (request: unknown) => estimateComposer(request),
+  startInvestigation: (body: unknown) => startInvestigation(body),
+  cancelInvestigation: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "x" } }),
+  readInvestigation: (id: unknown) => readInvestigation(id),
+}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }) }));
+
+const { ResearchScreen } = await import("@/app/research/research-screen");
 
 /** jsdom has no layout, so the scroll is watched rather than performed. */
 const scrollIntoView = vi.fn();
@@ -16,12 +42,28 @@ const scrollIntoView = vi.fn();
 beforeEach(() => {
   scrollIntoView.mockReset();
   Element.prototype.scrollIntoView = scrollIntoView;
+  estimateComposer.mockReset().mockResolvedValue({ ok: true, estimates: depthEstimates() });
+  startInvestigation.mockReset().mockResolvedValue({ ok: true, run: runOf(startedInvestigation()) });
+  readInvestigation.mockReset().mockResolvedValue({ ok: false, refusal: { code: "x", message: "x" } });
+  FakeProgressSource.reset();
 });
 
 afterEach(() => {
   // @ts-expect-error — restoring jsdom's own absence of the method.
   delete Element.prototype.scrollIntoView;
 });
+
+function Screen(over: Partial<ResearchScreenProps>) {
+  return (
+    <ResearchScreen
+      composer={composerReadings()}
+      openProgress={openFakeSource}
+      startReason={null}
+      view="page"
+      {...over}
+    />
+  );
+}
 
 /**
  * A region's seat.
@@ -38,7 +80,7 @@ function seat(id: string): HTMLElement {
 
 describe("the head", () => {
   it("states the page's argument verbatim", () => {
-    render(<ResearchScreen mayStart view="page" />);
+    render(<Screen />);
 
     expect(screen.getByText("Research", { selector: ".ou-eyebrow" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
@@ -52,7 +94,7 @@ describe("the head", () => {
   });
 
   it("links Research library to the library's address", () => {
-    render(<ResearchScreen mayStart view="page" />);
+    render(<Screen />);
 
     expect(screen.getByRole("link", { name: "Research library" })).toHaveAttribute(
       "href",
@@ -61,7 +103,7 @@ describe("the head", () => {
   });
 
   it("draws no navigation of its own — the shell's sidebar is how a reader arrives", () => {
-    const { container } = render(<ResearchScreen mayStart view="page" />);
+    const { container } = render(<Screen />);
 
     // A card's own `<header>` is its head, not a banner: only navigation landmarks are chrome.
     expect(container.querySelector("nav, aside, [role=navigation], [role=banner]")).toBeNull();
@@ -72,7 +114,7 @@ describe("the head", () => {
 
 describe("New investigation", () => {
   it("scrolls to the composer, focuses it and rings it", () => {
-    render(<ResearchScreen mayStart view="page" />);
+    render(<Screen />);
     expect(seat("composer")).not.toHaveClass("research__seat--highlight");
 
     fireEvent.click(screen.getByRole("button", { name: "New investigation" }));
@@ -84,7 +126,7 @@ describe("New investigation", () => {
   });
 
   it("opens no dialog — the composer is on the page", () => {
-    render(<ResearchScreen mayStart view="page" />);
+    render(<Screen />);
 
     fireEvent.click(screen.getByRole("button", { name: "New investigation" }));
 
@@ -92,7 +134,7 @@ describe("New investigation", () => {
   });
 
   it("drops the ring once focus leaves the composer", () => {
-    render(<ResearchScreen mayStart view="page" />);
+    render(<Screen />);
     fireEvent.click(screen.getByRole("button", { name: "New investigation" }));
 
     fireEvent.blur(seat("composer"), { relatedTarget: screen.getByRole("link", { name: "Research library" }) });
@@ -101,20 +143,21 @@ describe("New investigation", () => {
   });
 
   it("keeps the ring while focus moves inside the composer", () => {
-    render(<ResearchScreen mayStart view="page" />);
+    render(<Screen />);
     fireEvent.click(screen.getByRole("button", { name: "New investigation" }));
 
-    fireEvent.blur(seat("composer"), { relatedTarget: within(seat("composer")).getByRole("heading") });
+    fireEvent.blur(seat("composer"), { relatedTarget: within(seat("composer")).getByLabelText(QUESTION_LABEL) });
 
     expect(seat("composer")).toHaveClass("research__seat--highlight");
   });
 
-  it("is inert for a viewer, and says why", () => {
-    render(<ResearchScreen mayStart={false} view="page" />);
+  it("is inert for a viewer, and says why — the same words the composer's Start gives", () => {
+    render(<Screen startReason={VIEWER_START_REASON} />);
     const button = screen.getByRole("button", { name: "New investigation" });
 
     expect(button).toHaveAttribute("aria-disabled", "true");
     expect(button).toHaveAttribute("title", VIEWER_START_REASON);
+    expect(screen.getByRole("button", { name: START_LABEL })).toHaveAttribute("title", VIEWER_START_REASON);
 
     fireEvent.click(button);
 
@@ -123,7 +166,7 @@ describe("New investigation", () => {
   });
 
   it("leaves Research library open to a viewer", () => {
-    render(<ResearchScreen mayStart={false} view="page" />);
+    render(<Screen startReason={VIEWER_START_REASON} />);
 
     expect(screen.getByRole("link", { name: "Research library" })).toHaveAttribute(
       "href",
@@ -134,7 +177,7 @@ describe("New investigation", () => {
 
 describe("the library's address", () => {
   it("lands on the investigations seat, focused and ringed", () => {
-    render(<ResearchScreen mayStart view="library" />);
+    render(<Screen view="library" />);
 
     expect(scrollIntoView).toHaveBeenCalledExactlyOnceWith({ block: "start" });
     expect(scrollIntoView.mock.contexts[0]).toBe(seat("investigations"));
@@ -145,13 +188,13 @@ describe("the library's address", () => {
   it("claims its landing from the shell for as long as the address is the library's", () => {
     // The shell returns the pane to its top on a route with no fragment; the claim is what
     // stops that undoing the landing, and releasing it is what spares no later route its reset.
-    const { rerender, unmount } = render(<ResearchScreen mayStart view="library" />);
+    const { rerender, unmount } = render(<Screen view="library" />);
     expect(paneLandingClaimed()).toBe(true);
 
-    rerender(<ResearchScreen mayStart view="page" />);
+    rerender(<Screen view="page" />);
     expect(paneLandingClaimed()).toBe(false);
 
-    rerender(<ResearchScreen mayStart view="library" />);
+    rerender(<Screen view="library" />);
     expect(paneLandingClaimed()).toBe(true);
 
     unmount();
@@ -159,19 +202,19 @@ describe("the library's address", () => {
   });
 
   it("claims nothing when the page opens from its top", () => {
-    render(<ResearchScreen mayStart view="page" />);
+    render(<Screen />);
 
     expect(paneLandingClaimed()).toBe(false);
   });
 
   it("opens the same way for a viewer", () => {
-    render(<ResearchScreen mayStart={false} view="library" />);
+    render(<Screen startReason={VIEWER_START_REASON} view="library" />);
 
     expect(seat("investigations")).toHaveFocus();
   });
 
   it("moves nothing when the page opens from its top", () => {
-    render(<ResearchScreen mayStart view="page" />);
+    render(<Screen />);
 
     expect(scrollIntoView).not.toHaveBeenCalled();
     expect(document.querySelector(".research__seat--highlight")).toBeNull();
@@ -179,7 +222,7 @@ describe("the library's address", () => {
   });
 
   it("hands the ring to the composer when New investigation is pressed from the library", () => {
-    render(<ResearchScreen mayStart view="library" />);
+    render(<Screen view="library" />);
 
     fireEvent.click(screen.getByRole("button", { name: "New investigation" }));
 
@@ -190,7 +233,7 @@ describe("the library's address", () => {
 
 describe("the grid frame", () => {
   it("seats the six regions in the mockup's order", () => {
-    const { container } = render(<ResearchScreen mayStart view="page" />);
+    const { container } = render(<Screen />);
 
     expect([...container.querySelectorAll(".research__seat")].map((element) => element.id)).toEqual([
       "composer",
@@ -203,7 +246,7 @@ describe("the grid frame", () => {
   });
 
   it("puts the composer beside a side column holding the tools card over the watch", () => {
-    const { container } = render(<ResearchScreen mayStart view="page" />);
+    const { container } = render(<Screen />);
     const grid = container.querySelector(".research__grid")!;
 
     expect([...grid.children].map((child) => child.id || child.className)).toEqual([
@@ -221,22 +264,53 @@ describe("the grid frame", () => {
     for (const id of ["brief", "pipeline", "investigations"]) expect(seat(id)).toHaveClass("research__seat--wide");
   });
 
-  it("labels every seat with its region and the issue that fills it", () => {
-    render(<ResearchScreen mayStart view="page" />);
+  it("labels every seat with its region, and the ones still empty with the issue that fills them", () => {
+    render(<Screen />);
 
     for (const region of RESEARCH_REGIONS) {
       const card = screen.getByRole("region", { name: region.title });
 
       expect(seat(region.id)).toContainElement(card);
-      expect(card).toHaveTextContent(region.arrives);
+      if (region.id === "composer") expect(card).not.toHaveTextContent(region.arrives);
+      else expect(card).toHaveTextContent(region.arrives);
     }
   });
 
   it("keeps every seat out of the tab order while leaving it focusable by an action", () => {
-    const { container } = render(<ResearchScreen mayStart view="page" />);
+    const { container } = render(<Screen />);
 
     for (const element of container.querySelectorAll(".research__seat")) {
       expect(element).toHaveAttribute("tabindex", "-1");
     }
+  });
+});
+
+describe("the composer in its seat (#628)", () => {
+  it("fills the composer's seat with the card, under the region's own heading", async () => {
+    render(<Screen />);
+
+    const card = within(seat("composer")).getByRole("region", { name: COMPOSER_TITLE });
+    expect(within(card).getByLabelText(QUESTION_LABEL)).toBeInTheDocument();
+    expect(await within(card).findByText(SEEDED_LABEL)).toBeInTheDocument();
+  });
+
+  it("lands on the brief's seat when a run's brief is ready", async () => {
+    render(<Screen />);
+    await screen.findByText(SEEDED_LABEL);
+    fireEvent.change(screen.getByLabelText(QUESTION_LABEL), { target: { value: "Why?" } });
+    fireEvent.click(screen.getByRole("button", { name: START_LABEL }));
+    await screen.findByText("RS-128");
+
+    act(() => {
+      FakeProgressSource.latest().emit("done", {
+        kind: "done",
+        ...progress({ status: "brief_ready", sources: 44, spendCents: 590 }),
+      });
+    });
+
+    expect(scrollIntoView.mock.contexts.at(-1)).toBe(seat("brief"));
+    expect(seat("brief")).toHaveFocus();
+    expect(seat("brief")).toHaveClass("research__seat--highlight");
+    expect(seat("composer")).not.toHaveClass("research__seat--highlight");
   });
 });

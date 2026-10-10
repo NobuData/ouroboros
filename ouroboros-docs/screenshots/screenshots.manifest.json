@@ -657,13 +657,31 @@
       "id": "user-guide.research",
       "route": "/research",
       "workspace": "acme-robotics",
-      "ready": ".research__grid",
+      "ready": ".research__estimate:has-text('est. 40–60 sources · ~$6')",
       "clip": "page",
-      "caption": "Research: the head and its two buttons, over the six regions of the page.",
-      "alt": "The Research page with Research lit in the sidebar: the heading Ask a hard question. Get an evidenced answer — and the tickets to act on it., the Research library and New investigation buttons, and the regions Start an investigation beside Research tools and Regression watch, then Featured brief, Roadmap pipeline and the top of Investigations, each saying which release fills it.",
-      "capturedAt": "2026-10-10T01:38:10.957Z",
-      "uiVersion": "0.145.0",
-      "seedRef": "7349bd6fa267d18bf070fc00d32a8e15b6c57b82"
+      "caption": "Research: the head and its two buttons, over the composer and the five regions still to come.",
+      "alt": "The Research page with Research lit in the sidebar: the heading Ask a hard question. Get an evidenced answer — and the tickets to act on it., the Research library and New investigation buttons, the Start an investigation composer with its question field, kind segments, Depth menu, tool chips and estimate line beside the Research tools and Regression watch regions, then Featured brief, Roadmap pipeline and the top of Investigations, each saying which release fills it.",
+      "capturedAt": "2026-10-10T20:00:36.574Z",
+      "uiVersion": "0.146.0",
+      "seedRef": "e529fa2e7d23b409a29ea174105bff5543cedd08"
+    },
+    {
+      "id": "user-guide.research.composer",
+      "route": "/research",
+      "workspace": "acme-robotics",
+      "actions": [
+        {
+          "fill": "textarea[name=\"question\"]",
+          "value": "Field reports say our drones abort autonomous docking in wind that Skylink's units handle. Where exactly are we behind — sensors, control loop, or recovery logic — and what would it take to close the gap?"
+        }
+      ],
+      "ready": ".research__estimate:has-text('est. 40–60 sources · ~$6')",
+      "clip": "#composer",
+      "caption": "Start an investigation: the question, the kind, the depth and the tools, with the estimate and the researcher that will run it.",
+      "alt": "The Start an investigation card: the researcher pill reading researcher: researcher-long-ctx, the question field labelled Ask like you'd ask a principal engineer holding a question about autonomous docking, the kind segments Bug root cause, Regression forensics, Roadmap & improvements and Gap analysis with Gap analysis selected, the Depth: Deep dive menu button, the Tools row with Web search & page reader, Competitor tracker, Codebase & git mining, Issue & PR history index and Build & test telemetry ticked and Docs, standards & papers faded, the deliverable line cited research brief → capability matrix → drafted epics & tickets in Planning, the estimate est. 40–60 sources · ~$6 and the Start investigation button.",
+      "capturedAt": "2026-10-10T19:59:10.713Z",
+      "uiVersion": "0.146.0",
+      "seedRef": "e529fa2e7d23b409a29ea174105bff5543cedd08"
     },
     {
       "id": "user-guide.insights",

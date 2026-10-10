@@ -4932,7 +4932,12 @@ The same loop that handles the build runs investigations — …        [Researc
 | [`app/research/research-screen.tsx`](app/research/research-screen.tsx) | The screen: the head over the grid, and the landing an action or the address asks for |
 | [`app/research/research-head.tsx`](app/research/research-head.tsx) | The eyebrow, headline, subline and the two actions |
 | [`app/research/research-seat.tsx`](app/research/research-seat.tsx) | A region's seat, and the placeholder it draws until its card exists |
-| [`app/research/research.css`](app/research/research.css) | The frame's own styles: head, grid, breakpoint and the landing ring |
+| [`app/research/research.css`](app/research/research.css) | The frame's own styles: head, grid, breakpoint and the landing ring — and the composer's segments, chips, menu and progress surface |
+| [`app/research/composer.ts`](app/research/composer.ts) | The composer's decisions, framework-free: its words, the chips a kind turns on, the deliverable line, the estimate line and the pill in every state, why **Start** is inert, a run's line |
+| [`app/research/composer-card.tsx`](app/research/composer-card.tsx) | The card: the question, the kind segments, the Depth menu, the tool chips, the estimate and the start — then the progress surface in place |
+| [`app/research/composer-kinds.tsx`](app/research/composer-kinds.tsx) · [`composer-depth.tsx`](app/research/composer-depth.tsx) · [`composer-tools.tsx`](app/research/composer-tools.tsx) · [`composer-progress.tsx`](app/research/composer-progress.tsx) | The pieces: the segmented control, the listbox menu with each depth's budget, the chips with the idle treatment, and the run's status, figures and cancel |
+| [`app/research/composer-data.ts`](app/research/composer-data.ts) · [`composer-actions.ts`](app/research/composer-actions.ts) | The server's half: the three reads the card arrives with, and the estimate, start, cancel and read actions |
+| [`app/research/progress.ts`](app/research/progress.ts) · [`app/api/research-progress.ts`](app/api/research-progress.ts) | Following a run: the `EventSource` watcher, and the pass-through that streams the service's events on this origin |
 
 **The head's copy is verbatim** and lives in `view.ts` — the headline is the page's thesis, and a
 test holds both strings to the issue's wording.
@@ -4957,8 +4962,68 @@ itself: the reset stands down while a claim is held, and the screen releases it 
 cleanup. A fragment address needs none of this.
 
 **Roles.** Every member reads the page. *New investigation* is inert, with its reason as the
-tooltip, for a reader who is not an `owner`, `admin` or `member` (`mayContribute`); the full role
-pass is #633.
+tooltip, for a reader who is not an `owner`, `admin` or `member` (`mayContribute`) — and, since
+#628, for a member where the workspace lets only owners and admins start
+(`GET /api/v1/research/settings`, `research_start_role`). The reason is decided once, on the
+server (`composer.ts` § `startGate`), and handed to the head and the composer's own **Start**
+alike; the full role pass is #633.
+
+### The composer
+
+The composer (CN.2, [#628](https://github.com/NobuData/ouroboros/issues/628)) is mockup 22's
+**START AN INVESTIGATION** card in its seat — the product's front door, and the one place the
+product asks for money and time, so it is honest first.
+
+```
+START AN INVESTIGATION                                   researcher: researcher-long-ctx
+Ask like you'd ask a principal engineer
+[ Why are we losing autonomous-docking deals?                                          ]
+(Bug root cause)(Regression forensics)(Roadmap & improvements)(● Gap analysis)   Depth: Deep dive ▾
+Tools: (✓ Web search & page reader)(✓ Competitor tracker)(✓ Codebase & git mining)
+       (✓ Issue & PR history index)(✓ Build & test telemetry)(· Docs, standards & papers)
+Deliverable: cited research brief → capability matrix → drafted epics & tickets in Planning
+                                             est. 40–60 sources · ~$6   [Start investigation ⟳]
+   ─▶ (● running)  12 sources · $1.40      round 1 of 4 · est. 40–60 sources · ~$6     [Cancel]
+   ─▶ (✓ brief ready)  44 sources · $5.90                        [View brief ↑] [Start another]
+```
+
+**Drawn from the registries, not from constants.** The kinds come from
+`GET /api/v1/research/kinds` (V106's `investigation_kinds` — slug, label, hue key, playbook) and
+the tools from `GET /api/v1/research/tools` (every `research_tools` slug, *connected* when this
+build registers an adapter for it), both routes added by this ticket and read once on the server
+with the start setting (`composer-data.ts`). A chosen kind turns on its playbook's default tools;
+the deliverable line is composed from its deliverables and ends in Planning.
+
+**The estimate line is the service's sentence.** Every change of kind or tool asks
+`POST /api/v1/research/estimates` for *all three depths at once* (`composer-actions.ts` §
+`estimateComposer`), so the **Depth** listbox prints each option's budget and switching depth
+never waits. The line prints `ScopeEstimate.label` verbatim: an unpriced researcher means no `$`
+anywhere — the line, the menu, the pill — and the card composes no dollar figure of its own. The
+one figure it formats is a run's **measured** spend (`formatSpend`), omitted entirely when the
+service reports `null`. The pill names the estimate's resolved alias; `none routed` keeps
+**Start** off.
+
+**An idle chip is a link, not a refusal.** A tool with no adapter (`docs`, until its v2 adapter)
+is drawn faded as a link to `#tools` — the tools card's seat, where #629's enable flow lives —
+with a tooltip naming the tool and where to connect it. A connected chip is a button with
+`aria-pressed`, the tick its pressed mark.
+
+**Start is inert with its reason, in a fixed order** (`composer.ts` § `startReason`): the gate,
+the blank question, no tool on, then the estimate's state — pending, unreadable, or resolved to
+no researcher. The gate is presentation; the service decides, and its `403` is rendered as the
+refusal it is.
+
+**Starting becomes a progress surface in place** (`composer-progress.tsx`). The run's progress
+arrives over an `EventSource` on `/api/research/investigations/:id/progress`
+(`app/api/research-progress.ts`), a pass-through that streams CM.6's `text/event-stream` over the
+visitor's session and hands the browser's abort to the service. The watcher (`progress.ts`)
+closes the source on `done` — the service would answer `done` again for ever — and on the
+service's `event: error`, which carries data; the browser's own connection `error` carries none
+and is left to its reconnect. On `done` the detail is read once for the failure reason the
+stream does not carry. **Cancel** is the starter's or an admin's (`mayCancel`); a cancelled run
+is a partial state kept, not discarded. A run with a brief offers **View brief ↑**, which lands
+on the brief's seat through the frame's own landing — CN.4 (#630) mounts the brief card there and
+this card needs no change.
 
 ## Run console
 

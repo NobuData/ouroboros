@@ -58,6 +58,101 @@ export interface ScopeEstimateResource {
   readonly label: string;
 }
 
+/**
+ * One investigation kind, as the composer's segmented control draws it (CN.2,
+ * [#628](https://github.com/NobuData/ouroboros/issues/628)) — V106's `investigation_kinds` row
+ * without its ids and stamps.
+ */
+export interface InvestigationKindResource {
+  /** `gap_analysis` — what a start or an estimate names. */
+  readonly slug: string;
+  /** The segment's label — *Gap analysis*. */
+  readonly name: string;
+  /** The chip's hue key — `bug`, `reg`, `road`, `gap`. A key the UI maps to its tokens. */
+  readonly tint: string;
+  /** The kind's playbook: which tools it turns on by default, and what it delivers. */
+  readonly playbook: {
+    readonly version: number;
+    /** The chips on when this kind is chosen — registered `research_tools` slugs. */
+    readonly defaultTools: readonly string[];
+    /** `brief` always; then `matrix`, `roadmap_doc` or `fix_draft`. The deliverable line. */
+    readonly deliverables: readonly string[];
+  };
+}
+
+/** `GET /research/kinds` — a workspace's kinds, in the composer's order. */
+export interface InvestigationKindCatalogResource {
+  readonly kinds: readonly InvestigationKindResource[];
+}
+
+/**
+ * One research tool, as the composer's chips draw it (CN.2,
+ * [#628](https://github.com/NobuData/ouroboros/issues/628)).
+ *
+ * **Connected means shipped**: the slug has an adapter registered in this build (CL.1's
+ * registry), so an investigation can call it. Whether the workspace's configuration of it is
+ * healthy is the tools card's dot (#629) — a different question, answered by `healthCheck()`.
+ * A row of `research_tools` with no adapter — `docs`, until CO.1 — is the idle chip.
+ */
+export interface ResearchToolCatalogEntryResource {
+  /** `web` — what a selection names. */
+  readonly slug: string;
+  /** The chip's label — the adapter's display name, or V106's title when no adapter exists. */
+  readonly name: string;
+  /** The adapter's one-character glyph — `⌖`; null when no adapter exists. */
+  readonly glyph: string | null;
+  /** Whether an adapter is registered for the slug in this build. */
+  readonly connected: boolean;
+}
+
+/** `GET /research/tools` — every tool the installation answers to, in the composer's order. */
+export interface ResearchToolCatalogResource {
+  readonly tools: readonly ResearchToolCatalogEntryResource[];
+}
+
+/**
+ * The built-in kinds in mockup 22's order — the segmented control reads left to right from
+ * the quickest question to the broadest. A workspace's own kinds follow, by name.
+ */
+export const BUILT_IN_KIND_ORDER: readonly string[] = [
+  "bug_root_cause",
+  "regression_forensics",
+  "roadmap_improvements",
+  "gap_analysis",
+];
+
+/** The six tools in mockup 22's order — the composer's chips and the tools card's rows. */
+export const BUILT_IN_TOOL_ORDER: readonly string[] = [
+  "web",
+  "competitor",
+  "code",
+  "tickets",
+  "telemetry",
+  "docs",
+];
+
+/**
+ * Orders catalog entries the way the mockup reads them: the built-in ones in their published
+ * order, then everything else by name.
+ *
+ * @param entries - The entries.
+ * @param order - The built-in slugs, in order.
+ * @returns A new array.
+ */
+export function orderCatalog<T extends { readonly slug: string; readonly name: string }>(
+  entries: readonly T[],
+  order: readonly string[],
+): T[] {
+  const rank = (entry: T): number => {
+    const index = order.indexOf(entry.slug);
+    return index === -1 ? order.length : index;
+  };
+
+  return [...entries].sort(
+    (a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name) || a.slug.localeCompare(b.slug),
+  );
+}
+
 /** An investigation's estimate set beside what it actually used — one calibration record. */
 export interface EstimateOutcomeResource {
   /** The investigation. */
