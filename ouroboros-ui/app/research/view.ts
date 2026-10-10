@@ -66,6 +66,119 @@ export function parseView(raw: string | string[] | undefined): ResearchView {
   return raw === "library" ? "library" : "page";
 }
 
+/* ---------- the library's facets (CN.6, #632) ---------- */
+
+/** The query parameters the library's three facets travel in, and the open investigation. */
+export const KIND_PARAM = "kind";
+export const STATUS_PARAM = "status";
+export const QUARTER_PARAM = "quarter";
+export const OPEN_PARAM = "open";
+
+/** The status facet's values — each status, or `active` for the four the card counts. */
+export const STATUS_FILTERS = [
+  "active",
+  "queued",
+  "running",
+  "brief_ready",
+  "issues_filed",
+  "failed",
+  "cancelled",
+] as const;
+
+/** One of {@link STATUS_FILTERS}. */
+export type StatusFilter = (typeof STATUS_FILTERS)[number];
+
+/** A kind's slug, as V106 spells one. */
+const KIND_SLUG = /^[a-z][a-z0-9_]{0,47}$/;
+
+/** A quarter — `current`, or `2026-Q4`. */
+const QUARTER = /^(?:current|\d{4}-Q[1-4])$/;
+
+/** A uuid, in either case. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The library's facets: each null when unset. */
+export interface LibraryFilters {
+  readonly kind: string | null;
+  readonly status: StatusFilter | null;
+  readonly quarter: string | null;
+}
+
+/** No facet set. */
+export const NO_FILTERS: LibraryFilters = { kind: null, status: null, quarter: null };
+
+/** The query as Next.js hands it over. */
+export type AddressQuery = Readonly<Record<string, string | string[] | undefined>>;
+
+/**
+ * The first value of a parameter, or null.
+ *
+ * @param raw The parameter: absent, one value, or several.
+ * @returns The first value; null when absent or empty.
+ */
+function first(raw: string | string[] | undefined): string | null {
+  const value = typeof raw === "string" ? raw : raw?.[0];
+  return value === undefined || value === "" ? null : value;
+}
+
+/**
+ * Read the library's facets off an address. A value nobody wrote is read as unset rather than
+ * failing, so a mistyped address opens the library unfiltered.
+ *
+ * @param query The address's query.
+ * @returns The facets.
+ */
+export function parseLibraryFilters(query: AddressQuery): LibraryFilters {
+  const kind = first(query[KIND_PARAM]);
+  const status = first(query[STATUS_PARAM]);
+  const quarter = first(query[QUARTER_PARAM]);
+
+  return {
+    kind: kind !== null && KIND_SLUG.test(kind) ? kind : null,
+    status: (STATUS_FILTERS as readonly string[]).includes(status ?? "") ? (status as StatusFilter) : null,
+    quarter: quarter !== null && QUARTER.test(quarter) ? quarter : null,
+  };
+}
+
+/**
+ * Read the investigation an address opens, if it opens one.
+ *
+ * @param query The address's query.
+ * @returns Its id, or null.
+ */
+export function parseOpen(query: AddressQuery): string | null {
+  const open = first(query[OPEN_PARAM]);
+  return open !== null && UUID.test(open) ? open : null;
+}
+
+/**
+ * The address of a view of the investigations — the page's, or the library's with its facets
+ * and, when one is open, the investigation. What **Research library**, **History**, a facet
+ * change and a row press each write, so a filtered view is shareable.
+ *
+ * @param view Which view.
+ * @param filters The facets; unset ones are left off the address.
+ * @param open The open investigation, or null.
+ * @returns `/research?view=library&kind=gap_analysis&status=active`, `/research?open=…`, or
+ *   `/research` for the page with nothing set.
+ */
+export function researchAddress(
+  view: ResearchView,
+  filters: LibraryFilters = NO_FILTERS,
+  open: string | null = null,
+): string {
+  const query = new URLSearchParams();
+
+  if (view === "library") query.set(VIEW_PARAM, "library");
+  if (filters.kind !== null) query.set(KIND_PARAM, filters.kind);
+  if (filters.status !== null) query.set(STATUS_PARAM, filters.status);
+  if (filters.quarter !== null) query.set(QUARTER_PARAM, filters.quarter);
+  if (open !== null) query.set(OPEN_PARAM, open);
+
+  const search = query.toString();
+  return search === "" ? RESEARCH_PATH : `${RESEARCH_PATH}?${search}`;
+}
+
 /* ---------- the regions ---------- */
 
 /** The six regions under the head. The head itself is the seventh. */

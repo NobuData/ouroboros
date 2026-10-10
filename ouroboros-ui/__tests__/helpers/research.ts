@@ -4,9 +4,11 @@ import type {
   BriefSource,
   CapabilityMatrix,
   GapProposals,
+  Investigation,
   InvestigationBrief,
   InvestigationDetail,
   InvestigationKind,
+  InvestigationList,
   InvestigationProgress,
   MatrixCell,
   ResearchToolCatalogEntry,
@@ -606,6 +608,106 @@ export function featuredBrief(over: Partial<FeaturedBrief> = {}): FeaturedBrief 
       ],
       mayCancel: false,
     }),
+    ...over,
+  };
+}
+
+/* ---------- the investigations card (#632) ---------- */
+
+/**
+ * One row of the investigations card.
+ *
+ * @param over What this case changes.
+ * @returns RS-127's row by default — a finished gap analysis whose link is its brief.
+ */
+export function investigationRow(over: Partial<Investigation> = {}): Investigation {
+  return {
+    id: "5eed0084-0000-4000-8000-000000000127",
+    displayId: "RS-127",
+    kind: { slug: "gap_analysis", name: "Gap analysis", tint: "gap" },
+    question: "Autonomous docking vs. Skylink / AeroMesh / Novum",
+    depth: "deep_dive",
+    tools: [...FIVE_TOOLS],
+    origin: "user",
+    status: "brief_ready",
+    pill: { state: "brief_ready", label: "✓ brief ready", tone: "ok", live: false },
+    sources: 44,
+    link: { kind: "brief", label: "brief ↑", briefId: "5eed0086-0000-4000-8000-000000000001", version: 1 },
+    startedBy: { id: "user-ken", name: "Ken Suenobu" },
+    createdAt: "2026-10-07T12:00:00.000Z",
+    updatedAt: "2026-10-07T12:20:00.000Z",
+    ...over,
+  };
+}
+
+/** The run the seeded fix loop runs on. */
+export const FIX_RUN_ID = "5eed0009-0000-4000-8000-000000000482";
+
+/** The test run RS-121's evidence came from. */
+export const EVIDENCE_RUN_ID = "5eed0009-0000-4000-8000-000000000476";
+
+/** Mockup 22's four rows, as the seed and the service compose them, newest first. */
+export function seededInvestigations(): Investigation[] {
+  return [
+    investigationRow(),
+    investigationRow({
+      id: "5eed0084-0000-4000-8000-000000000124",
+      displayId: "RS-124",
+      kind: { slug: "roadmap_improvements", name: "Roadmap & improvements", tint: "road" },
+      question: "Q4 product improvements from support tickets + churn interviews",
+      tools: ["tickets", "web", "competitor"],
+      status: "issues_filed",
+      pill: { state: "issues_filed", label: "✓ issues filed", tone: "ok", live: false },
+      sources: 312,
+      link: { kind: "roadmap", label: "to roadmap →", roadmapDocId: "5eed0097-0000-4000-8000-000000000124" },
+      createdAt: "2026-10-05T12:00:00.000Z",
+    }),
+    investigationRow({
+      id: "5eed0084-0000-4000-8000-000000000121",
+      displayId: "RS-121",
+      kind: { slug: "regression_forensics", name: "Regression forensics", tint: "reg" },
+      question: "Motor PID overshoot appeared between v2.0.4 → v2.1.0-rc1",
+      depth: "standard",
+      tools: ["code", "telemetry", "tickets"],
+      origin: "regression_watch",
+      status: "queued",
+      pill: { state: "queued", label: "queued", tone: "warn", live: false },
+      sources: 9,
+      link: { kind: "evidence", label: "evidence →", testRunId: "test-run-1", runId: EVIDENCE_RUN_ID },
+      startedBy: null,
+      createdAt: "2026-10-03T12:00:00.000Z",
+    }),
+    investigationRow({
+      id: "5eed0084-0000-4000-8000-000000000118",
+      displayId: "RS-118",
+      kind: { slug: "bug_root_cause", name: "Bug root cause", tint: "bug" },
+      question: "Root cause: altimeter spikes below −10 °C",
+      tools: ["code", "tickets", "telemetry"],
+      status: "brief_ready",
+      pill: { state: "fix_loop_live", label: "fix loop live", tone: "run", live: true },
+      sources: 18,
+      link: { kind: "run", label: "open run →", runId: FIX_RUN_ID },
+      createdAt: "2026-10-01T12:00:00.000Z",
+    }),
+  ];
+}
+
+/**
+ * A page of the list.
+ *
+ * @param over What this case changes.
+ * @returns The seeded four, under `4 active · 23 this quarter`.
+ */
+export function investigationList(over: Partial<InvestigationList> = {}): InvestigationList {
+  const items = over.items ?? seededInvestigations();
+
+  return {
+    items,
+    total: items.length,
+    limit: 25,
+    offset: 0,
+    counts: { active: 4, thisQuarter: 23 },
+    quarter: { key: "2026-Q4", from: "2026-10-01T00:00:00.000Z", to: "2027-01-01T00:00:00.000Z" },
     ...over,
   };
 }

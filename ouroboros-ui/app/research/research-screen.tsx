@@ -4,18 +4,22 @@ import { useRouter } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 
 import type { Reading } from "@/app/api/reading";
+import type { InvestigationList } from "@/app/api/research";
 import { claimPaneLanding, landOn } from "@/app/shell/pane-anchor";
 
 import type { FeaturedBrief } from "./brief";
 import { FeaturedBriefSeat } from "./brief-card";
 import type { ComposerReadings } from "./composer";
 import { ComposerCard } from "./composer-card";
+import type { OpenedInvestigation } from "./investigations";
+import { InvestigationsCard } from "./investigations-card";
 import type { ProgressSourceFactory } from "./progress";
 import { ResearchHead } from "./research-head";
 import { ResearchSeat } from "./research-seat";
 import {
   BRIEF_REGION,
   COMPOSER_REGION,
+  type LibraryFilters,
   PIPELINE_REGION,
   type RegionPlace,
   type ResearchRegionId,
@@ -41,7 +45,13 @@ export interface ResearchScreenProps {
   readonly brief: Reading<FeaturedBrief | null>;
   /** Whether this reader may draft work from a brief — `owner`, `admin` or `member`. */
   readonly mayDraft: boolean;
-  /** How the composer opens its progress stream. A test hands in a fake. */
+  /** The investigations the address asked for — the active rows, or the library's page (#632). */
+  readonly investigations: Reading<InvestigationList>;
+  /** The library's facets, from the address. */
+  readonly filters: LibraryFilters;
+  /** The investigation the address opened, read on the server; null for none. */
+  readonly opened: { readonly id: string; readonly reading: Reading<OpenedInvestigation> } | null;
+  /** How the composer and the live rows open their progress streams. A test hands in a fake. */
   readonly openProgress?: ProgressSourceFactory;
 }
 
@@ -82,7 +92,10 @@ function enterRegion(id: ResearchRegionId): boolean {
  *
  * **The head's actions land on a seat.** *New investigation* scrolls to the composer's, focuses
  * it and rings it; the library's address (`?view=library`) does the same for the investigations
- * seat when the page opens. The ring lasts until focus moves on.
+ * seat when the page opens. The ring lasts until focus moves on. **The investigations card** (CN.6,
+ * [#632](https://github.com/NobuData/ouroboros/issues/632)) fills the last seat: the active rows,
+ * or — at the library's address — every investigation with its facets, and a row opened
+ * full-width; its links land on the brief's and the pipeline's seats through the same landing.
  *
  * @param props See {@link ResearchScreenProps}.
  * @returns The screen.
@@ -93,6 +106,9 @@ export function ResearchScreen({
   composer,
   brief,
   mayDraft,
+  investigations,
+  filters,
+  opened,
   openProgress,
 }: ResearchScreenProps) {
   const router = useRouter();
@@ -123,6 +139,9 @@ export function ResearchScreen({
   }, [enter, router]);
 
   const onLandPipeline = useCallback(() => enter(PIPELINE_REGION), [enter]);
+  const onLand = useCallback((seat: typeof BRIEF_REGION | typeof PIPELINE_REGION) => enter(seat), [enter]);
+  const featuredId = brief.ok && brief.value !== null ? brief.value.brief.investigation.id : null;
+  const kinds = composer.kinds.ok ? composer.kinds.value.kinds : [];
 
   /** The cards that exist, by the region they fill. */
   const cards: Partial<Record<ResearchRegionId, ReactNode>> = {
@@ -135,6 +154,19 @@ export function ResearchScreen({
       />
     ),
     brief: <FeaturedBriefSeat mayDraft={mayDraft} onLandPipeline={onLandPipeline} reading={brief} />,
+    investigations: (
+      <InvestigationsCard
+        featuredId={featuredId}
+        filters={filters}
+        initial={investigations}
+        kinds={kinds}
+        mayDraft={mayDraft}
+        onLand={onLand}
+        openSource={openProgress}
+        opened={opened}
+        view={view}
+      />
+    ),
   };
 
   /**

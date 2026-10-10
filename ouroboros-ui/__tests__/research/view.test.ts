@@ -3,17 +3,21 @@ import { describe, expect, it } from "vitest";
 import { RESEARCH_PATH } from "@/app/paths";
 import {
   COMPOSER_REGION,
+  landingRegion,
   LIBRARY_REGION,
+  NO_FILTERS,
+  parseLibraryFilters,
+  parseOpen,
+  parseView,
+  regionsAt,
+  regionTitleId,
   RESEARCH_EYEBROW,
   RESEARCH_HEADLINE,
   RESEARCH_LIBRARY_PATH,
   RESEARCH_REGIONS,
   RESEARCH_SUBLINE,
+  researchAddress,
   VIEWER_START_REASON,
-  landingRegion,
-  parseView,
-  regionTitleId,
-  regionsAt,
 } from "@/app/research/view";
 
 /**
@@ -111,5 +115,48 @@ describe("the regions", () => {
     expect(new Set(RESEARCH_REGIONS.map((region) => regionTitleId(region.id))).size).toBe(
       RESEARCH_REGIONS.length,
     );
+  });
+});
+
+describe("the library's facets and the open investigation (#632)", () => {
+  const RS127 = "5eed0084-0000-4000-8000-000000000127";
+
+  it("reads the three facets off an address, and reads a value nobody wrote as unset", () => {
+    expect(parseLibraryFilters({ kind: "gap_analysis", status: "brief_ready", quarter: "2026-Q3" })).toEqual({
+      kind: "gap_analysis",
+      status: "brief_ready",
+      quarter: "2026-Q3",
+    });
+    expect(parseLibraryFilters({ kind: "Gap Analysis", status: "done", quarter: "Q3" })).toEqual(NO_FILTERS);
+    expect(parseLibraryFilters({ status: ["active", "queued"], quarter: "current" })).toEqual({
+      kind: null,
+      status: "active",
+      quarter: "current",
+    });
+    expect(parseLibraryFilters({})).toEqual(NO_FILTERS);
+  });
+
+  it("reads the open investigation, a uuid and nothing else", () => {
+    expect(parseOpen({ open: RS127 })).toBe(RS127);
+    expect(parseOpen({ open: "RS-127" })).toBeNull();
+    expect(parseOpen({})).toBeNull();
+  });
+
+  it("writes an address back that reads to the same view, facets and open investigation", () => {
+    expect(researchAddress("page")).toBe("/research");
+    expect(researchAddress("library")).toBe("/research?view=library");
+    expect(researchAddress("library", { kind: "gap_analysis", status: "active", quarter: null }, RS127)).toBe(
+      `/research?view=library&kind=gap_analysis&status=active&open=${RS127}`,
+    );
+    expect(researchAddress("page", NO_FILTERS, RS127)).toBe(`/research?open=${RS127}`);
+
+    const written = new URL(researchAddress("library", { kind: "bug_root_cause", status: null, quarter: "2026-Q2" }), "http://ouro.test");
+    const query = Object.fromEntries(written.searchParams.entries());
+    expect(parseView(query.view)).toBe("library");
+    expect(parseLibraryFilters(query)).toEqual({ kind: "bug_root_cause", status: null, quarter: "2026-Q2" });
+  });
+
+  it("keeps the head's library address as the unfiltered library", () => {
+    expect(RESEARCH_LIBRARY_PATH).toBe(researchAddress("library"));
   });
 });

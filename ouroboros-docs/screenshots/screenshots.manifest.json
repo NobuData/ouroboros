@@ -714,6 +714,18 @@
       "seedRef": "890a3fe4096322d1958e55f6c58d864f57e536dc"
     },
     {
+      "id": "user-guide.research.library",
+      "route": "/research?view=library&status=active",
+      "workspace": "acme-robotics",
+      "ready": ".research__facets",
+      "clip": "#investigations",
+      "caption": "The research library filtered to active investigations: the kind, status and quarter filters, and each row with its kind, question, source count, status pill and contextual link.",
+      "alt": "The Research library card: the tag 4 active · 23 this quarter and an Active button in its head; the Kind filter on All kinds, the Status filter on Active and the Quarter filter on All quarters; then four rows — RS-127 Gap analysis, Autonomous docking vs. Skylink / AeroMesh / Novum, 44 sources · deep dive, ✓ brief ready, brief ↑; RS-124 Roadmap & improvements, Q4 product improvements from support tickets + churn interviews, 312 sources · deep dive, ✓ issues filed, to roadmap →; RS-121 Regression forensics, Motor PID overshoot appeared between v2.0.4 → v2.1.0-rc1, 9 sources · standard, queued, evidence →; RS-118 Bug root cause, Root cause: altimeter spikes below −10 °C, 18 sources · standard, ✓ brief ready, brief ↑ — and the closing line Every investigation ends the same way the build loop does: with evidence — and, when you approve, with tickets the loop picks up next.",
+      "capturedAt": "2026-10-10T20:56:26.086Z",
+      "uiVersion": "0.148.0",
+      "seedRef": "22c8967882f59a8815c537c2694a57ae3b254b71"
+    },
+    {
       "id": "user-guide.insights",
       "route": "/insights",
       "workspace": "acme-robotics",
