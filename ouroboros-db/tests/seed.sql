@@ -4641,6 +4641,8 @@ select pg_temp.must_hold(
 -- or injection records that stopped adding up to it, fails in this block. tests/seed.test.sh
 -- refuses the same figures as literals in the seed's text.
 
+-- The roadmap pipeline's two skills (#624) are the research seed's rows and are asserted in its
+-- block; mockup 14 predates them, so the table's six are counted without them here.
 -- --- the skills card: six rows, the lock, the tint and the tag -----------------------------------
 select pg_temp.must_hold(
   (select array_agg(skill.slug || ':' || skill.scope order by skill.id)
@@ -4648,7 +4650,8 @@ select pg_temp.must_hold(
                   'hil-safety:repo', 'commit-style:org', 'power-budget-checks:repo']
      from ouroboros.skills skill
      join ouroboros.organization org on org."id" = skill.organization_id
-    where org."slug" = 'acme-robotics'),
+    where org."slug" = 'acme-robotics'
+      and skill.slug not in ('create-roadmap', 'create-issues')),
   'six skills in the mockup''s order — four repo-scoped, two org-wide');
 
 select pg_temp.must_hold(
@@ -4662,7 +4665,8 @@ select pg_temp.must_hold(
                         case skill.scope when 'repo' then 'acme-robotics/helios-firmware' end))
      from ouroboros.skills skill
      join ouroboros.organization org on org."id" = skill.organization_id
-    where org."slug" = 'acme-robotics'),
+    where org."slug" = 'acme-robotics'
+      and skill.slug not in ('create-roadmap', 'create-issues')),
   'hil-safety is locked by required, power-budget-checks is tinted by draft (and off), repo-map is tagged by origin — and no other row carries any of the three');
 
 -- `v12 · 2d ago`, `v4 · 3w ago`, `v2 · 2mo ago`, `v1 · 20m ago`: the pointer and the age of the
@@ -4688,7 +4692,8 @@ select pg_temp.must_hold(
      from ouroboros.skills skill
      join ouroboros.organization org on org."id" = skill.organization_id
      join ouroboros.skill_versions v on v.skill_id = skill.id and v.version = skill.current_version
-    where org."slug" = 'acme-robotics'),
+    where org."slug" = 'acme-robotics'
+      and skill.slug not in ('create-roadmap', 'create-issues')),
   'the Updated column reads v12 · 2d, v4 · 3w, v2 · 2mo and v1 · 20m from the pointer and its version');
 
 -- `auto-generated nightly`: repo-map's history is sixty versions a day apart, published by
@@ -4757,7 +4762,8 @@ select pg_temp.must_hold(
                         order by 1) as carried
             from ouroboros.skills skill
             join ouroboros.organization org on org."id" = skill.organization_id
-           where org."slug" = 'acme-robotics')
+           where org."slug" = 'acme-robotics'
+             and skill.slug not in ('create-roadmap', 'create-issues'))
    select array_agg(case when cardinality(cells.carried) = 0 then '—'
                          when cells.carried = cells.in_scope then 'every run'
                          when cells.carried = cells.with_pr  then 'every PR'
@@ -7517,6 +7523,50 @@ select pg_temp.must_hold(
      join ouroboros.investigations inv on inv.id = doc.investigation_id and inv.seq = 124
      join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'),
   'RS-124''s ROADMAP.md is committed at 8c1b2e4 with 6 issues · 2 milestones, rendered and raw');
+
+-- The document's round trip (#624): where it is projected and filed, and the batch behind it.
+select pg_temp.must_hold(
+  (select src.kind = 'github' and src.organization_id = doc.organization_id
+          and batch.status = 'pushed' and batch.target_source_id = doc.target_source_id
+          and (select count(*) from ouroboros.roadmap_structure_refs(v.structure) r
+                 join ouroboros.ticket_drafts d on d.id = r.draft_id and d.batch_id = batch.id) = 6
+     from ouroboros.roadmap_docs doc
+     join ouroboros.roadmap_doc_versions v on v.doc_id = doc.id and v.version = doc.current_version
+     join ouroboros.ticket_sources src on src.id = doc.target_source_id
+     join ouroboros.draft_batches batch on batch.id = doc.batch_id
+     join ouroboros.investigations inv on inv.id = doc.investigation_id and inv.seq = 124
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'),
+  'RS-124''s document names its GitHub source and the pushed batch whose six drafts its items point at');
+
+-- The tracker carries the document's MVP set as a label, so a drift check finds the two equal.
+select pg_temp.must_hold(
+  (select bool_and((t.labels ? 'mvp') = (item ->> 'mvp')::boolean
+                   and (t.state = 'closed') = (item ->> 'checked')::boolean
+                   and t.title = item ->> 'title')
+          and count(*) = 6
+     from ouroboros.roadmap_docs doc
+     join ouroboros.roadmap_doc_versions v on v.doc_id = doc.id and v.version = doc.current_version
+     join ouroboros.investigations inv on inv.id = doc.investigation_id and inv.seq = 124
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'
+     cross join lateral jsonb_array_elements(v.structure -> 'milestones') m
+     cross join lateral jsonb_array_elements(m -> 'items') item
+     join ouroboros.tickets t on t.id = (item ->> 'ticket_id')::uuid),
+  'document and tracker agree on every item''s title, MVP flag and done state — nothing has drifted');
+
+-- The card's two skill chips are registry skills: generated, published by nobody, at v1.
+select pg_temp.must_hold(
+  (select array_agg(skill.slug order by skill.id) = array['create-roadmap', 'create-issues']
+          and bool_and(skill.origin = 'generated' and skill.scope = 'org' and skill.enabled
+                       and not skill.draft and not skill.required and skill.current_version = 1
+                       and v.published_by is null and v.change_note = 'Shipped procedure'
+                       and v.frontmatter ->> 'load' = 'on_trigger'
+                       and v.frontmatter -> 'triggers' = jsonb_build_array(skill.slug)
+                       and v.body like '# ' || skill.slug || '%')
+     from ouroboros.skills skill
+     join ouroboros.skill_versions v on v.skill_id = skill.id and v.version = skill.current_version
+     join ouroboros.organization org on org."id" = skill.organization_id and org."slug" = 'acme-robotics'
+    where skill.slug in ('create-roadmap', 'create-issues')),
+  'create-roadmap and create-issues are generated org skills at v1, loaded only by their own name');
 
 select pg_temp.must_hold(
   (select array_agg(s.author_kind || ':' || s.status order by s.created_at) = array['user:open', 'ai:open']

@@ -1742,6 +1742,22 @@
 > `regression_drift_detected` and `bisect_complete` — get their version-1 declarations: a link
 > to the watch, and an admin's **Dismiss drift** that takes a reason.
 >
+> `V125` ([#624](https://github.com/NobuData/ouroboros/issues/624), CM.5) stores what the two
+> paths from a brief to work need. `ticket_drafts` gains `research_provenance` — the provenance
+> V037 deferred: `{investigation_id, origin gap|roadmap, capability, severity, item_key, effort,
+> sources}`, shape-checked (`draft_research_provenance_valid()`) and held to the batch's
+> workspace and the named investigation's own ledger
+> (`ticket_drafts_research_provenance_same_workspace`) — plus a milestone of its own
+> (`milestone_name`, `milestone_due`, winning over the batch's `target_milestone`) and `labels`
+> (`draft_labels_valid()`), because a roadmap files six issues under two dated milestones and
+> its MVP flag travels as a label. `roadmap_docs` gains `target_source_id` (the repository the
+> file is projected to and the tracker its issues are filed in) and `batch_id` (the one batch
+> create-issues composed — unique, so a re-run finds its drafts), both of the doc's workspace
+> and set null on delete. `roadmap_pipeline_settings` is the workspace's one pipeline policy:
+> `direct_commit`, default false — every projection goes through a pull request unless a
+> workspace opts in. And `skills.origin`'s comment now says what `generated` covers: the
+> nightly repo-map, and the pipeline's two skills shipped once on first use.
+>
 > [#558](https://github.com/NobuData/ouroboros/issues/558) seeds mockup 20 from those rows:
 > [`R__dev_seed_workspace_copilot.sql`](migrations/R__dev_seed_workspace_copilot.sql) — see
 > [What the copilot drafted, and what its dry run said](#what-the-copilot-drafted-and-what-its-dry-run-said).
@@ -2588,6 +2604,7 @@ database seeded before it still holds). It sorts after the base seed, which is a
 | `⌖ Competitor tracker — 4 rivals watched · release notes, changelogs, filings` | four `competitors`, four `competitor_watches`, read by `competitor_tracker_summary`; Skylink's release notes carry an archived snapshot pair whose second has the 6.2 diff |
 | `REGRESSION WATCH` — `+14%` fixing #512 · `+230 ms` queued #517 · `✓ merged` PR #641 | three `regression_baselines` (`v2.0.4`; boot time's `v2.1.0-rc1`) over HIL case metrics and three `regression_watch_items` walked through V115's lifecycle — bisected (shas `a41f2c9`, `7c03d1e`, over the farm seed's jobs), fix tickets #512 · #517 · #639, PR #641 merged |
 | `RS-124 — FROM BRIEF TO ROADMAP TO ISSUES`, ROADMAP.md rendered and raw, `SUGGESTED CHANGES — 2 OPEN` | the `roadmap_docs` row, version 1 (two milestones, six items, MVP flags, #742 checked, target dates the 15th and 51st day of the quarter, the markdown projection), committed at `8c1b2e4`; two open `doc_suggestions`, Ken's and the AI's |
+| `skill · create-roadmap` → `skill · create-issues` | two `skills` rows, org-wide, `origin = generated`, each at a v1 published by nobody ([#624](https://github.com/NobuData/ouroboros/issues/624), CM.5) — the same text `ouroboros-rest` writes for a workspace that has neither, held equal by `pipeline.skills.spec.ts`. The doc names its round trip: `target_source_id` (the GitHub source) and `batch_id` (the pushed batch whose six drafts its items point at); and `#742`/`#743` carry the `mvp` label, so document and tracker agree on every item's title, MVP flag and done state — a drift check finds nothing |
 | `6 issues · 2 milestones`, `1/3 done` · `0/3 done`, effort and `cx:` chips | canonical tickets #742…#747 (#742 closed) with `issue_estimates` (effort; risk as complexity; cycle time) and the batch's six pushed drafts |
 
 | `▤ Issue & PR history index` and `[19] … issue-index://support/churn-2026-q2` ([#618](https://github.com/NobuData/ouroboros/issues/618)) | a paused `custom`-kind ticket source named `Support` holding RS-124's 312 tickets as canonical rows (`SUP-3001`…, closed, labelled by theme — counting the index by label gives the seven themes, 44 or 45 each), and the `support/churn-2026-q2` import: fourteen interviews, nine labelled `docking` |
@@ -3603,6 +3620,7 @@ ouroboros-db/
 │   ├── V122__telemetry_locators.sql  # source_locator_valid(): a telemetry locator may name baseline:<tag>, compare <a>-vs-<b> and carry a ?query — #619
 │   ├── V123__research_start_role.sql # workspace_settings.research_start_role (member | admin) + the effective view — #625
 │   ├── V124__regression_watch_config.sql # regression_watch_settings.metrics/auto_bisect/auto_file/fix_source_id, watch_items.bisect_id, the two inbox kinds — #623
+│   ├── V125__research_planning_handoff.sql # ticket_drafts.research_provenance/milestone_name/milestone_due/labels, roadmap_docs.target_source_id/batch_id, roadmap_pipeline_settings (direct_commit) — #624
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -3880,6 +3898,7 @@ outside this module alters it.
 | `investigation_usage` | `V120` | One model call an investigation made ([#620](https://github.com/NobuData/ouroboros/issues/620)) — `investigation_id`, `seq`, `stage`, `alias`, `hop`, `connection`, `model`, `input_tokens`, `output_tokens`, `cost_cents`, `recorded_at` | one per investigation and `seq`; `stage` `plan \| select \| digest \| synthesize`; `cost_cents` null when unpriced; never updated; `ouroboros_app` may select and insert |
 | `investigation_deliverable_inputs` | `V120` | What a playbook produced besides the brief ([#620](https://github.com/NobuData/ouroboros/issues/620)) — `investigation_id`, `brief_id`, `deliverable`, `payload`, `created_at` | one per brief and deliverable (`matrix \| roadmap_doc \| fix_draft`); payload an object ≤ 512 KiB; the brief is the investigation's own; never updated; `ouroboros_app` may select and insert |
 | `regression_watch_settings` | `V115` | A workspace's regression thresholds ([#611](https://github.com/NobuData/ouroboros/issues/611), CK.4) — `thresholds` `{classes, metrics}` | rules of `{direction, warn_pct + err_pct, min_spread_multiple, min_samples}` over `regression_threshold_defaults()`; one row per workspace; `ouroboros_app` may select, insert and update |
+| `roadmap_pipeline_settings` | `V125` | A workspace's roadmap-pipeline policy ([#624](https://github.com/NobuData/ouroboros/issues/624), CM.5) — `direct_commit`, `updated_by` | one row per workspace, absent = the defaults; `direct_commit` default false — a `ROADMAP.md` projection goes through a pull request unless the workspace opts in; cascades with the workspace; `ouroboros_app` may select, insert and update |
 
 Two **functions**, both `V012`'s and both documented in
 [The bundled price catalog](#the-bundled-price-catalog).

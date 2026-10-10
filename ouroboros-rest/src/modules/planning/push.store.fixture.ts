@@ -44,6 +44,10 @@ export interface StoredDraft {
   readonly localKey: string;
   readonly title: string;
   readonly body: string | null;
+  /** Its own milestone, when it has one (V125). */
+  readonly milestone?: { readonly name: string; readonly dueOn: string | null } | null;
+  /** The labels sent with it (V125). */
+  readonly labels?: readonly string[];
   selected: boolean;
   pushState: DraftPushState;
   pushedTicketId: string | null;
@@ -131,6 +135,8 @@ export class InMemoryPushStore implements PushStore {
           localKey: draft.localKey,
           title: draft.title,
           body: draft.body,
+          milestone: draft.milestone ?? null,
+          labels: draft.labels ?? [],
           pushState: draft.pushState,
           pushedTicketId: draft.pushedTicketId,
           pushError: draft.pushError === null ? null : structuredClone(draft.pushError),

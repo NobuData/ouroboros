@@ -40116,6 +40116,261 @@ select pg_temp.must_hold(
     where kind_id in ('regression_drift_detected', 'bisect_complete')),
   'the watch''s two inbox kinds are declared once each: a link to the watch, and an admin''s dismissal that takes a reason');
 
+-- ===========================================================================
+-- V125 — research → Planning: draft provenance, per-draft milestones, labels, and the roadmap's
+-- round trip (#624, CM.5)
+-- ===========================================================================
+--
+-- Two workspaces, each with an investigation, a GitHub source and a batch; a roadmap doc in the
+-- first.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v125', 'Handoff Works', 'handoff-works-v125', now()),
+  ('org-v125b', 'Elsewhere', 'elsewhere-v125', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v125', 'Ken Suenobu', 'ken@handoff-works-v125.dev', true);
+
+insert into ouroboros.investigations (id, organization_id, kind_id, seq, question, depth, tools_enabled,
+                                      status, provenance)
+select v.id, v.org, k.id, 127, 'Why do rivals dock reliably in wind?', 'deep_dive', '["tickets"]',
+       'running', '{"researcher": "loop-v1", "alias": "researcher-long-ctx", "resolution_ref": null}'
+  from (values ('a1250000-0000-0000-0000-000000000001'::uuid, 'org-v125'),
+               ('a1250000-0000-0000-0000-000000000002'::uuid, 'org-v125b')) as v(id, org)
+  join ouroboros.investigation_kinds k on k.organization_id = v.org and k.slug = 'gap_analysis';
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('a1250000-0000-0000-0000-00000000000a', 'org-v125',  'github', 'GitHub · handoff works'),
+  ('a1250000-0000-0000-0000-00000000000b', 'org-v125b', 'github', 'GitHub · elsewhere');
+
+insert into ouroboros.draft_batches (id, organization_id, source_prompt, planner, target_source_id, created_by) values
+  ('a1250000-0000-0000-0000-000000000011', 'org-v125', 'RS-127 gaps → Docking parity', 'research-gaps-v1',
+   'a1250000-0000-0000-0000-00000000000a', 'user-v125'),
+  ('a1250000-0000-0000-0000-000000000012', 'org-v125b', 'Somebody else''s drafts', 'research-gaps-v1',
+   'a1250000-0000-0000-0000-00000000000b', null);
+
+insert into ouroboros.ticket_drafts (id, batch_id, local_key, title) values
+  ('a1250000-0000-0000-0000-000000000200', 'a1250000-0000-0000-0000-000000000011', 'PLAIN-1',
+   'A draft research did not write');
+
+insert into ouroboros.roadmap_docs (id, organization_id, investigation_id, title) values
+  ('a1250000-0000-0000-0000-000000000301', 'org-v125', 'a1250000-0000-0000-0000-000000000001',
+   'Helios — Q4 Improvement Roadmap');
+
+insert into ouroboros.source_records (id, investigation_id, tool_slug, kind, title, locator,
+                                      retrieved_at, content_hash, excerpt) values
+  ('a1250000-0000-0000-0000-000000000101', 'a1250000-0000-0000-0000-000000000001', 'web', 'web',
+   'Docking aborts in gusts', 'https://support.example.com/tickets/SUP-1', now(),
+   'sha256:' || encode(sha256('sup-1'::bytea), 'hex'), 'Aborted twice above 6 m/s.'),
+  ('a1250000-0000-0000-0000-000000000102', 'a1250000-0000-0000-0000-000000000002', 'web', 'web',
+   'Somebody else''s source', 'https://support.example.com/tickets/SUP-2', now(),
+   'sha256:' || encode(sha256('sup-2'::bytea), 'hex'), 'Elsewhere.');
+
+-- --- the provenance shape ----------------------------------------------------------------
+select pg_temp.must_hold(
+  ouroboros.draft_research_provenance_valid('{
+     "investigation_id": "a1250000-0000-0000-0000-000000000001", "origin": "gap",
+     "capability": "Wind-compensated docking", "severity": "high", "item_key": null,
+     "effort": "m", "sources": ["a1250000-0000-0000-0000-000000000101"]}')
+  and ouroboros.draft_research_provenance_valid('{
+     "investigation_id": "a1250000-0000-0000-0000-000000000001", "origin": "gap",
+     "capability": "Retry after abort", "severity": "med", "item_key": null,
+     "effort": null, "sources": []}')
+  and ouroboros.draft_research_provenance_valid('{
+     "investigation_id": "a1250000-0000-0000-0000-000000000001", "origin": "roadmap",
+     "capability": null, "severity": null, "item_key": "dock-mpc",
+     "effort": "l", "sources": []}'),
+  'research provenance names a gap (capability and severity) or a roadmap item (its key), an optional effort and the cited sources');
+
+select pg_temp.must_hold(
+  not ouroboros.draft_research_provenance_valid('{}')
+  and not ouroboros.draft_research_provenance_valid('[]')
+  -- a key missing, and a key too many
+  and not ouroboros.draft_research_provenance_valid('{
+     "investigation_id": "a1250000-0000-0000-0000-000000000001", "origin": "gap",
+     "capability": "x", "severity": "high", "item_key": null, "effort": null}')
+  and not ouroboros.draft_research_provenance_valid('{
+     "investigation_id": "a1250000-0000-0000-0000-000000000001", "origin": "gap",
+     "capability": "x", "severity": "high", "item_key": null, "effort": null, "sources": [],
+     "note": "extra"}')
+  -- not a uuid
+  and not ouroboros.draft_research_provenance_valid('{
+     "investigation_id": "RS-127", "origin": "gap",
+     "capability": "x", "severity": "high", "item_key": null, "effort": null, "sources": []}')
+  -- an origin outside the vocabulary
+  and not ouroboros.draft_research_provenance_valid('{
+     "investigation_id": "a1250000-0000-0000-0000-000000000001", "origin": "watch",
+     "capability": "x", "severity": "high", "item_key": null, "effort": null, "sources": []}')
+  -- a gap without a capability, with a low severity, or naming an item
+  and not ouroboros.draft_research_provenance_valid('{
+     "investigation_id": "a1250000-0000-0000-0000-000000000001", "origin": "gap",
+     "capability": " ", "severity": "high", "item_key": null, "effort": null, "sources": []}')
+  and not ouroboros.draft_research_provenance_valid('{
+     "investigation_id": "a1250000-0000-0000-0000-000000000001", "origin": "gap",
+     "capability": "x", "severity": "low", "item_key": null, "effort": null, "sources": []}')
+  and not ouroboros.draft_research_provenance_valid('{
+     "investigation_id": "a1250000-0000-0000-0000-000000000001", "origin": "gap",
+     "capability": "x", "severity": "high", "item_key": "dock-mpc", "effort": null, "sources": []}')
+  -- a roadmap item without a key, with a malformed one, or carrying a gap's fields
+  and not ouroboros.draft_research_provenance_valid('{
+     "investigation_id": "a1250000-0000-0000-0000-000000000001", "origin": "roadmap",
+     "capability": null, "severity": null, "item_key": null, "effort": null, "sources": []}')
+  and not ouroboros.draft_research_provenance_valid('{
+     "investigation_id": "a1250000-0000-0000-0000-000000000001", "origin": "roadmap",
+     "capability": null, "severity": null, "item_key": "Dock MPC", "effort": null, "sources": []}')
+  and not ouroboros.draft_research_provenance_valid('{
+     "investigation_id": "a1250000-0000-0000-0000-000000000001", "origin": "roadmap",
+     "capability": "x", "severity": null, "item_key": "dock-mpc", "effort": null, "sources": []}')
+  -- an effort outside xs…xl
+  and not ouroboros.draft_research_provenance_valid('{
+     "investigation_id": "a1250000-0000-0000-0000-000000000001", "origin": "roadmap",
+     "capability": null, "severity": null, "item_key": "dock-mpc", "effort": "xxl", "sources": []}')
+  -- sources that are not a list of distinct uuids
+  and not ouroboros.draft_research_provenance_valid('{
+     "investigation_id": "a1250000-0000-0000-0000-000000000001", "origin": "roadmap",
+     "capability": null, "severity": null, "item_key": "dock-mpc", "effort": null, "sources": "none"}')
+  and not ouroboros.draft_research_provenance_valid('{
+     "investigation_id": "a1250000-0000-0000-0000-000000000001", "origin": "roadmap",
+     "capability": null, "severity": null, "item_key": "dock-mpc", "effort": null, "sources": [7]}')
+  and not ouroboros.draft_research_provenance_valid('{
+     "investigation_id": "a1250000-0000-0000-0000-000000000001", "origin": "roadmap",
+     "capability": null, "severity": null, "item_key": "dock-mpc", "effort": null,
+     "sources": ["a1250000-0000-0000-0000-000000000101", "a1250000-0000-0000-0000-000000000101"]}'),
+  'and refuses a missing or extra key, a non-uuid, an unknown origin, a gap or item with the other''s fields, an unknown effort and a malformed source list');
+
+select pg_temp.must_hold(
+  ouroboros.draft_labels_valid('[]') and ouroboros.draft_labels_valid('["mvp", "roadmap"]')
+  and not ouroboros.draft_labels_valid('{}')
+  and not ouroboros.draft_labels_valid('["mvp", "mvp"]')
+  and not ouroboros.draft_labels_valid('[" "]')
+  and not ouroboros.draft_labels_valid('[3]')
+  and not ouroboros.draft_labels_valid(to_jsonb(repeat('x', 51)) || '[]'::jsonb)
+  and not ouroboros.draft_labels_valid((select jsonb_agg('l' || n) from generate_series(1, 21) n)),
+  'draft labels are at most twenty distinct non-blank strings of at most fifty characters');
+
+-- --- drafts ----------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select research_provenance is null and milestone_name is null and milestone_due is null
+          and labels = '[]'::jsonb
+     from ouroboros.ticket_drafts where id = 'a1250000-0000-0000-0000-000000000200'),
+  'a draft research did not write has no provenance, no milestone of its own and no labels');
+
+insert into ouroboros.ticket_drafts (id, batch_id, local_key, title, research_provenance,
+                                     milestone_name, milestone_due, labels) values
+  ('a1250000-0000-0000-0000-000000000201', 'a1250000-0000-0000-0000-000000000011', 'DOCK-1',
+   'Wind-feedforward MPC',
+   '{"investigation_id": "a1250000-0000-0000-0000-000000000001", "origin": "gap",
+     "capability": "Wind-compensated docking", "severity": "high", "item_key": null,
+     "effort": "m", "sources": ["a1250000-0000-0000-0000-000000000101"]}',
+   'Docking parity', '2026-10-15', '["mvp"]');
+
+select pg_temp.must_hold(
+  (select research_provenance ->> 'capability' = 'Wind-compensated docking'
+          and milestone_name = 'Docking parity' and milestone_due = date '2026-10-15'
+          and labels = '["mvp"]'::jsonb and provenance = 'planned'
+     from ouroboros.ticket_drafts where id = 'a1250000-0000-0000-0000-000000000201'),
+  'a gap draft keeps its capability, its cited source, its own milestone with a due date and its labels');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_drafts (batch_id, local_key, title, research_provenance) values
+      ('a1250000-0000-0000-0000-000000000011', 'DOCK-2', 'Bad shape', '{"origin": "gap"}')$$,
+  'a draft refuses malformed research provenance', 'ticket_drafts_research_provenance_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_drafts (batch_id, local_key, title, research_provenance) values
+      ('a1250000-0000-0000-0000-000000000011', 'DOCK-3', 'Other workspace',
+       '{"investigation_id": "a1250000-0000-0000-0000-000000000002", "origin": "gap",
+         "capability": "x", "severity": "high", "item_key": null, "effort": null, "sources": []}')$$,
+  'a draft names an investigation of its batch''s workspace',
+  'ticket_drafts_research_provenance_same_workspace');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_drafts (batch_id, local_key, title, research_provenance) values
+      ('a1250000-0000-0000-0000-000000000011', 'DOCK-4', 'Other ledger',
+       '{"investigation_id": "a1250000-0000-0000-0000-000000000001", "origin": "gap",
+         "capability": "x", "severity": "high", "item_key": null, "effort": null,
+         "sources": ["a1250000-0000-0000-0000-000000000102"]}')$$,
+  'a draft cites only sources of the investigation it names',
+  'ticket_drafts_research_provenance_same_workspace');
+
+select pg_temp.must_reject(
+  $$update ouroboros.ticket_drafts
+       set research_provenance = jsonb_set(research_provenance, '{investigation_id}',
+                                           '"a1250000-0000-0000-0000-000000000002"')
+     where id = 'a1250000-0000-0000-0000-000000000201'$$,
+  'and an update is held to the same rule', 'ticket_drafts_research_provenance_same_workspace');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_drafts (batch_id, local_key, title, milestone_due) values
+      ('a1250000-0000-0000-0000-000000000011', 'DOCK-5', 'Due without a milestone', '2026-10-15')$$,
+  'a due date needs a milestone to belong to', 'ticket_drafts_milestone_due_needs_name');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_drafts (batch_id, local_key, title, milestone_name) values
+      ('a1250000-0000-0000-0000-000000000011', 'DOCK-6', 'Blank milestone', '  ')$$,
+  'a draft''s milestone has a name', 'ticket_drafts_milestone_name_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.ticket_drafts (batch_id, local_key, title, labels) values
+      ('a1250000-0000-0000-0000-000000000011', 'DOCK-7', 'Bad labels', '["mvp", "mvp"]')$$,
+  'a draft refuses repeated labels', 'ticket_drafts_labels_shape');
+
+-- --- the roadmap's round trip -----------------------------------------------------------------
+select pg_temp.must_hold(
+  (select target_source_id is null and batch_id is null
+     from ouroboros.roadmap_docs where id = 'a1250000-0000-0000-0000-000000000301'),
+  'a roadmap doc starts with no target source and no batch');
+
+update ouroboros.roadmap_docs
+   set target_source_id = 'a1250000-0000-0000-0000-00000000000a',
+       batch_id = 'a1250000-0000-0000-0000-000000000011'
+ where id = 'a1250000-0000-0000-0000-000000000301';
+
+select pg_temp.must_reject(
+  $$update ouroboros.roadmap_docs set target_source_id = 'a1250000-0000-0000-0000-00000000000b'
+     where id = 'a1250000-0000-0000-0000-000000000301'$$,
+  'a doc is projected to a source of its own workspace', 'roadmap_docs_targets_same_workspace');
+
+select pg_temp.must_reject(
+  $$update ouroboros.roadmap_docs set batch_id = 'a1250000-0000-0000-0000-000000000012'
+     where id = 'a1250000-0000-0000-0000-000000000301'$$,
+  'and files through a batch of its own workspace', 'roadmap_docs_targets_same_workspace');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.roadmap_docs (organization_id, title, batch_id) values
+      ('org-v125', 'A second roadmap', 'a1250000-0000-0000-0000-000000000011')$$,
+  'a batch belongs to one roadmap', 'roadmap_docs_batch_key');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from pg_constraint
+    where conname in ('roadmap_docs_target_source_fk', 'roadmap_docs_batch_fk') and confdeltype = 'n'),
+  'a doc outlives its source and its batch: both references are set null on delete');
+
+-- --- the pipeline policy -------------------------------------------------------------------
+insert into ouroboros.roadmap_pipeline_settings (organization_id) values ('org-v125');
+
+select pg_temp.must_hold(
+  (select not direct_commit and updated_by is null
+     from ouroboros.roadmap_pipeline_settings where organization_id = 'org-v125'),
+  'direct commit is off unless a workspace turns it on');
+
+update ouroboros.roadmap_pipeline_settings
+   set direct_commit = true, updated_by = 'user-v125' where organization_id = 'org-v125';
+
+select pg_temp.must_hold(
+  (select direct_commit and updated_by = 'user-v125'
+     from ouroboros.roadmap_pipeline_settings where organization_id = 'org-v125')
+  and not exists (select 1 from ouroboros.roadmap_pipeline_settings where organization_id = 'org-v125b'),
+  'the opt-in is one workspace''s, recorded with who decided');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.roadmap_pipeline_settings (organization_id) values ('org-v125')$$,
+  'a workspace has one pipeline policy row', 'roadmap_pipeline_settings_pkey');
+
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.roadmap_pipeline_settings', 'select, insert, update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.roadmap_pipeline_settings', 'delete'),
+  'the application reads and writes the policy and never deletes it');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

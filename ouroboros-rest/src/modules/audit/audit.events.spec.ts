@@ -90,6 +90,8 @@ import {
   AUDIT_PURGED_EVENT,
   NOTIFICATION_ROUTE_UPDATED_EVENT,
   RESEARCH_WATCH_POLICY_UPDATED_EVENT,
+  ROADMAP_POLICY_UPDATED_EVENT,
+  ROADMAP_SUGGESTION_DISMISSED_EVENT,
 } from "./audit.events";
 
 /**
@@ -236,6 +238,8 @@ describe("the vocabulary", () => {
       "audit.purged",
       "notification_route.updated",
       "regression_watch.policy_updated",
+      "roadmap.suggestion_dismissed",
+      "roadmap.policy_updated",
     ]);
   });
 
@@ -267,7 +271,8 @@ describe("the vocabulary", () => {
     // `webhook.` for the outbound webhook management API (#487), and `audit.` for the audit plane's
     // own export and purge (#486), and
     // `notification_route.` for the org-level notification routes (#488), and
-    // `regression_watch.` for the regression watch's policy (#623). The
+    // `regression_watch.` for the regression watch's policy (#623), and `roadmap.` for a
+    // dismissed roadmap suggestion and the direct-commit opt-in (#624). The
     // families are what make `action like 'provider.%'` a useful question — and what keeps
     // *"who changed our GitHub token"* and *"what has happened to our fleet"* answerable
     // without knowing every name in either. The pool events are deliberately inside
@@ -290,6 +295,7 @@ describe("the vocabulary", () => {
       "pr_thread",
       "provider",
       "regression_watch",
+      "roadmap",
       "runner",
       "service_account",
       "triage",
@@ -391,6 +397,8 @@ describe("the vocabulary", () => {
       AUDIT_PURGED_EVENT,
       NOTIFICATION_ROUTE_UPDATED_EVENT,
       RESEARCH_WATCH_POLICY_UPDATED_EVENT,
+      ROADMAP_SUGGESTION_DISMISSED_EVENT,
+      ROADMAP_POLICY_UPDATED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

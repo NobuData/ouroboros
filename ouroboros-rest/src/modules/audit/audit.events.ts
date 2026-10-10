@@ -79,7 +79,9 @@ export type AuditSubjectType =
   | "decision_item"
   | "webhook_endpoint"
   | "notification_route"
-  | "regression_watch_settings";
+  | "regression_watch_settings"
+  | "roadmap_doc"
+  | "roadmap_pipeline_settings";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -609,6 +611,22 @@ export const NOTIFICATION_ROUTE_UPDATED_EVENT = "notification_route.updated";
  */
 export const RESEARCH_WATCH_POLICY_UPDATED_EVENT = "regression_watch.policy_updated";
 
+/**
+ * Someone dismissed a suggested change to a roadmap document (CM.5,
+ * [#624](https://github.com/NobuData/ouroboros/issues/624)). Subject `roadmap_doc`. The detail
+ * carries the suggestion's id, who or what proposed it (`authorKind`, and `authorAgent` for the
+ * AI's) and its text — a dismissal is the one way a proposal leaves the queue without producing a
+ * version, so the trail keeps what was turned down.
+ */
+export const ROADMAP_SUGGESTION_DISMISSED_EVENT = "roadmap.suggestion_dismissed";
+
+/**
+ * A workspace changed whether `ROADMAP.md` may be committed without a pull request (CM.5, #624) —
+ * the opt-in. Subject `roadmap_pipeline_settings`, whose id is the workspace. The detail carries
+ * `directCommit` **before and after**. A save that changes nothing writes no event.
+ */
+export const ROADMAP_POLICY_UPDATED_EVENT = "roadmap.policy_updated";
+
 /* ---------------------------------------------------------------------------
  * The audit plane itself — BR.2 ([#486](https://github.com/NobuData/ouroboros/issues/486)).
  *
@@ -721,6 +739,8 @@ export const AUDIT_ACTIONS = [
   AUDIT_PURGED_EVENT,
   NOTIFICATION_ROUTE_UPDATED_EVENT,
   RESEARCH_WATCH_POLICY_UPDATED_EVENT,
+  ROADMAP_SUGGESTION_DISMISSED_EVENT,
+  ROADMAP_POLICY_UPDATED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

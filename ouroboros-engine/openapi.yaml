@@ -14,7 +14,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-engine
-  version: 0.7.24
+  version: 0.7.25
   summary: Internal backend for Ouroboros — executes the work ouroboros-rest brokers.
   description: |-
     The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the
@@ -2060,6 +2060,88 @@ paths:
           $ref: '#/components/responses/InvestigationUnprocessable'
         '503':
           $ref: '#/components/responses/InvestigationCapacity'
+  /v0/skills/run:
+    post:
+      tags:
+      - v0
+      summary: Run a registry skill over an input
+      description: |-
+        Follows one **skill** — a procedure kept in the Knowledge registry (BE.1,
+        [#405](https://github.com/NobuData/ouroboros/issues/405)) — over an input, and answers
+        with a validated result. CM.5
+        ([#624](https://github.com/NobuData/ouroboros/issues/624)): the roadmap pipeline's
+        `create-roadmap` and `create-issues`.
+
+        `ouroboros-rest` sends the body of the version it resolved for the workspace, so a
+        workspace that edits its copy of a skill changes what runs. The procedure is the
+        system prompt; a rule for the output's shape is appended to it, so an edit cannot
+        change what the control plane stores.
+
+        * `output: roadmap` — milestones with target dates and items with an MVP flag and an
+          effort. A re-run carries the version before it as `input.previous` and keeps the
+          key of everything that survives; `input.suggestions` are applied.
+        * `output: issue_bodies` — one description for every item of `input.items`, keyed by
+          the item; an answer that skips or invents an item is refused.
+
+        **The answer is validated, and re-asked once.** A model that answers outside the
+        contract is told what was wrong and asked again; a second miss is
+        `422 skill_output_invalid`. Nothing is repaired here.
+
+        **Models.** Calls go through the control plane's invocation gateway under the alias
+        the request names. Until that gateway is implemented (AF.2,
+        [#235](https://github.com/NobuData/ouroboros/issues/235)) a run answers
+        `502 skill_model_failed` with `details.reason: gateway_unavailable`.
+      operationId: runSkill
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkillRunRequest'
+            example:
+              run: 5eed0097-0000-4000-8000-000000000124
+              skill:
+                slug: create-roadmap
+                version: 1
+                body: Turn the brief into a roadmap of dated milestones.
+              output: roadmap
+              input:
+                brief: '# RS-124 — Q4 product improvements'
+                suggestions:
+                - text: Pull the gust estimator into the M1 MVP set.
+              alias: research
+              resolution_version: r1
+      responses:
+        '200':
+          description: The validated result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillRunResult'
+              example:
+                skill: create-roadmap
+                version: 1
+                output: roadmap
+                roadmap:
+                  title: Helios — Q4 Improvement Roadmap
+                  milestones:
+                  - key: m1
+                    name: Docking parity
+                    target_date: '2026-10-15'
+                    items:
+                    - key: dock-mpc
+                      title: Wind-feedforward MPC in final approach
+                      mvp: true
+                      effort: l
+                issues: null
+                attempts: 1
+                usage: []
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/SkillUnprocessable'
+        '502':
+          $ref: '#/components/responses/SkillModelFailed'
 
 components:
   securitySchemes:
@@ -2192,6 +2274,31 @@ components:
             code: investigation_capacity
             message: Every investigation worker is busy. Submit it again in a moment.
             details: {}
+    SkillUnprocessable:
+      description: '`validation_failed` — the body is malformed, with one entry per field; `skill_input_invalid`
+        — the input cannot produce the output asked for (no model was called); or `skill_output_invalid`
+        — the model answered outside the contract twice.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: skill_output_invalid
+            message: The model did not answer in the shape the skill's output requires.
+            details:
+              problem: 'milestones.0.items.1.key: String should match pattern'
+    SkillModelFailed:
+      description: '`skill_model_failed` — a model call produced no answer. `details.reason` is the gateway''s
+        code: `gateway_unavailable`, `chain_exhausted` or `cost_cap_exceeded`.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: skill_model_failed
+            message: The invocation gateway is not available.
+            details:
+              reason: gateway_unavailable
 
   schemas:
     Liveness:
@@ -5141,3 +5248,219 @@ components:
           type: string
         result:
           $ref: '#/components/schemas/DryRunResult'
+
+    SkillRef:
+      type: object
+      title: SkillRef
+      description: The skill version to follow. Closed.
+      additionalProperties: false
+      required:
+      - slug
+      - version
+      - body
+      properties:
+        slug:
+          maxLength: 64
+          pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+          type: string
+        version:
+          minimum: 1
+          type: integer
+        body:
+          maxLength: 200000
+          minLength: 1
+          type: string
+    SkillRunRequest:
+      type: object
+      title: SkillRunRequest
+      description: One run of one skill. Closed.
+      additionalProperties: false
+      required:
+      - run
+      - skill
+      - output
+      - input
+      - alias
+      properties:
+        run:
+          maxLength: 200
+          minLength: 1
+          type: string
+        skill:
+          $ref: '#/components/schemas/SkillRef'
+        output:
+          enum:
+          - roadmap
+          - issue_bodies
+          type: string
+        input:
+          additionalProperties: true
+          type: object
+        alias:
+          maxLength: 200
+          minLength: 1
+          type: string
+        resolution_version:
+          anyOf:
+          - maxLength: 200
+            type: string
+          - type: 'null'
+        cost_cap_cents:
+          anyOf:
+          - minimum: 0
+            type: integer
+          - type: 'null'
+    RoadmapItem:
+      type: object
+      title: RoadmapItem
+      description: One item of a milestone. Closed.
+      additionalProperties: false
+      required:
+      - key
+      - title
+      - mvp
+      properties:
+        key:
+          pattern: ^[a-z0-9][a-z0-9_-]{0,31}$
+          type: string
+        title:
+          maxLength: 512
+          minLength: 1
+          type: string
+        mvp:
+          type: boolean
+        effort:
+          anyOf:
+          - enum:
+            - xs
+            - s
+            - m
+            - l
+            - xl
+            type: string
+          - type: 'null'
+    RoadmapMilestone:
+      type: object
+      title: RoadmapMilestone
+      description: One milestone. Closed.
+      additionalProperties: false
+      required:
+      - key
+      - name
+      - items
+      properties:
+        key:
+          pattern: ^[a-z0-9][a-z0-9_-]{0,31}$
+          type: string
+        name:
+          maxLength: 200
+          minLength: 1
+          type: string
+        target_date:
+          anyOf:
+          - format: date
+            type: string
+          - type: 'null'
+        items:
+          items:
+            $ref: '#/components/schemas/RoadmapItem'
+          maxItems: 500
+          type: array
+    Roadmap:
+      type: object
+      title: Roadmap
+      description: A roadmap, as ``create-roadmap`` answers it. Closed.
+      additionalProperties: false
+      required:
+      - title
+      - milestones
+      properties:
+        title:
+          maxLength: 200
+          minLength: 1
+          type: string
+        milestones:
+          items:
+            $ref: '#/components/schemas/RoadmapMilestone'
+          maxItems: 50
+          minItems: 1
+          type: array
+    IssueBody:
+      type: object
+      title: IssueBody
+      description: The description of one item's issue. Closed.
+      additionalProperties: false
+      required:
+      - key
+      - body
+      properties:
+        key:
+          pattern: ^[a-z0-9][a-z0-9_-]{0,31}$
+          type: string
+        body:
+          maxLength: 60000
+          minLength: 1
+          type: string
+    SkillUsage:
+      type: object
+      title: SkillUsage
+      description: What one hop of one model call consumed. Closed.
+      additionalProperties: false
+      required:
+      - hop
+      - connection
+      - model
+      - input_tokens
+      - output_tokens
+      properties:
+        hop:
+          type: integer
+        connection:
+          type: string
+        model:
+          type: string
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        cost_cents:
+          anyOf:
+          - type: number
+          - type: 'null'
+    SkillRunResult:
+      type: object
+      title: SkillRunResult
+      description: What a run produced. Closed.
+      additionalProperties: false
+      required:
+      - skill
+      - version
+      - output
+      - attempts
+      properties:
+        skill:
+          type: string
+        version:
+          type: integer
+        output:
+          enum:
+          - roadmap
+          - issue_bodies
+          type: string
+        roadmap:
+          anyOf:
+          - $ref: '#/components/schemas/Roadmap'
+          - type: 'null'
+        issues:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/IssueBody'
+            type: array
+          - type: 'null'
+        attempts:
+          minimum: 1
+          type: integer
+        usage:
+          items:
+            $ref: '#/components/schemas/SkillUsage'
+          type: array

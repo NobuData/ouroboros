@@ -576,6 +576,19 @@ export const MIN_RESEARCH_REGRESSION_TICK_MS = 10_000;
 export const MAX_RESEARCH_REGRESSION_TICK_MS = 3_600_000;
 
 /**
+ * How often the roadmap pipeline runs its drift check, by default — every fifteen minutes (#624).
+ * A pass retries a projection that could not be made, follows an open pull request, and compares
+ * each roadmap document with the tracker and the repository's file.
+ */
+export const DEFAULT_RESEARCH_ROADMAP_TICK_MS = 900_000;
+
+/** The shortest roadmap tick an operator may set — ten seconds; `0` turns it off. */
+export const MIN_RESEARCH_ROADMAP_TICK_MS = 10_000;
+
+/** The longest roadmap tick an operator may set — a day. */
+export const MAX_RESEARCH_ROADMAP_TICK_MS = 86_400_000;
+
+/**
  * How many days without a tracker update make an open ticket *stale* on the Backlog Health card,
  * when `OURO_BACKLOG_STALE_DAYS` is not set — thirty, mockup 09's `Stale > 30d`.
  *
@@ -1184,6 +1197,11 @@ export interface Configuration {
    */
   readonly researchRegressionTickMs: number;
   /**
+   * How often the roadmap pipeline runs its drift check over every roadmap document, in
+   * milliseconds; `0` when the pass is off. From `OURO_RESEARCH_ROADMAP_TICK_MS` (#624).
+   */
+  readonly researchRoadmapTickMs: number;
+  /**
    * Days without a tracker update after which an open ticket counts as stale on the Backlog Health
    * card. From `OURO_BACKLOG_STALE_DAYS`, {@link DEFAULT_BACKLOG_STALE_DAYS} when unset.
    */
@@ -1393,6 +1411,7 @@ export const VARIABLES = {
   researchBisectTickMs: "OURO_RESEARCH_BISECT_TICK_MS",
   researchInvestigationTickMs: "OURO_RESEARCH_INVESTIGATION_TICK_MS",
   researchRegressionTickMs: "OURO_RESEARCH_REGRESSION_TICK_MS",
+  researchRoadmapTickMs: "OURO_RESEARCH_ROADMAP_TICK_MS",
   backlogStaleDays: "OURO_BACKLOG_STALE_DAYS",
   reestimationHourUtc: "OURO_REESTIMATION_HOUR_UTC",
   reestimationJitterMinutes: "OURO_REESTIMATION_JITTER_MINUTES",
@@ -2097,6 +2116,15 @@ const environmentShape = z.object({
     (value) => value === 0 || value >= MIN_RESEARCH_REGRESSION_TICK_MS,
     `expected 0 (off) or between ${MIN_RESEARCH_REGRESSION_TICK_MS} and ${MAX_RESEARCH_REGRESSION_TICK_MS} milliseconds`,
   ),
+  OURO_RESEARCH_ROADMAP_TICK_MS: boundedWhole(
+    0,
+    DEFAULT_RESEARCH_ROADMAP_TICK_MS,
+    MAX_RESEARCH_ROADMAP_TICK_MS,
+    "milliseconds",
+  ).refine(
+    (value) => value === 0 || value >= MIN_RESEARCH_ROADMAP_TICK_MS,
+    `expected 0 (off) or between ${MIN_RESEARCH_ROADMAP_TICK_MS} and ${MAX_RESEARCH_ROADMAP_TICK_MS} milliseconds`,
+  ),
   OURO_RESEARCH_FETCH_INTERNAL_ALLOWLIST: z
     .string()
     .default("")
@@ -2474,6 +2502,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     researchBisectTickMs: values.OURO_RESEARCH_BISECT_TICK_MS,
     researchInvestigationTickMs: values.OURO_RESEARCH_INVESTIGATION_TICK_MS,
     researchRegressionTickMs: values.OURO_RESEARCH_REGRESSION_TICK_MS,
+    researchRoadmapTickMs: values.OURO_RESEARCH_ROADMAP_TICK_MS,
     backlogStaleDays: values.OURO_BACKLOG_STALE_DAYS,
     reestimationHourUtc: values.OURO_REESTIMATION_HOUR_UTC,
     reestimationJitterMinutes: values.OURO_REESTIMATION_JITTER_MINUTES,

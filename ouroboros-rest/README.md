@@ -5243,6 +5243,90 @@ V124) are keyed `research.watch` / `item:<id>:detected|bisected`; a card settles
 
 The pass runs every `OURO_RESEARCH_REGRESSION_TICK_MS` (default five minutes; `0` off).
 
+## Gaps hand-off & roadmap pipeline
+
+The two paths from a brief to work ([#624](https://github.com/NobuData/ouroboros/issues/624),
+decisions V7 and V8). `research/pipeline/` composes Briefs, the skills registry, Planning and the
+ticket sources through their own services — it adds no second push path and no second estimator.
+
+```
+POST /api/v1/research/investigations/:id/draft-epic
+  brief.proposed (HIGH/MED rows' stubs) ─▶ EpicsService.create (proposed)
+        ─▶ BatchesService.compose (planner research-gaps-v1, epic, one draft per stub,
+                                   research_provenance {gap, sources}) ─▶ /planning?batch=…
+        nothing is filed · a second call answers the same batch
+
+POST …/roadmap            brief export ─create-roadmap─▶ roadmap_doc_versions v1 ─▶ project
+POST …/roadmap/suggestions                    doc_suggestions (user) · raise() for the product's (ai)
+POST …/suggestions/:id/apply   re-run create-roadmap {previous, suggestions…} ─▶ vN+1,
+                               suggestion applied@vN+1 in the same transaction ─▶ project
+POST …/suggestions/:id/dismiss status dismissed · audit roadmap.suggestion_dismissed
+POST …/roadmap/issues     create-issues ─▶ compose (planner create-roadmap-v1, one batch per doc,
+                            per-draft milestone + due date, label mvp) ─▶ [sizer] ─▶ push/resume
+                            ─▶ writeback: newly filed items' ticket ids, MVP, done ─▶ vN+1 ─▶ project
+                            stage: sizing | partial | filed
+POST …/roadmap/drift-check settle projection ─▶ compare with the tracker mirror and the repo file
+                            difference ─▶ committed → drift_detected + ONE suggestion (drift-detector)
+project:  commit to ouroboros/roadmap-<id> ─▶ open or update the PR (draft under dry-run)
+          direct_commit && !dry-run ─▶ commit to the default branch
+          pending → pr_open → committed → drift_detected   (V113 holds the edges)
+```
+
+| File | What it holds |
+| --- | --- |
+| `research/pipeline/gap-handoff.service.ts` | `draftEpic()`; a gap draft's body and provenance |
+| `research/pipeline/roadmap.service.ts` | Generate, the card, suggestions, apply (the re-run), dismiss, the policy |
+| `research/pipeline/roadmap.issues.service.ts` | `file()` — draft, wait for the sizer, push, write back; re-entrant |
+| `research/pipeline/roadmap.drift.service.ts` | `check()` and the scheduler's `pass()` |
+| `research/pipeline/roadmap.projector.ts` | A version's life in the repository: PR, direct commit, following a PR, recording a drift |
+| `research/pipeline/roadmap.structure.ts` | V113's structure: merge a skill's answer by item key, write back, refresh done states, render `ROADMAP.md` |
+| `research/pipeline/roadmap.drift.ts` | Document versus tracker: the differences and the suggestion that names them |
+| `research/pipeline/pipeline.skills.ts` | The shipped `create-roadmap` and `create-issues` bodies |
+| `research/pipeline/pipeline.skill-registry.ts` | The workspace's current published version of a skill; ships it on first use (`origin: generated`) |
+| `research/pipeline/pipeline.skill-runner.ts` | One run: skill version + the `research` route's alias → `EngineClient.runSkill` |
+| `research/pipeline/pipeline.repo.ts` | The repository gateway over the provider SPI's repository-document family |
+| `research/pipeline/pipeline.repository.ts` | V113/V125's tables and the looks at investigations, the tracker mirror and estimates |
+| `research/pipeline/pipeline.fixture.ts`, `pipeline.bench.fixture.ts` | An in-memory store, a repository of branches, a scripted skill runner, a Planning that drafts and pushes — and the real services over them |
+
+**Applying is a re-run, never a patch.** `create-roadmap` answers the whole roadmap again; this
+service merges the answer over the version before it **by item key**, so a surviving item keeps
+its draft and its issue. The skill owns what the roadmap says; the draft, the ticket and whether
+it is closed are this service's, refreshed from the tracker on every re-run.
+
+**The skills are the workspace's.** `PipelineSkillRegistry` reads the current published version
+from the Knowledge registry, so publishing a version changes what runs. A workspace with none
+gets the shipped body in one transaction; one whose copy was never published is refused
+(`roadmap_skill_unpublished`). The engine appends the output's shape to whatever body runs
+(`POST /v0/skills/run`), so an edit cannot change what is stored. Until the invocation gateway
+exists (AF.2, #235) a live run answers `502 roadmap_skill_failed` with `gateway_unavailable`.
+
+**The repository is reviewed, not written to.** Direct commit is
+`roadmap_pipeline_settings.direct_commit` (V125, default false, `GET/PUT
+/api/v1/research/roadmap-settings`, audited as `roadmap.policy_updated`), and is ignored under
+dry-run. A version is stored **before** anything is projected: an unreachable repository leaves
+it `pending` with `projection.problem`, and the drift check retries.
+
+**The provider SPI gained a repository-document family** (`ticket-source.repo-doc.ts`,
+`providers/github.repo-doc.ts`): `defaultBranch`, `fileAt`, `commitFile` (idempotent by content;
+creates the branch) and `updatePR`, guarded by `supportsRepoDocs`. And push learned two things a
+roadmap needs: a draft's own milestone with a due date (`ensureMilestone(context, name, dueOn)`
+— sent only when the milestone is created) and its labels, which `recordPushed` now also writes
+to the mirrored ticket.
+
+**Create-issues is idempotent because it is re-entrant.** One batch per document
+(`roadmap_docs.batch_id`), AL.3's per-draft key, and a writeback that writes no version when
+nothing changed. The writeback touches only items that were not filed before; a later tracker
+change is the drift check's to report — never absorbed silently.
+
+**The drift check raises once.** While a `drift-detector` suggestion is open on a document no
+other is added. It writes no version and edits no file. It runs every
+`OURO_RESEARCH_ROADMAP_TICK_MS` (default fifteen minutes; `0` off) over documents with a target
+source that are not already `drift_detected`.
+
+Not here: the pipeline card (#631) and the brief card's button (#630); editing issues that are
+already filed (push is create-only, so a re-run after filing changes the document and the drift
+check says so); filing items that join the roadmap after its batch was composed (`undrafted`).
+
 ## Replay estimates
 
 `POST /internal/dry-runs/{id}/replay-estimates` is mockup 20's replayed row —
@@ -7523,6 +7607,7 @@ ouroboros-rest/
 │       ├── research/       # POST /research/estimates — sources & cost, researcher pill · #622
 │       │   ├── briefs/     # a brief, read: GET /research/investigations/:id/{brief,sources,brief/export}, the matrix builder, severity rule, proposed-from-gaps, Markdown export · #621
 │       │   ├── lifecycle/  # an investigation's public lifecycle: POST/GET /research/investigations, /:id, /:id/cancel, /:id/progress (SSE), /research/settings · #625
+│       │   ├── pipeline/   # gaps → Planning draft epic; brief → create-roadmap → ROADMAP.md PR → suggestions → create-issues → writeback → drift check · #624
 │       │   ├── watch/      # the regression watch: baselines, nightly comparison, bisect → forensics → fix draft chain, /research/regression-watch · #623
 │       │   ├── loop/       # the investigation loop's control-plane half — /internal/research/investigations/:id/{start,checkpoint,brief,finish}, dispatch, cancel, the resume pass · #620
 │       │   ├── telemetry/  # the telemetry tool's reads: windows, re-runnable telemetry:// locators, readings (ok | no_data), the read-only repository · #619

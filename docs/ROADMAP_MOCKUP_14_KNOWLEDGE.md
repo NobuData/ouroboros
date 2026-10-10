@@ -370,6 +370,8 @@ env_recipe(helios-firmware, v3): [west init -m …, west update --narrow…,
 ### Issue BE.5 — ouroboros-db: [BE.5] Knowledge seeds — mockup-14 parity + probes
 
 > **GitHub issue:** #409 ✅ · **Status:** 🟢 Done · **Parent epic:** #401
+>
+> **Amended by #624 (CM.5):** the roadmap pipeline's `create-roadmap` and `create-issues` are seeded as two more skills of `acme-robotics` — in `R__dev_seed_workspace_research.sql`, org-wide, `origin = generated`, v1 published by nobody — so the Knowledge page lists eight. Mockup 14's six, and every figure this seed computes for them, are unchanged; `tests/seed.sql` counts them without the two.
 
 - **Problem Statement:** Design review needs the mockup's exact knowledge
   state without running proposers or generators.

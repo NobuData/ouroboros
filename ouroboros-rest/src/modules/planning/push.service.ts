@@ -219,6 +219,8 @@ interface Walk {
   readonly refs: Map<string, TicketWriteRef>;
   readonly links: Record<DependencyLinkMode, number>;
   milestone: MilestoneRef | null;
+  /** Drafts' own milestones, ensured once per name in this run (CM.5, #624). */
+  readonly draftMilestones: Map<string, MilestoneRef | null>;
   epic: EpicMirrorRef | null;
   pushed: number;
   retryAt: Date | null;
@@ -365,6 +367,7 @@ export class PushService {
       refs: refsOf(drafts, tickets),
       links: { native: 0, fallback: 0 },
       milestone: null,
+      draftMilestones: new Map(),
       epic: null,
       pushed: 0,
       retryAt: null,
@@ -489,6 +492,7 @@ export class PushService {
         ref,
         title: draft.title,
         body: draft.body,
+        labels: draft.labels,
         epicId: walk.epic === null ? null : walk.batch.epicId,
         at: new Date(),
       });
@@ -510,13 +514,14 @@ export class PushService {
   private async pushDraft(walk: Walk, draft: PushDraft): Promise<TicketWriteRef> {
     const { provider } = walk;
     const context = contextOf(walk);
+    const milestone = await this.draftMilestone(walk, draft);
     const ref = await tracked("create", () =>
       provider.createTicket(context, {
         idempotencyKey: pushKey(walk.batch.id, draft.id),
         title: draft.title,
         body: draft.body,
-        labels: [],
-        milestone: walk.milestone,
+        labels: draft.labels,
+        milestone,
       }),
     );
 
@@ -573,6 +578,37 @@ export class PushService {
     const ticket = ticketId === null ? undefined : walk.tickets.get(ticketId);
 
     return ticket?.sourceId === walk.batch.source.sourceId ? ticket.ref : undefined;
+  }
+
+  /**
+   * The milestone one draft is filed under: its own (V125 — a roadmap files its issues under
+   * several, each with a due date), ensured once per name in a run, or else the batch's.
+   *
+   * @param walk - The run, with its context open.
+   * @param draft - The draft.
+   * @returns The milestone, or null when neither names one or the tracker has none.
+   * @throws {StepFailure} When the tracker refused.
+   */
+  private async draftMilestone(walk: Walk, draft: PushDraft): Promise<MilestoneRef | null> {
+    const own = draft.milestone;
+
+    if (own === null) {
+      return walk.milestone;
+    }
+
+    const known = walk.draftMilestones.get(own.name);
+
+    if (known !== undefined) {
+      return known;
+    }
+
+    const ensured = await tracked("milestone", () =>
+      walk.provider.ensureMilestone(contextOf(walk), own.name, own.dueOn),
+    );
+
+    walk.draftMilestones.set(own.name, ensured);
+
+    return ensured;
   }
 
   /**

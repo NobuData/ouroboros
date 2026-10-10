@@ -443,6 +443,14 @@ export class AppConfigService {
   }
 
   /**
+   * `OURO_RESEARCH_ROADMAP_TICK_MS` — how often the roadmap pipeline runs its drift check; 0 off
+   * (#624).
+   */
+  get researchRoadmapTickMs(): number {
+    return this.config.getOrThrow<number>("researchRoadmapTickMs");
+  }
+
+  /**
    * Days without a tracker update after which an open ticket is stale — `OURO_BACKLOG_STALE_DAYS`.
    *
    * The Backlog Health card's third meter (AL.5, #281); configurable rather than mockup 09's fixed
@@ -653,6 +661,7 @@ export class AppConfigService {
       researchBisectTickMs: this.researchBisectTickMs,
       researchInvestigationTickMs: this.researchInvestigationTickMs,
       researchRegressionTickMs: this.researchRegressionTickMs,
+      researchRoadmapTickMs: this.researchRoadmapTickMs,
       backlogStaleDays: this.backlogStaleDays,
       reestimationHourUtc: this.reestimationHourUtc,
       reestimationJitterMinutes: this.reestimationJitterMinutes,

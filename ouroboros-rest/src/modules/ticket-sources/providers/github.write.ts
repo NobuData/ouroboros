@@ -52,6 +52,7 @@ import type { GithubClient } from "../../github/github.client";
 import { GITHUB_FAILURES, GithubApiError } from "../../github/github.errors";
 import { TicketSourceError } from "../ticket-source.errors";
 import {
+  isCalendarDate,
   MAX_IDEMPOTENCY_KEY,
   hasDependencyMarker,
   withDependencyMarker,
@@ -406,13 +407,21 @@ export class GithubWriter {
    * Find the milestone with this title, or create it.
    *
    * @param name - Its title.
+   * @param dueOn - The date a created milestone is due, `YYYY-MM-DD`; an existing one is left as
+   *   it is.
    * @returns The milestone, its number as the reference.
    */
-  async ensureMilestone(name: string): Promise<MilestoneRef> {
+  async ensureMilestone(name: string, dueOn?: string | null): Promise<MilestoneRef> {
     const title = name.trim();
 
     if (title === "") {
       throw invalid("a milestone needs a name");
+    }
+
+    const due = dueOn ?? null;
+
+    if (due !== null && !isCalendarDate(due)) {
+      throw invalid("a milestone's due date must be a calendar date, YYYY-MM-DD");
     }
 
     for await (const page of this.client.pages<unknown>(MILESTONES_ROUTE, {
@@ -431,6 +440,9 @@ export class GithubWriter {
     const created = await this.client.request<unknown>(CREATE_MILESTONE_ROUTE, {
       ...this.address(),
       title,
+      // GitHub stores an instant and shows its date; 08:00 UTC is the same calendar day in every
+      // time zone GitHub renders it in, which midnight UTC is not.
+      ...(due === null ? {} : { due_on: `${due}T08:00:00Z` }),
     });
     const milestone = parse(writtenMilestone, created.data, CREATE_MILESTONE_ROUTE);
 

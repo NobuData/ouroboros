@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.9"
+  version: "0.41.10"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -13388,6 +13388,9 @@ paths:
                           selected: true
                           suggestedWorkflow: feature-loop
                           provenance: planned
+                          milestone: null
+                          labels: []
+                          research: null
                           dependencies: []
                           blockedByTicketIds: []
                           pushState: pending
@@ -27986,6 +27989,9 @@ paths:
                     selected: true
                     suggestedWorkflow: feature-loop
                     provenance: planned
+                    milestone: null
+                    labels: []
+                    research: null
                     dependencies: []
                     blockedByTicketIds: []
                     pushState: pending
@@ -37583,6 +37589,1298 @@ paths:
           description: |-
             `regression_watch_item_closed` — the item is already `fixed_merged` or `dismissed`;
             `details.status` says which.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the request is malformed: a field outside its shape, or one
+            this operation does not take. `details.fields` names each.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/research/investigations/{investigationId}/draft-epic:
+    post:
+      tags: [research]
+      summary: Draft an epic and its tickets from a brief's gaps
+      description: |-
+        **Draft epic from gaps →** — CM.5 ([#624](https://github.com/NobuData/ouroboros/issues/624)).
+        The brief's proposal (`proposed` on the brief: the ticket stubs for the capability-matrix rows
+        whose stored severity is `high` or `med`) becomes a Planning **draft batch**: an epic, stored
+        `proposed`, and one draft per stub. Each draft says which gap it closes and cites the ledger
+        records behind it — in its body, and in `research` on the Planning draft
+        (`GET /api/v1/planning/batches/{batch}`).
+
+        **Nothing is filed.** Review, size and push the batch in Planning (`href`). The effort the
+        brief proposed is a seed (`effort`); the estimate is the sizer's, which starts on the drafts
+        at once like any other batch's.
+
+        **Asking twice drafts once.** An investigation whose gaps already have a live batch is
+        answered with that batch and `created: false`.
+
+        Contributors, admins and owners, and a person.
+      operationId: draftEpicFromGaps
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: investigationId
+          in: path
+          required: true
+          description: The investigation.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResearchDraftEpicRequest"
+            example: {}
+      responses:
+        "200":
+          description: The epic and its draft batch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchDraftEpic"
+              examples:
+                drafted:
+                  summary: RS-127's Docking parity epic, one of its five drafts shown
+                  value:
+                    created: true
+                    epic: { id: 5eed0030-0000-4000-8000-000000000127, name: Docking parity }
+                    batch:
+                      id: 5eed0090-0000-4000-8000-000000000127
+                      status: drafting
+                      drafts:
+                        - id: 5eed0090-0000-4000-8000-000000001271
+                          localKey: DOCK-1
+                          title: Wind-feedforward MPC
+                          capability: Wind-compensated docking
+                          severity: high
+                          effort: m
+                          sources: 2
+                    href: /planning?batch=5eed0090-0000-4000-8000-000000000127
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — this is for `owner`, `admin` and `member`; `details.required` lists them. Nothing changes.
+            Also the answer for a service account: this needs a person.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `investigation_not_found` — this workspace has no such investigation (one of another
+            workspace reads exactly the same); `brief_not_found` — it has no brief yet;
+            `roadmap_source_not_found` — `targetSourceId` names no ticket source of this workspace;
+            or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `planning_target_read_only` — the ticket source cannot take new tickets.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `gaps_nothing_proposed` — the brief's matrix has no `high` or `med` gap to draft from;
+            `roadmap_target_required` — the workspace has no ticket source, or more than one and the
+            request names none (`details.candidates`); or `validation_failed`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/research/investigations/{investigationId}/roadmap:
+    post:
+      tags: [research]
+      summary: Generate an investigation's roadmap from its brief
+      description: |-
+        Runs the workspace's `create-roadmap` skill over the brief's Markdown export and stores what
+        it answers as **version 1** of the investigation's roadmap document — CM.5
+        ([#624](https://github.com/NobuData/ouroboros/issues/624)), mockup 22's pipeline card, step 1.
+
+        **The skill is the workspace's.** `create-roadmap` is a Knowledge registry skill
+        (`GET /api/v1/skills/create-roadmap`); the version that runs is the one currently published
+        in this workspace. A workspace that has none gets the shipped procedure written for it
+        (`origin: generated`) the first time.
+
+        **The repository is reviewed, not written to.** The projected `ROADMAP.md` is committed to
+        the document's own branch (`ouroboros/roadmap-<id>`) and proposed as a pull request
+        (`projection.state: pr_open`). It is committed straight to the default branch only when the
+        workspace opted in (`PUT /api/v1/research/roadmap-settings`) and is not in dry-run; in dry-run
+        the pull request is a draft.
+
+        **The document is stored before the repository is touched.** If the repository cannot be
+        reached the answer is still `201`, with `projection.state: pending` and
+        `projection.problem` saying why; `…/roadmap/drift-check` tries again.
+
+        An investigation has one roadmap: a second call is `409 roadmap_exists` — suggest a change
+        and apply it instead.
+
+        Owners and admins only, and a person.
+      operationId: generateResearchRoadmap
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: investigationId
+          in: path
+          required: true
+          description: The investigation.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResearchRoadmapGenerateRequest"
+            example:
+              path: docs/ROADMAP.md
+      responses:
+        "201":
+          description: The document, on version 1.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchRoadmap"
+              examples:
+                seeded:
+                  summary: RS-124's roadmap, committed, with one open suggestion
+                  value:
+                    investigation: { id: 5eed0091-0000-4000-8000-000000000124, displayId: RS-124 }
+                    doc:
+                      id: 5eed0097-0000-4000-8000-000000000124
+                      title: Helios — Q4 Improvement Roadmap
+                      version: 1
+                      generatedBy: create-roadmap@rs-124
+                      generatedAt: "2026-10-01T09:00:00.000Z"
+                      targetSourceId: 5eed0020-0000-4000-8000-000000000001
+                    projection:
+                      state: committed
+                      path: docs/ROADMAP.md
+                      prRef: null
+                      committedSha: 8c1b2e4
+                      observedSha: null
+                      label: docs/ROADMAP.md · committed 8c1b2e4
+                      problem: null
+                    markdown: "# Helios — Q4 Improvement Roadmap\n\n## M1 · Docking parity — target Oct 15\n- [x] #742 Wind-feedforward MPC in final approach `MVP` `L`\n"
+                    milestones:
+                      - key: m1
+                        name: Docking parity
+                        targetDate: "2026-10-15"
+                        dueLabel: due Oct 15
+                        done: 1
+                        total: 1
+                        items:
+                          - key: dock-mpc
+                            title: Wind-feedforward MPC in final approach
+                            mvp: true
+                            effort: l
+                            checked: true
+                            draftId: 5eed0090-0000-4000-8000-000000001742
+                            ticket:
+                              id: 5eed008e-0000-4000-8000-000000000742
+                              key: "#742"
+                              url: https://github.com/acme-robotics/helios-firmware/issues/742
+                              state: closed
+                            estimate: { effort: l, complexity: high, estMinutes: 4320, loopDays: 3 }
+                    issues:
+                      batchId: 5eed0090-0000-4000-8000-000000000124
+                      filed: 1
+                      total: 1
+                      label: 1 issue · 1 milestone
+                    suggestions:
+                      open: 1
+                      items:
+                        - id: 5eed0097-0000-4000-8000-000000002001
+                          authorKind: user
+                          authorLabel: KS
+                          authorName: Ken Suenobu
+                          text: Pull #744 into the M1 MVP set — churn interviews rank gust handling above battery accuracy.
+                          hint: { item: dock-gust, change: mvp, to: true }
+                          status: open
+                          appliedVersion: null
+                          createdAt: "2026-10-03T09:00:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — this is for `owner` and `admin`; `details.required` lists them. Nothing changes.
+            Also the answer for a service account: this needs a person.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `investigation_not_found`, `brief_not_found`, `roadmap_source_not_found`, or
+            `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `roadmap_exists` — the investigation already has its roadmap; `roadmap_no_researcher` —
+            no model is routed to research work in this workspace; or `roadmap_skill_unpublished` — the
+            workspace's `create-roadmap` has no published version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `roadmap_target_required` — the workspace has no ticket source, or more than one and the
+            request names none; or `validation_failed`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: |-
+            `roadmap_skill_failed` — the skill could not be run; `details.reason` is the engine's
+            code (`gateway_unavailable` until the invocation gateway exists, `skill_output_invalid`
+            when the model answered outside the contract twice). `roadmap_output_invalid` — the answer
+            cannot be stored as a roadmap; `details.problems` says why. `engine_unavailable` — the engine
+            could not be reached. Nothing was changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      tags: [research]
+      summary: An investigation's roadmap — the pipeline card
+      description: |-
+        The roadmap document generated from the investigation's brief: its current version, where
+        that version's `ROADMAP.md` stands in the repository, the milestones with their items, each
+        item's issue and the estimator's answer for it, and the suggestion queue
+        ([#624](https://github.com/NobuData/ouroboros/issues/624)).
+
+        `markdown` is the file exactly as projected — a pure function of the title and the structure,
+        never hand-authored. An item's `ticket` and `estimate` are null until `create-issues` has
+        filed and the estimator has sized it.
+
+        Every member.
+      operationId: getResearchRoadmap
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: investigationId
+          in: path
+          required: true
+          description: The investigation.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The card.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchRoadmap"
+              examples:
+                seeded:
+                  summary: RS-124's roadmap, committed, with one open suggestion
+                  value:
+                    investigation: { id: 5eed0091-0000-4000-8000-000000000124, displayId: RS-124 }
+                    doc:
+                      id: 5eed0097-0000-4000-8000-000000000124
+                      title: Helios — Q4 Improvement Roadmap
+                      version: 1
+                      generatedBy: create-roadmap@rs-124
+                      generatedAt: "2026-10-01T09:00:00.000Z"
+                      targetSourceId: 5eed0020-0000-4000-8000-000000000001
+                    projection:
+                      state: committed
+                      path: docs/ROADMAP.md
+                      prRef: null
+                      committedSha: 8c1b2e4
+                      observedSha: null
+                      label: docs/ROADMAP.md · committed 8c1b2e4
+                      problem: null
+                    markdown: "# Helios — Q4 Improvement Roadmap\n\n## M1 · Docking parity — target Oct 15\n- [x] #742 Wind-feedforward MPC in final approach `MVP` `L`\n"
+                    milestones:
+                      - key: m1
+                        name: Docking parity
+                        targetDate: "2026-10-15"
+                        dueLabel: due Oct 15
+                        done: 1
+                        total: 1
+                        items:
+                          - key: dock-mpc
+                            title: Wind-feedforward MPC in final approach
+                            mvp: true
+                            effort: l
+                            checked: true
+                            draftId: 5eed0090-0000-4000-8000-000000001742
+                            ticket:
+                              id: 5eed008e-0000-4000-8000-000000000742
+                              key: "#742"
+                              url: https://github.com/acme-robotics/helios-firmware/issues/742
+                              state: closed
+                            estimate: { effort: l, complexity: high, estMinutes: 4320, loopDays: 3 }
+                    issues:
+                      batchId: 5eed0090-0000-4000-8000-000000000124
+                      filed: 1
+                      total: 1
+                      label: 1 issue · 1 milestone
+                    suggestions:
+                      open: 1
+                      items:
+                        - id: 5eed0097-0000-4000-8000-000000002001
+                          authorKind: user
+                          authorLabel: KS
+                          authorName: Ken Suenobu
+                          text: Pull #744 into the M1 MVP set — churn interviews rank gust handling above battery accuracy.
+                          hint: { item: dock-gust, change: mvp, to: true }
+                          status: open
+                          appliedVersion: null
+                          createdAt: "2026-10-03T09:00:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `investigation_not_found` — this workspace has no such investigation; `roadmap_not_found`
+            — nothing has generated a roadmap from it yet; or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/research/investigations/{investigationId}/roadmap/suggestions:
+    post:
+      tags: [research]
+      summary: Suggest a change to a roadmap
+      description: |-
+        Adds a suggestion to the document's queue, `open`
+        ([#624](https://github.com/NobuData/ouroboros/issues/624)). A suggestion never patches the
+        document: it waits until someone applies it — which re-runs `create-roadmap` with it appended —
+        or dismisses it. `hint` is an optional structured hint the re-run is shown beside the text.
+
+        Suggestions the product raises itself (`authorKind: ai` — the drift check's, for one) are not
+        made through this route.
+
+        Contributors, admins and owners, and a person.
+      operationId: suggestResearchRoadmapChange
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: investigationId
+          in: path
+          required: true
+          description: The investigation.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResearchRoadmapSuggestionRequest"
+            example:
+              text: Pull the gust estimator into the M1 MVP set.
+              hint: { item: dock-gust, change: mvp, to: true }
+      responses:
+        "201":
+          description: The suggestion, open.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchRoadmapSuggestion"
+              example:
+                id: 5eed0097-0000-4000-8000-000000002003
+                authorKind: user
+                authorLabel: KS
+                authorName: Ken Suenobu
+                text: Pull the gust estimator into the M1 MVP set.
+                hint: { item: dock-gust, change: mvp, to: true }
+                status: open
+                appliedVersion: null
+                createdAt: "2026-10-10T09:00:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — this is for `owner`, `admin` and `member`; `details.required` lists them. Nothing changes.
+            Also the answer for a service account: this needs a person.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `investigation_not_found`, `roadmap_not_found`, or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the request is malformed: a field outside its shape, or one
+            this operation does not take. `details.fields` names each.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/research/investigations/{investigationId}/roadmap/suggestions/{suggestionId}/apply:
+    post:
+      tags: [research]
+      summary: Apply a suggestion by re-running create-roadmap
+      description: |-
+        **Apply ⟳** ([#624](https://github.com/NobuData/ouroboros/issues/624)). Applying is a
+        **re-run, not a patch**: `create-roadmap` runs again with the current version as `previous`
+        and every suggestion applied so far — this one last — as `suggestions`. What it answers is
+        stored as the next version, and the suggestion records that version (`appliedVersion`) in the
+        same transaction.
+
+        An item that survives the re-run keeps its key, and with it its Planning draft and its issue;
+        each filed item's done state is refreshed from the tracker. The new version is projected like
+        the first: a commit on the document's branch and the same pull request, updated.
+
+        Issues that were already filed are **not** edited: the tracker is written only by
+        `create-issues`. A re-run that changes a filed item's title or MVP flag is reported by the
+        next drift check.
+
+        Owners and admins only, and a person.
+      operationId: applyResearchRoadmapSuggestion
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: investigationId
+          in: path
+          required: true
+          description: The investigation.
+          schema: { type: string, format: uuid }
+        - name: suggestionId
+          in: path
+          required: true
+          description: The suggestion.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The card, on the new version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchRoadmap"
+              examples:
+                seeded:
+                  summary: RS-124's roadmap, committed, with one open suggestion
+                  value:
+                    investigation: { id: 5eed0091-0000-4000-8000-000000000124, displayId: RS-124 }
+                    doc:
+                      id: 5eed0097-0000-4000-8000-000000000124
+                      title: Helios — Q4 Improvement Roadmap
+                      version: 1
+                      generatedBy: create-roadmap@rs-124
+                      generatedAt: "2026-10-01T09:00:00.000Z"
+                      targetSourceId: 5eed0020-0000-4000-8000-000000000001
+                    projection:
+                      state: committed
+                      path: docs/ROADMAP.md
+                      prRef: null
+                      committedSha: 8c1b2e4
+                      observedSha: null
+                      label: docs/ROADMAP.md · committed 8c1b2e4
+                      problem: null
+                    markdown: "# Helios — Q4 Improvement Roadmap\n\n## M1 · Docking parity — target Oct 15\n- [x] #742 Wind-feedforward MPC in final approach `MVP` `L`\n"
+                    milestones:
+                      - key: m1
+                        name: Docking parity
+                        targetDate: "2026-10-15"
+                        dueLabel: due Oct 15
+                        done: 1
+                        total: 1
+                        items:
+                          - key: dock-mpc
+                            title: Wind-feedforward MPC in final approach
+                            mvp: true
+                            effort: l
+                            checked: true
+                            draftId: 5eed0090-0000-4000-8000-000000001742
+                            ticket:
+                              id: 5eed008e-0000-4000-8000-000000000742
+                              key: "#742"
+                              url: https://github.com/acme-robotics/helios-firmware/issues/742
+                              state: closed
+                            estimate: { effort: l, complexity: high, estMinutes: 4320, loopDays: 3 }
+                    issues:
+                      batchId: 5eed0090-0000-4000-8000-000000000124
+                      filed: 1
+                      total: 1
+                      label: 1 issue · 1 milestone
+                    suggestions:
+                      open: 1
+                      items:
+                        - id: 5eed0097-0000-4000-8000-000000002001
+                          authorKind: user
+                          authorLabel: KS
+                          authorName: Ken Suenobu
+                          text: Pull #744 into the M1 MVP set — churn interviews rank gust handling above battery accuracy.
+                          hint: { item: dock-gust, change: mvp, to: true }
+                          status: open
+                          appliedVersion: null
+                          createdAt: "2026-10-03T09:00:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — this is for `owner` and `admin`; `details.required` lists them. Nothing changes.
+            Also the answer for a service account: this needs a person.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `investigation_not_found`, `roadmap_not_found`, `roadmap_suggestion_not_found`, or
+            `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `roadmap_suggestion_settled` — already applied or dismissed (`details.status`);
+            `roadmap_version_conflict` — the document changed while the skill ran, and nothing was
+            stored; `roadmap_no_researcher`; or `roadmap_skill_unpublished`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the request is malformed: a field outside its shape, or one
+            this operation does not take. `details.fields` names each.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: |-
+            `roadmap_skill_failed` — the skill could not be run; `details.reason` is the engine's
+            code (`gateway_unavailable` until the invocation gateway exists, `skill_output_invalid`
+            when the model answered outside the contract twice). `roadmap_output_invalid` — the answer
+            cannot be stored as a roadmap; `details.problems` says why. `engine_unavailable` — the engine
+            could not be reached. Nothing was changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/research/investigations/{investigationId}/roadmap/suggestions/{suggestionId}/dismiss:
+    post:
+      tags: [research]
+      summary: Dismiss a suggestion
+      description: |-
+        Settles an open suggestion as `dismissed`, recording who and when
+        ([#624](https://github.com/NobuData/ouroboros/issues/624)). The document is unchanged. The
+        dismissal is written to the audit log as `roadmap.suggestion_dismissed`, with the suggestion's
+        text.
+
+        Owners and admins only, and a person.
+      operationId: dismissResearchRoadmapSuggestion
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: investigationId
+          in: path
+          required: true
+          description: The investigation.
+          schema: { type: string, format: uuid }
+        - name: suggestionId
+          in: path
+          required: true
+          description: The suggestion.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The card.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchRoadmap"
+              examples:
+                seeded:
+                  summary: RS-124's roadmap, committed, with one open suggestion
+                  value:
+                    investigation: { id: 5eed0091-0000-4000-8000-000000000124, displayId: RS-124 }
+                    doc:
+                      id: 5eed0097-0000-4000-8000-000000000124
+                      title: Helios — Q4 Improvement Roadmap
+                      version: 1
+                      generatedBy: create-roadmap@rs-124
+                      generatedAt: "2026-10-01T09:00:00.000Z"
+                      targetSourceId: 5eed0020-0000-4000-8000-000000000001
+                    projection:
+                      state: committed
+                      path: docs/ROADMAP.md
+                      prRef: null
+                      committedSha: 8c1b2e4
+                      observedSha: null
+                      label: docs/ROADMAP.md · committed 8c1b2e4
+                      problem: null
+                    markdown: "# Helios — Q4 Improvement Roadmap\n\n## M1 · Docking parity — target Oct 15\n- [x] #742 Wind-feedforward MPC in final approach `MVP` `L`\n"
+                    milestones:
+                      - key: m1
+                        name: Docking parity
+                        targetDate: "2026-10-15"
+                        dueLabel: due Oct 15
+                        done: 1
+                        total: 1
+                        items:
+                          - key: dock-mpc
+                            title: Wind-feedforward MPC in final approach
+                            mvp: true
+                            effort: l
+                            checked: true
+                            draftId: 5eed0090-0000-4000-8000-000000001742
+                            ticket:
+                              id: 5eed008e-0000-4000-8000-000000000742
+                              key: "#742"
+                              url: https://github.com/acme-robotics/helios-firmware/issues/742
+                              state: closed
+                            estimate: { effort: l, complexity: high, estMinutes: 4320, loopDays: 3 }
+                    issues:
+                      batchId: 5eed0090-0000-4000-8000-000000000124
+                      filed: 1
+                      total: 1
+                      label: 1 issue · 1 milestone
+                    suggestions:
+                      open: 1
+                      items:
+                        - id: 5eed0097-0000-4000-8000-000000002001
+                          authorKind: user
+                          authorLabel: KS
+                          authorName: Ken Suenobu
+                          text: Pull #744 into the M1 MVP set — churn interviews rank gust handling above battery accuracy.
+                          hint: { item: dock-gust, change: mvp, to: true }
+                          status: open
+                          appliedVersion: null
+                          createdAt: "2026-10-03T09:00:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — this is for `owner` and `admin`; `details.required` lists them. Nothing changes.
+            Also the answer for a service account: this needs a person.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `investigation_not_found`, `roadmap_not_found`, `roadmap_suggestion_not_found`, or
+            `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `roadmap_suggestion_settled` — already applied or dismissed (`details.status`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the request is malformed: a field outside its shape, or one
+            this operation does not take. `details.fields` names each.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/research/investigations/{investigationId}/roadmap/issues:
+    post:
+      tags: [research]
+      summary: File a roadmap's items as issues — create-issues
+      description: |-
+        `create-issues` ([#624](https://github.com/NobuData/ouroboros/issues/624)), mockup 22's
+        pipeline card, step 2. The route does as much as can be done **now** and says where it
+        stopped; call it again until it answers `filed`.
+
+        ```
+        items ─create-issues─▶ drafts (one Planning batch) ─sizer─▶ sized ─push─▶ issues
+                                                                            └─writeback─▶ next version
+        ```
+
+        1. **Draft.** The first call runs the workspace's `create-issues` skill for a description of
+           each item and composes one Planning batch (planner `create-roadmap-v1`): a draft per item,
+           under the item's milestone with its due date, labelled `mvp` when flagged.
+        2. **Size.** The existing estimator sizes the drafts, as it sizes every batch. While any is
+           unsized the answer is `stage: sizing` and nothing is pushed — unless `pushUnsized` is true.
+        3. **Push.** The batch is pushed through Planning's push: idempotent per draft, milestones
+           created with their due dates when the tracker has none of that name.
+        4. **Write back.** Issue numbers, MVP flags and done states of the newly filed items land in
+           a **new** version of the document, and the pull request is updated. When every item has
+           its issue the investigation becomes `issues_filed`.
+
+        **Idempotent.** A document has one batch, a pushed draft is never pushed again, and a
+        writeback that would change nothing writes no version: calling this again files nothing
+        twice (`wroteVersion: false`).
+
+        Items that join the roadmap after the batch exists are listed in `undrafted` and are not
+        filed by this route.
+
+        Owners and admins only, and a person.
+      operationId: fileResearchRoadmapIssues
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: investigationId
+          in: path
+          required: true
+          description: The investigation.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResearchRoadmapIssuesRequest"
+            example: {}
+      responses:
+        "200":
+          description: Where the call stopped, and the card.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchRoadmapIssues"
+              examples:
+                filed:
+                  summary: Every item has its issue, and the document says so
+                  value:
+                    stage: filed
+                    batchId: 5eed0090-0000-4000-8000-000000000124
+                    wroteVersion: false
+                    unsized: 0
+                    undrafted: []
+                    roadmap:
+                      investigation: { id: 5eed0091-0000-4000-8000-000000000124, displayId: RS-124 }
+                      doc:
+                        id: 5eed0097-0000-4000-8000-000000000124
+                        title: Helios — Q4 Improvement Roadmap
+                        version: 1
+                        generatedBy: create-roadmap@rs-124
+                        generatedAt: "2026-10-01T09:00:00.000Z"
+                        targetSourceId: 5eed0020-0000-4000-8000-000000000001
+                      projection:
+                        state: committed
+                        path: docs/ROADMAP.md
+                        prRef: null
+                        committedSha: 8c1b2e4
+                        observedSha: null
+                        label: docs/ROADMAP.md · committed 8c1b2e4
+                        problem: null
+                      markdown: "# Helios — Q4 Improvement Roadmap\n\n## M1 · Docking parity — target Oct 15\n- [x] #742 Wind-feedforward MPC in final approach `MVP` `L`\n"
+                      milestones:
+                        - key: m1
+                          name: Docking parity
+                          targetDate: "2026-10-15"
+                          dueLabel: due Oct 15
+                          done: 1
+                          total: 1
+                          items:
+                            - key: dock-mpc
+                              title: Wind-feedforward MPC in final approach
+                              mvp: true
+                              effort: l
+                              checked: true
+                              draftId: 5eed0090-0000-4000-8000-000000001742
+                              ticket:
+                                id: 5eed008e-0000-4000-8000-000000000742
+                                key: "#742"
+                                url: https://github.com/acme-robotics/helios-firmware/issues/742
+                                state: closed
+                              estimate: { effort: l, complexity: high, estMinutes: 4320, loopDays: 3 }
+                      issues:
+                        batchId: 5eed0090-0000-4000-8000-000000000124
+                        filed: 1
+                        total: 1
+                        label: 1 issue · 1 milestone
+                      suggestions:
+                        open: 1
+                        items:
+                          - id: 5eed0097-0000-4000-8000-000000002001
+                            authorKind: user
+                            authorLabel: KS
+                            authorName: Ken Suenobu
+                            text: Pull #744 into the M1 MVP set — churn interviews rank gust handling above battery accuracy.
+                            hint: { item: dock-gust, change: mvp, to: true }
+                            status: open
+                            appliedVersion: null
+                            createdAt: "2026-10-03T09:00:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — this is for `owner` and `admin`; `details.required` lists them. Nothing changes.
+            Also the answer for a service account: this needs a person.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `investigation_not_found`, `roadmap_not_found`, `brief_not_found`, or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `roadmap_target_missing` — the document's ticket source was removed;
+            `roadmap_version_conflict`; `roadmap_no_researcher`; `roadmap_skill_unpublished`; or a
+            refusal of the push itself — `push_in_progress`, `push_target_read_only`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the request is malformed: a field outside its shape, or one
+            this operation does not take. `details.fields` names each.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: |-
+            `roadmap_skill_failed` — the skill could not be run; `details.reason` is the engine's
+            code (`gateway_unavailable` until the invocation gateway exists, `skill_output_invalid`
+            when the model answered outside the contract twice). `roadmap_output_invalid` — the answer
+            cannot be stored as a roadmap; `details.problems` says why. `engine_unavailable` — the engine
+            could not be reached. Nothing was changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/research/investigations/{investigationId}/roadmap/drift-check:
+    post:
+      tags: [research]
+      summary: Compare a roadmap with the tracker and the repository
+      description: |-
+        The drift check ([#624](https://github.com/NobuData/ouroboros/issues/624)): is the document
+        still what the tracker and the repository say? It also runs on a schedule
+        (`OURO_RESEARCH_ROADMAP_TICK_MS`).
+
+        1. **Settles the projection** — a `pending` version is projected again, and an open pull
+           request is followed: merged is `committed`, closed unmerged is `pending` again.
+        2. **Compares** every filed item with its ticket — title, done state and the MVP flag (the
+           `mvp` label) — and, for a committed version, the repository's file with `markdown`.
+        3. **Reports.** A difference moves a committed version to `drift_detected` and raises **one**
+           suggestion (`authorKind: ai`, `drift-detector`) naming every difference.
+
+        **Nothing is rewritten** — no version is written and no file edited; applying the suggestion
+        is a re-run like any other. While a drift suggestion is open on the document, another check
+        raises none (`raised: null`). A repository that cannot be read is not a drift: the file
+        comparison is skipped.
+
+        Contributors, admins and owners, and a person.
+      operationId: checkResearchRoadmapDrift
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: investigationId
+          in: path
+          required: true
+          description: The investigation.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Whether document, tracker and repository agree.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchRoadmapDrift"
+              examples:
+                identical:
+                  summary: Nothing has drifted
+                  value:
+                    identical: true
+                    differences: []
+                    raised: null
+                    roadmap:
+                      investigation: { id: 5eed0091-0000-4000-8000-000000000124, displayId: RS-124 }
+                      doc:
+                        id: 5eed0097-0000-4000-8000-000000000124
+                        title: Helios — Q4 Improvement Roadmap
+                        version: 1
+                        generatedBy: create-roadmap@rs-124
+                        generatedAt: "2026-10-01T09:00:00.000Z"
+                        targetSourceId: 5eed0020-0000-4000-8000-000000000001
+                      projection:
+                        state: committed
+                        path: docs/ROADMAP.md
+                        prRef: null
+                        committedSha: 8c1b2e4
+                        observedSha: null
+                        label: docs/ROADMAP.md · committed 8c1b2e4
+                        problem: null
+                      markdown: "# Helios — Q4 Improvement Roadmap\n\n## M1 · Docking parity — target Oct 15\n- [x] #742 Wind-feedforward MPC in final approach `MVP` `L`\n"
+                      milestones:
+                        - key: m1
+                          name: Docking parity
+                          targetDate: "2026-10-15"
+                          dueLabel: due Oct 15
+                          done: 1
+                          total: 1
+                          items:
+                            - key: dock-mpc
+                              title: Wind-feedforward MPC in final approach
+                              mvp: true
+                              effort: l
+                              checked: true
+                              draftId: 5eed0090-0000-4000-8000-000000001742
+                              ticket:
+                                id: 5eed008e-0000-4000-8000-000000000742
+                                key: "#742"
+                                url: https://github.com/acme-robotics/helios-firmware/issues/742
+                                state: closed
+                              estimate: { effort: l, complexity: high, estMinutes: 4320, loopDays: 3 }
+                      issues:
+                        batchId: 5eed0090-0000-4000-8000-000000000124
+                        filed: 1
+                        total: 1
+                        label: 1 issue · 1 milestone
+                      suggestions:
+                        open: 1
+                        items:
+                          - id: 5eed0097-0000-4000-8000-000000002001
+                            authorKind: user
+                            authorLabel: KS
+                            authorName: Ken Suenobu
+                            text: Pull #744 into the M1 MVP set — churn interviews rank gust handling above battery accuracy.
+                            hint: { item: dock-gust, change: mvp, to: true }
+                            status: open
+                            appliedVersion: null
+                            createdAt: "2026-10-03T09:00:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — this is for `owner`, `admin` and `member`; `details.required` lists them. Nothing changes.
+            Also the answer for a service account: this needs a person.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `investigation_not_found`, `roadmap_not_found`, or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the request is malformed: a field outside its shape, or one
+            this operation does not take. `details.fields` names each.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/research/roadmap-settings:
+    get:
+      tags: [research]
+      summary: The roadmap pipeline's policy
+      description: |-
+        Whether a roadmap's `ROADMAP.md` may be committed to the default branch without a pull
+        request ([#624](https://github.com/NobuData/ouroboros/issues/624)). `false` unless the
+        workspace turned it on: the repository's own gate is review.
+
+        Every member.
+      operationId: getResearchRoadmapSettings
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchRoadmapSettings"
+              example:
+                directCommit: false
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      tags: [research]
+      summary: Change the roadmap pipeline's policy
+      description: |-
+        Turns direct commit on or off ([#624](https://github.com/NobuData/ouroboros/issues/624)).
+        With it on, a new roadmap version is committed straight to the repository's default branch
+        instead of being proposed as a pull request — except while the workspace is in dry-run, where
+        a draft pull request is opened regardless. A change is written to the audit log as
+        `roadmap.policy_updated`.
+
+        Owners and admins only, and a person.
+      operationId: saveResearchRoadmapSettings
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResearchRoadmapSettings"
+            example:
+              directCommit: true
+      responses:
+        "200":
+          description: The policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchRoadmapSettings"
+              example:
+                directCommit: false
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — this is for `owner` and `admin`; `details.required` lists them. Nothing changes.
+            Also the answer for a service account: this needs a person.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found`.
           content:
             application/json:
               schema:
@@ -61445,6 +62743,9 @@ components:
           selected,
           suggestedWorkflow,
           provenance,
+          milestone,
+          labels,
+          research,
           dependencies,
           blockedByTicketIds,
           pushState,
@@ -61476,6 +62777,26 @@ components:
           type: string
           enum: [planned, edited]
           description: "`edited` once a person has changed the title or body."
+        milestone:
+          description: |-
+            The tracker milestone this draft is filed under, winning over the batch's — a roadmap
+            files its issues under several (CM.5, #624). Null to use the batch's.
+          oneOf:
+            - $ref: "#/components/schemas/PlanningDraftMilestone"
+            - type: "null"
+        labels:
+          type: array
+          description: The labels the push sends with the ticket — a roadmap item's MVP flag travels as `mvp`.
+          items:
+            type: string
+        research:
+          description: |-
+            Where in research the draft came from — the investigation, and the capability gap or
+            roadmap item it was written for, with the ledger records it cites. Null for a draft
+            research did not write.
+          oneOf:
+            - $ref: "#/components/schemas/PlanningDraftResearch"
+            - type: "null"
         dependencies:
           type: array
           description: The local keys of the drafts this one is blocked by.
@@ -61510,6 +62831,567 @@ components:
           oneOf:
             - $ref: "#/components/schemas/PlanningDraftEstimate"
             - type: "null"
+
+    ResearchDraftEpicRequest:
+      type: object
+      title: ResearchDraftEpicRequest
+      description: Which tracker the gap drafts are for.
+      additionalProperties: false
+      properties:
+        targetSourceId:
+          type: string
+          format: uuid
+          description: The ticket source. Omit when the workspace has exactly one.
+
+    ResearchDraftEpic:
+      type: object
+      title: ResearchDraftEpic
+      description: What **Draft epic from gaps →** created. Nothing in it is filed.
+      additionalProperties: false
+      required: [created, epic, batch, href]
+      properties:
+        created:
+          type: boolean
+          description: False when the investigation's epic had already been drafted and is answered again.
+        epic:
+          type: object
+          additionalProperties: false
+          required: [id, name]
+          properties:
+            id:
+              description: The Planning epic, stored `proposed`; null when it has since been deleted.
+              oneOf:
+                - type: string
+                  format: uuid
+                - type: "null"
+            name:
+              type: string
+        batch:
+          type: object
+          additionalProperties: false
+          required: [id, status, drafts]
+          properties:
+            id:
+              type: string
+              format: uuid
+            status:
+              type: string
+              enum: [drafting, sized, pushing, pushed, abandoned]
+            drafts:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [id, localKey, title, capability, severity, effort, sources]
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  localKey:
+                    type: string
+                    examples: [DOCK-1]
+                  title:
+                    type: string
+                  capability:
+                    description: The capability-matrix row the draft closes.
+                    oneOf:
+                      - type: string
+                      - type: "null"
+                  severity:
+                    oneOf:
+                      - type: string
+                        enum: [high, med]
+                      - type: "null"
+                  effort:
+                    description: The effort the brief proposed — a seed; the estimate is the sizer's.
+                    oneOf:
+                      - type: string
+                        enum: [xs, s, m, l, xl]
+                      - type: "null"
+                  sources:
+                    type: integer
+                    minimum: 0
+                    description: How many ledger records the draft cites.
+        href:
+          type: string
+          description: Where to review, size and push it.
+          examples: ["/planning?batch=5eed0090-0000-4000-8000-000000000127"]
+
+    ResearchRoadmapGenerateRequest:
+      type: object
+      title: ResearchRoadmapGenerateRequest
+      description: Where a new roadmap document goes.
+      additionalProperties: false
+      properties:
+        targetSourceId:
+          type: string
+          format: uuid
+          description: |-
+            The ticket source whose repository holds the file and whose tracker the issues are
+            filed in. Omit when the workspace has exactly one.
+        path:
+          type: string
+          maxLength: 512
+          default: docs/ROADMAP.md
+          description: Where the file goes — a relative path with no `.` or `..` segment. Fixed once the document exists.
+
+    ResearchRoadmapSuggestionRequest:
+      type: object
+      title: ResearchRoadmapSuggestionRequest
+      description: A suggested change.
+      additionalProperties: false
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: What should change, in words. The re-run reads it.
+        hint:
+          type: object
+          additionalProperties: true
+          description: An optional structured hint for the re-run; at most 8 KiB as JSON.
+
+    ResearchRoadmapIssuesRequest:
+      type: object
+      title: ResearchRoadmapIssuesRequest
+      description: How `create-issues` treats unsized drafts.
+      additionalProperties: false
+      properties:
+        pushUnsized:
+          type: boolean
+          default: false
+          description: Push even though the estimator has not sized every draft.
+
+    ResearchRoadmapSettings:
+      type: object
+      title: ResearchRoadmapSettings
+      description: The roadmap pipeline's policy.
+      additionalProperties: false
+      required: [directCommit]
+      properties:
+        directCommit:
+          type: boolean
+          description: Whether `ROADMAP.md` may be committed to the default branch without a pull request.
+
+    ResearchRoadmapProjection:
+      type: object
+      title: ResearchRoadmapProjection
+      description: |-
+        Where a version's `ROADMAP.md` stands in the repository:
+        `pending → pr_open → committed → drift_detected`, with `pr_open → pending` for a pull
+        request closed unmerged and `pending → committed` for a direct commit.
+      additionalProperties: false
+      required: [state, path, prRef, committedSha, observedSha, label, problem]
+      properties:
+        state:
+          type: string
+          enum: [pending, pr_open, committed, drift_detected]
+        path:
+          type: string
+          examples: [docs/ROADMAP.md]
+        prRef:
+          description: "`#88` while a pull request is open, or the one a commit came from."
+          oneOf:
+            - type: string
+            - type: "null"
+        committedSha:
+          oneOf:
+            - type: string
+            - type: "null"
+        observedSha:
+          description: The repository commit a drift was seen at; only in `drift_detected`.
+          oneOf:
+            - type: string
+            - type: "null"
+        label:
+          type: string
+          description: The card's line.
+          examples: ["docs/ROADMAP.md · committed 8c1b2e4"]
+        problem:
+          description: Why the projection could not be moved just now; null when nothing is wrong.
+          oneOf:
+            - type: string
+            - type: "null"
+
+    ResearchRoadmapItem:
+      type: object
+      title: ResearchRoadmapItem
+      description: One item of a milestone, with its issue once filed.
+      additionalProperties: false
+      required: [key, title, mvp, effort, checked, draftId, ticket, estimate]
+      properties:
+        key:
+          type: string
+          description: The item's handle, kept across re-runs.
+        title:
+          type: string
+        mvp:
+          type: boolean
+        effort:
+          description: The effort the roadmap states.
+          oneOf:
+            - type: string
+              enum: [xs, s, m, l, xl]
+            - type: "null"
+        checked:
+          type: boolean
+          description: Whether its issue is closed.
+        draftId:
+          description: The Planning draft it became; null before `create-issues`.
+          oneOf:
+            - type: string
+              format: uuid
+            - type: "null"
+        ticket:
+          description: Its issue in the tracker; null while unfiled.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [id, key, url, state]
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                key:
+                  type: string
+                  examples: ["#742"]
+                url:
+                  oneOf:
+                    - type: string
+                    - type: "null"
+                state:
+                  oneOf:
+                    - type: string
+                      enum: [open, closed]
+                    - type: "null"
+            - type: "null"
+        estimate:
+          description: The estimator's answer for the issue; null while unsized.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [effort, complexity, estMinutes, loopDays]
+              properties:
+                effort:
+                  type: string
+                  enum: [xs, s, m, l, xl]
+                complexity:
+                  description: "`low`, `medium` or `high` — the row's `cx:` chip."
+                  oneOf:
+                    - type: string
+                    - type: "null"
+                estMinutes:
+                  oneOf:
+                    - type: number
+                    - type: "null"
+                loopDays:
+                  description: "`estMinutes` in loop-days, to one decimal."
+                  oneOf:
+                    - type: number
+                    - type: "null"
+            - type: "null"
+
+    ResearchRoadmapMilestone:
+      type: object
+      title: ResearchRoadmapMilestone
+      description: One milestone of a roadmap.
+      additionalProperties: false
+      required: [key, name, targetDate, dueLabel, done, total, items]
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        targetDate:
+          oneOf:
+            - type: string
+              format: date
+            - type: "null"
+        dueLabel:
+          oneOf:
+            - type: string
+              examples: [due Oct 15]
+            - type: "null"
+        done:
+          type: integer
+          minimum: 0
+        total:
+          type: integer
+          minimum: 0
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResearchRoadmapItem"
+
+    ResearchRoadmapSuggestion:
+      type: object
+      title: ResearchRoadmapSuggestion
+      description: One suggested change — `open` until applied or dismissed, never edited.
+      additionalProperties: false
+      required: [id, authorKind, authorLabel, authorName, text, hint, status, appliedVersion, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        authorKind:
+          type: string
+          enum: [user, ai]
+        authorLabel:
+          type: string
+          description: The author's chip — a person's initials, or `AI`.
+        authorName:
+          description: The person's name, or the agent that raised it (`drift-detector`).
+          oneOf:
+            - type: string
+            - type: "null"
+        text:
+          type: string
+        hint:
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: "null"
+        status:
+          type: string
+          enum: [open, applied, dismissed]
+        appliedVersion:
+          description: The version applying it produced; null unless applied.
+          oneOf:
+            - type: integer
+              minimum: 1
+            - type: "null"
+        createdAt:
+          type: string
+          format: date-time
+
+    ResearchRoadmap:
+      type: object
+      title: ResearchRoadmap
+      description: The pipeline card — a roadmap document on its current version.
+      additionalProperties: false
+      required: [investigation, doc, projection, markdown, milestones, issues, suggestions]
+      properties:
+        investigation:
+          type: object
+          additionalProperties: false
+          required: [id, displayId]
+          properties:
+            id:
+              type: string
+              format: uuid
+            displayId:
+              type: string
+              examples: [RS-124]
+        doc:
+          type: object
+          additionalProperties: false
+          required: [id, title, version, generatedBy, generatedAt, targetSourceId]
+          properties:
+            id:
+              type: string
+              format: uuid
+            title:
+              type: string
+            version:
+              type: integer
+              minimum: 1
+            generatedBy:
+              type: string
+              description: The skill run that generated the version.
+              examples: ["create-roadmap@v1", "create-issues@v1 · writeback"]
+            generatedAt:
+              type: string
+              format: date-time
+            targetSourceId:
+              description: The ticket source it is projected to and filed in; null when that source was removed.
+              oneOf:
+                - type: string
+                  format: uuid
+                - type: "null"
+        projection:
+          $ref: "#/components/schemas/ResearchRoadmapProjection"
+        markdown:
+          type: string
+          description: "`ROADMAP.md`, exactly as projected."
+        milestones:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResearchRoadmapMilestone"
+        issues:
+          type: object
+          additionalProperties: false
+          required: [batchId, filed, total, label]
+          properties:
+            batchId:
+              description: The Planning batch `create-issues` composed; null before it ran.
+              oneOf:
+                - type: string
+                  format: uuid
+                - type: "null"
+            filed:
+              type: integer
+              minimum: 0
+            total:
+              type: integer
+              minimum: 0
+            label:
+              type: string
+              examples: ["6 issues · 2 milestones"]
+        suggestions:
+          type: object
+          additionalProperties: false
+          required: [open, items]
+          properties:
+            open:
+              type: integer
+              minimum: 0
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/ResearchRoadmapSuggestion"
+
+    ResearchRoadmapIssues:
+      type: object
+      title: ResearchRoadmapIssues
+      description: What one `create-issues` call did.
+      additionalProperties: false
+      required: [stage, batchId, wroteVersion, unsized, undrafted, roadmap]
+      properties:
+        stage:
+          type: string
+          enum: [sizing, filed, partial]
+          description: |-
+            `sizing` — the drafts exist and the estimator has not finished; `partial` — the push
+            stopped short; `filed` — every item has its issue and the document says so.
+        batchId:
+          type: string
+          format: uuid
+        wroteVersion:
+          type: boolean
+          description: Whether this call wrote a new version of the document — the writeback.
+        unsized:
+          type: integer
+          minimum: 0
+          description: Selected drafts the estimator has not sized yet.
+        undrafted:
+          type: array
+          description: Items with no draft because they joined the roadmap after the batch was composed.
+          items:
+            type: string
+        roadmap:
+          $ref: "#/components/schemas/ResearchRoadmap"
+
+    ResearchRoadmapDriftDifference:
+      type: object
+      title: ResearchRoadmapDriftDifference
+      description: One difference between the document and the tracker or the repository.
+      additionalProperties: false
+      required: [field, itemKey, ticketKey, document, tracker]
+      properties:
+        field:
+          type: string
+          enum: [missing, title, state, mvp, file]
+        itemKey:
+          oneOf:
+            - type: string
+            - type: "null"
+        ticketKey:
+          oneOf:
+            - type: string
+            - type: "null"
+        document:
+          type: string
+          description: What the document says.
+        tracker:
+          type: string
+          description: What the tracker — or the repository's file — says.
+
+    ResearchRoadmapDrift:
+      type: object
+      title: ResearchRoadmapDrift
+      description: What a drift check found.
+      additionalProperties: false
+      required: [identical, differences, raised, roadmap]
+      properties:
+        identical:
+          type: boolean
+        differences:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResearchRoadmapDriftDifference"
+        raised:
+          description: The suggestion this check raised; null when it raised none.
+          oneOf:
+            - $ref: "#/components/schemas/ResearchRoadmapSuggestion"
+            - type: "null"
+        roadmap:
+          $ref: "#/components/schemas/ResearchRoadmap"
+
+    PlanningDraftMilestone:
+      type: object
+      title: PlanningDraftMilestone
+      description: A draft's own tracker milestone.
+      additionalProperties: false
+      required: [name, dueOn]
+      properties:
+        name:
+          type: string
+          examples: [Docking parity]
+        dueOn:
+          description: |-
+            The due date sent if the push **creates** the milestone; one that already exists keeps
+            its own.
+          oneOf:
+            - type: string
+              format: date
+            - type: "null"
+
+    PlanningDraftResearch:
+      type: object
+      title: PlanningDraftResearch
+      description: |-
+        A draft's research provenance (CM.5, #624). `gap` drafts come from **Draft epic from gaps**;
+        `roadmap` drafts from a roadmap document's `create-issues`.
+      additionalProperties: false
+      required: [investigationId, origin, capability, severity, itemKey, effort, sources]
+      properties:
+        investigationId:
+          type: string
+          format: uuid
+        origin:
+          type: string
+          enum: [gap, roadmap]
+        capability:
+          description: The gap's capability-matrix row; null for a roadmap item.
+          oneOf:
+            - type: string
+            - type: "null"
+        severity:
+          description: The gap's severity; null for a roadmap item.
+          oneOf:
+            - type: string
+              enum: [high, med]
+            - type: "null"
+        itemKey:
+          description: The roadmap item's key; null for a gap.
+          oneOf:
+            - type: string
+            - type: "null"
+        effort:
+          description: |-
+            The effort the brief proposed — a seed only. The estimate in force is the sizer's
+            (`estimate`).
+          oneOf:
+            - type: string
+              enum: [xs, s, m, l, xl]
+            - type: "null"
+        sources:
+          type: array
+          description: The investigation's ledger records the draft cites.
+          items:
+            type: string
+            format: uuid
 
     PlanningBatchSpend:
       type: object

@@ -11,7 +11,7 @@
  * | Workspace | Knowledge | Workflow, routes, runs |
  * |---|---|---|
  * | `acme-onboarding` ({@link COLD_TENANT}) | none — it is mockup 13's wizard, mid-flight | none: `R__dev_seed_onboarding.sql` seeds no workflow, route or provider, and `tests/seed.sql` holds it to that |
- * | `acme-robotics` (`SEED_TENANT`) | mockup 14's six skills, five facts and three recipes | all of it — the workspace every other mockup is drawn in |
+ * | `acme-robotics` (`SEED_TENANT`) | mockup 14's six skills and the pipeline's two (#624), five facts and three recipes | all of it — the workspace every other mockup is drawn in |
  *
  * So the leg is split along that line. **What a new org sees** is asserted where a new org is —
  * `acme-onboarding`, every empty and cold state, in both palettes. **The chain** runs in
@@ -166,17 +166,22 @@ export const PROFILE_REPO = "acme-robotics/helios-firmware";
 
 /** What mockup 14's page draws for the seeded workspace before the chain touches it. */
 export const SEEDED = {
-  /** The skills table's six rows, in the service's order — by slug. */
+  /**
+   * The skills table's eight rows, in the service's order — by slug: mockup 14's six, and the
+   * roadmap pipeline's `create-issues` and `create-roadmap` (#624, the research seed's).
+   */
   skills: [
     "commit-style",
+    "create-issues",
+    "create-roadmap",
     "hil-safety",
     "power-budget-checks",
     "pr-etiquette",
     "repo-map",
     "zephyr-conventions",
   ],
-  /** The head's count: five, because a draft is never active. */
-  active: "5 active",
+  /** The head's count: seven, because a draft is never active. */
+  active: "7 active",
   /** The facts card's chip. */
   awaiting: "2 awaiting review",
   /** The playbooks card's chip. */

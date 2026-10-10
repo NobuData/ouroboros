@@ -170,6 +170,14 @@ const TEMPLATES: Readonly<Record<string, Template>> = {
       : f.autoFile !== true && f.previousAutoFile === true
         ? "stopped the regression watch filing fixes without asking"
         : `turned the regression watch's automatic bisects ${f.autoBisect === true ? "on" : "off"}`,
+  "roadmap.suggestion_dismissed": (f) =>
+    f.authorKind === "ai"
+      ? "dismissed an AI suggestion on a roadmap"
+      : "dismissed a suggestion on a roadmap",
+  "roadmap.policy_updated": (f) =>
+    f.directCommit === true
+      ? "let roadmaps be committed without a pull request"
+      : "required a pull request for every roadmap change",
 };
 
 /**

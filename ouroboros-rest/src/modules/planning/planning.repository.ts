@@ -30,6 +30,7 @@ import {
   type DraftProvenance,
   type DraftPushError,
   type DraftPushState,
+  type DraftResearchProvenance,
   type EpicMirrorKind,
   type EpicStatus,
   type EpicTint,
@@ -66,6 +67,12 @@ export interface DraftRow {
   readonly selected: boolean;
   readonly suggestedWorkflow: string | null;
   readonly provenance: DraftProvenance;
+  /** Its own milestone, or null to use the batch's (V125). */
+  readonly milestone: DraftMilestone | null;
+  /** The labels the push sends. */
+  readonly labels: readonly string[];
+  /** Where in research it came from, or null (V125). */
+  readonly research: DraftResearchProvenance | null;
   readonly pushState: DraftPushState;
   readonly pushedTicketId: string | null;
   /** The tracker's own identity for the pushed ticket — `#612` and its link — or null. */
@@ -105,6 +112,19 @@ export interface NewDraft {
   readonly selected: boolean;
   /** The local keys this draft is blocked by. */
   readonly dependencies: readonly string[];
+  /** The tracker milestone it is filed under, winning over the batch's (CM.5, #624). */
+  readonly milestone?: DraftMilestone | null;
+  /** The labels the push sends with it. */
+  readonly labels?: readonly string[];
+  /** Where in research it came from, or absent for a draft research did not write. */
+  readonly research?: DraftResearchProvenance | null;
+}
+
+/** A draft's own milestone (V125): a name, and the due date sent if the push creates it. */
+export interface DraftMilestone {
+  readonly name: string;
+  /** `YYYY-MM-DD`, or null. */
+  readonly dueOn: string | null;
 }
 
 /** A batch about to be stored. */
@@ -345,6 +365,10 @@ export class PlanningRepository {
       selected: boolean;
       suggested_workflow: string | null;
       provenance: DraftProvenance;
+      research_provenance: DraftResearchProvenance | null;
+      milestone_name: string | null;
+      milestone_due: string | null;
+      labels: string[];
       push_state: DraftPushState;
       pushed_ticket_id: string | null;
       push_error: DraftPushError | null;
@@ -362,6 +386,8 @@ export class PlanningRepository {
       input_cents_per_1m: string | null;
     }>`
       select d.id, d.local_key, d.title, d.body, d.selected, d.suggested_workflow, d.provenance,
+             d.research_provenance, d.milestone_name,
+             to_char(d.milestone_due, 'YYYY-MM-DD') as milestone_due, d.labels,
              d.push_state, d.pushed_ticket_id, d.push_error,
              t.external_id as ticket_external_id, t.external_key as ticket_external_key,
              t.external_url as ticket_external_url,
@@ -405,6 +431,12 @@ export class PlanningRepository {
         selected: row.selected,
         suggestedWorkflow: row.suggested_workflow,
         provenance: row.provenance,
+        milestone:
+          row.milestone_name === null
+            ? null
+            : { name: row.milestone_name, dueOn: row.milestone_due },
+        labels: row.labels,
+        research: row.research_provenance,
         pushState: row.push_state,
         pushedTicketId: row.pushed_ticket_id,
         // Null only because the join is a left one — a pushed draft's ticket always has all three.
@@ -584,6 +616,13 @@ export class PlanningRepository {
           body: draft.body,
           selected: draft.selected,
           suggested_workflow: draft.suggestedWorkflow,
+          research_provenance:
+            draft.research === undefined || draft.research === null
+              ? null
+              : JSON.stringify(draft.research),
+          milestone_name: draft.milestone?.name ?? null,
+          milestone_due: draft.milestone?.dueOn ?? null,
+          labels: JSON.stringify(draft.labels ?? []),
         })),
       )
       .returning(["id", "local_key"])

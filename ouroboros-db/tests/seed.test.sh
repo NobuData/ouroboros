@@ -1887,16 +1887,16 @@ check_contains "$REPLAY_BODY" "and r\.status = 'complete'" 'the suggestions are 
 
 printf '\nR__dev_seed_workspace_research.sql — the quarter, the matrix, the rivals, the watch and the roadmap\n'
 
-for prefix in 5eed008e 5eed008f 5eed0090 5eed0091 5eed0092 5eed0093 5eed0094 5eed0095 5eed0096 5eed0097 5eed0098 5eed0099 5eed009a; do
+for prefix in 5eed008e 5eed008f 5eed0090 5eed0091 5eed0092 5eed0093 5eed0094 5eed0095 5eed0096 5eed0097 5eed0098 5eed0099 5eed009a 5eed009b; do
   check_contains "$WORKSPACE_RESEARCH_BODY" "'$prefix-0000-4000-8000-" \
     "the research workspace seed builds its ids from the $prefix… prefix"
 done
 
 workspace_research_tables=$(grep -Eo '^(insert into|update) ouroboros\.[a-z_]+' "$WORKSPACE_RESEARCH_BODY" |
   sed -E 's/^(insert into|update) ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
-check_equals 'brief_claim_sources brief_claims briefs capability_matrices competitor_snapshots competitor_watches competitors doc_suggestions document_import_items document_imports draft_batches investigation_deliverable_inputs investigations issue_estimates matrix_cell_sources matrix_cells matrix_rows pull_requests regression_baselines regression_watch_items roadmap_doc_versions roadmap_docs source_records ticket_drafts ticket_sources tickets ' \
+check_equals 'brief_claim_sources brief_claims briefs capability_matrices competitor_snapshots competitor_watches competitors doc_suggestions document_import_items document_imports draft_batches investigation_deliverable_inputs investigations issue_estimates matrix_cell_sources matrix_cells matrix_rows pull_requests regression_baselines regression_watch_items roadmap_doc_versions roadmap_docs skill_versions skills source_records ticket_drafts ticket_sources tickets ' \
   "$workspace_research_tables" \
-  'the research workspace seed writes the research domain, the tickets, drafts and PR it points at, the history index''s Support source and churn import (#618) and RS-127''s matrix input (#621) — and nothing else'
+  'the research workspace seed writes the research domain, the tickets, drafts and PR it points at, the history index''s Support source and churn import (#618), RS-127''s matrix input (#621) and the pipeline''s two skills (#624) — and nothing else'
 
 # Rows whose BEFORE INSERT triggers allocate or check a sequence are written only where none exist.
 check_contains "$WORKSPACE_RESEARCH_BODY" 'not exists \(select 1 from ouroboros\.investigations x' \
@@ -1915,6 +1915,14 @@ for step in "and status = 'detected'" "and item.status = 'bisecting'" "and item.
             "and status = 'fix_drafted'" "and status = 'fix_running'"; do
   check_contains "$WORKSPACE_RESEARCH_BODY" "$step" "a watch item moves only from the state its step expects ($step)"
 done
+
+# The pipeline's skills (#624): generated, published by nobody, and the roadmap knows its round trip.
+check_contains "$WORKSPACE_RESEARCH_BODY" "'org', true, false, false, 'generated'" \
+  'the two pipeline skills are org-scoped, enabled and generated'
+check_contains "$WORKSPACE_RESEARCH_BODY" 'not exists \(select 1 from ouroboros\.skill_versions prior where prior\.skill_id = skill\.id\)' \
+  'a pipeline skill version is written only for a skill that has none'
+check_contains "$WORKSPACE_RESEARCH_BODY" 'batch\.target_source_id, batch\.id' \
+  'the roadmap doc names the source it is projected to and the batch create-issues composed'
 
 # The card's numbers are the rows'.
 check_absent "$WORKSPACE_RESEARCH_BODY" "'4 active|'23 this quarter|'312 sources|'6 issues|'4 rivals watched" \

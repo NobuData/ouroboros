@@ -395,10 +395,97 @@ describe("composing a batch another plane drafted (#514)", () => {
   });
 });
 
+describe("composing a batch research drafted (#624)", () => {
+  const INVESTIGATION = "5eed0091-0000-4000-8000-000000000127";
+  const research = {
+    investigation_id: INVESTIGATION,
+    origin: "gap" as const,
+    capability: "Wind-compensated docking",
+    severity: "high" as const,
+    item_key: null,
+    effort: "m" as const,
+    sources: ["5eed0092-0000-4000-8000-000000000007"],
+  };
+  const input = {
+    prompt: "RS-127 gaps → EPIC · Docking parity",
+    planner: "research-gaps-v1",
+    targetSourceId: STORE_SOURCE.sourceId,
+    drafts: [
+      {
+        localKey: "DOCK-1",
+        title: "Wind-feedforward MPC",
+        body: "Closes the gap.",
+        milestone: { name: "Docking parity", dueOn: "2026-10-15" },
+        labels: ["mvp"],
+        research,
+      },
+      { localKey: "DOCK-2", title: "Re-planned retry", body: "Closes another." },
+    ],
+  };
+
+  it("keeps each draft's provenance, milestone and labels, and answers them in the API's names", async () => {
+    const { service } = build();
+    const batch = await service.compose(STORE_ORG, "user-1", input);
+
+    expect(batch.drafts[0]).toMatchObject({
+      localKey: "DOCK-1",
+      provenance: "planned",
+      milestone: { name: "Docking parity", dueOn: "2026-10-15" },
+      labels: ["mvp"],
+      research: {
+        investigationId: INVESTIGATION,
+        origin: "gap",
+        capability: "Wind-compensated docking",
+        severity: "high",
+        itemKey: null,
+        effort: "m",
+        sources: ["5eed0092-0000-4000-8000-000000000007"],
+      },
+    });
+    expect(batch.drafts[1]).toMatchObject({ milestone: null, labels: [], research: null });
+  });
+
+  it("files the batch under an epic the workspace has, and refuses one it has not", async () => {
+    const { service, store } = build();
+    const epicId = await store.createEpic(STORE_ORG, {
+      name: "Docking parity",
+      tint: "neutral",
+      status: "proposed",
+      startMonth: null,
+      endMonth: null,
+      roadmapName: null,
+      roadmapWindow: null,
+    });
+
+    expect((await service.compose(STORE_ORG, null, { ...input, epicId })).epicId).toBe(epicId);
+    expect((await service.compose(STORE_ORG, null, input)).epicId).toBeNull();
+    expect(
+      await refusal(() =>
+        service.compose(STORE_ORG, null, {
+          ...input,
+          epicId: "00000000-0000-4000-8000-000000000000",
+        }),
+      ),
+    ).toMatchObject({ status: 404, code: PLANNING_ERRORS.epicNotFound });
+  });
+
+  it("sizes research drafts through the same estimator as any other batch", async () => {
+    const { service, sized } = build();
+    const batch = await service.compose(STORE_ORG, null, input);
+
+    expect(sized.map((entry) => entry.request.draftId)).toEqual(
+      batch.drafts.map((draft) => draft.id),
+    );
+  });
+});
+
 describe("telling a composed batch from a planned one", () => {
   it.each([
     ["analyzer-v1", true],
     ["analyzer-v12", true],
+    // Research's two hand-offs (#624).
+    ["research-gaps-v1", true],
+    ["create-roadmap-v1", true],
     ["outline-v0", false],
     ["llm-v3", false],
     // A family is the whole name before `-vN`, not a prefix of another planner's.

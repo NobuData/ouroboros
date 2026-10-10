@@ -108,7 +108,7 @@ const PAGE_BROKE =
 
 /** The workspace is not as the seed left it: this stack has already run the chain. */
 const NOT_COLD =
-  "the seeded workspace must hold mockup 14's six skills, five facts and three playbooks, and no map may have been attempted in the cold one — this leg is green from a cold volume; `docker compose down -v` a stack that has already run it";
+  "the seeded workspace must hold mockup 14's six skills and the roadmap pipeline's two, five facts and three playbooks, and no map may have been attempted in the cold one — this leg is green from a cold volume; `docker compose down -v` a stack that has already run it";
 
 /** The refused generation was not recorded as one, or the status read did not say so. */
 const GENERATION_BROKE =

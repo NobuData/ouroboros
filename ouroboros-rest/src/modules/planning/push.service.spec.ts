@@ -355,6 +355,93 @@ describe("PushService", () => {
       expect(world.github.subIssues.every(([parent]) => parent === 1)).toBe(true);
     });
 
+    it("files each draft under its own milestone, created once with its due date (#624)", async () => {
+      const world = planningWorld({ epic: false, milestone: "Helios 2.1" });
+      const mine = (
+        draft: (typeof world.store.drafts)[number],
+        name: string,
+        dueOn: string | null,
+      ): void => {
+        Object.assign(draft, { milestone: { name, dueOn } });
+      };
+
+      // Two drafts under one dated milestone, two under another, two left to the batch's.
+      mine(world.store.drafts[0], "Docking parity", "2026-10-15");
+      mine(world.store.drafts[1], "Docking parity", "2026-10-15");
+      mine(world.store.drafts[2], "Fleet reliability", null);
+      mine(world.store.drafts[3], "Fleet reliability", null);
+
+      const report = await world.service.push(PLANNING_ORG, PLANNING_BATCH);
+
+      expect(report).toMatchObject({ outcome: "pushed", pushedThisRun: 6 });
+      expect(world.github.milestones).toHaveLength(3);
+      expect(world.github.milestones).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ title: "Helios 2.1" }),
+          {
+            number: expect.any(Number) as number,
+            title: "Docking parity",
+            dueOn: "2026-10-15T08:00:00Z",
+          },
+          expect.objectContaining({ title: "Fleet reliability" }),
+        ]),
+      );
+      expect(
+        world.github.milestones.find((m) => m.title === "Fleet reliability"),
+      ).not.toHaveProperty("dueOn");
+
+      const numberOf = (title: string): number | undefined =>
+        world.github.milestones.find((milestone) => milestone.title === title)?.number;
+      const filedUnder = (localKey: string): number | null | undefined =>
+        world.github.issues.find((issue) => issue.title.startsWith(`${localKey}:`))?.milestone;
+
+      expect(world.store.drafts.map((draft) => filedUnder(draft.localKey))).toStrictEqual([
+        numberOf("Docking parity"),
+        numberOf("Docking parity"),
+        numberOf("Fleet reliability"),
+        numberOf("Fleet reliability"),
+        numberOf("Helios 2.1"),
+        numberOf("Helios 2.1"),
+      ]);
+    });
+
+    it("sends a draft's labels with its issue (#624)", async () => {
+      const world = planningWorld({ epic: false, milestone: null });
+
+      Object.assign(world.store.drafts[0], { labels: ["mvp", "roadmap"] });
+
+      await world.service.push(PLANNING_ORG, PLANNING_BATCH);
+
+      const labelled = world.github.issues.find((issue) =>
+        issue.title.startsWith(`${world.store.drafts[0].localKey}:`),
+      );
+
+      expect(labelled?.labels).toStrictEqual(["mvp", "roadmap"]);
+      expect(world.github.issues.filter((issue) => issue.labels.length > 0)).toHaveLength(1);
+    });
+
+    it("fails only the draft whose own milestone is refused, and files the rest (#624)", async () => {
+      const world = planningWorld({ epic: false, milestone: null });
+
+      Object.assign(world.store.drafts[0], {
+        milestone: { name: "Docking parity", dueOn: "2026-02-30" },
+      });
+
+      const report = await world.service.push(PLANNING_ORG, PLANNING_BATCH);
+      const refused = world.store.drafts[0];
+
+      expect(refused.pushState).toBe("failed");
+      expect(refused.pushError).toMatchObject({
+        code: "validation",
+        detail: { step: "milestone" },
+      });
+      expect(report.outcome).toBe("partial");
+      expect(world.github.milestones).toHaveLength(0);
+      expect(
+        world.github.issues.some((issue) => issue.title.startsWith(`${refused.localKey}:`)),
+      ).toBe(false);
+    });
+
     it("pushes with no epic and no milestone when the batch names neither", async () => {
       const world = planningWorld({ epic: false, milestone: null });
 

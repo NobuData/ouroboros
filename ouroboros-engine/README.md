@@ -94,6 +94,7 @@ That is the command the image runs, minus the `uv` — see [Container](#containe
 | `POST /v0/code/blame` · `/history` · `/changed-between` · `/dep-graph` · `/bisect-commits` | yes | The code & git mining tool over the engine's repository clones — each answer names the commit it was read at; see [Code & git mining](#code--git-mining) — #617 |
 | `POST /v0/investigate` | yes | Accept an investigation and run the investigation loop in the background — `202`; see [The investigation loop](#the-investigation-loop) |
 | `POST /v0/dry-runs` | yes | Run a deep dry run of a workflow draft, streaming stage rows as NDJSON — real models, virtual writes, replayed infra; see [The deep dry-run harness](#the-deep-dry-run-harness) |
+| `POST /v0/skills/run` | yes | Follow a registry skill over an input and answer the validated result — a roadmap, or one issue body per item; see [Running a skill](#running-a-skill) |
 | `POST /v0/learn` | yes | Learn candidate facts: a source bundle in, candidates with confidence and typed provenance out — committed for #423; today `unavailable-v0` answers none and says why |
 | `/openapi.json`, `/docs` | yes | The committed specification, served verbatim. A map of the internal surface is not something a misrouted port should hand out |
 
@@ -639,6 +640,25 @@ by name, the overlay is asserted never to reach the reader or the cache, the pac
 to import nothing that runs a process or touches a disk — and each guard is removed in turn to
 prove the suite goes red.
 
+## Running a skill
+
+`POST /v0/skills/run` (CM.5, [#624](https://github.com/NobuData/ouroboros/issues/624)) follows one
+**skill** — a procedure from the Knowledge registry — over an input, and answers a validated
+result. It is what the roadmap pipeline's `create-roadmap` and `create-issues` run on —
+`ouroboros_engine/skills/`:
+
+| | |
+|---|---|
+| **The procedure is sent, not looked up** | `ouroboros-rest` sends the body of the version it resolved for the workspace. A workspace that edits its copy changes what runs; the engine holds no skill. |
+| **The output's shape is not the skill's to change** | The procedure is the system prompt and a fixed rule for the output is appended to it. `roadmap` answers `{title, milestones: [{key, name, target_date, items: [{key, title, mvp, effort}]}]}`; `issue_bodies` answers one `{key, body}` for every item of `input.items`. |
+| **Keys survive a re-run** | A re-run carries the version before it as `input.previous`, and the rule tells the model to keep the key of everything that survives — which is how an item keeps its draft and its issue across versions. |
+| **Validated, re-asked once, never repaired** | An answer outside the contract is returned to the model with what was wrong; a second miss is `422 skill_output_invalid`. An `issue_bodies` answer that skips or invents an item is refused. |
+| **Attributed and capped** | Calls go through the invocation gateway with `run` as the attribution and what is left of `cost_cap_cents` as the cap. |
+
+Until the gateway exists (AF.2, [#235](https://github.com/NobuData/ouroboros/issues/235)) a run
+answers `502 skill_model_failed` with `details.reason: gateway_unavailable`; the suites run on a
+scripted model (`tests/skills_fakes.py`).
+
 ## The simulated-run driver (development only)
 
 [#307](https://github.com/NobuData/ouroboros/issues/307) (AP.5). The Run Console is fed by
@@ -937,6 +957,7 @@ ouroboros-engine/
 │   │   ├── code.py     #   /v0/code — blame, history, changed-between, deps     · #617
 │   │   ├── investigate.py #   /v0/investigate — accept, run in the background    · #620
 │   │   ├── dryruns.py  #   /v0/dry-runs — walk a draft, stream the rows               · #560
+│   │   ├── skills.py   #   /v0/skills/run — follow a registry skill over an input · #624
 │   │   └── v0.py       #   the versioned prefix and the rule that governs it
 │   ├── core/           # process-wide concerns, not routes
 │   │   ├── errors.py   #   the {code, message, details} envelope, for every failure
@@ -984,6 +1005,7 @@ ouroboros-engine/
 │   ├── code/           # clones, ReadOnlyRepo, blame/history/deps, bisect line  · #617
 │   ├── investigation/  # loop-v1: plan → tools → synthesize → brief; citation gate · #620
 │   ├── dryrun/         # the deep dry-run harness: virtual workspace, tool guard, stages · #560
+│   ├── skills/         # skill execution: procedure as prompt, validated output, one re-ask · #624
 │   ├── dev.py          # `uv run dev` entry point; not imported by the application
 │   ├── main.py         # create_app() and the `app` uvicorn serves
 │   ├── openapi.py      # loads the committed spec; `uv run openapi` renders the JSON

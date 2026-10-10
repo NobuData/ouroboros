@@ -56,6 +56,9 @@ interface StoredDraft {
   selected: boolean;
   suggestedWorkflow: string | null;
   provenance: "planned" | "edited";
+  milestone?: NewDraft["milestone"];
+  labels?: readonly string[];
+  research?: NewDraft["research"];
   pushState: DraftPushState;
   pushedTicketId: string | null;
   externalId: string | null;
@@ -147,6 +150,9 @@ export class PlanningStore {
             selected: draft.selected,
             suggestedWorkflow: draft.suggestedWorkflow,
             provenance: draft.provenance,
+            milestone: draft.milestone ?? null,
+            labels: draft.labels ?? [],
+            research: draft.research ?? null,
             pushState: draft.pushState,
             pushedTicketId: draft.pushedTicketId,
             pushedTicket:
@@ -597,6 +603,9 @@ export class PlanningStore {
         selected: draft.selected,
         suggestedWorkflow: draft.suggestedWorkflow,
         provenance: "planned",
+        milestone: draft.milestone ?? null,
+        labels: draft.labels ?? [],
+        research: draft.research ?? null,
         pushState: "pending",
         pushedTicketId: null,
         externalId: null,

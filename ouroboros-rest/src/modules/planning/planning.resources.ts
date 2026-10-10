@@ -52,6 +52,12 @@ export interface DraftResource {
   readonly suggestedWorkflow: string | null;
   /** `planned`, or `edited` once a person has changed the title or body. */
   readonly provenance: DraftProvenance;
+  /** The tracker milestone this draft is filed under, or null to use the batch's (CM.5, #624). */
+  readonly milestone: DraftMilestoneResource | null;
+  /** The labels the push sends with the ticket. */
+  readonly labels: readonly string[];
+  /** Where in research the draft came from, or null for a draft research did not write. */
+  readonly research: DraftResearchResource | null;
   /** The local keys of the drafts this one is blocked by, in key order. */
   readonly dependencies: readonly string[];
   /** Canonical tickets this one is blocked by — a pushed blocker, rewritten by AL.3. */
@@ -66,6 +72,30 @@ export interface DraftResource {
   readonly pushError: DraftPushError | null;
   /** The estimate in force, or null while unsized. */
   readonly estimate: DraftEstimateResource | null;
+}
+
+/** A draft's own milestone. */
+export interface DraftMilestoneResource {
+  readonly name: string;
+  /** The due date sent if the push creates the milestone, `YYYY-MM-DD`, or null. */
+  readonly dueOn: string | null;
+}
+
+/** A draft's research provenance (V125): the investigation, and the gap or roadmap item behind it. */
+export interface DraftResearchResource {
+  readonly investigationId: string;
+  /** `gap` — a capability-matrix gap; `roadmap` — an item of a roadmap document. */
+  readonly origin: "gap" | "roadmap";
+  /** The gap's capability, or null for a roadmap item. */
+  readonly capability: string | null;
+  /** The gap's severity, or null for a roadmap item. */
+  readonly severity: "high" | "med" | null;
+  /** The roadmap item's key, or null for a gap. */
+  readonly itemKey: string | null;
+  /** The effort the brief proposed — a seed; the estimate in force is the sizer's. */
+  readonly effort: Effort | null;
+  /** The ledger records (`source_records` ids) the draft cites. */
+  readonly sources: readonly string[];
 }
 
 /** The footer's `$ est. spend` — present **only** when some rate prices the batch (decision N10). */

@@ -11439,6 +11439,299 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/research/investigations/{investigationId}/draft-epic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Draft an epic and its tickets from a brief's gaps
+         * @description **Draft epic from gaps →** — CM.5 ([#624](https://github.com/NobuData/ouroboros/issues/624)).
+         *     The brief's proposal (`proposed` on the brief: the ticket stubs for the capability-matrix rows
+         *     whose stored severity is `high` or `med`) becomes a Planning **draft batch**: an epic, stored
+         *     `proposed`, and one draft per stub. Each draft says which gap it closes and cites the ledger
+         *     records behind it — in its body, and in `research` on the Planning draft
+         *     (`GET /api/v1/planning/batches/{batch}`).
+         *
+         *     **Nothing is filed.** Review, size and push the batch in Planning (`href`). The effort the
+         *     brief proposed is a seed (`effort`); the estimate is the sizer's, which starts on the drafts
+         *     at once like any other batch's.
+         *
+         *     **Asking twice drafts once.** An investigation whose gaps already have a live batch is
+         *     answered with that batch and `created: false`.
+         *
+         *     Contributors, admins and owners, and a person.
+         */
+        post: operations["draftEpicFromGaps"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/investigations/{investigationId}/roadmap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * An investigation's roadmap — the pipeline card
+         * @description The roadmap document generated from the investigation's brief: its current version, where
+         *     that version's `ROADMAP.md` stands in the repository, the milestones with their items, each
+         *     item's issue and the estimator's answer for it, and the suggestion queue
+         *     ([#624](https://github.com/NobuData/ouroboros/issues/624)).
+         *
+         *     `markdown` is the file exactly as projected — a pure function of the title and the structure,
+         *     never hand-authored. An item's `ticket` and `estimate` are null until `create-issues` has
+         *     filed and the estimator has sized it.
+         *
+         *     Every member.
+         */
+        get: operations["getResearchRoadmap"];
+        put?: never;
+        /**
+         * Generate an investigation's roadmap from its brief
+         * @description Runs the workspace's `create-roadmap` skill over the brief's Markdown export and stores what
+         *     it answers as **version 1** of the investigation's roadmap document — CM.5
+         *     ([#624](https://github.com/NobuData/ouroboros/issues/624)), mockup 22's pipeline card, step 1.
+         *
+         *     **The skill is the workspace's.** `create-roadmap` is a Knowledge registry skill
+         *     (`GET /api/v1/skills/create-roadmap`); the version that runs is the one currently published
+         *     in this workspace. A workspace that has none gets the shipped procedure written for it
+         *     (`origin: generated`) the first time.
+         *
+         *     **The repository is reviewed, not written to.** The projected `ROADMAP.md` is committed to
+         *     the document's own branch (`ouroboros/roadmap-<id>`) and proposed as a pull request
+         *     (`projection.state: pr_open`). It is committed straight to the default branch only when the
+         *     workspace opted in (`PUT /api/v1/research/roadmap-settings`) and is not in dry-run; in dry-run
+         *     the pull request is a draft.
+         *
+         *     **The document is stored before the repository is touched.** If the repository cannot be
+         *     reached the answer is still `201`, with `projection.state: pending` and
+         *     `projection.problem` saying why; `…/roadmap/drift-check` tries again.
+         *
+         *     An investigation has one roadmap: a second call is `409 roadmap_exists` — suggest a change
+         *     and apply it instead.
+         *
+         *     Owners and admins only, and a person.
+         */
+        post: operations["generateResearchRoadmap"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/investigations/{investigationId}/roadmap/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest a change to a roadmap
+         * @description Adds a suggestion to the document's queue, `open`
+         *     ([#624](https://github.com/NobuData/ouroboros/issues/624)). A suggestion never patches the
+         *     document: it waits until someone applies it — which re-runs `create-roadmap` with it appended —
+         *     or dismisses it. `hint` is an optional structured hint the re-run is shown beside the text.
+         *
+         *     Suggestions the product raises itself (`authorKind: ai` — the drift check's, for one) are not
+         *     made through this route.
+         *
+         *     Contributors, admins and owners, and a person.
+         */
+        post: operations["suggestResearchRoadmapChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/investigations/{investigationId}/roadmap/suggestions/{suggestionId}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply a suggestion by re-running create-roadmap
+         * @description **Apply ⟳** ([#624](https://github.com/NobuData/ouroboros/issues/624)). Applying is a
+         *     **re-run, not a patch**: `create-roadmap` runs again with the current version as `previous`
+         *     and every suggestion applied so far — this one last — as `suggestions`. What it answers is
+         *     stored as the next version, and the suggestion records that version (`appliedVersion`) in the
+         *     same transaction.
+         *
+         *     An item that survives the re-run keeps its key, and with it its Planning draft and its issue;
+         *     each filed item's done state is refreshed from the tracker. The new version is projected like
+         *     the first: a commit on the document's branch and the same pull request, updated.
+         *
+         *     Issues that were already filed are **not** edited: the tracker is written only by
+         *     `create-issues`. A re-run that changes a filed item's title or MVP flag is reported by the
+         *     next drift check.
+         *
+         *     Owners and admins only, and a person.
+         */
+        post: operations["applyResearchRoadmapSuggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/investigations/{investigationId}/roadmap/suggestions/{suggestionId}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss a suggestion
+         * @description Settles an open suggestion as `dismissed`, recording who and when
+         *     ([#624](https://github.com/NobuData/ouroboros/issues/624)). The document is unchanged. The
+         *     dismissal is written to the audit log as `roadmap.suggestion_dismissed`, with the suggestion's
+         *     text.
+         *
+         *     Owners and admins only, and a person.
+         */
+        post: operations["dismissResearchRoadmapSuggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/investigations/{investigationId}/roadmap/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * File a roadmap's items as issues — create-issues
+         * @description `create-issues` ([#624](https://github.com/NobuData/ouroboros/issues/624)), mockup 22's
+         *     pipeline card, step 2. The route does as much as can be done **now** and says where it
+         *     stopped; call it again until it answers `filed`.
+         *
+         *     ```
+         *     items ─create-issues─▶ drafts (one Planning batch) ─sizer─▶ sized ─push─▶ issues
+         *                                                                         └─writeback─▶ next version
+         *     ```
+         *
+         *     1. **Draft.** The first call runs the workspace's `create-issues` skill for a description of
+         *        each item and composes one Planning batch (planner `create-roadmap-v1`): a draft per item,
+         *        under the item's milestone with its due date, labelled `mvp` when flagged.
+         *     2. **Size.** The existing estimator sizes the drafts, as it sizes every batch. While any is
+         *        unsized the answer is `stage: sizing` and nothing is pushed — unless `pushUnsized` is true.
+         *     3. **Push.** The batch is pushed through Planning's push: idempotent per draft, milestones
+         *        created with their due dates when the tracker has none of that name.
+         *     4. **Write back.** Issue numbers, MVP flags and done states of the newly filed items land in
+         *        a **new** version of the document, and the pull request is updated. When every item has
+         *        its issue the investigation becomes `issues_filed`.
+         *
+         *     **Idempotent.** A document has one batch, a pushed draft is never pushed again, and a
+         *     writeback that would change nothing writes no version: calling this again files nothing
+         *     twice (`wroteVersion: false`).
+         *
+         *     Items that join the roadmap after the batch exists are listed in `undrafted` and are not
+         *     filed by this route.
+         *
+         *     Owners and admins only, and a person.
+         */
+        post: operations["fileResearchRoadmapIssues"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/investigations/{investigationId}/roadmap/drift-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Compare a roadmap with the tracker and the repository
+         * @description The drift check ([#624](https://github.com/NobuData/ouroboros/issues/624)): is the document
+         *     still what the tracker and the repository say? It also runs on a schedule
+         *     (`OURO_RESEARCH_ROADMAP_TICK_MS`).
+         *
+         *     1. **Settles the projection** — a `pending` version is projected again, and an open pull
+         *        request is followed: merged is `committed`, closed unmerged is `pending` again.
+         *     2. **Compares** every filed item with its ticket — title, done state and the MVP flag (the
+         *        `mvp` label) — and, for a committed version, the repository's file with `markdown`.
+         *     3. **Reports.** A difference moves a committed version to `drift_detected` and raises **one**
+         *        suggestion (`authorKind: ai`, `drift-detector`) naming every difference.
+         *
+         *     **Nothing is rewritten** — no version is written and no file edited; applying the suggestion
+         *     is a re-run like any other. While a drift suggestion is open on the document, another check
+         *     raises none (`raised: null`). A repository that cannot be read is not a drift: the file
+         *     comparison is skipped.
+         *
+         *     Contributors, admins and owners, and a person.
+         */
+        post: operations["checkResearchRoadmapDrift"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/roadmap-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The roadmap pipeline's policy
+         * @description Whether a roadmap's `ROADMAP.md` may be committed to the default branch without a pull
+         *     request ([#624](https://github.com/NobuData/ouroboros/issues/624)). `false` unless the
+         *     workspace turned it on: the repository's own gate is review.
+         *
+         *     Every member.
+         */
+        get: operations["getResearchRoadmapSettings"];
+        /**
+         * Change the roadmap pipeline's policy
+         * @description Turns direct commit on or off ([#624](https://github.com/NobuData/ouroboros/issues/624)).
+         *     With it on, a new roadmap version is committed straight to the repository's default branch
+         *     instead of being proposed as a pull request — except while the workspace is in dry-run, where
+         *     a draft pull request is opened regardless. A change is written to the audit log as
+         *     `roadmap.policy_updated`.
+         *
+         *     Owners and admins only, and a person.
+         */
+        put: operations["saveResearchRoadmapSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -27454,6 +27747,19 @@ export interface components {
              * @enum {string}
              */
             provenance: "planned" | "edited";
+            /**
+             * @description The tracker milestone this draft is filed under, winning over the batch's — a roadmap
+             *     files its issues under several (CM.5, #624). Null to use the batch's.
+             */
+            milestone: components["schemas"]["PlanningDraftMilestone"] | null;
+            /** @description The labels the push sends with the ticket — a roadmap item's MVP flag travels as `mvp`. */
+            labels: string[];
+            /**
+             * @description Where in research the draft came from — the investigation, and the capability gap or
+             *     roadmap item it was written for, with the ledger records it cites. Null for a draft
+             *     research did not write.
+             */
+            research: components["schemas"]["PlanningDraftResearch"] | null;
             /** @description The local keys of the drafts this one is blocked by. */
             dependencies: string[];
             /** @description Canonical tickets outside the batch this one is blocked by. */
@@ -27468,6 +27774,326 @@ export interface components {
             pushedTicket: components["schemas"]["PlanningTicketRef"] | null;
             pushError: components["schemas"]["PlanningDraftPushError"] | null;
             estimate: components["schemas"]["PlanningDraftEstimate"] | null;
+        };
+        /**
+         * ResearchDraftEpicRequest
+         * @description Which tracker the gap drafts are for.
+         */
+        ResearchDraftEpicRequest: {
+            /**
+             * Format: uuid
+             * @description The ticket source. Omit when the workspace has exactly one.
+             */
+            targetSourceId?: string;
+        };
+        /**
+         * ResearchDraftEpic
+         * @description What **Draft epic from gaps →** created. Nothing in it is filed.
+         */
+        ResearchDraftEpic: {
+            /** @description False when the investigation's epic had already been drafted and is answered again. */
+            created: boolean;
+            epic: {
+                /** @description The Planning epic, stored `proposed`; null when it has since been deleted. */
+                id: string | null;
+                name: string;
+            };
+            batch: {
+                /** Format: uuid */
+                id: string;
+                /** @enum {string} */
+                status: "drafting" | "sized" | "pushing" | "pushed" | "abandoned";
+                drafts: {
+                    /** Format: uuid */
+                    id: string;
+                    /** @example DOCK-1 */
+                    localKey: string;
+                    title: string;
+                    /** @description The capability-matrix row the draft closes. */
+                    capability: string | null;
+                    severity: ("high" | "med") | null;
+                    /** @description The effort the brief proposed — a seed; the estimate is the sizer's. */
+                    effort: ("xs" | "s" | "m" | "l" | "xl") | null;
+                    /** @description How many ledger records the draft cites. */
+                    sources: number;
+                }[];
+            };
+            /**
+             * @description Where to review, size and push it.
+             * @example /planning?batch=5eed0090-0000-4000-8000-000000000127
+             */
+            href: string;
+        };
+        /**
+         * ResearchRoadmapGenerateRequest
+         * @description Where a new roadmap document goes.
+         */
+        ResearchRoadmapGenerateRequest: {
+            /**
+             * Format: uuid
+             * @description The ticket source whose repository holds the file and whose tracker the issues are
+             *     filed in. Omit when the workspace has exactly one.
+             */
+            targetSourceId?: string;
+            /**
+             * @description Where the file goes — a relative path with no `.` or `..` segment. Fixed once the document exists.
+             * @default docs/ROADMAP.md
+             */
+            path: string;
+        };
+        /**
+         * ResearchRoadmapSuggestionRequest
+         * @description A suggested change.
+         */
+        ResearchRoadmapSuggestionRequest: {
+            /** @description What should change, in words. The re-run reads it. */
+            text: string;
+            /** @description An optional structured hint for the re-run; at most 8 KiB as JSON. */
+            hint?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ResearchRoadmapIssuesRequest
+         * @description How `create-issues` treats unsized drafts.
+         */
+        ResearchRoadmapIssuesRequest: {
+            /**
+             * @description Push even though the estimator has not sized every draft.
+             * @default false
+             */
+            pushUnsized: boolean;
+        };
+        /**
+         * ResearchRoadmapSettings
+         * @description The roadmap pipeline's policy.
+         */
+        ResearchRoadmapSettings: {
+            /** @description Whether `ROADMAP.md` may be committed to the default branch without a pull request. */
+            directCommit: boolean;
+        };
+        /**
+         * ResearchRoadmapProjection
+         * @description Where a version's `ROADMAP.md` stands in the repository:
+         *     `pending → pr_open → committed → drift_detected`, with `pr_open → pending` for a pull
+         *     request closed unmerged and `pending → committed` for a direct commit.
+         */
+        ResearchRoadmapProjection: {
+            /** @enum {string} */
+            state: "pending" | "pr_open" | "committed" | "drift_detected";
+            /** @example docs/ROADMAP.md */
+            path: string;
+            /** @description `#88` while a pull request is open, or the one a commit came from. */
+            prRef: string | null;
+            committedSha: string | null;
+            /** @description The repository commit a drift was seen at; only in `drift_detected`. */
+            observedSha: string | null;
+            /**
+             * @description The card's line.
+             * @example docs/ROADMAP.md · committed 8c1b2e4
+             */
+            label: string;
+            /** @description Why the projection could not be moved just now; null when nothing is wrong. */
+            problem: string | null;
+        };
+        /**
+         * ResearchRoadmapItem
+         * @description One item of a milestone, with its issue once filed.
+         */
+        ResearchRoadmapItem: {
+            /** @description The item's handle, kept across re-runs. */
+            key: string;
+            title: string;
+            mvp: boolean;
+            /** @description The effort the roadmap states. */
+            effort: ("xs" | "s" | "m" | "l" | "xl") | null;
+            /** @description Whether its issue is closed. */
+            checked: boolean;
+            /** @description The Planning draft it became; null before `create-issues`. */
+            draftId: string | null;
+            /** @description Its issue in the tracker; null while unfiled. */
+            ticket: {
+                /** Format: uuid */
+                id: string;
+                /** @example #742 */
+                key: string;
+                url: string | null;
+                state: ("open" | "closed") | null;
+            } | null;
+            /** @description The estimator's answer for the issue; null while unsized. */
+            estimate: {
+                /** @enum {string} */
+                effort: "xs" | "s" | "m" | "l" | "xl";
+                /** @description `low`, `medium` or `high` — the row's `cx:` chip. */
+                complexity: string | null;
+                estMinutes: number | null;
+                /** @description `estMinutes` in loop-days, to one decimal. */
+                loopDays: number | null;
+            } | null;
+        };
+        /**
+         * ResearchRoadmapMilestone
+         * @description One milestone of a roadmap.
+         */
+        ResearchRoadmapMilestone: {
+            key: string;
+            name: string;
+            targetDate: string | null;
+            dueLabel: string | null;
+            done: number;
+            total: number;
+            items: components["schemas"]["ResearchRoadmapItem"][];
+        };
+        /**
+         * ResearchRoadmapSuggestion
+         * @description One suggested change — `open` until applied or dismissed, never edited.
+         */
+        ResearchRoadmapSuggestion: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            authorKind: "user" | "ai";
+            /** @description The author's chip — a person's initials, or `AI`. */
+            authorLabel: string;
+            /** @description The person's name, or the agent that raised it (`drift-detector`). */
+            authorName: string | null;
+            text: string;
+            hint: {
+                [key: string]: unknown;
+            } | null;
+            /** @enum {string} */
+            status: "open" | "applied" | "dismissed";
+            /** @description The version applying it produced; null unless applied. */
+            appliedVersion: number | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /**
+         * ResearchRoadmap
+         * @description The pipeline card — a roadmap document on its current version.
+         */
+        ResearchRoadmap: {
+            investigation: {
+                /** Format: uuid */
+                id: string;
+                /** @example RS-124 */
+                displayId: string;
+            };
+            doc: {
+                /** Format: uuid */
+                id: string;
+                title: string;
+                version: number;
+                /**
+                 * @description The skill run that generated the version.
+                 * @example create-roadmap@v1
+                 * @example create-issues@v1 · writeback
+                 */
+                generatedBy: string;
+                /** Format: date-time */
+                generatedAt: string;
+                /** @description The ticket source it is projected to and filed in; null when that source was removed. */
+                targetSourceId: string | null;
+            };
+            projection: components["schemas"]["ResearchRoadmapProjection"];
+            /** @description `ROADMAP.md`, exactly as projected. */
+            markdown: string;
+            milestones: components["schemas"]["ResearchRoadmapMilestone"][];
+            issues: {
+                /** @description The Planning batch `create-issues` composed; null before it ran. */
+                batchId: string | null;
+                filed: number;
+                total: number;
+                /** @example 6 issues · 2 milestones */
+                label: string;
+            };
+            suggestions: {
+                open: number;
+                items: components["schemas"]["ResearchRoadmapSuggestion"][];
+            };
+        };
+        /**
+         * ResearchRoadmapIssues
+         * @description What one `create-issues` call did.
+         */
+        ResearchRoadmapIssues: {
+            /**
+             * @description `sizing` — the drafts exist and the estimator has not finished; `partial` — the push
+             *     stopped short; `filed` — every item has its issue and the document says so.
+             * @enum {string}
+             */
+            stage: "sizing" | "filed" | "partial";
+            /** Format: uuid */
+            batchId: string;
+            /** @description Whether this call wrote a new version of the document — the writeback. */
+            wroteVersion: boolean;
+            /** @description Selected drafts the estimator has not sized yet. */
+            unsized: number;
+            /** @description Items with no draft because they joined the roadmap after the batch was composed. */
+            undrafted: string[];
+            roadmap: components["schemas"]["ResearchRoadmap"];
+        };
+        /**
+         * ResearchRoadmapDriftDifference
+         * @description One difference between the document and the tracker or the repository.
+         */
+        ResearchRoadmapDriftDifference: {
+            /** @enum {string} */
+            field: "missing" | "title" | "state" | "mvp" | "file";
+            itemKey: string | null;
+            ticketKey: string | null;
+            /** @description What the document says. */
+            document: string;
+            /** @description What the tracker — or the repository's file — says. */
+            tracker: string;
+        };
+        /**
+         * ResearchRoadmapDrift
+         * @description What a drift check found.
+         */
+        ResearchRoadmapDrift: {
+            identical: boolean;
+            differences: components["schemas"]["ResearchRoadmapDriftDifference"][];
+            /** @description The suggestion this check raised; null when it raised none. */
+            raised: components["schemas"]["ResearchRoadmapSuggestion"] | null;
+            roadmap: components["schemas"]["ResearchRoadmap"];
+        };
+        /**
+         * PlanningDraftMilestone
+         * @description A draft's own tracker milestone.
+         */
+        PlanningDraftMilestone: {
+            /** @example Docking parity */
+            name: string;
+            /**
+             * @description The due date sent if the push **creates** the milestone; one that already exists keeps
+             *     its own.
+             */
+            dueOn: string | null;
+        };
+        /**
+         * PlanningDraftResearch
+         * @description A draft's research provenance (CM.5, #624). `gap` drafts come from **Draft epic from gaps**;
+         *     `roadmap` drafts from a roadmap document's `create-issues`.
+         */
+        PlanningDraftResearch: {
+            /** Format: uuid */
+            investigationId: string;
+            /** @enum {string} */
+            origin: "gap" | "roadmap";
+            /** @description The gap's capability-matrix row; null for a roadmap item. */
+            capability: string | null;
+            /** @description The gap's severity; null for a roadmap item. */
+            severity: ("high" | "med") | null;
+            /** @description The roadmap item's key; null for a gap. */
+            itemKey: string | null;
+            /**
+             * @description The effort the brief proposed — a seed only. The estimate in force is the sizer's
+             *     (`estimate`).
+             */
+            effort: ("xs" | "s" | "m" | "l" | "xl") | null;
+            /** @description The investigation's ledger records the draft cites. */
+            sources: string[];
         };
         /**
          * PlanningBatchSpend
@@ -47514,6 +48140,9 @@ export interface operations {
                      *                 "selected": true,
                      *                 "suggestedWorkflow": "feature-loop",
                      *                 "provenance": "planned",
+                     *                 "milestone": null,
+                     *                 "labels": [],
+                     *                 "research": null,
                      *                 "dependencies": [],
                      *                 "blockedByTicketIds": [],
                      *                 "pushState": "pending",
@@ -69519,6 +70148,9 @@ export interface operations {
                      *           "selected": true,
                      *           "suggestedWorkflow": "feature-loop",
                      *           "provenance": "planned",
+                     *           "milestone": null,
+                     *           "labels": [],
+                     *           "research": null,
                      *           "dependencies": [],
                      *           "blockedByTicketIds": [],
                      *           "pushState": "pending",
@@ -83997,6 +84629,1435 @@ export interface operations {
              *     `details.status` says which.
              */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the request is malformed: a field outside its shape, or one
+             *     this operation does not take. `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    draftEpicFromGaps: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The investigation. */
+                investigationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                /** @example {} */
+                "application/json": components["schemas"]["ResearchDraftEpicRequest"];
+            };
+        };
+        responses: {
+            /** @description The epic and its draft batch. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchDraftEpic"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — this is for `owner`, `admin` and `member`; `details.required` lists them. Nothing changes.
+             *     Also the answer for a service account: this needs a person.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `investigation_not_found` — this workspace has no such investigation (one of another
+             *     workspace reads exactly the same); `brief_not_found` — it has no brief yet;
+             *     `roadmap_source_not_found` — `targetSourceId` names no ticket source of this workspace;
+             *     or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `planning_target_read_only` — the ticket source cannot take new tickets. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `gaps_nothing_proposed` — the brief's matrix has no `high` or `med` gap to draft from;
+             *     `roadmap_target_required` — the workspace has no ticket source, or more than one and the
+             *     request names none (`details.candidates`); or `validation_failed`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getResearchRoadmap: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The investigation. */
+                investigationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchRoadmap"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `investigation_not_found` — this workspace has no such investigation; `roadmap_not_found`
+             *     — nothing has generated a roadmap from it yet; or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    generateResearchRoadmap: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The investigation. */
+                investigationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                /**
+                 * @example {
+                 *       "path": "docs/ROADMAP.md"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ResearchRoadmapGenerateRequest"];
+            };
+        };
+        responses: {
+            /** @description The document, on version 1. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchRoadmap"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — this is for `owner` and `admin`; `details.required` lists them. Nothing changes.
+             *     Also the answer for a service account: this needs a person.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `investigation_not_found`, `brief_not_found`, `roadmap_source_not_found`, or
+             *     `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `roadmap_exists` — the investigation already has its roadmap; `roadmap_no_researcher` —
+             *     no model is routed to research work in this workspace; or `roadmap_skill_unpublished` — the
+             *     workspace's `create-roadmap` has no published version.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `roadmap_target_required` — the workspace has no ticket source, or more than one and the
+             *     request names none; or `validation_failed`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `roadmap_skill_failed` — the skill could not be run; `details.reason` is the engine's
+             *     code (`gateway_unavailable` until the invocation gateway exists, `skill_output_invalid`
+             *     when the model answered outside the contract twice). `roadmap_output_invalid` — the answer
+             *     cannot be stored as a roadmap; `details.problems` says why. `engine_unavailable` — the engine
+             *     could not be reached. Nothing was changed.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    suggestResearchRoadmapChange: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The investigation. */
+                investigationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "text": "Pull the gust estimator into the M1 MVP set.",
+                 *       "hint": {
+                 *         "item": "dock-gust",
+                 *         "change": "mvp",
+                 *         "to": true
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ResearchRoadmapSuggestionRequest"];
+            };
+        };
+        responses: {
+            /** @description The suggestion, open. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed0097-0000-4000-8000-000000002003",
+                     *       "authorKind": "user",
+                     *       "authorLabel": "KS",
+                     *       "authorName": "Ken Suenobu",
+                     *       "text": "Pull the gust estimator into the M1 MVP set.",
+                     *       "hint": {
+                     *         "item": "dock-gust",
+                     *         "change": "mvp",
+                     *         "to": true
+                     *       },
+                     *       "status": "open",
+                     *       "appliedVersion": null,
+                     *       "createdAt": "2026-10-10T09:00:00.000Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ResearchRoadmapSuggestion"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — this is for `owner`, `admin` and `member`; `details.required` lists them. Nothing changes.
+             *     Also the answer for a service account: this needs a person.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `investigation_not_found`, `roadmap_not_found`, or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the request is malformed: a field outside its shape, or one
+             *     this operation does not take. `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    applyResearchRoadmapSuggestion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The investigation. */
+                investigationId: string;
+                /** @description The suggestion. */
+                suggestionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The card, on the new version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchRoadmap"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — this is for `owner` and `admin`; `details.required` lists them. Nothing changes.
+             *     Also the answer for a service account: this needs a person.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `investigation_not_found`, `roadmap_not_found`, `roadmap_suggestion_not_found`, or
+             *     `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `roadmap_suggestion_settled` — already applied or dismissed (`details.status`);
+             *     `roadmap_version_conflict` — the document changed while the skill ran, and nothing was
+             *     stored; `roadmap_no_researcher`; or `roadmap_skill_unpublished`.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the request is malformed: a field outside its shape, or one
+             *     this operation does not take. `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `roadmap_skill_failed` — the skill could not be run; `details.reason` is the engine's
+             *     code (`gateway_unavailable` until the invocation gateway exists, `skill_output_invalid`
+             *     when the model answered outside the contract twice). `roadmap_output_invalid` — the answer
+             *     cannot be stored as a roadmap; `details.problems` says why. `engine_unavailable` — the engine
+             *     could not be reached. Nothing was changed.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    dismissResearchRoadmapSuggestion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The investigation. */
+                investigationId: string;
+                /** @description The suggestion. */
+                suggestionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchRoadmap"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — this is for `owner` and `admin`; `details.required` lists them. Nothing changes.
+             *     Also the answer for a service account: this needs a person.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `investigation_not_found`, `roadmap_not_found`, `roadmap_suggestion_not_found`, or
+             *     `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `roadmap_suggestion_settled` — already applied or dismissed (`details.status`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the request is malformed: a field outside its shape, or one
+             *     this operation does not take. `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    fileResearchRoadmapIssues: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The investigation. */
+                investigationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                /** @example {} */
+                "application/json": components["schemas"]["ResearchRoadmapIssuesRequest"];
+            };
+        };
+        responses: {
+            /** @description Where the call stopped, and the card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchRoadmapIssues"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — this is for `owner` and `admin`; `details.required` lists them. Nothing changes.
+             *     Also the answer for a service account: this needs a person.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `investigation_not_found`, `roadmap_not_found`, `brief_not_found`, or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `roadmap_target_missing` — the document's ticket source was removed;
+             *     `roadmap_version_conflict`; `roadmap_no_researcher`; `roadmap_skill_unpublished`; or a
+             *     refusal of the push itself — `push_in_progress`, `push_target_read_only`.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the request is malformed: a field outside its shape, or one
+             *     this operation does not take. `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `roadmap_skill_failed` — the skill could not be run; `details.reason` is the engine's
+             *     code (`gateway_unavailable` until the invocation gateway exists, `skill_output_invalid`
+             *     when the model answered outside the contract twice). `roadmap_output_invalid` — the answer
+             *     cannot be stored as a roadmap; `details.problems` says why. `engine_unavailable` — the engine
+             *     could not be reached. Nothing was changed.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    checkResearchRoadmapDrift: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The investigation. */
+                investigationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Whether document, tracker and repository agree. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchRoadmapDrift"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — this is for `owner`, `admin` and `member`; `details.required` lists them. Nothing changes.
+             *     Also the answer for a service account: this needs a person.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `investigation_not_found`, `roadmap_not_found`, or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the request is malformed: a field outside its shape, or one
+             *     this operation does not take. `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getResearchRoadmapSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "directCommit": false
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ResearchRoadmapSettings"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    saveResearchRoadmapSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "directCommit": true
+                 *     }
+                 */
+                "application/json": components["schemas"]["ResearchRoadmapSettings"];
+            };
+        };
+        responses: {
+            /** @description The policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "directCommit": false
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ResearchRoadmapSettings"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — this is for `owner` and `admin`; `details.required` lists them. Nothing changes.
+             *     Also the answer for a service account: this needs a person.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found`. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
