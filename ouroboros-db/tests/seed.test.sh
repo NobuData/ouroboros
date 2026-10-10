@@ -1832,16 +1832,16 @@ check_contains "$COPILOT_BODY" '"inherit_task": "exploit-verify"' 'exploit-verif
 
 printf '\nR__dev_seed_workspace_research.sql — the quarter, the matrix, the rivals, the watch and the roadmap\n'
 
-for prefix in 5eed008e 5eed008f 5eed0090 5eed0091 5eed0092 5eed0093 5eed0094 5eed0095 5eed0096 5eed0097 5eed0098; do
+for prefix in 5eed008e 5eed008f 5eed0090 5eed0091 5eed0092 5eed0093 5eed0094 5eed0095 5eed0096 5eed0097 5eed0098 5eed0099 5eed009a; do
   check_contains "$WORKSPACE_RESEARCH_BODY" "'$prefix-0000-4000-8000-" \
     "the research workspace seed builds its ids from the $prefix… prefix"
 done
 
 workspace_research_tables=$(grep -Eo '^(insert into|update) ouroboros\.[a-z_]+' "$WORKSPACE_RESEARCH_BODY" |
   sed -E 's/^(insert into|update) ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
-check_equals 'brief_claim_sources brief_claims briefs capability_matrices competitor_snapshots competitor_watches competitors doc_suggestions draft_batches investigations issue_estimates matrix_cell_sources matrix_cells matrix_rows pull_requests regression_baselines regression_watch_items roadmap_doc_versions roadmap_docs source_records ticket_drafts tickets ' \
+check_equals 'brief_claim_sources brief_claims briefs capability_matrices competitor_snapshots competitor_watches competitors doc_suggestions document_import_items document_imports draft_batches investigations issue_estimates matrix_cell_sources matrix_cells matrix_rows pull_requests regression_baselines regression_watch_items roadmap_doc_versions roadmap_docs source_records ticket_drafts ticket_sources tickets ' \
   "$workspace_research_tables" \
-  'the research workspace seed writes the research domain and the tickets, drafts and PR it points at — and nothing else'
+  'the research workspace seed writes the research domain, the tickets, drafts and PR it points at, and the history index''s Support source and churn import (#618) — and nothing else'
 
 # Rows whose BEFORE INSERT triggers allocate or check a sequence are written only where none exist.
 check_contains "$WORKSPACE_RESEARCH_BODY" 'not exists \(select 1 from ouroboros\.investigations x' \
@@ -1866,6 +1866,14 @@ check_absent "$WORKSPACE_RESEARCH_BODY" "'4 active|'23 this quarter|'312 sources
   'no card figure is stored as a literal — every count is computed'
 check_absent "$WORKSPACE_RESEARCH_BODY" "'5eed00[0-7][0-9a-f]-0000-4000-8000-|'5eed008[4-7a-d]-0000-4000-8000-" \
   'every other seed''s rows are found by natural key'
+
+# The history index's corpus (#618): a second, paused tracker and an imported set.
+check_contains "$WORKSPACE_RESEARCH_BODY" "'custom', 'Support', '\{\}'::jsonb," \
+  'the Support source is a custom-kind second tracker'
+check_contains "$WORKSPACE_RESEARCH_BODY" "'support', 'churn-2026-q2'," \
+  'the churn interviews are imported at issue-index://support/churn-2026-q2'
+check_absent "$WORKSPACE_RESEARCH_BODY" "'3,412|'312 issues|'9 of 14'" \
+  'no index count is stored as a literal'
 
 # No live run: the workspace's three are mockup 02's.
 check_absent "$WORKSPACE_RESEARCH_BODY" '^insert into ouroboros\.runs' \

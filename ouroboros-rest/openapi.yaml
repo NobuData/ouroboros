@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.2"
+  version: "0.41.3"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -35409,6 +35409,343 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/research/document-imports:
+    get:
+      tags: [research]
+      summary: The workspace's imported document sets
+      description: |-
+        The institutional memory that is not a ticket
+        ([#618](https://github.com/NobuData/ouroboros/issues/618)): each set an owner imported —
+        churn interviews, say — with its `locator`, the `issue-index://<collection>/<name>` URI an
+        investigation cites the whole set by. Its documents are searched by the issue & PR history
+        research tool beside the workspace's tickets and pull requests. Newest first. Every member,
+        a `viewer` included. **The workspace is the session's.**
+      operationId: listDocumentImports
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The sets, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentImportList"
+              examples:
+                seeded:
+                  summary: The churn interviews
+                  value:
+                    items:
+                      - id: 5eed009a-0000-4000-8000-000000000001
+                        collection: support
+                        name: churn-2026-q2
+                        locator: issue-index://support/churn-2026-q2
+                        title: Support churn interviews Q2
+                        description: Exit interviews with the 14 accounts that churned in Q2 2026.
+                        format: csv
+                        contentHash: sha256:5f4dcc3b5aa765d61d8327deb882cf995f4dcc3b5aa765d61d8327deb882cf99
+                        documents: 14
+                        importedBy: 5eed0003-0000-4000-8000-000000000001
+                        createdAt: "2026-09-19T00:00:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [research]
+      summary: Import a CSV or Markdown file as a document set
+      description: |-
+        **`owner` only.** Reads `content` as `format` says and stores one document per CSV row or
+        Markdown `## ` section, addressed `issue-index://<collection>/<name>/<key>`.
+
+        **CSV** — a header row, then one document per row. `text` (or `body`, `content`) is
+        required; `title` (otherwise the text's first line), `key` or `id` (otherwise `doc-001`…),
+        `date` (ISO-8601) and `labels` (separated by `;`, `|` or `,`) are read when present; every
+        other column is kept, as text, in the document's `meta`.
+
+        **Markdown** — one document per `## ` heading. The first `# ` heading is the set's title
+        when the request gives none, and the text under it its description. A section may open with
+        `Name: value` lines (`Key:`, `Date:`, `Labels:`, anything else is `meta`) closed by a blank
+        line. A file with no `## ` is one document.
+
+        At most 2 MiB, 2 000 documents, 64 KiB a document. A set is never edited — an investigation
+        may have cited it — so replacing one is removing it and importing it again.
+      operationId: createDocumentImport
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DocumentImportCreateRequest"
+            examples:
+              churn:
+                summary: Two churn interviews as CSV
+                value:
+                  collection: support
+                  name: churn-2026-q2
+                  title: Support churn interviews Q2
+                  format: csv
+                  content: "key,title,date,labels,text\nacct-01,Northwind Survey,2026-04-08,docking,The drone gives up after one docking abort.\nacct-03,Cascade Timber,2026-04-21,battery,Battery estimates were wrong on cold mornings.\n"
+      responses:
+        "201":
+          description: The set and its documents.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentImportDetail"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller is not an `owner`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `document_import_exists` — the workspace already has a set at that collection and
+            name. `details.collection` and `details.name` echo them. Remove it first to replace it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "413":
+          description: |-
+            `payload_too_large` — the request is larger than the service reads.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `document_import_invalid` — the file cannot be read as documents; the message names
+            the row or section, and `details.fields.content` repeats the reason. Or
+            `document_import_title_required` — neither the request nor a Markdown `# ` heading
+            names a title. Or `validation_failed` — the request is malformed; `details.fields`
+            names each field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/research/document-imports/{importId}:
+    get:
+      tags: [research]
+      summary: One imported set and its documents
+      description: |-
+        The set and every document in it, in file order — each with the `locator` an investigation
+        cites it by. Every member.
+      operationId: getDocumentImport
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: importId
+          in: path
+          required: true
+          description: The imported set.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The set and its documents.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentImportDetail"
+              examples:
+                seeded:
+                  summary: The churn interviews, one document shown
+                  value:
+                    id: 5eed009a-0000-4000-8000-000000000001
+                    collection: support
+                    name: churn-2026-q2
+                    locator: issue-index://support/churn-2026-q2
+                    title: Support churn interviews Q2
+                    description: Exit interviews with the 14 accounts that churned in Q2 2026.
+                    format: csv
+                    contentHash: sha256:5f4dcc3b5aa765d61d8327deb882cf995f4dcc3b5aa765d61d8327deb882cf99
+                    documents: 14
+                    importedBy: 5eed0003-0000-4000-8000-000000000001
+                    createdAt: "2026-09-19T00:00:00.000Z"
+                    items:
+                      - key: acct-01
+                        locator: issue-index://support/churn-2026-q2/acct-01
+                        title: Churn interview — Northwind Survey
+                        text: Docking reliability was the reason. The drone aborts the approach and gives up.
+                        labels: [docking]
+                        occurredAt: "2026-04-08T00:00:00.000Z"
+                        meta:
+                          account: Northwind Survey
+                          seats: "12"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `document_import_not_found` — this workspace has no such imported set; or
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the request is malformed: a field outside its shape, or one
+            this operation does not take. `details.fields` names each.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [research]
+      summary: Remove an imported set
+      description: |-
+        **`owner` only.** Removes the set and its documents from the index. An investigation that
+        cited them keeps its archived excerpt and content hash; the locator no longer resolves.
+      operationId: deleteDocumentImport
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: importId
+          in: path
+          required: true
+          description: The imported set.
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: The set is gone.
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller is not an `owner`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `document_import_not_found` — this workspace has no such imported set; or
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the request is malformed: a field outside its shape, or one
+            this operation does not take. `details.fields` names each.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   # How a caller is recognised. One scheme, because there is one: the cookie the sign-in
   # flow lands.
@@ -48259,6 +48596,141 @@ components:
           type: [string, "null"]
           format: date-time
           description: Pass as `before` for the next page; null on the last.
+    DocumentImportFormat:
+      type: string
+      title: DocumentImportFormat
+      description: How an imported file is read.
+      enum: [csv, markdown]
+    DocumentImport:
+      type: object
+      title: DocumentImport
+      description: |-
+        One imported document set ([#618](https://github.com/NobuData/ouroboros/issues/618)) —
+        churn interviews, say.
+      additionalProperties: false
+      required:
+        [id, collection, name, locator, title, description, format, contentHash, documents, importedBy,
+         createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        collection:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9_-]{0,62}$"
+          description: The locator's first segment — `support`.
+        name:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+          description: The locator's second segment — `churn-2026-q2`.
+        locator:
+          type: string
+          description: What an investigation cites the whole set as — `issue-index://support/churn-2026-q2`.
+        title: { type: string, maxLength: 300 }
+        description: { type: [string, "null"], maxLength: 2000 }
+        format:
+          $ref: "#/components/schemas/DocumentImportFormat"
+        contentHash:
+          type: string
+          pattern: "^sha256:[0-9a-f]{64}$"
+          description: sha256 of the imported file.
+        documents:
+          type: integer
+          minimum: 0
+          description: How many documents the set holds.
+        importedBy:
+          type: [string, "null"]
+          description: The user who imported it, by id.
+        createdAt: { type: string, format: date-time }
+    DocumentImportList:
+      type: object
+      title: DocumentImportList
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DocumentImport"
+    DocumentImportItem:
+      type: object
+      title: DocumentImportItem
+      description: One document of an imported set.
+      additionalProperties: false
+      required: [key, locator, title, text, labels, occurredAt, meta]
+      properties:
+        key:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._#-]{0,99}$"
+          description: The locator's last segment — `acct-01`.
+        locator:
+          type: string
+          description: "`issue-index://support/churn-2026-q2/acct-01`."
+        title: { type: string, maxLength: 300 }
+        text:
+          type: string
+          description: The document. At most 64 KiB.
+        labels:
+          type: array
+          items: { type: string }
+        occurredAt:
+          type: [string, "null"]
+          format: date-time
+          description: When the document is from, as the file says; null when it does not.
+        meta:
+          type: object
+          description: The file's other columns, as text.
+          additionalProperties: true
+    DocumentImportDetail:
+      type: object
+      title: DocumentImportDetail
+      description: A set with its documents, in file order.
+      additionalProperties: false
+      required:
+        [id, collection, name, locator, title, description, format, contentHash, documents, importedBy,
+         createdAt, items]
+      properties:
+        id: { type: string, format: uuid }
+        collection: { type: string }
+        name: { type: string }
+        locator: { type: string }
+        title: { type: string, maxLength: 300 }
+        description: { type: [string, "null"], maxLength: 2000 }
+        format:
+          $ref: "#/components/schemas/DocumentImportFormat"
+        contentHash: { type: string, pattern: "^sha256:[0-9a-f]{64}$" }
+        documents: { type: integer, minimum: 0 }
+        importedBy: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DocumentImportItem"
+    DocumentImportCreateRequest:
+      type: object
+      title: DocumentImportCreateRequest
+      additionalProperties: false
+      required: [collection, name, format, content]
+      properties:
+        collection:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9_-]{0,62}$"
+          description: The locator's first segment — `support`.
+        name:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+          description: The locator's second segment — `churn-2026-q2`. Unique within the collection.
+        title:
+          type: string
+          maxLength: 300
+          description: What a citation of the set is titled. A Markdown file's `# ` heading is used when absent; a CSV needs one.
+        description:
+          type: string
+          maxLength: 2000
+          description: What the set is — searched with the title.
+        format:
+          $ref: "#/components/schemas/DocumentImportFormat"
+        content:
+          type: string
+          description: The file's text. At most 2 MiB.
     ResolvedProvider:
       type: object
       title: ResolvedProvider

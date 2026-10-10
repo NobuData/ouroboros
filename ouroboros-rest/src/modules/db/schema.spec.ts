@@ -504,7 +504,11 @@ describe("TABLE_COLUMNS", () => {
     //
     // The hundred-and-fifty-third and fourth are V118's `code_bisects` and `code_bisect_steps`
     // (#617) — the bisect primitive's checkpoints and the farm jobs that prove its culprit.
-    expect(TABLE_NAMES).toHaveLength(154);
+    //
+    // The hundred-and-fifty-fifth to seventh are V119's `document_imports` and
+    // `document_import_items` (#618) — imported document sets — and the `history_index_entries`
+    // view the issue & PR history tool reads its whole corpus through.
+    expect(TABLE_NAMES).toHaveLength(157);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
@@ -691,7 +695,7 @@ describe("TABLE_COLUMNS", () => {
     for (const view of READ_ONLY_VIEWS) {
       expect(TABLE_NAMES).toContain(view);
     }
-    expect(READ_ONLY_VIEWS).toHaveLength(13);
+    expect(READ_ONLY_VIEWS).toHaveLength(14);
   });
 
   it("makes runs_with_stage the same shape as runs, so the stage read moves by one word", () => {

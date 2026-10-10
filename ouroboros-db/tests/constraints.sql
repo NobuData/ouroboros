@@ -39088,6 +39088,253 @@ select pg_temp.must_hold(
   'a deleted workspace takes its bisects with it');
 
 -- ===========================================================================
+-- V119 — the history index and imported document sets (#618, CL.5)
+-- ===========================================================================
+--
+-- One corpus — canonical tickets, mirrored PRs, imported sets and their documents — in one shape,
+-- read by workspace, with a locator V108 accepts for every row and no column saying which
+-- tracker fed a ticket.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v119', 'History Works', 'history-works-v119', now()),
+  ('org-v119b', 'Elsewhere', 'elsewhere-v119', now());
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name, status) values
+  ('a1190001-0000-4000-8000-000000000001', 'org-v119', 'github', 'GitHub · acme-robotics', 'paused'),
+  ('a1190001-0000-4000-8000-000000000002', 'org-v119', 'jira', 'Jira · PROJ', 'paused'),
+  ('a1190001-0000-4000-8000-000000000003', 'org-v119b', 'custom', 'Support', 'paused');
+
+insert into ouroboros.tickets (id, organization_id, source_id, external_id, external_key, external_url,
+                               title, body, state, labels, author, source_created_at, source_updated_at, meta) values
+  ('a1190002-0000-4000-8000-000000000001', 'org-v119', 'a1190001-0000-4000-8000-000000000001', '498', '#498',
+   'https://github.com/acme-robotics/helios-firmware/issues/498', 'Docking aborts in crosswind',
+   'The approach controller aborted the docking sequence.', 'open', '["bug", "docking"]', 'maya-chen',
+   now() - interval '3 days', now() - interval '2 days', '{"github": {"owner": "acme-robotics", "repo": "helios-firmware"}}'),
+  ('a1190002-0000-4000-8000-000000000002', 'org-v119', 'a1190001-0000-4000-8000-000000000002', '10142', 'PROJ-142',
+   'https://acme-robotics.atlassian.net/browse/PROJ-142', 'Docking aborts in crosswind',
+   'The approach controller aborted the docking sequence.', 'open', '["bug", "docking"]', '5b10a2844c20165700ede21g',
+   now() - interval '3 days', now() - interval '2 days', '{}'),
+  ('a1190002-0000-4000-8000-000000000003', 'org-v119b', 'a1190001-0000-4000-8000-000000000003', 'a/b c', 'SUP 1',
+   'https://support.example.com/t/1', 'Docking aborts elsewhere', null, 'closed', '[]', null,
+   now() - interval '3 days', now() - interval '2 days', '{}');
+
+insert into ouroboros.pull_requests (id, organization_id, source_id, external_number, external_url, title,
+                                     head_branch, base_branch) values
+  ('a1190003-0000-4000-8000-000000000001', 'org-v119', 'a1190001-0000-4000-8000-000000000001', 512,
+   'https://github.com/acme-robotics/helios-firmware/pull/512', 'dock: retry the docking approach',
+   'loop/498', 'main');
+
+insert into ouroboros.document_imports (id, organization_id, collection, name, title, description, format, content_hash) values
+  ('a1190004-0000-4000-8000-000000000001', 'org-v119', 'support', 'churn-2026-q2', 'Support churn interviews Q2',
+   'Exit interviews; several cite docking reliability.', 'csv', 'sha256:' || repeat('a', 64));
+insert into ouroboros.document_import_items (id, import_id, organization_id, position, item_key, title, body, labels, occurred_at) values
+  ('a1190005-0000-4000-8000-000000000001', 'a1190004-0000-4000-8000-000000000001', 'org-v119', 1, 'acct-01',
+   'Churn interview — Northwind', 'The drone gives up after one docking abort.', '["docking"]', '2026-04-08'),
+  ('a1190005-0000-4000-8000-000000000002', 'a1190004-0000-4000-8000-000000000001', 'org-v119', 2, 'acct-02',
+   'Churn interview — Cascade', 'Battery estimates were wrong on cold mornings.', '["battery"]', null);
+
+-- The locator's parts.
+select pg_temp.must_hold(
+  ouroboros.history_index_slug('GitHub · acme-robotics') = 'github-acme-robotics'
+  and ouroboros.history_index_slug('  Support  ') = 'support'
+  and ouroboros.history_index_slug('日本') = 'source'
+  and length(ouroboros.history_index_slug(repeat('a', 200))) = 64
+  and ouroboros.history_index_key('PROJ-142') = 'PROJ-142'
+  and ouroboros.history_index_key('a/b c') = 'a_b_c',
+  'a source name slugs to a locator''s first segment, and a tracker id to a later one');
+
+-- One corpus, one shape, one locator rule — each a locator the citation ledger accepts.
+select pg_temp.must_hold(
+  (select array_agg(e.kind || ' ' || e.locator || ' ' || e.set_key order by e.kind, e.locator)
+          = array['document issue-index://support/churn-2026-q2/acct-01 support/churn-2026-q2',
+                  'document issue-index://support/churn-2026-q2/acct-02 support/churn-2026-q2',
+                  'document_set issue-index://support/churn-2026-q2 support/churn-2026-q2',
+                  'pr issue-index://github-acme-robotics/pull/512 github-acme-robotics',
+                  'ticket issue-index://github-acme-robotics/498 github-acme-robotics',
+                  'ticket issue-index://jira-proj/10142 jira-proj']
+     from ouroboros.history_index_entries e where e.organization_id = 'org-v119'),
+  'the index holds a workspace''s tickets, PRs, imported sets and documents, each at its locator');
+select pg_temp.must_hold(
+  (select bool_and(ouroboros.source_locator_valid('ticket', e.locator)) and count(*) = 7
+     from ouroboros.history_index_entries e where e.organization_id in ('org-v119', 'org-v119b')),
+  'every index locator is one the citation ledger accepts for a ticket source — an odd tracker id included');
+
+-- Tracker-agnostic: the same ticket from two trackers differs only in where it is.
+select pg_temp.must_hold(
+  (select count(distinct (e.kind, e.title, e.body, e.state, e.labels, e.document::text)) = 1 and count(*) = 2
+     from ouroboros.history_index_entries e where e.organization_id = 'org-v119' and e.kind = 'ticket'),
+  'a Jira-fed ticket and a GitHub-fed one are the same index row but for their locator');
+select pg_temp.must_hold(
+  not exists (select 1 from information_schema.columns c
+               where c.table_schema = 'ouroboros' and c.table_name = 'history_index_entries'
+                 and c.column_name in ('source_kind', 'tracker', 'provider', 'source_id'))
+  and position('s.kind' in pg_get_viewdef('ouroboros.history_index_entries'::regclass)) = 0,
+  'the index has no column for which tracker fed a ticket, and never reads ticket_sources.kind');
+
+-- A repository is whatever the provider's meta names; a PR's is in its URL; else none.
+select pg_temp.must_hold(
+  (select array_agg(e.locator || '=' || coalesce(e.repo, '-') order by e.locator)
+          = array['issue-index://github-acme-robotics/498=helios-firmware',
+                  'issue-index://github-acme-robotics/pull/512=helios-firmware',
+                  'issue-index://jira-proj/10142=-']
+     from ouroboros.history_index_entries e
+    where e.organization_id = 'org-v119' and e.kind in ('ticket', 'pr')),
+  'repo is read from a provider''s meta or a PR''s URL, and is null where there is none');
+
+-- Full text: stemmed, title above body, every kind searchable.
+select pg_temp.must_hold(
+  (select count(*) = 5
+     from ouroboros.history_index_entries e
+    where e.organization_id = 'org-v119' and e.document @@ plainto_tsquery('english', 'docking')),
+  'a search for docking finds the tickets, the PR, the set and the interview — stems and all');
+select pg_temp.must_hold(
+  (select ts_rank_cd(ouroboros.history_index_document('docking abort', null), q)
+          > ts_rank_cd(ouroboros.history_index_document('unrelated', 'docking abort'), q)
+     from plainto_tsquery('english', 'docking abort') q),
+  'a title match outranks a body match');
+select pg_temp.must_hold(
+  ouroboros.history_index_document(null, null) = ''::tsvector
+  and ouroboros.history_index_document('t', repeat('word ', 300000)) is not null,
+  'the full-text document takes a missing title or body, and a body of any size');
+-- The densest body a ticket may hold — 262 144 characters of distinct four-byte words — still
+-- indexes: the vector stays well inside PostgreSQL's 1 MiB bound, so no insert can fail on it.
+select pg_temp.must_hold(
+  (select length(body) >= 262144
+          and pg_column_size(ouroboros.history_index_document('t', body)) < 600000
+     from (select string_agg(chr(131072 + i % 40000) || chr(131072 + (i / 3) % 40000)
+                             || chr(131072 + (i / 7) % 40000), ' ') as body
+             from generate_series(1, 70000) i) dense),
+  'the densest ticket body the store accepts stays inside the full-text bound');
+
+-- A set's document count is its rows'.
+select pg_temp.must_hold(
+  (select e.meta = '{"format": "csv", "documents": 2}'::jsonb and e.author is null
+     from ouroboros.history_index_entries e
+    where e.organization_id = 'org-v119' and e.kind = 'document_set'),
+  'an imported set says how many documents it holds, and names no one');
+
+-- An undated document is dated by its import.
+select pg_temp.must_hold(
+  (select bool_and(e.occurred_at is not null)
+          and count(*) filter (where e.occurred_at = '2026-04-08'::timestamptz) = 1
+     from ouroboros.history_index_entries e
+    where e.organization_id = 'org-v119' and e.kind = 'document'),
+  'a document carries its own date, or its import''s');
+
+-- The app reads the corpus and writes imports — and nothing else here.
+set local role ouroboros_app;
+select pg_temp.must_hold(
+  (select count(*) = 6 from ouroboros.history_index_entries where organization_id = 'org-v119'),
+  'the app role reads the index');
+reset role;
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.document_imports', 'insert')
+  and has_table_privilege('ouroboros_app', 'ouroboros.document_import_items', 'delete')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.document_imports', 'update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.document_import_items', 'update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.history_index_entries', 'insert'),
+  'the app role imports and removes sets, and edits neither a set nor the index');
+
+-- What an import may be.
+select pg_temp.must_reject(
+  $$insert into ouroboros.document_imports (organization_id, collection, name, title, format, content_hash)
+    values ('org-v119', 'support', 'churn-2026-q2', 'Again', 'csv', 'sha256:' || repeat('b', 64))$$,
+  'a workspace has one set at a locator', 'document_imports_locator_key');
+insert into ouroboros.document_imports (organization_id, collection, name, title, format, content_hash)
+values ('org-v119b', 'support', 'churn-2026-q2', 'Theirs', 'markdown', 'sha256:' || repeat('b', 64));
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.document_imports where collection = 'support' and name = 'churn-2026-q2')
+  and (select count(*) = 6 from ouroboros.history_index_entries where organization_id = 'org-v119'),
+  'another workspace may use the same locator, and it is not in this one''s index');
+select pg_temp.must_reject(
+  $$insert into ouroboros.document_imports (organization_id, collection, name, title, format, content_hash)
+    values ('org-v119', 'Support', 'x', 'T', 'csv', 'sha256:' || repeat('b', 64))$$,
+  'a collection is a lower-case locator segment', 'document_imports_collection_format');
+select pg_temp.must_reject(
+  $$insert into ouroboros.document_imports (organization_id, collection, name, title, format, content_hash)
+    values ('org-v119', 'support', '../up', 'T', 'csv', 'sha256:' || repeat('b', 64))$$,
+  'a set name is one locator segment', 'document_imports_name_format');
+select pg_temp.must_reject(
+  $$insert into ouroboros.document_imports (organization_id, collection, name, title, format, content_hash)
+    values ('org-v119', 'support', 'x', '  ', 'csv', 'sha256:' || repeat('b', 64))$$,
+  'a set has a title', 'document_imports_title_present');
+select pg_temp.must_reject(
+  $$insert into ouroboros.document_imports (organization_id, collection, name, title, format, content_hash)
+    values ('org-v119', 'support', 'x', 'T', 'pdf', 'sha256:' || repeat('b', 64))$$,
+  'a set is a CSV or a Markdown file', 'document_imports_format');
+select pg_temp.must_reject(
+  $$insert into ouroboros.document_imports (organization_id, collection, name, title, format, content_hash)
+    values ('org-v119', 'support', 'x', 'T', 'csv', 'md5:abc')$$,
+  'a set records the sha256 of its file', 'document_imports_content_hash');
+select pg_temp.must_reject(
+  $$insert into ouroboros.document_import_items (import_id, organization_id, position, item_key, title, body)
+    values ('a1190004-0000-4000-8000-000000000001', 'org-v119b', 3, 'acct-03', 'T', 'text')$$,
+  'a document sits in its own workspace''s set', 'document_import_items_import_fk');
+select pg_temp.must_reject(
+  $$insert into ouroboros.document_import_items (import_id, organization_id, position, item_key, title, body)
+    values ('a1190004-0000-4000-8000-000000000001', 'org-v119', 3, 'acct-01', 'T', 'text')$$,
+  'a set''s document keys are distinct', 'document_import_items_key_key');
+select pg_temp.must_reject(
+  $$insert into ouroboros.document_import_items (import_id, organization_id, position, item_key, title, body)
+    values ('a1190004-0000-4000-8000-000000000001', 'org-v119', 2, 'acct-03', 'T', 'text')$$,
+  'a set''s documents are in one order', 'document_import_items_position_key');
+select pg_temp.must_reject(
+  $$insert into ouroboros.document_import_items (import_id, organization_id, position, item_key, title, body)
+    values ('a1190004-0000-4000-8000-000000000001', 'org-v119', 2001, 'acct-03', 'T', 'text')$$,
+  'a set holds at most 2 000 documents', 'document_import_items_position');
+select pg_temp.must_reject(
+  $$insert into ouroboros.document_import_items (import_id, organization_id, position, item_key, title, body)
+    values ('a1190004-0000-4000-8000-000000000001', 'org-v119', 3, 'has space', 'T', 'text')$$,
+  'a document key is a locator segment', 'document_import_items_key_format');
+select pg_temp.must_reject(
+  $$insert into ouroboros.document_import_items (import_id, organization_id, position, item_key, title, body)
+    values ('a1190004-0000-4000-8000-000000000001', 'org-v119', 3, 'acct-03', 'T', '   ')$$,
+  'a document has text', 'document_import_items_body_bounded');
+select pg_temp.must_reject(
+  $$insert into ouroboros.document_import_items (import_id, organization_id, position, item_key, title, body)
+    values ('a1190004-0000-4000-8000-000000000001', 'org-v119', 3, 'acct-03', 'T', repeat('x', 65537))$$,
+  'a document is at most 64 KiB', 'document_import_items_body_bounded');
+select pg_temp.must_reject(
+  $$insert into ouroboros.document_import_items (import_id, organization_id, position, item_key, title, body, labels)
+    values ('a1190004-0000-4000-8000-000000000001', 'org-v119', 3, 'acct-03', 'T', 'text', '[1]')$$,
+  'a document''s labels are names', 'document_import_items_labels');
+select pg_temp.must_reject(
+  $$insert into ouroboros.document_import_items (import_id, organization_id, position, item_key, title, body, meta)
+    values ('a1190004-0000-4000-8000-000000000001', 'org-v119', 3, 'acct-03', 'T', 'text', '[]')$$,
+  'a document''s meta is an object', 'document_import_items_meta_shape');
+
+-- What was cited is never edited.
+select pg_temp.must_reject(
+  $$update ouroboros.document_import_items set body = 'rewritten'
+     where id = 'a1190005-0000-4000-8000-000000000001'$$,
+  'an imported document is never edited', 'document_import_items_immutable');
+select pg_temp.must_reject(
+  $$update ouroboros.document_imports set title = 'Renamed'
+     where id = 'a1190004-0000-4000-8000-000000000001'$$,
+  'an imported set is never edited', 'document_imports_immutable');
+
+-- The full-text indexes are the ones a search uses.
+select pg_temp.must_hold(
+  (select count(*) = 3 from pg_indexes
+    where schemaname = 'ouroboros'
+      and indexname in ('tickets_history_index_idx', 'pull_requests_history_index_idx',
+                        'document_import_items_history_index_idx')
+      and indexdef like '%USING gin%'),
+  'tickets, pull requests and imported documents each carry the full-text GIN index');
+
+-- Removing a set removes its documents; removing a workspace removes its sets.
+delete from ouroboros.document_imports where id = 'a1190004-0000-4000-8000-000000000001';
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.document_import_items
+               where import_id = 'a1190004-0000-4000-8000-000000000001')
+  and (select count(*) = 3 from ouroboros.history_index_entries where organization_id = 'org-v119'),
+  'a removed set takes its documents out of the index');
+delete from ouroboros.organization where "id" in ('org-v119', 'org-v119b');
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.document_imports where organization_id in ('org-v119', 'org-v119b'))
+  and not exists (select 1 from ouroboros.history_index_entries where organization_id in ('org-v119', 'org-v119b')),
+  'a deleted workspace takes its imported sets and its index with it');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --
