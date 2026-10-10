@@ -96,6 +96,13 @@ import {
   engineCodeRoute,
 } from "./engine.code.contract";
 import { engineUnavailable } from "./engine.errors";
+import {
+  ENGINE_INVESTIGATE_ROUTE,
+  type EngineInvestigateRequest,
+  type EngineInvestigationAccepted,
+  investigateRequestBody,
+  investigationAcceptedSchema,
+} from "./engine.investigate";
 
 /**
  * How long any single call to the engine may take, in milliseconds.
@@ -540,6 +547,27 @@ export class EngineClient {
       throw engineUnavailable();
     }
     return { ok: true, data: parsed.data };
+  }
+
+  /**
+   * Submit an investigation to the engine's loop (CM.1,
+   * [#620](https://github.com/NobuData/ouroboros/issues/620)).
+   *
+   * The engine answers `202` and works in the background, reporting through the internal
+   * research surface. A process that already holds the investigation answers
+   * `already_running`, so submitting twice starts nothing twice.
+   *
+   * @param request - What to investigate, under which playbook and budget.
+   * @returns The engine task that took it.
+   * @throws {UpstreamError} `engine_unavailable` — the engine is unreachable, every worker is
+   *   busy (`503`), or it refused the playbook. The investigation is left as it was.
+   */
+  async investigate(request: EngineInvestigateRequest): Promise<EngineInvestigationAccepted> {
+    return this.call(ENGINE_INVESTIGATE_ROUTE, investigationAcceptedSchema, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(investigateRequestBody(request)),
+    });
   }
 
   /**

@@ -39,6 +39,7 @@ import { ProviderConnectionsModule } from "../provider-connections/provider-conn
 import { ProvidersModule } from "../providers/providers.module";
 import { RegistryReadModule } from "../registry-read/registry-read.module";
 import { RegistryModule } from "../registry/registry.module";
+import { InvestigationLoopModule } from "../research/loop/investigation-loop.module";
 import { ResearchModule } from "../research/research.module";
 import { ResearchToolsModule } from "../research/tools/research-tools.module";
 import { RoutingModule } from "../routing/routing.module";
@@ -350,6 +351,10 @@ export class AppModule {
         // and the engine's one way to a tool, `POST /internal/research/tools/:slug/:op`. Outside
         // `/api`, behind the internal key, so its position carries no routing rule.
         ResearchToolsModule,
+        // CM.1 ([#620](https://github.com/NobuData/ouroboros/issues/620)) — the investigation
+        // loop's control-plane half: `/internal/research/investigations/:id/*`, the dispatcher
+        // and the resume pass. After the two research modules it reads from; outside `/api`.
+        InvestigationLoopModule,
         // K.3 ([#101](https://github.com/NobuData/ouroboros/issues/101)) — the GitHub token
         // and the API client. After `VaultModule`, which seals the token, and after
         // `AuditModule`, which records who set it; its own `/settings/github-token` path

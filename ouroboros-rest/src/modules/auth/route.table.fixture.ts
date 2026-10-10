@@ -55,6 +55,10 @@ import {
   INTERNAL_RUN_CONTROLS_FETCH_PATH,
   INTERNAL_RUN_CONTROL_ACK_PATH,
   INTERNAL_RUN_STAGE_TRANSITIONS_PATH,
+  INTERNAL_INVESTIGATION_BRIEF_PATH,
+  INTERNAL_INVESTIGATION_CHECKPOINT_PATH,
+  INTERNAL_INVESTIGATION_FINISH_PATH,
+  INTERNAL_INVESTIGATION_START_PATH,
   INTERNAL_RESEARCH_TOOL_PATH,
   isInternalPath,
 } from "../internal/internal.paths";
@@ -174,6 +178,13 @@ export const INTERNAL_SURFACE: readonly string[] = [
   // engine's investigation loop makes. A stranger who could reach it could spend a workspace's
   // tool credentials and write into its citation ledger.
   `POST ${INTERNAL_RESEARCH_TOOL_PATH}`,
+  // The investigation loop's control-plane half (CM.1, #620): claim a run, checkpoint it,
+  // deliver its brief, end it. A stranger who could reach these could write a brief into any
+  // workspace, or fail an investigation somebody is paying for.
+  `POST ${INTERNAL_INVESTIGATION_START_PATH}`,
+  `PUT ${INTERNAL_INVESTIGATION_CHECKPOINT_PATH}`,
+  `POST ${INTERNAL_INVESTIGATION_BRIEF_PATH}`,
+  `POST ${INTERNAL_INVESTIGATION_FINISH_PATH}`,
 ].sort();
 
 /** One route, as the enumeration sees it. */

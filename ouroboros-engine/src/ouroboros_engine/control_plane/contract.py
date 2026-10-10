@@ -67,6 +67,30 @@ RUN_CONTROL_ACK_PATH = "/internal/runs/{id}/controls/{control_id}/ack"
 #: ``{op}`` one of ``search``, ``fetch``, ``query``. The investigation loop (#620) calls it.
 RESEARCH_TOOL_PATH = "/internal/research/tools/{slug}/{op}"
 
+#: The investigation loop's four writes (CM.1,
+#: `#620 <https://github.com/NobuData/ouroboros/issues/620>`_); ``{id}`` is the investigation.
+#: ``POST`` — claim the run, or resume it, and read back the checkpoint and the ledger.
+RESEARCH_INVESTIGATION_START_PATH = "/internal/research/investigations/{id}/start"
+
+#: ``PUT`` — save the loop's state after a step; the answer carries a pending cancel.
+RESEARCH_INVESTIGATION_CHECKPOINT_PATH = (
+    "/internal/research/investigations/{id}/checkpoint"
+)
+
+#: ``POST`` — deliver the brief, its claims and the playbook's deliverable inputs.
+RESEARCH_INVESTIGATION_BRIEF_PATH = "/internal/research/investigations/{id}/brief"
+
+#: ``POST`` — end as ``failed`` or ``cancelled``, keeping what was gathered.
+RESEARCH_INVESTIGATION_FINISH_PATH = "/internal/research/investigations/{id}/finish"
+
+#: Every investigation-loop path, for the suite that holds this module to the document.
+RESEARCH_INVESTIGATION_PATHS = (
+    RESEARCH_INVESTIGATION_START_PATH,
+    RESEARCH_INVESTIGATION_CHECKPOINT_PATH,
+    RESEARCH_INVESTIGATION_BRIEF_PATH,
+    RESEARCH_INVESTIGATION_FINISH_PATH,
+)
+
 #: The four controls a person can send a run, and what an executor must do with each:
 #:
 #: ``pause``

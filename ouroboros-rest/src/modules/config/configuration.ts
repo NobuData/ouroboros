@@ -551,6 +551,18 @@ export const MIN_RESEARCH_BISECT_TICK_MS = 10_000;
 export const MAX_RESEARCH_BISECT_TICK_MS = 3_600_000;
 
 /**
+ * How often running investigations are checked for one to resume, by default — every minute
+ * (#620).
+ */
+export const DEFAULT_RESEARCH_INVESTIGATION_TICK_MS = 60_000;
+
+/** The shortest investigation resume tick an operator may set — ten seconds; `0` turns it off. */
+export const MIN_RESEARCH_INVESTIGATION_TICK_MS = 10_000;
+
+/** The longest investigation resume tick an operator may set — an hour. */
+export const MAX_RESEARCH_INVESTIGATION_TICK_MS = 3_600_000;
+
+/**
  * How many days without a tracker update make an open ticket *stale* on the Backlog Health card,
  * when `OURO_BACKLOG_STALE_DAYS` is not set — thirty, mockup 09's `Stale > 30d`.
  *
@@ -1147,6 +1159,12 @@ export interface Configuration {
    */
   readonly researchBisectTickMs: number;
   /**
+   * How often running investigations whose checkpoint stopped moving are submitted to the
+   * engine again, in milliseconds; `0` when the resume pass is off. From
+   * `OURO_RESEARCH_INVESTIGATION_TICK_MS` (#620).
+   */
+  readonly researchInvestigationTickMs: number;
+  /**
    * Days without a tracker update after which an open ticket counts as stale on the Backlog Health
    * card. From `OURO_BACKLOG_STALE_DAYS`, {@link DEFAULT_BACKLOG_STALE_DAYS} when unset.
    */
@@ -1354,6 +1372,7 @@ export const VARIABLES = {
   researchWatchBatch: "OURO_RESEARCH_WATCH_BATCH",
   researchCodeTimeoutMs: "OURO_RESEARCH_CODE_TIMEOUT_MS",
   researchBisectTickMs: "OURO_RESEARCH_BISECT_TICK_MS",
+  researchInvestigationTickMs: "OURO_RESEARCH_INVESTIGATION_TICK_MS",
   backlogStaleDays: "OURO_BACKLOG_STALE_DAYS",
   reestimationHourUtc: "OURO_REESTIMATION_HOUR_UTC",
   reestimationJitterMinutes: "OURO_REESTIMATION_JITTER_MINUTES",
@@ -2040,6 +2059,15 @@ const environmentShape = z.object({
     (value) => value === 0 || value >= MIN_RESEARCH_BISECT_TICK_MS,
     `expected 0 (off) or between ${MIN_RESEARCH_BISECT_TICK_MS} and ${MAX_RESEARCH_BISECT_TICK_MS} milliseconds`,
   ),
+  OURO_RESEARCH_INVESTIGATION_TICK_MS: boundedWhole(
+    0,
+    DEFAULT_RESEARCH_INVESTIGATION_TICK_MS,
+    MAX_RESEARCH_INVESTIGATION_TICK_MS,
+    "milliseconds",
+  ).refine(
+    (value) => value === 0 || value >= MIN_RESEARCH_INVESTIGATION_TICK_MS,
+    `expected 0 (off) or between ${MIN_RESEARCH_INVESTIGATION_TICK_MS} and ${MAX_RESEARCH_INVESTIGATION_TICK_MS} milliseconds`,
+  ),
   OURO_RESEARCH_FETCH_INTERNAL_ALLOWLIST: z
     .string()
     .default("")
@@ -2415,6 +2443,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     researchWatchBatch: values.OURO_RESEARCH_WATCH_BATCH,
     researchCodeTimeoutMs: values.OURO_RESEARCH_CODE_TIMEOUT_MS,
     researchBisectTickMs: values.OURO_RESEARCH_BISECT_TICK_MS,
+    researchInvestigationTickMs: values.OURO_RESEARCH_INVESTIGATION_TICK_MS,
     backlogStaleDays: values.OURO_BACKLOG_STALE_DAYS,
     reestimationHourUtc: values.OURO_REESTIMATION_HOUR_UTC,
     reestimationJitterMinutes: values.OURO_REESTIMATION_JITTER_MINUTES,

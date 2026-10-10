@@ -379,6 +379,19 @@ investigation.
 | **not configured** | Nothing is indexed yet. Connect a ticket source or import a document set. |
 | **down** | The index cannot be read |
 
+## Investigations after a restart
+
+An investigation runs in the engine, but nothing about it is kept there. Its sources, its
+progress and its model usage are saved in the database as it goes, after every step.
+
+Every <EnvVar name="OURO_RESEARCH_INVESTIGATION_TICK_MS" />, each REST replica looks for a running
+investigation that has saved nothing for ten minutes and hands it to the engine again. An engine
+that is still working on it does nothing. An engine that was restarted continues from the last
+saved step, so sources already read are not read or paid for again.
+
+An investigation is handed back at most twice. If it still has not finished, it ends as
+**failed** and keeps everything it gathered.
+
 ## Variables
 
 All but the clone variables are set on the REST service. Each has a working default.
@@ -395,6 +408,7 @@ All but the clone variables are set on the REST service. Each has a working defa
 | <EnvVar name="OURO_RESEARCH_WATCH_BATCH" /> | `10` | How many due watches one tick checks, from 1 to 100. |
 | <EnvVar name="OURO_RESEARCH_CODE_TIMEOUT_MS" /> | `120000` | How long one code & git mining question may wait for the engine, from 5 seconds to 15 minutes. |
 | <EnvVar name="OURO_RESEARCH_BISECT_TICK_MS" /> | `60000` | How often running bisects are checked and resumed, from 10 seconds to an hour. `0` turns the check off on that replica. |
+| <EnvVar name="OURO_RESEARCH_INVESTIGATION_TICK_MS" /> | `60000` | How often running investigations are checked for one to resume, from 10 seconds to an hour. `0` turns the check off on that replica. |
 
 The engine reads the clone variables:
 

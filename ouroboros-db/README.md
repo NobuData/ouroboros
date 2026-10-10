@@ -1666,6 +1666,28 @@
 > never reads `ticket_sources.kind`** — which tracker fed a ticket is invisible to research
 > (decision V2). `ouroboros_app` may select it.
 >
+> `V120` ([#620](https://github.com/NobuData/ouroboros/issues/620), CM.1) is the investigation
+> loop's durable state — what outlives the engine process running it. `investigation_loops`
+> holds one row per investigation the loop has started: `loop_version` (`loop-v1`, fixed once
+> written), the `attempt` (1, then one more per restart), the **`checkpoint`** the engine wrote
+> after its last step (an object ≤ 2 MiB) with `checkpoint_seq` and `checkpointed_at`,
+> `duration_ms` across attempts, a cancel request (`cancel_requested_at` / `_by`), and — on a
+> failed investigation only (`investigation_loops_failure_when_failed`) — `failure_reason`
+> `tool_exhaustion | budget_breach | synthesis_failure | engine_error` with its `failure_detail`.
+> Attempt, sequence and duration only move forward (`investigation_loops_checkpoint_forward`), so
+> a worker that was replaced cannot overwrite its successor. `investigation_usage` holds one row
+> per model call, as the invocation gateway reported it — `seq` (the loop's own number, so a
+> re-sent write records a call once), `stage` `plan | select | digest | synthesize`, `alias`,
+> `hop`, `connection`, `model`, tokens and `cost_cents` (`numeric`, null when unpriced) — and
+> `investigation_spend_cents(investigation)` is the one definition `actuals.spend_cents` is
+> written from: `0` with no calls, null when none is priced, otherwise the priced total rounded
+> up. `investigation_deliverable_inputs` holds what a playbook produced besides the brief —
+> `matrix`, `roadmap_doc` or `fix_draft`, an object ≤ 512 KiB, one per brief and deliverable, of
+> the brief's own investigation. `brief_claims.demoted` records that an open question was offered
+> as a finding and cited nothing (`brief_claims_demoted_is_open_question`). Usage and deliverable
+> inputs are never updated; all three tables cascade with the investigation. `ouroboros_app` may
+> select and insert all three and update `investigation_loops`.
+>
 > [#558](https://github.com/NobuData/ouroboros/issues/558) seeds mockup 20 from those rows:
 > [`R__dev_seed_workspace_copilot.sql`](migrations/R__dev_seed_workspace_copilot.sql) — see
 > [What the copilot drafted, and what its dry run said](#what-the-copilot-drafted-and-what-its-dry-run-said).
@@ -3516,6 +3538,7 @@ ouroboros-db/
 │   ├── V117__competitor_watch_checks.sql # competitor_watches schedule (next/last check, outcome, note), competitor_snapshot_contents (scoped text under the snapshot's hash) — #616
 │   ├── V118__code_bisects.sql        # code_bisects (candidate line + lo..hi checkpoint, ≤ ⌊log₂ n⌋+1 steps), code_bisect_steps (one farm job each), bisect:// code locators — #617
 │   ├── V119__history_index.sql       # document_imports + document_import_items (imported sets), history_index_document() + GIN indexes, history_index_entries view (tickets ∪ PRs ∪ imports, tracker-agnostic) — #618
+│   ├── V120__investigation_loop.sql  # investigation_loops (attempt, checkpoint ≤ 2 MiB, cancel request, failure reason), investigation_usage + investigation_spend_cents(), investigation_deliverable_inputs, brief_claims.demoted — #620
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -3788,6 +3811,9 @@ outside this module alters it.
 | `document_imports` | `V119` | One imported document set ([#618](https://github.com/NobuData/ouroboros/issues/618), CL.5) — `organization_id`, `collection`, `name`, `title`, `description`, `format`, `content_hash`, `imported_by`, `created_at` | `(organization_id, collection, name)` unique — the set's `issue-index://` locator; `collection` and `name` are locator segments; `format` is `csv` or `markdown`; never updated (`document_imports_immutable`); cascades with the workspace |
 | `document_import_items` | `V119` | One document of an imported set ([#618](https://github.com/NobuData/ouroboros/issues/618)) — `import_id`, `organization_id`, `position`, `item_key`, `title`, `body`, `labels`, `occurred_at`, `meta`, `created_at` | in its set's workspace (composite foreign key); `item_key` and `position` unique per set, `position` ≤ 2 000; `body` non-blank and ≤ 64 KiB; `labels` a string list; `meta` an object ≤ 8 KiB; never updated (`document_import_items_immutable`); cascades with the set |
 | `history_index_entries` | `V119` | The history index's corpus ([#618](https://github.com/NobuData/ouroboros/issues/618)) — `organization_id`, `kind`, `entry_id`, `set_key`, `locator`, `ref`, `title`, `body`, `state`, `labels`, `author`, `repo`, `url`, `occurred_at`, `changed_at`, `meta`, `document` | A view, so it enforces nothing; every locator passes `source_locator_valid('ticket', …)`, and it never reads `ticket_sources.kind` (`tests/constraints.sql` asserts both) |
+| `investigation_loops` | `V120` | The investigation loop's durable state ([#620](https://github.com/NobuData/ouroboros/issues/620), CM.1) — `investigation_id`, `loop_version`, `attempt`, `checkpoint`, `checkpoint_seq`, `checkpointed_at`, `duration_ms`, `cancel_requested_at`, `cancel_requested_by`, `failure_reason`, `failure_detail`, `started_at`, `updated_at` | one per investigation; attempt, sequence and duration only rise; checkpoint an object ≤ 2 MiB; a failure reason only on a `failed` investigation; `ouroboros_app` may select, insert and update |
+| `investigation_usage` | `V120` | One model call an investigation made ([#620](https://github.com/NobuData/ouroboros/issues/620)) — `investigation_id`, `seq`, `stage`, `alias`, `hop`, `connection`, `model`, `input_tokens`, `output_tokens`, `cost_cents`, `recorded_at` | one per investigation and `seq`; `stage` `plan \| select \| digest \| synthesize`; `cost_cents` null when unpriced; never updated; `ouroboros_app` may select and insert |
+| `investigation_deliverable_inputs` | `V120` | What a playbook produced besides the brief ([#620](https://github.com/NobuData/ouroboros/issues/620)) — `investigation_id`, `brief_id`, `deliverable`, `payload`, `created_at` | one per brief and deliverable (`matrix \| roadmap_doc \| fix_draft`); payload an object ≤ 512 KiB; the brief is the investigation's own; never updated; `ouroboros_app` may select and insert |
 | `regression_watch_settings` | `V115` | A workspace's regression thresholds ([#611](https://github.com/NobuData/ouroboros/issues/611), CK.4) — `thresholds` `{classes, metrics}` | rules of `{direction, warn_pct + err_pct, min_spread_multiple, min_samples}` over `regression_threshold_defaults()`; one row per workspace; `ouroboros_app` may select, insert and update |
 
 Two **functions**, both `V012`'s and both documented in

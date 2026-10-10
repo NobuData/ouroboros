@@ -39335,6 +39335,253 @@ select pg_temp.must_hold(
   'a deleted workspace takes its imported sets and its index with it');
 
 -- ===========================================================================
+-- V120 — the investigation loop's durable state (#620, CM.1)
+-- ===========================================================================
+--
+-- A loop row holds the attempt and the checkpoint a restarted worker resumes from, and both only
+-- move forward; a failure reason stands only on a failed investigation; model usage is recorded
+-- once per call and is what spend is computed from; a playbook's deliverable inputs hang off a
+-- brief of the same investigation; and a demoted claim is an open question.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v120', 'Loop Works', 'loop-works-v120', now());
+
+insert into ouroboros.investigations (id, organization_id, kind_id, question, depth, tools_enabled)
+select v.id::uuid, 'org-v120', k.id, v.question, 'deep_dive', '["web", "code"]'
+  from (values
+    ('a1200000-0000-4000-8000-000000000001', 'Why do rivals dock in wind and we do not?'),
+    ('a1200000-0000-4000-8000-000000000002', 'A second investigation')
+  ) as v(id, question)
+  join ouroboros.investigation_kinds k on k.organization_id = 'org-v120' and k.slug = 'gap_analysis';
+
+update ouroboros.investigations
+   set status = 'running',
+       provenance = '{"researcher": "loop-v1", "alias": "researcher-long-ctx", "resolution_ref": "r1"}'
+ where id = 'a1200000-0000-4000-8000-000000000001';
+
+-- --- the loop row -------------------------------------------------------------------------
+
+insert into ouroboros.investigation_loops (investigation_id, loop_version) values
+  ('a1200000-0000-4000-8000-000000000001', 'loop-v1');
+
+select pg_temp.must_hold(
+  (select attempt = 1 and checkpoint is null and checkpoint_seq = 0 and duration_ms = 0
+          and cancel_requested_at is null and failure_reason is null
+     from ouroboros.investigation_loops where investigation_id = 'a1200000-0000-4000-8000-000000000001'),
+  'a started loop is attempt 1 with no checkpoint, no cancel and no failure');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_loops (investigation_id, loop_version) values
+    ('a1200000-0000-4000-8000-000000000001', 'loop-v1')$$,
+  'an investigation has one loop row', 'investigation_loops_pkey');
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_loops (investigation_id, loop_version) values
+    ('a1200000-0000-4000-8000-000000000002', 'the-best-loop')$$,
+  'a loop version is loop-v<n>', 'investigation_loops_loop_version_format');
+
+update ouroboros.investigation_loops
+   set checkpoint = '{"version": "loop-v1", "phase": "iterate", "iteration": 1}',
+       checkpoint_seq = 3, checkpointed_at = now(), duration_ms = 4200
+ where investigation_id = 'a1200000-0000-4000-8000-000000000001';
+
+select pg_temp.must_reject(
+  $$update ouroboros.investigation_loops set checkpoint_seq = 2
+     where investigation_id = 'a1200000-0000-4000-8000-000000000001'$$,
+  'a checkpoint number never goes back', 'investigation_loops_checkpoint_forward');
+select pg_temp.must_reject(
+  $$update ouroboros.investigation_loops set duration_ms = 4199
+     where investigation_id = 'a1200000-0000-4000-8000-000000000001'$$,
+  'working time never goes back', 'investigation_loops_checkpoint_forward');
+
+-- A resume: the attempt rises, and never falls again.
+update ouroboros.investigation_loops set attempt = attempt + 1
+ where investigation_id = 'a1200000-0000-4000-8000-000000000001';
+select pg_temp.must_reject(
+  $$update ouroboros.investigation_loops set attempt = 1
+     where investigation_id = 'a1200000-0000-4000-8000-000000000001'$$,
+  'an attempt never goes back', 'investigation_loops_checkpoint_forward');
+select pg_temp.must_reject(
+  $$update ouroboros.investigation_loops set loop_version = 'loop-v2'
+     where investigation_id = 'a1200000-0000-4000-8000-000000000001'$$,
+  'the loop that started an investigation finishes it', 'investigation_loops_loop_version_fixed');
+
+select pg_temp.must_reject(
+  $$update ouroboros.investigation_loops set checkpoint = '["iterate"]'
+     where investigation_id = 'a1200000-0000-4000-8000-000000000001'$$,
+  'a checkpoint is an object', 'investigation_loops_checkpoint_shape');
+select pg_temp.must_reject(
+  $$update ouroboros.investigation_loops
+       set checkpoint = jsonb_build_object('notes', repeat('x', 2097152))
+     where investigation_id = 'a1200000-0000-4000-8000-000000000001'$$,
+  'a checkpoint is at most 2 MiB', 'investigation_loops_checkpoint_shape');
+select pg_temp.must_reject(
+  $$update ouroboros.investigation_loops set checkpoint = null
+     where investigation_id = 'a1200000-0000-4000-8000-000000000001'$$,
+  'a checkpoint and the time it was written go together', 'investigation_loops_checkpoint_paired');
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_loops (investigation_id, loop_version, attempt) values
+    ('a1200000-0000-4000-8000-000000000002', 'loop-v1', 0)$$,
+  'an attempt is at least 1', 'investigation_loops_attempt_positive');
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_loops (investigation_id, loop_version, cancel_requested_by) values
+    ('a1200000-0000-4000-8000-000000000002', 'loop-v1', null), ('a1200000-0000-4000-8000-000000000002', 'loop-v1', null)$$,
+  'an investigation has one loop row, however it is written', 'investigation_loops_pkey');
+
+-- --- a failure is designed, and only on a failed investigation ---------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.investigation_loops
+       set failure_reason = 'budget_breach', failure_detail = 'The ceiling was reached.'
+     where investigation_id = 'a1200000-0000-4000-8000-000000000001'$$,
+  'a running investigation has no failure reason', 'investigation_loops_failure_when_failed');
+
+update ouroboros.investigations set status = 'failed'
+ where id = 'a1200000-0000-4000-8000-000000000001';
+
+select pg_temp.must_reject(
+  $$update ouroboros.investigation_loops
+       set failure_reason = 'it_got_bored', failure_detail = 'x'
+     where investigation_id = 'a1200000-0000-4000-8000-000000000001'$$,
+  'a failure reason is one of the four', 'investigation_loops_failure_reason');
+select pg_temp.must_reject(
+  $$update ouroboros.investigation_loops set failure_reason = 'budget_breach'
+     where investigation_id = 'a1200000-0000-4000-8000-000000000001'$$,
+  'a failure reason comes with a sentence for a person', 'investigation_loops_failure_paired');
+select pg_temp.must_reject(
+  $$update ouroboros.investigation_loops
+       set failure_reason = 'budget_breach', failure_detail = repeat('x', 501)
+     where investigation_id = 'a1200000-0000-4000-8000-000000000001'$$,
+  'the sentence is bounded', 'investigation_loops_failure_detail_bounded');
+
+update ouroboros.investigation_loops
+   set failure_reason = 'budget_breach', failure_detail = 'The investigation reached its spend ceiling of 1031¢.'
+ where investigation_id = 'a1200000-0000-4000-8000-000000000001';
+select pg_temp.must_hold(
+  (select failure_reason = 'budget_breach' and checkpoint ->> 'phase' = 'iterate' and attempt = 2
+     from ouroboros.investigation_loops where investigation_id = 'a1200000-0000-4000-8000-000000000001'),
+  'a failed investigation keeps its checkpoint beside the reason it failed');
+
+-- --- usage, and the spend computed from it -------------------------------------------------
+
+select pg_temp.must_hold(
+  ouroboros.investigation_spend_cents('a1200000-0000-4000-8000-000000000001') = 0,
+  'an investigation that called no model spent nothing');
+
+insert into ouroboros.investigation_usage
+  (investigation_id, seq, stage, alias, hop, connection, model, input_tokens, output_tokens, cost_cents) values
+  ('a1200000-0000-4000-8000-000000000001', 1, 'plan', 'sizer', 0, 'conn-local', 'qwen3', 900, 120, null);
+select pg_temp.must_hold(
+  ouroboros.investigation_spend_cents('a1200000-0000-4000-8000-000000000001') is null,
+  'calls that nothing prices are unpriced — a null, never a zero');
+
+insert into ouroboros.investigation_usage
+  (investigation_id, seq, stage, alias, hop, connection, model, input_tokens, output_tokens, cost_cents) values
+  ('a1200000-0000-4000-8000-000000000001', 2, 'digest', 'researcher-long-ctx', 0, 'conn-anthropic',
+   'claude-sonnet-4-6', 20000, 1500, 8.25),
+  ('a1200000-0000-4000-8000-000000000001', 3, 'synthesize', 'researcher-long-ctx', 1, 'conn-anthropic',
+   'claude-sonnet-4-6', 120000, 8000, 48.0001);
+select pg_temp.must_hold(
+  ouroboros.investigation_spend_cents('a1200000-0000-4000-8000-000000000001') = 57,
+  'spend is the priced calls'' total, rounded up to a cent — 8.25 + 48.0001 → 57');
+select pg_temp.must_hold(
+  ouroboros.investigation_spend_cents('a1200000-0000-4000-8000-000000000002') = 0,
+  'and it is one investigation''s own');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_usage
+      (investigation_id, seq, stage, alias, hop, connection, model, input_tokens, output_tokens, cost_cents)
+    values ('a1200000-0000-4000-8000-000000000001', 2, 'digest', 'a', 0, 'c', 'm', 1, 1, 999)$$,
+  'a model call is recorded once', 'investigation_usage_pkey');
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_usage
+      (investigation_id, seq, stage, alias, hop, connection, model, input_tokens, output_tokens)
+    values ('a1200000-0000-4000-8000-000000000001', 4, 'deliver', 'a', 0, 'c', 'm', 1, 1)$$,
+  'a call is made from one of the loop''s four steps', 'investigation_usage_stage');
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_usage
+      (investigation_id, seq, stage, alias, hop, connection, model, input_tokens, output_tokens, cost_cents)
+    values ('a1200000-0000-4000-8000-000000000001', 4, 'digest', 'a', 0, 'c', 'm', 1, 1, -0.01)$$,
+  'a cost is not negative', 'investigation_usage_cost_nonnegative');
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_usage
+      (investigation_id, seq, stage, alias, hop, connection, model, input_tokens, output_tokens)
+    values ('a1200000-0000-4000-8000-000000000001', 0, 'digest', 'a', 0, 'c', 'm', 1, 1)$$,
+  'usage is numbered from 1', 'investigation_usage_seq_positive');
+select pg_temp.must_reject(
+  $$update ouroboros.investigation_usage set cost_cents = 0
+     where investigation_id = 'a1200000-0000-4000-8000-000000000001' and seq = 2$$,
+  'a usage row is never edited', 'investigation_usage_immutable');
+
+-- --- deliverable inputs, and the demotion on the record -----------------------------------
+
+insert into ouroboros.briefs (id, investigation_id, version, body) values
+  ('a1200000-0000-4000-8000-000000000201', 'a1200000-0000-4000-8000-000000000001', 1,
+   '{"paragraphs": [{"spans": [{"text": "Rivals will ship this by Q1.", "claim": "q1"}]}]}'),
+  ('a1200000-0000-4000-8000-000000000202', 'a1200000-0000-4000-8000-000000000002', 1,
+   '{"paragraphs": [{"spans": [{"text": "Another brief."}]}]}');
+
+insert into ouroboros.investigation_deliverable_inputs (investigation_id, brief_id, deliverable, payload) values
+  ('a1200000-0000-4000-8000-000000000001', 'a1200000-0000-4000-8000-000000000201', 'matrix',
+   '{"rows": [{"capability": "Docking in gusts", "cells": [{"subject": "Novum", "status": "unknown", "sources": []}]}]}');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_deliverable_inputs (investigation_id, brief_id, deliverable, payload)
+    values ('a1200000-0000-4000-8000-000000000001', 'a1200000-0000-4000-8000-000000000201', 'matrix', '{}')$$,
+  'a brief has one input per deliverable', 'investigation_deliverable_inputs_pkey');
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_deliverable_inputs (investigation_id, brief_id, deliverable, payload)
+    values ('a1200000-0000-4000-8000-000000000001', 'a1200000-0000-4000-8000-000000000201', 'brief', '{}')$$,
+  'the brief is not its own deliverable input', 'investigation_deliverable_inputs_deliverable');
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_deliverable_inputs (investigation_id, brief_id, deliverable, payload)
+    values ('a1200000-0000-4000-8000-000000000001', 'a1200000-0000-4000-8000-000000000201', 'fix_draft', '[]')$$,
+  'a deliverable input is an object', 'investigation_deliverable_inputs_payload_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_deliverable_inputs (investigation_id, brief_id, deliverable, payload)
+    values ('a1200000-0000-4000-8000-000000000001', 'a1200000-0000-4000-8000-000000000201', 'fix_draft',
+            jsonb_build_object('notes', repeat('x', 524288)))$$,
+  'and at most 512 KiB', 'investigation_deliverable_inputs_payload_shape');
+select pg_temp.must_reject(
+  $$insert into ouroboros.investigation_deliverable_inputs (investigation_id, brief_id, deliverable, payload)
+    values ('a1200000-0000-4000-8000-000000000001', 'a1200000-0000-4000-8000-000000000202', 'roadmap_doc', '{}')$$,
+  'a deliverable input hangs off a brief of its own investigation', 'investigation_deliverable_inputs_brief_fk');
+select pg_temp.must_reject(
+  $$update ouroboros.investigation_deliverable_inputs set payload = '{}'
+     where brief_id = 'a1200000-0000-4000-8000-000000000201'$$,
+  'a deliverable input is never edited', 'investigation_deliverable_inputs_immutable');
+
+insert into ouroboros.brief_claims (investigation_id, brief_id, span_ref, claim_type, text, demoted) values
+  ('a1200000-0000-4000-8000-000000000001', 'a1200000-0000-4000-8000-000000000201', 'q1',
+   'open_question', 'Rivals will ship this by Q1.', true);
+select pg_temp.must_hold(
+  (select demoted from ouroboros.brief_claims
+    where brief_id = 'a1200000-0000-4000-8000-000000000201' and span_ref = 'q1'),
+  'an uncited candidate is on the record as demoted');
+select pg_temp.must_hold(
+  (select column_default = 'false' and is_nullable = 'NO' from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'brief_claims' and column_name = 'demoted'),
+  'and a claim that does not say is not — every claim written before V120');
+select pg_temp.must_reject(
+  $$insert into ouroboros.briefs (id, investigation_id, version, body) values
+      ('a1200000-0000-4000-8000-000000000203', 'a1200000-0000-4000-8000-000000000001', 2,
+       '{"paragraphs": [{"spans": [{"text": "A finding.", "claim": "c1"}]}]}');
+    insert into ouroboros.brief_claims (investigation_id, brief_id, span_ref, claim_type, text, demoted) values
+      ('a1200000-0000-4000-8000-000000000001', 'a1200000-0000-4000-8000-000000000203', 'c1',
+       'finding', 'A finding.', true)$$,
+  'a finding is never demoted — only an open question is', 'brief_claims_demoted_is_open_question');
+
+-- --- the workspace owns all of it ---------------------------------------------------------
+
+delete from ouroboros.organization where "id" = 'org-v120';
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.investigation_loops
+               where investigation_id = 'a1200000-0000-4000-8000-000000000001')
+  and not exists (select 1 from ouroboros.investigation_usage
+                   where investigation_id = 'a1200000-0000-4000-8000-000000000001')
+  and not exists (select 1 from ouroboros.investigation_deliverable_inputs
+                   where investigation_id = 'a1200000-0000-4000-8000-000000000001'),
+  'a deleted workspace takes its investigations'' loop state, usage and deliverable inputs with it');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

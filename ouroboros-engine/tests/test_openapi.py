@@ -62,6 +62,8 @@ from ouroboros_engine.estimation.contract import (
     Trace,
 )
 from ouroboros_engine.estimation.heuristic import HeuristicEstimator
+from ouroboros_engine.investigation import contract as investigation_contract
+from ouroboros_engine.investigation.runner import InvestigationRunner
 from ouroboros_engine.learning.contract import (
     LearnCandidate,
     LearnContext,
@@ -102,6 +104,12 @@ _MODULE_ROOT = Path(__file__).resolve().parent.parent
 #: failure is answered in. A model added without a schema beside it fails the
 #: exhaustiveness check below rather than being described by nothing.
 _DOCUMENTED_MODELS: dict[str, type[BaseModel]] = {
+    "InvestigateRequest": investigation_contract.InvestigateRequest,
+    "InvestigationKind": investigation_contract.InvestigationKind,
+    "InvestigationPlaybook": investigation_contract.InvestigationPlaybook,
+    "InvestigationTool": investigation_contract.InvestigationTool,
+    "InvestigationBudget": investigation_contract.InvestigationBudget,
+    "InvestigationAccepted": investigation_contract.InvestigationAccepted,
     "Liveness": Liveness,
     "ServiceIdentity": ServiceIdentity,
     "ServiceStatus": ServiceStatus,
@@ -427,6 +435,18 @@ class _FixtureRemotes(CloneStore):
         return get_transport_and_path(str(self._fixture), quiet=True)
 
 
+class _IdleLoop:
+    """An investigation loop that does nothing — the documented submit only needs a 202."""
+
+    def run(self, _request: BaseModel) -> str:
+        """End immediately.
+
+        Returns:
+            ``refused`` — nothing was started.
+        """
+        return "refused"
+
+
 @pytest.fixture
 def fixture_remotes(client: TestClient, tmp_path: Path) -> TestClient:
     """The authenticated client, its code routes reading the seeded fixture."""
@@ -434,6 +454,9 @@ def fixture_remotes(client: TestClient, tmp_path: Path) -> TestClient:
     client.app.state.code_clones = _FixtureRemotes(  # type: ignore[attr-defined]
         tmp_path / "clones", seeded.path
     )
+    # `POST /v0/investigate` starts background work; here it starts a loop that ends at once
+    # rather than one that would go looking for a control plane.
+    client.app.state.investigations = InvestigationRunner(_IdleLoop())  # type: ignore[attr-defined]
     return client
 
 
@@ -447,7 +470,11 @@ def test_each_documented_operation_is_reachable(
     for (path, method), operation in _operations(document).items():
         response = client.request(method, path, json=_documented_request(operation))
 
-        assert response.status_code == 200, f"{method} {path} answered {response}"
+        # The documented success status: `200` everywhere but an operation that accepts
+        # background work, which documents — and answers — `202`.
+        expected = min(int(status) for status in operation["responses"])
+        assert expected in (200, 202), f"{method} {path} documents no success"
+        assert response.status_code == expected, f"{method} {path} answered {response}"
 
 
 # ---------------------------------------------------------------------------
