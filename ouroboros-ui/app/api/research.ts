@@ -27,7 +27,7 @@ import "server-only";
  */
 
 import { type ApiClient, unwrap } from "@/app/api/client";
-import type { components } from "@/app/api/schema";
+import type { components, paths } from "@/app/api/schema";
 import { api } from "@/app/api/server";
 
 /** One investigation kind — `openapi.yaml` § `InvestigationKind`. */
@@ -74,6 +74,53 @@ export type StartedInvestigation = components["schemas"]["StartedInvestigation"]
 
 /** What a cancel answers. */
 export type CancelledInvestigation = components["schemas"]["CancelledInvestigation"];
+
+/** A page of investigations under the card's two counts. */
+export type InvestigationList = components["schemas"]["InvestigationList"];
+
+/** The list's filters and page. */
+export type InvestigationListQuery = NonNullable<
+  paths["/api/v1/research/investigations"]["get"]["parameters"]["query"]
+>;
+
+/** A brief: its paragraphs and cites, the sources panel, the matrix and the proposals (#621). */
+export type InvestigationBrief = components["schemas"]["InvestigationBrief"];
+
+/** One paragraph of a brief. */
+export type BriefParagraph = components["schemas"]["BriefParagraph"];
+
+/** One span of a paragraph — a claim, or connective prose. */
+export type BriefSpan = components["schemas"]["BriefSpan"];
+
+/** A marker after a claim — `[07]`. */
+export type BriefCite = components["schemas"]["BriefCite"];
+
+/** A source, as the panel lists it. */
+export type BriefSource = components["schemas"]["BriefSource"];
+
+/** A source with what was archived of it, as the full ledger lists it. */
+export type BriefLedgerSource = components["schemas"]["BriefLedgerSource"];
+
+/** An investigation's whole ledger. */
+export type BriefLedger = components["schemas"]["BriefLedger"];
+
+/** A gap analysis's matrix. */
+export type CapabilityMatrix = components["schemas"]["CapabilityMatrix"];
+
+/** One row of a matrix. */
+export type MatrixRow = components["schemas"]["MatrixRow"];
+
+/** One cell of a matrix. */
+export type MatrixCell = components["schemas"]["MatrixCell"];
+
+/** The epic and tickets a brief proposes from its gaps. */
+export type GapProposals = components["schemas"]["GapProposals"];
+
+/** What **Draft epic from gaps →** sends. */
+export type DraftEpicRequest = components["schemas"]["ResearchDraftEpicRequest"];
+
+/** What it answers: the epic, the batch and where to review it. */
+export type DraftEpic = components["schemas"]["ResearchDraftEpic"];
 
 /** The research calls. Each takes the client to use, defaulting to the request's own. */
 export const research = {
@@ -161,6 +208,71 @@ export const research = {
     return unwrap(
       await client.POST("/api/v1/research/investigations/{investigationId}/cancel", {
         params: { path: { investigationId } },
+      }),
+    );
+  },
+
+  /**
+   * The investigations list — the card, History and the library.
+   *
+   * @param query Filters and the page; every filter given must hold.
+   * @param client The client to call through.
+   * @returns One page of rows, newest first, under the two counts.
+   */
+  async investigations(
+    query: InvestigationListQuery = {},
+    client: ApiClient = api(),
+  ): Promise<InvestigationList> {
+    return unwrap(await client.GET("/api/v1/research/investigations", { params: { query } }));
+  },
+
+  /**
+   * An investigation's brief.
+   *
+   * @param investigationId The investigation.
+   * @param client The client to call through.
+   * @returns The brief — `404 brief_not_found` until the investigation has delivered one.
+   */
+  async brief(investigationId: string, client: ApiClient = api()): Promise<InvestigationBrief> {
+    return unwrap(
+      await client.GET("/api/v1/research/investigations/{investigationId}/brief", {
+        params: { path: { investigationId } },
+      }),
+    );
+  },
+
+  /**
+   * An investigation's whole ledger — every record read, with its excerpt and retrieval time.
+   *
+   * @param investigationId The investigation.
+   * @param client The client to call through.
+   * @returns The ledger, in cite-number order.
+   */
+  async sources(investigationId: string, client: ApiClient = api()): Promise<BriefLedger> {
+    return unwrap(
+      await client.GET("/api/v1/research/investigations/{investigationId}/sources", {
+        params: { path: { investigationId } },
+      }),
+    );
+  },
+
+  /**
+   * **Draft epic from gaps →** — the brief's proposals as a Planning batch. Nothing is filed.
+   *
+   * @param investigationId The investigation.
+   * @param body The tracker the drafts are for; empty when the workspace has exactly one.
+   * @param client The client to call through.
+   * @returns The epic, the batch and where to review it.
+   */
+  async draftEpic(
+    investigationId: string,
+    body: DraftEpicRequest = {},
+    client: ApiClient = api(),
+  ): Promise<DraftEpic> {
+    return unwrap(
+      await client.POST("/api/v1/research/investigations/{investigationId}/draft-epic", {
+        params: { path: { investigationId } },
+        body,
       }),
     );
   },

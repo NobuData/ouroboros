@@ -11,6 +11,7 @@ import {
   SEEDED_LABEL,
   composerReadings,
   depthEstimates,
+  featuredBrief,
   openFakeSource,
   progress,
   startedInvestigation,
@@ -32,7 +33,13 @@ vi.mock("@/app/research/composer-actions", () => ({
   cancelInvestigation: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "x" } }),
   readInvestigation: (id: unknown) => readInvestigation(id),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }) }));
+vi.mock("@/app/research/brief-actions", () => ({
+  readBriefLedger: () => Promise.resolve({ ok: true, total: 0, items: [] }),
+  readTrackers: () => Promise.resolve({ ok: true, trackers: [] }),
+  draftEpicFromGaps: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "x" } }),
+}));
+const refresh = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => refresh(), push: () => {} }) }));
 
 const { ResearchScreen } = await import("@/app/research/research-screen");
 
@@ -45,6 +52,7 @@ beforeEach(() => {
   estimateComposer.mockReset().mockResolvedValue({ ok: true, estimates: depthEstimates() });
   startInvestigation.mockReset().mockResolvedValue({ ok: true, run: runOf(startedInvestigation()) });
   readInvestigation.mockReset().mockResolvedValue({ ok: false, refusal: { code: "x", message: "x" } });
+  refresh.mockReset();
   FakeProgressSource.reset();
 });
 
@@ -56,7 +64,9 @@ afterEach(() => {
 function Screen(over: Partial<ResearchScreenProps>) {
   return (
     <ResearchScreen
+      brief={{ ok: true, value: featuredBrief() }}
       composer={composerReadings()}
+      mayDraft
       openProgress={openFakeSource}
       startReason={null}
       view="page"
@@ -268,10 +278,11 @@ describe("the grid frame", () => {
     render(<Screen />);
 
     for (const region of RESEARCH_REGIONS) {
-      const card = screen.getByRole("region", { name: region.title });
+      // The brief's card is named by the brief it holds, not by the region.
+      const card = screen.getByRole("region", { name: region.id === "brief" ? /RS-127/ : region.title });
 
       expect(seat(region.id)).toContainElement(card);
-      if (region.id === "composer") expect(card).not.toHaveTextContent(region.arrives);
+      if (region.id === "composer" || region.id === "brief") expect(card).not.toHaveTextContent(region.arrives);
       else expect(card).toHaveTextContent(region.arrives);
     }
   });
@@ -312,5 +323,42 @@ describe("the composer in its seat (#628)", () => {
     expect(seat("brief")).toHaveFocus();
     expect(seat("brief")).toHaveClass("research__seat--highlight");
     expect(seat("composer")).not.toHaveClass("research__seat--highlight");
+    // …and the page is re-read, so the newest brief is the one featured.
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the featured brief in its seat (#630)", () => {
+  it("fills the brief's seat with the newest brief's card", () => {
+    render(<Screen />);
+
+    const card = within(seat("brief")).getByRole("region", { name: /RS-127/ });
+    expect(within(card).getByRole("table", { name: "Autonomous docking vs. the field" })).toBeInTheDocument();
+  });
+
+  it("lands on the pipeline's seat from a roadmap document's chip", () => {
+    const roadmap = featuredBrief();
+    render(
+      <Screen
+        brief={{
+          ok: true,
+          value: {
+            ...roadmap,
+            detail: { ...roadmap.detail, deliverables: [{ kind: "roadmap_doc", id: "doc-124" }] },
+          },
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "roadmap document" }));
+
+    expect(seat("pipeline")).toHaveFocus();
+    expect(seat("pipeline")).toHaveClass("research__seat--highlight");
+  });
+
+  it("says so when no investigation has finished", () => {
+    render(<Screen brief={{ ok: true, value: null }} />);
+
+    expect(screen.getByRole("region", { name: "Featured brief" })).toHaveTextContent("No brief yet");
   });
 });

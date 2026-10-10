@@ -1,9 +1,13 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 
+import type { Reading } from "@/app/api/reading";
 import { claimPaneLanding, landOn } from "@/app/shell/pane-anchor";
 
+import type { FeaturedBrief } from "./brief";
+import { FeaturedBriefSeat } from "./brief-card";
 import type { ComposerReadings } from "./composer";
 import { ComposerCard } from "./composer-card";
 import type { ProgressSourceFactory } from "./progress";
@@ -12,6 +16,7 @@ import { ResearchSeat } from "./research-seat";
 import {
   BRIEF_REGION,
   COMPOSER_REGION,
+  PIPELINE_REGION,
   type RegionPlace,
   type ResearchRegionId,
   type ResearchView,
@@ -32,6 +37,10 @@ export interface ResearchScreenProps {
   readonly startReason: string | null;
   /** What the composer is drawn from, read on the server. */
   readonly composer: ComposerReadings;
+  /** The featured brief — the newest finished investigation's — read on the server (#630). */
+  readonly brief: Reading<FeaturedBrief | null>;
+  /** Whether this reader may draft work from a brief — `owner`, `admin` or `member`. */
+  readonly mayDraft: boolean;
   /** How the composer opens its progress stream. A test hands in a fake. */
   readonly openProgress?: ProgressSourceFactory;
 }
@@ -65,10 +74,11 @@ function enterRegion(id: ResearchRegionId): boolean {
  * **The grid is the mockup's.** The composer at `c-7` beside a `c-5` side column — the tools card
  * over the regression watch — then the featured brief, the roadmap pipeline and the
  * investigations list at `c-12`. Each region is a seat (`app/research/research-seat.tsx`) that
- * says what is coming until CN.2–CN.6 mount their cards in it. **The composer's card is here**
- * (CN.2, [#628](https://github.com/NobuData/ouroboros/issues/628)): it fills its seat, and a run
- * that produces a brief lands the reader on the brief's seat — the placeholder until CN.4 (#630)
- * mounts the brief card there, which needs no change here.
+ * says what is coming until its card exists. **The composer's card** (CN.2, #628) and **the
+ * featured brief's** (CN.4, [#630](https://github.com/NobuData/ouroboros/issues/630)) are here: a
+ * run that produces a brief lands the reader on the brief's seat and re-reads the page, so the
+ * new brief is the one featured; a roadmap brief's document chip lands on the pipeline's seat —
+ * the placeholder until CN.5 (#631) mounts its card there, which needs no change here.
  *
  * **The head's actions land on a seat.** *New investigation* scrolls to the composer's, focuses
  * it and rings it; the library's address (`?view=library`) does the same for the investigations
@@ -77,7 +87,15 @@ function enterRegion(id: ResearchRegionId): boolean {
  * @param props See {@link ResearchScreenProps}.
  * @returns The screen.
  */
-export function ResearchScreen({ view, startReason, composer, openProgress }: ResearchScreenProps) {
+export function ResearchScreen({
+  view,
+  startReason,
+  composer,
+  brief,
+  mayDraft,
+  openProgress,
+}: ResearchScreenProps) {
+  const router = useRouter();
   const landing = landingRegion(view);
   const [highlight, setHighlight] = useState<ResearchRegionId | null>(landing);
 
@@ -97,8 +115,14 @@ export function ResearchScreen({ view, startReason, composer, openProgress }: Re
     if (enterRegion(id)) setHighlight(id);
   }, []);
 
-  // A finished run's brief is read in the brief's seat.
-  const onBriefReady = useCallback(() => enter(BRIEF_REGION), [enter]);
+  // A finished run's brief is read in the brief's seat — and the page is re-read, so the newest
+  // brief is the one featured there.
+  const onBriefReady = useCallback(() => {
+    enter(BRIEF_REGION);
+    router.refresh();
+  }, [enter, router]);
+
+  const onLandPipeline = useCallback(() => enter(PIPELINE_REGION), [enter]);
 
   /** The cards that exist, by the region they fill. */
   const cards: Partial<Record<ResearchRegionId, ReactNode>> = {
@@ -110,6 +134,7 @@ export function ResearchScreen({ view, startReason, composer, openProgress }: Re
         readings={composer}
       />
     ),
+    brief: <FeaturedBriefSeat mayDraft={mayDraft} onLandPipeline={onLandPipeline} reading={brief} />,
   };
 
   /**

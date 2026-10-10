@@ -598,10 +598,28 @@ brief is made of the same parts whatever the question was:
 - the **sources** it read, numbered;
 - for a **Gap analysis**, a **capability matrix** and the tickets it proposes.
 
-:::info[Read a brief through the API for now]
+### The brief card
 
-The **Featured brief** card arrives in a later release. Until then a brief is read from the
-[REST API](../cli/rest-api.mdx), at three addresses under
+The **Featured brief** region of the Research page shows the newest finished investigation's
+brief — the newest with **✓ brief ready**, or, if none, the newest with **✓ issues filed**. When
+nothing has finished yet the region says *No brief yet*. <Since version="0.147.0" module="ouroboros-ui" />
+
+<Screenshot id="user-guide.research.brief" />
+
+The card's head names the investigation: its kind, its number and title (`RS-127 — AUTONOMOUS
+DOCKING VS. THE FIELD` — the matrix's title for a gap analysis, the question for any other
+kind), how many sources it read and at what depth, and its status. Beside them sit the two
+actions, [**Export brief ↗**](#exporting-a-brief) and, for a gap analysis that proposes work,
+[**Draft epic from gaps →**](#draft-epic-from-gaps).
+
+Under the head, a gap analysis shows [its matrix](#the-capability-matrix) and then the brief's
+text; every other kind shows the text alone. Beside them sit [the sources](#sources) the text
+cites, the [proposed tickets](#proposed-from-gaps), and a **Led to:** row naming what the
+investigation produced — a *fix draft* or *drafted tickets* (which open in Planning), a *roadmap
+document* (which opens the **Roadmap pipeline** region), the *open run →* fixing what it found,
+the *evidence →* run, or a forensics brief's *culprit*.
+
+A brief can also be read from the [REST API](../cli/rest-api.mdx), at three addresses under
 `/api/v1/research/investigations/<investigation id>`:
 
 | Address | What it returns |
@@ -614,8 +632,6 @@ Everyone in the workspace can read all three. An investigation that has not fini
 `/brief` and `/brief/export` with `404 brief_not_found`; `/sources` already lists what it has
 read so far.
 
-:::
-
 ### Findings and open questions
 
 A brief's text is a series of claims. Each one is either:
@@ -626,8 +642,10 @@ A brief's text is a series of claims. Each one is either:
 
 A claim is never shown as a finding without a source. If the investigation writes one it cannot
 cite, the claim is kept as an open question and marked `demoted`, so you can see what it wanted
-to say and that it could not prove it. Open questions are kept apart from the findings: in the
-API each claim says which it is, and in the exported file they sit under their own heading.
+to say and that it could not prove it. Open questions are kept apart from the findings: on the
+card they sit in their own inset block under **Open questions**, each in italics with its mark
+(*open question*, or *demoted*); in the API each claim says which it is; and in the exported
+file they sit under their own heading.
 
 ### Citations
 
@@ -652,6 +670,10 @@ A reference to code, like `dock_ctrl.c:214` above, is shown in a fixed-width fon
 that file at the exact commit the investigation read. Only a file one of the claim's own
 sources cites is treated this way.
 
+**On the card, every marker is a link.** Click `[07]` and the sources panel scrolls to source 7
+and highlights its row. A marker in a matrix cell whose source no claim cites is not in the
+panel, so clicking it opens the [full ledger](#sources) on that source instead.
+
 ### Sources
 
 A brief lists the sources its own claims cite. Each has its marker, a title and where it came
@@ -666,12 +688,15 @@ from:
 A web page and a file of code link to where they can be opened. A source inside Ouroboros, such
 as a set of tickets or a telemetry reading, shows its address and has no link.
 
-The full list, at `/sources`, holds every source the investigation read, including those no
-claim cites. Each entry adds:
+The full list holds every source the investigation read, including those no claim cites. On
+the card, **all ↗** in the panel's corner opens it as a sheet — every record in number order,
+the ones a claim cites marked — and `/sources` answers the same list. Each entry adds:
 
 - the **excerpt**: the part that was read, saved at the time. It stays the same when the page
   it came from changes or disappears;
-- **when it was retrieved**.
+- **when it was retrieved**, in UTC.
+
+Press Escape, or click outside the sheet, to close it.
 
 ### The capability matrix
 
@@ -688,6 +713,14 @@ product and one for each competitor.
 
 Every cell except `? unknown` cites at least one source. `? unknown` is an honest answer, not a
 blank: it does **not** mean the competitor lacks the capability.
+
+<Screenshot id="user-guide.research.matrix" />
+
+On the card your own column comes first, headed `Helios (us)` and set in the accent. **Hover a
+cell, or move the keyboard focus to it, to see its sources** — how many, and each marker, which
+you can click to go to the source. A `? unknown` cell shows its note instead: *The investigation
+did not find out. Not a blank, and not none.* Hover a gap chip to read how the gap was reached.
+The matrix scrolls sideways in its own box when it is wider than the card.
 
 The last column is the **gap**: how far behind the best competitor you are on that row.
 
@@ -754,9 +787,15 @@ you review it, let the estimator size it, and push it when you are ready — see
 only a starting note; the size on each draft is the estimator's.
 
 Drafting twice does not create a second epic: asking again answers the batch that was already
-drafted. If your workspace has more than one ticket source, say which one the drafts are for.
+drafted.
 
-Owners, Maintainers and members can draft; a Viewer cannot.
+On the card, press **Draft epic from gaps →** in the head. The page then opens Planning on the
+batch. If your workspace has more than one ticket source, a dialog first asks **Which tracker are
+the drafts for?** — choose one and press **Draft here**. The button is only shown for a brief
+that proposes tickets.
+
+Owners, Maintainers and members can draft; a Viewer cannot — on the card the button is switched
+off for a Viewer, with the reason as its tooltip.
 
 :::info[Draft through the API for now]
 
@@ -774,9 +813,10 @@ The answer's `href` is the Planning address of the batch.
 
 ### Exporting a brief
 
-`/brief/export` downloads the brief as one Markdown file, named after the investigation, for
-example `RS-127-brief.md`. Use it to paste a brief into a document review with its evidence
-attached.
+**Export brief ↗** on the card — or `/brief/export` in the API — downloads the brief as one
+Markdown file, named after the investigation, for example `RS-127-brief.md`. Use it to paste a
+brief into a document review with its evidence attached. The download is the service's own
+file, citations intact; nothing on the page is rewritten into it.
 
 The file holds, in order:
 

@@ -15,7 +15,15 @@
  * read the same table.
  */
 
-import { BUILD_FARM_PATH, DASHBOARD_PATH, INSIGHTS_PATH, ISSUES_PATH, KNOWLEDGE_PATH, WORKFLOWS_PATH } from "@/app/paths";
+import {
+  BUILD_FARM_PATH,
+  DASHBOARD_PATH,
+  INSIGHTS_PATH,
+  ISSUES_PATH,
+  KNOWLEDGE_PATH,
+  RESEARCH_PATH,
+  WORKFLOWS_PATH,
+} from "@/app/paths";
 
 /** A module a run console may be opened from. */
 export interface RunOrigin {
@@ -75,11 +83,27 @@ export const INSIGHTS_ORIGIN: RunOrigin = Object.freeze({
   route: INSIGHTS_PATH,
 });
 
+/**
+ * Research — a brief's deliverables strip opens the run fixing what it found, and the test run
+ * its evidence came from (CN.4, [#630](https://github.com/NobuData/ouroboros/issues/630)).
+ */
+export const RESEARCH_ORIGIN: RunOrigin = Object.freeze({
+  id: "research",
+  label: "Research",
+  route: RESEARCH_PATH,
+});
+
 /** Every accepted origin, by the id `?from=` carries. */
 const ORIGINS: ReadonlyMap<string, RunOrigin> = new Map(
-  [DASHBOARD_ORIGIN, BUILD_FARM_ORIGIN, ISSUES_ORIGIN, WORKFLOWS_ORIGIN, KNOWLEDGE_ORIGIN, INSIGHTS_ORIGIN].map(
-    (origin) => [origin.id, origin],
-  ),
+  [
+    DASHBOARD_ORIGIN,
+    BUILD_FARM_ORIGIN,
+    ISSUES_ORIGIN,
+    WORKFLOWS_ORIGIN,
+    KNOWLEDGE_ORIGIN,
+    INSIGHTS_ORIGIN,
+    RESEARCH_ORIGIN,
+  ].map((origin) => [origin.id, origin]),
 );
 
 /**

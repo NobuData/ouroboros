@@ -659,11 +659,11 @@
       "workspace": "acme-robotics",
       "ready": ".research__estimate:has-text('est. 40–60 sources · ~$6')",
       "clip": "page",
-      "caption": "Research: the head and its two buttons, over the composer and the five regions still to come.",
-      "alt": "The Research page with Research lit in the sidebar: the heading Ask a hard question. Get an evidenced answer — and the tickets to act on it., the Research library and New investigation buttons, the Start an investigation composer with its question field, kind segments, Depth menu, tool chips and estimate line beside the Research tools and Regression watch regions, then Featured brief, Roadmap pipeline and the top of Investigations, each saying which release fills it.",
-      "capturedAt": "2026-10-10T20:00:36.574Z",
-      "uiVersion": "0.146.0",
-      "seedRef": "e529fa2e7d23b409a29ea174105bff5543cedd08"
+      "caption": "Research: the head and its two buttons, over the composer, the featured brief and the regions still to come.",
+      "alt": "The Research page with Research lit in the sidebar: the heading Ask a hard question. Get an evidenced answer — and the tickets to act on it., the Research library and New investigation buttons, the Start an investigation composer beside the Research tools and Regression watch regions, then the featured brief RS-127 — Autonomous docking vs. the field with its capability matrix, text and sources, and the Roadmap pipeline and Investigations regions saying which release fills them.",
+      "capturedAt": "2026-10-10T20:33:11.847Z",
+      "uiVersion": "0.147.0",
+      "seedRef": "890a3fe4096322d1958e55f6c58d864f57e536dc"
     },
     {
       "id": "user-guide.research.composer",
@@ -682,6 +682,36 @@
       "capturedAt": "2026-10-10T19:59:10.713Z",
       "uiVersion": "0.146.0",
       "seedRef": "e529fa2e7d23b409a29ea174105bff5543cedd08"
+    },
+    {
+      "id": "user-guide.research.brief",
+      "route": "/research",
+      "workspace": "acme-robotics",
+      "ready": ".research__brief-text",
+      "clip": "#brief",
+      "caption": "The featured brief: RS-127's gap analysis — its matrix, its cited findings, the sources panel, the proposed tickets, and Export brief ↗ and Draft epic from gaps → in the head.",
+      "alt": "The featured brief card: a Gap analysis chip, the heading RS-127 — AUTONOMOUS DOCKING VS. THE FIELD, the tag 44 sources · deep dive, the pill ✓ brief ready, and the Export brief ↗ and Draft epic from gaps → buttons. Below, the capability matrix with the columns Capability, Helios (us), Skylink, AeroMesh, Novum and Gap, five rows of shipping, partial, none and unknown cells and the gap chips HIGH, HIGH, MED, WIP and LEAD; under it the brief's findings with the markers [07], [12], [31], [git] and [19] and an Open questions block. Beside them the Sources — 44 cited panel listing five sources with all ↗, and the row Proposed from gaps: EPIC · Docking parity, DOCK-1 wind-feedforward MPC, DOCK-2 re-planned retry, +3 more, L.",
+      "capturedAt": "2026-10-10T20:33:15.466Z",
+      "uiVersion": "0.147.0",
+      "seedRef": "890a3fe4096322d1958e55f6c58d864f57e536dc"
+    },
+    {
+      "id": "user-guide.research.matrix",
+      "route": "/research",
+      "workspace": "acme-robotics",
+      "actions": [
+        {
+          "press": "Shift",
+          "on": "#brief .research__cap-face"
+        }
+      ],
+      "ready": "#brief .research__cap-cites:visible",
+      "clip": "#brief .ou-table-scroll",
+      "caption": "The capability matrix: hover a cell, or move the focus to it, to see the sources behind it; ? unknown says the investigation did not find out.",
+      "alt": "The capability matrix with the first cell, Helios: partial, focused, showing 2 sources and the markers [25] and [26] under it; the other cells read shipping, partial, none and unknown in their hues, and the Gap column reads HIGH, HIGH, MED, WIP and LEAD.",
+      "capturedAt": "2026-10-10T20:38:25.448Z",
+      "uiVersion": "0.147.0",
+      "seedRef": "890a3fe4096322d1958e55f6c58d864f57e536dc"
     },
     {
       "id": "user-guide.insights",

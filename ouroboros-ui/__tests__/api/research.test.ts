@@ -5,6 +5,8 @@ import {
   STARTED_ID,
   estimate,
   investigationDetail,
+  ledgerSource,
+  seededBrief,
   seededKinds,
   seededTools,
   startedInvestigation,
@@ -94,5 +96,42 @@ describe("the lifecycle", () => {
     expect(await research.cancel(STARTED_ID, client)).toEqual(answer);
     expect(requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/research/investigations/${STARTED_ID}/cancel`);
     expect(requests[0]?.method).toBe("POST");
+  });
+
+  it("lists with the filters given, and with none", async () => {
+    const page = { items: [], total: 0, limit: 1, offset: 0, counts: { active: 0, thisQuarter: 0 }, quarter: { key: "2026-Q4", from: "", to: "" } };
+    const { client, requests } = clientAnswering(page);
+
+    expect(await research.investigations({ status: "brief_ready", limit: 1 }, client)).toEqual(page);
+    expect(requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/research/investigations?status=brief_ready&limit=1`);
+
+    await research.investigations({}, client);
+    expect(requests[1]?.url).toBe(`${STUB_BASE_URL}/api/v1/research/investigations`);
+  });
+});
+
+describe("the brief (#630)", () => {
+  it("reads the brief and the whole ledger by id", async () => {
+    const brief = clientAnswering(seededBrief());
+    expect(await research.brief(STARTED_ID, brief.client)).toEqual(seededBrief());
+    expect(brief.requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/research/investigations/${STARTED_ID}/brief`);
+
+    const ledger = { investigation: "RS-128", total: 2, items: [ledgerSource(1), ledgerSource(2)] };
+    const sources = clientAnswering(ledger);
+    expect(await research.sources(STARTED_ID, sources.client)).toEqual(ledger);
+    expect(sources.requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/research/investigations/${STARTED_ID}/sources`);
+  });
+
+  it("drafts the epic with the tracker given, and with none", async () => {
+    const answer = { created: true, epic: { id: null, name: "Docking parity" }, batch: { id: "b", status: "draft", drafts: [] }, href: "/planning?batch=b" };
+    const { client, requests } = clientAnswering(answer);
+
+    expect(await research.draftEpic(STARTED_ID, { targetSourceId: "src-1" }, client)).toEqual(answer);
+    expect(requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/research/investigations/${STARTED_ID}/draft-epic`);
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.json()).toEqual({ targetSourceId: "src-1" });
+
+    await research.draftEpic(STARTED_ID, {}, client);
+    expect(await requests[1]?.json()).toEqual({});
   });
 });
