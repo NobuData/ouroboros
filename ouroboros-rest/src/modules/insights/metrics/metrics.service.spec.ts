@@ -353,6 +353,146 @@ describe("the windowed metrics service", () => {
     });
   });
 
+  describe("an explicit span of days (#619)", () => {
+    const now = new Date("2026-09-01T15:00:00.000Z");
+
+    /**
+     * A service over the generated history at {@link now}.
+     *
+     * @returns The service, its events and the repository's spies.
+     */
+    function over() {
+      const events = history(now);
+      const extractors = extractorsOver(events);
+      const fake = repositoryOver(extractors);
+
+      return {
+        events,
+        fake,
+        service: new MetricsService(fake.repository, new MetricsCache(), extractors),
+      };
+    }
+
+    it.each(
+      METRIC_RANGES.flatMap((range) =>
+        ["merge_rate", "merged_prs", "cycle_time", "cost_per_merged_pr"].map(
+          (metricId) => [range, metricId] as const,
+        ),
+      ),
+    )("answers a range's own days with that range's figure: %s %s", async (range, metricId) => {
+      const { service } = over();
+      const window = await service.window(metricId, { organizationId: ORG, range, now });
+
+      const span = await service.span(metricId, {
+        organizationId: ORG,
+        span: { from: window.from, to: window.to },
+        now,
+      });
+
+      expect(span.value).toBe(window.value);
+      expect(span.components).toEqual(window.components);
+      expect(span.methodology).toEqual(window.methodology);
+      expect({ from: span.from, to: span.to }).toEqual({ from: window.from, to: window.to });
+    });
+
+    it("matches the oracle over days that are no named range, without reading today", async () => {
+      const { events, fake, service } = over();
+      const days = { from: "2026-07-03", to: "2026-07-19" };
+
+      for (const metricId of ["merge_rate", "merged_prs", "cycle_time", "cost_per_merged_pr"]) {
+        const span = await service.span(metricId, { organizationId: ORG, span: days, now });
+
+        expectFigure(span.value, oracle(events, metricId, days));
+      }
+
+      expect(fake.tail).not.toHaveBeenCalled();
+      for (const [org, , scanned] of fake.scan.mock.calls as [string, RowFilter, DaySpan][]) {
+        expect(org).toBe(ORG);
+        expect(scanned).toEqual(days);
+      }
+    });
+
+    it("reads today live when the span reaches it, and stored days only up to yesterday", async () => {
+      const { fake, service } = over();
+
+      await service.span("merged_prs", {
+        organizationId: ORG,
+        span: { from: "2026-08-25", to: "2026-09-01" },
+        now,
+      });
+
+      const [[, , scanned]] = fake.scan.mock.calls as [string, RowFilter, DaySpan][];
+      expect(scanned).toEqual({ from: "2026-08-25", to: "2026-08-31" });
+      expect(fake.tail).toHaveBeenCalledTimes(1);
+      expect((fake.tail.mock.calls[0] as unknown[])[2]).toBe("2026-09-01");
+    });
+
+    it("pools a median's samples, ascending, and counts the days that recorded anything", async () => {
+      const { events, service } = over();
+      const days = { from: "2026-08-01", to: "2026-08-14" };
+
+      const span = await service.span("cycle_time", { organizationId: ORG, span: days, now });
+
+      expect(span.samples.length).toBeGreaterThan(0);
+      expect([...span.samples]).toEqual([...span.samples].sort((a, b) => a - b));
+      expectFigure(span.value, oracle(events, "cycle_time", days));
+      expect(span.days).toBeGreaterThan(0);
+      expect(span.days).toBeLessThanOrEqual(14);
+      // A rate and a sum carry no samples: their basis is their components, or their days.
+      expect(
+        (await service.span("merge_rate", { organizationId: ORG, span: days, now })).samples,
+      ).toEqual([]);
+    });
+
+    it("says nothing was recorded — zero days — for a span before any history", async () => {
+      const { service } = over();
+      const days = { from: "2020-01-01", to: "2020-01-07" };
+
+      const sum = await service.span("merged_prs", { organizationId: ORG, span: days, now });
+      const rate = await service.span("merge_rate", { organizationId: ORG, span: days, now });
+      const median = await service.span("cycle_time", { organizationId: ORG, span: days, now });
+
+      // A sum over nothing is still 0 by composition — `days` is what tells nothing from zero.
+      expect(sum).toMatchObject({ value: 0, days: 0 });
+      expect(rate).toMatchObject({ value: null, days: 0 });
+      expect(median).toMatchObject({ value: null, days: 0, samples: [] });
+    });
+
+    it("keeps to one repository, and to the asking workspace", async () => {
+      const { events, fake, service } = over();
+      const days = { from: "2026-08-01", to: "2026-08-20" };
+
+      const span = await service.span("merge_rate", {
+        organizationId: ORG,
+        repo: "acme/zephyr",
+        span: days,
+        now,
+      });
+
+      expectFigure(span.value, oracle(events, "merge_rate", days, "acme/zephyr"));
+      for (const [org] of fake.scan.mock.calls as [string][]) expect(org).toBe(ORG);
+    });
+
+    it("refuses a span that ends before it starts, and a metric the registry does not hold", async () => {
+      const { service } = over();
+
+      await expect(
+        service.span("merge_rate", {
+          organizationId: ORG,
+          span: { from: "2026-08-02", to: "2026-08-01" },
+          now,
+        }),
+      ).rejects.toThrow(/ends before it starts/);
+      await expect(
+        service.span("no_such_metric", {
+          organizationId: ORG,
+          span: { from: "2026-08-01", to: "2026-08-02" },
+          now,
+        }),
+      ).rejects.toThrow(/not in the metric registry/);
+    });
+  });
+
   describe("rate recomposition", () => {
     it("is exact where averaging daily rates gives a visibly different answer", async () => {
       // Yesterday one PR closed and merged autonomously (100%); today forty closed and ten

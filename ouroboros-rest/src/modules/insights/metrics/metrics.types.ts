@@ -5,7 +5,7 @@
 
 import type { MetricAggregation, MetricDefinitionsTable } from "../../db/schema";
 import type { Day } from "../rollup/rollup.types";
-import type { MetricRange } from "./metrics.window";
+import type { DaySpan, MetricRange } from "./metrics.window";
 
 /** Who and what a window is about. */
 export interface MetricScope {
@@ -120,5 +120,40 @@ export interface MetricBreakdown {
    * window still shows its drop — labels ascending.
    */
   readonly entries: readonly MetricBreakdownEntry[];
+  readonly methodology: MetricMethodology;
+}
+
+/** What {@link MetricSpan} is asked over: explicit days rather than a named range. */
+export interface MetricSpanScope {
+  /** The workspace. Every statement filters on it. */
+  readonly organizationId: string;
+  /** One repository's `owner/name`, or undefined for the whole workspace. */
+  readonly repo?: string;
+  /** One dimension label; required for a dimensioned median, as on {@link MetricScope}. */
+  readonly dimension?: string;
+  /** The UTC days, inclusive at both ends. */
+  readonly span: DaySpan;
+  /** The instant that decides which day is "today" (read live); the service's clock when omitted. */
+  readonly now?: Date;
+}
+
+/**
+ * One metric over an explicit span of days — the same composition as a {@link MetricWindow},
+ * without the comparison to a prior window, and with what the figure rests on
+ * ([#619](https://github.com/NobuData/ouroboros/issues/619), the telemetry research tool).
+ */
+export interface MetricSpan {
+  readonly metricId: string;
+  /** The span's first and last UTC day. */
+  readonly from: Day;
+  readonly to: Day;
+  /** The figure, as {@link MetricWindow.value} computes it for the same days. */
+  readonly value: number | null;
+  /** A rate's numerator and denominator; present exactly for ratio metrics. */
+  readonly components?: MetricComponents;
+  /** A median metric's pooled samples, ascending; empty for a sum or a rate. */
+  readonly samples: readonly number[];
+  /** How many days of the span have any row for the metric. Zero means nothing was recorded. */
+  readonly days: number;
   readonly methodology: MetricMethodology;
 }

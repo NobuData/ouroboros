@@ -16,7 +16,7 @@ import { ResearchToolsInternalController } from "./tools.internal.controller";
  * The wiring. Nothing connects: `pg` connects lazily, and no query is issued.
  */
 describe("the research tools module", () => {
-  it("compiles, with the internal route, the registry routes and the four tools registered", async () => {
+  it("compiles, with the internal route, the registry routes and the five tools registered", async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [ConfigurationModule.forRoot(testConfiguration()), ResearchToolsModule],
     }).compile();
@@ -26,10 +26,12 @@ describe("the research tools module", () => {
     );
     expect(moduleRef.get(ResearchToolInvoker)).toBeInstanceOf(ResearchToolInvoker);
     // CL.2 (#615) registers the web tool, CL.3 (#616) the competitor tracker, CL.4 (#617) the
-    // code & git mining tool, CL.5 (#618) the issue & PR history index; CL.6 registers one more.
+    // code & git mining tool, CL.5 (#618) the issue & PR history index, CL.6 (#619) build & test
+    // telemetry.
     expect(moduleRef.get(ResearchToolRegistry).slugs()).toEqual([
       "code",
       "competitor",
+      "telemetry",
       "tickets",
       "web",
     ]);

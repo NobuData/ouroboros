@@ -58,6 +58,41 @@ describe("locators", () => {
     ).toBe(false);
   });
 
+  it("accepts what V122 widened a telemetry locator to: a baseline, a comparison, a query", () => {
+    // The same vectors `ouroboros-db/tests/constraints.sql` holds source_locator_valid() to.
+    const hover =
+      "telemetry://case/29f70bbc9eaa22505445bbf2378dc743e5b177119c5a09cdcde73870d0867560/hover_drift_cm";
+
+    for (const locator of [
+      "telemetry://metric/merge_rate/2026-09-10..2026-10-09",
+      `${hover}/baseline:v2.0.4`,
+      `${hover}/baseline:v2.0.4-vs-2026-10-03T02:35:00Z..2026-10-10T02:35:00Z`,
+      "telemetry://metric/merge_rate/2026-08-11..2026-09-09-vs-2026-09-10..2026-10-09",
+      "telemetry://metric/merge_rate/baseline:v2.1.0-rc1-vs-baseline:v2.0.4",
+      "telemetry://metric/build_duration/2026-09-10..2026-10-09?dimension=zephyr%20build&repo=acme-robotics%2Fhelios-firmware",
+      "telemetry://suite/2026-09-10T00:00:00Z..2026-10-10T00:00:00Z?name=PHYSICAL%20%C2%B7%20HIL%20rig",
+    ]) {
+      expect([locator, locatorValid("telemetry", locator)]).toEqual([locator, true]);
+    }
+  });
+
+  it("refuses what V122 still refuses of a telemetry locator", () => {
+    for (const locator of [
+      "telemetry://metric/merge_rate/baseline:",
+      "telemetry://metric/merge_rate/30d-vs-",
+      "telemetry://metric/merge_rate/30d-vs-7d-vs-1d",
+      "telemetry://metric/merge_rate/30d?",
+      "telemetry://metric/merge_rate/30d?repo=acme robotics",
+      "telemetry://metric/merge_rate/30d?repo=acme/helios",
+      "telemetry://metric/merge_rate/baseline:v2.0.4/extra",
+      "telemetry://Metric/merge_rate/30d",
+      "telemetry://metric/merge_rate",
+    ]) {
+      expect([locator, locatorValid("telemetry", locator)]).toEqual([locator, false]);
+    }
+    expect(locatorValid("code", "telemetry://metric/merge_rate/30d-vs-7d")).toBe(false);
+  });
+
   it("refuses what V108 refuses", () => {
     expect(locatorValid("code", "git://helios-firmware/src/dock/dock_ctrl.c")).toBe(false);
     expect(locatorValid("code", "git://helios-firmware@8c1b2e4/src/../etc/passwd")).toBe(false);

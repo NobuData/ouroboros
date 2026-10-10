@@ -21,6 +21,7 @@
 import { Inject, Injectable, Optional } from "@nestjs/common";
 
 import { ROLLUP_FAMILIES } from "../rollup/rollup.service";
+import { addDays, utcDay } from "../rollup/rollup.days";
 import type { FamilyExtractor } from "../rollup/rollup.types";
 import { MetricsCache, type MetricsCacheKey } from "./metrics.cache";
 import {
@@ -38,6 +39,8 @@ import type {
   MetricBreakdown,
   MetricMethodology,
   MetricScope,
+  MetricSpan,
+  MetricSpanScope,
   MetricWindow,
 } from "./metrics.types";
 import { daysOf, resolveWindow, type ResolvedWindow } from "./metrics.window";
@@ -227,6 +230,63 @@ export class MetricsService {
   }
 
   /**
+   * One metric over an explicit span of days.
+   *
+   * The composition is {@link window}'s — the same stored rows, today read live through the same
+   * tail, the same recomputation from components — so a span that happens to be a range's days
+   * answers that range's figure exactly. What differs is that the days are named, which is what
+   * lets a figure be asked for again later and answer the same
+   * ([#619](https://github.com/NobuData/ouroboros/issues/619)). It is not cached: its callers
+   * ask once per citation.
+   *
+   * @param metricId - The registry id, e.g. `merge_rate`.
+   * @param scope - The workspace, optional repository and dimension, the days and the instant.
+   * @returns The figure with its components or samples, and how many days had anything recorded.
+   * @throws {MetricWindowError} As {@link window}, and when the span ends before it starts.
+   */
+  async span(metricId: string, scope: MetricSpanScope): Promise<MetricSpan> {
+    const { from, to } = scope.span;
+
+    if (from > to) {
+      throw new MetricWindowError(metricId, "the span ends before it starts");
+    }
+
+    const today = utcDay(scope.now ?? new Date(this.clock()));
+    const { definition, plan } = this.planned(metricId, await this.repository.definitions(), scope);
+    const metricIds = planMetrics(plan);
+    const filter: RowFilter = { metricIds, repo: scope.repo, dimension: scope.dimension };
+    const yesterday = addDays(today, -1);
+    // Today is never stored: it is read live, and only when the span reaches it.
+    const tails =
+      from <= today && today <= to ? this.tailFamilies(definition.metricId, metricIds) : [];
+    const [stored, ...live] = await Promise.all([
+      this.repository.scan(scope.organizationId, filter, {
+        from,
+        to: to < yesterday ? to : yesterday,
+      }),
+      ...tails.map((extractor) =>
+        this.repository.tail(scope.organizationId, extractor, today, filter),
+      ),
+    ]);
+    const rows = [...stored, ...live.flat()].filter((row) => metricIds.includes(row.metricId));
+    const composed = compose(plan, rows);
+
+    return {
+      metricId: definition.metricId,
+      from,
+      to,
+      value: composed.value,
+      ...(composed.components ? { components: composed.components } : {}),
+      samples:
+        plan.kind === "stored" && plan.aggregation === "median"
+          ? rows.flatMap((row) => row.samples).sort((a, b) => a - b)
+          : [],
+      days: new Set(rows.map((row) => row.day)).size,
+      methodology: methodologyOf(definition),
+    };
+  }
+
+  /**
    * A metric's registry entry and plan, or the refusal {@link window} documents.
    *
    * @param metricId - The metric.
@@ -238,7 +298,7 @@ export class MetricsService {
   private planned(
     metricId: string,
     definitions: ReadonlyMap<string, MetricDefinition>,
-    scope: MetricScope,
+    scope: Pick<MetricScope, "dimension">,
   ): Planned {
     const definition = definitions.get(metricId);
 

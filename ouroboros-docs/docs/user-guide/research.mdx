@@ -78,13 +78,15 @@ tool reports its own health, so a broken setup shows before an investigation dep
 | ⌖ **Competitor tracker** | Watches your rivals' release notes, changelogs, GitHub releases and feeds on a schedule, and keeps every change | Each change, as the archived difference between two dated snapshots | An owner or admin adds rivals and their watches. See [Competitor watch](#competitor-watch). |
 | ⌥ **Codebase & git mining** | Reads the workspace's enabled repositories: who last changed a line and when, how often a file changes, what moved between two versions, a module's dependencies, and which commit broke a test | Each answer, at the exact commit it was read at, so it can be read again and give the same answer. A bisect's culprit, with the build-farm jobs that proved it. | Nothing beyond enabling the repository, with **Enable *repository* →** on [Get Started](./getting-started/wizard.mdx). A private repository also needs the workspace's backlog token. See [Code & git mining](#code--git-mining). |
 | ▤ **Issue & PR history index** | Searches your workspace's own history: every ticket from every connected ticket source, your pull requests, and document sets an owner imports, such as churn interviews. It also counts them, by label, period, kind, repository or set. | Each ticket, pull request and imported document it read, at an `issue-index://` address, with the passage that matched | Nothing beyond a connected ticket source. An owner imports document sets. See [Issue & PR history](#issue--pr-history). |
+| ∿ **Build & test telemetry** | Reads what Ouroboros already measures in your workspace: Insights metrics, test results and flake scores, HIL bench measurements, runs and token usage. It reads a metric over a window, compares two windows, and never changes anything. | Each figure, at a `telemetry://` address that holds the whole question — the metric and the exact dates — so it can be asked again and give the same answer | Nothing. See [Build & test telemetry](#build--test-telemetry). |
 
 The web tool's row reads *search API + full-page extraction, robots-aware*. The competitor
 tracker's row counts what is watched, for example *4 rivals watched · release notes, changelogs,
 filings*. A rival counts once it has an enabled watch that can be read. The code tool's row names
 the repositories it reads, for example *blame, bisect, dependency graph over helios-firmware*.
 The history index's row counts what it holds, for example *389 issues · 12 pull requests ·
-Support churn interviews Q2*.
+Support churn interviews Q2*. The telemetry tool's row counts what there is to read, for
+example *8 HIL measurements · 24 insights metrics · 63 test cases*.
 
 ### Pages the web tool does not read
 
@@ -270,3 +272,50 @@ A ticket source's name is written in lower case with hyphens, so *GitHub · acme
 A search hit is cited with the passage that matched. A count is cited by the newest entries in
 its largest groups, so a claim about how many tickets mention something points at the tickets
 behind it.
+
+## Build & test telemetry
+
+The build & test telemetry tool lets an investigation quote your own numbers: how a metric
+stood over a stretch of time, how a test has been doing, how one window compares with another.
+It reads what Ouroboros already records and collects nothing new. It needs no setup and no
+credential, and it never changes what it reads.
+
+### What telemetry can answer
+
+| Question | What you get |
+| --- | --- |
+| **A metric over a window**, such as merge rate over the last 30 days | The figure, its unit, and what it rests on: how many samples, pull requests or days. For a measurement, the median and the spread too. |
+| **Two windows compared**, such as this week against the `v2.0.4` baseline | Both figures with their sample counts, and the difference with its sign and unit, for example *+14% (+4.34 cm)* |
+| **A test's history**, for one test case or a whole suite | How often it passed, failed or was flaky, how many retries it took, and its current flake score and quarantine state |
+| **Runs or token usage per day** | The days that had any, with totals. Cost is shown only for model calls that have a price. |
+
+A metric is either one of the [Insights](./insights.mdx) metrics, such as merge rate or build
+duration, or a measurement a HIL test takes, such as motor overshoot. An Insights figure is the
+same number the Insights page shows for the same days.
+
+A window can be a length of time ending now (`7d`, `36h`, `2w`), a range of dates, or a
+release's **baseline**: the measurements captured when that release shipped. Comparing a baseline
+with the last week is the comparison the regression watch makes.
+
+### When there is no data
+
+If nothing was measured in a window, the tool says **no data** and names the window it searched.
+It never reports zero for a window with nothing in it, and it never fills in days that had no
+runs. A comparison with an empty side has no difference at all, and the brief says which side
+was empty.
+
+### Citing telemetry
+
+Every answer is cited at a `telemetry://` address that holds the whole question:
+
+| Answer | Example address |
+| --- | --- |
+| An Insights metric | `telemetry://metric/merge_rate/2026-09-11..2026-10-10` |
+| A HIL measurement | `telemetry://case/<test case>/overshoot_pct/2026-10-03T02:47:47Z..2026-10-10T02:47:47Z` |
+| A comparison | `telemetry://case/<test case>/hover_drift_cm/baseline:v2.0.4-vs-2026-10-03T02:47:47Z..2026-10-10T02:47:47Z` |
+| A suite's history | `telemetry://history/suite/2026-09-10T02:47:47Z..2026-10-10T02:47:47Z?suite=PHYSICAL%20%C2%B7%20HIL%20rig` |
+| Runs per day | `telemetry://runs/runs/2026-10-03T02:47:47Z..2026-10-10T02:47:47Z` |
+
+The dates in an address are always exact. If an investigation asks for "the last 7 days", the
+citation records the seven days that meant at the time, so reading the address again next month
+asks about the same week. An investigation only ever reads your own workspace's numbers.

@@ -39929,6 +39929,52 @@ select pg_temp.must_hold(
   and ouroboros.dry_run_stage_metrics_valid('llm', '{"tokens": 1}'),
   'only a replayed row carries a window or the insufficient marker');
 
+-- ===========================================================================
+-- V122 — telemetry locators: a baseline, a comparison, and the rest of the query (#619, CL.6)
+-- ===========================================================================
+--
+-- The telemetry tool's citations: an absolute window, a stored baseline as a window, two windows
+-- compared in one locator, and the query that narrows them. Everything V108 accepted still is.
+select pg_temp.must_hold(
+  ouroboros.source_locator_valid('telemetry', 'telemetry://dock.success_rate/30d')
+  and ouroboros.source_locator_valid('telemetry', 'telemetry://hil/dock.abort_count/2026-08-01..2026-09-01')
+  and ouroboros.source_locator_valid('telemetry', 'telemetry://build.duration/2026-09-01T00:00Z..2026-09-02T00:00Z'),
+  'every telemetry locator V108 accepted is still accepted');
+
+select pg_temp.must_hold(
+  ouroboros.source_locator_valid('telemetry', 'telemetry://metric/merge_rate/2026-09-10..2026-10-09')
+  and ouroboros.source_locator_valid('telemetry',
+        'telemetry://case/29f70bbc9eaa22505445bbf2378dc743e5b177119c5a09cdcde73870d0867560/hover_drift_cm/baseline:v2.0.4')
+  and ouroboros.source_locator_valid('telemetry',
+        'telemetry://case/29f70bbc9eaa22505445bbf2378dc743e5b177119c5a09cdcde73870d0867560/hover_drift_cm/baseline:v2.0.4-vs-2026-10-03T02:35:00Z..2026-10-10T02:35:00Z')
+  and ouroboros.source_locator_valid('telemetry',
+        'telemetry://metric/merge_rate/2026-08-11..2026-09-09-vs-2026-09-10..2026-10-09')
+  and ouroboros.source_locator_valid('telemetry', 'telemetry://metric/merge_rate/baseline:v2.1.0-rc1-vs-baseline:v2.0.4')
+  and ouroboros.source_locator_valid('telemetry',
+        'telemetry://metric/build_duration/2026-09-10..2026-10-09?dimension=zephyr%20build&repo=acme-robotics%2Fhelios-firmware')
+  and ouroboros.source_locator_valid('telemetry', 'telemetry://suite/2026-09-10T00:00:00Z..2026-10-10T00:00:00Z?name=PHYSICAL%20%C2%B7%20HIL%20rig'),
+  'a telemetry locator may name a baseline as a window, compare two windows with -vs-, and carry its query percent-encoded');
+
+select pg_temp.must_hold(
+  not ouroboros.source_locator_valid('telemetry', 'telemetry://metric/merge_rate/baseline:')
+  and not ouroboros.source_locator_valid('telemetry', 'telemetry://metric/merge_rate/30d-vs-')
+  and not ouroboros.source_locator_valid('telemetry', 'telemetry://metric/merge_rate/30d-vs-7d-vs-1d')
+  and not ouroboros.source_locator_valid('telemetry', 'telemetry://metric/merge_rate/30d?')
+  and not ouroboros.source_locator_valid('telemetry', 'telemetry://metric/merge_rate/30d?repo=acme robotics')
+  and not ouroboros.source_locator_valid('telemetry', 'telemetry://metric/merge_rate/30d?repo=acme/helios')
+  and not ouroboros.source_locator_valid('telemetry', 'telemetry://metric/merge_rate/baseline:v2.0.4/extra')
+  and not ouroboros.source_locator_valid('telemetry', 'telemetry://Metric/merge_rate/30d')
+  and not ouroboros.source_locator_valid('telemetry', 'telemetry://metric/merge_rate')
+  and not ouroboros.source_locator_valid('code', 'telemetry://metric/merge_rate/30d-vs-7d'),
+  'an empty baseline tag, a dangling or third -vs-, an empty or unencoded query, and a telemetry locator on another kind are refused');
+
+select pg_temp.must_hold(
+  ouroboros.source_locator_valid('code', 'git://helios-firmware@8c1b2e4/src/dock/dock_ctrl.c#L214')
+  and ouroboros.source_locator_valid('ticket', 'issue-index://support/SUP-2214')
+  and ouroboros.source_locator_valid('web', 'https://droneanalysts.example.com/s4-teardown')
+  and not ouroboros.source_locator_valid('web', 'telemetry://metric/merge_rate/30d'),
+  'widening telemetry changed no other kind''s rule');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

@@ -9,8 +9,9 @@ Research investigations read the outside world through **research tools**. This 
 **Web search & page reader**: where its searches go, how it reads a page, what it keeps, and the
 variables that bound it. It also covers the **competitor tracker**: who manages it, what it
 needs, and how it is scheduled. And it covers **Codebase & git mining**: what it reads, where its
-repository clones live, and how a bisect keeps going. Last, it covers the **Issue & PR history
-index**: what it reads, and how an owner imports a document set.
+repository clones live, and how a bisect keeps going. It covers the **Issue & PR history
+index**: what it reads, and how an owner imports a document set. Last, it covers **Build & test
+telemetry**, which needs no setup.
 
 :::info[Not available yet]
 
@@ -378,6 +379,33 @@ investigation.
 | **healthy** | The index holds at least one ticket, pull request or document |
 | **not configured** | Nothing is indexed yet. Connect a ticket source or import a document set. |
 | **down** | The index cannot be read |
+
+## Build & test telemetry
+
+The **Build & test telemetry** tool lets an investigation quote the workspace's own numbers.
+What a researcher sees is in [Research](../user-guide/research.mdx#build--test-telemetry). For an
+operator there is little to do:
+
+- **Nothing to connect.** It has no credential, no external service and no environment variable.
+  It reads what the deployment already records for the workspace: Insights metrics, test results
+  and flake scores, HIL measurements, runs, token usage and regression baselines.
+- **Read-only.** It never writes to any of those. It collects nothing of its own, so it adds no
+  storage and no schedule.
+- **One workspace at a time.** An investigation reads its own workspace's numbers only. A
+  question about another workspace's test case or repository is answered *no data*.
+- **Runner health is not included.** A build runner's health history is not kept yet, so the
+  tool does not read it.
+
+The tool has one optional setting, a **Default window** of 7, 30 or 90 days, used when an
+investigation names no window. It is 30 days unless changed.
+
+### Telemetry health
+
+| Health | Means |
+| --- | --- |
+| **healthy** | The workspace has at least one measurement, Insights metric or test result to read |
+| **not configured** | Nothing has been measured yet. Telemetry appears once builds and tests have run. |
+| **down** | The measurements cannot be read |
 
 ## Investigations after a restart
 
