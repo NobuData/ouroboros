@@ -60,6 +60,38 @@ such as **every run** or **85% of runs**; the **ⓘ** says how it is counted), w
 
 Owners and admins switch a skill on or off with **On**.
 
+### The roadmap pipeline's skills
+
+Two skills are written into a workspace by Ouroboros itself:
+<Since version="0.41.10" module="ouroboros-rest" />
+
+| Skill | What it does |
+| --- | --- |
+| `create-roadmap` | Turns a research brief into a roadmap: dated milestones of items a loop can build |
+| `create-issues` | Writes the issue for each roadmap item |
+
+They are the procedures the
+[roadmap pipeline](./research.mdx#from-a-brief-to-a-roadmap-to-issues) follows. A workspace
+gets them the first time it generates a roadmap.
+
+They are yours to change. The pipeline runs whichever version your workspace has **published**,
+so publishing your own version changes how your roadmaps and issues are written. Nothing
+rebuilds them, and an edit is not overwritten. They are listed with their version, like a skill
+you wrote, and not as **auto-generated nightly**.
+
+Two things stay fixed however you edit them:
+
+- **The shape of the result.** A roadmap is always milestones with items, an MVP flag and an
+  effort; an issue is always one description per item.
+- **Sizing.** The estimator sizes every issue when it is filed. An estimate written into the
+  skill is not used.
+
+Both are org-wide, and neither is added to an ordinary run: each loads only when its own name
+is asked for.
+
+If a workspace's copy exists but has never been published, the pipeline refuses to run it and
+says so.
+
 ### Adding skills
 
 - **+ New skill** opens **New skill**: a **Name** (such as *Power budget checks*), a **Slug** it

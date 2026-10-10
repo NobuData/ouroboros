@@ -656,11 +656,19 @@ export interface WriteCapableProvider extends TicketSourceProvider {
    *
    * @param context - The source, opened.
    * @param name - The milestone's name. Non-blank.
+   * @param dueOn - The date a **created** milestone is due, `YYYY-MM-DD` (CM.5, #624). A milestone
+   *   that already exists keeps its own date: this call never edits one. A tracker without due
+   *   dates ignores it.
    * @returns The milestone; the same reference on every call with the same name. `null` when
    *   `write.milestones` is false — an ordinary configuration, not a failure.
-   * @throws {TicketSourceError} On a refusal; `validation` for a blank name.
+   * @throws {TicketSourceError} On a refusal; `validation` for a blank name or a `dueOn` that is
+   *   not a calendar date.
    */
-  ensureMilestone(context: TicketSyncContext, name: string): Promise<MilestoneRef | null>;
+  ensureMilestone(
+    context: TicketSyncContext,
+    name: string,
+    dueOn?: string | null,
+  ): Promise<MilestoneRef | null>;
 
   /**
    * The milestones a batch may be filed under — mockup 09's **Milestone ▾** selector.

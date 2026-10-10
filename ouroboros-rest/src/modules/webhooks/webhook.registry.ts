@@ -238,6 +238,11 @@ export const WEBHOOK_REGISTRY: readonly WebhookRegistryVersion[] = [
     // CM.4 (#623): a workspace changed the regression watch's auto-bisect or auto-file policy.
     adds: ["audit.regression_watch.policy_updated"],
   },
+  {
+    version: 9,
+    // CM.5 (#624): a roadmap suggestion was dismissed, and the direct-commit opt-in changed.
+    adds: ["audit.roadmap.suggestion_dismissed", "audit.roadmap.policy_updated"],
+  },
 ];
 
 /** The newest registry version — what a new endpoint subscribes under. */

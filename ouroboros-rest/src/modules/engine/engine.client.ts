@@ -103,6 +103,15 @@ import {
   investigateRequestBody,
   investigationAcceptedSchema,
 } from "./engine.investigate";
+import {
+  ENGINE_SKILL_TIMEOUT_MS,
+  ENGINE_SKILLS_RUN_ROUTE,
+  skillRefusalSchema,
+  skillRunRequestBody,
+  skillRunResultSchema,
+  type EngineSkillAnswer,
+  type EngineSkillRunRequest,
+} from "./engine.skills";
 
 /**
  * How long any single call to the engine may take, in milliseconds.
@@ -568,6 +577,72 @@ export class EngineClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(investigateRequestBody(request)),
     });
+  }
+
+  /**
+   * Run one registry skill over an input (CM.5,
+   * [#624](https://github.com/NobuData/ouroboros/issues/624)).
+   *
+   * Like {@link code}, two refusals are **answered** rather than thrown: the model could not be
+   * reached (`skill_model_failed`) or answered outside the contract twice
+   * (`skill_output_invalid`). The pipeline tells its caller which. Anything else is
+   * `engine_unavailable`.
+   *
+   * @param request - The skill version, its input and the output wanted.
+   * @param timeoutMs - The deadline; a run is one or two model answers over a whole brief.
+   * @returns The validated result, or the refusal.
+   * @throws {UpstreamError} `engine_unavailable` for everything that is not one of the two.
+   */
+  async runSkill(
+    request: EngineSkillRunRequest,
+    timeoutMs: number = ENGINE_SKILL_TIMEOUT_MS,
+  ): Promise<EngineSkillAnswer> {
+    const url = engineRouteUrl(this.config.engineUrl, ENGINE_SKILLS_RUN_ROUTE);
+    const init: RequestInit = {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(skillRunRequestBody(request)),
+    };
+    const response = await this.send(url, init, timeoutMs);
+
+    if (!response.ok && response.status !== ENGINE_UNAUTHORIZED) {
+      let refusal: unknown;
+      try {
+        refusal = await response.json();
+      } catch {
+        refusal = undefined;
+      }
+      const parsed = skillRefusalSchema.safeParse(refusal);
+      if (parsed.success) {
+        const { code, message, details } = parsed.data;
+
+        return {
+          ok: false,
+          refusal: { code, message, reason: details?.reason ?? details?.problem ?? null },
+        };
+      }
+      this.logger.error(`POST ${url} responded ${response.status} without a skill_* refusal`);
+      throw engineUnavailable();
+    }
+    if (!response.ok) {
+      await this.refuse(response, url, init);
+    }
+
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch (error) {
+      this.logger.error(`POST ${url} answered with a body that is not JSON`, { cause: error });
+      throw engineUnavailable();
+    }
+    const parsed = skillRunResultSchema.safeParse(payload);
+    if (!parsed.success) {
+      this.logger.error(
+        `POST ${url} answered outside the /v0 contract: ${JSON.stringify(parsed.error.issues)}`,
+      );
+      throw engineUnavailable();
+    }
+    return { ok: true, data: parsed.data };
   }
 
   /**

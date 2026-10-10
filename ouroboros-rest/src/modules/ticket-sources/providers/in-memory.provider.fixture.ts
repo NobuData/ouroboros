@@ -1270,6 +1270,9 @@ export class InMemoryWriteTicketSourceProvider
   /** The write declaration, fixed at construction so `capabilities()` is stable. */
   private readonly writes: TicketSourceWriteCapabilities & { readonly createTicket: true };
 
+  /** Every `ensureMilestone` call's name and due date, in order — what a suite asserts on. */
+  readonly milestoneDueDates: { name: string; dueOn: string | null }[] = [];
+
   /**
    * @param tracker - The tracker to talk to.
    * @param options - The kind, the page size, and the write declaration.
@@ -1399,8 +1402,14 @@ export class InMemoryWriteTicketSourceProvider
    * @returns The milestone, or null on a declaration without milestones.
    * @throws {TicketSourceError} `validation` for a blank name; the tracker's refusal otherwise.
    */
-  ensureMilestone(context: TicketSyncContext, name: string): Promise<MilestoneRef | null> {
+  ensureMilestone(
+    context: TicketSyncContext,
+    name: string,
+    dueOn?: string | null,
+  ): Promise<MilestoneRef | null> {
     return settledWrite(() => {
+      this.milestoneDueDates.push({ name, dueOn: dueOn ?? null });
+
       if (!this.writes.milestones) {
         return null;
       }

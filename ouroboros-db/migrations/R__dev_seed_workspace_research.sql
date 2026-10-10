@@ -72,7 +72,7 @@
 -- investigations, `5eed0092` their sources, `5eed0093` briefs and claims, `5eed0094`
 -- competitors, watches and snapshots, `5eed0095` the matrix, `5eed0096` the regression watch,
 -- `5eed0097` the roadmap doc, `5eed0098` PR #641, `5eed0099` the Support source and its 312
--- tickets, `5eed009a` the churn-interview import.
+-- tickets, `5eed009a` the churn-interview import, `5eed009b` the pipeline's two skills (#624).
 
 -- ---------------------------------------------------------------------------
 -- Canonical tickets: the bug RS-118 investigated, the watch's fix tickets, and the six
@@ -104,10 +104,10 @@ select ('5eed008e-0000-4000-8000-' || lpad(t.number::text, 12, '0'))::uuid, org.
      'closed', '["regression", "power"]', 'unsized', 20),
     (742, 'Wind-feedforward MPC in final approach',
      'From RS-124 / RS-127: replace the fixed-gain approach PID with a wind-feedforward MPC over the last 2 m.',
-     'closed', '["docking", "roadmap"]', 'sized', 18),
+     'closed', '["docking", "roadmap", "mvp"]', 'sized', 18),
     (743, 'Re-planned abort & retry vectors',
      'From RS-124: after an aborted docking, re-plan the approach vector and retry instead of returning to loiter.',
-     'open', '["docking", "roadmap"]', 'sized', 18),
+     'open', '["docking", "roadmap", "mvp"]', 'sized', 18),
     (744, 'Gust estimator from IMU residuals',
      'From RS-124: estimate gusts from IMU residuals so the approach controller can anticipate them.',
      'open', '["docking", "roadmap"]', 'sized', 18),
@@ -704,10 +704,16 @@ update ouroboros.regression_watch_items
 -- ---------------------------------------------------------------------------
 -- RS-124's ROADMAP.md: version 1, committed, and its two open suggestions.
 -- ---------------------------------------------------------------------------
-insert into ouroboros.roadmap_docs (id, organization_id, investigation_id, title, created_at)
+insert into ouroboros.roadmap_docs (id, organization_id, investigation_id, title, target_source_id,
+                                    batch_id, created_at)
 select '5eed0097-0000-4000-8000-000000000124'::uuid, inv.organization_id, inv.id,
-       'Helios — Q' || extract(quarter from now()) || ' Improvement Roadmap', inv.created_at + interval '1 hour'
+       'Helios — Q' || extract(quarter from now()) || ' Improvement Roadmap',
+       -- The repository ROADMAP.md lives in and the tracker #742…#747 were filed to, and the
+       -- batch create-issues composed (#624) — so a re-run finds its drafts.
+       batch.target_source_id, batch.id, inv.created_at + interval '1 hour'
   from ouroboros.investigations inv
+  join ouroboros.draft_batches batch on batch.id = '5eed0090-0000-4000-8000-000000000124'
+                                    and batch.organization_id = inv.organization_id
  where inv.id = '5eed0091-0000-4000-8000-000000000124'
    and ${ouro_dev_seed}
 on conflict do nothing;
@@ -872,3 +878,102 @@ select ('5eed009a-0000-4000-8000-0001' || lpad(doc.n::text, 8, '0'))::uuid,
   join ouroboros.document_imports imp on imp.id = '5eed009a-0000-4000-8000-000000000001'::uuid
  where ${ouro_dev_seed}
 on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
+-- The pipeline's two skills — the card's `skill · create-roadmap` → `skill · create-issues`
+-- chips (#624, CM.5).
+--
+-- Registry skills like any other (V069), `origin = generated`: the text below is what
+-- ouroboros-rest writes for a workspace that has neither (`pipeline.skills.ts`, whose spec
+-- compares the two), published by nobody. A workspace changes what the pipeline runs by
+-- publishing its own version. `on_trigger` with the slug as the only trigger, so neither is
+-- injected into an ordinary run.
+-- ---------------------------------------------------------------------------
+insert into ouroboros.skills (id, organization_id, slug, name, description, scope,
+                              enabled, required, draft, origin, created_at)
+select ('5eed009b-0000-4000-8000-' || lpad(seed.ordinal::text, 12, '0'))::uuid,
+       org."id", seed.slug, seed.slug, seed.description, 'org', true, false, false, 'generated',
+       now() - interval '30 days'
+  from (values
+         (1, 'create-roadmap', 'Turn a research brief into ROADMAP.md: dated milestones of buildable items'),
+         (2, 'create-issues', 'Write the issue for each roadmap item; the estimator sizes it when filed')
+       ) as seed (ordinal, slug, description)
+  join ouroboros.organization org on org."slug" = 'acme-robotics'
+ where ${ouro_dev_seed}
+on conflict do nothing;
+
+insert into ouroboros.skill_versions (id, skill_id, version, body, frontmatter, published_at,
+                                      published_by, change_note, created_at, updated_at)
+select ('5eed009b-0000-4000-8000-' || lpad((1000 + seed.ordinal)::text, 12, '0'))::uuid,
+       skill.id, 1, seed.body,
+       jsonb_build_object('name', skill.slug, 'description', skill.description, 'scope', 'org',
+                          'load', 'on_trigger', 'triggers', jsonb_build_array(skill.slug)),
+       skill.created_at + interval '1 day', null, 'Shipped procedure',
+       skill.created_at + interval '1 day', skill.created_at + interval '1 day'
+  from (values
+         (1, $skill$# create-roadmap
+
+Turn a research brief into a roadmap: dated milestones, each a short list of items a loop can build.
+
+## Inputs
+
+- `brief` — the brief, exported as Markdown with its numbered sources.
+- `outline` — the investigation's own roadmap input (themes and proposed milestones), when it produced one.
+- `previous` — the roadmap this run replaces, when there is one.
+- `suggestions` — changes people or the product asked for, oldest first.
+- `today` — the date of the run.
+
+## Procedure
+
+1. Read the brief's findings and group them into themes. Leave open questions out: an item needs a finding behind it.
+2. Order the themes by how strongly the sources support them, then by what the earlier ones unblock.
+3. Cut milestones: each one is an outcome a customer would notice, two to five items, with a target date after `today`. Earlier milestones carry the MVP set.
+4. Write each item as one buildable change — a title a ticket could carry. Mark it `mvp` when the milestone's outcome fails without it. Guess an effort (`xs` to `xl`) only when the brief gives grounds for one.
+5. When `previous` is present, start from it: keep what the brief still supports, and keep the key of every milestone and item that survives.
+6. Apply every entry of `suggestions`, in order. A suggestion that contradicts the brief still wins — a person asked for it.
+
+## Rules
+
+- Never invent a customer, a number or a date the brief does not support.
+- A title names the change, not the problem: "Gust estimator from IMU residuals", not "Docking is unreliable".
+- At most 50 milestones and 500 items.
+$skill$),
+         (2, $skill$# create-issues
+
+Write the issue for each roadmap item, so that a loop — or a person — can pick it up without reading the brief.
+
+## Inputs
+
+- `roadmap` — the title and the milestones the items belong to.
+- `items` — the items to describe: `key`, `title`, `milestone`, `mvp`, `effort`.
+- `brief` — the brief the roadmap was generated from, with its numbered sources.
+
+## Procedure
+
+For every item, write a description with these sections:
+
+1. **Problem** — what a customer or operator meets today, citing the brief's findings by source number.
+2. **Scope** — what changes, and what is deliberately left out.
+3. **Acceptance criteria** — a checklist a reviewer can verify.
+4. **Dependencies** — other items of this roadmap it needs, by title.
+
+## Rules
+
+- One description per item, and none for anything else.
+- Do not write an estimate, a date, an effort or a complexity: the estimator sizes every issue when it is filed.
+- Do not restate the title as the first line.
+$skill$)
+       ) as seed (ordinal, body)
+  join ouroboros.skills skill on skill.id = ('5eed009b-0000-4000-8000-'
+                                             || lpad(seed.ordinal::text, 12, '0'))::uuid
+ where not exists (select 1 from ouroboros.skill_versions prior where prior.skill_id = skill.id)
+   and ${ouro_dev_seed}
+ order by seed.ordinal
+on conflict do nothing;
+
+update ouroboros.skills skill
+   set current_version = 1
+ where skill.id in ('5eed009b-0000-4000-8000-000000000001', '5eed009b-0000-4000-8000-000000000002')
+   and skill.current_version is null
+   and exists (select 1 from ouroboros.skill_versions v where v.skill_id = skill.id and v.version = 1)
+   and ${ouro_dev_seed};

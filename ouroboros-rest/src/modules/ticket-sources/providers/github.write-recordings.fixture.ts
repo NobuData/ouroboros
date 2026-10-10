@@ -62,6 +62,8 @@ export interface RecordedMilestone {
   readonly number: number;
   /** The title. */
   readonly title: string;
+  /** The `due_on` it was created with, when it was created with one (#624). */
+  readonly dueOn?: string;
 }
 
 /** How a recording is set up. */
@@ -248,7 +250,11 @@ export function writeRecording(options: WriteRecordingOptions = {}): WriteRecord
           throw httpError(422, HEALTHY);
         }
 
-        const milestone = { number: milestones.length + 1, title };
+        const milestone = {
+          number: milestones.length + 1,
+          title,
+          ...(typeof params.due_on === "string" ? { dueOn: params.due_on } : {}),
+        };
 
         milestones.push(milestone);
 

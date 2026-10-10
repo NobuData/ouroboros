@@ -888,7 +888,8 @@ PATCH drafts/OTA-4 {selected: false} · POST push ─▶ 5 issues · queue_small
   - **Provenance needed a column.** `ticket_drafts` had none, so V037 adds `provenance`
     (`planned|edited`, closed, default `planned`); a title or body edit sets `edited`. The research
     provenance fields from the #624 amendment are **deferred to #624**, whose investigation and
-    gap-row tables they would reference.
+    gap-row tables they would reference. *(Delivered by #624: V125's `ticket_drafts.research_provenance`,
+    answered as `research` on a draft, with a per-draft `milestone` and `labels`.)*
   - **One sizer, for drafts too (N3).** `EstimationOrchestrator.enqueueDraft` sizes a draft through
     the same queue, bound, engine call, retry and floor as an issue, writing
     `issue_estimates.draft_id`. A draft has no `sizing_status`, so it is sized exactly when it has an

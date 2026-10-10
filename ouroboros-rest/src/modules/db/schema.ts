@@ -4426,6 +4426,41 @@ export interface TicketDraftsTable {
    * `planned` as the planner answered, `edited` once a person has changed its title or body.
    */
   provenance: Generated<DraftProvenance>;
+  /**
+   * Where in research the draft came from (V125, [#624](https://github.com/NobuData/ouroboros/issues/624)),
+   * or null for a draft research did not write. Parsed on the way out; a JSON string on the way in.
+   */
+  research_provenance: ColumnType<
+    DraftResearchProvenance | null,
+    string | null | undefined,
+    string | null
+  >;
+  /** The tracker milestone this draft is filed under, winning over the batch's (V125). */
+  milestone_name: string | null;
+  /** The due date sent when the push creates {@link milestone_name}, `YYYY-MM-DD` (V125). */
+  milestone_due: ColumnType<string | null, string | null | undefined, string | null>;
+  /** The labels the push sends (V125). Parsed on the way out; a JSON string on the way in. */
+  labels: ColumnType<string[], string | undefined, string>;
+}
+
+/**
+ * `ticket_drafts.research_provenance` (V125, `draft_research_provenance_valid`): the investigation
+ * a draft came from, and the matrix gap or roadmap item it was written for.
+ */
+export interface DraftResearchProvenance {
+  investigation_id: string;
+  /** A matrix gap, or an item of a roadmap document. */
+  origin: "gap" | "roadmap";
+  /** The gap's capability; null for a roadmap item. */
+  capability: string | null;
+  /** The gap's severity; null for a roadmap item. */
+  severity: "high" | "med" | null;
+  /** The roadmap item's key; null for a gap. */
+  item_key: string | null;
+  /** The effort the brief proposed, or null. */
+  effort: "xs" | "s" | "m" | "l" | "xl" | null;
+  /** The `source_records` ids the draft cites. */
+  sources: string[];
 }
 
 /**
@@ -8233,6 +8268,10 @@ export const TABLE_COLUMNS = {
     "created_at",
     "updated_at",
     "provenance",
+    "research_provenance",
+    "milestone_name",
+    "milestone_due",
+    "labels",
   ],
   ticket_dependencies: [
     "id",

@@ -39,7 +39,7 @@
 
 import { Injectable, Logger, Optional } from "@nestjs/common";
 
-import type { DraftBatchStatus } from "../db/schema";
+import type { DraftBatchStatus, DraftResearchProvenance } from "../db/schema";
 import { EngineClient } from "../engine/engine.client";
 import { PLAN_MAX_WORKFLOW_TAGS, type Plan, type PlanDraft } from "../engine/engine.contract";
 import { describeForLog } from "../errors/failure";
@@ -78,6 +78,7 @@ import {
   PlanningRepository,
   type BatchEdgeRow,
   type BatchRow,
+  type DraftMilestone,
   type DraftRow,
   type NewDraft,
 } from "./planning.repository";
@@ -104,7 +105,25 @@ export interface ComposedBatchInput {
   /** The write-capable ticket source the drafts will push to. */
   readonly targetSourceId: string;
   /** The drafts, each keyed within the batch. */
-  readonly drafts: readonly { localKey: string; title: string; body: string }[];
+  readonly drafts: readonly ComposedDraft[];
+  /**
+   * The epic the batch belongs to (AK.3), already stored — the gaps hand-off's (CM.5, #624).
+   * Absent or null for a batch outside any epic.
+   */
+  readonly epicId?: string | null;
+}
+
+/** One draft a composing plane hands over. */
+export interface ComposedDraft {
+  readonly localKey: string;
+  readonly title: string;
+  readonly body: string;
+  /** The tracker milestone it is filed under, winning over the batch's. */
+  readonly milestone?: DraftMilestone | null;
+  /** The labels the push sends with it. */
+  readonly labels?: readonly string[];
+  /** Where in research it came from. */
+  readonly research?: DraftResearchProvenance | null;
 }
 
 /** `draft_batches_planner_versioned`, as a pattern — a name and a version. */
@@ -125,6 +144,10 @@ export const COMPOSING_PLANNER_FAMILIES: readonly string[] = Object.freeze([
   "bench",
   // The regression watch's fix draft (CM.4, #623).
   "regression-watch",
+  // Research's two hand-offs (CM.5, #624): an epic drafted from a brief's gaps, and the issues of
+  // a roadmap document.
+  "research-gaps",
+  "create-roadmap",
 ]);
 
 /**
@@ -261,7 +284,7 @@ export class BatchesService {
    * @param input - The prompt line, the planner, the target and the drafts.
    * @returns The stored batch. Sizing is under way: the batch reads `drafting` until every
    *   selected draft has an estimate, then `sized`.
-   * @throws {NotFoundError} `planning_source_not_found`.
+   * @throws {NotFoundError} `planning_source_not_found`, `planning_epic_not_found`.
    * @throws {ConflictError} `planning_target_read_only`.
    * @throws {Error} When `planner` is not a versioned name of a composing family
    *   ({@link COMPOSING_PLANNER_FAMILIES}) — a caller's bug, not a request's.
@@ -287,6 +310,12 @@ export class BatchesService {
     }
 
     const provider = this.writerFor(source);
+    const epicId = input.epicId ?? null;
+
+    if (epicId !== null && (await this.repository.epic(organizationId, epicId)) === undefined) {
+      throw epicNotFound(epicId);
+    }
+
     const drafts: NewDraft[] = input.drafts.map((draft) => ({
       localKey: draft.localKey,
       title: draft.title,
@@ -294,6 +323,9 @@ export class BatchesService {
       suggestedWorkflow: null,
       selected: true,
       dependencies: [],
+      milestone: draft.milestone ?? null,
+      labels: draft.labels ?? [],
+      research: draft.research ?? null,
     }));
 
     const { batchId, drafts: stored } = await this.repository.insertBatch(
@@ -304,7 +336,7 @@ export class BatchesService {
         planner: input.planner,
         targetSourceId: source.sourceId,
         targetMilestone: null,
-        epicId: null,
+        epicId,
         autoSize: true,
         queueSmall: false,
         createdBy: userId,
@@ -907,6 +939,20 @@ function draftResource(
     selected: draft.selected,
     suggestedWorkflow: draft.suggestedWorkflow,
     provenance: draft.provenance,
+    milestone: draft.milestone,
+    labels: draft.labels,
+    research:
+      draft.research === null
+        ? null
+        : {
+            investigationId: draft.research.investigation_id,
+            origin: draft.research.origin,
+            capability: draft.research.capability,
+            severity: draft.research.severity,
+            itemKey: draft.research.item_key,
+            effort: draft.research.effort,
+            sources: draft.research.sources,
+          },
     dependencies,
     blockedByTicketIds,
     pushState: draft.pushState,

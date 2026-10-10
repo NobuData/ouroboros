@@ -22,7 +22,7 @@
  */
 
 import { Injectable } from "@nestjs/common";
-import type { Transaction } from "kysely";
+import { sql, type Transaction } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
 import {
@@ -62,6 +62,10 @@ export interface PushDraft {
   readonly title: string;
   /** The body, or null. */
   readonly body: string | null;
+  /** Its own tracker milestone, winning over the batch's (V125, #624); null to use the batch's. */
+  readonly milestone: { readonly name: string; readonly dueOn: string | null } | null;
+  /** The labels sent with the ticket (V125). */
+  readonly labels: readonly string[];
   /** Where the draft is in the push. */
   readonly pushState: DraftPushState;
   /** The ticket it became, once pushed. */
@@ -104,6 +108,8 @@ export interface PushedDraft {
   readonly title: string;
   /** The draft's body — likewise. */
   readonly body: string | null;
+  /** The labels the ticket was created with — likewise (CM.5, #624). Absent means none. */
+  readonly labels?: readonly string[];
   /** The batch epic to count the ticket in, or null. */
   readonly epicId: string | null;
   /** When the push recorded it. */
@@ -249,6 +255,8 @@ export class PushRepository implements PushStore {
     const rows = await this.database.db
       .selectFrom("ticket_drafts")
       .select(["id", "local_key", "title", "body", "push_state", "pushed_ticket_id", "push_error"])
+      .select(["milestone_name", "labels"])
+      .select(sql<string | null>`to_char(milestone_due, 'YYYY-MM-DD')`.as("milestone_due"))
       .where("batch_id", "=", batchId)
       .where("selected", "=", true)
       .orderBy("local_key")
@@ -259,6 +267,9 @@ export class PushRepository implements PushStore {
       localKey: row.local_key,
       title: row.title,
       body: row.body,
+      milestone:
+        row.milestone_name === null ? null : { name: row.milestone_name, dueOn: row.milestone_due },
+      labels: row.labels,
       pushState: row.push_state,
       pushedTicketId: row.pushed_ticket_id,
       pushError: row.push_error,
@@ -429,7 +440,7 @@ export class PushRepository implements PushStore {
         title: pushed.title,
         body: pushed.body,
         state: "open",
-        labels: "[]",
+        labels: JSON.stringify(pushed.labels ?? []),
         author: null,
         source_created_at: pushed.at,
         source_updated_at: pushed.at,

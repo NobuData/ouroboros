@@ -32,6 +32,7 @@ from ouroboros_engine.api import (
     learn,
     plan,
     root,
+    skills,
     status,
     tasks,
     workflows,
@@ -56,6 +57,7 @@ from ouroboros_engine.learning.extractor import UnavailableExtractor
 from ouroboros_engine.openapi import document
 from ouroboros_engine.planning.outline_planner import OutlinePlanner
 from ouroboros_engine.settings import Settings, load_settings
+from ouroboros_engine.skills.runner import SkillRunner
 
 #: The paths served without the internal key. Liveness only, and it is the route module
 #: that says so — see :mod:`ouroboros_engine.api.health`. The OpenAPI document is
@@ -207,6 +209,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         HttpReplayEstimates(resolved.rest_url, resolved.shared_secret),
     )
 
+    # Skill execution (CM.5, #624): a registry skill's body followed over an input — the
+    # roadmap pipeline's `create-roadmap` and `create-issues`. Through the same gateway, so
+    # until AF.2 (#235) lands a run answers `502 skill_model_failed` naming the gateway.
+    # A test installs a runner over a scripted model.
+    app.state.skills = SkillRunner(
+        GatewayStageCaller(
+            ControlPlaneClient(resolved.rest_url, resolved.shared_secret),
+            UrllibGateway(),
+        )
+    )
+
     # Added before any route is registered, and the only middleware there is, so it is
     # the outermost thing a request meets: the guard cannot be bypassed by a path that
     # is added later, and an unauthenticated request never reaches routing at all.
@@ -235,6 +248,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(copilot.router)
     app.include_router(dryruns.router)
     app.include_router(investigate.router)
+    app.include_router(skills.router)
     _mount_simulator(app, resolved)
     return app
 

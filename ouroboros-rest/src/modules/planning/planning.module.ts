@@ -79,6 +79,6 @@ import { SplitApprovalEmitter } from "./split-approval.emitter";
     SplitApprovalEmitter,
   ],
   // BatchesService for the Build Analyzer's drafted tickets (#514), which are ordinary batches.
-  exports: [PushService, BatchesService],
+  exports: [PushService, BatchesService, EpicsService],
 })
 export class PlanningModule {}

@@ -79,6 +79,8 @@ from ouroboros_engine.main import _PUBLIC_PATHS, create_app
 from ouroboros_engine.planning.contract import Draft, Plan, PlanningContext, PlanRequest
 from ouroboros_engine.planning.outline_planner import OutlinePlanner
 from ouroboros_engine.settings import Settings
+from ouroboros_engine.skills import contract as skills_contract
+from ouroboros_engine.skills.runner import SkillRunner
 from ouroboros_engine.workflows.contract import (
     DryRunEdge,
     DryRunStep,
@@ -96,6 +98,7 @@ from ouroboros_engine.workflows.contract import (
 )
 from ouroboros_engine.workflows.simulate import dry_run
 from ouroboros_engine.workflows.validate import validate_workflow_document
+from skills_fakes import ROADMAP, ScriptedModel
 
 #: The module root, where both specification files are committed — resolved from this
 #: file rather than the working directory, like every other path in the suite.
@@ -106,6 +109,14 @@ _MODULE_ROOT = Path(__file__).resolve().parent.parent
 #: failure is answered in. A model added without a schema beside it fails the
 #: exhaustiveness check below rather than being described by nothing.
 _DOCUMENTED_MODELS: dict[str, type[BaseModel]] = {
+    "SkillRef": skills_contract.SkillRef,
+    "SkillRunRequest": skills_contract.SkillRunRequest,
+    "RoadmapItem": skills_contract.RoadmapItem,
+    "RoadmapMilestone": skills_contract.RoadmapMilestone,
+    "Roadmap": skills_contract.Roadmap,
+    "IssueBody": skills_contract.IssueBody,
+    "SkillUsage": skills_contract.SkillUsage,
+    "SkillRunResult": skills_contract.SkillRunResult,
     "InvestigateRequest": investigation_contract.InvestigateRequest,
     "InvestigationKind": investigation_contract.InvestigationKind,
     "InvestigationPlaybook": investigation_contract.InvestigationPlaybook,
@@ -476,6 +487,10 @@ def fixture_remotes(client: TestClient, tmp_path: Path) -> TestClient:
     # And `POST /v0/dry-runs` walks its draft over the suite's fakes rather than a git host,
     # a gateway and an estimator.
     client.app.state.dry_runs = DryRunBench().harness  # type: ignore[attr-defined]
+    # And `POST /v0/skills/run` follows its skill over a scripted model rather than a gateway.
+    client.app.state.skills = SkillRunner(  # type: ignore[attr-defined]
+        ScriptedModel(json.dumps(ROADMAP))
+    )
     return client
 
 

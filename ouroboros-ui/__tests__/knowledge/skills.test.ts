@@ -1,24 +1,24 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  DRAFT_NEVER_INJECTS,
-  GENERATED_OVERWRITE,
-  GENERATED_TAG,
-  MEMBER_REGENERATE_REASON,
-  MEMBER_SWITCH_REASON,
-  NONE_LABEL,
-  NOT_COUNTED_LABEL,
-  REQUIRED_NOTE,
-  REQUIRED_TAG,
-  UNPUBLISHED_TEXT,
   activeCount,
+  DRAFT_NEVER_INJECTS,
   editorAffordance,
   editorReason,
+  GENERATED_OVERWRITE,
+  GENERATED_TAG,
   generatedNote,
+  MEMBER_REGENERATE_REASON,
+  MEMBER_SWITCH_REASON,
   nextSort,
+  NONE_LABEL,
+  NOT_COUNTED_LABEL,
+  rebuiltNightly,
   regenerateFailure,
   regenerateName,
   regenerateToast,
+  REQUIRED_NOTE,
+  REQUIRED_TAG,
   scopeLabel,
   scopeNote,
   sortDirection,
@@ -26,6 +26,7 @@ import {
   switchFailure,
   switchLabel,
   switchState,
+  UNPUBLISHED_TEXT,
   updated,
   usedBy,
   versionAge,
@@ -186,6 +187,22 @@ describe("the Updated cell", () => {
 
   it("lets the required tag win over the generated one, as the mockup draws the rows", () => {
     expect(updated(skillSummary({ required: true, origin: "generated" }), NOW).kind).toBe("required");
+  });
+
+  it("reads a generated skill no nightly job rebuilds as any other skill — the pipeline's two (#624)", () => {
+    const shipped = skillSummary({
+      slug: "create-roadmap",
+      origin: "generated",
+      scope: "org",
+      repoRef: null,
+      currentVersion: 1,
+    });
+
+    expect(rebuiltNightly(shipped)).toBe(false);
+    expect(rebuiltNightly(seededSkill("repo-map"))).toBe(true);
+    expect(rebuiltNightly(skillSummary({ origin: "authored" }))).toBe(false);
+    expect(updated(shipped, NOW)).toEqual({ kind: "version", text: versionAge(shipped, NOW) });
+    expect(editorAffordance(shipped).warning).toBeNull();
   });
 
   it("names the regenerate for its row", () => {

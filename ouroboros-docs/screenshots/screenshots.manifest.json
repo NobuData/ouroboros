@@ -834,10 +834,10 @@
       "ready": "#skills-drafts table",
       "clip": "page",
       "caption": "Knowledge: the skills you write, the facts the loop learns and you approve, and playbooks you can aim at any issue.",
-      "alt": "The Knowledge page headed Teach the loop once. Every run remembers., with Import CLAUDE.md / .cursorrules and + New skill: the Skills table, 5 active, listing commit-style, hil-safety (required — cannot disable), power-budget-checks (draft, tinted), pr-etiquette, repo-map and zephyr-conventions with their scope, used by and updated columns, and two repo-map rows pending first generation; beside it, Playbooks with 3 recipes — CVE bump, Flaky test hunt and New driver bring-up, each with Run on issue… — and + New playbook from a past run…; and the top of the Repo profile card.",
-      "capturedAt": "2026-10-09T01:14:05.426Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "fecea49993b29fc637ae1a8a2e6ee68e0ef0c345"
+      "alt": "The Knowledge page headed Teach the loop once. Every run remembers., with Import CLAUDE.md / .cursorrules and + New skill: the Skills table, 7 active, listing commit-style, create-issues, create-roadmap, hil-safety (required — cannot disable), power-budget-checks (draft, tinted), pr-etiquette, repo-map (auto-generated nightly, with its regenerate control) and zephyr-conventions with their scope, used by and updated columns; beside it, Playbooks with 3 recipes — CVE bump, Flaky test hunt and New driver bring-up, each with Run on issue… — and + New playbook from a past run…; and the top of the Repo profile card.",
+      "capturedAt": "2026-10-10T18:13:46.296Z",
+      "uiVersion": "0.145.4",
+      "seedRef": "ac8390e4f6e2d914308120448466976225ec9e40"
     },
     {
       "id": "user-guide.knowledge.fact",

@@ -48,6 +48,31 @@ outline to split it. Drafting tickets from the description alone is not availabl
 The address changes to `/planning?batch=…`, so you can come back to the same batch, or share
 it, later.
 
+### Batches drafted from research
+
+Two batches arrive in Planning without anyone typing an outline. Both come from
+[Research](./research.mdx): <Since version="0.41.10" module="ouroboros-rest" />
+
+- **Draft epic from gaps →** on a gap analysis creates an epic, marked **proposed**, and one
+  draft for each proposed ticket — see
+  [Draft epic from gaps](./research.mdx#draft-epic-from-gaps).
+- **create-issues** on a roadmap creates one draft for each roadmap item — see
+  [Filing the issues](./research.mdx#filing-the-issues).
+
+These drafts are reviewed, sized and pushed like any others. What is different:
+
+- **The draft says where it came from.** Its description names the investigation, and a gap
+  draft lists the sources it cites. Through the API, each draft also carries a `research`
+  record: the investigation, the gap or roadmap item, and the cited sources.
+- **A roadmap draft has its own milestone.** Each is filed under its roadmap milestone, with
+  that milestone's due date, whatever the batch's **Milestone** says.
+- **A roadmap draft may carry a label.** An item in the MVP set is filed with the label `mvp`.
+- **It cannot be regenerated.** No outline produced it, so regenerating the batch is refused.
+  Edit the drafts instead.
+
+Nothing in either batch is filed until it is pushed. A gap batch waits for you; a roadmap batch
+is pushed by the roadmap's own **create-issues** step.
+
 ## Reviewing the drafts
 
 <Screenshot id="user-guide.planning.tickets" />

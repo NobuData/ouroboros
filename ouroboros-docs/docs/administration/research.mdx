@@ -567,6 +567,83 @@ A pass that is repeated, or that two replicas run at once, changes nothing twice
 variable to `0` turns the pass off on that replica; baselines can still be captured and
 compared by hand.
 
+## Roadmap pipeline
+
+The roadmap pipeline turns a brief into `ROADMAP.md`, proposes it to a repository and files its
+items as issues — see
+[From a brief to a roadmap to issues](../user-guide/research.mdx#from-a-brief-to-a-roadmap-to-issues).
+<Since version="0.41.10" module="ouroboros-rest" />
+
+### What the pipeline needs
+
+- **A ticket source with a repository.** The roadmap's file is written to that source's
+  repository and its issues are filed in that source's tracker. Today that means a GitHub
+  source — see [Ticket sources](./sources.mdx).
+- **A token that may write.** Besides creating issues and milestones, the source's token must be
+  able to create a branch, commit a file and open a pull request: on a fine-grained GitHub token,
+  **Contents** and **Pull requests** set to *Read and write*. See
+  [Token permissions](./sources.mdx#token-permissions).
+- **A model routed to research.** The pipeline's two skills run on the model your workspace
+  routes research work to — see [Providers & models](./providers.mdx). With none, generating a
+  roadmap is refused.
+- **The engine.** The skills are run by the engine. If it cannot be reached, or the model
+  cannot be called, the request is refused and nothing is stored.
+
+### Committing without a pull request
+
+By default every version of `ROADMAP.md` is proposed as a pull request, on a branch named
+`ouroboros/roadmap-…`. Your repository's review is the gate.
+
+An Owner or a Maintainer can let Ouroboros commit to the default branch instead:
+
+```bash
+curl -X PUT "$OURO_URL/api/v1/research/roadmap-settings" \
+  -H "content-type: application/json" -b cookies.txt \
+  -d '{"directCommit": true}'
+```
+
+```json
+{"directCommit":true}
+```
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `directCommit` | `false` | Commits each new roadmap version straight to the repository's default branch, with no pull request |
+
+Everyone in the workspace can read the setting with `GET` on the same address.
+
+- A change is recorded in the [audit log](./retention-audit-lifecycle.mdx) as
+  `roadmap.policy_updated`, with the value before and after.
+- While the workspace is in [dry-run](./policies.mdx#dry-run), the setting is ignored: a draft
+  pull request is opened instead.
+- A branch protection rule that refuses direct pushes still applies. The roadmap then stays
+  `pending` and says the repository refused.
+
+### When the drift check runs
+
+Every <EnvVar name="OURO_RESEARCH_ROADMAP_TICK_MS" />, each REST replica checks every roadmap that
+has a ticket source and is not already marked as drifted. For each one it:
+
+- retries a file that could not be written to the repository;
+- follows an open pull request, to **committed** when it is merged or back to **pending** when
+  it is closed;
+- compares the roadmap with the tracker and with the file in the repository.
+
+A difference raises one suggestion on the roadmap. Nothing is rewritten.
+
+If two replicas check the same roadmap in the same instant, each may raise a suggestion. The
+second is harmless and can be dismissed. Setting the variable to `0` turns the check off on that
+replica; a roadmap can still be checked by hand.
+
+### What is recorded
+
+| Audit event | When |
+| --- | --- |
+| `roadmap.policy_updated` | `directCommit` was turned on or off |
+| `roadmap.suggestion_dismissed` | A suggestion was dismissed; the record keeps its text |
+
+Both can be delivered to a [webhook](./notifications-and-webhooks.mdx).
+
 ## Who may start an investigation
 
 An investigation spends the workspace's money, so each workspace chooses the lowest role that
@@ -640,6 +717,7 @@ All but the clone variables are set on the REST service. Each has a working defa
 | <EnvVar name="OURO_RESEARCH_BISECT_TICK_MS" /> | `60000` | How often running bisects are checked and resumed, from 10 seconds to an hour. `0` turns the check off on that replica. |
 | <EnvVar name="OURO_RESEARCH_INVESTIGATION_TICK_MS" /> | `60000` | How often running investigations are checked for one to resume, from 10 seconds to an hour. `0` turns the check off on that replica. |
 | <EnvVar name="OURO_RESEARCH_REGRESSION_TICK_MS" /> | `300000` | How often the regression watch runs its pass, from 10 seconds to an hour. `0` turns the pass off on that replica. |
+| <EnvVar name="OURO_RESEARCH_ROADMAP_TICK_MS" /> | `900000` | How often roadmaps are checked for drift, from 10 seconds to a day. `0` turns the check off on that replica. |
 
 The engine reads the clone variables:
 

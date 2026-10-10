@@ -63,6 +63,13 @@ import { LEGACY_TOKEN, TOKEN_PREFIXES } from "../../github/github.token";
 import { chunked } from "../../scheduling/cadence";
 import type { TicketSourceConfigSchema } from "../ticket-source.config";
 import type { RepoFile, RepoTree } from "../ticket-source.probe";
+import type {
+  CommitFileInput,
+  CommitFileResult,
+  RepoDocCapableProvider,
+  RepoDocState,
+  UpdatePrInput,
+} from "../ticket-source.repo-doc";
 import {
   TicketSourceError,
   classifyHttpStatus,
@@ -109,6 +116,7 @@ import {
 } from "./github.mapping";
 import { GITHUB_PR_CAPABILITIES, GithubPullRequests } from "./github.pr";
 import { GITHUB_PROBE_CAPABILITIES, GithubRepoProbes, probeTargetOf } from "./github.probe";
+import { GithubRepoDocs } from "./github.repo-doc";
 import { GITHUB_WRITE_CAPABILITIES, GithubWriter, pushTarget } from "./github.write";
 
 /**
@@ -178,7 +186,7 @@ export interface RepoWalk {
  */
 @Injectable()
 export class GithubTicketSourceProvider
-  implements WriteCapableProvider, PrCapableProvider, ProbeCapableProvider
+  implements WriteCapableProvider, PrCapableProvider, ProbeCapableProvider, RepoDocCapableProvider
 {
   /** V030's `ticket_sources.kind` value this provider answers for. */
   readonly kind = "github" as const;
@@ -382,8 +390,12 @@ export class GithubTicketSourceProvider
    * @returns The milestone. Never null: GitHub has milestones.
    * @throws {TicketSourceError} On a refusal; `validation` for a blank name.
    */
-  ensureMilestone(context: TicketSyncContext, name: string): Promise<MilestoneRef | null> {
-    return this.writing(context, (writer) => writer.ensureMilestone(name));
+  ensureMilestone(
+    context: TicketSyncContext,
+    name: string,
+    dueOn?: string | null,
+  ): Promise<MilestoneRef | null> {
+    return this.writing(context, (writer) => writer.ensureMilestone(name, dueOn));
   }
 
   /**
@@ -441,6 +453,54 @@ export class GithubTicketSourceProvider
     mirror: EpicMirrorRef,
   ): Promise<void> {
     return this.writing(context, (writer) => writer.attachToEpic(ticket, mirror));
+  }
+
+  /**
+   * The push target's default branch (CM.5, #624).
+   *
+   * @param context - The source, opened.
+   * @returns Its name.
+   * @throws {TicketSourceError} On a refusal.
+   */
+  defaultBranch(context: TicketSyncContext): Promise<string> {
+    return this.documenting(context, (docs) => docs.defaultBranch());
+  }
+
+  /**
+   * One file of the push target as a ref holds it.
+   *
+   * @param context - The source, opened.
+   * @param path - Relative to the root.
+   * @param ref - A branch name or commit sha.
+   * @returns The file with its blob and last commit, or `null` when the ref holds none.
+   * @throws {TicketSourceError} On a refusal; `validation` for a path this family refuses.
+   */
+  fileAt(context: TicketSyncContext, path: string, ref: string): Promise<RepoDocState | null> {
+    return this.documenting(context, (docs) => docs.fileAt(path, ref));
+  }
+
+  /**
+   * Commit one file to a branch of the push target, creating the branch when it is missing.
+   *
+   * @param context - The source, opened.
+   * @param input - The file, its text, the message and the branches.
+   * @returns The commit, and whether anything was written.
+   * @throws {TicketSourceError} On a refusal, classified the write-side way.
+   */
+  commitFile(context: TicketSyncContext, input: CommitFileInput): Promise<CommitFileResult> {
+    return this.documenting(context, (docs) => docs.commitFile(input));
+  }
+
+  /**
+   * Change a PR's title or description.
+   *
+   * @param context - The source, opened.
+   * @param prNumber - Its number.
+   * @param input - The fields to change.
+   * @throws {TicketSourceError} On a refusal; `not_found` for a number GitHub does not have.
+   */
+  updatePR(context: TicketSyncContext, prNumber: number, input: UpdatePrInput): Promise<void> {
+    return this.documenting(context, (docs) => docs.updatePR(prNumber, input));
   }
 
   /**
@@ -631,6 +691,33 @@ export class GithubTicketSourceProvider
       return await probe(new GithubRepoProbes(client, target));
     } catch (error) {
       throw asTicketSourceError(error);
+    }
+  }
+
+  /**
+   * Run one repository-document operation against the source's push target, classifying whatever
+   * it throws.
+   *
+   * @param context - The source, opened.
+   * @param operation - The operation, given the document operations for this call alone.
+   * @returns What the operation answered.
+   * @throws {TicketSourceError} Every failure, through {@link asTicketSourceWriteError}.
+   */
+  private async documenting<T>(
+    context: TicketSyncContext,
+    operation: (docs: GithubRepoDocs) => Promise<T>,
+  ): Promise<T> {
+    try {
+      const settings = readGithubConfig(context.config);
+      const client = new GithubClient(
+        context.organizationId,
+        this.octokit(tokenOf(context)),
+        this.budget,
+      );
+
+      return await operation(new GithubRepoDocs(client, pushTarget(settings)));
+    } catch (error) {
+      throw asTicketSourceWriteError(error);
     }
   }
 

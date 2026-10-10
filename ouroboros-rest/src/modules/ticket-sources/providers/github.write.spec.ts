@@ -349,6 +349,35 @@ describe("GithubTicketSourceProvider writes", () => {
         errorClass: "validation",
       });
     });
+
+    it("creates a milestone with its due date, and never edits one that exists (#624)", async () => {
+      const { github, provider, context } = build();
+
+      const created = await provider.ensureMilestone(context, "Docking parity", "2026-10-15");
+      const found = await provider.ensureMilestone(context, "Docking parity", "2026-12-01");
+      const undated = await provider.ensureMilestone(context, "Fleet reliability", null);
+
+      expect(found).toStrictEqual(created);
+      expect(undated).toStrictEqual({ externalRef: "2", name: "Fleet reliability" });
+      expect(github.milestones).toStrictEqual([
+        { number: 1, title: "Docking parity", dueOn: "2026-10-15T08:00:00Z" },
+        { number: 2, title: "Fleet reliability" },
+      ]);
+    });
+
+    it.each(["2026-02-30", "15 Oct 2026", "2026-10-15T00:00:00Z", ""])(
+      "refuses the due date %p before asking GitHub anything",
+      async (dueOn) => {
+        const { github, provider, context } = build();
+
+        await expect(
+          provider.ensureMilestone(context, "Docking parity", dueOn),
+        ).rejects.toMatchObject({
+          errorClass: "validation",
+        });
+        expect(github.milestones).toStrictEqual([]);
+      },
+    );
   });
 
   describe("failures", () => {

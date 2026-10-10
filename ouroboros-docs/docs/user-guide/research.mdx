@@ -2,7 +2,7 @@
 title: "Research"
 sidebar_label: "Research"
 sidebar_position: 16
-description: "The Research page, what an investigation is, what it reads, how every finding is cited and how to read and export a brief."
+description: "The Research page, what an investigation is, what it reads, how every finding is cited, how to read and export a brief, and how a brief becomes drafted tickets, a roadmap and issues."
 ---
 
 **Research**, at `/research`, is where you ask Ouroboros a question instead of handing it a
@@ -607,6 +607,51 @@ A gap analysis also proposes the work that would close its gaps: one **epic** an
 
 Nothing is filed. These are proposals for you to review.
 
+### Draft epic from gaps
+
+**Draft epic from gaps →** turns the proposal into drafted tickets in
+[Planning](./planning.mdx). <Since version="0.41.10" module="ouroboros-rest" />
+
+It creates:
+
+- one **epic**, named as the brief named it and marked **proposed** on the roadmap;
+- one **drafted ticket** for each proposed ticket, in one batch under that epic.
+
+Each drafted ticket says which gap it closes and lists the sources behind it:
+
+```md
+Closes the **Wind-compensated docking** gap (HIGH) found by RS-127.
+
+Proposed effort: M — a seed from the brief; the estimate is the sizer's.
+
+**Sources**
+- [07] Skylink firmware 6.2 release notes — `skylink.example.com/releases/6.2`
+```
+
+**Nothing is filed in your tracker.** The batch opens in Planning at `/planning?batch=…`, where
+you review it, let the estimator size it, and push it when you are ready — see
+[Reviewing the drafts](./planning.mdx#reviewing-the-drafts). The effort the brief proposed is
+only a starting note; the size on each draft is the estimator's.
+
+Drafting twice does not create a second epic: asking again answers the batch that was already
+drafted. If your workspace has more than one ticket source, say which one the drafts are for.
+
+Owners, Maintainers and members can draft; a Viewer cannot.
+
+:::info[Draft through the API for now]
+
+The button arrives with the brief card in a later release. Until then, send the request to the
+[REST API](../cli/rest-api.mdx):
+
+```bash
+curl -X POST "$OURO_URL/api/v1/research/investigations/$INVESTIGATION_ID/draft-epic" \
+  -H "content-type: application/json" -b cookies.txt -d '{}'
+```
+
+The answer's `href` is the Planning address of the batch.
+
+:::
+
 ### Exporting a brief
 
 `/brief/export` downloads the brief as one Markdown file, named after the investigation, for
@@ -639,3 +684,182 @@ _Provenance: investigation RS-127 · researcher loop-v1 · alias researcher-long
 
 The markers in the file are the same as everywhere else, so a citation you quote from the file
 points at the same source. Exporting the same brief twice gives the same file.
+
+## From a brief to a roadmap to issues
+
+A **roadmap investigation** can go further than its brief: Ouroboros turns the brief into a
+`ROADMAP.md`, proposes the file to your repository, and files its items as issues.
+<Since version="0.41.10" module="ouroboros-rest" />
+
+```text
+brief → create-roadmap → ROADMAP.md → pull request
+                              ↑ suggested changes: Apply re-runs create-roadmap
+ROADMAP.md → create-issues → drafts → sized → issues → written back into ROADMAP.md
+```
+
+:::info[Use the API for now]
+
+The pipeline card arrives in a later release. Until then every step below is a request to the
+[REST API](../cli/rest-api.mdx), under
+`/api/v1/research/investigations/{investigationId}/roadmap`. Everyone in the workspace can read
+a roadmap with `GET` on that address.
+
+:::
+
+### Who can do what
+
+| Step | Who |
+| --- | --- |
+| Read the roadmap | Everyone in the workspace |
+| Suggest a change, run a drift check | Owners, Maintainers and members |
+| Generate the roadmap, apply or dismiss a suggestion, file the issues | Owners and Maintainers |
+
+### Generating the roadmap
+
+`POST …/roadmap` runs the **create-roadmap** skill over the brief and stores what it writes as
+**version 1**: milestones with target dates, and under each a list of items with an **MVP**
+flag and an effort.
+
+`ROADMAP.md` is produced from that version, never typed by hand:
+
+```md
+# Helios — Q4 Improvement Roadmap
+
+## M1 · Docking parity — target Oct 15
+- [x] #742 Wind-feedforward MPC in final approach `MVP` `L`
+- [ ] #743 Re-planned abort & retry vectors `MVP` `M`
+```
+
+An item shows its issue number once it has one, a tick once that issue is closed, `MVP` when it
+is in the MVP set, and its effort.
+
+An investigation has one roadmap. To change it, suggest a change; asking to generate it again
+is refused.
+
+- If your workspace has more than one ticket source, send `targetSourceId` to say which
+  repository and tracker the roadmap is for.
+- The file is written to `docs/ROADMAP.md`. Send `path` to put it somewhere else. The path
+  cannot be changed afterwards.
+
+**create-roadmap** and **create-issues** are skills on the
+[Knowledge](./knowledge.mdx#the-roadmap-pipelines-skills) page. The version your workspace has
+published is the one that runs.
+
+### The file in your repository
+
+Ouroboros does not write to your default branch. It commits `ROADMAP.md` to a branch of its
+own, `ouroboros/roadmap-…`, and opens a **pull request**. Every later version goes onto the
+same branch and updates the same pull request.
+
+The roadmap's `projection` says where the file stands:
+
+| State | What it means |
+| --- | --- |
+| `pending` | Not in the repository yet. `problem` says why, for example the repository refused the token. |
+| `pr_open` | A pull request is open; `prRef` is its number |
+| `committed` | The pull request was merged; `committedSha` is the commit |
+| `drift_detected` | The file or the tracker no longer matches the roadmap — see [Drift](#drift) |
+
+A roadmap is kept even when the repository cannot be reached. It stays `pending`, and the next
+drift check tries again.
+
+While your workspace is in [dry-run](../administration/policies.mdx#dry-run), the pull request
+is opened as a draft.
+
+An Owner or a Maintainer can let Ouroboros commit straight to the default branch instead — see
+[Committing without a pull request](../administration/research.mdx#committing-without-a-pull-request).
+It is off unless they turn it on.
+
+Do not edit `ROADMAP.md` by hand. The next version would replace your edit, and the drift check
+reports it.
+
+### Suggested changes
+
+Anyone who can draft can suggest a change with `POST …/roadmap/suggestions`:
+
+```json
+{ "text": "Pull the gust estimator into the M1 MVP set." }
+```
+
+A suggestion waits, **open**, until an Owner or a Maintainer settles it:
+
+- **Apply** (`POST …/suggestions/{suggestionId}/apply`) runs **create-roadmap** again, with the
+  current version and every suggestion applied so far. What it writes is stored as the next
+  version, and the suggestion records which version it produced. The pull request is updated.
+- **Dismiss** (`POST …/suggestions/{suggestionId}/dismiss`) closes it and changes nothing. The
+  dismissal is recorded in the audit log.
+
+Applying a suggestion never edits the roadmap in place. Each version is kept as it was written,
+so you can see what every suggestion changed.
+
+Ouroboros raises suggestions too. They are marked **AI** and name what raised them, for example
+`drift-detector`. They are applied and dismissed the same way.
+
+A suggestion cannot be edited or settled twice. Write a new one instead.
+
+:::warning[Applying a suggestion does not change issues that are already filed]
+
+Once the roadmap's issues are filed, a new version changes `ROADMAP.md` only. If a suggestion
+retitles an item or changes its MVP flag, change the issue in your tracker as well. Until you
+do, the drift check reports the difference.
+
+:::
+
+### Filing the issues
+
+`POST …/roadmap/issues` runs **create-issues**. Each call does as much as it can and says where
+it stopped in `stage`. Send it again until it answers `filed`.
+
+1. **Drafted.** The **create-issues** skill writes a description for every item, and the items
+   become one batch of drafted tickets in [Planning](./planning.mdx). Each draft is filed under
+   its milestone and carries the label `mvp` when the item is in the MVP set.
+2. **Sized** — `stage: "sizing"`. The estimator sizes the drafts, as it sizes every batch.
+   Nothing is pushed while it works. Send `{"pushUnsized": true}` to push without waiting.
+3. **Pushed.** The batch is pushed to your tracker. A milestone that does not exist yet is
+   created with the roadmap's target date as its due date. A milestone that already exists
+   keeps its own date.
+4. **Written back** — `stage: "filed"`. The issue numbers go into a new version of the roadmap,
+   and the pull request is updated. The investigation's status becomes **issues filed**.
+
+`stage: "partial"` means the push stopped before every draft was filed, for example because the
+tracker limited the rate. Send the request again to continue.
+
+Filing twice is safe. A draft that was pushed is never pushed again, and a call that has nothing
+new to record writes no new version.
+
+Each filed item then shows its issue, and the estimator's figures for it: effort, complexity and
+the estimated loop time in **loop-days**.
+
+An item added by a later suggestion, after the batch was drafted, is listed in `undrafted` and
+is not filed by this request.
+
+### Drift
+
+A **drift check** compares the roadmap with your tracker and with the file in your repository.
+Ouroboros runs one on a schedule, and `POST …/roadmap/drift-check` runs one now.
+
+For every filed item it compares three things with the issue:
+
+- the **title**;
+- whether it is **done** — the issue is closed;
+- the **MVP** flag — the issue carries the label `mvp`.
+
+For a roadmap whose pull request was merged, it also compares the file in the repository with
+the roadmap.
+
+When something differs:
+
+- the roadmap is marked `drift_detected`;
+- **one** suggestion is raised, by `drift-detector`, naming every difference:
+
+  > Tracker drift — #744 is done in the tracker and open in the document. Apply to regenerate
+  > the roadmap from what the tracker and the repository now say.
+
+Nothing is rewritten. The roadmap, the file and the issues are left as they are until you apply
+or dismiss the suggestion. While that suggestion is open, another check raises no second one.
+
+Applying the suggestion writes a new version that takes each item's done state from the
+tracker.
+
+The check also finishes what an earlier step could not: it retries a file that is still
+`pending`, and it notices that a pull request was merged or closed.

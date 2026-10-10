@@ -324,7 +324,13 @@ describe("editing", () => {
     const { endpoint } = await service.create(WORKSPACE, ADMIN, CREATE);
 
     expect(
-      codeOf(await refusal(service.update(WORKSPACE, ADMIN, endpoint.id, { registryVersion: 9 }))),
+      codeOf(
+        await refusal(
+          service.update(WORKSPACE, ADMIN, endpoint.id, {
+            registryVersion: LATEST_REGISTRY_VERSION + 1,
+          }),
+        ),
+      ),
     ).toBe(WEBHOOK_ERRORS.registryVersionUnknown);
   });
 });

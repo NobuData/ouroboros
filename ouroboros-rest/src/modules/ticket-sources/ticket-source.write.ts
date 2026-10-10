@@ -399,3 +399,19 @@ export function withDependencyMarker(body: string | null, blockerExternalId: str
 
   return hasDependencyMarker(body, blockerExternalId) ? body : `${body}\n\n${marker}`;
 }
+
+/**
+ * Whether a string names a real calendar date.
+ *
+ * @param value - The string.
+ * @returns True for `2026-10-15`; false for `2026-02-30`, `15 Oct` or anything else.
+ */
+export function isCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const parsed = new Date(`${value}T00:00:00Z`);
+
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}

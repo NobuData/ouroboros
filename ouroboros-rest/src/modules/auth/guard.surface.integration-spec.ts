@@ -151,6 +151,8 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   // well-formed uuid no workspace holds.
   investigationId: "5eed0084-0000-4000-8000-0000000000ff",
   itemId: "5eed0096-0000-4000-8000-0000000000ff",
+  // `…/roadmap/suggestions/:suggestionId/{apply,dismiss}` (#624). A well-formed uuid no document holds.
+  suggestionId: "5eed0097-0000-4000-8000-0000000000ff",
 };
 
 /**

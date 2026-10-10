@@ -22,6 +22,10 @@
  * - **`auto-generated nightly` is a promise about maintenance.** The tag carries when the
  *   generator last published ({@link generatedNote}), a regenerate action, and the warning that a
  *   manual edit is overwritten by the next generation ({@link GENERATED_OVERWRITE}).
+ *   It is made only for a skill a nightly job really rebuilds ({@link rebuiltNightly}): a
+ *   repository's generated skill. The roadmap pipeline's `create-roadmap` and `create-issues`
+ *   (#624) are generated too — shipped once, org-wide — and are a workspace's to edit, so they
+ *   read as any other skill does.
  * - **The draft row is tinted because it is inert.** `power-budget-checks` does nothing to any
  *   run, and {@link DRAFT_NEVER_INJECTS} says so where the reader looks for its use.
  *
@@ -235,6 +239,21 @@ export const GENERATED_OVERWRITE =
   "This skill is generated. A nightly job rebuilds repo-map from the repository, and manual " +
   "edits are overwritten by the next generation — regenerate it rather than editing it.";
 
+/**
+ * Whether a nightly job rebuilds a skill — what the `auto-generated nightly` tag, its regenerate
+ * action and the overwrite warning all promise.
+ *
+ * A generated skill of **a repository** is the repo-map generator's (#415): rebuilt each night
+ * from that repository. A generated skill with no repository was shipped once by the product —
+ * the roadmap pipeline's two procedures (#624) — and nothing rewrites it.
+ *
+ * @param skill The skill.
+ * @returns True only for a generated skill scoped to a repository.
+ */
+export function rebuiltNightly(skill: Pick<SkillSummary, "origin" | "repoRef">): boolean {
+  return skill.origin === "generated" && skill.repoRef !== null;
+}
+
 /** The regenerate action's visible glyph and its accessible name's verb. */
 export const REGENERATE_GLYPH = "↻";
 
@@ -310,7 +329,8 @@ export function generatedNote(skill: SkillSummary, now: Date): string {
  * The Updated cell for one skill.
  *
  * The required tag wins over everything, as the mockup draws `hil-safety` (its `v3` is in the
- * note); the generated tag next, as it draws `repo-map`; then the version and its age.
+ * note); the generated tag next, as it draws `repo-map` — for a skill a nightly job rebuilds
+ * ({@link rebuiltNightly}); then the version and its age.
  *
  * @param skill The skill.
  * @param now The instant the page was read.
@@ -323,7 +343,7 @@ export function updated(skill: SkillSummary, now: Date): Updated {
     return { kind: "required", tag: REQUIRED_TAG, note: version === null ? REQUIRED_NOTE : `${REQUIRED_NOTE} ${version}.` };
   }
 
-  if (skill.origin === "generated") return { kind: "generated", tag: GENERATED_TAG, note: generatedNote(skill, now) };
+  if (rebuiltNightly(skill)) return { kind: "generated", tag: GENERATED_TAG, note: generatedNote(skill, now) };
 
   const text = versionAge(skill, now);
 
@@ -422,7 +442,7 @@ export function editorAffordance(skill: SkillSummary): EditorAffordance {
   return {
     label: `Open ${skill.slug} in the editor`,
     reason: editorReason(skill.path),
-    warning: skill.origin === "generated" ? GENERATED_OVERWRITE : null,
+    warning: rebuiltNightly(skill) ? GENERATED_OVERWRITE : null,
   };
 }
 
