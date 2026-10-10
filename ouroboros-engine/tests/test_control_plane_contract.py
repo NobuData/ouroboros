@@ -35,6 +35,7 @@ from ouroboros_engine.control_plane.contract import (
     LEASE_PATH,
     PROVIDERS,
     PROXIED_PROVIDERS,
+    REGRESSION_WATCH_RELEASES_PATH,
     RESEARCH_INVESTIGATION_PATHS,
     RESEARCH_TOOL_PATH,
     RUN_CONTROL_ACK_PATH,
@@ -95,6 +96,7 @@ def test_every_path_the_document_describes_is_one_this_package_mirrors() -> None
         | {LEASE_PATH, INVOKE_PATH, RESEARCH_TOOL_PATH}
         | set(RESEARCH_INVESTIGATION_PATHS)
         | {DRY_RUN_REPLAY_ESTIMATES_PATH}
+        | {REGRESSION_WATCH_RELEASES_PATH}
     )
 
 

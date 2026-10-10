@@ -170,6 +170,20 @@ export const DRY_RUN_REPLAY_ESTIMATES_ROUTE = ":id/replay-estimates";
 export const INTERNAL_DRY_RUN_REPLAY_ESTIMATES_PATH = `/${DRY_RUNS_PATH}/${DRY_RUN_REPLAY_ESTIMATES_ROUTE}`;
 
 /**
+ * The regression watch's controller path (CM.4,
+ * [#623](https://github.com/NobuData/ouroboros/issues/623)): where a release is announced, so
+ * its baselines are captured without a person asking. Nothing in the product notices a tag by
+ * itself; a CI step — or a webhook receiver, when there is one — calls this.
+ */
+export const REGRESSION_WATCH_PATH = `${INTERNAL_PATH}/research/regression-watch`;
+
+/** Route segment of a release announcement, relative to {@link REGRESSION_WATCH_PATH}. */
+export const REGRESSION_WATCH_RELEASES_ROUTE = "releases";
+
+/** Announce a release: `/internal/research/regression-watch/releases`. */
+export const INTERNAL_REGRESSION_WATCH_RELEASES_PATH = `/${REGRESSION_WATCH_PATH}/${REGRESSION_WATCH_RELEASES_ROUTE}`;
+
+/**
  * Every internal path.
  *
  * The list `src/application.ts` adds to `setGlobalPrefix`'s exclusions, and the list the
@@ -200,6 +214,7 @@ export const INTERNAL_PATHS = [
   INTERNAL_INVESTIGATION_BRIEF_PATH,
   INTERNAL_INVESTIGATION_FINISH_PATH,
   INTERNAL_DRY_RUN_REPLAY_ESTIMATES_PATH,
+  INTERNAL_REGRESSION_WATCH_RELEASES_PATH,
 ] as const;
 
 /**

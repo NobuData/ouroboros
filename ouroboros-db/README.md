@@ -1731,6 +1731,17 @@
 > gains the column, so a workspace that never chose reads `member`. A `viewer` never starts
 > one, and there is no owner-only value.
 >
+> `V124` ([#623](https://github.com/NobuData/ouroboros/issues/623), CM.4) gives the regression
+> watch service what V115's records did not hold. `regression_watch_settings` gains `metrics` —
+> the watched metrics, each `{repo, source, key, class, window_days, replay, nightly_ref}`, where
+> `replay` (`{pool, command}` or null) is the metric's replayable test and null means *never
+> bisected* (`regression_watch_metrics_valid()`) — the two policy switches `auto_bisect` (default
+> true) and `auto_file` (default false: a fix is drafted, never filed, until a workspace opts
+> in), `fix_source_id` and `last_compared_at`. `regression_watch_items` gains `bisect_id`, the
+> `code_bisects` row an item in `bisecting` waits on. And the two inbox kinds V093 reserved —
+> `regression_drift_detected` and `bisect_complete` — get their version-1 declarations: a link
+> to the watch, and an admin's **Dismiss drift** that takes a reason.
+>
 > [#558](https://github.com/NobuData/ouroboros/issues/558) seeds mockup 20 from those rows:
 > [`R__dev_seed_workspace_copilot.sql`](migrations/R__dev_seed_workspace_copilot.sql) — see
 > [What the copilot drafted, and what its dry run said](#what-the-copilot-drafted-and-what-its-dry-run-said).
@@ -3591,6 +3602,7 @@ ouroboros-db/
 │   ├── V121__infra_replay_estimates.sql # build_config_class / build_similarity_class, build_replay_sample + test_replay_sample (median, MAD, count; warm/cold cache context), replay_estimate_policy (30 d, floor 20), replay_estimate_note; a replayed stage row may carry window_days or insufficient_history — #561
 │   ├── V122__telemetry_locators.sql  # source_locator_valid(): a telemetry locator may name baseline:<tag>, compare <a>-vs-<b> and carry a ?query — #619
 │   ├── V123__research_start_role.sql # workspace_settings.research_start_role (member | admin) + the effective view — #625
+│   ├── V124__regression_watch_config.sql # regression_watch_settings.metrics/auto_bisect/auto_file/fix_source_id, watch_items.bisect_id, the two inbox kinds — #623
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)

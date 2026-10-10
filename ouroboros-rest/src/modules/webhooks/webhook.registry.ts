@@ -233,6 +233,11 @@ export const WEBHOOK_REGISTRY: readonly WebhookRegistryVersion[] = [
     // BR.4 (#488): an org-level notification route was saved.
     adds: ["audit.notification_route.updated"],
   },
+  {
+    version: 8,
+    // CM.4 (#623): a workspace changed the regression watch's auto-bisect or auto-file policy.
+    adds: ["audit.regression_watch.policy_updated"],
+  },
 ];
 
 /** The newest registry version — what a new endpoint subscribes under. */

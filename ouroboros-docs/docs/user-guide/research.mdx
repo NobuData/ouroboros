@@ -355,6 +355,119 @@ The dates in an address are always exact. If an investigation asks for "the last
 citation records the seven days that meant at the time, so reading the address again next month
 asks about the same week. An investigation only ever reads your own workspace's numbers.
 
+## Regression watch
+
+The **regression watch** compares each night's measurements with the last release, and acts
+when a metric has got worse. It involves no model: it reads numbers, builds commits on the
+build farm, and writes down what it found. <Since version="0.41.9" module="ouroboros-rest" />
+
+:::info[Read the watch through the API for now]
+
+The **Regression watch** card arrives in a later release. Until then the watch is read from the
+[REST API](../cli/rest-api.mdx) at `/api/v1/research/regression-watch`, which everyone in the
+workspace may read. An Owner or a Maintainer sets it up — see
+[Regression watch](../administration/research.mdx#regression-watch).
+
+:::
+
+### Baselines
+
+A **baseline** is how a metric measured at a release: how many samples there were, their
+median, how much they varied, and over which days. It is a measurement, so it is captured once
+and never edited.
+
+Baselines are captured in two ways:
+
+- **On a release tag.** When a release is announced to Ouroboros, every watched metric of that
+  repository is captured for it. Your deployment administrator connects the announcement — see
+  [Announcing a release](../administration/research.mdx#announcing-a-release).
+- **By hand.** An Owner or a Maintainer captures a release's baselines at any time.
+
+A metric that had no measurements in its window gets no baseline: an empty window is not a
+baseline of zero.
+
+### The nightly comparison
+
+Once a day the watch reads each watched metric over its last few days and compares that window
+with the metric's newest baseline. A difference counts as **drift** only when all of these hold:
+
+- the nightly window has enough samples;
+- the metric moved by more than the baseline itself varied;
+- it moved in the direction that is worse — a boot time that got faster is not a regression;
+- it moved by at least the metric's warning threshold.
+
+Anything less opens nothing. The thresholds have defaults per kind of metric, and your
+workspace can tune them — see [Thresholds](../administration/research.mdx#thresholds).
+
+### Drift and severity
+
+Drift opens a **watch item**. It shows the signed drift in the unit you would say it in:
+
+- a timing in its own unit — `+230 ms`;
+- a percentage metric in points;
+- anything else as a percentage of its baseline — `+14%`.
+
+Its severity is **warn** from the warning threshold and **err** from the error threshold. If a
+later night reads the metric back inside its thresholds, the item's severity becomes **ok** and
+the item carries on where it was.
+
+A metric has at most one open item. A night that reads the same drift again updates that item;
+it does not open a second.
+
+### What a bisect does and shows
+
+When a metric has a **replayable test**, the watch finds the commit that caused the drift. It
+runs a bisect between the release and the nightly: each step builds one commit on the build
+farm and runs the metric's test, and the result decides which half to search next. A bisect
+over 12 commits takes at most four farm jobs.
+
+When the bisect finishes, the item shows:
+
+- the **culprit** commit, as `bisected → a41f2c9`;
+- the **farm jobs** that decided it, so you can open each one.
+
+The watch does not guess. An item stays **detected** with a note that begins `needs repro` when:
+
+- the metric has no replayable test;
+- a release tag or the nightly ref names no commit;
+- the bisect ends without isolating a commit — a job was cancelled, or every commit passed.
+
+### From a culprit to a merged fix
+
+After a bisect the watch does two more things without being asked:
+
+1. It **opens a Regression forensics investigation**, already holding the comparison and the
+   bisect as cited sources. If the investigation cannot be started, it stays queued with that
+   evidence.
+2. It **drafts a fix ticket** in Planning, with the drift, the culprit, the farm jobs and how to
+   reproduce it. See [Planning](./planning.mdx).
+
+The draft waits for you to file it. Your workspace can opt in to having the watch file and
+queue it instead — see [Policies](../administration/research.mdx#policies).
+
+From there the item follows the fix, and its status says where it is:
+
+| Status | What the item shows |
+| --- | --- |
+| **detected** | The drift, and a `needs repro` note when it cannot be bisected |
+| **bisecting** | A bisect is running on the build farm |
+| **bisected** | `bisected → a41f2c9` |
+| **investigating** | The culprit, and the forensics investigation — `forensics RS-131` |
+| **queued** | `fix ticket drafted · FIX-1` while it is a draft, then `fix ticket drafted · #517` once it is filed as a ticket |
+| **fixing** | `fix loop running · #512` — a loop is working on the ticket |
+| **✓ merged** | `root-caused, fixed & merged · PR #641` |
+| **dismissed** | An Owner or a Maintainer dismissed the item, with a reason |
+
+### Hearing about drift
+
+The watch files a decision in [Needs You](./inbox.mdx) twice for each item: once when it
+detects the drift, and once when the bisect names a culprit. Each links to the watch, and an
+Owner or a Maintainer can **Dismiss drift** from it with a reason. A decision closes by itself
+once the item has moved on.
+
+Dismissing an item cancels a bisect that is still running. The investigation and the draft it
+produced are kept.
+
 ## Reading a brief
 
 A **brief** is an investigation's answer. An investigation that finishes delivers one, and the

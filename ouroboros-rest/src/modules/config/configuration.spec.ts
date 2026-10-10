@@ -161,6 +161,7 @@ describe("the development defaults", () => {
       researchCodeTimeoutMs: 120_000,
       researchBisectTickMs: 60_000,
       researchInvestigationTickMs: 60_000,
+      researchRegressionTickMs: 300_000,
       // AL.5's (#281) four, written out in the template at their defaults for the same reason.
       backlogStaleDays: DEFAULT_BACKLOG_STALE_DAYS,
       reestimationHourUtc: DEFAULT_REESTIMATION_HOUR_UTC,
@@ -1387,6 +1388,22 @@ describe("the competitor tracker's scheduler", () => {
       expect(
         failureFor(testEnvironment({ OURO_RESEARCH_INVESTIGATION_TICK_MS: refused })),
       ).toContain("OURO_RESEARCH_INVESTIGATION_TICK_MS");
+    }
+  });
+
+  it("reads the regression watch tick, and lets it be turned off (#623)", () => {
+    expect(
+      loadConfiguration(testEnvironment({ OURO_RESEARCH_REGRESSION_TICK_MS: "0" }))
+        .researchRegressionTickMs,
+    ).toBe(0);
+    expect(
+      loadConfiguration(testEnvironment({ OURO_RESEARCH_REGRESSION_TICK_MS: "30000" }))
+        .researchRegressionTickMs,
+    ).toBe(30_000);
+    for (const refused of ["500", "3600001", "nightly"]) {
+      expect(failureFor(testEnvironment({ OURO_RESEARCH_REGRESSION_TICK_MS: refused }))).toContain(
+        "OURO_RESEARCH_REGRESSION_TICK_MS",
+      );
     }
   });
 });

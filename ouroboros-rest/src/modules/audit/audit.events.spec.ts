@@ -89,6 +89,7 @@ import {
   AUDIT_EXPORTED_EVENT,
   AUDIT_PURGED_EVENT,
   NOTIFICATION_ROUTE_UPDATED_EVENT,
+  RESEARCH_WATCH_POLICY_UPDATED_EVENT,
 } from "./audit.events";
 
 /**
@@ -234,6 +235,7 @@ describe("the vocabulary", () => {
       "audit.exported",
       "audit.purged",
       "notification_route.updated",
+      "regression_watch.policy_updated",
     ]);
   });
 
@@ -264,7 +266,8 @@ describe("the vocabulary", () => {
     // planes file into the Needs-You inbox and what closes itself out of band (#461), and
     // `webhook.` for the outbound webhook management API (#487), and `audit.` for the audit plane's
     // own export and purge (#486), and
-    // `notification_route.` for the org-level notification routes (#488). The
+    // `notification_route.` for the org-level notification routes (#488), and
+    // `regression_watch.` for the regression watch's policy (#623). The
     // families are what make `action like 'provider.%'` a useful question — and what keeps
     // *"who changed our GitHub token"* and *"what has happened to our fleet"* answerable
     // without knowing every name in either. The pool events are deliberately inside
@@ -286,6 +289,7 @@ describe("the vocabulary", () => {
       "pr_criterion",
       "pr_thread",
       "provider",
+      "regression_watch",
       "runner",
       "service_account",
       "triage",
@@ -386,6 +390,7 @@ describe("the vocabulary", () => {
       AUDIT_EXPORTED_EVENT,
       AUDIT_PURGED_EVENT,
       NOTIFICATION_ROUTE_UPDATED_EVENT,
+      RESEARCH_WATCH_POLICY_UPDATED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

@@ -11258,6 +11258,187 @@ export interface paths {
         patch: operations["updateResearchSettings"];
         trace?: never;
     };
+    "/api/v1/research/regression-watch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The regression watch card
+         * @description Mockup 22's **Regression watch** ([#623](https://github.com/NobuData/ouroboros/issues/623),
+         *     decision **V6**): every watch item of the workspace, open ones first, under the release
+         *     its nightly windows are compared with.
+         *
+         *     **Every word of a row is derived from what the item holds.** `drift` is the signed
+         *     drift with its unit (`+14%`, `+230 ms`); `severity` is `err`, `warn` or — once a later
+         *     night reads the metric back inside its thresholds — `ok`. `detail` is the row's second
+         *     line and `pill` its lifecycle pill, both composed from `status` and the references
+         *     each step left: the bisect's culprit and farm jobs, the forensics investigation, the
+         *     fix ticket and the pull request that merged it.
+         *
+         *     **The lifecycle.** `detected` → `bisecting` → `bisected` → `investigation_open` →
+         *     `fix_drafted` → `fix_running` → `fixed_merged`, or `dismissed` from any open status. An
+         *     item that cannot be bisected rests at `detected` with a `note` beginning `needs repro`.
+         *
+         *     `headline` names the release when every newest baseline belongs to one, and is `null`
+         *     before any baseline is captured. Every member.
+         */
+        get: operations["getRegressionWatch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/regression-watch/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the regression watch watches, and how
+         * @description The watched metrics, the thresholds, and the two policies
+         *     ([#623](https://github.com/NobuData/ouroboros/issues/623)).
+         *
+         *     **`metrics`** — what a release captures a baseline of and the nightly comparison
+         *     reads: a repository, a metric (an insights metric id, or `<case key>:<measurement>`),
+         *     its class, the window in days, and `replay` — the **replayable test** a bisect step
+         *     runs (a farm pool and a command; success means *this commit is good*). A metric with
+         *     `replay: null` is never bisected: its drift rests at `detected · needs repro`.
+         *
+         *     **`thresholds`** — `defaults` are the built-in rule of each metric class; `classes` and
+         *     `metrics` are this workspace's overrides, a metric's winning over its class's. A drift
+         *     counts when the nightly window has at least `minSamples`, moved by more than
+         *     `minSpreadMultiple ×` the baseline's own spread, in the `direction` that is worse, by
+         *     at least `warnPct` of the baseline (`errPct` for an error).
+         *
+         *     **`autoBisect`** (default `true`) — whether a detected drift is bisected without
+         *     asking. **`autoFile`** (default `false`) — whether a drafted fix is **filed to the
+         *     tracker and queued** without asking. The fix is always *drafted*; filing it is the
+         *     opt-in.
+         *
+         *     Every member reads.
+         */
+        get: operations["getRegressionWatchSettings"];
+        /**
+         * Change what the regression watch watches, its thresholds or its policies
+         * @description Saves the settings ([#623](https://github.com/NobuData/ouroboros/issues/623)). **Send
+         *     what changed**: an absent field keeps what is stored; a field that is sent replaces
+         *     the whole of it (`metrics` is the whole list, `thresholds` both maps).
+         *
+         *     A watched insights metric must be in the metric catalogue, a metric may be listed once
+         *     per repository, `warnPct` and `errPct` are sent together with `warnPct ≤ errPct`, and
+         *     `fixSourceId` must be a ticket source of this workspace — each is refused
+         *     `422 regression_watch_settings_invalid` naming what is wrong.
+         *
+         *     **A change to `autoBisect` or `autoFile` is a policy decision** and is written to the
+         *     audit log as `regression_watch.policy_updated`, with both switches before and after.
+         *
+         *     Owners and admins only, and a person.
+         */
+        put: operations["saveRegressionWatchSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/regression-watch/baselines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Capture a release's baselines by hand
+         * @description Snapshots every watched metric of a repository for a release
+         *     ([#623](https://github.com/NobuData/ouroboros/issues/623)): each metric's window —
+         *     sample count, median, spread and unit over its `windowDays` — read through the build &
+         *     test telemetry tool and stored as that release's baseline.
+         *
+         *     **A baseline is a measurement and is never re-measured.** A metric the release already
+         *     has a baseline for is listed in `skipped`, as is one whose window holds no data — an
+         *     empty window is not a baseline of zero.
+         *
+         *     The nightly comparison reads each metric against its **newest** baseline, so capturing
+         *     a new release moves the watch onto it.
+         *
+         *     The same capture happens without a person when a release is announced on the internal
+         *     surface. Owners and admins only, and a person.
+         */
+        post: operations["captureRegressionBaselines"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/regression-watch/comparisons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run the nightly comparison now
+         * @description Compares every watched metric's current window with its newest baseline, now
+         *     ([#623](https://github.com/NobuData/ouroboros/issues/623)) — what the watch's own pass
+         *     does once per UTC day.
+         *
+         *     Each result's `outcome`: `opened` — a drift past its thresholds opened a watch item
+         *     and filed one inbox card; `refreshed` — the drift was read again and the open item's
+         *     window updated (no second item, no second card); `cleared` — the metric is back inside
+         *     its thresholds and the open item's severity reads `ok`; `within` — inside thresholds,
+         *     nothing opened, with the `reason`; `no_data` — nothing to compare, with the `reason`.
+         *
+         *     Nothing here bisects or drafts: an opened item is taken on by the watch's next pass.
+         *     Owners and admins only, and a person.
+         */
+        post: operations["runRegressionComparison"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/regression-watch/items/{itemId}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss a regression watch item
+         * @description Closes an open watch item as `dismissed`, recording who and why
+         *     ([#623](https://github.com/NobuData/ouroboros/issues/623)). A bisect it was waiting on
+         *     is canceled; an investigation it opened and a fix it drafted are kept. Its inbox cards
+         *     close themselves. The next comparison that reads the drift again opens a new item.
+         *
+         *     Owners and admins only, and a person.
+         */
+        post: operations["dismissRegressionWatchItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -20134,6 +20315,279 @@ export interface components {
         ResearchSettingsPatch: {
             /** @enum {string} */
             startRole?: "member" | "admin";
+        };
+        /**
+         * RegressionWindow
+         * @description The statistics of one measurement window.
+         */
+        RegressionWindow: {
+            /** @description How many samples. */
+            n: number;
+            /** @description The median — for a rate or a sum, the figure itself. */
+            median: number;
+            /** @description The spread; 0 for a rate or a sum, which has none. */
+            spread: number;
+            /** @enum {string} */
+            spreadKind: "iqr" | "stddev" | "mad";
+            /** @description `ms`, `%`, `cm`, … */
+            unit: string;
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+        };
+        /**
+         * RegressionThreshold
+         * @description A threshold rule, whole (a default) or partial (an override — send only what differs;
+         *     `warnPct` and `errPct` travel together).
+         */
+        RegressionThreshold: {
+            /** @enum {string} */
+            direction?: "higher_is_worse" | "lower_is_worse" | "either";
+            /** @description The percentage from which a drift is a warning. */
+            warnPct?: number;
+            /** @description The percentage from which it is an error; at least `warnPct`. */
+            errPct?: number;
+            /** @description How many of the baseline's spreads a move must clear. */
+            minSpreadMultiple?: number;
+            /** @description How many nightly samples a comparison needs. */
+            minSamples?: number;
+        };
+        /**
+         * RegressionWatchedMetric
+         * @description One metric the watch captures a baseline of and compares every night.
+         */
+        RegressionWatchedMetric: {
+            /** @description `owner/name`. */
+            repository: string;
+            /** @enum {string} */
+            source: "bi_metric" | "case_metric";
+            /** @description An insights metric id, or `<64-hex case key>:<measurement>`. */
+            key: string;
+            /** @enum {string} */
+            class: "timing" | "accuracy" | "resource" | "rate";
+            /** @description The window a baseline and a nightly reading cover. 7 when omitted. */
+            windowDays?: number;
+            /** @description The replayable test a bisect step runs; null for a metric that cannot be bisected. */
+            replay?: {
+                /** @description The farm pool every step builds in. */
+                pool: string;
+                /** @description The argv a step runs; null for the pool's default. Success marks the commit good. */
+                command?: string[] | null;
+            } | null;
+            /** @description The ref a bisect treats as bad. `HEAD` when omitted. */
+            nightlyRef?: string;
+        };
+        /**
+         * RegressionWatchSettings
+         * @description What the regression watch watches, and how.
+         */
+        RegressionWatchSettings: {
+            metrics: components["schemas"]["RegressionWatchedMetric"][];
+            thresholds: {
+                /** @description The built-in rule of each metric class. */
+                defaults: {
+                    [key: string]: components["schemas"]["RegressionThreshold"];
+                };
+                /** @description This workspace's overrides per metric class. */
+                classes: {
+                    [key: string]: components["schemas"]["RegressionThreshold"];
+                };
+                /** @description This workspace's overrides per metric key. */
+                metrics: {
+                    [key: string]: components["schemas"]["RegressionThreshold"];
+                };
+            };
+            /** @description Whether a detected drift is bisected without asking. */
+            autoBisect: boolean;
+            /** @description Whether a drafted fix is filed and queued without asking — the opt-in. */
+            autoFile: boolean;
+            /**
+             * Format: uuid
+             * @description The ticket source fix drafts go to; null for the workspace's only one.
+             */
+            fixSourceId: string | null;
+            /** Format: date-time */
+            lastComparedAt: string | null;
+        };
+        /**
+         * RegressionWatchSettingsSave
+         * @description A change to the settings. An absent field keeps what is stored.
+         */
+        RegressionWatchSettingsSave: {
+            metrics?: components["schemas"]["RegressionWatchedMetric"][];
+            thresholds?: {
+                classes?: {
+                    [key: string]: components["schemas"]["RegressionThreshold"];
+                };
+                metrics?: {
+                    [key: string]: components["schemas"]["RegressionThreshold"];
+                };
+            };
+            autoBisect?: boolean;
+            autoFile?: boolean;
+            /** Format: uuid */
+            fixSourceId?: string | null;
+        };
+        /**
+         * RegressionWatchItem
+         * @description One row of the regression watch card.
+         */
+        RegressionWatchItem: {
+            /** Format: uuid */
+            id: string;
+            repository: string;
+            /** @description The metric's key. */
+            metric: string;
+            /** @description What the card calls it — a case metric's measurement, an insights metric's id. */
+            metricLabel: string;
+            /** @description The release whose baseline it drifted from. */
+            releaseTag: string;
+            /** @enum {string} */
+            severity: "err" | "warn" | "ok";
+            /** @enum {string} */
+            status: "detected" | "bisecting" | "bisected" | "investigation_open" | "fix_drafted" | "fix_running" | "fixed_merged" | "dismissed";
+            /** @description The signed drift as printed — `+14%`, `+230 ms`. */
+            drift: string;
+            driftValue: number;
+            driftUnit: string;
+            baseline: components["schemas"]["RegressionWindow"];
+            current: components["schemas"]["RegressionWindow"];
+            /** @description The row's second line — `bisected → a41f2c9 · fix loop running · #512`. */
+            detail: string;
+            pill: {
+                /** @description `fixing`, `queued`, `✓ merged`, … */
+                label: string;
+                /** @enum {string} */
+                tone: "run" | "warn" | "ok" | "idle";
+            };
+            /** @description Why the item rests where it is — `needs repro: …`. */
+            note: string | null;
+            /** @description The bisect's outcome; null until one converged. */
+            bisect: {
+                /** Format: uuid */
+                id: string | null;
+                culpritSha: string;
+                /** @description The first seven characters. */
+                culprit: string;
+                steps: number;
+                farmJobIds: string[];
+            } | null;
+            /** @description The forensics investigation the watch opened. */
+            investigation: {
+                /** Format: uuid */
+                id: string;
+                displayId: string | null;
+            } | null;
+            /** @description The fix — a Planning draft until it is filed, then a ticket. */
+            fixTicket: {
+                /** @enum {string} */
+                kind: "ticket" | "draft";
+                /** Format: uuid */
+                id: string;
+                /** @description `#512`, or a draft's `FIX-1`. */
+                key: string;
+            } | null;
+            /** @description The pull request that merged the fix. */
+            pullRequest: {
+                /** Format: uuid */
+                id: string;
+                /** @description `#641`. */
+                key: string;
+            } | null;
+            /** Format: date-time */
+            detectedAt: string;
+            /** Format: date-time */
+            statusChangedAt: string;
+        };
+        /**
+         * RegressionWatchCard
+         * @description The regression watch card.
+         */
+        RegressionWatchCard: {
+            /** @description `nightly vs. v2.0.4 baseline`; null before any baseline. */
+            headline: string | null;
+            /** @description The releases the newest baselines belong to, newest capture first. */
+            releases: string[];
+            /** @description Over the open items. */
+            counts: {
+                open: number;
+                err: number;
+                warn: number;
+            };
+            items: components["schemas"]["RegressionWatchItem"][];
+            /** @description How many metrics have a baseline. */
+            baselines: number;
+            /** Format: date-time */
+            lastComparedAt: string | null;
+        };
+        /**
+         * RegressionBaseline
+         * @description A release's captured baseline of one metric.
+         */
+        RegressionBaseline: {
+            /** Format: uuid */
+            id: string;
+            repository: string;
+            releaseTag: string;
+            metric: string;
+            metricLabel: string;
+            /** @enum {string} */
+            source: "bi_metric" | "case_metric";
+            /** @enum {string} */
+            class: "timing" | "accuracy" | "resource" | "rate";
+            window: components["schemas"]["RegressionWindow"];
+            /** Format: date-time */
+            capturedAt: string;
+            /** @enum {string} */
+            capturedVia: "release" | "manual";
+        };
+        /**
+         * RegressionBaselineCapture
+         * @description A release to capture baselines for.
+         */
+        RegressionBaselineCapture: {
+            repository: string;
+            /** @description `v2.0.4`. */
+            releaseTag: string;
+        };
+        /**
+         * RegressionBaselinesCaptured
+         * @description What a capture did.
+         */
+        RegressionBaselinesCaptured: {
+            repository: string;
+            releaseTag: string;
+            captured: components["schemas"]["RegressionBaseline"][];
+            /** @description Metrics no baseline was stored for, and why. */
+            skipped: {
+                metric: string;
+                reason: string;
+            }[];
+        };
+        /**
+         * RegressionComparison
+         * @description What a comparison concluded, per metric.
+         */
+        RegressionComparison: {
+            /** Format: date-time */
+            comparedAt: string;
+            results: {
+                repository: string;
+                metric: string;
+                /** @enum {string} */
+                outcome: "opened" | "refreshed" | "cleared" | "within" | "no_data";
+                reason: string | null;
+                /** Format: uuid */
+                itemId: string | null;
+            }[];
+        };
+        /**
+         * RegressionWatchDismissal
+         * @description Why a drift is dismissed.
+         */
+        RegressionWatchDismissal: {
+            reason: string;
         };
         /**
          * InvestigationBrief
@@ -82789,6 +83243,760 @@ export interface operations {
              *     a member of.
              */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the request is malformed: a field outside its shape, or one
+             *     this operation does not take. `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getRegressionWatch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegressionWatchCard"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getRegressionWatchSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegressionWatchSettings"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    saveRegressionWatchSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegressionWatchSettingsSave"];
+            };
+        };
+        responses: {
+            /** @description The settings as they now stand. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegressionWatchSettings"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — this is for `owner` and `admin`; `details.required` lists them. Nothing
+             *     changes. Also the answer for a service account, which may not change the watch.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the body is malformed (`details.fields` names each field); or
+             *     `regression_watch_settings_invalid` — it is well-formed and cannot be stored: a metric
+             *     listed twice, a key that does not match its source, an insights metric the catalogue
+             *     lacks, a malformed threshold, or a `fixSourceId` that is not this workspace's.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    captureRegressionBaselines: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "repository": "acme-robotics/helios-firmware",
+                 *       "releaseTag": "v2.0.4"
+                 *     }
+                 */
+                "application/json": components["schemas"]["RegressionBaselineCapture"];
+            };
+        };
+        responses: {
+            /** @description What was captured and what was skipped. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegressionBaselinesCaptured"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — this is for `owner` and `admin`; `details.required` lists them. Nothing
+             *     changes. Also the answer for a service account, which may not change the watch.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the body is malformed; or `regression_watch_nothing_watched` —
+             *     no metric of that repository is watched, so there is nothing to capture.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    runRegressionComparison: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What each comparison concluded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegressionComparison"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — this is for `owner` and `admin`; `details.required` lists them. Nothing
+             *     changes. Also the answer for a service account, which may not change the watch.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    dismissRegressionWatchItem: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The watch item. */
+                itemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "reason": "A sensor swap on the rig, not a regression."
+                 *     }
+                 */
+                "application/json": components["schemas"]["RegressionWatchDismissal"];
+            };
+        };
+        responses: {
+            /** @description The item, dismissed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegressionWatchItem"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — this is for `owner` and `admin`; `details.required` lists them. Nothing
+             *     changes. Also the answer for a service account, which may not change the watch.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `regression_watch_item_not_found` — this workspace has no such watch item (one of
+             *     another workspace reads exactly the same); or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `regression_watch_item_closed` — the item is already `fixed_merged` or `dismissed`;
+             *     `details.status` says which.
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

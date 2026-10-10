@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.8"
+  version: "0.41.9"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -36958,6 +36958,651 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/v1/research/regression-watch:
+    get:
+      tags: [research]
+      summary: The regression watch card
+      description: |-
+        Mockup 22's **Regression watch** ([#623](https://github.com/NobuData/ouroboros/issues/623),
+        decision **V6**): every watch item of the workspace, open ones first, under the release
+        its nightly windows are compared with.
+
+        **Every word of a row is derived from what the item holds.** `drift` is the signed
+        drift with its unit (`+14%`, `+230 ms`); `severity` is `err`, `warn` or — once a later
+        night reads the metric back inside its thresholds — `ok`. `detail` is the row's second
+        line and `pill` its lifecycle pill, both composed from `status` and the references
+        each step left: the bisect's culprit and farm jobs, the forensics investigation, the
+        fix ticket and the pull request that merged it.
+
+        **The lifecycle.** `detected` → `bisecting` → `bisected` → `investigation_open` →
+        `fix_drafted` → `fix_running` → `fixed_merged`, or `dismissed` from any open status. An
+        item that cannot be bisected rests at `detected` with a `note` beginning `needs repro`.
+
+        `headline` names the release when every newest baseline belongs to one, and is `null`
+        before any baseline is captured. Every member.
+      operationId: getRegressionWatch
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The card.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegressionWatchCard"
+              examples:
+                drifting:
+                  summary: One drift, bisected, its fix loop running
+                  value:
+                    headline: nightly vs. v2.0.4 baseline
+                    releases: [v2.0.4]
+                    counts: { open: 1, err: 1, warn: 0 }
+                    items:
+                      -
+                        id: 5eed0096-0000-4000-8000-000000000001
+                        repository: acme-robotics/helios-firmware
+                        metric: 29f70bbc9eaa22505445bbf2378dc743e5b177119c5a09cdcde73870d0867560:hover_drift_cm
+                        metricLabel: hover_drift_cm
+                        releaseTag: v2.0.4
+                        severity: err
+                        status: fix_running
+                        drift: "+14%"
+                        driftValue: 14
+                        driftUnit: "%"
+                        baseline: { n: 30, median: 4.1, spread: 0.2, spreadKind: iqr, unit: cm, from: "2026-09-01T00:00:00Z", to: "2026-09-08T00:00:00Z" }
+                        current: { n: 12, median: 4.67, spread: 0.3, spreadKind: iqr, unit: cm, from: "2026-10-03T00:00:00Z", to: "2026-10-10T00:00:00Z" }
+                        detail: "bisected → a41f2c9 · fix loop running · #512"
+                        pill: { label: fixing, tone: run }
+                        note: null
+                        bisect:
+                          id: 5eed0098-0000-4000-8000-000000000001
+                          culpritSha: a41f2c9d6a5f3c19b7e2a4d8f0c6b13e5a7d9f20
+                          culprit: a41f2c9
+                          steps: 4
+                          farmJobIds:
+                            - 5eed0040-0000-4000-8000-000000000901
+                            - 5eed0040-0000-4000-8000-000000000902
+                            - 5eed0040-0000-4000-8000-000000000903
+                            - 5eed0040-0000-4000-8000-000000000904
+                        investigation: { id: 5eed0091-0000-4000-8000-000000000131, displayId: RS-131 }
+                        fixTicket: { kind: ticket, id: 5eed008e-0000-4000-8000-000000000512, key: "#512" }
+                        pullRequest: null
+                        detectedAt: "2026-10-10T02:00:00.000Z"
+                        statusChangedAt: "2026-10-10T04:12:00.000Z"
+                    baselines: 3
+                    lastComparedAt: "2026-10-10T02:00:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/research/regression-watch/settings:
+    get:
+      tags: [research]
+      summary: What the regression watch watches, and how
+      description: |-
+        The watched metrics, the thresholds, and the two policies
+        ([#623](https://github.com/NobuData/ouroboros/issues/623)).
+
+        **`metrics`** — what a release captures a baseline of and the nightly comparison
+        reads: a repository, a metric (an insights metric id, or `<case key>:<measurement>`),
+        its class, the window in days, and `replay` — the **replayable test** a bisect step
+        runs (a farm pool and a command; success means *this commit is good*). A metric with
+        `replay: null` is never bisected: its drift rests at `detected · needs repro`.
+
+        **`thresholds`** — `defaults` are the built-in rule of each metric class; `classes` and
+        `metrics` are this workspace's overrides, a metric's winning over its class's. A drift
+        counts when the nightly window has at least `minSamples`, moved by more than
+        `minSpreadMultiple ×` the baseline's own spread, in the `direction` that is worse, by
+        at least `warnPct` of the baseline (`errPct` for an error).
+
+        **`autoBisect`** (default `true`) — whether a detected drift is bisected without
+        asking. **`autoFile`** (default `false`) — whether a drafted fix is **filed to the
+        tracker and queued** without asking. The fix is always *drafted*; filing it is the
+        opt-in.
+
+        Every member reads.
+      operationId: getRegressionWatchSettings
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegressionWatchSettings"
+              examples:
+                configured:
+                  summary: One watched metric with a replay test, and a tightened timing class
+                  value:
+                    metrics:
+                      - repository: acme-robotics/helios-firmware
+                        source: case_metric
+                        key: 29f70bbc9eaa22505445bbf2378dc743e5b177119c5a09cdcde73870d0867560:hover_drift_cm
+                        class: accuracy
+                        windowDays: 7
+                        replay:
+                          pool: pool-a
+                          command: [west, twister, -T, tests/hil/hover]
+                        nightlyRef: main
+                    thresholds:
+                      defaults:
+                        timing: { direction: higher_is_worse, warnPct: 5, errPct: 15, minSpreadMultiple: 2, minSamples: 5 }
+                        accuracy: { direction: higher_is_worse, warnPct: 5, errPct: 10, minSpreadMultiple: 2, minSamples: 10 }
+                        resource: { direction: higher_is_worse, warnPct: 10, errPct: 25, minSpreadMultiple: 2, minSamples: 5 }
+                        rate: { direction: lower_is_worse, warnPct: 2, errPct: 5, minSpreadMultiple: 2, minSamples: 10 }
+                      classes:
+                        timing: { warnPct: 3, errPct: 10 }
+                      metrics: {}
+                    autoBisect: true
+                    autoFile: false
+                    fixSourceId: null
+                    lastComparedAt: "2026-10-10T02:00:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      tags: [research]
+      summary: Change what the regression watch watches, its thresholds or its policies
+      description: |-
+        Saves the settings ([#623](https://github.com/NobuData/ouroboros/issues/623)). **Send
+        what changed**: an absent field keeps what is stored; a field that is sent replaces
+        the whole of it (`metrics` is the whole list, `thresholds` both maps).
+
+        A watched insights metric must be in the metric catalogue, a metric may be listed once
+        per repository, `warnPct` and `errPct` are sent together with `warnPct ≤ errPct`, and
+        `fixSourceId` must be a ticket source of this workspace — each is refused
+        `422 regression_watch_settings_invalid` naming what is wrong.
+
+        **A change to `autoBisect` or `autoFile` is a policy decision** and is written to the
+        audit log as `regression_watch.policy_updated`, with both switches before and after.
+
+        Owners and admins only, and a person.
+      operationId: saveRegressionWatchSettings
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegressionWatchSettingsSave"
+            examples:
+              watchOne:
+                summary: Watch hover drift, replayed on pool-a
+                value:
+                  metrics:
+                    - repository: acme-robotics/helios-firmware
+                      source: case_metric
+                      key: 29f70bbc9eaa22505445bbf2378dc743e5b177119c5a09cdcde73870d0867560:hover_drift_cm
+                      class: accuracy
+                      windowDays: 7
+                      replay:
+                        pool: pool-a
+                        command: [west, twister, -T, tests/hil/hover]
+                      nightlyRef: main
+              optIn:
+                summary: Opt in to filing and queueing fixes without asking
+                value:
+                  autoFile: true
+      responses:
+        "200":
+          description: The settings as they now stand.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegressionWatchSettings"
+              examples:
+                saved:
+                  summary: The settings after the save
+                  value:
+                    metrics:
+                      - repository: acme-robotics/helios-firmware
+                        source: case_metric
+                        key: 29f70bbc9eaa22505445bbf2378dc743e5b177119c5a09cdcde73870d0867560:hover_drift_cm
+                        class: accuracy
+                        windowDays: 7
+                        replay:
+                          pool: pool-a
+                          command: [west, twister, -T, tests/hil/hover]
+                        nightlyRef: main
+                    thresholds:
+                      defaults:
+                        timing: { direction: higher_is_worse, warnPct: 5, errPct: 15, minSpreadMultiple: 2, minSamples: 5 }
+                        accuracy: { direction: higher_is_worse, warnPct: 5, errPct: 10, minSpreadMultiple: 2, minSamples: 10 }
+                        resource: { direction: higher_is_worse, warnPct: 10, errPct: 25, minSpreadMultiple: 2, minSamples: 5 }
+                        rate: { direction: lower_is_worse, warnPct: 2, errPct: 5, minSpreadMultiple: 2, minSamples: 10 }
+                      classes:
+                        timing: { warnPct: 3, errPct: 10 }
+                      metrics: {}
+                    autoBisect: true
+                    autoFile: false
+                    fixSourceId: null
+                    lastComparedAt: "2026-10-10T02:00:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — this is for `owner` and `admin`; `details.required` lists them. Nothing
+            changes. Also the answer for a service account, which may not change the watch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the body is malformed (`details.fields` names each field); or
+            `regression_watch_settings_invalid` — it is well-formed and cannot be stored: a metric
+            listed twice, a key that does not match its source, an insights metric the catalogue
+            lacks, a malformed threshold, or a `fixSourceId` that is not this workspace's.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/research/regression-watch/baselines:
+    post:
+      tags: [research]
+      summary: Capture a release's baselines by hand
+      description: |-
+        Snapshots every watched metric of a repository for a release
+        ([#623](https://github.com/NobuData/ouroboros/issues/623)): each metric's window —
+        sample count, median, spread and unit over its `windowDays` — read through the build &
+        test telemetry tool and stored as that release's baseline.
+
+        **A baseline is a measurement and is never re-measured.** A metric the release already
+        has a baseline for is listed in `skipped`, as is one whose window holds no data — an
+        empty window is not a baseline of zero.
+
+        The nightly comparison reads each metric against its **newest** baseline, so capturing
+        a new release moves the watch onto it.
+
+        The same capture happens without a person when a release is announced on the internal
+        surface. Owners and admins only, and a person.
+      operationId: captureRegressionBaselines
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegressionBaselineCapture"
+            example:
+              repository: acme-robotics/helios-firmware
+              releaseTag: v2.0.4
+      responses:
+        "201":
+          description: What was captured and what was skipped.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegressionBaselinesCaptured"
+              examples:
+                captured:
+                  summary: One baseline captured
+                  value:
+                    repository: acme-robotics/helios-firmware
+                    releaseTag: v2.0.4
+                    captured:
+                      - id: 5eed0095-0000-4000-8000-000000000001
+                        repository: acme-robotics/helios-firmware
+                        releaseTag: v2.0.4
+                        metric: 29f70bbc9eaa22505445bbf2378dc743e5b177119c5a09cdcde73870d0867560:hover_drift_cm
+                        metricLabel: hover_drift_cm
+                        source: case_metric
+                        class: accuracy
+                        window: { n: 30, median: 4.1, spread: 0.2, spreadKind: iqr, unit: cm, from: "2026-09-01T00:00:00Z", to: "2026-09-08T00:00:00Z" }
+                        capturedAt: "2026-09-08T09:00:00.000Z"
+                        capturedVia: manual
+                    skipped: []
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — this is for `owner` and `admin`; `details.required` lists them. Nothing
+            changes. Also the answer for a service account, which may not change the watch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the body is malformed; or `regression_watch_nothing_watched` —
+            no metric of that repository is watched, so there is nothing to capture.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/research/regression-watch/comparisons:
+    post:
+      tags: [research]
+      summary: Run the nightly comparison now
+      description: |-
+        Compares every watched metric's current window with its newest baseline, now
+        ([#623](https://github.com/NobuData/ouroboros/issues/623)) — what the watch's own pass
+        does once per UTC day.
+
+        Each result's `outcome`: `opened` — a drift past its thresholds opened a watch item
+        and filed one inbox card; `refreshed` — the drift was read again and the open item's
+        window updated (no second item, no second card); `cleared` — the metric is back inside
+        its thresholds and the open item's severity reads `ok`; `within` — inside thresholds,
+        nothing opened, with the `reason`; `no_data` — nothing to compare, with the `reason`.
+
+        Nothing here bisects or drafts: an opened item is taken on by the watch's next pass.
+        Owners and admins only, and a person.
+      operationId: runRegressionComparison
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: What each comparison concluded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegressionComparison"
+              examples:
+                mixed:
+                  summary: One drift opened, one metric within its thresholds
+                  value:
+                    comparedAt: "2026-10-10T02:00:00.000Z"
+                    results:
+                      - repository: acme-robotics/helios-firmware
+                        metric: 29f70bbc9eaa22505445bbf2378dc743e5b177119c5a09cdcde73870d0867560:hover_drift_cm
+                        outcome: opened
+                        reason: null
+                        itemId: 5eed0096-0000-4000-8000-000000000001
+                      - repository: acme-robotics/helios-firmware
+                        metric: merge_rate
+                        outcome: within
+                        reason: a move of 1.2% is under the 2% warning threshold
+                        itemId: null
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — this is for `owner` and `admin`; `details.required` lists them. Nothing
+            changes. Also the answer for a service account, which may not change the watch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/research/regression-watch/items/{itemId}/dismiss:
+    post:
+      tags: [research]
+      summary: Dismiss a regression watch item
+      description: |-
+        Closes an open watch item as `dismissed`, recording who and why
+        ([#623](https://github.com/NobuData/ouroboros/issues/623)). A bisect it was waiting on
+        is canceled; an investigation it opened and a fix it drafted are kept. Its inbox cards
+        close themselves. The next comparison that reads the drift again opens a new item.
+
+        Owners and admins only, and a person.
+      operationId: dismissRegressionWatchItem
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: itemId
+          in: path
+          required: true
+          description: The watch item.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegressionWatchDismissal"
+            example:
+              reason: A sensor swap on the rig, not a regression.
+      responses:
+        "200":
+          description: The item, dismissed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegressionWatchItem"
+              examples:
+                dismissed:
+                  summary: The drift, dismissed while its fix was drafted
+                  value:
+                    id: 5eed0096-0000-4000-8000-000000000001
+                    repository: acme-robotics/helios-firmware
+                    metric: 29f70bbc9eaa22505445bbf2378dc743e5b177119c5a09cdcde73870d0867560:hover_drift_cm
+                    metricLabel: hover_drift_cm
+                    releaseTag: v2.0.4
+                    severity: err
+                    status: dismissed
+                    drift: "+14%"
+                    driftValue: 14
+                    driftUnit: "%"
+                    baseline: { n: 30, median: 4.1, spread: 0.2, spreadKind: iqr, unit: cm, from: "2026-09-01T00:00:00Z", to: "2026-09-08T00:00:00Z" }
+                    current: { n: 12, median: 4.67, spread: 0.3, spreadKind: iqr, unit: cm, from: "2026-10-03T00:00:00Z", to: "2026-10-10T00:00:00Z" }
+                    detail: "dismissed"
+                    pill: { label: dismissed, tone: idle }
+                    note: null
+                    bisect:
+                      id: 5eed0098-0000-4000-8000-000000000001
+                      culpritSha: a41f2c9d6a5f3c19b7e2a4d8f0c6b13e5a7d9f20
+                      culprit: a41f2c9
+                      steps: 4
+                      farmJobIds:
+                        - 5eed0040-0000-4000-8000-000000000901
+                        - 5eed0040-0000-4000-8000-000000000902
+                        - 5eed0040-0000-4000-8000-000000000903
+                        - 5eed0040-0000-4000-8000-000000000904
+                    investigation: { id: 5eed0091-0000-4000-8000-000000000131, displayId: RS-131 }
+                    fixTicket: { kind: ticket, id: 5eed008e-0000-4000-8000-000000000512, key: "#512" }
+                    pullRequest: null
+                    detectedAt: "2026-10-10T02:00:00.000Z"
+                    statusChangedAt: "2026-10-10T04:12:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — this is for `owner` and `admin`; `details.required` lists them. Nothing
+            changes. Also the answer for a service account, which may not change the watch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `regression_watch_item_not_found` — this workspace has no such watch item (one of
+            another workspace reads exactly the same); or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `regression_watch_item_closed` — the item is already `fixed_merged` or `dismissed`;
+            `details.status` says which.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the request is malformed: a field outside its shape, or one
+            this operation does not take. `details.fields` names each.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   # How a caller is recognised. One scheme, because there is one: the cookie the sign-in
   # flow lands.
@@ -50728,6 +51373,336 @@ components:
         startRole:
           type: string
           enum: [member, admin]
+    RegressionWindow:
+      type: object
+      title: RegressionWindow
+      description: The statistics of one measurement window.
+      additionalProperties: false
+      required: [n, median, spread, spreadKind, unit, from, to]
+      properties:
+        n: { type: integer, minimum: 1, description: How many samples. }
+        median: { type: number, description: "The median — for a rate or a sum, the figure itself." }
+        spread: { type: number, minimum: 0, description: "The spread; 0 for a rate or a sum, which has none." }
+        spreadKind: { type: string, enum: [iqr, stddev, mad] }
+        unit: { type: string, description: "`ms`, `%`, `cm`, …" }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+    RegressionThreshold:
+      type: object
+      title: RegressionThreshold
+      description: |-
+        A threshold rule, whole (a default) or partial (an override — send only what differs;
+        `warnPct` and `errPct` travel together).
+      additionalProperties: false
+      properties:
+        direction:
+          type: string
+          enum: [higher_is_worse, lower_is_worse, either]
+        warnPct: { type: number, exclusiveMinimum: 0, description: The percentage from which a drift is a warning. }
+        errPct: { type: number, exclusiveMinimum: 0, description: "The percentage from which it is an error; at least `warnPct`." }
+        minSpreadMultiple: { type: number, minimum: 0, description: How many of the baseline's spreads a move must clear. }
+        minSamples: { type: integer, minimum: 1, description: How many nightly samples a comparison needs. }
+    RegressionWatchedMetric:
+      type: object
+      title: RegressionWatchedMetric
+      description: One metric the watch captures a baseline of and compares every night.
+      additionalProperties: false
+      required: [repository, source, key, class]
+      properties:
+        repository: { type: string, pattern: "^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", description: "`owner/name`." }
+        source: { type: string, enum: [bi_metric, case_metric] }
+        key:
+          type: string
+          pattern: "^(?:[a-z][a-z0-9_]{0,62}|[0-9a-f]{64}:[a-z][a-z0-9_]{0,62})$"
+          description: An insights metric id, or `<64-hex case key>:<measurement>`.
+        class: { type: string, enum: [timing, accuracy, resource, rate] }
+        windowDays: { type: integer, minimum: 1, maximum: 90, description: The window a baseline and a nightly reading cover. 7 when omitted. }
+        replay:
+          description: The replayable test a bisect step runs; null for a metric that cannot be bisected.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [pool]
+              properties:
+                pool: { type: string, minLength: 1, maxLength: 100, description: The farm pool every step builds in. }
+                command:
+                  description: The argv a step runs; null for the pool's default. Success marks the commit good.
+                  oneOf:
+                    - type: array
+                      minItems: 1
+                      maxItems: 64
+                      items: { type: string, minLength: 1 }
+                    - type: "null"
+            - type: "null"
+        nightlyRef: { type: string, pattern: "^\\S{1,128}$", description: "The ref a bisect treats as bad. `HEAD` when omitted." }
+    RegressionWatchSettings:
+      type: object
+      title: RegressionWatchSettings
+      description: What the regression watch watches, and how.
+      additionalProperties: false
+      required: [metrics, thresholds, autoBisect, autoFile, fixSourceId, lastComparedAt]
+      properties:
+        metrics:
+          type: array
+          maxItems: 64
+          items:
+            $ref: "#/components/schemas/RegressionWatchedMetric"
+        thresholds:
+          type: object
+          additionalProperties: false
+          required: [defaults, classes, metrics]
+          properties:
+            defaults:
+              type: object
+              description: The built-in rule of each metric class.
+              additionalProperties:
+                $ref: "#/components/schemas/RegressionThreshold"
+            classes:
+              type: object
+              description: This workspace's overrides per metric class.
+              additionalProperties:
+                $ref: "#/components/schemas/RegressionThreshold"
+            metrics:
+              type: object
+              description: This workspace's overrides per metric key.
+              additionalProperties:
+                $ref: "#/components/schemas/RegressionThreshold"
+        autoBisect: { type: boolean, description: Whether a detected drift is bisected without asking. }
+        autoFile: { type: boolean, description: Whether a drafted fix is filed and queued without asking — the opt-in. }
+        fixSourceId: { type: [string, "null"], format: uuid, description: "The ticket source fix drafts go to; null for the workspace's only one." }
+        lastComparedAt: { type: [string, "null"], format: date-time }
+    RegressionWatchSettingsSave:
+      type: object
+      title: RegressionWatchSettingsSave
+      description: A change to the settings. An absent field keeps what is stored.
+      additionalProperties: false
+      properties:
+        metrics:
+          type: array
+          maxItems: 64
+          items:
+            $ref: "#/components/schemas/RegressionWatchedMetric"
+        thresholds:
+          type: object
+          additionalProperties: false
+          properties:
+            classes:
+              type: object
+              additionalProperties:
+                $ref: "#/components/schemas/RegressionThreshold"
+            metrics:
+              type: object
+              additionalProperties:
+                $ref: "#/components/schemas/RegressionThreshold"
+        autoBisect: { type: boolean }
+        autoFile: { type: boolean }
+        fixSourceId: { type: [string, "null"], format: uuid }
+    RegressionWatchItem:
+      type: object
+      title: RegressionWatchItem
+      description: One row of the regression watch card.
+      additionalProperties: false
+      required:
+        - id
+        - repository
+        - metric
+        - metricLabel
+        - releaseTag
+        - severity
+        - status
+        - drift
+        - driftValue
+        - driftUnit
+        - baseline
+        - current
+        - detail
+        - pill
+        - note
+        - bisect
+        - investigation
+        - fixTicket
+        - pullRequest
+        - detectedAt
+        - statusChangedAt
+      properties:
+        id: { type: string, format: uuid }
+        repository: { type: string }
+        metric: { type: string, description: The metric's key. }
+        metricLabel: { type: string, description: "What the card calls it — a case metric's measurement, an insights metric's id." }
+        releaseTag: { type: string, description: The release whose baseline it drifted from. }
+        severity: { type: string, enum: [err, warn, ok] }
+        status:
+          type: string
+          enum: [detected, bisecting, bisected, investigation_open, fix_drafted, fix_running, fixed_merged, dismissed]
+        drift: { type: string, description: "The signed drift as printed — `+14%`, `+230 ms`." }
+        driftValue: { type: number }
+        driftUnit: { type: string }
+        baseline:
+          $ref: "#/components/schemas/RegressionWindow"
+        current:
+          $ref: "#/components/schemas/RegressionWindow"
+        detail: { type: string, description: "The row's second line — `bisected → a41f2c9 · fix loop running · #512`." }
+        pill:
+          type: object
+          additionalProperties: false
+          required: [label, tone]
+          properties:
+            label: { type: string, description: "`fixing`, `queued`, `✓ merged`, …" }
+            tone: { type: string, enum: [run, warn, ok, idle] }
+        note: { type: [string, "null"], description: "Why the item rests where it is — `needs repro: …`." }
+        bisect:
+          description: The bisect's outcome; null until one converged.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [id, culpritSha, culprit, steps, farmJobIds]
+              properties:
+                id: { type: [string, "null"], format: uuid }
+                culpritSha: { type: string, pattern: "^[0-9a-f]{40}$" }
+                culprit: { type: string, description: The first seven characters. }
+                steps: { type: integer, minimum: 1 }
+                farmJobIds:
+                  type: array
+                  items: { type: string, format: uuid }
+            - type: "null"
+        investigation:
+          description: The forensics investigation the watch opened.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [id, displayId]
+              properties:
+                id: { type: string, format: uuid }
+                displayId: { type: [string, "null"] }
+            - type: "null"
+        fixTicket:
+          description: The fix — a Planning draft until it is filed, then a ticket.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [kind, id, key]
+              properties:
+                kind: { type: string, enum: [ticket, draft] }
+                id: { type: string, format: uuid }
+                key: { type: string, description: "`#512`, or a draft's `FIX-1`." }
+            - type: "null"
+        pullRequest:
+          description: The pull request that merged the fix.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [id, key]
+              properties:
+                id: { type: string, format: uuid }
+                key: { type: string, description: "`#641`." }
+            - type: "null"
+        detectedAt: { type: string, format: date-time }
+        statusChangedAt: { type: string, format: date-time }
+    RegressionWatchCard:
+      type: object
+      title: RegressionWatchCard
+      description: The regression watch card.
+      additionalProperties: false
+      required: [headline, releases, counts, items, baselines, lastComparedAt]
+      properties:
+        headline: { type: [string, "null"], description: "`nightly vs. v2.0.4 baseline`; null before any baseline." }
+        releases:
+          type: array
+          description: The releases the newest baselines belong to, newest capture first.
+          items: { type: string }
+        counts:
+          type: object
+          description: Over the open items.
+          additionalProperties: false
+          required: [open, err, warn]
+          properties:
+            open: { type: integer, minimum: 0 }
+            err: { type: integer, minimum: 0 }
+            warn: { type: integer, minimum: 0 }
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RegressionWatchItem"
+        baselines: { type: integer, minimum: 0, description: How many metrics have a baseline. }
+        lastComparedAt: { type: [string, "null"], format: date-time }
+    RegressionBaseline:
+      type: object
+      title: RegressionBaseline
+      description: A release's captured baseline of one metric.
+      additionalProperties: false
+      required: [id, repository, releaseTag, metric, metricLabel, source, class, window, capturedAt, capturedVia]
+      properties:
+        id: { type: string, format: uuid }
+        repository: { type: string }
+        releaseTag: { type: string }
+        metric: { type: string }
+        metricLabel: { type: string }
+        source: { type: string, enum: [bi_metric, case_metric] }
+        class: { type: string, enum: [timing, accuracy, resource, rate] }
+        window:
+          $ref: "#/components/schemas/RegressionWindow"
+        capturedAt: { type: string, format: date-time }
+        capturedVia: { type: string, enum: [release, manual] }
+    RegressionBaselineCapture:
+      type: object
+      title: RegressionBaselineCapture
+      description: A release to capture baselines for.
+      additionalProperties: false
+      required: [repository, releaseTag]
+      properties:
+        repository: { type: string, pattern: "^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$" }
+        releaseTag: { type: string, pattern: "^\\S{1,128}$", description: "`v2.0.4`." }
+    RegressionBaselinesCaptured:
+      type: object
+      title: RegressionBaselinesCaptured
+      description: What a capture did.
+      additionalProperties: false
+      required: [repository, releaseTag, captured, skipped]
+      properties:
+        repository: { type: string }
+        releaseTag: { type: string }
+        captured:
+          type: array
+          items:
+            $ref: "#/components/schemas/RegressionBaseline"
+        skipped:
+          type: array
+          description: Metrics no baseline was stored for, and why.
+          items:
+            type: object
+            additionalProperties: false
+            required: [metric, reason]
+            properties:
+              metric: { type: string }
+              reason: { type: string }
+    RegressionComparison:
+      type: object
+      title: RegressionComparison
+      description: What a comparison concluded, per metric.
+      additionalProperties: false
+      required: [comparedAt, results]
+      properties:
+        comparedAt: { type: string, format: date-time }
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [repository, metric, outcome, reason, itemId]
+            properties:
+              repository: { type: string }
+              metric: { type: string }
+              outcome: { type: string, enum: [opened, refreshed, cleared, within, no_data] }
+              reason: { type: [string, "null"] }
+              itemId: { type: [string, "null"], format: uuid }
+    RegressionWatchDismissal:
+      type: object
+      title: RegressionWatchDismissal
+      description: Why a drift is dismissed.
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 1000, pattern: "\\S" }
     InvestigationBrief:
       type: object
       title: InvestigationBrief

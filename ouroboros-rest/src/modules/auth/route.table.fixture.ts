@@ -56,6 +56,7 @@ import {
   INTERNAL_RUN_CONTROL_ACK_PATH,
   INTERNAL_RUN_STAGE_TRANSITIONS_PATH,
   INTERNAL_DRY_RUN_REPLAY_ESTIMATES_PATH,
+  INTERNAL_REGRESSION_WATCH_RELEASES_PATH,
   INTERNAL_INVESTIGATION_BRIEF_PATH,
   INTERNAL_INVESTIGATION_CHECKPOINT_PATH,
   INTERNAL_INVESTIGATION_FINISH_PATH,
@@ -190,6 +191,10 @@ export const INTERNAL_SURFACE: readonly string[] = [
   // stage's have taken. A stranger who could reach it could read a workspace's farm history by
   // guessing a dry run's id.
   `POST ${INTERNAL_DRY_RUN_REPLAY_ESTIMATES_PATH}`,
+  // A release, announced to the regression watch (CM.4, #623): every workspace watching the
+  // repository captures baselines. A stranger who could reach it could pin a workspace's
+  // baselines to a release that never happened — and a baseline is never re-measured.
+  `POST ${INTERNAL_REGRESSION_WATCH_RELEASES_PATH}`,
 ].sort();
 
 /** One route, as the enumeration sees it. */

@@ -31189,9 +31189,11 @@ select pg_temp.must_hold(
   (select array_agg(kind_id || ' v' || version || ' ' || severity_default order by kind_id)
           = array['claim_waiver v1 warn', 'merge_approval v1 err', 'protected_path_allow_once v1 warn']
      from ouroboros.decision_kinds
-    -- V097 (#461) declares the other six MVP kinds; this section asks V093's own three.
+    -- V097 (#461) declares the other six MVP kinds and V124 (#623) the regression watch's two;
+    -- this section asks V093's own three.
     where kind_id not in ('plan_sign_off', 'fact_review', 'run_needs_human', 'split_approval',
-                          'resize_review', 'spend_approval')),
+                          'resize_review', 'spend_approval',
+                          'regression_drift_detected', 'bisect_complete')),
   'the three declarations mockup 16 fixes ship at v1 — merge_approval err, the other two warn — and no others');
 
 select pg_temp.must_hold(
@@ -31400,7 +31402,7 @@ select pg_temp.must_reject(
   'a payload is an object', 'decision_items_payload_object');
 
 select pg_temp.must_raise(
-  $$select ouroboros.decision_item_emit('org-v093', 'bisect_complete', '{}', '[]', 'research', 'probe:x')$$,
+  $$select ouroboros.decision_item_emit('org-v093', 'research_brief_ready', '{}', '[]', 'research', 'probe:x')$$,
   '23503', 'emitting a kind with no declaration is refused');
 
 -- --- typed refs ---------------------------------------------------------------------
@@ -40017,6 +40019,102 @@ select pg_temp.must_hold(
     where d.adrelid = 'ouroboros.workspace_settings'::regclass
       and a.attname = 'research_start_role'),
   'the effective view''s default for the starter role is the column''s');
+
+-- ===========================================================================
+-- V124 — the regression watch's configuration and its inbox kinds (#623, CM.4)
+-- ===========================================================================
+--
+-- Which metrics are watched and how each is replayed, the two policy switches, and the bisect
+-- an item waits on.
+select pg_temp.must_hold(
+  ouroboros.regression_watch_metrics_valid('[]')
+  and ouroboros.regression_watch_metrics_valid('[
+        {"repo": "acme/helios", "source": "bi_metric", "key": "merge_rate", "class": "rate",
+         "window_days": 7, "replay": null, "nightly_ref": "HEAD"},
+        {"repo": "acme/helios", "source": "case_metric",
+         "key": "29f70bbc9eaa22505445bbf2378dc743e5b177119c5a09cdcde73870d0867560:hover_drift_cm",
+         "class": "accuracy", "window_days": 90,
+         "replay": {"pool": "pool-a", "command": ["west", "twister"]}, "nightly_ref": "main"},
+        {"repo": "acme/console", "source": "bi_metric", "key": "merge_rate", "class": "rate",
+         "window_days": 1, "replay": {"pool": "pool-b", "command": null}, "nightly_ref": "HEAD"}]'),
+  'a watched-metric list is empty, or metrics with a window, an optional replay test and a nightly ref');
+
+select pg_temp.must_hold(
+  not ouroboros.regression_watch_metrics_valid('{}')
+  and not ouroboros.regression_watch_metrics_valid(null)
+  and not ouroboros.regression_watch_metrics_valid('[{"repo": "acme/helios"}]')
+  and not ouroboros.regression_watch_metrics_valid('[
+        {"repo": "helios", "source": "bi_metric", "key": "merge_rate", "class": "rate",
+         "window_days": 7, "replay": null, "nightly_ref": "HEAD"}]')
+  and not ouroboros.regression_watch_metrics_valid('[
+        {"repo": "acme/helios", "source": "case_metric", "key": "merge_rate", "class": "rate",
+         "window_days": 7, "replay": null, "nightly_ref": "HEAD"}]')
+  and not ouroboros.regression_watch_metrics_valid('[
+        {"repo": "acme/helios", "source": "bi_metric", "key": "merge_rate", "class": "speed",
+         "window_days": 7, "replay": null, "nightly_ref": "HEAD"}]')
+  and not ouroboros.regression_watch_metrics_valid('[
+        {"repo": "acme/helios", "source": "bi_metric", "key": "merge_rate", "class": "rate",
+         "window_days": 0, "replay": null, "nightly_ref": "HEAD"}]')
+  and not ouroboros.regression_watch_metrics_valid('[
+        {"repo": "acme/helios", "source": "bi_metric", "key": "merge_rate", "class": "rate",
+         "window_days": 91, "replay": null, "nightly_ref": "HEAD"}]')
+  and not ouroboros.regression_watch_metrics_valid('[
+        {"repo": "acme/helios", "source": "bi_metric", "key": "merge_rate", "class": "rate",
+         "window_days": 7, "replay": {"pool": " ", "command": null}, "nightly_ref": "HEAD"}]')
+  and not ouroboros.regression_watch_metrics_valid('[
+        {"repo": "acme/helios", "source": "bi_metric", "key": "merge_rate", "class": "rate",
+         "window_days": 7, "replay": {"pool": "pool-a", "command": []}, "nightly_ref": "HEAD"}]')
+  and not ouroboros.regression_watch_metrics_valid('[
+        {"repo": "acme/helios", "source": "bi_metric", "key": "merge_rate", "class": "rate",
+         "window_days": 7, "replay": {"pool": "pool-a"}, "nightly_ref": "HEAD"}]')
+  and not ouroboros.regression_watch_metrics_valid('[
+        {"repo": "acme/helios", "source": "bi_metric", "key": "merge_rate", "class": "rate",
+         "window_days": 7, "replay": null, "nightly_ref": "two words"}]')
+  and not ouroboros.regression_watch_metrics_valid('[
+        {"repo": "acme/helios", "source": "bi_metric", "key": "merge_rate", "class": "rate",
+         "window_days": 7, "replay": null, "nightly_ref": "HEAD"},
+        {"repo": "acme/helios", "source": "bi_metric", "key": "merge_rate", "class": "timing",
+         "window_days": 30, "replay": null, "nightly_ref": "HEAD"}]'),
+  'a malformed entry, a key of the wrong source, an unknown class, a window outside 1–90 days, a blank pool, an empty command, a missing command, a ref with white space and a metric listed twice are refused');
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v124', 'Watch Works', 'watch-works-v124', now());
+insert into ouroboros.regression_watch_settings (organization_id) values ('org-v124');
+
+select pg_temp.must_hold(
+  (select metrics = '[]'::jsonb and auto_bisect and not auto_file
+          and fix_source_id is null and last_compared_at is null
+     from ouroboros.regression_watch_settings where organization_id = 'org-v124'),
+  'a workspace watches nothing, bisects without asking, and files nothing without asking, until it says otherwise');
+
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_settings set metrics = '[{"repo": "x"}]'
+     where organization_id = 'org-v124'$$,
+  'the settings row refuses a malformed metric list', 'regression_watch_settings_metrics_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.regression_watch_settings
+       set fix_source_id = 'a1240000-0000-0000-0000-00000000dead'
+     where organization_id = 'org-v124'$$,
+  'the fix source is a ticket source that exists', 'regression_watch_settings_fix_source_fk');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'regression_watch_items'
+      and column_name = 'bisect_id' and is_nullable = 'YES')
+  and (select count(*) = 1 from pg_constraint
+        where conname = 'regression_watch_items_bisect_fk' and confdeltype = 'n'),
+  'a watch item may name the bisect it waits on, and keeps its row when that bisect is deleted');
+
+select pg_temp.must_hold(
+  (select array_agg(kind_id order by kind_id) = array['bisect_complete', 'regression_drift_detected']
+          and bool_and(version = 1 and not merge_class)
+          and bool_and(actions @> '[{"handler_binding": "navigate.research_watch"}]'
+                       and actions @> '[{"handler_binding": "research.dismiss_watch_item", "takes_note": true, "required_role": "admin"}]')
+          and bool_and(resolution_semantics -> 'answered_by' = '["dismiss_drift"]')
+     from ouroboros.decision_kinds
+    where kind_id in ('regression_drift_detected', 'bisect_complete')),
+  'the watch''s two inbox kinds are declared once each: a link to the watch, and an admin''s dismissal that takes a reason');
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.

@@ -148,7 +148,9 @@ export type DecisionSourceSettlement =
   | "fact_resolved"
   | "batch_settled"
   | "estimate_superseded"
-  | "ticket_closed";
+  | "ticket_closed"
+  /** A regression watch item moved past the stage its card announced (#623). */
+  | "watch_moved_on";
 
 /** One item a detector found settled, and how. */
 export interface SettledDecision {

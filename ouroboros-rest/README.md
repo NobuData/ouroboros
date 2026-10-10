@@ -5180,6 +5180,69 @@ sent when the reading changes, `: keep-alive` otherwise, and `done` when the inv
 longer queued or running, after which the stream ends. The shared live-update channel (#89) is
 not built; when it is, this stream can move to it without changing its events.
 
+## Regression watch
+
+Mockup 22's regression watch as a service ([#623](https://github.com/NobuData/ouroboros/issues/623),
+decision V6): every nightly window compared with the release's baseline, real drift bisected to a
+commit, turned into a forensics investigation and drafted as a fix — deterministically, with no
+model involved. `research/watch/` owns the watch's own steps and composes every other plane
+through that plane's exported service.
+
+```
+release tag ─▶ POST /internal/research/regression-watch/releases ─┐
+by hand     ─▶ POST /api/v1/research/regression-watch/baselines ──┴▶ capture: telemetry metric_window
+                                                                      ─▶ regression_baselines (once per release)
+tick (once per UTC day) ─▶ compare: telemetry compare(baseline:<tag>, <n>d) ─▶ evaluateDrift
+        within thresholds ─▶ nothing opened
+        drift ─▶ watch item (signed drift · err|warn) ─▶ inbox: regression_drift_detected
+tick (every pass, per open item) ─▶ one step:
+  detected ─▶ CodeBisectService.start(good = release, bad = nightly ref, test = replay)   ─▶ bisecting
+              no replay test · unresolvable ref ─▶ stays detected · "needs repro: …"
+  bisecting ─▶ converged ─▶ bisect_result {culprit, farm jobs} ─▶ bisected ─▶ inbox: bisect_complete
+               inconclusive | failed | canceled ─▶ detected · "needs repro: …"
+  bisected ─▶ investigation (regression_forensics, origin regression_watch),
+              ledger seeded with the telemetry:// comparison and the bisect:// source,
+              storeEstimate + dispatch (best effort) ─▶ investigation_open
+  investigation_open ─▶ BatchesService.compose (planner regression-watch-v1, one draft) ─▶ fix_drafted
+  fix_drafted ─▶ [auto_file only] push the batch, queue the mirrored issue
+                 draft pushed ─▶ fix ticket ─▶ run in flight ─▶ fix_running
+  fix_running ─▶ pull request on the ticket merged ─▶ fixed_merged
+```
+
+| File | What it holds |
+| --- | --- |
+| `research/watch/watch.drift.ts` | `evaluateDrift()` — enough samples, clear of the baseline's spread, in the worse direction, past the threshold; the unit a drift is printed in |
+| `research/watch/watch.readings.ts` | The telemetry tool's `metric_window` and `compare` as V115 window statistics, with their citations |
+| `research/watch/watch.service.ts` | Capture, the nightly comparison, the card, the settings and dismissal |
+| `research/watch/watch.chain.ts` | `advance()` — one item, one step; `bisectResultOf()`; the fix draft's title and body |
+| `research/watch/watch.inbox.ts` | The two inbox emissions, keyed per item and stage, and the detector that settles them |
+| `research/watch/watch.scheduler.ts` | The pass: comparisons due today, then every open item |
+| `research/watch/watch.repository.ts` | V115/V124's tables, and the read-only looks at Planning, the run plane and the PR mirror |
+| `research/watch/watch.resources.ts` | The card's rows — `detail` and `pill` derived from the item's state — and the settings |
+| `research/watch/watch.fixture.ts` | The hover-drift baseline and item, an in-memory store, a scripted telemetry tool |
+
+**Every move names the status it leaves** (`where status = …`), so two passes, or a pass and a
+person's dismissal, cannot both move an item; V115's transition trigger holds the edges.
+
+**Honest stops.** A metric with no replay test, a bisect that cannot start for a reason that
+will not change, and a bisect that ends without a culprit each leave the item at `detected` with
+a `needs repro` note. A transient failure (engine down, clone unreachable) is retried next pass.
+
+**Filing is the opt-in.** The fix is always drafted; `BatchesService.push` and the queue write
+are reached only when `regression_watch_settings.auto_file` is true. A change to `auto_bisect`
+or `auto_file` writes the audit event `regression_watch.policy_updated` (webhook registry v8).
+
+**A fix that "is not running" is demoted only when a run was recorded.** `fix_running` goes back
+to `fix_drafted` when the ticket has a run and none is in flight; an item whose run this
+deployment never saw (the dev seed's) is left as it is.
+
+**One inbox event per stage.** `regression_drift_detected` and `bisect_complete` (declared by
+V124) are keyed `research.watch` / `item:<id>:detected|bisected`; a card settles itself
+(`watch_moved_on`) once the item has passed that stage, and **Dismiss drift** is bound to
+`research.dismiss_watch_item`.
+
+The pass runs every `OURO_RESEARCH_REGRESSION_TICK_MS` (default five minutes; `0` off).
+
 ## Replay estimates
 
 `POST /internal/dry-runs/{id}/replay-estimates` is mockup 20's replayed row —
@@ -7460,6 +7523,7 @@ ouroboros-rest/
 │       ├── research/       # POST /research/estimates — sources & cost, researcher pill · #622
 │       │   ├── briefs/     # a brief, read: GET /research/investigations/:id/{brief,sources,brief/export}, the matrix builder, severity rule, proposed-from-gaps, Markdown export · #621
 │       │   ├── lifecycle/  # an investigation's public lifecycle: POST/GET /research/investigations, /:id, /:id/cancel, /:id/progress (SSE), /research/settings · #625
+│       │   ├── watch/      # the regression watch: baselines, nightly comparison, bisect → forensics → fix draft chain, /research/regression-watch · #623
 │       │   ├── loop/       # the investigation loop's control-plane half — /internal/research/investigations/:id/{start,checkpoint,brief,finish}, dispatch, cancel, the resume pass · #620
 │       │   ├── telemetry/  # the telemetry tool's reads: windows, re-runnable telemetry:// locators, readings (ok | no_data), the read-only repository · #619
 │       │   └── tools/      # ResearchToolAdapter SPI, registry, conformance kit, POST /internal/research/tools/:slug/:op · #614

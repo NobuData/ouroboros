@@ -120,7 +120,12 @@ export const MAX_PLANNER_LENGTH = 64;
  * under one of these only, which is what lets {@link BatchesService.regenerate} tell such a batch
  * apart: its `prompt` is the composing plane's filing line, not a question any planner was asked.
  */
-export const COMPOSING_PLANNER_FAMILIES: readonly string[] = Object.freeze(["analyzer", "bench"]);
+export const COMPOSING_PLANNER_FAMILIES: readonly string[] = Object.freeze([
+  "analyzer",
+  "bench",
+  // The regression watch's fix draft (CM.4, #623).
+  "regression-watch",
+]);
 
 /**
  * Whether a planner name is a composing plane's.

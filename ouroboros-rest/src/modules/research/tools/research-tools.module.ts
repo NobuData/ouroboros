@@ -145,6 +145,6 @@ export function registeredAdapters(
     ResearchToolSettings,
     ResearchToolInvoker,
   ],
-  exports: [ResearchToolRegistry, ResearchToolSettings],
+  exports: [ResearchToolRegistry, ResearchToolSettings, ResearchToolRepository],
 })
 export class ResearchToolsModule {}

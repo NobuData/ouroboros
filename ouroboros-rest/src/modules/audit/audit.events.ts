@@ -78,7 +78,8 @@ export type AuditSubjectType =
   | "service_account"
   | "decision_item"
   | "webhook_endpoint"
-  | "notification_route";
+  | "notification_route"
+  | "regression_watch_settings";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -598,6 +599,16 @@ export const WEBHOOK_REDELIVERED_EVENT = "webhook.redelivered";
  */
 export const NOTIFICATION_ROUTE_UPDATED_EVENT = "notification_route.updated";
 
+/**
+ * A workspace changed the regression watch's policy (CM.4,
+ * [#623](https://github.com/NobuData/ouroboros/issues/623), decision V6): whether a detected
+ * drift is bisected without asking (`autoBisect`) and — the opt-in — whether a drafted fix is
+ * filed and queued without asking (`autoFile`). Subject `regression_watch_settings`, whose id is
+ * the workspace. The detail carries both switches **before and after**. A save that changes
+ * neither writes no event.
+ */
+export const RESEARCH_WATCH_POLICY_UPDATED_EVENT = "regression_watch.policy_updated";
+
 /* ---------------------------------------------------------------------------
  * The audit plane itself — BR.2 ([#486](https://github.com/NobuData/ouroboros/issues/486)).
  *
@@ -709,6 +720,7 @@ export const AUDIT_ACTIONS = [
   AUDIT_EXPORTED_EVENT,
   AUDIT_PURGED_EVENT,
   NOTIFICATION_ROUTE_UPDATED_EVENT,
+  RESEARCH_WATCH_POLICY_UPDATED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

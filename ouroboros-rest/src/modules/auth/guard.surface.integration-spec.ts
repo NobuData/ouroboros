@@ -150,6 +150,7 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   // `/api/v1/research/investigations/:investigationId/{brief,sources,brief/export}` (#621). A
   // well-formed uuid no workspace holds.
   investigationId: "5eed0084-0000-4000-8000-0000000000ff",
+  itemId: "5eed0096-0000-4000-8000-0000000000ff",
 };
 
 /**

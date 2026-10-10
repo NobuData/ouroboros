@@ -1,3 +1,4 @@
+import type { RegressionWatchService } from "../research/watch/watch.service";
 import { ConflictError, ForbiddenError, NotImplementedError } from "../errors/error.envelope";
 import type { ControlsService, Requester } from "../controls/controls.service";
 import type { FactsService } from "../facts/facts.service";
@@ -114,6 +115,11 @@ function planes() {
     reject: jest.fn(() => Promise.resolve({ status: "rejected" })),
     expire: jest.fn(() => Promise.resolve({ status: "expired" })),
   };
+  const watch = {
+    dismiss: jest.fn(() =>
+      Promise.resolve({ id: "17e00000-0000-4000-8000-000000000001", status: "dismissed" }),
+    ),
+  };
   const handlers = new InboxActionHandlers(
     repository as unknown as InboxActionsRepository,
     pages as unknown as PageActionsService,
@@ -123,6 +129,7 @@ function planes() {
     controls as unknown as ControlsService,
     batches as unknown as BatchesService,
     facts as unknown as FactsService,
+    watch as unknown as RegressionWatchService,
   );
 
   return {
@@ -136,6 +143,7 @@ function planes() {
     controls,
     batches,
     facts,
+    watch,
   };
 }
 
@@ -408,6 +416,48 @@ describe("InboxActionHandlers", () => {
       confirmation: "1844",
       idempotencyKey: "inbox:attempt-1",
     });
+  });
+
+  it("dismisses the watch item a regression card is about, the note as its reason", async () => {
+    const { handlers, watch } = planes();
+    const about = item({ sourceRef: "item:17e00000-0000-4000-8000-000000000001:detected" });
+
+    const outcome = await handlers.execute(
+      "research.dismiss_watch_item",
+      context({ item: about, note: "  A sensor swap, not a regression.  " }),
+    );
+
+    expect(handlers.isBound("research.dismiss_watch_item")).toBe(true);
+    expect(watch.dismiss).toHaveBeenCalledWith(
+      ORG,
+      ADMIN.id,
+      "17e00000-0000-4000-8000-000000000001",
+      "A sensor swap, not a regression.",
+    );
+    expect(outcome).toEqual({
+      watch_item_id: "17e00000-0000-4000-8000-000000000001",
+      status: "dismissed",
+    });
+
+    await handlers.execute("research.dismiss_watch_item", context({ item: about, note: null }));
+    expect(watch.dismiss).toHaveBeenLastCalledWith(
+      ORG,
+      ADMIN.id,
+      "17e00000-0000-4000-8000-000000000001",
+      "Dismissed from the inbox.",
+    );
+  });
+
+  it("refuses a regression card whose source names no watch item", async () => {
+    const { handlers, watch } = planes();
+
+    await expect(
+      handlers.execute(
+        "research.dismiss_watch_item",
+        context({ item: item({ sourceRef: "batch:b1" }) }),
+      ),
+    ).rejects.toThrow(ConflictError);
+    expect(watch.dismiss).not.toHaveBeenCalled();
   });
 
   it("pushes the split's batch through AL.3", async () => {

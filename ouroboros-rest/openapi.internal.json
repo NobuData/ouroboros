@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest (internal)",
-    "version": "0.41.8",
+    "version": "0.41.9",
     "summary": "What ouroboros-engine may ask the control plane for — and what it is never given.",
     "description": "The **engine-facing** surface of\n[Ouroboros](https://github.com/NobuData/ouroboros)' communications layer. Two\noperations, one caller, and one idea holding both of them together — roadmap decision\n**P3**, [#224](https://github.com/NobuData/ouroboros/issues/224):\n\n> **A worker never holds a provider credential.**\n\nMockup 07's page subline promises something weaker — *\"keys never leave the control\nplane — workers only ever see short-lived tokens\"* — and this document is where the\nfirst clause is made literal and the second is **improved on**. There is no token. A\nfifteen-minute credential is still a credential: it genuinely reaches the worker,\nrevocation is bounded only by its TTL, and the audit surface widens to every process\nthat ever held one. It is also, for most LLM providers, fiction — almost none support\nderiving short-lived scoped keys, so such a token would in practice be a full API key\nwith a timer bolted on by us.\n\nSo the two operations divide the world:\n\n| Operation | For | Hands over |\n|---|---|---|\n| `POST /internal/llm/invoke` | every **cloud** provider | nothing — the control plane makes the call and streams back the answer |\n| `POST /internal/credentials/lease` | **local** providers only | an address, TTL-bounded and audited |\n\nThe exception is narrow and is not a compromise. An engine worker calling an Ollama\ndaemon on the same box gains nothing from proxying its traffic through this service,\nbecause there is no key on that path to protect — so it is told the address and nothing\nelse, and a lease naming a cloud provider is a `403` by policy, enforced here rather\nthan trusted to the caller.\n\n**What is built and what is specified.** The lease is implemented. The proxy is\n*specified* by this document and implemented by AF.2\n([#235](https://github.com/NobuData/ouroboros/issues/235)); calling it today answers\n`501` with `code: \"invocation_not_implemented\"`, deliberately rather than `404`, so an\nexecutor being written against this contract can tell *the path is right and the other\nhalf is not built yet* from *I have the URL wrong*. The contract exists first because\nAF.1 ([#234](https://github.com/NobuData/ouroboros/issues/234)) has to choose an\nexecutor **against** it — a decision recorded afterwards is a description of whatever\ngot built.\n\n**Authentication is the #51 pattern, in the other direction.** Every operation requires\n`X-Ouro-Internal-Key`, carrying `OURO_ENGINE_SHARED_SECRET` — the same header and the\nsame variable `ouroboros-rest` sends when *it* calls the engine\n([#51](https://github.com/NobuData/ouroboros/issues/51)). The comparison is constant\ntime, a missing header takes the same path as a wrong one, and the rejection is one\nconstant body: `401` with `code: \"unauthenticated\"` and nothing else. A session cookie\nis not accepted here, whoever it belongs to.\n\n**These paths are outside `/api`, and unversioned.** `/api` is the browser's boundary;\nthe only caller of these two is deployed alongside this service and upgraded with it, so\na version in the path would be one nobody could ever be on a different side of. That is\nthe same argument `/health/live` and `ouroboros-engine`'s `/healthz` are written under.\n\n**Every error has the shape every other error in this system has** — `{code, message,\ndetails}`, `docs/ARCHITECTURE.md` § 5.3 — so a worker parses one envelope whether it\nwas refused at the boundary or inside a handler.\n\n**The naming convention changes at this boundary, once.** This service writes\n`camelCase` in its contracts and `ouroboros-engine` writes `snake_case` in its own; each\nside translates in exactly one file — `src/modules/engine/engine.contract.ts` here,\n`ouroboros_engine/control_plane/contract.py` there — so no code on either side carries\nthe other's spelling.",
     "license": {
@@ -2382,6 +2382,83 @@
           }
         }
       }
+    },
+    "/internal/research/regression-watch/releases": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Announce a release, so its regression baselines are captured",
+        "description": "Nothing in the control plane notices a release tag by itself. A CI step that tags a\nrelease — or a webhook receiver, when one exists — posts the repository and the tag\nhere (CM.4, [#623](https://github.com/NobuData/ouroboros/issues/623)), and **every\nworkspace that watches a metric of that repository** captures that release's baselines:\neach watched metric's window, read through the build & test telemetry tool.\n\nThe call names no workspace — which ones watch the repository is the control plane's\nto know. A repository nobody watches answers `workspaces: 0` and captures nothing. A\nrelease that already has a metric's baseline keeps it, so announcing a tag twice\ncaptures nothing the second time.",
+        "operationId": "announceRegressionWatchRelease",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegressionWatchRelease"
+              },
+              "example": {
+                "repository": "acme-robotics/helios-firmware",
+                "releaseTag": "v2.0.4"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "How many workspaces watch the repository, and how many baselines were captured.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegressionWatchReleaseAnnounced"
+                },
+                "example": {
+                  "repository": "acme-robotics/helios-firmware",
+                  "releaseTag": "v2.0.4",
+                  "workspaces": 1,
+                  "captured": 3
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No `X-Ouro-Internal-Key`, or the wrong one. One constant body: `code:\n\"unauthenticated\"`, a bare message and empty `details`, whichever it was.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "unauthenticated",
+                  "message": "Unauthorized.",
+                  "details": {}
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the body is the wrong shape: `repository` is `owner/name`, `releaseTag` a tag with no white space.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4651,6 +4728,58 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "RegressionWatchRelease": {
+        "type": "object",
+        "title": "RegressionWatchRelease",
+        "description": "A release, announced (CM.4,",
+        "additionalProperties": false,
+        "required": [
+          "repository",
+          "releaseTag"
+        ],
+        "properties": {
+          "repository": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$",
+            "description": "`owner/name`."
+          },
+          "releaseTag": {
+            "type": "string",
+            "pattern": "^\\S{1,128}$",
+            "description": "The tag — `v2.0.4`."
+          }
+        }
+      },
+      "RegressionWatchReleaseAnnounced": {
+        "type": "object",
+        "title": "RegressionWatchReleaseAnnounced",
+        "description": "What an announcement did.",
+        "additionalProperties": false,
+        "required": [
+          "repository",
+          "releaseTag",
+          "workspaces",
+          "captured"
+        ],
+        "properties": {
+          "repository": {
+            "type": "string"
+          },
+          "releaseTag": {
+            "type": "string"
+          },
+          "workspaces": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many workspaces watch a metric of the repository."
+          },
+          "captured": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many baselines were captured across them."
           }
         }
       },
