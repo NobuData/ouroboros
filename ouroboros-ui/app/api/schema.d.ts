@@ -10691,6 +10691,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/research/kinds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspace's investigation kinds
+         * @description The composer's segmented control, read from the registry rather than written into the
+         *     page ([#628](https://github.com/NobuData/ouroboros/issues/628), over V106's
+         *     `investigation_kinds`, [#608](https://github.com/NobuData/ouroboros/issues/608)):
+         *     each kind's slug, label, hue key and playbook — the tools it turns on by default and
+         *     what it delivers, which is the composer's deliverable line.
+         *
+         *     **In the composer's order.** The four built-in kinds come first as mockup 22 reads them
+         *     — `bug_root_cause`, `regression_forensics`, `roadmap_improvements`, `gap_analysis` —
+         *     then any kind the workspace added, by name. Every workspace has the four from the day
+         *     it is created (V106's trigger); a workspace with none answers an empty list rather than
+         *     an invented one.
+         *
+         *     Any member may read. **The workspace is the session's.**
+         */
+        get: operations["listInvestigationKinds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/tools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The research tools this installation answers to
+         * @description The composer's tool chips ([#628](https://github.com/NobuData/ouroboros/issues/628)):
+         *     every slug of V106's `research_tools`, in mockup 22's order, each saying whether it is
+         *     **connected** — an adapter is registered for it in this build (CL.1's registry,
+         *     [#614](https://github.com/NobuData/ouroboros/issues/614)), so an investigation can
+         *     call it. A connected tool is named and glyphed by its adapter; a slug with no adapter
+         *     (`docs`, until its v2 adapter ships) keeps the table's title, has no glyph, and is the
+         *     composer's idle chip.
+         *
+         *     **Connected is not healthy.** Whether *this workspace's* configuration of a tool works
+         *     is the tools card's dot ([#629](https://github.com/NobuData/ouroboros/issues/629)),
+         *     answered by each adapter's health check. This read makes no network call and names no
+         *     workspace: it is the installation's catalog.
+         *
+         *     Any member may read.
+         */
+        get: operations["listResearchTools"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/research/estimates": {
         parameters: {
             query?: never;
@@ -19714,6 +19779,68 @@ export interface components {
              *     ]
              */
             tools?: string[];
+        };
+        /**
+         * InvestigationKind
+         * @description One investigation kind of a workspace ([#628](https://github.com/NobuData/ouroboros/issues/628)):
+         *     V106's `investigation_kinds` row without its ids and stamps. `tint` is a hue *key* the
+         *     UI maps to its own tokens, never a colour.
+         */
+        InvestigationKind: {
+            /** @example gap_analysis */
+            slug: string;
+            /**
+             * @description The segmented control's label.
+             * @example Gap analysis
+             */
+            name: string;
+            /**
+             * @description The kind chip's hue key — `bug`, `reg`, `road`, `gap`.
+             * @example gap
+             */
+            tint: string;
+            playbook: {
+                version: number;
+                /** @description The chips on when this kind is chosen — registered `research_tools` slugs. */
+                defaultTools: string[];
+                /** @description `brief` always; the composer's deliverable line is composed from these. */
+                deliverables: ("brief" | "matrix" | "roadmap_doc" | "fix_draft")[];
+            };
+        };
+        /**
+         * InvestigationKindCatalog
+         * @description A workspace's investigation kinds, in the composer's order.
+         */
+        InvestigationKindCatalog: {
+            kinds: components["schemas"]["InvestigationKind"][];
+        };
+        /**
+         * ResearchToolCatalogEntry
+         * @description One research tool the installation answers to ([#628](https://github.com/NobuData/ouroboros/issues/628)).
+         *     `connected` says an adapter is registered for the slug in this build — not that any
+         *     workspace's configuration of it is healthy, which is the tools card's dot (#629).
+         */
+        ResearchToolCatalogEntry: {
+            /** @example competitor */
+            slug: string;
+            /**
+             * @description The adapter's display name, or V106's title when no adapter exists.
+             * @example Competitor tracker
+             */
+            name: string;
+            /**
+             * @description The adapter's one-character glyph; null when no adapter exists.
+             * @example ⌖
+             */
+            glyph: string | null;
+            connected: boolean;
+        };
+        /**
+         * ResearchToolCatalog
+         * @description Every research tool the installation answers to, in the composer's order.
+         */
+        ResearchToolCatalog: {
+            tools: components["schemas"]["ResearchToolCatalogEntry"][];
         };
         /**
          * IntRange
@@ -80823,6 +80950,334 @@ export interface operations {
              * @description `farm_release_not_found` — no such release is served here, or it has no such file. Or
              *     `farm_installer_unavailable` — this deployment serves no releases at all:
              *     `OURO_FARM_RELEASES_DIR` is unset or is not a readable directory.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listInvestigationKinds: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The workspace's kinds. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "kinds": [
+                     *         {
+                     *           "slug": "bug_root_cause",
+                     *           "name": "Bug root cause",
+                     *           "tint": "bug",
+                     *           "playbook": {
+                     *             "version": 1,
+                     *             "defaultTools": [
+                     *               "code",
+                     *               "tickets",
+                     *               "telemetry"
+                     *             ],
+                     *             "deliverables": [
+                     *               "brief",
+                     *               "fix_draft"
+                     *             ]
+                     *           }
+                     *         },
+                     *         {
+                     *           "slug": "regression_forensics",
+                     *           "name": "Regression forensics",
+                     *           "tint": "reg",
+                     *           "playbook": {
+                     *             "version": 1,
+                     *             "defaultTools": [
+                     *               "code",
+                     *               "telemetry",
+                     *               "tickets"
+                     *             ],
+                     *             "deliverables": [
+                     *               "brief",
+                     *               "fix_draft"
+                     *             ]
+                     *           }
+                     *         },
+                     *         {
+                     *           "slug": "roadmap_improvements",
+                     *           "name": "Roadmap & improvements",
+                     *           "tint": "road",
+                     *           "playbook": {
+                     *             "version": 1,
+                     *             "defaultTools": [
+                     *               "tickets",
+                     *               "web",
+                     *               "competitor"
+                     *             ],
+                     *             "deliverables": [
+                     *               "brief",
+                     *               "roadmap_doc"
+                     *             ]
+                     *           }
+                     *         },
+                     *         {
+                     *           "slug": "gap_analysis",
+                     *           "name": "Gap analysis",
+                     *           "tint": "gap",
+                     *           "playbook": {
+                     *             "version": 1,
+                     *             "defaultTools": [
+                     *               "web",
+                     *               "competitor",
+                     *               "code",
+                     *               "tickets",
+                     *               "telemetry"
+                     *             ],
+                     *             "deliverables": [
+                     *               "brief",
+                     *               "matrix"
+                     *             ]
+                     *           }
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["InvestigationKindCatalog"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listResearchTools: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The installation's tools. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "tools": [
+                     *         {
+                     *           "slug": "web",
+                     *           "name": "Web search & page reader",
+                     *           "glyph": "◍",
+                     *           "connected": true
+                     *         },
+                     *         {
+                     *           "slug": "competitor",
+                     *           "name": "Competitor tracker",
+                     *           "glyph": "⌖",
+                     *           "connected": true
+                     *         },
+                     *         {
+                     *           "slug": "code",
+                     *           "name": "Codebase & git mining",
+                     *           "glyph": "⌥",
+                     *           "connected": true
+                     *         },
+                     *         {
+                     *           "slug": "tickets",
+                     *           "name": "Issue & PR history index",
+                     *           "glyph": "▤",
+                     *           "connected": true
+                     *         },
+                     *         {
+                     *           "slug": "telemetry",
+                     *           "name": "Build & test telemetry",
+                     *           "glyph": "∿",
+                     *           "connected": true
+                     *         },
+                     *         {
+                     *           "slug": "docs",
+                     *           "name": "Docs, standards & papers",
+                     *           "glyph": null,
+                     *           "connected": false
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ResearchToolCatalog"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of.
              */
             404: {
                 headers: {

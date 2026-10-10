@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.41.11",
+    "version": "0.41.12",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -199,7 +199,7 @@
     },
     {
       "name": "research",
-      "description": "**Research — investigations the product runs before it builds** (mockup 22, epic\n[#605](https://github.com/NobuData/ouroboros/issues/605)).\n\nOne operation is published so far: the composer's **scope and cost estimate**\n([#622](https://github.com/NobuData/ouroboros/issues/622), decision **V5**) — the\n`est. 40–60 sources · ~$6` line and the `researcher:` pill, computed together from the\ndepth, the tools and the alias routing resolves the `research` task kind to. Starting,\nlisting and following investigations is CM.6's\n([#625](https://github.com/NobuData/ouroboros/issues/625))."
+      "description": "**Research — investigations the product runs before it builds** (mockup 22, epic\n[#605](https://github.com/NobuData/ouroboros/issues/605)).\n\nThe composer's **scope and cost estimate**\n([#622](https://github.com/NobuData/ouroboros/issues/622), decision **V5**) — the\n`est. 40–60 sources · ~$6` line and the `researcher:` pill, computed together from the\ndepth, the tools and the alias routing resolves the `research` task kind to. Starting,\nlisting and following investigations is CM.6's\n([#625](https://github.com/NobuData/ouroboros/issues/625)). The two **catalogs** the\ncomposer is built from — the workspace's investigation kinds and the installation's\nresearch tools — are CN.2's ([#628](https://github.com/NobuData/ouroboros/issues/628))."
     }
   ],
   "paths": {
@@ -39264,6 +39264,254 @@
         }
       }
     },
+    "/api/v1/research/kinds": {
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "The workspace's investigation kinds",
+        "description": "The composer's segmented control, read from the registry rather than written into the\npage ([#628](https://github.com/NobuData/ouroboros/issues/628), over V106's\n`investigation_kinds`, [#608](https://github.com/NobuData/ouroboros/issues/608)):\neach kind's slug, label, hue key and playbook — the tools it turns on by default and\nwhat it delivers, which is the composer's deliverable line.\n\n**In the composer's order.** The four built-in kinds come first as mockup 22 reads them\n— `bug_root_cause`, `regression_forensics`, `roadmap_improvements`, `gap_analysis` —\nthen any kind the workspace added, by name. Every workspace has the four from the day\nit is created (V106's trigger); a workspace with none answers an empty list rather than\nan invented one.\n\nAny member may read. **The workspace is the session's.**",
+        "operationId": "listInvestigationKinds",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The workspace's kinds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestigationKindCatalog"
+                },
+                "example": {
+                  "kinds": [
+                    {
+                      "slug": "bug_root_cause",
+                      "name": "Bug root cause",
+                      "tint": "bug",
+                      "playbook": {
+                        "version": 1,
+                        "defaultTools": [
+                          "code",
+                          "tickets",
+                          "telemetry"
+                        ],
+                        "deliverables": [
+                          "brief",
+                          "fix_draft"
+                        ]
+                      }
+                    },
+                    {
+                      "slug": "regression_forensics",
+                      "name": "Regression forensics",
+                      "tint": "reg",
+                      "playbook": {
+                        "version": 1,
+                        "defaultTools": [
+                          "code",
+                          "telemetry",
+                          "tickets"
+                        ],
+                        "deliverables": [
+                          "brief",
+                          "fix_draft"
+                        ]
+                      }
+                    },
+                    {
+                      "slug": "roadmap_improvements",
+                      "name": "Roadmap & improvements",
+                      "tint": "road",
+                      "playbook": {
+                        "version": 1,
+                        "defaultTools": [
+                          "tickets",
+                          "web",
+                          "competitor"
+                        ],
+                        "deliverables": [
+                          "brief",
+                          "roadmap_doc"
+                        ]
+                      }
+                    },
+                    {
+                      "slug": "gap_analysis",
+                      "name": "Gap analysis",
+                      "tint": "gap",
+                      "playbook": {
+                        "version": 1,
+                        "defaultTools": [
+                          "web",
+                          "competitor",
+                          "code",
+                          "tickets",
+                          "telemetry"
+                        ],
+                        "deliverables": [
+                          "brief",
+                          "matrix"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/research/tools": {
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "The research tools this installation answers to",
+        "description": "The composer's tool chips ([#628](https://github.com/NobuData/ouroboros/issues/628)):\nevery slug of V106's `research_tools`, in mockup 22's order, each saying whether it is\n**connected** — an adapter is registered for it in this build (CL.1's registry,\n[#614](https://github.com/NobuData/ouroboros/issues/614)), so an investigation can\ncall it. A connected tool is named and glyphed by its adapter; a slug with no adapter\n(`docs`, until its v2 adapter ships) keeps the table's title, has no glyph, and is the\ncomposer's idle chip.\n\n**Connected is not healthy.** Whether *this workspace's* configuration of a tool works\nis the tools card's dot ([#629](https://github.com/NobuData/ouroboros/issues/629)),\nanswered by each adapter's health check. This read makes no network call and names no\nworkspace: it is the installation's catalog.\n\nAny member may read.",
+        "operationId": "listResearchTools",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The installation's tools.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchToolCatalog"
+                },
+                "example": {
+                  "tools": [
+                    {
+                      "slug": "web",
+                      "name": "Web search & page reader",
+                      "glyph": "◍",
+                      "connected": true
+                    },
+                    {
+                      "slug": "competitor",
+                      "name": "Competitor tracker",
+                      "glyph": "⌖",
+                      "connected": true
+                    },
+                    {
+                      "slug": "code",
+                      "name": "Codebase & git mining",
+                      "glyph": "⌥",
+                      "connected": true
+                    },
+                    {
+                      "slug": "tickets",
+                      "name": "Issue & PR history index",
+                      "glyph": "▤",
+                      "connected": true
+                    },
+                    {
+                      "slug": "telemetry",
+                      "name": "Build & test telemetry",
+                      "glyph": "∿",
+                      "connected": true
+                    },
+                    {
+                      "slug": "docs",
+                      "name": "Docs, standards & papers",
+                      "glyph": null,
+                      "connected": false
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/research/estimates": {
       "post": {
         "tags": [
@@ -64082,6 +64330,152 @@
                 "telemetry"
               ]
             ]
+          }
+        }
+      },
+      "InvestigationKind": {
+        "type": "object",
+        "title": "InvestigationKind",
+        "description": "One investigation kind of a workspace ([#628](https://github.com/NobuData/ouroboros/issues/628)):\nV106's `investigation_kinds` row without its ids and stamps. `tint` is a hue *key* the\nUI maps to its own tokens, never a colour.",
+        "additionalProperties": false,
+        "required": [
+          "slug",
+          "name",
+          "tint",
+          "playbook"
+        ],
+        "properties": {
+          "slug": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,47}$",
+            "examples": [
+              "gap_analysis"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "The segmented control's label.",
+            "examples": [
+              "Gap analysis"
+            ]
+          },
+          "tint": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,31}$",
+            "description": "The kind chip's hue key — `bug`, `reg`, `road`, `gap`.",
+            "examples": [
+              "gap"
+            ]
+          },
+          "playbook": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "version",
+              "defaultTools",
+              "deliverables"
+            ],
+            "properties": {
+              "version": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "defaultTools": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "The chips on when this kind is chosen — registered `research_tools` slugs."
+              },
+              "deliverables": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "brief",
+                    "matrix",
+                    "roadmap_doc",
+                    "fix_draft"
+                  ]
+                },
+                "description": "`brief` always; the composer's deliverable line is composed from these."
+              }
+            }
+          }
+        }
+      },
+      "InvestigationKindCatalog": {
+        "type": "object",
+        "title": "InvestigationKindCatalog",
+        "description": "A workspace's investigation kinds, in the composer's order.",
+        "additionalProperties": false,
+        "required": [
+          "kinds"
+        ],
+        "properties": {
+          "kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvestigationKind"
+            }
+          }
+        }
+      },
+      "ResearchToolCatalogEntry": {
+        "type": "object",
+        "title": "ResearchToolCatalogEntry",
+        "description": "One research tool the installation answers to ([#628](https://github.com/NobuData/ouroboros/issues/628)).\n`connected` says an adapter is registered for the slug in this build — not that any\nworkspace's configuration of it is healthy, which is the tools card's dot (#629).",
+        "additionalProperties": false,
+        "required": [
+          "slug",
+          "name",
+          "glyph",
+          "connected"
+        ],
+        "properties": {
+          "slug": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+            "examples": [
+              "competitor"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "The adapter's display name, or V106's title when no adapter exists.",
+            "examples": [
+              "Competitor tracker"
+            ]
+          },
+          "glyph": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The adapter's one-character glyph; null when no adapter exists.",
+            "examples": [
+              "⌖"
+            ]
+          },
+          "connected": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ResearchToolCatalog": {
+        "type": "object",
+        "title": "ResearchToolCatalog",
+        "description": "Every research tool the installation answers to, in the composer's order.",
+        "additionalProperties": false,
+        "required": [
+          "tools"
+        ],
+        "properties": {
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResearchToolCatalogEntry"
+            }
           }
         }
       },

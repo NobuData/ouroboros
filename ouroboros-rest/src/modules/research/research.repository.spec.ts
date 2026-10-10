@@ -24,6 +24,7 @@ describe("the research repository", () => {
       (repository: ResearchRepository) => Promise<unknown>,
     ][] = [
       ["findKind", (repository) => repository.findKind(WORKSPACE, "gap_analysis")],
+      ["listKinds", (repository) => repository.listKinds(WORKSPACE)],
       ["findInvestigation", (repository) => repository.findInvestigation(WORKSPACE, INVESTIGATION)],
       [
         "storeEstimate",
@@ -75,6 +76,51 @@ describe("the research repository", () => {
 
     it("answers undefined for a kind the workspace lacks", async () => {
       expect(await research.findKind(WORKSPACE, "market_sizing")).toBeUndefined();
+    });
+  });
+
+  describe("the catalogs (CN.2, #628)", () => {
+    it("reads every kind of the workspace with its label, hue and playbook, by slug", async () => {
+      const playbook = {
+        version: 1,
+        default_tools: ["web", "competitor"],
+        synthesis_template: "gap_analysis@1",
+        deliverables: ["brief", "matrix"],
+      };
+      database.answers({
+        rows: [{ slug: "gap_analysis", display_name: "Gap analysis", tint_key: "gap", playbook }],
+      });
+
+      expect(await research.listKinds(WORKSPACE)).toEqual([
+        { slug: "gap_analysis", displayName: "Gap analysis", tintKey: "gap", playbook },
+      ]);
+      const [statement] = database.statements;
+      expect(statement.sql).toContain('from "ouroboros"."investigation_kinds"');
+      expect(statement.sql).toContain('"organization_id" = $');
+      expect(statement.sql).toContain('order by "slug"');
+      expect(statement.parameters).toEqual([WORKSPACE]);
+    });
+
+    it("reads every research tool with its title, naming no workspace — the table is the installation's", async () => {
+      database.answers({
+        rows: [
+          { slug: "docs", display_name: "Docs, standards & papers" },
+          { slug: "web", display_name: "Web search & page reader" },
+        ],
+      });
+
+      expect(await research.listTools()).toEqual([
+        { slug: "docs", displayName: "Docs, standards & papers" },
+        { slug: "web", displayName: "Web search & page reader" },
+      ]);
+      const [statement] = database.statements;
+      expect(statement.sql).toContain('from "ouroboros"."research_tools"');
+      expect(statement.sql).not.toContain("organization_id");
+      expect(statement.parameters).toEqual([]);
+    });
+
+    it("answers an empty list for a workspace with no kinds", async () => {
+      expect(await research.listKinds(WORKSPACE)).toEqual([]);
     });
   });
 

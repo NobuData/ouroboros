@@ -2,6 +2,8 @@ import { Test } from "@nestjs/testing";
 
 import { ConfigurationModule } from "../config/config.module";
 import { testConfiguration } from "../config/configuration.fixture";
+import { ResearchCatalogController } from "./catalog.controller";
+import { ResearchCatalogService } from "./catalog.service";
 import { ResearchEstimateController } from "./estimate.controller";
 import { ResearchEstimateService } from "./estimate.service";
 import { ResearchModule } from "./research.module";
@@ -21,6 +23,8 @@ describe("the research module", () => {
 
     expect(moduleRef.get(ResearchEstimateController)).toBeInstanceOf(ResearchEstimateController);
     expect(moduleRef.get(ResearchEstimateService)).toBeInstanceOf(ResearchEstimateService);
+    expect(moduleRef.get(ResearchCatalogController)).toBeInstanceOf(ResearchCatalogController);
+    expect(moduleRef.get(ResearchCatalogService)).toBeInstanceOf(ResearchCatalogService);
     expect(moduleRef.get(ResearchRepository)).toBeInstanceOf(ResearchRepository);
     expect(moduleRef.get(ResearchToolPricing)).toBeInstanceOf(RegistryToolPricing);
 

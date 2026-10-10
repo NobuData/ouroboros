@@ -5051,6 +5051,18 @@ investigation_not_queued` after that), and `reconcile(org, investigation)` write
 actuals side by side through V109's `record_investigation_estimate_outcome()` — idempotent, with
 generated `sources_within_estimate` / `cost_within_estimate` — which is what recalibration reads.
 
+**The composer's two catalogs** (CN.2, [#628](https://github.com/NobuData/ouroboros/issues/628);
+`catalog.controller.ts`, `catalog.service.ts`) are what the composer's segmented control and chips
+are drawn from, so neither is a constant in the page: `GET /api/v1/research/kinds` answers the
+workspace's `investigation_kinds` — slug, label, hue key (`tint`) and playbook (`defaultTools`,
+`deliverables`) — the built-in four first in mockup 22's order, then the workspace's own by name;
+`GET /api/v1/research/tools` answers every `research_tools` slug in the mockup's order, each
+**connected** when CL.1's registry holds an adapter for it (named and glyphed by the adapter;
+`docs` keeps V106's title and is idle until its v2 adapter). *Connected* is the registry's answer
+and needs no network; whether a workspace's configuration of a tool is healthy is the tools
+card's dot (#629, `healthCheck()`). Both are open to every member; the tool catalog names no
+workspace. #629's tools card and #632's kind facets read the same two.
+
 ## Research telemetry
 
 `telemetry` is the fifth research tool — mockup 22's `∿ Build & test telemetry` row

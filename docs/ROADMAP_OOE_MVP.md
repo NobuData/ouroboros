@@ -1745,7 +1745,7 @@ the blockquote above that records what it did and what it did differently.
 | 422 | **CM.4** | ✅ [#623](https://github.com/NobuData/ouroboros/issues/623) | Regression watch service & bisect orchestration | ouroboros-rest, ouroboros-engine | L | CK.4, CL.4, CL.6 |
 | 423 | **CM.5** | ✅ [#624](https://github.com/NobuData/ouroboros/issues/624) | Gaps→Planning handoff & roadmap-doc pipeline | ouroboros-rest, ouroboros-engine | L | AL.4, BE.1, CK.5, CM.2 |
 | 424 | **CM.7** | ✅ [#626](https://github.com/NobuData/ouroboros/issues/626) | Research integration tests | ouroboros-rest, ouroboros-engine | M | CM.1, CM.6 |
-| 425 | **CN.2** | [#628](https://github.com/NobuData/ouroboros/issues/628) | Investigation composer | ouroboros-ui | L | CM.3, CM.6, CN.1 |
+| 425 | **CN.2** | ✅ [#628](https://github.com/NobuData/ouroboros/issues/628) | Investigation composer | ouroboros-ui | L | CM.3, CM.6, CN.1 |
 | 426 | **CN.4** | [#630](https://github.com/NobuData/ouroboros/issues/630) | Investigation brief view | ouroboros-ui | L | CM.2, CN.1 |
 | 427 | **CN.6** | [#632](https://github.com/NobuData/ouroboros/issues/632) | Investigations list, history & library | ouroboros-ui | M | CM.6, CN.1 |
 | 428 | **CD.4** | [#562](https://github.com/NobuData/ouroboros/issues/562) | Dry-run orchestration & guards | ouroboros-rest | M | R.2, CD.2, CD.3 |

@@ -1,12 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 
 import { claimPaneLanding, landOn } from "@/app/shell/pane-anchor";
 
+import type { ComposerReadings } from "./composer";
+import { ComposerCard } from "./composer-card";
+import type { ProgressSourceFactory } from "./progress";
 import { ResearchHead } from "./research-head";
 import { ResearchSeat } from "./research-seat";
 import {
+  BRIEF_REGION,
   COMPOSER_REGION,
   type RegionPlace,
   type ResearchRegionId,
@@ -21,8 +25,15 @@ import "./research.css";
 export interface ResearchScreenProps {
   /** Which view the address opened — the page from its top, or the library. */
   readonly view: ResearchView;
-  /** Whether this reader may start an investigation. */
-  readonly mayStart: boolean;
+  /**
+   * Why this reader may not start an investigation here, or null when they may. Decided on the
+   * server from the reader's roles and the workspace's setting (`composer.ts` § `startGate`).
+   */
+  readonly startReason: string | null;
+  /** What the composer is drawn from, read on the server. */
+  readonly composer: ComposerReadings;
+  /** How the composer opens its progress stream. A test hands in a fake. */
+  readonly openProgress?: ProgressSourceFactory;
 }
 
 /**
@@ -54,7 +65,10 @@ function enterRegion(id: ResearchRegionId): boolean {
  * **The grid is the mockup's.** The composer at `c-7` beside a `c-5` side column — the tools card
  * over the regression watch — then the featured brief, the roadmap pipeline and the
  * investigations list at `c-12`. Each region is a seat (`app/research/research-seat.tsx`) that
- * says what is coming until CN.2–CN.6 mount their cards in it.
+ * says what is coming until CN.2–CN.6 mount their cards in it. **The composer's card is here**
+ * (CN.2, [#628](https://github.com/NobuData/ouroboros/issues/628)): it fills its seat, and a run
+ * that produces a brief lands the reader on the brief's seat — the placeholder until CN.4 (#630)
+ * mounts the brief card there, which needs no change here.
  *
  * **The head's actions land on a seat.** *New investigation* scrolls to the composer's, focuses
  * it and rings it; the library's address (`?view=library`) does the same for the investigations
@@ -63,7 +77,7 @@ function enterRegion(id: ResearchRegionId): boolean {
  * @param props See {@link ResearchScreenProps}.
  * @returns The screen.
  */
-export function ResearchScreen({ view, mayStart }: ResearchScreenProps) {
+export function ResearchScreen({ view, startReason, composer, openProgress }: ResearchScreenProps) {
   const landing = landingRegion(view);
   const [highlight, setHighlight] = useState<ResearchRegionId | null>(landing);
 
@@ -83,6 +97,21 @@ export function ResearchScreen({ view, mayStart }: ResearchScreenProps) {
     if (enterRegion(id)) setHighlight(id);
   }, []);
 
+  // A finished run's brief is read in the brief's seat.
+  const onBriefReady = useCallback(() => enter(BRIEF_REGION), [enter]);
+
+  /** The cards that exist, by the region they fill. */
+  const cards: Partial<Record<ResearchRegionId, ReactNode>> = {
+    composer: (
+      <ComposerCard
+        gate={startReason}
+        onBriefReady={onBriefReady}
+        openSource={openProgress}
+        readings={composer}
+      />
+    ),
+  };
+
   /**
    * The seats at one place.
    *
@@ -96,12 +125,14 @@ export function ResearchScreen({ view, mayStart }: ResearchScreenProps) {
         key={region.id}
         onLeave={() => setHighlight((current) => (current === region.id ? null : current))}
         region={region}
-      />
+      >
+        {cards[region.id]}
+      </ResearchSeat>
     ));
 
   return (
     <main className="research">
-      <ResearchHead mayStart={mayStart} onNewInvestigation={() => enter(COMPOSER_REGION)} />
+      <ResearchHead onNewInvestigation={() => enter(COMPOSER_REGION)} startReason={startReason} />
       <div className="research__grid">
         {seats("main")}
         <div className="research__side">{seats("side")}</div>

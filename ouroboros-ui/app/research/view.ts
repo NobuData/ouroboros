@@ -137,6 +137,9 @@ export const RESEARCH_REGIONS: readonly ResearchRegion[] = [
 /** The region **New investigation** lands on. */
 export const COMPOSER_REGION: ResearchRegionId = "composer";
 
+/** The region a finished investigation's **View brief ↑** lands on (CN.2, #628). */
+export const BRIEF_REGION: ResearchRegionId = "brief";
+
 /** The region the library's address lands on. */
 export const LIBRARY_REGION: ResearchRegionId = "investigations";
 
