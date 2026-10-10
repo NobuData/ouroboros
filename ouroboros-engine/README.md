@@ -93,6 +93,7 @@ That is the command the image runs, minus the `uv` — see [Container](#containe
 | `POST /v0/analysis/runs` | yes | Run the analyzers over an assembled corpus, streaming `started`/`outcome`/`report` as NDJSON — #510 |
 | `POST /v0/code/blame` · `/history` · `/changed-between` · `/dep-graph` · `/bisect-commits` | yes | The code & git mining tool over the engine's repository clones — each answer names the commit it was read at; see [Code & git mining](#code--git-mining) — #617 |
 | `POST /v0/investigate` | yes | Accept an investigation and run the investigation loop in the background — `202`; see [The investigation loop](#the-investigation-loop) |
+| `POST /v0/dry-runs` | yes | Run a deep dry run of a workflow draft, streaming stage rows as NDJSON — real models, virtual writes, replayed infra; see [The deep dry-run harness](#the-deep-dry-run-harness) |
 | `POST /v0/learn` | yes | Learn candidate facts: a source bundle in, candidates with confidence and typed provenance out — committed for #423; today `unavailable-v0` answers none and says why |
 | `/openapi.json`, `/docs` | yes | The committed specification, served verbatim. A map of the internal surface is not something a misrouted port should hand out |
 
@@ -583,6 +584,61 @@ A run that does not end in a brief ends as `cancelled`, or as `failed` with one 
 `tool_exhaustion`, `budget_breach`, `synthesis_failure` or `engine_error`. Each keeps the ledger,
 the last checkpoint and the usage.
 
+## The deep dry-run harness
+
+`POST /v0/dry-runs` (CD.2, [#560](https://github.com/NobuData/ouroboros/issues/560)) walks one
+workflow draft for one ticket and streams what happens, ending with the whole result. It is
+mockup 20's safety strip as mechanism — `ouroboros_engine/dryrun/`:
+
+| The strip says | What makes it true |
+| --- | --- |
+| *Simulated writes — the repo is untouched* | `workspace.py`: reads resolve lazily from the git host at the pinned commit; writes land in an in-memory overlay, which is the diff artifact |
+| *Replayed infra — the farm stays idle* | `estimates.py`: a build or test stage is one question to `ouroboros-rest`'s estimator (#561), passed on untouched |
+| *Real models — that's what you're testing* | `model.py`: each model stage runs its own prompt through the invocation gateway with its resolved alias |
+
+- `contract.py` — the request and the NDJSON events. Everything the harness may not decide is
+  sent to it: each model stage's **resolved alias** (none = unresolved) and **knowledge
+  manifest**, the repository with a **read token for that request**, and the caps. The result's
+  rows and artifacts are in the shape V111's `dry_run_stages` and `dry_run_artifacts` store;
+  this service persists nothing (CD.4, #562 does).
+- `workspace.py` — `RepositoryReader` has two methods and both read; `GithubReader` sends only
+  `GET` (the recursive tree, and raw contents at the sha). `ReadCache` is a byte-bounded LRU
+  keyed by repository and commit, so a file is fetched once across stages and runs. A tree the
+  host truncated, or a content search that stopped at its 40-file fetch bound, is reported in
+  `workspace_notes` — the clone tier that lifts those limits is #572.
+- `guard.py`, `tools.py` — the **tool boundary**. Six tools exist: `read_file`, `search`,
+  `list_dir`, `edit_file`, and the replay stubs `build` and `run_tests`. Any other name is not
+  run: it is recorded in the guard audit, streamed as `guard_blocked`, and **the run ends
+  `failed`**. A path outside the repository is refused and audited the same way.
+- `protocol.py` — tool calls are fenced `tool` blocks in the reply, as the copilot's are, and a
+  stage finishes with one fenced `result` block: a summary, a plan's steps, a review's verdict
+  and nits.
+- `notes.py` — the card's note lines, **composed from what a stage did**, never written by a
+  model: a change to the simulated diff reads `diff drafted +41 −9 (below) · 84k tokens`,
+  verdicts read `both approve · 1 style nit`, steps read `3 steps · would touch <file>`, reads
+  read `mapped 4 files`. Files read, lines changed and tokens are measured by the harness.
+- `harness.py` — the walk. Stages run in a topological order of the non-loop edges; a branch
+  whose condition is false leaves its stage `skipped` with the clause that decided it, and a
+  `paths` condition is tested against the simulated diff as it stands. A model stage with no
+  resolved alias is `skipped` with its W7 warning and the walk continues. An undefined skill
+  runs the stage without it and says so. A terminal is `not_reached`. Parallel model stages
+  that share a title and their predecessors share a row (`review ×2`).
+
+**Ends.** `complete`; `budget_stopped` when a per-stage or per-run token or spend cap is reached
+(rows so far kept, the rest `not_reached`; a stage's own `limits.token_budget` applies too);
+`failed` when a stage fails, the definition does not validate, the git host cannot be read, or
+the guard audit is not empty.
+
+**What it does not do.** Loop edges are not walked and `max_retries` is not exercised: a dry run
+makes one pass. An infrastructure stage is a *test* when its id or title has the word `test`,
+otherwise a *build* — the DSL does not say. Until AF.2 (#235) lands the gateway answers `501`
+and the first model stage fails as `gateway_unavailable`.
+
+`tests/test_dryrun_guards.py` is the guard suite: every forbidden capability is asserted absent
+by name, the overlay is asserted never to reach the reader or the cache, the package is asserted
+to import nothing that runs a process or touches a disk — and each guard is removed in turn to
+prove the suite goes red.
+
 ## The simulated-run driver (development only)
 
 [#307](https://github.com/NobuData/ouroboros/issues/307) (AP.5). The Run Console is fed by
@@ -880,6 +936,7 @@ ouroboros-engine/
 │   │   ├── analysis.py #   /v0/analysis — the analyzer set, the streamed run    · #510
 │   │   ├── code.py     #   /v0/code — blame, history, changed-between, deps     · #617
 │   │   ├── investigate.py #   /v0/investigate — accept, run in the background    · #620
+│   │   ├── dryruns.py  #   /v0/dry-runs — walk a draft, stream the rows               · #560
 │   │   └── v0.py       #   the versioned prefix and the rule that governs it
 │   ├── core/           # process-wide concerns, not routes
 │   │   ├── errors.py   #   the {code, message, details} envelope, for every failure
@@ -926,6 +983,7 @@ ouroboros-engine/
 │   │   └── patterns/   #   the six pattern analyzers, one module each           · #512
 │   ├── code/           # clones, ReadOnlyRepo, blame/history/deps, bisect line  · #617
 │   ├── investigation/  # loop-v1: plan → tools → synthesize → brief; citation gate · #620
+│   ├── dryrun/         # the deep dry-run harness: virtual workspace, tool guard, stages · #560
 │   ├── dev.py          # `uv run dev` entry point; not imported by the application
 │   ├── main.py         # create_app() and the `app` uvicorn serves
 │   ├── openapi.py      # loads the committed spec; `uv run openapi` renders the JSON

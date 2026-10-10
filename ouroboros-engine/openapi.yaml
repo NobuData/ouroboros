@@ -14,7 +14,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-engine
-  version: 0.7.22
+  version: 0.7.23
   summary: Internal backend for Ouroboros — executes the work ouroboros-rest brokers.
   description: |-
     The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the
@@ -1075,6 +1075,339 @@ paths:
                 {"kind":"tool_call","id":"call-2","tool":"ask_user","arguments":{"prompt":"What triggers it?","options":["label:security","CVE pattern in title"]},"error":null}
                 {"kind":"usage","input_tokens":18400,"output_tokens":2100,"cost_cents":12.0,"model":"claude-fable-5","connection":"5eed0009-0000-4000-8000-000000000001"}
                 {"kind":"done","finish_reason":"stop"}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /v0/dry-runs:
+    post:
+      tags: [v0]
+      summary: Run a deep dry run of a workflow draft, streaming its progress
+      description: |-
+        The deep dry-run harness — CD.2
+        ([#560](https://github.com/NobuData/ouroboros/issues/560)), mockup 20's card. One request
+        walks one draft for one ticket: **real models over a virtual workspace**.
+
+        * **Simulated writes.** Reads resolve lazily from the git host at `repository.pinned_sha`
+          and are cached per repository and commit, so a file is fetched once. Writes land in an
+          in-memory overlay that later stages read through — a reviewer sees the implementer's
+          draft — and the overlay becomes the `overlay_diff` artifact. Nothing is written to the
+          repository.
+        * **Replayed infra.** A build or test stage, and the `build` and `run_tests` tools, ask
+          `ouroboros-rest`'s estimator (`POST /internal/dry-runs/{id}/replay-estimates`) and pass
+          its answer on untouched. No model produces a duration; without enough history the row
+          says so and carries no number.
+        * **Real models.** A model stage runs its own prompt through the invocation gateway
+          (`POST /internal/llm/invoke`) with the alias in `stages[<node id>].alias` and the
+          knowledge in `stages[<node id>].manifest`.
+
+        **The tool boundary is an allow-list.** A stage has `read_file`, `search`, `list_dir`,
+        `edit_file`, `build` and `run_tests`, and nothing else exists: no network, no shell, no
+        repository write, no farm dispatch, no pull request or merge, no ticket-source write, no
+        credential. A call to anything else is not run; it is reported as `guard_blocked`,
+        listed in `guard_audit`, and the run ends `failed` — a dry run whose guards had to hold
+        is not trusted.
+
+        **Skipping is a result.** A stage behind a branch whose condition is false is `skipped`
+        with the clause that decided it; conditions over changed paths are tested against the
+        simulated diff as it stands. A model stage with no `alias` — a task kind the catalog
+        does not have yet — is `skipped` with its warning, and the walk goes on past it. A
+        terminal is `not_reached`: a dry run opens nothing.
+
+        **Caps.** `budget` holds per-stage and per-run token and spend caps; a stage's own
+        `limits.token_budget` applies too. Reaching one ends the run `budget_stopped` with every
+        row so far kept and the rest `not_reached`.
+
+        **Note lines are composed, not written by a model**, from what the stage did: the same
+        outputs give the same text.
+
+        The answer is `application/x-ndjson`, one event per line:
+
+        * `stage_started` — a row has begun;
+        * `stage_finished` — a row, in the shape `dry_run_stages` stores;
+        * `guard_blocked` — the tool boundary refused a call;
+        * `done` — always last, exactly once: the whole result, with its artifacts, guard audit,
+          totals and `status` (`complete`, `failed` or `budget_stopped`).
+
+        A definition that does not validate answers one `done` with `status: failed` and its
+        `findings`. Until AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) lands
+        the gateway answers `501`, so the first model stage fails with `gateway_unavailable`.
+
+        This service persists nothing and dispatches nothing; the caller stores the result.
+        `repository.token` is used to read the pinned commit and is never logged, echoed or
+        shown to a model.
+      operationId: runDryRun
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DryRunRequest"
+            example:
+              dry_run: 5eed008b-0000-4000-8000-000000000001
+              definition:
+                dsl_version: '1.0'
+                trigger:
+                  event: ticket_queued
+                  conditions:
+                    labels:
+                    - security
+                nodes:
+                - id: trigger
+                  type: trigger
+                  title: trigger
+                  position:
+                    x: 0
+                    y: 0
+                  config: {}
+                - id: analyze
+                  type: llm
+                  title: analyze
+                  position:
+                    x: 0
+                    y: 0
+                  config:
+                    mode: skill
+                    prompt_template: Map the code paths {{issue.title}} touches.
+                    routing:
+                      pinned_model:
+                        alias: coder-std
+                    limits:
+                      max_retries: 1
+                      token_budget: 200000
+                    permissions:
+                      push_fixup: false
+                      touch_ci: false
+                    skill: advisory-db
+                - id: plan
+                  type: llm
+                  title: plan
+                  position:
+                    x: 0
+                    y: 0
+                  config:
+                    mode: prompt
+                    prompt_template: Plan the fix for {{ issue.key }}.
+                    routing:
+                      pinned_model:
+                        alias: coder-std
+                    limits:
+                      max_retries: 1
+                      token_budget: 200000
+                    permissions:
+                      push_fixup: false
+                      touch_ci: false
+                - id: implement
+                  type: llm
+                  title: implement
+                  position:
+                    x: 0
+                    y: 0
+                  config:
+                    mode: prompt
+                    prompt_template: Implement the plan.
+                    routing:
+                      inherit_task: code
+                    limits:
+                      max_retries: 1
+                      token_budget: 200000
+                    permissions:
+                      push_fixup: false
+                      touch_ci: false
+                - id: build
+                  type: infra
+                  title: build
+                  position:
+                    x: 0
+                    y: 0
+                  config:
+                    runner_pool: pool-a
+                - id: test
+                  type: infra
+                  title: test
+                  position:
+                    x: 0
+                    y: 0
+                  config:
+                    command: west twister -T tests
+                - id: review-primary
+                  type: llm
+                  title: review
+                  position:
+                    x: 0
+                    y: 0
+                  config:
+                    mode: prompt
+                    prompt_template: Review the change.
+                    routing:
+                      inherit_task: review
+                    limits:
+                      max_retries: 1
+                      token_budget: 200000
+                    permissions:
+                      push_fixup: false
+                      touch_ci: false
+                - id: review-second
+                  type: llm
+                  title: review
+                  position:
+                    x: 0
+                    y: 0
+                  config:
+                    mode: prompt
+                    prompt_template: Review the change again.
+                    routing:
+                      pinned_model:
+                        alias: coder-std
+                    limits:
+                      max_retries: 1
+                      token_budget: 200000
+                    permissions:
+                      push_fixup: false
+                      touch_ci: false
+                - id: open-pr
+                  type: term
+                  title: open PR
+                  position:
+                    x: 0
+                    y: 0
+                  config:
+                    action: needs_review
+                    options: {}
+                - id: exploit-verify
+                  type: llm
+                  title: exploit-verify
+                  position:
+                    x: 0
+                    y: 0
+                  config:
+                    mode: prompt
+                    prompt_template: Re-run the CVE proof-of-concept against the patched build.
+                    routing:
+                      inherit_task: exploit-verify
+                    limits:
+                      max_retries: 1
+                      token_budget: 200000
+                    permissions:
+                      push_fixup: false
+                      touch_ci: false
+                edges:
+                - from: trigger
+                  to: analyze
+                  kind: default
+                - from: analyze
+                  to: plan
+                  kind: default
+                - from: plan
+                  to: implement
+                  kind: default
+                - from: implement
+                  to: build
+                  kind: default
+                - from: build
+                  to: test
+                  kind: default
+                - from: test
+                  to: exploit-verify
+                  kind: default
+                - from: exploit-verify
+                  to: review-primary
+                  kind: default
+                - from: review-primary
+                  to: open-pr
+                  kind: default
+                - from: exploit-verify
+                  to: review-second
+                  kind: default
+                - from: review-second
+                  to: open-pr
+                  kind: default
+              ticket:
+                external_key: '#489'
+                source: github
+                labels:
+                - security
+                - can
+                estimate:
+                  effort: m
+                title: CAN arbitration retries flood the bus
+                body: Lost-arbitration frames are retried at once.
+              repository:
+                slug: acme-robotics/helios-firmware
+                pinned_sha: 8c1b2e40d6a5f3c19b7e2a4d8f0c6b13e5a7d9f2
+                api_url: https://api.github.com
+                token: <a read token for this request>
+              stages:
+                analyze:
+                  alias: coder-std
+                  manifest: ''
+                  skill_resolved: false
+                  warnings:
+                  - No skill named `advisory-db` is defined in this workspace yet.
+                plan:
+                  alias: coder-std
+                  manifest: 'Repo profile: Zephyr RTOS, C17.'
+                  skill_resolved: true
+                  warnings: []
+                implement:
+                  alias: coder-max
+                  resolution_version: z1-v7
+                  manifest: ''
+                  skill_resolved: true
+                  warnings: []
+                review-primary:
+                  alias: reviewer
+                  manifest: ''
+                  skill_resolved: true
+                  warnings: []
+                review-second:
+                  alias: coder-std
+                  manifest: ''
+                  skill_resolved: true
+                  warnings: []
+                exploit-verify:
+                  manifest: ''
+                  skill_resolved: true
+                  warnings:
+                  - No routing task named `exploit-verify` exists in this workspace yet.
+              budget: {}
+      responses:
+        "200":
+          description: |-
+            The dry run, streamed. For the example: five model stages, two replayed
+            infrastructure stages, one stage skipped as unresolved, and a terminal not reached.
+          content:
+            application/x-ndjson:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/DryRunStageStarted"
+                  - $ref: "#/components/schemas/DryRunStageFinished"
+                  - $ref: "#/components/schemas/DryRunGuardBlocked"
+                  - $ref: "#/components/schemas/DryRunDone"
+                discriminator:
+                  propertyName: kind
+                  mapping:
+                    stage_started: "#/components/schemas/DryRunStageStarted"
+                    stage_finished: "#/components/schemas/DryRunStageFinished"
+                    guard_blocked: "#/components/schemas/DryRunGuardBlocked"
+                    done: "#/components/schemas/DryRunDone"
+              example: |
+                {"kind":"stage_started","seq":1,"stage_key":"analyze","display_name":"analyze"}
+                {"kind":"stage_finished","stage":{"seq":1,"stage_key":"analyze","display_name":"analyze","nodes":["analyze"],"verdict":"ok","how":"llm","note":"mapped 4 files · skill advisory-db skipped (not defined yet)","metrics":{"tokens":3000,"cost_cents":3,"files_touched":4},"skip_reason":null,"started_at":"2026-10-10T12:00:01Z","finished_at":"2026-10-10T12:00:02Z"}}
+                {"kind":"stage_started","seq":2,"stage_key":"plan","display_name":"plan"}
+                {"kind":"stage_finished","stage":{"seq":2,"stage_key":"plan","display_name":"plan","nodes":["plan"],"verdict":"ok","how":"llm","note":"3 steps · would touch drivers/can/arbitration.c","metrics":{"tokens":1000,"cost_cents":1},"skip_reason":null,"started_at":"2026-10-10T12:00:03Z","finished_at":"2026-10-10T12:00:04Z"}}
+                {"kind":"stage_started","seq":3,"stage_key":"implement","display_name":"implement"}
+                {"kind":"stage_finished","stage":{"seq":3,"stage_key":"implement","display_name":"implement","nodes":["implement"],"verdict":"ok","how":"llm","note":"diff drafted +3 −1 (below) · 3k tokens","metrics":{"tokens":3000,"cost_cents":3,"files_touched":1,"simulated_writes":1,"lines_added":3,"lines_removed":1},"skip_reason":null,"started_at":"2026-10-10T12:00:05Z","finished_at":"2026-10-10T12:00:06Z"}}
+                {"kind":"stage_started","seq":4,"stage_key":"build","display_name":"build"}
+                {"kind":"stage_finished","stage":{"seq":4,"stage_key":"build","display_name":"build","nodes":["build"],"verdict":"ok","how":"replayed","note":"est. 4m 02s (214 similar builds, ±20s)","metrics":{"estimate_ms":242000,"spread_ms":20000,"sample_count":214,"similarity_class":"pool-a · helios-firmware","window_days":30},"skip_reason":null,"started_at":"2026-10-10T12:00:07Z","finished_at":"2026-10-10T12:00:08Z"}}
+                {"kind":"stage_started","seq":5,"stage_key":"test","display_name":"test"}
+                {"kind":"stage_finished","stage":{"seq":5,"stage_key":"test","display_name":"test","nodes":["test"],"verdict":"ok","how":"replayed","note":"insufficient history — the first real run will measure this (0 similar runs found)","metrics":{"insufficient_history":true,"sample_count":0,"similarity_class":"helios-firmware · tests","window_days":30},"skip_reason":null,"started_at":"2026-10-10T12:00:09Z","finished_at":"2026-10-10T12:00:10Z"}}
+                {"kind":"stage_finished","stage":{"seq":6,"stage_key":"exploit-verify","display_name":"exploit-verify","nodes":["exploit-verify"],"verdict":"skipped","how":"skipped","note":"No routing task named `exploit-verify` exists in this workspace yet.","metrics":{},"skip_reason":"No routing task named `exploit-verify` exists in this workspace yet.","started_at":null,"finished_at":null}}
+                {"kind":"stage_started","seq":7,"stage_key":"review","display_name":"review ×2"}
+                {"kind":"stage_finished","stage":{"seq":7,"stage_key":"review","display_name":"review ×2","nodes":["review-primary","review-second"],"verdict":"ok","how":"llm","note":"both approve · 1 style nit","metrics":{"tokens":3000,"cost_cents":3,"files_touched":1},"skip_reason":null,"started_at":"2026-10-10T12:00:11Z","finished_at":"2026-10-10T12:00:12Z"}}
+                {"kind":"stage_finished","stage":{"seq":8,"stage_key":"open-pr","display_name":"open PR","nodes":["open-pr"],"verdict":"not_reached","how":"deterministic","note":"would open DRAFT PR · not merged (policy)","metrics":{},"skip_reason":null,"started_at":null,"finished_at":null}}
+                {"kind":"done","result":{"dry_run":"5eed008b-0000-4000-8000-000000000001","harness":"dry-run-v1","status":"complete","failure_reason":null,"findings":[],"stages":[{"seq":1,"stage_key":"analyze","display_name":"analyze","nodes":["analyze"],"verdict":"ok","how":"llm","note":"mapped 4 files · skill advisory-db skipped (not defined yet)","metrics":{"tokens":3000,"cost_cents":3,"files_touched":4},"skip_reason":null,"started_at":"2026-10-10T12:00:01Z","finished_at":"2026-10-10T12:00:02Z"},{"seq":2,"stage_key":"plan","display_name":"plan","nodes":["plan"],"verdict":"ok","how":"llm","note":"3 steps · would touch drivers/can/arbitration.c","metrics":{"tokens":1000,"cost_cents":1},"skip_reason":null,"started_at":"2026-10-10T12:00:03Z","finished_at":"2026-10-10T12:00:04Z"},{"seq":3,"stage_key":"implement","display_name":"implement","nodes":["implement"],"verdict":"ok","how":"llm","note":"diff drafted +3 −1 (below) · 3k tokens","metrics":{"tokens":3000,"cost_cents":3,"files_touched":1,"simulated_writes":1,"lines_added":3,"lines_removed":1},"skip_reason":null,"started_at":"2026-10-10T12:00:05Z","finished_at":"2026-10-10T12:00:06Z"},{"seq":4,"stage_key":"build","display_name":"build","nodes":["build"],"verdict":"ok","how":"replayed","note":"est. 4m 02s (214 similar builds, ±20s)","metrics":{"estimate_ms":242000,"spread_ms":20000,"sample_count":214,"similarity_class":"pool-a · helios-firmware","window_days":30},"skip_reason":null,"started_at":"2026-10-10T12:00:07Z","finished_at":"2026-10-10T12:00:08Z"},{"seq":5,"stage_key":"test","display_name":"test","nodes":["test"],"verdict":"ok","how":"replayed","note":"insufficient history — the first real run will measure this (0 similar runs found)","metrics":{"insufficient_history":true,"sample_count":0,"similarity_class":"helios-firmware · tests","window_days":30},"skip_reason":null,"started_at":"2026-10-10T12:00:09Z","finished_at":"2026-10-10T12:00:10Z"},{"seq":6,"stage_key":"exploit-verify","display_name":"exploit-verify","nodes":["exploit-verify"],"verdict":"skipped","how":"skipped","note":"No routing task named `exploit-verify` exists in this workspace yet.","metrics":{},"skip_reason":"No routing task named `exploit-verify` exists in this workspace yet.","started_at":null,"finished_at":null},{"seq":7,"stage_key":"review","display_name":"review ×2","nodes":["review-primary","review-second"],"verdict":"ok","how":"llm","note":"both approve · 1 style nit","metrics":{"tokens":3000,"cost_cents":3,"files_touched":1},"skip_reason":null,"started_at":"2026-10-10T12:00:11Z","finished_at":"2026-10-10T12:00:12Z"},{"seq":8,"stage_key":"open-pr","display_name":"open PR","nodes":["open-pr"],"verdict":"not_reached","how":"deterministic","note":"would open DRAFT PR · not merged (policy)","metrics":{},"skip_reason":null,"started_at":null,"finished_at":null}],"artifacts":[{"kind":"overlay_diff","content":"--- a/drivers/can/arbitration.c\n+++ b/drivers/can/arbitration.c\n@@ -1,6 +1,8 @@\n static void can_handle_tx_error(const struct device *dev)\n {\n \tif (err & CAN_ERR_LOSTARB) {\n-\t\tcan_retry_tx(dev, frame); /* immediate retry floods the bus */\n+\t\tk_sleep(K_USEC(backoff_us)); /* exponential backoff */\n+\t\tbackoff_us = MIN(backoff_us << 1, CAN_ARB_BACKOFF_MAX_US);\n+\t\tcan_retry_tx(dev, frame);\n \t}\n }\n","truncated":false,"original_bytes":395,"path_summary":[{"path":"drivers/can/arbitration.c","added":3,"removed":1}]},{"kind":"plan_excerpt","content":"plan\n1. Add a backoff counter\n2. Sleep before retry\n3. Cap the backoff","truncated":false,"original_bytes":70,"path_summary":[]},{"kind":"review_excerpt","content":"review-primary: approve\nCorrect.\n- style: Name the 50 us constant.\n\nreview-second: approve\nFine.","truncated":false,"original_bytes":96,"path_summary":[]}],"guard_audit":[],"guards_clean":true,"tokens":10000,"cost_cents":10,"duration_ms":13000,"workspace_notes":[],"fetches":6}}
         "401":
           $ref: "#/components/responses/Unauthorized"
         "422":
@@ -4313,3 +4646,498 @@ components:
           - already_running
         loop_version:
           type: string
+
+    DryRunSubject:
+      type: object
+      title: DryRunSubject
+      description: 'The ticket a dry run is about: what a predicate tests, and what a stage reads.'
+      additionalProperties: false
+      required:
+      - external_key
+      - source
+      - labels
+      - estimate
+      - title
+      properties:
+        external_key:
+          description: The display form, as V030's `external_key` holds it — `#485`.
+          examples:
+          - '#485'
+          maxLength: 255
+          minLength: 1
+          type: string
+        source:
+          description: Which kind of tracker it came from, as `ticket_sources.kind` spells it.
+          enum:
+          - github
+          - gitlab
+          - jira
+          - linear
+          examples:
+          - github
+          type: string
+        labels:
+          description: The tracker's label names, compared exactly as the tracker spells them.
+          examples:
+          - - bug
+            - i2c
+            - watchdog
+          items:
+            maxLength: 255
+            minLength: 1
+            type: string
+          maxItems: 100
+          type: array
+        estimate:
+          description: The latest estimate, or `null` for a ticket nobody has sized. Required rather than
+            optional, so *unsized* is something the caller states.
+          oneOf:
+          - $ref: '#/components/schemas/TicketEstimate'
+          - type: 'null'
+        title:
+          description: The ticket's title, as the tracker holds it.
+          maxLength: 500
+          minLength: 1
+          type: string
+        body:
+          description: Its description, or `""`. Cut to `MAX_TICKET_BODY` by the sender.
+          maxLength: 20000
+          type: string
+    DryRunRepository:
+      type: object
+      title: DryRunRepository
+      description: Where the virtual workspace reads from.
+      additionalProperties: false
+      required:
+      - slug
+      - pinned_sha
+      properties:
+        slug:
+          description: '`owner/name`.'
+          pattern: ^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$
+          type: string
+        pinned_sha:
+          description: The commit every read resolves at — `dry_runs.pinned_sha`.
+          pattern: ^[0-9a-f]{40}$
+          type: string
+        api_url:
+          description: The provider API's origin. GitHub's, or a GitHub Enterprise `/api/v3`.
+          maxLength: 500
+          pattern: ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~/-]*)?$
+          type: string
+        token:
+          description: A read credential for this request, or `null` for a public repository.
+          maxLength: 1024
+          minLength: 1
+          type:
+          - string
+          - 'null'
+    DryRunStagePlan:
+      type: object
+      title: DryRunStagePlan
+      description: What routing and context assembly resolved for one model stage.
+      additionalProperties: false
+      required: []
+      properties:
+        alias:
+          description: The alias the stage's routing resolves to, or `null` when nothing resolves — a
+            task kind the catalog does not have, an alias the registry lacks. A stage without one is skipped
+            with its warning, never run.
+          pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+          type:
+          - string
+          - 'null'
+        resolution_version:
+          description: The resolution the alias came from.
+          maxLength: 200
+          type:
+          - string
+          - 'null'
+        manifest:
+          description: The knowledge assembled for the stage (BF.5), as text. `""` for none.
+          maxLength: 200000
+          type: string
+        skill_resolved:
+          description: Whether the skill the stage names exists. `false` runs the stage without it and
+            says so in the row's note.
+          type: boolean
+        warnings:
+          description: Decision W7's unresolved-reference warnings for this stage, as sentences.
+          items:
+            maxLength: 500
+            minLength: 1
+            type: string
+          maxItems: 8
+          type: array
+    DryRunBudget:
+      type: object
+      title: DryRunBudget
+      description: The caps a dry run stops at. `null` is *no cap of this kind*.
+      additionalProperties: false
+      required: []
+      properties:
+        run_cost_cents:
+          description: The most the whole run may spend.
+          maximum: 1000000000
+          minimum: 0
+          type:
+          - integer
+          - 'null'
+        stage_cost_cents:
+          description: The most one stage may spend.
+          maximum: 1000000000
+          minimum: 0
+          type:
+          - integer
+          - 'null'
+        run_tokens:
+          description: The most tokens the whole run may use.
+          maximum: 1000000000
+          minimum: 0
+          type:
+          - integer
+          - 'null'
+        stage_tokens:
+          description: The most tokens one stage may use. A stage's own `limits.token_budget` applies
+            as well; the lower wins.
+          maximum: 1000000000
+          minimum: 0
+          type:
+          - integer
+          - 'null'
+    DryRunRequest:
+      type: object
+      title: DryRunRequest
+      description: The body of `POST /v0/dry-runs`.
+      additionalProperties: false
+      required:
+      - dry_run
+      - definition
+      - ticket
+      - repository
+      properties:
+        dry_run:
+          description: '`dry_runs.id` — what every model call and replay estimate is attributed to.'
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          type: string
+        definition:
+          description: The draft's document, exactly as stored. Validated first.
+        ticket:
+          $ref: '#/components/schemas/DryRunSubject'
+        repository:
+          $ref: '#/components/schemas/DryRunRepository'
+        stages:
+          description: What was resolved for each model stage, by node id. A model stage with no entry
+            is treated as unresolved.
+          maxProperties: 200
+          patternProperties:
+            ^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$:
+              $ref: '#/components/schemas/DryRunStagePlan'
+          type: object
+        budget:
+          $ref: '#/components/schemas/DryRunBudget'
+    DryRunStageResult:
+      type: object
+      title: DryRunStageResult
+      description: One row of the dry-run card — a `dry_run_stages` row, less its ids.
+      additionalProperties: false
+      required:
+      - seq
+      - stage_key
+      - display_name
+      - nodes
+      - verdict
+      - how
+      - note
+      properties:
+        seq:
+          description: The row's position, from 1.
+          minimum: 1
+          type: integer
+        stage_key:
+          description: The stage's slug. Parallel stages sharing a title share a row and a key.
+          maxLength: 64
+          pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+          type: string
+        display_name:
+          description: What the card prints — the title, with a multiplication sign and a count when the
+            row stands for several parallel stages.
+          minLength: 1
+          type: string
+        nodes:
+          description: The DSL node ids the row stands for.
+          items:
+            type: string
+          type: array
+        verdict:
+          description: What happened.
+          enum:
+          - ok
+          - skipped
+          - failed
+          - not_reached
+          type: string
+        how:
+          description: 'How the result was produced. `replayed` is an estimate from history; `skipped`
+            goes with `verdict: skipped` and only with it.'
+          enum:
+          - llm
+          - replayed
+          - deterministic
+          - skipped
+          type: string
+        note:
+          description: The row's note line, composed by the harness from the stage's outputs.
+          type: string
+        metrics:
+          description: '`tokens`, `cost_cents` (absent when unpriced), `files_touched`, `simulated_writes`,
+            `lines_added`, `lines_removed`; a replayed row''s estimate fields are the estimator''s own.'
+          additionalProperties: true
+          type: object
+        skip_reason:
+          description: Why it was skipped; set exactly when `verdict` is `skipped`.
+          type:
+          - string
+          - 'null'
+        started_at:
+          description: When work on it began, or `null` when none did.
+          format: date-time
+          type:
+          - string
+          - 'null'
+        finished_at:
+          description: When it ended.
+          format: date-time
+          type:
+          - string
+          - 'null'
+    DryRunPathChange:
+      type: object
+      title: DryRunPathChange
+      description: One file of the simulated diff.
+      additionalProperties: false
+      required:
+      - path
+      - added
+      - removed
+      properties:
+        path:
+          description: The file.
+          type: string
+        added:
+          description: Lines added.
+          minimum: 0
+          type: integer
+        removed:
+          description: Lines removed.
+          minimum: 0
+          type: integer
+    DryRunArtifact:
+      type: object
+      title: DryRunArtifact
+      description: An artifact of the run — a `dry_run_artifacts` row, less its ids.
+      additionalProperties: false
+      required:
+      - kind
+      - content
+      - truncated
+      - original_bytes
+      properties:
+        kind:
+          description: The overlay diff, or an excerpt of the plan or the reviews.
+          enum:
+          - overlay_diff
+          - plan_excerpt
+          - review_excerpt
+          type: string
+        content:
+          description: At most `MAX_ARTIFACT_BYTES` of UTF-8.
+          type: string
+        truncated:
+          description: Whether `content` is less than the whole.
+          type: boolean
+        original_bytes:
+          description: The size before any cut.
+          minimum: 0
+          type: integer
+        path_summary:
+          description: Per-file counts, for the diff; empty for an excerpt.
+          items:
+            $ref: '#/components/schemas/DryRunPathChange'
+          type: array
+    DryRunGuardEntry:
+      type: object
+      title: DryRunGuardEntry
+      description: 'One line of the guard audit: a call the tool boundary refused, and how often.'
+      additionalProperties: false
+      required:
+      - guard
+      - call
+      - count
+      properties:
+        guard:
+          description: Which guard held — `allow_list`, `workspace_boundary`.
+          minLength: 1
+          type: string
+        call:
+          description: What was attempted — the tool's name.
+          minLength: 1
+          type: string
+        count:
+          description: How many times.
+          minimum: 1
+          type: integer
+        stage_key:
+          description: The stage that attempted it.
+          type:
+          - string
+          - 'null'
+    DryRunResult:
+      type: object
+      title: DryRunResult
+      description: The whole dry run, as it ended.
+      additionalProperties: false
+      required:
+      - dry_run
+      - status
+      properties:
+        dry_run:
+          description: The dry run.
+          type: string
+        harness:
+          description: Which harness produced it.
+          type: string
+        status:
+          description: '`complete`; `failed` (a stage failed, the definition does not validate, or a guard
+            had to hold); or `budget_stopped` (a cap was reached — the rows so far are kept).'
+          enum:
+          - complete
+          - failed
+          - budget_stopped
+          type: string
+        failure_reason:
+          description: A sentence, set unless `status` is `complete`.
+          type:
+          - string
+          - 'null'
+        findings:
+          description: The validator's findings when the definition does not validate.
+          items:
+            $ref: '#/components/schemas/WorkflowFinding'
+          type: array
+        stages:
+          description: The rows, in order.
+          items:
+            $ref: '#/components/schemas/DryRunStageResult'
+          type: array
+        artifacts:
+          description: The overlay diff and the excerpts.
+          items:
+            $ref: '#/components/schemas/DryRunArtifact'
+          type: array
+        guard_audit:
+          description: Every blocked call. Empty on a clean run.
+          items:
+            $ref: '#/components/schemas/DryRunGuardEntry'
+          type: array
+        guards_clean:
+          description: Whether the audit is empty.
+          type: boolean
+        tokens:
+          description: Tokens used by every model call.
+          minimum: 0
+          type: integer
+        cost_cents:
+          description: What they cost, or `null` when no call was priced — never a zero that was not measured.
+          minimum: 0
+          type:
+          - integer
+          - 'null'
+        duration_ms:
+          description: Wall time of the harness.
+          minimum: 0
+          type: integer
+        workspace_notes:
+          description: What the virtual workspace could not do in full — a tree the provider truncated,
+            a search that stopped at its file bound.
+          items:
+            type: string
+          type: array
+        fetches:
+          description: How many reads went to the provider (cache hits are not counted).
+          minimum: 0
+          type: integer
+    DryRunStageStarted:
+      type: object
+      title: DryRunStageStarted
+      description: A stage has begun — the card's live row.
+      additionalProperties: false
+      required:
+      - seq
+      - stage_key
+      - display_name
+      properties:
+        kind:
+          description: '`stage_started`.'
+          const: stage_started
+          type: string
+        seq:
+          description: The row's position.
+          type: integer
+        stage_key:
+          description: Its slug.
+          type: string
+        display_name:
+          description: What the card prints.
+          type: string
+    DryRunStageFinished:
+      type: object
+      title: DryRunStageFinished
+      description: A stage has its result.
+      additionalProperties: false
+      required:
+      - stage
+      properties:
+        kind:
+          description: '`stage_finished`.'
+          const: stage_finished
+          type: string
+        stage:
+          $ref: '#/components/schemas/DryRunStageResult'
+    DryRunGuardBlocked:
+      type: object
+      title: DryRunGuardBlocked
+      description: The tool boundary refused a call, as it happened.
+      additionalProperties: false
+      required:
+      - guard
+      - call
+      - stage_key
+      properties:
+        kind:
+          description: '`guard_blocked`.'
+          const: guard_blocked
+          type: string
+        guard:
+          description: Which guard held.
+          type: string
+        call:
+          description: What was attempted.
+          type: string
+        stage_key:
+          description: The stage that attempted it.
+          type: string
+    DryRunDone:
+      type: object
+      title: DryRunDone
+      description: The run has ended. Always the last event, and there is always exactly one.
+      additionalProperties: false
+      required:
+      - result
+      properties:
+        kind:
+          description: '`done`.'
+          const: done
+          type: string
+        result:
+          $ref: '#/components/schemas/DryRunResult'
