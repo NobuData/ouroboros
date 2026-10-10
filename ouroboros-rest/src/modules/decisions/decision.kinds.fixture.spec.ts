@@ -12,7 +12,10 @@ import { join } from "node:path";
 import { SHIPPED_KINDS } from "./decision.kinds.fixture";
 
 /** Both migrations, concatenated — every shipped declaration is in one of them. */
-const MIGRATIONS = ["V093__decision_kinds_items.sql", "V097__decision_kinds_mvp_source_resolved.sql"]
+const MIGRATIONS = [
+  "V093__decision_kinds_items.sql",
+  "V097__decision_kinds_mvp_source_resolved.sql",
+]
   .map((file) => readFileSync(join(__dirname, "../../../../ouroboros-db/migrations", file), "utf8"))
   .join("\n");
 

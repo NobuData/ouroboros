@@ -101,7 +101,13 @@ describe("mergeApprovalEmission", () => {
   it("counts waived and not-required checks as passed, and pending or red ones as not", () => {
     const emission = mergeApprovalEmission(
       pr509({
-        checks: [{ verdict: "green" }, { verdict: "waived" }, { verdict: "not_required" }, { verdict: "pending" }, { verdict: null }],
+        checks: [
+          { verdict: "green" },
+          { verdict: "waived" },
+          { verdict: "not_required" },
+          { verdict: "pending" },
+          { verdict: null },
+        ],
       }),
     );
 
@@ -189,7 +195,9 @@ describe("MergeApprovalEmitter", () => {
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(harness.store.items).toHaveLength(1);
-    expect(register).toHaveBeenCalledWith(expect.objectContaining({ name: "pr-settled", kinds: ["merge_approval"] }));
+    expect(register).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "pr-settled", kinds: ["merge_approval"] }),
+    );
 
     subject.onModuleDestroy();
     listeners.emit(evaluated({ prId: "another" }));
@@ -231,7 +239,11 @@ describe("MergeApprovalFactsReader", () => {
       { rows: [{ state: "approved", decided_revision_id: "rev-1" }] },
     );
 
-    const facts = await new MergeApprovalFactsReader(database.service).read(PR, "rev-2", "refactor");
+    const facts = await new MergeApprovalFactsReader(database.service).read(
+      PR,
+      "rev-2",
+      "refactor",
+    );
 
     expect(facts).toEqual(
       pr509({ checks: [{ verdict: "green" }], criteria: ["verified"], approved: false }),
@@ -241,13 +253,34 @@ describe("MergeApprovalFactsReader", () => {
   it("reads an approval given on this revision as approved, and a missing PR as nothing", async () => {
     const database = recordingDatabase();
     database.answers(
-      { rows: [{ id: PR, organization_id: ORG, external_number: 509, state: "verifying", run_id: RUN, ticket_id: null, additions: 1, deletions: 0, changed_files: 1, loop_seq: 1, external_key: null }] },
+      {
+        rows: [
+          {
+            id: PR,
+            organization_id: ORG,
+            external_number: 509,
+            state: "verifying",
+            run_id: RUN,
+            ticket_id: null,
+            additions: 1,
+            deletions: 0,
+            changed_files: 1,
+            loop_seq: 1,
+            external_key: null,
+          },
+        ],
+      },
       { rows: [] },
       { rows: [] },
       { rows: [{ state: "approved", decided_revision_id: "rev-2" }] },
     );
 
-    expect((await new MergeApprovalFactsReader(database.service).read(PR, "rev-2", "refactor"))?.approved).toBe(true);
-    expect(await new MergeApprovalFactsReader(recordingDatabase().service).read(PR, "rev-2", "refactor")).toBeUndefined();
+    expect(
+      (await new MergeApprovalFactsReader(database.service).read(PR, "rev-2", "refactor"))
+        ?.approved,
+    ).toBe(true);
+    expect(
+      await new MergeApprovalFactsReader(recordingDatabase().service).read(PR, "rev-2", "refactor"),
+    ).toBeUndefined();
   });
 });

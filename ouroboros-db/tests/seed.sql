@@ -7538,6 +7538,26 @@ select pg_temp.must_hold(
      join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'),
   'RS-124''s document names its GitHub source and the pushed batch whose six drafts its items point at');
 
+-- The drafts the document's items point at are the pipeline's own: each says which item it is,
+-- is filed under the item's milestone with its due date, and carries `mvp` exactly when the item
+-- does (#624, V125) — so create-issues run again finds every item drafted and files nothing.
+select pg_temp.must_hold(
+  (select bool_and(d.research_provenance ->> 'origin' = 'roadmap'
+                   and d.research_provenance ->> 'item_key' = item ->> 'key'
+                   and (d.research_provenance ->> 'investigation_id')::uuid = doc.investigation_id
+                   and d.milestone_name = ms ->> 'name'
+                   and d.milestone_due = (ms ->> 'target_date')::date
+                   and (d.labels ? 'mvp') = (item ->> 'mvp')::boolean)
+          and count(*) = 6
+     from ouroboros.roadmap_docs doc
+     join ouroboros.roadmap_doc_versions v on v.doc_id = doc.id and v.version = doc.current_version
+     join ouroboros.investigations inv on inv.id = doc.investigation_id and inv.seq = 124
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'
+     cross join lateral jsonb_array_elements(v.structure -> 'milestones') ms
+     cross join lateral jsonb_array_elements(ms -> 'items') item
+     join ouroboros.ticket_drafts d on d.id = (item ->> 'draft_id')::uuid),
+  'RS-124''s six drafts carry their roadmap item, milestone, due date and MVP label — what create-issues writes');
+
 -- The tracker carries the document's MVP set as a label, so a drift check finds the two equal.
 select pg_temp.must_hold(
   (select bool_and((t.labels ? 'mvp') = (item ->> 'mvp')::boolean

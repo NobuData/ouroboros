@@ -69,8 +69,21 @@ export const SHIPPED_KINDS: Readonly<Record<string, PublishedDecisionKind>> = {
     }),
     actions: [
       action("approve_merge", "Approve & merge", "primary", "approver", "pr.approve_and_merge"),
-      action("open_verification", "Open PR verification →", "ghost", "viewer", "navigate.pr_verification"),
-      action("return_to_loop", "Return to loop with note", "ghost", "member", "run.return_with_note", true),
+      action(
+        "open_verification",
+        "Open PR verification →",
+        "ghost",
+        "viewer",
+        "navigate.pr_verification",
+      ),
+      action(
+        "return_to_loop",
+        "Return to loop with note",
+        "ghost",
+        "member",
+        "run.return_with_note",
+        true,
+      ),
     ],
     resolutionSemantics: {
       answered_by: ["approve_merge", "return_to_loop"],
@@ -98,7 +111,13 @@ export const SHIPPED_KINDS: Readonly<Record<string, PublishedDecisionKind>> = {
       action("allow_once", "Allow once", "primary", "approver", "guardrail.allow_once"),
       action("view_diff", "View diff →", "ghost", "viewer", "navigate.run_diff"),
       action("deny", "Deny", "ghost", "approver", "run.deny_protected_path"),
-      action("edit_protected_paths", "Edit protected paths →", "ghost", "admin", "navigate.protected_paths_settings"),
+      action(
+        "edit_protected_paths",
+        "Edit protected paths →",
+        "ghost",
+        "admin",
+        "navigate.protected_paths_settings",
+      ),
     ],
     resolutionSemantics: {
       answered_by: ["allow_once", "deny"],
@@ -114,11 +133,25 @@ export const SHIPPED_KINDS: Readonly<Record<string, PublishedDecisionKind>> = {
     version: 1,
     severityDefault: "warn",
     questionTemplate: "Waive a claim the bench can't verify?",
-    whyTemplate: "“{claim}” — the rig has no {missing_capability}. Waiving annotates the PR publicly.",
+    whyTemplate:
+      "“{claim}” — the rig has no {missing_capability}. Waiving annotates the PR publicly.",
     payloadSchema: schema({ claim: text(300), missing_capability: text(80) }),
     actions: [
-      action("waive_annotate", "Waive & annotate", "primary", "approver", "pr.waive_criterion", true),
-      action("require_bench_upgrade", "Require bench upgrade", "ghost", "approver", "planning.require_bench_upgrade"),
+      action(
+        "waive_annotate",
+        "Waive & annotate",
+        "primary",
+        "approver",
+        "pr.waive_criterion",
+        true,
+      ),
+      action(
+        "require_bench_upgrade",
+        "Require bench upgrade",
+        "ghost",
+        "approver",
+        "planning.require_bench_upgrade",
+      ),
       action("see_evidence", "See evidence →", "ghost", "viewer", "navigate.pr_evidence"),
     ],
     resolutionSemantics: {
@@ -141,7 +174,14 @@ export const SHIPPED_KINDS: Readonly<Record<string, PublishedDecisionKind>> = {
     actions: [
       action("sign_off", "Sign off", "primary", "approver", "workflow.sign_off_plan"),
       action("view_plan", "View plan →", "ghost", "viewer", "navigate.run_plan"),
-      action("return_to_loop", "Return to loop with note", "ghost", "member", "run.return_with_note", true),
+      action(
+        "return_to_loop",
+        "Return to loop with note",
+        "ghost",
+        "member",
+        "run.return_with_note",
+        true,
+      ),
     ],
     resolutionSemantics: {
       answered_by: ["sign_off", "return_to_loop"],
@@ -185,7 +225,14 @@ export const SHIPPED_KINDS: Readonly<Record<string, PublishedDecisionKind>> = {
     whyTemplate: "{subject} stopped at {stage_label}: {reason}.",
     payloadSchema: schema({ subject: text(120), stage_label: text(80), reason: text(200) }),
     actions: [
-      action("retry_with_note", "Retry with note", "primary", "member", "run.retry_with_note", true),
+      action(
+        "retry_with_note",
+        "Retry with note",
+        "primary",
+        "member",
+        "run.retry_with_note",
+        true,
+      ),
       action("open_run", "Open run →", "ghost", "viewer", "navigate.run_console"),
       action("cancel_run", "Cancel loop", "ghost", "member", "run.cancel"),
     ],
@@ -297,7 +344,11 @@ export const SEEDED_PAYLOADS: Readonly<Record<string, Readonly<Record<string, un
     claim: "Flake must not reappear across temperature range",
     missing_capability: "thermal chamber",
   },
-  plan_sign_off: { subject: "Rework the OTA bootloader handoff", stage_label: "Plan review", plan_files: 9 },
+  plan_sign_off: {
+    subject: "Rework the OTA bootloader handoff",
+    stage_label: "Plan review",
+    plan_files: 9,
+  },
   fact_review: {
     reason: "awaiting review",
     text: "CAN frames are DMA-backed on helios-firmware",
@@ -308,13 +359,19 @@ export const SEEDED_PAYLOADS: Readonly<Record<string, Readonly<Record<string, un
     stage_label: "Build",
     reason: "attempt limit reached",
   },
-  split_approval: { subject: "Telemetry v2", draft_count: 6, target: "acme-robotics/helios-firmware" },
+  split_approval: {
+    subject: "Telemetry v2",
+    draft_count: 6,
+    target: "acme-robotics/helios-firmware",
+  },
   resize_review: { ticket_key: "#486", from_effort: "L", to_effort: "M", confidence: 82 },
   spend_approval: { subject: "OTA rollback flag is never cleared", spent: "$2.61", cap: "$2.50" },
 };
 
 /** The prose each seeded payload renders — mockup 16's, word for word, for its three cards. */
-export const MOCKUP_PROSE: Readonly<Record<string, { question: string; why: string; tags: string[] }>> = {
+export const MOCKUP_PROSE: Readonly<
+  Record<string, { question: string; why: string; tags: string[] }>
+> = {
   merge_approval: {
     question: "Approve merge for a refactor PR?",
     why: "Policy: anything labeled refactor needs a human. 14/14 checks green, verification matrix all ✓, +214 −180 across 6 files.",

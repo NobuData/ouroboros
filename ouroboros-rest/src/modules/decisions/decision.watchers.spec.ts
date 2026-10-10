@@ -68,13 +68,22 @@ describe("prSettledDetector", () => {
     });
 
     const settled = await prSettledDetector(["merge_approval"]).settled(
-      [askingAboutPr(), askingAboutPr(OTHER_PR), askingAboutPr("0a1b2c3d-0000-4000-8000-0000000000ff")],
+      [
+        askingAboutPr(),
+        askingAboutPr(OTHER_PR),
+        askingAboutPr("0a1b2c3d-0000-4000-8000-0000000000ff"),
+      ],
       database.service.db,
     );
 
     expect(settled).toEqual([
       { itemId: `item-${PR}`, organizationId: ORG, settlement: "pr_merged", channel: "github" },
-      { itemId: `item-${OTHER_PR}`, organizationId: ORG, settlement: "pr_closed", channel: "github" },
+      {
+        itemId: `item-${OTHER_PR}`,
+        organizationId: ORG,
+        settlement: "pr_closed",
+        channel: "github",
+      },
     ]);
     expect(database.sql()[0]).toContain('"state" in ($');
   });
@@ -106,11 +115,10 @@ describe("runTerminatedDetector", () => {
     const database = recordingDatabase();
     database.answers({ rows: [{ id: RUN, organization_id: ORG }] });
 
-    const settled = await runTerminatedDetector(["protected_path_allow_once"], [
-      "merged",
-      "failed",
-      "canceled",
-    ]).settled([askingAboutPr()], database.service.db);
+    const settled = await runTerminatedDetector(
+      ["protected_path_allow_once"],
+      ["merged", "failed", "canceled"],
+    ).settled([askingAboutPr()], database.service.db);
 
     expect(settled).toEqual([
       { itemId: `item-${PR}`, organizationId: ORG, settlement: "run_terminated", channel: "api" },
@@ -201,12 +209,18 @@ describe("DecisionSourceWatcher", () => {
     await watcher.sweep("another-workspace");
     await watcher.sweep(ORG);
 
-    expect(seen).toEqual([[expect.objectContaining({ kindId: "merge_approval", sourceRef: `pr:${PR}` })]]);
+    expect(seen).toEqual([
+      [expect.objectContaining({ kindId: "merge_approval", sourceRef: `pr:${PR}` })],
+    ]);
   });
 
   it("logs a failing detector and still runs the others", async () => {
     const itemId = await filePr509();
-    watcher.register({ name: "broken", kinds: ["merge_approval"], settled: () => Promise.reject(new Error("down")) });
+    watcher.register({
+      name: "broken",
+      kinds: ["merge_approval"],
+      settled: () => Promise.reject(new Error("down")),
+    });
     watcher.register({
       name: "working",
       kinds: ["merge_approval"],
@@ -266,7 +280,9 @@ describe("DecisionSourceSweeper", () => {
   });
 
   it("logs a sweep that closed something, and keeps the loop alive when one fails", async () => {
-    const sweeper = loop(jest.fn().mockResolvedValueOnce(2).mockRejectedValueOnce(new Error("down")));
+    const sweeper = loop(
+      jest.fn().mockResolvedValueOnce(2).mockRejectedValueOnce(new Error("down")),
+    );
 
     await sweeper.tick();
     expect(Logger.prototype.log).toHaveBeenCalledWith(

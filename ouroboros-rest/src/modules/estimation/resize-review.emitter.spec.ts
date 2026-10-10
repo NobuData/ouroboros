@@ -3,7 +3,11 @@ import { MOCKUP_PROSE, SHIPPED_KINDS } from "../decisions/decision.kinds.fixture
 import { registryHarness } from "../decisions/decision.store.fixture";
 import { renderDecision } from "../decisions/decision.templates";
 import type { AskingDecision } from "../decisions/decision.watchers";
-import { ResizeReviewEmitter, resizeReviewEmission, resizeSettledDetector } from "./resize-review.emitter";
+import {
+  ResizeReviewEmitter,
+  resizeReviewEmission,
+  resizeSettledDetector,
+} from "./resize-review.emitter";
 
 /**
  * The re-size emitter (#461, INTAKE-K.2): a new estimate that moves a ticket's effort becomes
@@ -29,8 +33,13 @@ describe("resizeReviewEmission", () => {
     const emission = resizeReviewEmission(RESIZE);
 
     expect(emission?.refs).toEqual([{ type: "ticket", id: TICKET, label: "issue #486" }]);
-    expect(emission?.key).toEqual({ plane: "estimation", sourceRef: `ticket:${TICKET}:estimate:2` });
-    expect(renderDecision(SHIPPED_KINDS.resize_review, emission?.payload ?? {})).toEqual(MOCKUP_PROSE.resize_review);
+    expect(emission?.key).toEqual({
+      plane: "estimation",
+      sourceRef: `ticket:${TICKET}:estimate:2`,
+    });
+    expect(renderDecision(SHIPPED_KINDS.resize_review, emission?.payload ?? {})).toEqual(
+      MOCKUP_PROSE.resize_review,
+    );
   });
 
   it("asks nothing when the size did not move", () => {
@@ -56,7 +65,9 @@ describe("resizeSettledDetector", () => {
     expect((await resizeSettledDetector().settled([item], newer.service.db))[0].settlement).toBe(
       "estimate_superseded",
     );
-    expect((await resizeSettledDetector().settled([item], closed.service.db))[0].settlement).toBe("ticket_closed");
+    expect((await resizeSettledDetector().settled([item], closed.service.db))[0].settlement).toBe(
+      "ticket_closed",
+    );
   });
 
   it("leaves the newest re-size of an open ticket asking", async () => {
@@ -73,7 +84,12 @@ describe("ResizeReviewEmitter.estimated", () => {
     const database = recordingDatabase();
     database.answers(
       { rows: [{ id: TICKET, organization_id: ORG, external_key: "#486", state: "open" }] },
-      { rows: [{ version: 1, effort: "l", confidence: 70 }, { version: 2, effort: "m", confidence: 82 }] },
+      {
+        rows: [
+          { version: 1, effort: "l", confidence: 70 },
+          { version: 2, effort: "m", confidence: 82 },
+        ],
+      },
     );
 
     await new ResizeReviewEmitter(database.service, harness.registry).estimated(TICKET, 2);
@@ -89,12 +105,22 @@ describe("ResizeReviewEmitter.estimated", () => {
     const unmoved = recordingDatabase();
     unmoved.answers(
       { rows: [{ id: TICKET, organization_id: ORG, external_key: "#486", state: "open" }] },
-      { rows: [{ version: 1, effort: "m", confidence: 70 }, { version: 2, effort: "m", confidence: 82 }] },
+      {
+        rows: [
+          { version: 1, effort: "m", confidence: 70 },
+          { version: 2, effort: "m", confidence: 82 },
+        ],
+      },
     );
     const closed = recordingDatabase();
     closed.answers(
       { rows: [{ id: TICKET, organization_id: ORG, external_key: "#486", state: "closed" }] },
-      { rows: [{ version: 1, effort: "l", confidence: 70 }, { version: 2, effort: "m", confidence: 82 }] },
+      {
+        rows: [
+          { version: 1, effort: "l", confidence: 70 },
+          { version: 2, effort: "m", confidence: 82 },
+        ],
+      },
     );
     const first = recordingDatabase();
 

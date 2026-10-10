@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import copy
 import json
+from collections import Counter
 from collections.abc import Callable
 from typing import Any
 
@@ -284,7 +285,13 @@ class FakeControl:
         self.delivered: Delivery | None = None
         self.finished: Finish | None = None
         self.tool_calls: list[tuple[str, str, dict[str, Any]]] = []
+        #: The locators each tool call answered, call by call — what an attempt archived.
+        self.answered: list[list[str]] = []
+        #: How many times each locator was archived — a repeat is a resumed operation.
+        self.archive_attempts: Counter[str] = Counter()
         self.checkpoints = 0
+        #: The phase of every checkpoint the control plane kept, in order.
+        self.checkpoint_phases: list[str] = []
         #: Raise ``ControlUnavailableError`` on the Nth checkpoint write — a killed worker.
         self.die_at_checkpoint: int | None = None
         #: Answer ``cancelRequested`` from the Nth checkpoint write on.
@@ -368,6 +375,8 @@ class FakeControl:
                 )
                 self.sources.append(existing)
             answered.append(existing)
+        self.answered.append([source.locator for source in answered])
+        self.archive_attempts.update(source.locator for source in answered)
         return ToolAnswer(payload=recording["payload"], sources=answered)
 
     def checkpoint(
@@ -395,6 +404,7 @@ class FakeControl:
             raise ControlRefusalError(CHECKPOINT_STALE, 409, "a newer attempt owns it")
         # A checkpoint is JSON on the wire: prove the state survives the trip.
         self.checkpoint_state = json.loads(json.dumps(state))
+        self.checkpoint_phases.append(str(state.get("phase")))
         self.seq = seq
         self.duration_ms = duration_ms
         self._record(usage)

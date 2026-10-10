@@ -1,6 +1,11 @@
 import { DomainError } from "../errors/error.envelope";
 import { emitStatusOf, sameDeclaration } from "./decision-kind.registry";
-import { FIXTURE_KIND, MOCKUP_PROSE, SEEDED_PAYLOADS, SHIPPED_KINDS } from "./decision.kinds.fixture";
+import {
+  FIXTURE_KIND,
+  MOCKUP_PROSE,
+  SEEDED_PAYLOADS,
+  SHIPPED_KINDS,
+} from "./decision.kinds.fixture";
 import { registryHarness, type RegistryHarness } from "./decision.store.fixture";
 import type { DecisionEmission } from "./decision.types";
 
@@ -55,7 +60,11 @@ describe("emit", () => {
 
     expect(outcome.status).toBe("filed");
     expect(harness.store.items).toHaveLength(1);
-    expect(harness.store.items[0]).toMatchObject({ kindVersion: 1, severity: "err", status: "open" });
+    expect(harness.store.items[0]).toMatchObject({
+      kindVersion: 1,
+      severity: "err",
+      status: "open",
+    });
     expect(harness.audit).toEqual([
       expect.objectContaining({
         organizationId: ORG,
@@ -82,7 +91,11 @@ describe("emit", () => {
     const second = await harness.registry.emit(protectedPath());
     const third = await harness.registry.emit(protectedPath());
 
-    expect([first.status, second.status, third.status]).toEqual(["filed", "unchanged", "unchanged"]);
+    expect([first.status, second.status, third.status]).toEqual([
+      "filed",
+      "unchanged",
+      "unchanged",
+    ]);
     expect(new Set([first.itemId, second.itemId, third.itemId]).size).toBe(1);
     expect(harness.store.items).toHaveLength(1);
     expect(harness.audit.map((record) => record.action)).toEqual(["decision.filed"]);
@@ -118,7 +131,9 @@ describe("emit", () => {
 
   it("refuses a payload failing its schema with a useful error, and files nothing", async () => {
     const { checks_total: _checks, ...payload } = SEEDED_PAYLOADS.merge_approval;
-    const refusal = await harness.registry.emit(mergeApproval({ payload })).catch((error: unknown) => error);
+    const refusal = await harness.registry
+      .emit(mergeApproval({ payload }))
+      .catch((error: unknown) => error);
 
     expect(refusal).toBeInstanceOf(DomainError);
     expect((refusal as DomainError).getStatus()).toBe(422);
@@ -185,7 +200,10 @@ describe("kinds", () => {
 describe("a fixture kind, end to end, with no change to inbox core code", () => {
   it("registers, files, renders at its pinned version and resolves", async () => {
     const { version: _version, ...declaration } = FIXTURE_KIND;
-    const published = await harness.registry.register({ ...declaration, escalationWindow: "30 minutes" });
+    const published = await harness.registry.register({
+      ...declaration,
+      escalationWindow: "30 minutes",
+    });
 
     expect(published.version).toBe(1);
 
@@ -236,7 +254,9 @@ describe("a fixture kind, end to end, with no change to inbox core code", () => 
     });
 
     expect(bumped.version).toBe(2);
-    expect(harness.store.kinds.filter((kind) => kind.kindId === FIXTURE_KIND.kindId)).toHaveLength(2);
+    expect(harness.store.kinds.filter((kind) => kind.kindId === FIXTURE_KIND.kindId)).toHaveLength(
+      2,
+    );
   });
 
   it("keeps an item filed before a bump rendering at the version it pinned", async () => {
@@ -320,12 +340,15 @@ describe("resolveFromSource", () => {
 
 describe("render", () => {
   it("renders the mockup's prose from a stored item, and escapes for a destination", () => {
-    expect(harness.registry.render(SHIPPED_KINDS.claim_waiver, SEEDED_PAYLOADS.claim_waiver)).toEqual(
-      MOCKUP_PROSE.claim_waiver,
-    );
     expect(
-      harness.registry.render(SHIPPED_KINDS.claim_waiver, { claim: "<b>", missing_capability: "x" }, "html")
-        .why,
+      harness.registry.render(SHIPPED_KINDS.claim_waiver, SEEDED_PAYLOADS.claim_waiver),
+    ).toEqual(MOCKUP_PROSE.claim_waiver);
+    expect(
+      harness.registry.render(
+        SHIPPED_KINDS.claim_waiver,
+        { claim: "<b>", missing_capability: "x" },
+        "html",
+      ).why,
     ).toContain("&lt;b&gt;");
   });
 });
@@ -347,7 +370,13 @@ describe("emitStatusOf", () => {
   it("reads an expired item as settled", () => {
     expect(
       emitStatusOf(
-        { id: "x", status: "expired", payload: emission.payload, refs: emission.refs, severity: "err" },
+        {
+          id: "x",
+          status: "expired",
+          payload: emission.payload,
+          refs: emission.refs,
+          severity: "err",
+        },
         emission,
       ),
     ).toBe("settled");

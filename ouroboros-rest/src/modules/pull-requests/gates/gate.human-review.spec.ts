@@ -32,24 +32,34 @@ describe("matchHumanReview", () => {
   });
 
   it("requires nothing when the rule is off, or the workspace published no policy", () => {
-    expect(matchHumanReview({ ...POLICY_V7, enabled: false }, { labels: ["refactor"], effort: "s" })).toEqual(
+    expect(
+      matchHumanReview({ ...POLICY_V7, enabled: false }, { labels: ["refactor"], effort: "s" }),
+    ).toEqual(NO_HUMAN_REVIEW);
+    expect(matchHumanReview(null, { labels: ["refactor"], effort: "s" })).toEqual(NO_HUMAN_REVIEW);
+    expect(matchHumanReview(undefined, { labels: ["refactor"], effort: "s" })).toEqual(
       NO_HUMAN_REVIEW,
     );
-    expect(matchHumanReview(null, { labels: ["refactor"], effort: "s" })).toEqual(NO_HUMAN_REVIEW);
-    expect(matchHumanReview(undefined, { labels: ["refactor"], effort: "s" })).toEqual(NO_HUMAN_REVIEW);
   });
 
   it("never names a label from under a not", () => {
-    const rule = { enabled: true, conditions: { all: [{ not: { label: "docs" } }, { effort_lte: "m" }] } };
+    const rule = {
+      enabled: true,
+      conditions: { all: [{ not: { label: "docs" } }, { effort_lte: "m" }] },
+    };
 
-    expect(matchHumanReview(rule, { labels: [], effort: "s" })).toEqual({ required: true, label: null });
+    expect(matchHumanReview(rule, { labels: [], effort: "s" })).toEqual({
+      required: true,
+      label: null,
+    });
     expect(matchHumanReview(rule, { labels: ["docs"], effort: "s" })).toEqual(NO_HUMAN_REVIEW);
   });
 
   it("composes all, any and not, and takes the first positive label in document order", () => {
     const rule = {
       enabled: true,
-      conditions: { all: [{ any: [{ label: "security" }, { label: "refactor" }] }, { effort_gte: "s" }] },
+      conditions: {
+        all: [{ any: [{ label: "security" }, { label: "refactor" }] }, { effort_gte: "s" }],
+      },
     };
 
     expect(matchHumanReview(rule, { labels: ["refactor", "security"], effort: "m" })).toEqual({
@@ -69,9 +79,9 @@ describe("matchHumanReview", () => {
       [],
       null,
     ]) {
-      expect(matchHumanReview({ enabled: true, conditions }, { labels: ["refactor"], effort: "xl" })).toEqual(
-        NO_HUMAN_REVIEW,
-      );
+      expect(
+        matchHumanReview({ enabled: true, conditions }, { labels: ["refactor"], effort: "xl" }),
+      ).toEqual(NO_HUMAN_REVIEW);
     }
   });
 });

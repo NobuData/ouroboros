@@ -58,7 +58,9 @@ export interface StoredResolution {
 /** The in-memory store; see this file's header. */
 export class DecisionStore {
   /** Every published version, newest last per kind. */
-  readonly kinds: PublishedDecisionKind[] = Object.values(SHIPPED_KINDS).map((kind) => ({ ...kind }));
+  readonly kinds: PublishedDecisionKind[] = Object.values(SHIPPED_KINDS).map((kind) => ({
+    ...kind,
+  }));
 
   readonly items: StoredDecision[] = [];
 
@@ -78,7 +80,9 @@ export class DecisionStore {
       transaction: <T>(work: (trx: never) => Promise<T>) => work({} as never),
       currentKind: (kindId: string) => Promise.resolve(this.current(kindId)),
       kindVersion: (kindId: string, version: number) =>
-        Promise.resolve(this.kinds.find((kind) => kind.kindId === kindId && kind.version === version)),
+        Promise.resolve(
+          this.kinds.find((kind) => kind.kindId === kindId && kind.version === version),
+        ),
       currentKinds: () =>
         Promise.resolve(
           [...new Set(this.kinds.map((kind) => kind.kindId))]
@@ -100,10 +104,13 @@ export class DecisionStore {
       lockKind: () => Promise.resolve(),
       itemByKey: (_executor: unknown, organizationId: string, key: DecisionKey) =>
         Promise.resolve(this.snapshot(this.byKey(organizationId, key))),
-      emit: (_executor: unknown, emission: DecisionEmission) => Promise.resolve(this.emit(emission)),
+      emit: (_executor: unknown, emission: DecisionEmission) =>
+        Promise.resolve(this.emit(emission)),
       identity: (itemId: string) => Promise.resolve(this.identity(itemId)),
       sourceResolve: (itemId: string, channel: DecisionChannel, outcome: Record<string, string>) =>
-        Promise.resolve(this.resolve(itemId, "source_resolved", "policy", "source_resolved", channel, outcome)),
+        Promise.resolve(
+          this.resolve(itemId, "source_resolved", "policy", "source_resolved", channel, outcome),
+        ),
       asking: (kinds: readonly string[], organizationId: string | null) =>
         Promise.resolve(
           this.items
@@ -279,8 +286,14 @@ export class DecisionStore {
       if (item.organizationId !== organizationId) continue;
       if (item.status !== "open" && item.status !== "snoozed") continue;
 
-      const hidden = item.status === "snoozed" && item.snoozedUntil !== null && item.snoozedUntil > now;
-      const row = rows.get(item.severity) ?? { severity: item.severity, open: 0, snoozed: 0, nextWakeAt: null };
+      const hidden =
+        item.status === "snoozed" && item.snoozedUntil !== null && item.snoozedUntil > now;
+      const row = rows.get(item.severity) ?? {
+        severity: item.severity,
+        open: 0,
+        snoozed: 0,
+        nextWakeAt: null,
+      };
       const wake =
         hidden && (row.nextWakeAt === null || (item.snoozedUntil as Date) < row.nextWakeAt)
           ? item.snoozedUntil
