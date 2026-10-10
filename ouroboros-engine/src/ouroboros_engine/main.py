@@ -25,6 +25,7 @@ from ouroboros_engine.api import (
     analysis,
     code,
     copilot,
+    dryruns,
     estimate,
     health,
     investigate,
@@ -43,6 +44,9 @@ from ouroboros_engine.core.errors import register_error_handlers
 from ouroboros_engine.core.logging import configure_logging
 from ouroboros_engine.core.security import InternalKeyMiddleware
 from ouroboros_engine.core.uptime import Uptime
+from ouroboros_engine.dryrun.estimates import HttpReplayEstimates
+from ouroboros_engine.dryrun.harness import DryRunHarness
+from ouroboros_engine.dryrun.model import GatewayStageCaller
 from ouroboros_engine.estimation.heuristic import HeuristicEstimator
 from ouroboros_engine.investigation.control import HttpInvestigationControl
 from ouroboros_engine.investigation.loop import InvestigationLoop
@@ -190,6 +194,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
     )
 
+    # The deep dry-run harness (CD.2, #560): model stages go through the same gateway — so
+    # until AF.2 (#235) lands a dry run ends `failed`, naming the gateway — infrastructure
+    # stages ask `ouroboros-rest`'s replay estimator, and reads resolve from the git host at
+    # the pinned commit with the token each request carries. Nothing is written anywhere.
+    # Nothing starts until `POST /v0/dry-runs` is called. A test installs a harness over fakes.
+    app.state.dry_runs = DryRunHarness(
+        GatewayStageCaller(
+            ControlPlaneClient(resolved.rest_url, resolved.shared_secret),
+            UrllibGateway(),
+        ),
+        HttpReplayEstimates(resolved.rest_url, resolved.shared_secret),
+    )
+
     # Added before any route is registered, and the only middleware there is, so it is
     # the outermost thing a request meets: the guard cannot be bypassed by a path that
     # is added later, and an unauthenticated request never reaches routing at all.
@@ -216,6 +233,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(analysis.router)
     app.include_router(code.router)
     app.include_router(copilot.router)
+    app.include_router(dryruns.router)
     app.include_router(investigate.router)
     _mount_simulator(app, resolved)
     return app

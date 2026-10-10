@@ -21,6 +21,7 @@ from openapi_spec_validator import validate
 from pydantic import BaseModel
 
 from code_fixtures import build_repo
+from dryrun_fakes import Bench as DryRunBench
 from ouroboros_engine import __version__, openapi
 from ouroboros_engine.analysis.contract import Corpus
 from ouroboros_engine.analysis.harness import (
@@ -52,6 +53,7 @@ from ouroboros_engine.copilot.contract import (
 )
 from ouroboros_engine.core.errors import ErrorEnvelope
 from ouroboros_engine.core.security import INTERNAL_KEY_HEADER, UNAUTHORIZED_BODY
+from ouroboros_engine.dryrun import contract as dry_run_contract
 from ouroboros_engine.estimation.contract import (
     Breakdown,
     ContextFact,
@@ -189,6 +191,20 @@ _DOCUMENTED_MODELS: dict[str, type[BaseModel]] = {
     "CopilotUsage": CopilotUsage,
     "CopilotError": CopilotError,
     "CopilotDone": CopilotDone,
+    "DryRunSubject": dry_run_contract.DryRunSubject,
+    "DryRunRepository": dry_run_contract.DryRunRepository,
+    "DryRunStagePlan": dry_run_contract.StagePlan,
+    "DryRunBudget": dry_run_contract.DryRunBudget,
+    "DryRunRequest": dry_run_contract.DryRunRequest,
+    "DryRunStageResult": dry_run_contract.StageResult,
+    "DryRunPathChange": dry_run_contract.PathChange,
+    "DryRunArtifact": dry_run_contract.DryRunArtifact,
+    "DryRunGuardEntry": dry_run_contract.GuardEntry,
+    "DryRunResult": dry_run_contract.DryRunResult,
+    "DryRunStageStarted": dry_run_contract.StageStarted,
+    "DryRunStageFinished": dry_run_contract.StageFinished,
+    "DryRunGuardBlocked": dry_run_contract.GuardBlocked,
+    "DryRunDone": dry_run_contract.DryRunDone,
 }
 
 
@@ -457,6 +473,9 @@ def fixture_remotes(client: TestClient, tmp_path: Path) -> TestClient:
     # `POST /v0/investigate` starts background work; here it starts a loop that ends at once
     # rather than one that would go looking for a control plane.
     client.app.state.investigations = InvestigationRunner(_IdleLoop())  # type: ignore[attr-defined]
+    # And `POST /v0/dry-runs` walks its draft over the suite's fakes rather than a git host,
+    # a gateway and an estimator.
+    client.app.state.dry_runs = DryRunBench().harness  # type: ignore[attr-defined]
     return client
 
 
