@@ -1739,7 +1739,7 @@ the blockquote above that records what it did and what it did differently.
 | 416 | **CN.1** | ✅ [#627](https://github.com/NobuData/ouroboros/issues/627) | Research route, head & page frame | ouroboros-ui | S | 5.3, D.5 |
 | 417 | **CD.3** | ✅ [#561](https://github.com/NobuData/ouroboros/issues/561) | Infra replay estimators | ouroboros-rest | M | AH.1, BI.2 |
 | 418 | **CL.6** | ✅ [#619](https://github.com/NobuData/ouroboros/issues/619) | Build & test telemetry tool | ouroboros-rest | M | BI.2, CL.1 |
-| 419 | **CM.2** | [#621](https://github.com/NobuData/ouroboros/issues/621) | Brief composition, matrices & export | ouroboros-rest | M | CK.3, CM.1 |
+| 419 | **CM.2** | ✅ [#621](https://github.com/NobuData/ouroboros/issues/621) | Brief composition, matrices & export | ouroboros-rest | M | CK.3, CM.1 |
 | 420 | **CM.6** | [#625](https://github.com/NobuData/ouroboros/issues/625) | Investigation lifecycle API | ouroboros-rest | M | CM.1, CM.3 |
 | 421 | **CD.2** | [#560](https://github.com/NobuData/ouroboros/issues/560) | Deep dry-run harness | ouroboros-engine | L | BF.5, CC.3 |
 | 422 | **CM.4** | [#623](https://github.com/NobuData/ouroboros/issues/623) | Regression watch service & bisect orchestration | ouroboros-rest, ouroboros-engine | L | CK.4, CL.4, CL.6 |

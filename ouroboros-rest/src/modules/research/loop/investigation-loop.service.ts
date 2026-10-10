@@ -31,6 +31,7 @@ import type {
 } from "../../db/schema";
 import { DomainError } from "../../errors/error.envelope";
 import { describeForLog } from "../../errors/failure";
+import { MatrixBuilderService } from "../briefs/matrix-builder.service";
 import { ResearchEstimateService } from "../estimate.service";
 import { RESEARCH_ERRORS, investigationNotFound } from "../research.errors";
 import { investigationNotRunning } from "../tools/research-tool.errors";
@@ -117,10 +118,12 @@ export class InvestigationLoopService {
   /**
    * @param repository - Loop state, the ledger and the brief.
    * @param estimates - Records estimate vs actuals once a run has delivered.
+   * @param matrices - Builds a gap analysis's capability matrix from its delivered input.
    */
   constructor(
     repository: InvestigationLoopRepository,
     private readonly estimates: ResearchEstimateService,
+    private readonly matrices: MatrixBuilderService,
   ) {
     this.store = repository;
   }
@@ -243,6 +246,9 @@ export class InvestigationLoopService {
     );
 
     await this.reconcile(ended.organizationId, investigationId, ended.displayId);
+    if (deliverables.has("matrix")) {
+      await this.buildMatrix(ended.organizationId, investigationId, ended.displayId);
+    }
 
     return ended_(ended.displayId, ended.status, ended.actuals, ended.brief);
   }
@@ -285,6 +291,30 @@ export class InvestigationLoopService {
     );
 
     return ended_(ended.displayId, ended.status, ended.actuals, null);
+  }
+
+  /**
+   * Build the capability matrix from the matrix input just stored (CM.2, #621). Never fails a
+   * delivery: the brief is written and stands on its own, and a matrix the builder refuses —
+   * an incomplete row, an uncited cell — is logged with its reason rather than stored in part.
+   *
+   * @param organizationId - The workspace.
+   * @param investigationId - The investigation.
+   * @param displayId - `RS-127`, for the log.
+   */
+  private async buildMatrix(
+    organizationId: string,
+    investigationId: string,
+    displayId: string,
+  ): Promise<void> {
+    try {
+      await this.matrices.build(organizationId, investigationId);
+    } catch (error) {
+      this.logger.error(
+        `${displayId}'s capability matrix could not be built from its input.`,
+        describeForLog(error),
+      );
+    }
   }
 
   /**

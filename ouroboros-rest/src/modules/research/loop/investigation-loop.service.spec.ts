@@ -6,6 +6,7 @@
 import { Logger } from "@nestjs/common";
 
 import { ConflictError } from "../../errors/error.envelope";
+import type { MatrixBuilderService } from "../briefs/matrix-builder.service";
 import type { ResearchEstimateService } from "../estimate.service";
 import { RESEARCH_ERRORS } from "../research.errors";
 import { RESEARCH_TOOL_ERRORS } from "../tools/research-tool.errors";
@@ -105,11 +106,13 @@ function bench(...seeded: Parameters<typeof investigation>[0][]) {
   );
   store.archive(INVESTIGATION, source(7), source(12));
   const reconcile = jest.fn((): Promise<unknown> => Promise.resolve({}));
+  const build = jest.fn((): Promise<unknown> => Promise.resolve({ outcome: "built" }));
   const service = new InvestigationLoopService(
     store as unknown as InvestigationLoopRepository,
     { reconcile } as unknown as ResearchEstimateService,
+    { build } as unknown as MatrixBuilderService,
   );
-  return { store, service, reconcile };
+  return { store, service, reconcile, build };
 }
 
 async function code(promise: Promise<unknown>): Promise<string> {
@@ -506,6 +509,35 @@ describe("delivering a brief", () => {
     broken.reconcile.mockRejectedValueOnce(new Error("the database went away"));
     expect((await broken.service.deliver(INVESTIGATION, brief())).status).toBe("brief_ready");
     expect(Logger.prototype.error).toHaveBeenCalledTimes(1);
+  });
+
+  it("builds the capability matrix once a matrix input is delivered", async () => {
+    const { service, build } = bench();
+    await service.start(INVESTIGATION, START);
+    await service.deliver(INVESTIGATION, brief());
+
+    expect(build).toHaveBeenCalledTimes(1);
+    expect(build).toHaveBeenCalledWith(WORKSPACE, INVESTIGATION);
+  });
+
+  it("builds no matrix for a brief that delivered no matrix input", async () => {
+    const { service, build } = bench();
+    await service.start(INVESTIGATION, START);
+    await service.deliver(INVESTIGATION, brief({ deliverables: {} }));
+
+    expect(build).not.toHaveBeenCalled();
+  });
+
+  it("delivers even when the matrix cannot be built, and says why in the log", async () => {
+    const { service, build } = bench();
+    await service.start(INVESTIGATION, START);
+    build.mockRejectedValueOnce(new Error("matrix_cell_uncited"));
+
+    expect((await service.deliver(INVESTIGATION, brief())).status).toBe("brief_ready");
+    expect(Logger.prototype.error).toHaveBeenCalledWith(
+      "RS-127's capability matrix could not be built from its input.",
+      expect.anything(),
+    );
   });
 
   it("logs how many claims were demoted", async () => {

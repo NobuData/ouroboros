@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.6"
+  version: "0.41.7"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -35745,6 +35745,383 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/v1/research/investigations/{investigationId}/brief:
+    get:
+      tags: [research]
+      summary: An investigation's brief, as the card draws it
+      description: |-
+        The investigation's current brief — its highest version — made renderable: paragraphs of
+        spans, each claim span typed `finding` or `open_question` and followed by its cites; the
+        sources panel; the capability matrix; and the proposed-from-gaps summary.
+
+        **A citation has one label everywhere.** `[07]` is the ledger record's stored cite
+        number, and `[git]` its symbolic key; the same label is used in a span's `cites`, the
+        panel, a matrix cell, `/sources` and the Markdown export. Records are never updated, so
+        reading again never renumbers.
+
+        **A code reference is a segment, not a guess.** A span's `segments` split its text into
+        prose and `code` runs; a run is recognised only for a file one of the span's own `code`
+        sources cites, and links to that file at the cited commit.
+
+        **A gap severity carries its derivation.** Each matrix row's `gap.derivation` names the
+        inputs the rule used — our status, the best rival's, the proposed gap — and `matrix` is
+        null for a kind that produces none. `proposed` is derived from the rows whose stored
+        severity is `high` or `med`; it is what **Draft epic from gaps** would create.
+
+        Every member.
+      operationId: getInvestigationBrief
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: investigationId
+          in: path
+          required: true
+          description: The investigation.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The brief.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvestigationBrief"
+              examples:
+                seeded:
+                  summary: RS-127, abridged — one span, one panel row, one matrix row
+                  value:
+                    investigation:
+                      id: 5eed0084-0000-4000-8000-000000000127
+                      displayId: RS-127
+                      question: Autonomous docking vs. Skylink / AeroMesh / Novum
+                      kind: gap_analysis
+                      kindLabel: Gap analysis
+                      tintKey: gap
+                      depth: deep_dive
+                      status: brief_ready
+                    brief:
+                      id: 5eed0086-0000-4000-8000-000000000001
+                      version: 1
+                      createdAt: "2026-10-07T12:31:00.000Z"
+                      paragraphs:
+                        - kind: findings
+                          spans:
+                            - text: " while ours is PID with fixed gains (dock_ctrl.c:214, unchanged in 14 months)."
+                              segments:
+                                - kind: text
+                                  text: " while ours is PID with fixed gains ("
+                                  href: null
+                                - kind: code
+                                  text: dock_ctrl.c:214
+                                  href: https://github.com/acme-robotics/helios-firmware/blob/8c1b2e4/src/dock/dock_ctrl.c#L214
+                                - kind: text
+                                  text: ", unchanged in 14 months)."
+                                  href: null
+                              claim:
+                                ref: pid-fixed-gains
+                                type: finding
+                                demoted: false
+                              cites:
+                                - label: "[git]"
+                                  citeNo: 44
+                                  citeKey: git
+                                  sourceId: 5eed0085-0000-4000-8000-000000000044
+                    sources:
+                      cited: 44
+                      panel:
+                        - label: "[git]"
+                          citeNo: 44
+                          citeKey: git
+                          sourceId: 5eed0085-0000-4000-8000-000000000044
+                          kind: code
+                          tool: code
+                          title: dock_ctrl.c blame — gains last tuned 14 months ago
+                          locator: git://helios-firmware@8c1b2e4/src/dock/dock_ctrl.c#L214
+                          locatorLabel: helios-firmware @ 8c1b2e4 · src/dock/dock_ctrl.c
+                          href: https://github.com/acme-robotics/helios-firmware/blob/8c1b2e4/src/dock/dock_ctrl.c#L214
+                    matrix:
+                      id: 5eed0095-0000-4000-8000-000000000127
+                      title: Autonomous docking vs. the field
+                      columns:
+                        - { label: Helios, us: true, competitorId: null }
+                        - { label: Skylink, us: false, competitorId: 5eed0094-0000-4000-8000-000000000001 }
+                      rows:
+                        - id: 5eed0095-0000-4000-8000-000000000005
+                          capability: Recovery beacon over BLE
+                          cells:
+                            - status: shipping
+                              glyph: "●"
+                              label: shipping
+                              note: null
+                              cites:
+                                - label: "[23]"
+                                  citeNo: 23
+                                  citeKey: null
+                                  sourceId: 5eed0085-0000-4000-8000-000000000023
+                            - status: unknown
+                              glyph: "?"
+                              label: unknown
+                              note: null
+                              cites: []
+                          gap:
+                            severity: lead
+                            label: LEAD
+                            derivation: We ship it; no rival is known to → lead. AeroMesh is unknown, not none.
+                    proposed:
+                      epic:
+                        title: Docking parity
+                        label: EPIC · Docking parity
+                      tickets:
+                        - key: DOCK-1
+                          title: wind-feedforward MPC
+                          label: DOCK-1 wind-feedforward MPC
+                          effort: m
+                          capability: Docking in >8 m/s gusts
+                          severity: high
+                          sources: [5eed0085-0000-4000-8000-000000000012]
+                      top:
+                        - key: DOCK-1
+                          title: wind-feedforward MPC
+                          label: DOCK-1 wind-feedforward MPC
+                          effort: m
+                          capability: Docking in >8 m/s gusts
+                          severity: high
+                          sources: [5eed0085-0000-4000-8000-000000000012]
+                      more: 0
+                      effort: m
+                    provenance:
+                      researcher: loop-v1
+                      alias: researcher-long-ctx
+                    exportFilename: RS-127-brief.md
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `investigation_not_found` — this workspace has no such investigation;
+            `brief_not_found` — the investigation has not delivered a brief; or
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the request is malformed: a field outside its shape, or one
+            this operation does not take. `details.fields` names each.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/research/investigations/{investigationId}/sources:
+    get:
+      tags: [research]
+      summary: An investigation's whole citation ledger
+      description: |-
+        The listing behind the sources panel's `all ↗`: every record the investigation archived,
+        in cite-number order, each with its locator, **the archived excerpt** and **when it was
+        retrieved**. The excerpt is what was read at the time — it stays while the page it came
+        from moves on.
+
+        Readable as soon as the investigation has archived anything; it does not wait for the
+        brief. Every member.
+      operationId: listInvestigationSources
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: investigationId
+          in: path
+          required: true
+          description: The investigation.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The ledger.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BriefLedger"
+              examples:
+                seeded:
+                  summary: RS-127, one of its 44 records shown
+                  value:
+                    investigation: RS-127
+                    total: 44
+                    items:
+                      - label: "[07]"
+                        citeNo: 7
+                        citeKey: null
+                        sourceId: 5eed0085-0000-4000-8000-000000000007
+                        kind: web
+                        tool: web
+                        title: Skylink S4 docking module — teardown & sensor BOM
+                        locator: https://droneanalysts.example.com/s4-teardown
+                        locatorLabel: droneanalysts.example.com/s4-teardown
+                        href: https://droneanalysts.example.com/s4-teardown
+                        excerpt: The S4 carries a 6-axis IMU and a 40 m time-of-flight rangefinder — the same sensor class as Helios.
+                        retrievedAt: "2026-10-07T12:07:00.000Z"
+                        contentHash: sha256:5f4dcc3b5aa765d61d8327deb882cf995f4dcc3b5aa765d61d8327deb882cf99
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `investigation_not_found` — this workspace has no such investigation; or
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the request is malformed: a field outside its shape, or one
+            this operation does not take. `details.fields` names each.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/research/investigations/{investigationId}/brief/export:
+    get:
+      tags: [research]
+      summary: Export a brief as Markdown
+      description: |-
+        **Export brief ↗** — the brief as one Markdown document: the body with its citation
+        markers inline, the capability matrix as a table with each gap's derivation, the
+        proposed-from-gaps list, **every source numbered with its locator and retrieval time**,
+        and a provenance footer (investigation, researcher, alias, brief version, date).
+
+        The markers are the labels `/brief` returns, and each source is one line —
+        ``- [07] Title — `locator` — retrieved <ISO 8601>`` — under `## Sources`, so the document
+        can be read by a program as well as a person. The footer is dated by the brief, not by
+        the clock: exporting twice yields the same bytes.
+
+        Every member.
+      operationId: exportInvestigationBrief
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: investigationId
+          in: path
+          required: true
+          description: The investigation.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The document.
+          headers:
+            Content-Disposition:
+              description: '`attachment; filename="RS-127-brief.md"`.'
+              schema:
+                type: string
+            Cache-Control:
+              description: "`private, no-cache`."
+              schema:
+                type: string
+          content:
+            text/markdown:
+              schema:
+                type: string
+              example: |
+                # RS-127 — Autonomous docking vs. Skylink / AeroMesh / Novum
+
+                > Gap analysis · deep dive · 44 sources · brief v1
+
+                ## Brief
+
+                The docking gap is not sensors: our IMU and rangefinder match Skylink's published spec.[07]
+
+                ## Sources
+
+                - [07] Skylink S4 docking module — teardown & sensor BOM — `https://droneanalysts.example.com/s4-teardown` — retrieved 2026-10-07T12:07:00.000Z
+
+                ---
+
+                _Provenance: investigation RS-127 · researcher loop-v1 · alias researcher-long-ctx · brief v1 · 2026-10-07_
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `investigation_not_found` — this workspace has no such investigation;
+            `brief_not_found` — the investigation has not delivered a brief; or
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the request is malformed: a field outside its shape, or one
+            this operation does not take. `details.fields` names each.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
 components:
   # How a caller is recognised. One scheme, because there is one: the cookie the sign-in
@@ -48731,6 +49108,362 @@ components:
         content:
           type: string
           description: The file's text. At most 2 MiB.
+    BriefCite:
+      type: object
+      title: BriefCite
+      description: |-
+        One citation marker. `label` is what every surface prints — the ledger record's stored
+        cite number, zero-padded to two digits, or its symbolic key.
+      additionalProperties: false
+      required: [label, citeNo, citeKey, sourceId]
+      properties:
+        label:
+          type: string
+          description: "`[07]`, `[312]`, `[git]`."
+        citeNo: { type: integer, minimum: 1 }
+        citeKey:
+          type: [string, "null"]
+          description: The symbolic key — `git` — or null.
+        sourceId:
+          type: string
+          format: uuid
+          description: The ledger record the marker resolves to.
+    BriefSourceKind:
+      type: string
+      title: BriefSourceKind
+      enum: [web, competitor_diff, code, ticket, telemetry, doc]
+    BriefSource:
+      type: object
+      title: BriefSource
+      description: A ledger record, as the sources panel lists it.
+      additionalProperties: false
+      required: [label, citeNo, citeKey, sourceId, kind, tool, title, locator, locatorLabel, href]
+      properties:
+        label: { type: string }
+        citeNo: { type: integer, minimum: 1 }
+        citeKey: { type: [string, "null"] }
+        sourceId: { type: string, format: uuid }
+        kind:
+          $ref: "#/components/schemas/BriefSourceKind"
+        tool:
+          type: string
+          description: The research tool that archived it.
+        title: { type: string }
+        locator:
+          type: string
+          description: A URL or an internal URI — `issue-index://…`, `git://…`, `telemetry://…`.
+        locatorLabel:
+          type: string
+          description: |-
+            The locator as the panel prints it: a URL without its scheme, a `git://` locator as
+            `repo @ sha · path`, anything else as it is.
+        href:
+          type: [string, "null"]
+          description: |-
+            Where it opens: the page, or the file at its commit on the repository's host. Null
+            for an internal locator with nowhere to go, or a repository the workspace lacks.
+    BriefLedgerSource:
+      type: object
+      title: BriefLedgerSource
+      description: A ledger record with what was archived of it.
+      additionalProperties: false
+      required:
+        [label, citeNo, citeKey, sourceId, kind, tool, title, locator, locatorLabel, href, excerpt,
+         retrievedAt, contentHash]
+      properties:
+        label: { type: string }
+        citeNo: { type: integer, minimum: 1 }
+        citeKey: { type: [string, "null"] }
+        sourceId: { type: string, format: uuid }
+        kind:
+          $ref: "#/components/schemas/BriefSourceKind"
+        tool: { type: string }
+        title: { type: string }
+        locator: { type: string }
+        locatorLabel: { type: string }
+        href: { type: [string, "null"] }
+        excerpt:
+          type: string
+          description: The archived extract — at most 4 KiB.
+        retrievedAt: { type: string, format: date-time }
+        contentHash: { type: string, pattern: "^sha256:[0-9a-f]{64}$" }
+    BriefLedger:
+      type: object
+      title: BriefLedger
+      description: An investigation's whole ledger, in cite-number order.
+      additionalProperties: false
+      required: [investigation, total, items]
+      properties:
+        investigation:
+          type: string
+          description: "`RS-127`."
+        total: { type: integer, minimum: 0 }
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/BriefLedgerSource"
+    BriefSegment:
+      type: object
+      title: BriefSegment
+      description: A run of a span's text — prose, or a code reference drawn mono.
+      additionalProperties: false
+      required: [kind, text, href]
+      properties:
+        kind: { type: string, enum: [text, code] }
+        text: { type: string }
+        href:
+          type: [string, "null"]
+          description: The file at the cited commit, for a `code` run whose repository resolves.
+    BriefSpan:
+      type: object
+      title: BriefSpan
+      description: |-
+        One span of a paragraph. `segments` concatenate to `text`; `cites` follow the span. A
+        span with a null `claim` is connective prose.
+      additionalProperties: false
+      required: [text, segments, claim, cites]
+      properties:
+        text: { type: string }
+        segments:
+          type: array
+          items:
+            $ref: "#/components/schemas/BriefSegment"
+        claim:
+          type: [object, "null"]
+          additionalProperties: false
+          required: [ref, type, demoted]
+          properties:
+            ref: { type: string, pattern: "^[a-z0-9][a-z0-9_-]{0,31}$" }
+            type: { type: string, enum: [finding, open_question] }
+            demoted:
+              type: boolean
+              description: Offered as a finding, cited nothing, written as an open question.
+        cites:
+          type: array
+          items:
+            $ref: "#/components/schemas/BriefCite"
+    BriefParagraph:
+      type: object
+      title: BriefParagraph
+      description: |-
+        `findings` when it states any finding, `open_questions` when every claim it states is an
+        open question, `text` when it states none.
+      additionalProperties: false
+      required: [kind, spans]
+      properties:
+        kind: { type: string, enum: [findings, open_questions, text] }
+        spans:
+          type: array
+          items:
+            $ref: "#/components/schemas/BriefSpan"
+    MatrixCell:
+      type: object
+      title: MatrixCell
+      description: |-
+        One cell. Every status but `unknown` carries at least one cite; `unknown` is the honest
+        *we did not find out*, never a blank.
+      additionalProperties: false
+      required: [status, glyph, label, note, cites]
+      properties:
+        status: { type: string, enum: [shipping, partial, none, unknown, wip] }
+        glyph:
+          type: string
+          description: "`●` shipping, `◐` partial or in flight, `○` none, `?` unknown."
+        label:
+          type: string
+          description: The word beside the glyph — the note when there is one, otherwise the status.
+        note:
+          type: [string, "null"]
+          description: "`beta`, `in flight`."
+        cites:
+          type: array
+          items:
+            $ref: "#/components/schemas/BriefCite"
+    MatrixGapSeverity:
+      type: string
+      title: MatrixGapSeverity
+      enum: [high, med, low, wip, lead]
+    MatrixRow:
+      type: object
+      title: MatrixRow
+      additionalProperties: false
+      required: [id, capability, cells, gap]
+      properties:
+        id: { type: string }
+        capability: { type: string }
+        cells:
+          type: array
+          description: One per column, in column order.
+          items:
+            $ref: "#/components/schemas/MatrixCell"
+        gap:
+          type: object
+          additionalProperties: false
+          required: [severity, label, derivation]
+          properties:
+            severity:
+              $ref: "#/components/schemas/MatrixGapSeverity"
+            label:
+              type: string
+              description: "`HIGH`, `MED`, `LOW`, `WIP`, `LEAD`."
+            derivation:
+              type: string
+              description: The inputs that produced the severity.
+    CapabilityMatrix:
+      type: object
+      title: CapabilityMatrix
+      description: A gap analysis's matrix — capabilities × us and each rival.
+      additionalProperties: false
+      required: [id, title, columns, rows]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        columns:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [label, us, competitorId]
+            properties:
+              label: { type: string }
+              us:
+                type: boolean
+                description: Whether it is our own column.
+              competitorId: { type: [string, "null"] }
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/MatrixRow"
+    ProposedTicket:
+      type: object
+      title: ProposedTicket
+      description: A ticket stub proposed for a `high` or `med` gap.
+      additionalProperties: false
+      required: [key, title, label, effort, capability, severity, sources]
+      properties:
+        key:
+          type: string
+          description: "`DOCK-1`."
+        title: { type: string }
+        label:
+          type: string
+          description: "`DOCK-1 wind-feedforward MPC` — the chip."
+        effort:
+          type: [string, "null"]
+          enum: [xs, s, m, l, xl, null]
+        capability:
+          type: string
+          description: The matrix row it closes.
+        severity: { type: string, enum: [high, med] }
+        sources:
+          type: array
+          items: { type: string, format: uuid }
+    GapProposals:
+      type: object
+      title: GapProposals
+      description: |-
+        What a gap analysis proposes from its `high` and `med` rows. `top` are the stubs the chip
+        row names and `more` the count behind `+N more`. `effort` rolls the stubs up by points —
+        `xs` 1 · `s` 2 · `m` 3 · `l` 5 · `xl` 8, read back as up to 1 `xs`, 3 `s`, 8 `m`, 20 `l`,
+        else `xl`, and never smaller than the largest stub.
+      additionalProperties: false
+      required: [epic, tickets, top, more, effort]
+      properties:
+        epic:
+          type: object
+          additionalProperties: false
+          required: [title, label]
+          properties:
+            title: { type: string }
+            label:
+              type: string
+              description: "`EPIC · Docking parity`."
+        tickets:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProposedTicket"
+        top:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProposedTicket"
+        more: { type: integer, minimum: 0 }
+        effort:
+          type: [string, "null"]
+          enum: [xs, s, m, l, xl, null]
+    InvestigationBrief:
+      type: object
+      title: InvestigationBrief
+      description: An investigation's current brief, with everything the card draws beside it.
+      additionalProperties: false
+      required: [investigation, brief, sources, matrix, proposed, provenance, exportFilename]
+      properties:
+        investigation:
+          type: object
+          additionalProperties: false
+          required: [id, displayId, question, kind, kindLabel, tintKey, depth, status]
+          properties:
+            id: { type: string, format: uuid }
+            displayId:
+              type: string
+              description: "`RS-127`."
+            question: { type: string }
+            kind:
+              type: string
+              description: The kind's slug — `gap_analysis`.
+            kindLabel: { type: string }
+            tintKey:
+              type: string
+              description: The kind chip's hue key — `bug`, `reg`, `road`, `gap`.
+            depth: { type: string, enum: [quick, standard, deep_dive] }
+            status:
+              type: string
+              enum: [queued, running, brief_ready, issues_filed, failed, cancelled]
+        brief:
+          type: object
+          additionalProperties: false
+          required: [id, version, createdAt, paragraphs]
+          properties:
+            id: { type: string, format: uuid }
+            version: { type: integer, minimum: 1 }
+            createdAt: { type: string, format: date-time }
+            paragraphs:
+              type: array
+              items:
+                $ref: "#/components/schemas/BriefParagraph"
+        sources:
+          type: object
+          additionalProperties: false
+          required: [cited, panel]
+          properties:
+            cited:
+              type: integer
+              minimum: 0
+              description: How many records the ledger holds — the panel's `44 cited`.
+            panel:
+              type: array
+              description: The records the brief's own claims cite, in cite-number order.
+              items:
+                $ref: "#/components/schemas/BriefSource"
+        matrix:
+          oneOf:
+            - $ref: "#/components/schemas/CapabilityMatrix"
+            - type: "null"
+        proposed:
+          oneOf:
+            - $ref: "#/components/schemas/GapProposals"
+            - type: "null"
+        provenance:
+          type: object
+          additionalProperties: false
+          required: [researcher, alias]
+          properties:
+            researcher:
+              type: [string, "null"]
+              description: "`loop-v1`."
+            alias: { type: [string, "null"] }
+        exportFilename:
+          type: string
+          description: "`RS-127-brief.md`."
     ResolvedProvider:
       type: object
       title: ResolvedProvider

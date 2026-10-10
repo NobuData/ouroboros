@@ -5085,6 +5085,47 @@ numeric field**; and a locator the tool writes is always one `source_locator_val
 accepts and `queryOf()` reads back to the same query. CM.4's watch (#623) makes its nightly
 comparison through the same `compare`.
 
+## Research briefs
+
+A brief, read — mockup 22's featured card ([#621](https://github.com/NobuData/ouroboros/issues/621)):
+the read model, the sources ledger, the capability matrix builder, the proposed-from-gaps summary
+and the Markdown export. Everything is composed once (`BriefsService.document`) from the stored
+rows, and every route and the export read that composition — so a citation has one label on
+every surface, and it is the ledger's own stored number.
+
+```
+GET /api/v1/research/investigations/:id/brief         ─▶ paragraphs · panel · matrix · proposed
+GET /api/v1/research/investigations/:id/sources       ─▶ the whole ledger, excerpts + retrievedAt
+GET /api/v1/research/investigations/:id/brief/export  ─▶ RS-127-brief.md (text/markdown)
+
+matrix input ─ parse ─▶ complete rows, cited cells ─ deriveSeverity ─▶ rows + cells + links
+   uncited non-unknown cell ─▶ 422 matrix_cell_uncited        (nothing stored)
+   us partial · best rival shipping · proposed high ─▶ HIGH, derivation stored beside it
+```
+
+| File | What it holds |
+| --- | --- |
+| `research/briefs/brief.citations.ts` | `citeLabel()` — the one function that names a citation — and how a locator is printed and linked |
+| `research/briefs/brief.read-model.ts` | A stored body → paragraphs of spans with claim types, cites and code-reference segments |
+| `research/briefs/matrix.input.ts` | The gap-analysis deliverable input, parsed and held to decision V7 |
+| `research/briefs/matrix.severity.ts` | The severity rule and the derivation stored with each severity |
+| `research/briefs/matrix-builder.service.ts` | `MatrixBuilderService.build()` — idempotent; called by the loop when a matrix input is delivered |
+| `research/briefs/gap-proposals.ts` | `proposeFromGaps()` and the effort roll-up — what the chip row shows and #624 drafts |
+| `research/briefs/brief.export.ts` | `exportBrief()` and `readBriefExport()`, its inverse for citations |
+| `research/briefs/briefs.service.ts` | The composition; `proposed()` and `export()` are the contracts #624 builds on |
+| `research/briefs/briefs.repository.ts` | The reads, and the matrix written in one transaction under V112's deferred triggers |
+| `research/briefs/rs127.fixture.ts` | RS-127 as the seed writes it, and an in-memory store |
+
+**The severity rule.** Standing is `none` 0 · `partial`/`wip` 1 · `shipping` 2; a rival whose cell
+is `unknown` is left out. Ours `wip` → `wip`. Ours unknown, or no rival known → `low`. Otherwise
+distance = best known rival − ours: below 0 `lead`, 0 `low`, 1 `med` (or `high` when the
+investigation proposed `high`), 2 `high`. A proposed gap the cells do not support is clamped, and
+the stored derivation says so.
+
+**Building is best-effort at delivery.** The brief is written first and stands on its own; a
+matrix the builder refuses is logged with its reason and not stored in part. An investigation has
+one matrix, so a second build answers `exists`.
+
 ## Replay estimates
 
 `POST /internal/dry-runs/{id}/replay-estimates` is mockup 20's replayed row —
@@ -7363,6 +7404,7 @@ ouroboros-rest/
 │       │                   #   {matrix,persistence,isolation,honesty}.integration-spec · #199
 │       ├── replay-estimates/ # POST /internal/dry-runs/:id/replay-estimates — infra estimates from farm and test history · #561
 │       ├── research/       # POST /research/estimates — sources & cost, researcher pill · #622
+│       │   ├── briefs/     # a brief, read: GET /research/investigations/:id/{brief,sources,brief/export}, the matrix builder, severity rule, proposed-from-gaps, Markdown export · #621
 │       │   ├── loop/       # the investigation loop's control-plane half — /internal/research/investigations/:id/{start,checkpoint,brief,finish}, dispatch, cancel, the resume pass · #620
 │       │   ├── telemetry/  # the telemetry tool's reads: windows, re-runnable telemetry:// locators, readings (ok | no_data), the read-only repository · #619
 │       │   └── tools/      # ResearchToolAdapter SPI, registry, conformance kit, POST /internal/research/tools/:slug/:op · #614

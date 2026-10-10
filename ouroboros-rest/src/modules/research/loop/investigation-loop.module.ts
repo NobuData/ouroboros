@@ -13,6 +13,7 @@ import { AppConfigService } from "../../config/config.service";
 import { DbModule } from "../../db/db.module";
 import { EngineModule } from "../../engine/engine.module";
 import { RoutingModule } from "../../routing/routing.module";
+import { BriefsModule } from "../briefs/briefs.module";
 import { ResearchModule } from "../research.module";
 import { ResearchToolsModule } from "../tools/research-tools.module";
 import { InvestigationDispatchService } from "./investigation-dispatch.service";
@@ -22,7 +23,14 @@ import { InvestigationLoopService } from "./investigation-loop.service";
 import { InvestigationsInternalController } from "./investigations.internal.controller";
 
 @Module({
-  imports: [DbModule, EngineModule, RoutingModule, ResearchModule, ResearchToolsModule],
+  imports: [
+    DbModule,
+    EngineModule,
+    RoutingModule,
+    ResearchModule,
+    ResearchToolsModule,
+    BriefsModule,
+  ],
   controllers: [InvestigationsInternalController],
   providers: [
     InvestigationLoopRepository,

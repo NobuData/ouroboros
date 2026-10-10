@@ -147,6 +147,9 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   watchId: "5eed0094-0000-4000-8000-000000000011",
   // `/api/v1/research/document-imports/:importId` (#618). A well-formed uuid no workspace holds.
   importId: "5eed009a-0000-4000-8000-0000000000ff",
+  // `/api/v1/research/investigations/:investigationId/{brief,sources,brief/export}` (#621). A
+  // well-formed uuid no workspace holds.
+  investigationId: "5eed0084-0000-4000-8000-0000000000ff",
 };
 
 /**

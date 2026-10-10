@@ -6145,6 +6145,66 @@ export interface CompetitorSnapshotContentsTable {
   created_at: Stamped;
 }
 
+/** A matrix cell's status (V112's `matrix_cells_status` CHECK). */
+export type MatrixCellStatus = "shipping" | "partial" | "none" | "unknown" | "wip";
+
+/** A matrix row's gap severity (V112's `matrix_rows_gap_severity` CHECK). */
+export type MatrixGapSeverity = "high" | "med" | "low" | "wip" | "lead";
+
+/**
+ * `ouroboros.capability_matrices` — a gap analysis's matrix, one per investigation (V112,
+ * [#610](https://github.com/NobuData/ouroboros/issues/610)). Built by the matrix builder
+ * ([#621](https://github.com/NobuData/ouroboros/issues/621)).
+ */
+export interface CapabilityMatricesTable {
+  id: ColumnType<string, string | undefined, never>;
+  investigation_id: ColumnType<string, string, never>;
+  title: string;
+  /** The first column's name — `Helios`; the card adds `(us)`. */
+  us_label: string;
+  /** The rival columns, left to right — `competitors` ids. */
+  rivals: ColumnType<string[], string[], string[]>;
+  created_at: Stamped;
+}
+
+/**
+ * `ouroboros.matrix_rows` — a matrix's capabilities, in order, each with its gap severity and the
+ * derivation that produced it (V112). A severity cannot change without its derivation.
+ */
+export interface MatrixRowsTable {
+  id: ColumnType<string, string | undefined, never>;
+  matrix_id: ColumnType<string, string, never>;
+  capability: string;
+  sort_order: number;
+  gap_severity: MatrixGapSeverity;
+  /** The inputs that produced the severity — at most 1000 characters. */
+  severity_derivation: string;
+  created_at: Stamped;
+}
+
+/**
+ * `ouroboros.matrix_cells` — one cell per row and subject (V112). `competitor_id` null is us; a
+ * cell that is not `unknown` is cited by commit (`matrix_cells_cited`).
+ */
+export interface MatrixCellsTable {
+  id: ColumnType<string, string | undefined, never>;
+  investigation_id: ColumnType<string, string, never>;
+  matrix_id: ColumnType<string, string, never>;
+  row_id: ColumnType<string, string, never>;
+  competitor_id: ColumnType<string | null, string | null, never>;
+  status: MatrixCellStatus;
+  /** The label beside the glyph when it is not the status — `in flight`, `beta`. */
+  note: string | null;
+  created_at: Stamped;
+}
+
+/** `ouroboros.matrix_cell_sources` — the citations behind a cell (V112). */
+export interface MatrixCellSourcesTable {
+  investigation_id: ColumnType<string, string, never>;
+  cell_id: ColumnType<string, string, never>;
+  source_id: ColumnType<string, string, never>;
+}
+
 /** `code_bisects.status` (V118, #617). */
 export type CodeBisectStatus = "running" | "converged" | "inconclusive" | "failed" | "canceled";
 
@@ -7446,6 +7506,10 @@ export interface Database {
   competitor_watches: CompetitorWatchesTable;
   competitor_snapshots: CompetitorSnapshotsTable;
   competitor_snapshot_contents: CompetitorSnapshotContentsTable;
+  capability_matrices: CapabilityMatricesTable;
+  matrix_rows: MatrixRowsTable;
+  matrix_cells: MatrixCellsTable;
+  matrix_cell_sources: MatrixCellSourcesTable;
   code_bisects: CodeBisectsTable;
   code_bisect_steps: CodeBisectStepsTable;
   document_imports: DocumentImportsTable;
@@ -8776,6 +8840,27 @@ export const TABLE_COLUMNS = {
     "created_at",
   ],
   competitor_snapshot_contents: ["snapshot_id", "content", "created_at"],
+  capability_matrices: ["id", "investigation_id", "title", "us_label", "rivals", "created_at"],
+  matrix_rows: [
+    "id",
+    "matrix_id",
+    "capability",
+    "sort_order",
+    "gap_severity",
+    "severity_derivation",
+    "created_at",
+  ],
+  matrix_cells: [
+    "id",
+    "investigation_id",
+    "matrix_id",
+    "row_id",
+    "competitor_id",
+    "status",
+    "note",
+    "created_at",
+  ],
+  matrix_cell_sources: ["investigation_id", "cell_id", "source_id"],
   code_bisects: [
     "id",
     "organization_id",

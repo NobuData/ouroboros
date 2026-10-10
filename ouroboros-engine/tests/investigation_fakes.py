@@ -157,6 +157,23 @@ DELIVERABLES: dict[str, dict[str, Any]] = {
                 ],
             }
         ],
+        "epic": "Docking parity",
+        "tickets": [
+            {
+                "key": "DOCK-1",
+                "title": "wind-feedforward MPC",
+                "effort": "m",
+                "capability": "Docking in >8 m/s gusts",
+                "cites": ["02"],
+            },
+            {
+                "key": "DOCK-2",
+                "title": "gust estimator",
+                "effort": "s",
+                "capability": "Docking in >8 m/s gusts",
+                "cites": [],
+            },
+        ],
     },
     "fix_draft": {
         "title": "Retune approach gains",

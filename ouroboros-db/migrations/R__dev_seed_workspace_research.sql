@@ -26,6 +26,11 @@
 --     if it settles on another, those nineteen statuses are the one place that moves.
 --   * **The capability matrix** — RS-127's five capabilities × four subjects, every cell but the
 --     honest `? unknown` citing RS-127's own ledger, each row's gap severity with its derivation.
+--   * **RS-127's matrix input** (#621) — what the `gap_analysis@1` playbook produced beside the
+--     brief: the same cells and citations, each row's *proposed* gap, the epic `Docking parity`
+--     and its five ticket stubs. The matrix builder derives the seeded severities from it, and the
+--     card's `Proposed from gaps` chips — `DOCK-1 wind-feedforward MPC`, `DOCK-2 re-planned
+--     retry`, `+3 more`, `L` — are computed from it.
 --   * **The competitor registry** — four rivals, their watches over release notes, changelogs and
 --     filings (the tracker's `4 rivals watched · release notes, changelogs, filings` is the
 --     `competitor_tracker_summary` view), and one archived snapshot pair whose second snapshot
@@ -525,6 +530,68 @@ select cell.investigation_id, cell.id, source.id
   join ouroboros.source_records source on source.investigation_id = cell.investigation_id
                                       and source.cite_no = link.cite_no
  where ${ouro_dev_seed}
+on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
+-- RS-127's matrix input — the deliverable input the matrix above was built from (#621, CM.2).
+--
+-- Written from the matrix rows themselves, so the two cannot drift: the title and columns, every
+-- cell with the status a playbook writes (`beta` for a partial labelled beta, `in_flight` for a
+-- wip) and its sources, and each row's gap as the investigation *proposed* it — the severity rule
+-- needs it to tell rows one and three apart, whose cells are the same. Beside the rows: the epic
+-- and the five ticket stubs mockup 22's chip row previews (`EPIC · Docking parity`, `DOCK-1
+-- wind-feedforward MPC`, `DOCK-2 re-planned retry`, `+3 more`, effort `L` — m m m l s is 16
+-- points), each naming the capability row it closes and citing RS-127's own ledger.
+-- ---------------------------------------------------------------------------
+insert into ouroboros.investigation_deliverable_inputs (investigation_id, brief_id, deliverable,
+                                                        payload, created_at)
+select m.investigation_id, brief.id, 'matrix',
+       jsonb_build_object(
+         'title', m.title,
+         'us', m.us_label,
+         'rivals', (select jsonb_agg(c.name order by r.ord)
+                      from unnest(m.rivals) with ordinality as r (id, ord)
+                      join ouroboros.competitors c on c.id = r.id),
+         'rows', (select jsonb_agg(jsonb_build_object(
+                           'capability', mr.capability,
+                           'gap', mr.gap_severity,
+                           'cells', (select jsonb_agg(jsonb_build_object(
+                                              'subject', coalesce(co.name, m.us_label),
+                                              'status', case when cell.status = 'wip' then 'in_flight'
+                                                             when cell.note = 'beta' then 'beta'
+                                                             else cell.status end,
+                                              'sources', coalesce(
+                                                (select jsonb_agg(l.source_id order by src.cite_no)
+                                                   from ouroboros.matrix_cell_sources l
+                                                   join ouroboros.source_records src on src.id = l.source_id
+                                                  where l.cell_id = cell.id), '[]'::jsonb))
+                                            order by coalesce(array_position(m.rivals, cell.competitor_id), 0))
+                                       from ouroboros.matrix_cells cell
+                                       left join ouroboros.competitors co on co.id = cell.competitor_id
+                                      where cell.row_id = mr.id))
+                         order by mr.sort_order)
+                    from ouroboros.matrix_rows mr where mr.matrix_id = m.id),
+         'epic', 'Docking parity',
+         'tickets', (select jsonb_agg(jsonb_build_object(
+                              'key', t.key, 'title', t.title, 'effort', t.effort,
+                              'capability', t.capability,
+                              'sources', (select jsonb_agg(src.id order by src.cite_no)
+                                            from ouroboros.source_records src
+                                           where src.investigation_id = m.investigation_id
+                                             and src.cite_no = any (t.cites)))
+                            order by t.n)
+                       from (values
+                         (1, 'DOCK-1', 'wind-feedforward MPC',               'm', 'Docking in >8 m/s gusts',              array[12, 31]),
+                         (2, 'DOCK-2', 're-planned retry',                   'm', 'Abort & retry recovery logic',         array[9, 19]),
+                         (3, 'DOCK-3', 'gust estimator from IMU residuals',  'm', 'Docking in >8 m/s gusts',              array[25]),
+                         (4, 'DOCK-4', 'visual-inertial approach prototype', 'l', 'Visual-inertial approach (no beacon)', array[2]),
+                         (5, 'DOCK-5', 'HIL gust-profile regression suite',  's', 'Docking in >8 m/s gusts',              array[26])
+                       ) as t (n, key, title, effort, capability, cites))),
+       brief.created_at
+  from ouroboros.capability_matrices m
+  join ouroboros.briefs brief on brief.investigation_id = m.investigation_id and brief.version = 1
+ where m.id = '5eed0095-0000-4000-8000-000000000127'
+   and ${ouro_dev_seed}
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------

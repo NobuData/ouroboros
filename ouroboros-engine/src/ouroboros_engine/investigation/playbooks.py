@@ -61,8 +61,15 @@ TEMPLATES: dict[str, SynthesisTemplate] = {
                 '[{"capability": string, "gap": "high"|"med"|"low"|"wip"|"lead", '
                 '"cells": [{"subject": string, "status": '
                 '"shipping"|"partial"|"beta"|"in_flight"|"none"|"unknown", "cites": '
-                "[string]}]}]} — one cell per subject (us and every rival) in every row. "
-                'A cell you have no source for has status "unknown". ' + _CITES_RULE
+                '[string]}]}], "epic": string, "tickets": [{"key": string, "title": string, '
+                '"effort": "xs"|"s"|"m"|"l"|"xl", "capability": string, "cites": [string]}]} '
+                "— one cell per subject (us and every rival) in every row. "
+                'A cell you have no source for has status "unknown". "gap" is the severity '
+                "you propose for the row; the stored one is derived from the cells. "
+                '"epic" names the work that would close the high and med gaps, and each '
+                'ticket is one piece of it: a short key such as "DOCK-1", a title, a size, '
+                'and in "capability" the exact capability of the row it closes. '
+                + _CITES_RULE
             ),
         },
     ),
