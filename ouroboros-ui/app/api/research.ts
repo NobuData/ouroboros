@@ -75,6 +75,9 @@ export type StartedInvestigation = components["schemas"]["StartedInvestigation"]
 /** What a cancel answers. */
 export type CancelledInvestigation = components["schemas"]["CancelledInvestigation"];
 
+/** One row of the investigations card, History and the library. */
+export type Investigation = components["schemas"]["Investigation"];
+
 /** A page of investigations under the card's two counts. */
 export type InvestigationList = components["schemas"]["InvestigationList"];
 

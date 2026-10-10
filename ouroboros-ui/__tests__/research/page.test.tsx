@@ -6,7 +6,7 @@ import { ADMIN_ONLY_START_REASON, START_LABEL } from "@/app/research/composer";
 import { VIEWER_START_REASON } from "@/app/research/view";
 
 import { membership, sessionUser } from "../helpers/login";
-import { composerReadings, featuredBrief } from "../helpers/research";
+import { composerReadings, featuredBrief, investigationDetail, investigationList, seededBrief } from "../helpers/research";
 
 /**
  * The research route (#627): the gate is asked first, the address's view is read, and the
@@ -17,10 +17,20 @@ import { composerReadings, featuredBrief } from "../helpers/research";
 const requireWorkspace = vi.fn();
 const readComposer = vi.fn();
 const readFeaturedBrief = vi.fn();
+const readInvestigationPage = vi.fn();
+const readOpenedInvestigation = vi.fn();
 
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
 vi.mock("@/app/research/composer-data", () => ({ readComposer: () => readComposer() }));
 vi.mock("@/app/research/brief-data", () => ({ readFeaturedBrief: () => readFeaturedBrief() }));
+vi.mock("@/app/research/investigations-data", () => ({
+  readInvestigationPage: (filters: unknown) => readInvestigationPage(filters),
+  readOpenedInvestigation: (id: unknown) => readOpenedInvestigation(id),
+}));
+vi.mock("@/app/research/investigations-actions", () => ({
+  readInvestigations: () => new Promise(() => {}),
+  openInvestigation: () => new Promise(() => {}),
+}));
 vi.mock("@/app/research/brief-actions", () => ({
   readBriefLedger: () => new Promise(() => {}),
   readTrackers: () => new Promise(() => {}),
@@ -67,6 +77,10 @@ beforeEach(() => {
   requireWorkspace.mockReset().mockResolvedValue(access());
   readComposer.mockReset().mockResolvedValue(composerReadings());
   readFeaturedBrief.mockReset().mockResolvedValue({ ok: true, value: featuredBrief() });
+  readInvestigationPage.mockReset().mockResolvedValue({ ok: true, value: investigationList() });
+  readOpenedInvestigation
+    .mockReset()
+    .mockResolvedValue({ ok: true, value: { detail: investigationDetail({ displayId: "RS-127" }), brief: seededBrief() } });
 });
 
 describe("the research route", () => {
@@ -76,7 +90,10 @@ describe("the research route", () => {
     expect(requireWorkspace).toHaveBeenCalledOnce();
     expect(readComposer).toHaveBeenCalledOnce();
     expect(readFeaturedBrief).toHaveBeenCalledOnce();
+    expect(readInvestigationPage).toHaveBeenCalledExactlyOnceWith({ kind: null, status: "active", quarter: null });
+    expect(readOpenedInvestigation).not.toHaveBeenCalled();
     expect(screen.getByRole("region", { name: /RS-127/ })).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Investigations" }).querySelectorAll("li")).toHaveLength(4);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
       "Ask a hard question. Get an evidenced answer — and the tickets to act on it.",
     );
@@ -94,6 +111,15 @@ describe("the research route", () => {
     render(await page({ view: "library" }));
 
     expect(document.getElementById("investigations")).toHaveClass("research__seat--highlight");
+  });
+
+  it("reads the library's facets off the address, and opens the investigation it names", async () => {
+    render(await page({ view: "library", kind: "gap_analysis", status: "brief_ready", quarter: "current", open: "5eed0084-0000-4000-8000-000000000127" }));
+
+    expect(readInvestigationPage).toHaveBeenCalledExactlyOnceWith({ kind: "gap_analysis", status: "brief_ready", quarter: "current" });
+    expect(readOpenedInvestigation).toHaveBeenCalledExactlyOnceWith("5eed0084-0000-4000-8000-000000000127");
+    expect(screen.getByRole("region", { name: "Research library" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "← All investigations" })).toBeInTheDocument();
   });
 
   it("opens the page from its top for a view nobody wrote", async () => {

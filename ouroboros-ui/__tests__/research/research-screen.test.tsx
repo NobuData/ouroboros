@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { COMPOSER_TITLE, QUESTION_LABEL, START_LABEL, runOf } from "@/app/research/composer";
 import type { ResearchScreenProps } from "@/app/research/research-screen";
-import { RESEARCH_REGIONS, VIEWER_START_REASON } from "@/app/research/view";
+import { NO_FILTERS, RESEARCH_REGIONS, VIEWER_START_REASON } from "@/app/research/view";
 import { paneLandingClaimed } from "@/app/shell/pane-anchor";
 
 import {
@@ -12,6 +12,7 @@ import {
   composerReadings,
   depthEstimates,
   featuredBrief,
+  investigationList,
   openFakeSource,
   progress,
   startedInvestigation,
@@ -32,6 +33,10 @@ vi.mock("@/app/research/composer-actions", () => ({
   startInvestigation: (body: unknown) => startInvestigation(body),
   cancelInvestigation: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "x" } }),
   readInvestigation: (id: unknown) => readInvestigation(id),
+}));
+vi.mock("@/app/research/investigations-actions", () => ({
+  readInvestigations: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "x" } }),
+  openInvestigation: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "x" } }),
 }));
 vi.mock("@/app/research/brief-actions", () => ({
   readBriefLedger: () => Promise.resolve({ ok: true, total: 0, items: [] }),
@@ -66,7 +71,10 @@ function Screen(over: Partial<ResearchScreenProps>) {
     <ResearchScreen
       brief={{ ok: true, value: featuredBrief() }}
       composer={composerReadings()}
+      filters={NO_FILTERS}
+      investigations={{ ok: true, value: investigationList() }}
       mayDraft
+      opened={null}
       openProgress={openFakeSource}
       startReason={null}
       view="page"
@@ -282,8 +290,11 @@ describe("the grid frame", () => {
       const card = screen.getByRole("region", { name: region.id === "brief" ? /RS-127/ : region.title });
 
       expect(seat(region.id)).toContainElement(card);
-      if (region.id === "composer" || region.id === "brief") expect(card).not.toHaveTextContent(region.arrives);
-      else expect(card).toHaveTextContent(region.arrives);
+      if (region.id === "composer" || region.id === "brief" || region.id === "investigations") {
+        expect(card).not.toHaveTextContent(region.arrives);
+      } else {
+        expect(card).toHaveTextContent(region.arrives);
+      }
     }
   });
 
@@ -360,5 +371,37 @@ describe("the featured brief in its seat (#630)", () => {
     render(<Screen brief={{ ok: true, value: null }} />);
 
     expect(screen.getByRole("region", { name: "Featured brief" })).toHaveTextContent("No brief yet");
+  });
+});
+
+describe("the investigations in their seat (#632)", () => {
+  it("fills the investigations seat with the card's rows", () => {
+    render(<Screen />);
+
+    const card = within(seat("investigations")).getByRole("region", { name: "Investigations" });
+    expect(within(card).getByRole("list", { name: "Investigations" }).querySelectorAll("li")).toHaveLength(4);
+    expect(within(card).getByText("4 active · 23 this quarter")).toBeInTheDocument();
+  });
+
+  it("lands brief ↑ on the featured brief's seat, and to roadmap → on the pipeline's", () => {
+    render(<Screen />);
+    const card = within(seat("investigations"));
+
+    fireEvent.click(card.getByRole("button", { name: "brief ↑" }));
+    expect(seat("brief")).toHaveFocus();
+    expect(seat("brief")).toHaveClass("research__seat--highlight");
+
+    fireEvent.click(card.getByRole("button", { name: "to roadmap →" }));
+    expect(seat("pipeline")).toHaveFocus();
+    expect(seat("pipeline")).toHaveClass("research__seat--highlight");
+    expect(seat("brief")).not.toHaveClass("research__seat--highlight");
+  });
+
+  it("opens the library at its address, facets showing, landed on the seat", () => {
+    render(<Screen filters={{ kind: "gap_analysis", status: null, quarter: null }} view="library" />);
+
+    expect(screen.getByRole("region", { name: "Research library" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Kind")).toHaveValue("gap_analysis");
+    expect(seat("investigations")).toHaveFocus();
   });
 });

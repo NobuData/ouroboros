@@ -32,9 +32,11 @@ The head states what the page is for:
 
 Two buttons sit beside it:
 
-- **Research library** opens `/research?view=library`. The page opens scrolled to
-  **Investigations**, which is outlined until you move on. A link to that address opens the
-  same way; any other value of `view` opens the page from its top.
+- **Research library** opens `/research?view=library`: the page opens scrolled to
+  **Investigations**, which is outlined until you move on, and the card shows every
+  investigation with its filters — see [Investigations and the library](#investigations-and-the-library).
+  A link to that address opens the same way; any other value of `view` opens the page from its
+  top.
 - **New investigation** scrolls to **Start an investigation** and outlines it. It opens no
   dialog: the composer is part of the page.
 
@@ -47,7 +49,7 @@ Below the head, the page has six regions:
 | **Regression watch** | Drift against each release's baseline, from detection to a merged fix |
 | **Featured brief** | A cited brief, with its capability matrix and numbered sources |
 | **Roadmap pipeline** | A brief's roadmap document, and the issues filed from it |
-| **Investigations** | Every investigation, and the library: the same list filtered by kind, status and quarter |
+| **Investigations** | Every investigation, and the library: the same list filtered by kind, status and quarter — see [Investigations and the library](#investigations-and-the-library) |
 
 On a wide screen **Start an investigation** sits beside **Research tools** and **Regression
 watch**, and the other three run the full width below. On a narrow screen all six stack in that
@@ -1023,3 +1025,60 @@ tracker.
 
 The check also finishes what an earlier step could not: it retries a file that is still
 `pending`, and it notices that a pull request was merged or closed.
+
+## Investigations and the library
+
+The **Investigations** card at the foot of the page lists the workspace's investigations —
+the active ones by default, and every one in the library. <Since version="0.148.0" module="ouroboros-ui" />
+
+<Screenshot id="user-guide.research.library" />
+
+### The rows
+
+The card's head counts the workspace: `4 active · 23 this quarter`. **Active** is every
+investigation that did not fail and was not cancelled; **this quarter** is every investigation
+started in the current calendar quarter, counted in UTC against the real quarter boundary, so the
+number resets when the quarter turns.
+
+Each row shows:
+
+- the investigation's number, `RS-127`, and its kind as a chip in the kind's colour;
+- the question, over a sub-line with the source count and the depth — `44 sources · deep dive`;
+- a status pill: **queued**, **running**, **cancelling**, **✓ brief ready**, **✓ issues filed**,
+  **failed**, **cancelled** — or **fix loop live**, for a finished bug investigation whose fix
+  ticket has a loop running now. A pill pulses while something is running;
+- the one link that matters for it, when it has one:
+
+| Link | Where it goes | When |
+| --- | --- | --- |
+| **open run →** | The run console of the loop fixing what the investigation found | The fix ticket has a run in flight |
+| **to roadmap →** | The **Roadmap pipeline** region | A roadmap document was generated from the brief |
+| **brief ↑** | The **Featured brief** region for the featured investigation; the row's own brief for any other | The investigation delivered a brief |
+| **evidence →** | The test results the investigation's evidence came from | A source measured a test run |
+
+A **running or queued row is live**: its source count and pill update as the investigation works,
+without a reload.
+
+**Click a row's question** to open the investigation in place of the rows: a finished one shows
+[its brief](#reading-a-brief), the same card as the featured brief; one that has not finished
+shows its status and progress. **← All investigations** returns to the rows. The address carries
+the open investigation (`?open=…`), so it can be shared.
+
+### History and the library
+
+**History** in the card's head — and **Research library** in the page head — open the same
+view: every investigation, newest first, with three filters that combine:
+
+| Filter | Choices |
+| --- | --- |
+| **Kind** | All kinds, or one of the workspace's kinds |
+| **Status** | All statuses, **Active**, or one status |
+| **Quarter** | All quarters, **This quarter**, or one of the last eight quarters, `Q3 2026` |
+
+The filters are written into the address — `/research?view=library&kind=gap_analysis&status=brief_ready&quarter=current` —
+so a filtered view can be bookmarked or sent to someone, and opens the same way. **Active**
+returns to the active list. The library shows twenty-five rows at a time; **Show more** adds the
+next page.
+
+The card closes with the page's promise: *Every investigation ends the same way the build loop
+does: with evidence — and, when you approve, with tickets the loop picks up next.*

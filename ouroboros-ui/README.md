@@ -4942,6 +4942,9 @@ The same loop that handles the build runs investigations — …        [Researc
 | [`app/research/brief-card.tsx`](app/research/brief-card.tsx) | The card: head, matrix beside the text, sources and proposals beside them, the ledger sheet — and the featured seat's none-yet and unreadable states |
 | [`app/research/brief-matrix.tsx`](app/research/brief-matrix.tsx) · [`brief-body.tsx`](app/research/brief-body.tsx) · [`brief-sources.tsx`](app/research/brief-sources.tsx) · [`brief-proposed.tsx`](app/research/brief-proposed.tsx) · [`brief-deliverables.tsx`](app/research/brief-deliverables.tsx) · [`brief-draft-epic.tsx`](app/research/brief-draft-epic.tsx) | The pieces: the matrix with each cell's evidence, the text with its markers, the panel and the ledger sheet, the proposed chips, the **Led to:** strip, and the draft action with its tracker dialog |
 | [`app/research/brief-data.ts`](app/research/brief-data.ts) · [`brief-actions.ts`](app/research/brief-actions.ts) · [`app/api/brief-export.ts`](app/api/brief-export.ts) | The server's half: the featured brief's read, the ledger/trackers/draft-epic actions, and the export pass-through |
+| [`app/research/investigations.ts`](app/research/investigations.ts) | The investigations card's decisions, framework-free: its words, a row's sub-line, where each contextual link leads, what a live reading does to a row, the facets' choices and queries |
+| [`app/research/investigations-card.tsx`](app/research/investigations-card.tsx) · [`investigations-row.tsx`](app/research/investigations-row.tsx) | The card: the counts, History ↔ Active, the rows following their streams, a row opened full-width, Show more — and the row and the three facets |
+| [`app/research/investigations-data.ts`](app/research/investigations-data.ts) · [`investigations-actions.ts`](app/research/investigations-actions.ts) | The server's half: the page the address asks for and the opened investigation, read with the page; the re-reads and the open action |
 
 **The head's copy is verbatim** and lives in `view.ts` — the headline is the page's thesis, and a
 test holds both strings to the issue's wording.
@@ -5078,6 +5081,52 @@ lifecycle detail and no new contract: a fix draft (Planning), a drafted batch (i
 roadmap document (lands on the pipeline's seat until #631 mounts its card there), the live run
 and the evidence run (their consoles, lit under the `research` run origin), and a forensics
 brief's culprit from its ledger's `bisect://` record.
+
+### The investigations card
+
+The investigations card (CN.6, [#632](https://github.com/NobuData/ouroboros/issues/632)) is
+mockup 22's closing card in the last seat, and the library the head's **Research library** opens
+(decision V11): one list, two views, three facets.
+
+```
+INVESTIGATIONS  [4 active · 23 this quarter]                                       [History]
+ RS-127  (Gap analysis)   Autonomous docking vs. Skylink / AeroMesh / Novum
+                          44 sources · deep dive                 (✓ brief ready)    brief ↑
+ RS-124  (Roadmap & …)    Q4 product improvements …
+                          312 sources · deep dive                (✓ issues filed)   to roadmap →
+ RS-121  (Regression …)   Motor PID overshoot …    9 sources · standard   (queued)  evidence →
+ RS-118  (Bug root cause) Root cause: altimeter …  18 sources · deep dive (● fix loop live) open run →
+ "Every investigation ends the same way the build loop does: …"
+RESEARCH LIBRARY  [Kind ▾] [Status ▾] [Quarter ▾]  … every row …  [Show more — 25 of 27]   [Active]
+```
+
+**The rows are the service's.** `GET /api/v1/research/investigations` derives each row's pill and
+its one contextual link (`run` / `roadmap` / `brief` / `evidence`); the card decides only the
+address each leads to (`investigations.ts` § `rowLinkTarget`): the run and the evidence to their
+consoles under the `research` origin, the roadmap to the pipeline's seat, `brief ↑` to the
+Featured brief seat when the row is the featured one and to the row's own brief otherwise. The
+sub-line says what the row measures — `44 sources · deep dive` — because the mockup's sub-lines
+are hand-written and the service composes none. The counts are the service's: `thisQuarter` is
+counted over a real UTC calendar quarter.
+
+**Live rows are live.** Every queued or running row follows its progress stream
+(`watchInvestigation`), ticking its source count and pill; when a run ends the list is re-read so
+the pill and link are the service's derived ones. `fix loop live` pulses on the service's `live`
+flag alone — it is a run's state, not the investigation's stream. Where the runtime has no
+`EventSource` the watcher is silent rather than failing.
+
+**History and the library are one view, and the facets are the address.** **History** (and the
+head's **Research library**) shows every investigation with kind, status and quarter facets that
+compose; each change rewrites `?view=library&kind=…&status=…&quarter=…` with `replaceState` — so
+Back leaves the page — and the route reads the same address back on load
+(`view.ts` § `parseLibraryFilters`, `researchAddress`). Twenty-five rows a page, **Show more** for
+the next; the pane scrolls, not the list — the frame's sheet promises no scroll container of its
+own.
+
+**A row opens full-width.** Pressing the question opens the investigation in place of the rows —
+`BriefCard` for one that delivered a brief, its progress and an honest *No brief yet* for one
+that has not — with `← All investigations` back and `?open=<id>` in the address, which the route
+honours on load.
 
 ## Run console
 

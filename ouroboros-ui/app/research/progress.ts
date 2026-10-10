@@ -102,14 +102,18 @@ export function isProgressReading(data: Record<string, unknown>): data is Invest
   return typeof data.status === "string" && typeof data.sources === "number";
 }
 
+/** A source that never speaks — for a runtime with no `EventSource`, where a row simply does not tick. */
+const SILENT_SOURCE: ProgressSource = { addEventListener: () => {}, close: () => {} };
+
 /**
  * Open the browser's `EventSource` on a URL.
  *
  * @param url The stream.
- * @returns The source.
+ * @returns The source — or a silent one where the runtime has no `EventSource` (a server render,
+ *   a test document), so a card with live rows can be drawn anywhere and ticks where it can.
  */
 function browserSource(url: string): ProgressSource {
-  return new EventSource(url);
+  return typeof EventSource === "undefined" ? SILENT_SOURCE : new EventSource(url);
 }
 
 /**
