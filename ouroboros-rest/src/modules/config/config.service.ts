@@ -435,6 +435,14 @@ export class AppConfigService {
   }
 
   /**
+   * `OURO_RESEARCH_REGRESSION_TICK_MS` — how often the regression watch runs its pass; 0 off
+   * (#623).
+   */
+  get researchRegressionTickMs(): number {
+    return this.config.getOrThrow<number>("researchRegressionTickMs");
+  }
+
+  /**
    * Days without a tracker update after which an open ticket is stale — `OURO_BACKLOG_STALE_DAYS`.
    *
    * The Backlog Health card's third meter (AL.5, #281); configurable rather than mockup 09's fixed
@@ -644,6 +652,7 @@ export class AppConfigService {
       researchCodeTimeoutMs: this.researchCodeTimeoutMs,
       researchBisectTickMs: this.researchBisectTickMs,
       researchInvestigationTickMs: this.researchInvestigationTickMs,
+      researchRegressionTickMs: this.researchRegressionTickMs,
       backlogStaleDays: this.backlogStaleDays,
       reestimationHourUtc: this.reestimationHourUtc,
       reestimationJitterMinutes: this.reestimationJitterMinutes,

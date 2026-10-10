@@ -18,6 +18,7 @@
  * planning.push_batch          AL.3 push
  * planning.require_bench_upgrade  AL.4 compose a one-draft bench-gap batch (planner bench-v1)
  * facts.confirm / facts.retire BF facts: confirm|reconfirm, reject|expire
+ * research.dismiss_watch_item  CM.4 dismiss the regression watch item, with the note as its reason
  * ```
  *
  * Declared bindings with no plane operation yet — `workflow.sign_off_plan` (the DSL has no human
@@ -36,6 +37,8 @@ import { BatchesService } from "../planning/batches.service";
 import { CriteriaService } from "../pull-requests/criteria/criteria.service";
 import { MergeExecutorService } from "../pull-requests/merge/merge.executor";
 import { PageActionsService } from "../pull-requests/page/page.actions";
+import { watchItemOf } from "../research/watch/watch.inbox";
+import { RegressionWatchService } from "../research/watch/watch.service";
 import { forbidden } from "../tenancy/tenancy.errors";
 import {
   allowOnceStillBlocked,
@@ -141,6 +144,7 @@ export class InboxActionHandlers {
    * @param controls - AP.4's control queue.
    * @param batches - AL.3/AL.4's batches.
    * @param facts - The knowledge plane's facts.
+   * @param watch - CM.4's regression watch.
    */
   constructor(
     private readonly repository: InboxActionsRepository,
@@ -151,6 +155,7 @@ export class InboxActionHandlers {
     private readonly controls: ControlsService,
     private readonly batches: BatchesService,
     private readonly facts: FactsService,
+    private readonly watch: RegressionWatchService,
   ) {
     this.bindings = new Map<string, ActionHandler>([
       ["pr.approve_and_merge", (context) => this.approveAndMerge(context)],
@@ -164,6 +169,7 @@ export class InboxActionHandlers {
       ["planning.require_bench_upgrade", (context) => this.requireBenchUpgrade(context)],
       ["facts.confirm", (context) => this.confirmFact(context)],
       ["facts.retire", (context) => this.retireFact(context)],
+      ["research.dismiss_watch_item", (context) => this.dismissWatchItem(context)],
     ]);
   }
 
@@ -372,6 +378,29 @@ export class InboxActionHandlers {
     });
 
     return { run_id: runId, control_id: control.id, control_state: control.state };
+  }
+
+  /**
+   * **Dismiss drift** — CM.4 dismisses the watch item the card is about, the note as its reason.
+   *
+   * @param context - The item, the person and the note.
+   * @returns `{watch_item_id, status}`.
+   */
+  private async dismissWatchItem(context: ActionContext): Promise<ActionOutcome> {
+    const itemId = watchItemOf(context.item.sourceRef);
+
+    if (itemId === undefined) {
+      throw decisionItemRefMissing(context.item.id, "a watch item in its source reference");
+    }
+
+    const dismissed = await this.watch.dismiss(
+      context.organizationId,
+      context.actor.id,
+      itemId,
+      context.note?.trim() || "Dismissed from the inbox.",
+    );
+
+    return { watch_item_id: dismissed.id, status: dismissed.status };
   }
 
   /**

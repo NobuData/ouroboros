@@ -29,6 +29,7 @@ import { InboxActionsController } from "./inbox-actions.controller";
 import { InboxActionHandlers } from "./inbox-actions.handlers";
 import { InboxActionsRepository } from "./inbox-actions.repository";
 import { InboxActionsService } from "./inbox-actions.service";
+import { RegressionWatchModule } from "../research/watch/watch.module";
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { InboxActionsService } from "./inbox-actions.service";
     GuardrailsModule,
     PlanningModule,
     FactsModule,
+    RegressionWatchModule,
   ],
   controllers: [InboxActionsController],
   providers: [

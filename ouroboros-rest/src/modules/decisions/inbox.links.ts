@@ -46,6 +46,8 @@ export const UI_ROUTES = {
   intake: (key: string): string => `/issues?q=${encodeURIComponent(key)}`,
   /** The planning page on one batch — `PLANNING_PATH` and `BATCH_PARAM`. */
   planningBatch: (batchId: string): string => `/planning?batch=${encodeURIComponent(batchId)}`,
+  /** The Research page — `RESEARCH_PATH`, where the regression watch card is. */
+  research: "/research",
   /** Knowledge's facts awaiting review — `FACTS_REGION_ID`. */
   knowledgeFacts: "/knowledge#facts-awaiting",
   /** Knowledge's repo profile, where protected paths are edited — `KNOWLEDGE_ENV_PATH`. */
@@ -159,6 +161,7 @@ const TARGETS: Readonly<Record<string, (context: LinkContext) => string | null>>
   run_diff: ({ refs }) => through(refId(refs, "run"), UI_ROUTES.runChanges),
   protected_paths_settings: () => UI_ROUTES.protectedPaths,
   knowledge_fact: () => UI_ROUTES.knowledgeFacts,
+  research_watch: () => UI_ROUTES.research,
   planning_batch: ({ sourceRef }) =>
     through(sourceSegment(sourceRef, "batch"), UI_ROUTES.planningBatch),
   ticket: ({ refs }) => {

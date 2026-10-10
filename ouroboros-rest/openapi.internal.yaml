@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.41.8"
+  version: "0.41.9"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -2167,6 +2167,68 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /internal/research/regression-watch/releases:
+    post:
+      tags: [research]
+      summary: Announce a release, so its regression baselines are captured
+      description: |-
+        Nothing in the control plane notices a release tag by itself. A CI step that tags a
+        release — or a webhook receiver, when one exists — posts the repository and the tag
+        here (CM.4, [#623](https://github.com/NobuData/ouroboros/issues/623)), and **every
+        workspace that watches a metric of that repository** captures that release's baselines:
+        each watched metric's window, read through the build & test telemetry tool.
+
+        The call names no workspace — which ones watch the repository is the control plane's
+        to know. A repository nobody watches answers `workspaces: 0` and captures nothing. A
+        release that already has a metric's baseline keeps it, so announcing a tag twice
+        captures nothing the second time.
+      operationId: announceRegressionWatchRelease
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegressionWatchRelease"
+            example:
+              repository: acme-robotics/helios-firmware
+              releaseTag: v2.0.4
+      responses:
+        "200":
+          description: How many workspaces watch the repository, and how many baselines were captured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegressionWatchReleaseAnnounced"
+              example:
+                repository: acme-robotics/helios-firmware
+                releaseTag: v2.0.4
+                workspaces: 1
+                captured: 3
+        "401":
+          description: |-
+            No `X-Ouro-Internal-Key`, or the wrong one. One constant body: `code:
+            "unauthenticated"`, a bare message and empty `details`, whichever it was.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: unauthenticated
+                message: Unauthorized.
+                details: {}
+        "422":
+          description: "`validation_failed` — the body is the wrong shape: `repository` is `owner/name`, `releaseTag` a tag with no white space."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: "`internal_error` — the service itself failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   parameters:
     RunId:
@@ -3905,6 +3967,38 @@ components:
                   minimum: 1
             - type: "null"
 
+    RegressionWatchRelease:
+      type: object
+      title: RegressionWatchRelease
+      description: A release, announced (CM.4, #623).
+      additionalProperties: false
+      required: [repository, releaseTag]
+      properties:
+        repository:
+          type: string
+          pattern: "^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$"
+          description: "`owner/name`."
+        releaseTag:
+          type: string
+          pattern: "^\\S{1,128}$"
+          description: The tag — `v2.0.4`.
+    RegressionWatchReleaseAnnounced:
+      type: object
+      title: RegressionWatchReleaseAnnounced
+      description: What an announcement did.
+      additionalProperties: false
+      required: [repository, releaseTag, workspaces, captured]
+      properties:
+        repository: { type: string }
+        releaseTag: { type: string }
+        workspaces:
+          type: integer
+          minimum: 0
+          description: How many workspaces watch a metric of the repository.
+        captured:
+          type: integer
+          minimum: 0
+          description: How many baselines were captured across them.
     ReplayEstimateRequest:
       description: |-
         One infra stage of a dry run to estimate from history (CD.3, #561). The workspace and

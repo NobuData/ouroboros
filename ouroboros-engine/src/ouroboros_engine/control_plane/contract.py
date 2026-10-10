@@ -98,6 +98,11 @@ RESEARCH_INVESTIGATION_PATHS = (
 #: ``insufficient_history`` with the count found — never a model's guess.
 DRY_RUN_REPLAY_ESTIMATES_PATH = "/internal/dry-runs/{id}/replay-estimates"
 
+#: The path a release is announced on (CM.4, #623), so every workspace that watches a metric of
+#: the repository captures that release's regression baselines. Mirrored here because this module
+#: mirrors every internal path; nothing in the engine calls it — a CI step that tags a release does.
+REGRESSION_WATCH_RELEASES_PATH = "/internal/research/regression-watch/releases"
+
 #: The four controls a person can send a run, and what an executor must do with each:
 #:
 #: ``pause``

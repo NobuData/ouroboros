@@ -164,6 +164,12 @@ const TEMPLATES: Readonly<Record<string, Template>> = {
       ? "updated a notification route"
       : `updated the ${kind.replaceAll("_", " ")} notification route`;
   },
+  "regression_watch.policy_updated": (f) =>
+    f.autoFile === true && f.previousAutoFile !== true
+      ? "let the regression watch file and queue fixes without asking"
+      : f.autoFile !== true && f.previousAutoFile === true
+        ? "stopped the regression watch filing fixes without asking"
+        : `turned the regression watch's automatic bisects ${f.autoBisect === true ? "on" : "off"}`,
 };
 
 /**

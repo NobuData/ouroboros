@@ -407,6 +407,166 @@ investigation names no window. It is 30 days unless changed.
 | **not configured** | Nothing has been measured yet. Telemetry appears once builds and tests have run. |
 | **down** | The measurements cannot be read |
 
+## Regression watch
+
+The [regression watch](../user-guide/research.mdx#regression-watch) compares each night's
+measurements with the last release's baseline, bisects real drift to a commit, opens a
+forensics investigation and drafts a fix. An Owner or a Maintainer decides what it watches, how
+sensitive it is, and how much it does without asking.
+<Since version="0.41.9" module="ouroboros-rest" />
+
+:::info[Set it up through the API for now]
+
+<UiPath path="Settings" /> has no card for the watch yet. An Owner or a Maintainer configures it
+through the REST API, signed in as themselves — a
+[service account's token](./members-and-tokens.mdx#api-tokens-and-service-accounts) can read
+the watch but not change it. Send the session cookie as
+[Who may start an investigation](#who-may-start-an-investigation) shows.
+
+| Request | What it does |
+| --- | --- |
+| `GET /api/v1/research/regression-watch/settings` | Reads the settings. Everyone in the workspace may. |
+| `PUT /api/v1/research/regression-watch/settings` | Saves them. A field you leave out keeps its stored value. |
+| `POST /api/v1/research/regression-watch/baselines` | Captures a release's baselines by hand: `{"repository": "owner/name", "releaseTag": "v2.0.4"}` |
+| `POST /api/v1/research/regression-watch/comparisons` | Runs the nightly comparison now |
+| `POST /api/v1/research/regression-watch/items/<item id>/dismiss` | Dismisses a watch item: `{"reason": "…"}` |
+
+:::
+
+### Watched metrics
+
+`metrics` lists what the watch captures a baseline of and compares every night. A workspace may
+watch up to 64 metrics. Each entry has:
+
+| Field | What it is |
+| --- | --- |
+| `repository` | The repository, as `owner/name` |
+| `source` | `bi_metric` for an Insights metric, `case_metric` for a measurement a test case records |
+| `key` | The Insights metric's id, such as `merge_rate`; or `<case key>:<measurement>` for a test case's |
+| `class` | `timing`, `accuracy`, `resource` or `rate`. It picks the [threshold defaults](#thresholds). |
+| `windowDays` | How many days a baseline and a nightly reading cover, from 1 to 90. `7` if you leave it out. |
+| `replay` | The metric's replayable test, or `null` |
+| `nightlyRef` | The branch or tag a bisect treats as bad. `HEAD`, the default branch, if you leave it out. |
+
+`replay` is what makes a metric bisectable. It names a build-farm `pool` and, optionally, the
+`command` each step runs — without one, the pool's default command runs. The command must
+**succeed on a good commit and fail on a bad one**. A metric with `replay: null` is still
+compared every night, but its drift is never bisected: the item stays **detected** with a
+`needs repro` note.
+
+```json
+{
+  "metrics": [
+    {
+      "repository": "acme-robotics/helios-firmware",
+      "source": "case_metric",
+      "key": "29f70bbc9eaa22505445bbf2378dc743e5b177119c5a09cdcde73870d0867560:hover_drift_cm",
+      "class": "accuracy",
+      "windowDays": 7,
+      "replay": { "pool": "pool-a", "command": ["west", "twister", "-T", "tests/hil/hover"] },
+      "nightlyRef": "main"
+    }
+  ]
+}
+```
+
+A save that lists a metric twice for one repository, or names an Insights metric that does not
+exist, is refused with `422 regression_watch_settings_invalid`.
+
+### Thresholds
+
+A threshold rule decides when a difference is drift. It has five parts:
+
+| Field | What it decides |
+| --- | --- |
+| `direction` | Which way is worse: `higher_is_worse`, `lower_is_worse`, or `either` |
+| `warnPct` | The move, as a percentage of the baseline, from which drift is a **warn** |
+| `errPct` | The move from which it is an **err**. At least `warnPct`. |
+| `minSpreadMultiple` | How many times the baseline's own spread a move must exceed. `0` turns this check off. |
+| `minSamples` | How many samples the nightly window needs before it is compared at all |
+
+Each class of metric has a default rule:
+
+| Class | `direction` | `warnPct` | `errPct` | `minSpreadMultiple` | `minSamples` |
+| --- | --- | --- | --- | --- | --- |
+| `timing` | `higher_is_worse` | 5 | 15 | 2 | 5 |
+| `accuracy` | `higher_is_worse` | 5 | 10 | 2 | 10 |
+| `resource` | `higher_is_worse` | 10 | 25 | 2 | 5 |
+| `rate` | `lower_is_worse` | 2 | 5 | 2 | 10 |
+
+`thresholds` overrides them. `classes` changes a whole class; `metrics` changes one metric by
+its `key`, and wins over its class. Send only the fields that differ, and send `warnPct` and
+`errPct` together:
+
+```json
+{
+  "thresholds": {
+    "classes": { "timing": { "warnPct": 3, "errPct": 10 } },
+    "metrics": { "merge_rate": { "minSamples": 20 } }
+  }
+}
+```
+
+Tune a noisy metric by raising its `minSpreadMultiple` or `minSamples` rather than its
+percentages. A metric recorded as a rate or a sum has no spread of its own, so only the
+percentages and `minSamples` apply to it.
+
+### Policies
+
+Two switches decide how much the watch does without asking:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `autoBisect` | `true` | Starts a bisect as soon as drift is detected on a metric that has a replayable test. Each step is a build-farm job. |
+| `autoFile` | `false` | Files the drafted fix ticket to your tracker and queues it for a loop, without waiting for a person |
+
+The watch always **drafts** the fix. Filing it is the opt-in: with `autoFile` off, the draft
+waits in [Planning](../user-guide/planning.mdx) until someone files it.
+
+A change to either switch is recorded in the [audit log](./retention-audit-lifecycle.mdx) as
+`regression_watch.policy_updated`, with both values before and after.
+
+`fixSourceId` names the ticket source fix drafts are written for. Leave it `null` in a workspace
+with one ticket source. With several, set it: until you do, the item stays at **investigating**
+with a note saying a source must be chosen.
+
+### Announcing a release
+
+Ouroboros does not notice a release tag by itself. To capture baselines when you tag a release,
+have your release pipeline announce it to the REST service's internal address, with the
+internal key:
+
+```bash
+curl -X POST "$OURO_REST_URL/internal/research/regression-watch/releases" \
+  -H "content-type: application/json" \
+  -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
+  -d '{"repository": "acme-robotics/helios-firmware", "releaseTag": "v2.0.4"}'
+```
+
+```json
+{"repository":"acme-robotics/helios-firmware","releaseTag":"v2.0.4","workspaces":1,"captured":3}
+```
+
+Every workspace that watches a metric of that repository captures its baselines. `workspaces`
+is how many watch it and `captured` how many baselines were stored. Announcing the same tag
+twice captures nothing the second time, because a baseline is never measured again.
+
+The internal address is not published by the app's public address — see
+[Deploying Ouroboros](./deploy/overview.mdx). The key is
+<EnvVar name="OURO_ENGINE_SHARED_SECRET" />.
+
+### When the watch runs
+
+Every <EnvVar name="OURO_RESEARCH_REGRESSION_TICK_MS" />, each REST replica runs one pass. A pass:
+
+- runs the nightly comparison for each workspace that has not been compared yet today (UTC);
+- moves every open watch item one step: starts or checks its bisect, opens the investigation,
+  drafts the fix, and follows the fix to its merge.
+
+A pass that is repeated, or that two replicas run at once, changes nothing twice. Setting the
+variable to `0` turns the pass off on that replica; baselines can still be captured and
+compared by hand.
+
 ## Who may start an investigation
 
 An investigation spends the workspace's money, so each workspace chooses the lowest role that
@@ -479,6 +639,7 @@ All but the clone variables are set on the REST service. Each has a working defa
 | <EnvVar name="OURO_RESEARCH_CODE_TIMEOUT_MS" /> | `120000` | How long one code & git mining question may wait for the engine, from 5 seconds to 15 minutes. |
 | <EnvVar name="OURO_RESEARCH_BISECT_TICK_MS" /> | `60000` | How often running bisects are checked and resumed, from 10 seconds to an hour. `0` turns the check off on that replica. |
 | <EnvVar name="OURO_RESEARCH_INVESTIGATION_TICK_MS" /> | `60000` | How often running investigations are checked for one to resume, from 10 seconds to an hour. `0` turns the check off on that replica. |
+| <EnvVar name="OURO_RESEARCH_REGRESSION_TICK_MS" /> | `300000` | How often the regression watch runs its pass, from 10 seconds to an hour. `0` turns the pass off on that replica. |
 
 The engine reads the clone variables:
 
