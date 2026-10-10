@@ -1,5 +1,6 @@
 import { requireWorkspace } from "@/app/api/access";
 import { mayAdminister, mayContribute } from "@/app/api/membership";
+import { readFeaturedBrief } from "@/app/research/brief-data";
 import { startGate } from "@/app/research/composer";
 import { readComposer } from "@/app/research/composer-data";
 import { ResearchScreen } from "@/app/research/research-screen";
@@ -11,11 +12,13 @@ import { VIEW_PARAM, parseView } from "@/app/research/view";
  *
  * Thin on purpose, the shape every screen in `(app)` takes: the gate returns the workspace this
  * request may render, and a component draws it. The frame reads nothing from the service — its
- * regions do, as CN.2–CN.6 mount them; the composer's three reads (CN.2,
- * [#628](https://github.com/NobuData/ouroboros/issues/628)) are made here, once, so the card
- * arrives whole (`app/research/composer-data.ts`). The decisions are in
- * [`app/research/view.ts`](../../research/view.ts) and
- * [`app/research/composer.ts`](../../research/composer.ts).
+ * regions do, as their cards mount: the composer's three reads (CN.2,
+ * [#628](https://github.com/NobuData/ouroboros/issues/628), `app/research/composer-data.ts`) and
+ * the featured brief (CN.4, [#630](https://github.com/NobuData/ouroboros/issues/630),
+ * `app/research/brief-data.ts`) are made here, once and together, so each card arrives whole.
+ * The decisions are in [`app/research/view.ts`](../../research/view.ts),
+ * [`app/research/composer.ts`](../../research/composer.ts) and
+ * [`app/research/brief.ts`](../../research/brief.ts).
  *
  * **This retires the `/research` placeholder** #49 was to build — an amendment the research
  * roadmap recorded, which needed no deletion because the placeholder was never built. The
@@ -23,9 +26,10 @@ import { VIEW_PARAM, parseView } from "@/app/research/view";
  * (`app/shell/nav-modules.ts`), and lights on this route through `RESEARCH_PATH`.
  *
  * The address's `?view=library` opens the library — the investigations region — and anything else
- * opens the page from its top. Every member may read the page; starting an investigation is for
- * an `owner`, `admin` or `member` — or for owners and admins only, where the workspace says so —
- * and the reason a reader may not is decided here and handed to the head and the composer alike.
+ * opens the page from its top. Every member may read the page; starting an investigation, and
+ * drafting work from a brief, is for an `owner`, `admin` or `member` — or for owners and admins
+ * only, where the workspace says so for starting — and the reason a reader may not is decided
+ * here and handed to the head and the composer alike.
  *
  * @param props.searchParams The address's query.
  * @returns The research page, for the workspace this request is operating in.
@@ -34,12 +38,18 @@ export default async function Page({
   searchParams,
 }: Readonly<{ searchParams?: Promise<Record<string, string | string[] | undefined>> }> = {}) {
   const access = await requireWorkspace();
-  const [params = {}, composer] = await Promise.all([searchParams, readComposer()]);
+  const [params = {}, composer, brief] = await Promise.all([
+    searchParams,
+    readComposer(),
+    readFeaturedBrief(),
+  ]);
   const roles = access.membership.roles;
 
   return (
     <ResearchScreen
+      brief={brief}
       composer={composer}
+      mayDraft={mayContribute(roles)}
       startReason={startGate(mayContribute(roles), mayAdminister(roles), composer.settings)}
       view={parseView(params[VIEW_PARAM])}
     />

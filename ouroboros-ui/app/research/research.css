@@ -470,3 +470,522 @@
   flex-wrap: wrap;
   gap: var(--sp-6);
 }
+
+/* ---------- the featured brief (#630) ---------- */
+
+/* The head wraps: the kind, the title, the tag, then the pill and the two actions. */
+.research__brief-head {
+  flex-wrap: wrap;
+  row-gap: var(--sp-4);
+}
+
+.research__brief-beside {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-5);
+}
+
+/* The mockup's `RS-127 — AUTONOMOUS DOCKING VS. THE FIELD`: the number mono, the title in caps. */
+.research__brief-id {
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+  color: var(--ink-mut);
+}
+
+.research__brief-title {
+  text-transform: uppercase;
+  letter-spacing: var(--tr-wide);
+}
+
+.research__brief-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-5);
+}
+
+/* The mockup's inner grid: the matrix and the text at c-7, the sources and proposals at c-5. */
+.research__brief {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--sp-8);
+}
+
+.research__brief-main {
+  grid-column: span 7;
+  min-width: 0;
+}
+
+.research__brief-side {
+  display: flex;
+  flex-direction: column;
+  grid-column: span 5;
+  gap: var(--sp-6);
+  min-width: 0;
+}
+
+@media (max-width: 68.75rem) {
+  .research__brief-main,
+  .research__brief-side {
+    grid-column: span 12;
+  }
+}
+
+/* The matrix: the primitive's table, our column accented, each cell a face with its evidence. */
+.research__matrix {
+  margin-bottom: var(--sp-7);
+}
+
+.research__matrix-us {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.research__cap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.research__cap-face {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.research__cap-face:focus-visible {
+  outline: var(--sp-1) solid var(--accent);
+  outline-offset: var(--sp-1);
+  border-radius: var(--r-xs);
+}
+
+.research__cap-glyph {
+  font-size: var(--t-xs);
+}
+
+.research__cap--have {
+  color: var(--ok);
+}
+
+.research__cap--part {
+  color: var(--warn);
+}
+
+.research__cap--none {
+  color: var(--err);
+}
+
+/* The honest unknown: dimmed, and its note says what it means. */
+.research__cap--unk {
+  color: var(--ink-faint);
+}
+
+/*
+ * The evidence behind a cell, revealed in the flow under its face while the cell is hovered or
+ * holds focus — in the flow rather than floating, because the table scrolls in the primitive's
+ * own wrapper, which would clip anything positioned past a row's edge.
+ */
+.research__cap-cites {
+  display: none;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 10rem;
+  margin-top: var(--sp-2);
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--f-ui);
+  font-size: var(--t-xs);
+  white-space: normal;
+}
+
+.research__cap:hover .research__cap-cites,
+.research__cap:focus-within .research__cap-cites {
+  display: flex;
+}
+
+.research__cap-cites-head {
+  color: var(--ink-mut);
+}
+
+.research__cap-cite {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The gap chip — the mockup's `.gap-sev`. */
+.research__gap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  padding: var(--sp-1) var(--sp-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  font-family: var(--f-disp);
+  font-size: var(--t-xs);
+  font-weight: 700;
+  letter-spacing: var(--tr-wide);
+}
+
+.research__gap--hi {
+  color: var(--err);
+  background: var(--err-tint);
+  border-color: var(--err-line);
+}
+
+.research__gap--med {
+  color: var(--warn);
+  background: var(--warn-tint);
+  border-color: var(--warn-line);
+}
+
+.research__gap--low {
+  color: var(--ok);
+  background: var(--ok-tint);
+  border-color: var(--ok-line);
+}
+
+.research__gap--par {
+  color: var(--accent);
+  background: var(--accent-tint);
+  border-color: var(--accent-line);
+}
+
+/* The brief's text — the mockup's `.brief`. */
+.research__brief-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.research__brief-para {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* Open questions sit apart: inset, with a hairline, never dressed as findings. */
+.research__brief-para--open {
+  padding: var(--sp-5) var(--sp-6);
+  border-left: var(--sp-1) solid var(--warn-line);
+  background: var(--warn-tint);
+  color: var(--ink-mut);
+}
+
+.research__brief-mark {
+  margin-right: var(--sp-3);
+  color: var(--ink);
+}
+
+.research__claim {
+  display: inline;
+}
+
+.research__claim--open {
+  font-style: italic;
+}
+
+.research__claim-mark {
+  margin-left: var(--sp-3);
+  color: var(--warn);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.research__code {
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* A marker — the mockup's `.ref`: superscript, accented, a link to its row. */
+.research__ref {
+  margin-left: var(--sp-1);
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  vertical-align: super;
+  text-decoration: none;
+}
+
+.research__ref:hover,
+.research__ref:focus-visible {
+  text-decoration: underline;
+}
+
+/* The sources panel — the mockup's inset card and its `.cite` rows. */
+.research__sources {
+  padding: var(--sp-7) var(--sp-8);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+.research__sources-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  margin-bottom: var(--sp-4);
+}
+
+.research__sources-title {
+  margin: 0;
+  font-family: var(--f-disp);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.research__cite-all {
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+
+.research__cites {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.research__cite {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-5);
+  padding: var(--sp-4) var(--sp-2);
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  scroll-margin-top: var(--sp-10);
+}
+
+.research__cite:last-child {
+  border-bottom: none;
+}
+
+/* The row a marker just landed on. */
+.research__cite--lit {
+  background: var(--accent-tint);
+  box-shadow: 0 0 0 1px var(--accent-line);
+}
+
+.research__cite-n {
+  flex: none;
+  width: 2.5rem;
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.research__cite-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.research__cite-t {
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+}
+
+.research__cite-u {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  word-break: break-all;
+}
+
+/* Proposed from gaps — the mockup's chip row. */
+.research__proposed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.research__proposed-label {
+  flex: none;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.research__proposed-effort {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--sp-1) var(--sp-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  font-family: var(--f-disp);
+  font-size: var(--t-2xs);
+  font-weight: 700;
+  letter-spacing: var(--tr-wide);
+}
+
+/* What the investigation led to — the kind variants' strip. */
+.research__led {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.research__led-label {
+  flex: none;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.research__led-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--sp-2) var(--sp-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--raised);
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+/* The ledger sheet. */
+.research__ledger {
+  display: flex;
+  flex-direction: column;
+  margin: var(--sp-6) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.research__ledger-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-5);
+  padding: var(--sp-5) var(--sp-2);
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  scroll-margin-top: var(--sp-10);
+}
+
+.research__ledger-row--cited .research__ledger-n {
+  color: var(--accent);
+}
+
+.research__ledger-row--lit {
+  background: var(--accent-tint);
+}
+
+.research__ledger-n {
+  flex: none;
+  width: 2.5rem;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.research__ledger-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.research__ledger-title {
+  color: var(--ink);
+  font-size: var(--t-sm);
+}
+
+.research__ledger-u {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  word-break: break-all;
+}
+
+.research__ledger-excerpt {
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.research__ledger-meta {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.research__ledger-note {
+  margin: var(--sp-6) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+}
+
+/* The tracker dialog, when the drafts' tracker is ambiguous. */
+.research__tracker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.research__tracker-note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.research__tracker-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.research__tracker-option {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+
+.research__tracker-kind {
+  margin-left: auto;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.research__tracker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+}

@@ -1,11 +1,19 @@
 import type {
+  BriefCite,
+  BriefLedgerSource,
+  BriefSource,
+  CapabilityMatrix,
+  GapProposals,
+  InvestigationBrief,
   InvestigationDetail,
   InvestigationKind,
   InvestigationProgress,
+  MatrixCell,
   ResearchToolCatalogEntry,
   ScopeEstimate,
   StartedInvestigation,
 } from "@/app/api/research";
+import type { FeaturedBrief } from "@/app/research/brief";
 import type { ComposerReadings, DepthEstimates } from "@/app/research/composer";
 import type { ProgressMessage, ProgressSource, ProgressSourceFactory } from "@/app/research/progress";
 
@@ -283,3 +291,321 @@ export class FakeProgressSource implements ProgressSource {
 
 /** Opens a {@link FakeProgressSource}. */
 export const openFakeSource: ProgressSourceFactory = (url) => new FakeProgressSource(url);
+
+/* ---------- the featured brief (#630) ---------- */
+
+/** A `source_records` id for a cite number, as the seed spells it. */
+export function sourceIdOf(citeNo: number): string {
+  return `5eed0085-0000-4000-8000-${citeNo.toString().padStart(12, "0")}`;
+}
+
+/**
+ * A cite marker.
+ *
+ * @param citeNo The number.
+ * @param citeKey The symbolic key — `git` — or null.
+ * @returns The cite.
+ */
+export function cite(citeNo: number, citeKey: string | null = null): BriefCite {
+  return {
+    label: citeKey === null ? `[${citeNo.toString().padStart(2, "0")}]` : `[${citeKey}]`,
+    citeNo,
+    citeKey,
+    sourceId: sourceIdOf(citeNo),
+  };
+}
+
+/** The five sources mockup 22's panel lists, verbatim from the seed. */
+const FEATURED_SOURCES: Readonly<Record<number, Partial<BriefSource>>> = {
+  7: {
+    title: "Skylink S4 docking module — teardown & sensor BOM",
+    locator: "https://droneanalysts.example.com/s4-teardown",
+    locatorLabel: "droneanalysts.example.com/s4-teardown",
+    href: "https://droneanalysts.example.com/s4-teardown",
+  },
+  12: {
+    tool: "competitor",
+    kind: "competitor_diff",
+    title: 'Skylink firmware 6.2 release notes — "gust-adaptive final approach"',
+    locator: "https://skylink.example.com/releases/6.2",
+    locatorLabel: "skylink.example.com/releases/6.2",
+    href: "https://skylink.example.com/releases/6.2",
+  },
+  19: {
+    tool: "tickets",
+    kind: "ticket",
+    title: "Churn interviews Q2 — 9 of 14 cite docking reliability",
+    locator: "issue-index://support/churn-2026-q2",
+    locatorLabel: "issue-index://support/churn-2026-q2",
+    href: null,
+  },
+  31: {
+    title: '"MPC for precision landing in turbulent flow" — conf. paper',
+    locator: "https://arxiv.example.org/abs/2605.11423",
+    locatorLabel: "arxiv.example.org/abs/2605.11423",
+    href: "https://arxiv.example.org/abs/2605.11423",
+  },
+  44: {
+    citeKey: "git",
+    tool: "code",
+    kind: "code",
+    title: "dock_ctrl.c blame — gains last tuned 14 months ago",
+    locator: "git://acme-robotics/helios-firmware@8c1b2e4/src/dock/dock_ctrl.c",
+    locatorLabel: "helios-firmware @ 8c1b2e4 · src/dock/dock_ctrl.c",
+    href: "https://github.com/acme-robotics/helios-firmware/blob/8c1b2e4/src/dock/dock_ctrl.c",
+  },
+};
+
+/**
+ * One source as the panel lists it.
+ *
+ * @param citeNo The number.
+ * @param over What this case changes.
+ * @returns The source — a web page by default, one of the five featured ones by number.
+ */
+export function briefSource(citeNo: number, over: Partial<BriefSource> = {}): BriefSource {
+  const featured = FEATURED_SOURCES[citeNo] ?? {};
+  const citeKey = over.citeKey ?? featured.citeKey ?? null;
+
+  return {
+    ...cite(citeNo, citeKey),
+    kind: "web",
+    tool: "web",
+    title: `Source ${String(citeNo)}`,
+    locator: `https://example.com/source/${String(citeNo)}`,
+    locatorLabel: `example.com/source/${String(citeNo)}`,
+    href: `https://example.com/source/${String(citeNo)}`,
+    ...featured,
+    ...over,
+  };
+}
+
+/**
+ * One source as the full ledger lists it.
+ *
+ * @param citeNo The number.
+ * @param over What this case changes.
+ * @returns The record, retrieved `citeNo` minutes after noon.
+ */
+export function ledgerSource(citeNo: number, over: Partial<BriefLedgerSource> = {}): BriefLedgerSource {
+  return {
+    ...briefSource(citeNo),
+    excerpt: `What was read of source ${String(citeNo)}.`,
+    retrievedAt: new Date(Date.UTC(2026, 9, 7, 12, citeNo)).toISOString(),
+    contentHash: `sha256:${citeNo.toString(16).padStart(8, "0")}`,
+    ...over,
+  };
+}
+
+/** The 44-record ledger, in cite-number order. */
+export function seededLedger(): BriefLedgerSource[] {
+  return Array.from({ length: 44 }, (_, index) => ledgerSource(index + 1));
+}
+
+/** The panel — the five records the brief's claims cite. */
+export function seededPanel(): BriefSource[] {
+  return [7, 12, 19, 31, 44].map((citeNo) => briefSource(citeNo));
+}
+
+/** The seeded cells: per row, us then Skylink, AeroMesh, Novum — status, note, cited numbers. */
+const CELLS: readonly (readonly [MatrixCell["status"], string | null, readonly number[]])[][] = [
+  [["partial", null, [25, 26]], ["shipping", null, [1, 8, 40]], ["partial", null, [3, 4]], ["none", null, [5]]],
+  [["none", null, [39]], ["shipping", null, [2]], ["shipping", null, [4]], ["partial", "beta", [6, 13]]],
+  [["partial", null, [34, 28]], ["shipping", null, [9]], ["partial", null, [11]], ["none", null, [5]]],
+  [["wip", "in flight", [36, 24]], ["shipping", null, [10]], ["none", null, [11]], ["none", null, [5]]],
+  [["shipping", null, [37, 23]], ["none", null, [2]], ["unknown", null, []], ["none", null, [42]]],
+];
+
+const GLYPHS: Readonly<Record<MatrixCell["status"], string>> = {
+  shipping: "●",
+  partial: "◐",
+  wip: "◐",
+  none: "○",
+  unknown: "?",
+};
+
+const STATUS_WORDS: Readonly<Record<MatrixCell["status"], string>> = {
+  shipping: "shipping",
+  partial: "partial",
+  wip: "in flight",
+  none: "none",
+  unknown: "unknown",
+};
+
+/** The seeded rows: capability, severity, label, derivation. */
+const ROWS: readonly (readonly [string, CapabilityMatrix["rows"][number]["gap"]["severity"], string])[] = [
+  ["Docking in >8 m/s gusts", "high", "Skylink ships it; we are partial → high."],
+  ["Visual-inertial approach (no beacon)", "high", "Two rivals ship it; we have none → high."],
+  ["Abort & retry recovery logic", "med", "Skylink ships re-planned retries; we are partial → med."],
+  ["OTA resilience (A/B + rollback)", "wip", "Ours is in flight → wip."],
+  ["Recovery beacon over BLE", "lead", "We ship it; no rival is known to → lead."],
+];
+
+/** RS-127's matrix, as `GET …/brief` answers it. */
+export function seededMatrix(): CapabilityMatrix {
+  const rivals = ["Skylink", "AeroMesh", "Novum"];
+
+  return {
+    id: "5eed0095-0000-4000-8000-000000000127",
+    title: "Autonomous docking vs. the field",
+    columns: [
+      { label: "Helios", us: true, competitorId: null },
+      ...rivals.map((name, index) => ({
+        label: name,
+        us: false,
+        competitorId: `5eed0094-0000-4000-8000-${(index + 1).toString().padStart(12, "0")}`,
+      })),
+    ],
+    rows: ROWS.map(([capability, severity, derivation], row) => ({
+      id: `5eed0095-0000-4000-8000-${(row + 1).toString().padStart(12, "0")}`,
+      capability,
+      cells: CELLS[row]!.map(([status, note, cited]) => ({
+        status,
+        glyph: GLYPHS[status],
+        label: note ?? STATUS_WORDS[status],
+        note,
+        cites: cited.map((citeNo) => cite(citeNo)),
+      })),
+      gap: { severity, label: severity.toUpperCase(), derivation },
+    })),
+  };
+}
+
+/** RS-127's proposals — the epic, five tickets, the first two named, effort L. */
+export function seededProposals(): GapProposals {
+  const ticket = (
+    key: string,
+    title: string,
+    effort: "s" | "m" | "l",
+    capability: string,
+    severity: "high" | "med",
+    cited: number[],
+  ) => ({
+    key,
+    title,
+    label: `${key} ${title}`,
+    effort,
+    capability,
+    severity,
+    sources: cited.map((citeNo) => sourceIdOf(citeNo)),
+  });
+  const tickets = [
+    ticket("DOCK-1", "wind-feedforward MPC", "m", ROWS[0]![0], "high", [12, 31]),
+    ticket("DOCK-2", "re-planned retry", "m", ROWS[2]![0], "med", [9, 19]),
+    ticket("DOCK-3", "gust estimator from IMU residuals", "m", ROWS[0]![0], "high", [25]),
+    ticket("DOCK-4", "visual-inertial approach prototype", "l", ROWS[1]![0], "high", [2]),
+    ticket("DOCK-5", "HIL gust-profile regression suite", "s", ROWS[0]![0], "high", [26]),
+  ];
+
+  return {
+    epic: { title: "Docking parity", label: "EPIC · Docking parity" },
+    tickets,
+    top: tickets.slice(0, 2),
+    more: 3,
+    effort: "l",
+  };
+}
+
+/** A span of plain prose with its cites. */
+function span(text: string, cites: BriefCite[], claim: InvestigationBrief["brief"]["paragraphs"][number]["spans"][number]["claim"] = null) {
+  return { text, segments: [{ kind: "text" as const, text, href: null }], claim, cites };
+}
+
+/** RS-127's brief, as `GET …/brief` answers it — mockup 22's featured card. */
+export function seededBrief(over: Partial<InvestigationBrief> = {}): InvestigationBrief {
+  return {
+    investigation: {
+      id: "5eed0084-0000-4000-8000-000000000127",
+      displayId: "RS-127",
+      question: "Why do our drones abort autonomous docking in wind that Skylink's handle?",
+      kind: "gap_analysis",
+      kindLabel: "Gap analysis",
+      tintKey: "gap",
+      depth: "deep_dive",
+      status: "brief_ready",
+    },
+    brief: {
+      id: "5eed0086-0000-4000-8000-000000000001",
+      version: 1,
+      createdAt: "2026-10-07T12:20:00.000Z",
+      paragraphs: [
+        {
+          kind: "findings",
+          spans: [
+            span(
+              "The docking gap is not sensors: our IMU and rangefinder match Skylink's published spec.",
+              [cite(7)],
+              { ref: "sensors-match", type: "finding", demoted: false },
+            ),
+            span(" It is control — Skylink runs a wind-feedforward MPC in the final 2 m", [cite(12), cite(31)], {
+              ref: "control-mpc",
+              type: "finding",
+              demoted: false,
+            }),
+            {
+              text: " while ours is PID with fixed gains (dock_ctrl.c:214, unchanged in 14 months).",
+              segments: [
+                { kind: "text", text: " while ours is PID with fixed gains (", href: null },
+                {
+                  kind: "code",
+                  text: "dock_ctrl.c:214",
+                  href: "https://github.com/acme-robotics/helios-firmware/blob/8c1b2e4/src/dock/dock_ctrl.c#L214",
+                },
+                { kind: "text", text: ", unchanged in 14 months).", href: null },
+              ],
+              claim: { ref: "pid-fixed-gains", type: "finding", demoted: false },
+              cites: [cite(44, "git")],
+            },
+            span(
+              ' Our abort returns to loiter and waits for the operator — what customers describe as "giving up."',
+              [cite(19)],
+              { ref: "abort-gives-up", type: "finding", demoted: false },
+            ),
+          ],
+        },
+        {
+          kind: "open_questions",
+          spans: [
+            span("Whether Skylink's MPC degrades above 12 m/s is not in any source read.", [], {
+              ref: "mpc-ceiling",
+              type: "open_question",
+              demoted: true,
+            }),
+          ],
+        },
+      ],
+    },
+    sources: { cited: 44, panel: seededPanel() },
+    matrix: seededMatrix(),
+    proposed: seededProposals(),
+    provenance: { researcher: "loop-v1", alias: "researcher-long-ctx" },
+    exportFilename: "RS-127-brief.md",
+    ...over,
+  };
+}
+
+/**
+ * The featured brief — RS-127 with its detail.
+ *
+ * @param over What this case changes.
+ * @returns The brief and the detail.
+ */
+export function featuredBrief(over: Partial<FeaturedBrief> = {}): FeaturedBrief {
+  return {
+    brief: seededBrief(),
+    detail: investigationDetail({
+      id: "5eed0084-0000-4000-8000-000000000127",
+      displayId: "RS-127",
+      status: "brief_ready",
+      sources: 44,
+      progress: progress({ status: "brief_ready", iteration: null, sources: 44, spendCents: 612 }),
+      brief: { id: "5eed0086-0000-4000-8000-000000000001", version: 1, createdAt: "2026-10-07T12:20:00.000Z" },
+      deliverables: [
+        { kind: "brief", id: "5eed0086-0000-4000-8000-000000000001" },
+        { kind: "matrix", id: "5eed0095-0000-4000-8000-000000000127" },
+      ],
+      mayCancel: false,
+    }),
+    ...over,
+  };
+}

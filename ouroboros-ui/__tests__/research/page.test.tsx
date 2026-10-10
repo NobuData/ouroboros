@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Role } from "@/app/api/membership";
@@ -6,7 +6,7 @@ import { ADMIN_ONLY_START_REASON, START_LABEL } from "@/app/research/composer";
 import { VIEWER_START_REASON } from "@/app/research/view";
 
 import { membership, sessionUser } from "../helpers/login";
-import { composerReadings } from "../helpers/research";
+import { composerReadings, featuredBrief } from "../helpers/research";
 
 /**
  * The research route (#627): the gate is asked first, the address's view is read, and the
@@ -16,16 +16,23 @@ import { composerReadings } from "../helpers/research";
 
 const requireWorkspace = vi.fn();
 const readComposer = vi.fn();
+const readFeaturedBrief = vi.fn();
 
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
 vi.mock("@/app/research/composer-data", () => ({ readComposer: () => readComposer() }));
+vi.mock("@/app/research/brief-data", () => ({ readFeaturedBrief: () => readFeaturedBrief() }));
+vi.mock("@/app/research/brief-actions", () => ({
+  readBriefLedger: () => new Promise(() => {}),
+  readTrackers: () => new Promise(() => {}),
+  draftEpicFromGaps: () => new Promise(() => {}),
+}));
 vi.mock("@/app/research/composer-actions", () => ({
   estimateComposer: () => new Promise(() => {}),
   startInvestigation: () => new Promise(() => {}),
   cancelInvestigation: () => new Promise(() => {}),
   readInvestigation: () => new Promise(() => {}),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
 
 const Page = (await import("@/app/(app)/research/page")).default;
 
@@ -59,6 +66,7 @@ function newInvestigation(): HTMLElement {
 beforeEach(() => {
   requireWorkspace.mockReset().mockResolvedValue(access());
   readComposer.mockReset().mockResolvedValue(composerReadings());
+  readFeaturedBrief.mockReset().mockResolvedValue({ ok: true, value: featuredBrief() });
 });
 
 describe("the research route", () => {
@@ -67,6 +75,8 @@ describe("the research route", () => {
 
     expect(requireWorkspace).toHaveBeenCalledOnce();
     expect(readComposer).toHaveBeenCalledOnce();
+    expect(readFeaturedBrief).toHaveBeenCalledOnce();
+    expect(screen.getByRole("region", { name: /RS-127/ })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
       "Ask a hard question. Get an evidenced answer — and the tickets to act on it.",
     );
@@ -98,6 +108,18 @@ describe("the research route", () => {
 
     await expect(page()).rejects.toBe(redirect);
     expect(readComposer).not.toHaveBeenCalled();
+    expect(readFeaturedBrief).not.toHaveBeenCalled();
+  });
+
+  it("lets a member draft from the brief, and not a viewer", async () => {
+    requireWorkspace.mockResolvedValue(access(["member"]));
+    render(await page());
+    expect(screen.getByRole("button", { name: "Draft epic from gaps →" })).not.toHaveAttribute("aria-disabled");
+
+    cleanup();
+    requireWorkspace.mockResolvedValue(access(["viewer"]));
+    render(await page());
+    expect(screen.getByRole("button", { name: "Draft epic from gaps →" })).toHaveAttribute("aria-disabled", "true");
   });
 
   it.each<[Role]>([["owner"], ["admin"], ["member"]])("lets a %s start an investigation", async (role) => {

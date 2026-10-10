@@ -4938,6 +4938,10 @@ The same loop that handles the build runs investigations — …        [Researc
 | [`app/research/composer-kinds.tsx`](app/research/composer-kinds.tsx) · [`composer-depth.tsx`](app/research/composer-depth.tsx) · [`composer-tools.tsx`](app/research/composer-tools.tsx) · [`composer-progress.tsx`](app/research/composer-progress.tsx) | The pieces: the segmented control, the listbox menu with each depth's budget, the chips with the idle treatment, and the run's status, figures and cancel |
 | [`app/research/composer-data.ts`](app/research/composer-data.ts) · [`composer-actions.ts`](app/research/composer-actions.ts) | The server's half: the three reads the card arrives with, and the estimate, start, cancel and read actions |
 | [`app/research/progress.ts`](app/research/progress.ts) · [`app/api/research-progress.ts`](app/api/research-progress.ts) | Following a run: the `EventSource` watcher, and the pass-through that streams the service's events on this origin |
+| [`app/research/brief.ts`](app/research/brief.ts) | The brief card's decisions, framework-free: its words, which brief is featured, where a marker lands, the deliverables strip for each kind, the tracker dialog's words |
+| [`app/research/brief-card.tsx`](app/research/brief-card.tsx) | The card: head, matrix beside the text, sources and proposals beside them, the ledger sheet — and the featured seat's none-yet and unreadable states |
+| [`app/research/brief-matrix.tsx`](app/research/brief-matrix.tsx) · [`brief-body.tsx`](app/research/brief-body.tsx) · [`brief-sources.tsx`](app/research/brief-sources.tsx) · [`brief-proposed.tsx`](app/research/brief-proposed.tsx) · [`brief-deliverables.tsx`](app/research/brief-deliverables.tsx) · [`brief-draft-epic.tsx`](app/research/brief-draft-epic.tsx) | The pieces: the matrix with each cell's evidence, the text with its markers, the panel and the ledger sheet, the proposed chips, the **Led to:** strip, and the draft action with its tracker dialog |
+| [`app/research/brief-data.ts`](app/research/brief-data.ts) · [`brief-actions.ts`](app/research/brief-actions.ts) · [`app/api/brief-export.ts`](app/api/brief-export.ts) | The server's half: the featured brief's read, the ledger/trackers/draft-epic actions, and the export pass-through |
 
 **The head's copy is verbatim** and lives in `view.ts` — the headline is the page's thesis, and a
 test holds both strings to the issue's wording.
@@ -5022,8 +5026,58 @@ service's `event: error`, which carries data; the browser's own connection `erro
 and is left to its reconnect. On `done` the detail is read once for the failure reason the
 stream does not carry. **Cancel** is the starter's or an admin's (`mayCancel`); a cancelled run
 is a partial state kept, not discarded. A run with a brief offers **View brief ↑**, which lands
-on the brief's seat through the frame's own landing — CN.4 (#630) mounts the brief card there and
-this card needs no change.
+on the brief's seat through the frame's own landing and re-reads the page, so the new brief is
+the one featured there.
+
+### The featured brief
+
+The brief card (CN.4, [#630](https://github.com/NobuData/ouroboros/issues/630)) is mockup 22's
+featured investigation card in the **Featured brief** seat — the deliverable made visible — and
+the same component CN.6 (#632) opens for any investigation.
+
+```
+(gap analysis) RS-127 — AUTONOMOUS DOCKING VS. THE FIELD  [44 sources · deep dive]  (✓ brief ready)
+                                                       [Export brief ↗] [Draft epic from gaps →]
+Capability              Helios (us)   Skylink      AeroMesh     Novum        Gap
+Docking in >8 m/s gusts ◐ partial     ● shipping   ◐ partial    ○ none       HIGH
+  └ hover ─▶ 2 sources [25] [26]                          …    ? unknown ─▶ "did not find out"
+Finding. …not sensors[07] … MPC in the final 2 m[12][31] … (dock_ctrl.c:214)[git] …
+Open questions  Whether Skylink's MPC degrades above 12 m/s … (demoted)
+SOURCES — 44 CITED  [07] … [12] … [19] … [31] … [git] …                                all ↗
+Proposed from gaps: [EPIC · Docking parity][DOCK-1 …][DOCK-2 …][+3 more] L
+Led to: (fix draft)(roadmap document)(open run →)(evidence →)(culprit · bisected → a41f2c9)
+```
+
+**Which brief is featured** is the newest `brief_ready`, then the newest `issues_filed`
+(`brief-data.ts`: one list row per status, then `GET …/brief` and `GET …/{id}` together, read
+once on the server). None yet is an honest *No brief yet*; an unreadable one offers a reload.
+
+**Citations are usable.** Every marker in the text is a link to the source's row in the panel:
+pressing it scrolls there and lights the row. A cell's face reveals its citations on hover or
+focus — **in the flow under the face**, because the Table primitive's scroll wrapper would clip
+anything floated past a row — and each is a press; a record the panel does not list (a cell's
+source no claim cites) opens the whole ledger as a sheet on that record. `? unknown` is an inert,
+dimmed face whose note says the investigation did not find out. **`all ↗`** opens the ledger
+sheet, read on open (`readBriefLedger`), with excerpts and UTC retrieval times, cited records
+marked.
+
+**Open questions are never dressed as findings**: their paragraph is an inset block headed
+*Open questions*, each claim italic with its mark — *demoted* where a finding was offered and
+nothing cited.
+
+**Both actions are obviously safe.** **Export brief ↗** is a download link to
+`/api/research/investigations/:id/brief/export` (`app/api/brief-export.ts`), a pass-through that
+streams CM.2's Markdown with the service's own `Content-Disposition` and the safety headers.
+**Draft epic from gaps →** posts CM.5's hand-off, which files nothing, and navigates to the
+batch's `href` in Planning; it is shown only for a brief that proposes tickets and inert with its
+reason for a viewer. **The tracker is asked for only when ambiguous**: on the service's
+`roadmap_target_required` a dialog lists the workspace's ticket sources and posts the pick.
+
+**The kind variants are a strip of what the investigation led to** (`deliverableChips`), from the
+lifecycle detail and no new contract: a fix draft (Planning), a drafted batch (its batch), a
+roadmap document (lands on the pipeline's seat until #631 mounts its card there), the live run
+and the evidence run (their consoles, lit under the `research` run origin), and a forensics
+brief's culprit from its ledger's `bisect://` record.
 
 ## Run console
 
