@@ -25,6 +25,7 @@ VERIFIER="$TEST_DIR/verify-copilot-invariants.sh"
 FRAGMENT="$TEST_DIR/lib/copilot-invariants.sql"
 STANDALONE="$TEST_DIR/copilot-invariants.sql"
 COPILOT_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_copilot.sql"
+REPLAY_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_replay.sql"
 WORKFLOW="$REPO_ROOT/.github/workflows/db.yml"
 
 # run_verifier [ARG...] — run it with no password, leaving its output in $out and status in $status.
@@ -73,12 +74,18 @@ for invariant in \
 done
 
 for seeded_id in \
-  5eed008c-0000-4000-8000-000000000001 \
-  5eed008c-0000-4000-8000-000000000002 \
   5eed0088-0000-4000-8000-000000000489 \
   5eed0089-0000-4000-8000-000000000001; do
   check_contains "$VERIFIER" "$seeded_id" "the verifier aims at $seeded_id"
   check_contains "$COPILOT_SEED" "'$seeded_id'" "and the copilot seed writes it"
+done
+
+# The suggestions are filed on the finished dry run, which the replay seed finishes (#561).
+for seeded_id in \
+  5eed008c-0000-4000-8000-000000000001 \
+  5eed008c-0000-4000-8000-000000000002; do
+  check_contains "$VERIFIER" "$seeded_id" "the verifier aims at $seeded_id"
+  check_contains "$REPLAY_SEED" "'$seeded_id'" "and the replay seed writes it"
 done
 
 check_contains "$STANDALONE" 'ir lib/copilot-invariants\.sql' 'the standalone runner includes the fragment'

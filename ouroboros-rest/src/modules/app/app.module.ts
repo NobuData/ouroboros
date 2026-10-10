@@ -39,6 +39,7 @@ import { ProviderConnectionsModule } from "../provider-connections/provider-conn
 import { ProvidersModule } from "../providers/providers.module";
 import { RegistryReadModule } from "../registry-read/registry-read.module";
 import { RegistryModule } from "../registry/registry.module";
+import { ReplayEstimatesModule } from "../replay-estimates/replay-estimates.module";
 import { InvestigationLoopModule } from "../research/loop/investigation-loop.module";
 import { ResearchModule } from "../research/research.module";
 import { ResearchToolsModule } from "../research/tools/research-tools.module";
@@ -355,6 +356,11 @@ export class AppModule {
         // loop's control-plane half: `/internal/research/investigations/:id/*`, the dispatcher
         // and the resume pass. After the two research modules it reads from; outside `/api`.
         InvestigationLoopModule,
+        // CD.3 ([#561](https://github.com/NobuData/ouroboros/issues/561)) — the infra replay
+        // estimators and the dry-run harness's one way to them, `POST
+        // /internal/dry-runs/:id/replay-estimates`. Outside `/api`, behind the internal key, so
+        // its position carries no routing rule.
+        ReplayEstimatesModule,
         // K.3 ([#101](https://github.com/NobuData/ouroboros/issues/101)) — the GitHub token
         // and the API client. After `VaultModule`, which seals the token, and after
         // `AuditModule`, which records who set it; its own `/settings/github-token` path

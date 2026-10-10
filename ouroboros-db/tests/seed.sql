@@ -7183,6 +7183,59 @@ select pg_temp.must_hold(
      join ouroboros.workflows wf on wf.id = r.workflow_id and wf.slug = 'security-patch'),
   'the dry-run card reads #489''s run as mockup 20 draws it — rows, diff, 2m 41s, $0.31, guards clean, history: 1 dry run');
 
+-- The build row is replayed from the farm's own history (#561, CD.3): the stored estimate, sample,
+-- spread, window and class are V121's functions over the builds similar to the draft's `build`
+-- stage — pool-a's executor, image and default command, on helios-firmware — in the policy's window
+-- ending when the dry run started. Nothing in the row is typed, so it cannot drift from the
+-- estimator; and the seeded history is enough to say a number.
+select pg_temp.must_hold(
+  (select st.metrics = jsonb_build_object(
+                         'estimate_ms', s.median_ms, 'spread_ms', s.spread_ms,
+                         'sample_count', s.sample_count, 'window_days', policy.window_days,
+                         'similarity_class', ouroboros.build_similarity_class(
+                            pool.name, repo.name, pool.executor, pool.image, pool.default_command))
+          and st.note = ouroboros.replay_estimate_note('build', s.median_ms, s.sample_count, s.spread_ms)
+          and s.sample_count >= policy.sample_floor
+          and st.metrics ->> 'similarity_class'
+              = 'pool-a · helios-firmware · container · ghcr.io/acme-robotics/zephyr-sdk · west build -b helios_mainboard app'
+          and st.note ~ '^est\. [0-9]+m [0-9]{2}s \([0-9]+ similar builds, ±[0-9]+s\)$'
+     from ouroboros.dry_run_stages st
+     join ouroboros.dry_runs r on r.id = st.dry_run_id
+     join ouroboros.workflows wf on wf.id = r.workflow_id and wf.slug = 'security-patch'
+     join ouroboros.github_orgs gh on gh.organization_id = r.organization_id and gh.login = 'acme-robotics'
+     join ouroboros.github_repos repo on repo.org_id = gh.id and repo.name = 'helios-firmware'
+     join ouroboros.runner_pools pool on pool.organization_id = r.organization_id and pool.name = 'pool-a'
+     cross join ouroboros.replay_estimate_policy() policy
+     cross join lateral ouroboros.build_replay_sample(r.organization_id, repo.id, pool.id, pool.executor,
+                                                      pool.image, pool.default_command, r.started_at,
+                                                      policy.window_days) s
+    where st.stage_key = 'build' and st.how = 'replayed'),
+  'the dry run''s build row is the replay estimator''s arithmetic over the seeded farm history — est. Nm SSs (n similar builds, ±Ns), its window and its class — and no figure in it is typed');
+
+-- The figure class mockup 20 draws (`est. 4m 02s (214 similar builds, ±20s)`): a median of a few
+-- minutes over a couple of hundred builds, with a spread of some tens of seconds.
+select pg_temp.must_hold(
+  (select (st.metrics ->> 'estimate_ms')::bigint between 180000 and 300000
+          and (st.metrics ->> 'sample_count')::bigint between 150 and 300
+          and (st.metrics ->> 'spread_ms')::bigint between 5000 and 60000
+     from ouroboros.dry_run_stages st
+     join ouroboros.dry_runs r on r.id = st.dry_run_id
+     join ouroboros.workflows wf on wf.id = r.workflow_id and wf.slug = 'security-patch'
+    where st.stage_key = 'build'),
+  'the seeded build estimate is in the mockup''s figure class: three to five minutes, a couple of hundred similar builds, tens of seconds of spread');
+
+-- Test history in the seed is too thin to estimate from — which is the designed fallback, not a
+-- gap: the estimator finds no measured test run for helios-firmware and says so.
+select pg_temp.must_hold(
+  (select s.sample_count < policy.sample_floor
+     from ouroboros.organization org
+     join ouroboros.github_orgs gh on gh.organization_id = org."id" and gh.login = 'acme-robotics'
+     join ouroboros.github_repos repo on repo.org_id = gh.id and repo.name = 'helios-firmware'
+     cross join ouroboros.replay_estimate_policy() policy
+     cross join lateral ouroboros.test_replay_sample(org."id", repo.id, null, now(), policy.window_days) s
+    where org."slug" = 'acme-robotics'),
+  'the seeded test history is below the sample floor, so a test estimate on the seeded stack is the honest insufficient-history answer');
+
 -- The suggestions: 93% and 81%, both rules, both with a basis; the 81% basis equals the replays.
 select pg_temp.must_hold(
   (select array_agg(s.rule_id || ':' || s.confidence order by s.confidence desc)
@@ -7218,6 +7271,13 @@ select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.dry_run_stages
     where how = 'replayed' and not (metrics ? 'sample_count')),
   'no replayed dry-run row exists without the sample count its estimate rests on');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.dry_run_stages
+    where how = 'replayed'
+      and ((metrics ? 'estimate_ms') = (metrics ? 'insufficient_history')
+           or not (metrics ? 'window_days'))),
+  'every replayed dry-run row says a number or says insufficient history — never both, never neither — and names the window it read (#561)');
 
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.dry_runs where cost_cents = 0 and tokens is null),

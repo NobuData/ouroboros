@@ -39619,6 +39619,316 @@ select pg_temp.must_hold(
 -- What it asserts, and what it deliberately does not repeat, is in its own header.
 \ir lib/registry-invariants.sql
 
+-- ===========================================================================
+-- V121 — replay estimates: the similarity class, the sample and the honest row (#561, CD.3)
+-- ===========================================================================
+--
+-- A farm with twenty-one comparable builds — spread over two SDK tags, one typed with stray
+-- whitespace — among builds that must **not** count: another command, a failure, another pool,
+-- another repository, another workspace, one older than the window, one still running. The
+-- durations are 200 s … 240 s in steps of two, so the median is 220 s and the median absolute
+-- deviation 10 s by inspection. Then test history keyed by suite set, and the stage row's shape.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v121',  'Replay Works', 'replay-works-v121', now()),
+  ('org-v121b', 'Replay Two',   'replay-two-v121',   now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a1210000-0000-0000-0000-00000000000a', 'org-v121',  'replay-works', true),
+  ('a1210000-0000-0000-0000-00000000000b', 'org-v121b', 'replay-two',   true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a1210000-0000-0000-0000-0000000000f1', 'a1210000-0000-0000-0000-00000000000a', 'helios-firmware', true, 'main'),
+  ('a1210000-0000-0000-0000-0000000000f2', 'a1210000-0000-0000-0000-00000000000a', 'helios-console',  true, 'main'),
+  ('a1210000-0000-0000-0000-0000000000f3', 'a1210000-0000-0000-0000-00000000000b', 'helios-firmware', true, 'main');
+
+insert into ouroboros.runner_pools (id, organization_id, name, executor, image) values
+  ('a1210000-0000-0000-0000-0000000000a1', 'org-v121',  'pool-a', 'container', 'ghcr.io/acme/sdk:0.17'),
+  ('a1210000-0000-0000-0000-0000000000a2', 'org-v121',  'pool-c', 'container', 'ghcr.io/acme/sdk:0.17'),
+  ('a1210000-0000-0000-0000-0000000000a3', 'org-v121b', 'pool-a', 'container', 'ghcr.io/acme/sdk:0.17');
+
+insert into ouroboros.runners (id, organization_id, pool_id, name, arch, security_mode, cert_serial) values
+  ('a1210000-0000-0000-0000-0000000000b1', 'org-v121',  'a1210000-0000-0000-0000-0000000000a1', 'forge-01', 'linux/arm64', 'mtls', 'a1210001'),
+  ('a1210000-0000-0000-0000-0000000000b2', 'org-v121',  'a1210000-0000-0000-0000-0000000000a2', 'forge-02', 'linux/arm64', 'mtls', 'a1210002'),
+  ('a1210000-0000-0000-0000-0000000000b3', 'org-v121b', 'a1210000-0000-0000-0000-0000000000a3', 'forge-01', 'linux/arm64', 'mtls', 'a1210003');
+
+-- The class: 21 succeeded builds, 200 s + 2 s each, one finishing every hour back from an hour
+-- ago. The first fourteen are warm (80 % hits), the next five cold (30 %), the last two unmeasured.
+insert into ouroboros.build_jobs
+    (organization_id, number, pool_id, runner_id, github_repo_id, git_ref, label, title, executor,
+     image, command, status, queued_at, started_at, finished_at, exit_code, ccache_stats)
+select 'org-v121', n, 'a1210000-0000-0000-0000-0000000000a1', 'a1210000-0000-0000-0000-0000000000b1',
+       'a1210000-0000-0000-0000-0000000000f1', 'refs/heads/main', 'zephyr build', 'Build ' || n,
+       'container',
+       case when n % 2 = 0 then 'ghcr.io/acme/sdk:0.16' else 'ghcr.io/acme/sdk:0.17' end,
+       case when n = 3 then E'  west build   -b board\tapp ' else 'west build -b board app' end,
+       'succeeded',
+       now() - make_interval(hours => n) - make_interval(secs => 198 + 2 * n) - interval '1 second',
+       now() - make_interval(hours => n) - make_interval(secs => 198 + 2 * n),
+       now() - make_interval(hours => n), 0,
+       case when n <= 14 then '{"hits": 80, "misses": 20}'::jsonb
+            when n <= 19 then '{"hits": 30, "misses": 70}'::jsonb end
+  from generate_series(1, 21) n;
+
+-- What must not count. Each is a 50 s or 900 s build, far enough from 220 s to move the answer.
+insert into ouroboros.build_jobs
+    (organization_id, number, pool_id, runner_id, github_repo_id, git_ref, label, title, executor,
+     image, command, status, queued_at, started_at, finished_at, exit_code)
+  values
+    -- another command: the same build with a config switch is another class
+    ('org-v121', 101, 'a1210000-0000-0000-0000-0000000000a1', 'a1210000-0000-0000-0000-0000000000b1',
+     'a1210000-0000-0000-0000-0000000000f1', 'refs/heads/main', 'zephyr build', 'Other command', 'container',
+     'ghcr.io/acme/sdk:0.17', 'west build -b board app -- -DCONFIG_DEBUG=y', 'succeeded',
+     now() - interval '3 hours', now() - interval '2 hours 55 minutes', now() - interval '2 hours 40 minutes', 0),
+    -- another image: a different toolchain is another class, whatever its tag
+    ('org-v121', 102, 'a1210000-0000-0000-0000-0000000000a1', 'a1210000-0000-0000-0000-0000000000b1',
+     'a1210000-0000-0000-0000-0000000000f1', 'refs/heads/main', 'zephyr build', 'Other image', 'container',
+     'ghcr.io/acme/other-sdk:0.17', 'west build -b board app', 'succeeded',
+     now() - interval '3 hours', now() - interval '2 hours 55 minutes', now() - interval '2 hours 40 minutes', 0),
+    -- a failure: fifty seconds to fail is not fifty seconds to build
+    ('org-v121', 103, 'a1210000-0000-0000-0000-0000000000a1', 'a1210000-0000-0000-0000-0000000000b1',
+     'a1210000-0000-0000-0000-0000000000f1', 'refs/heads/main', 'zephyr build', 'Failed', 'container',
+     'ghcr.io/acme/sdk:0.17', 'west build -b board app', 'failed',
+     now() - interval '3 hours', now() - interval '2 hours 55 minutes', now() - interval '2 hours 54 minutes 10 seconds', 2),
+    -- another pool
+    ('org-v121', 104, 'a1210000-0000-0000-0000-0000000000a2', 'a1210000-0000-0000-0000-0000000000b2',
+     'a1210000-0000-0000-0000-0000000000f1', 'refs/heads/main', 'zephyr build', 'Other pool', 'container',
+     'ghcr.io/acme/sdk:0.17', 'west build -b board app', 'succeeded',
+     now() - interval '3 hours', now() - interval '2 hours 55 minutes', now() - interval '2 hours 40 minutes', 0),
+    -- another repository
+    ('org-v121', 105, 'a1210000-0000-0000-0000-0000000000a1', 'a1210000-0000-0000-0000-0000000000b1',
+     'a1210000-0000-0000-0000-0000000000f2', 'refs/heads/main', 'zephyr build', 'Other repository', 'container',
+     'ghcr.io/acme/sdk:0.17', 'west build -b board app', 'succeeded',
+     now() - interval '3 hours', now() - interval '2 hours 55 minutes', now() - interval '2 hours 40 minutes', 0),
+    -- older than the window
+    ('org-v121', 106, 'a1210000-0000-0000-0000-0000000000a1', 'a1210000-0000-0000-0000-0000000000b1',
+     'a1210000-0000-0000-0000-0000000000f1', 'refs/heads/main', 'zephyr build', 'Old', 'container',
+     'ghcr.io/acme/sdk:0.17', 'west build -b board app', 'succeeded',
+     now() - interval '40 days 1 hour', now() - interval '40 days 55 minutes', now() - interval '40 days', 0),
+    -- another workspace, same names throughout
+    ('org-v121b', 1, 'a1210000-0000-0000-0000-0000000000a3', 'a1210000-0000-0000-0000-0000000000b3',
+     'a1210000-0000-0000-0000-0000000000f3', 'refs/heads/main', 'zephyr build', 'Other workspace', 'container',
+     'ghcr.io/acme/sdk:0.17', 'west build -b board app', 'succeeded',
+     now() - interval '3 hours', now() - interval '2 hours 55 minutes', now() - interval '2 hours 40 minutes', 0);
+
+-- still running: it has no duration yet
+insert into ouroboros.build_jobs
+    (organization_id, number, pool_id, runner_id, github_repo_id, git_ref, label, title, executor,
+     image, command, status, queued_at, started_at)
+  values
+    ('org-v121', 107, 'a1210000-0000-0000-0000-0000000000a1', 'a1210000-0000-0000-0000-0000000000b1',
+     'a1210000-0000-0000-0000-0000000000f1', 'refs/heads/main', 'zephyr build', 'Running', 'container',
+     'ghcr.io/acme/sdk:0.17', 'west build -b board app', 'running',
+     now() - interval '20 minutes', now() - interval '19 minutes');
+
+-- --- the class is documented and deterministic --------------------------------
+select pg_temp.must_hold(
+  (select array_agg(ouroboros.build_image_name(image) order by ord)
+          = array['ghcr.io/acme/sdk', 'ghcr.io/acme/sdk', 'registry:5000/sdk', 'registry:5000/sdk',
+                  'acme/sdk', 'acme/sdk', 'ubuntu']
+     from unnest(array['ghcr.io/acme/sdk:0.16', 'ghcr.io/acme/sdk', 'registry:5000/sdk',
+                       'registry:5000/sdk:1.2', 'acme/sdk@sha256:0a1b', 'acme/sdk:1@sha256:0a1b',
+                       ' ubuntu:24.04 ']) with ordinality as t (image, ord)),
+  'an image name drops its tag and its digest, and keeps a registry port');
+
+select pg_temp.must_hold(
+  ouroboros.build_config_class('container', 'ghcr.io/acme/sdk:0.16', 'west build -b board app')
+    = 'ghcr.io/acme/sdk · west build -b board app'
+  and ouroboros.build_config_class('container', 'ghcr.io/acme/sdk:0.17', E'  west build   -b board\tapp ')
+    = ouroboros.build_config_class('container', 'ghcr.io/acme/sdk:0.16', 'west build -b board app')
+  and ouroboros.build_config_class('container', 'ghcr.io/acme/sdk:0.16', 'west build -b board app -- -DX=1')
+    <> ouroboros.build_config_class('container', 'ghcr.io/acme/sdk:0.16', 'west build -b board app')
+  and ouroboros.build_config_class('container', 'ghcr.io/acme/other:0.16', 'west build -b board app')
+    <> ouroboros.build_config_class('container', 'ghcr.io/acme/sdk:0.16', 'west build -b board app')
+  and ouroboros.build_config_class('shell', null, 'make  hil') = 'make hil',
+  'a configuration class is the image without its tag plus the collapsed command — an SDK bump keeps its class, a changed command or image leaves it; a shell build is its command');
+
+select pg_temp.must_hold(
+  ouroboros.build_similarity_class('pool-a', 'helios-firmware', 'container', 'ghcr.io/acme/sdk:0.17',
+                                   'west build -b board app')
+    = 'pool-a · helios-firmware · container · ghcr.io/acme/sdk · west build -b board app'
+  and ouroboros.test_similarity_class('helios-firmware', array['smoke', 'unit'])
+    = 'helios-firmware · tests · smoke + unit',
+  'a similarity class prints as pool · repository · executor · configuration class, and a test one as repository · tests · the suite set');
+
+select pg_temp.must_hold(
+  (select (window_days, sample_floor) = (30, 20) from ouroboros.replay_estimate_policy()),
+  'the replay policy reads thirty days of history and refuses a number below twenty samples');
+
+-- --- the sample: median, spread, count — over exactly the similar builds ------
+select pg_temp.must_hold(
+  (select (s.sample_count, s.median_ms, s.spread_ms) = (21, 220000, 10000)
+     from ouroboros.build_replay_sample('org-v121', 'a1210000-0000-0000-0000-0000000000f1',
+            'a1210000-0000-0000-0000-0000000000a1', 'container', 'ghcr.io/acme/sdk:0.17',
+            'west build -b board app', now(), 30) s),
+  'twenty-one similar builds of 200 s … 240 s give a median of 220 s and a median absolute deviation of 10 s — and nothing dissimilar is counted');
+
+select pg_temp.must_hold(
+  (select (s.cache_measured, s.warm_count, s.warm_median_ms, s.cold_count, s.cold_median_ms)
+          = (19, 14, 213000, 5, 232000)
+     from ouroboros.build_replay_sample('org-v121', 'a1210000-0000-0000-0000-0000000000f1',
+            'a1210000-0000-0000-0000-0000000000a1', 'container', 'ghcr.io/acme/sdk:0.17',
+            'west build -b board app', now(), 30) s),
+  'cache context is counted apart: 14 warm builds at 213 s and 5 cold at 232 s of the 19 that reported ccache statistics, beside a median that is neither');
+
+select pg_temp.must_hold(
+  (select (s.sample_count, s.median_ms) = (5, 236000)
+     from ouroboros.build_replay_sample('org-v121', 'a1210000-0000-0000-0000-0000000000f1',
+            'a1210000-0000-0000-0000-0000000000a1', 'container', 'ghcr.io/acme/sdk:0.17',
+            'west build -b board app', now() - interval '16 hours 30 minutes', 30) s)
+  and (select s.sample_count = 22
+         from ouroboros.build_replay_sample('org-v121', 'a1210000-0000-0000-0000-0000000000f1',
+                'a1210000-0000-0000-0000-0000000000a1', 'container', 'ghcr.io/acme/sdk:0.17',
+                'west build -b board app', now(), 60) s),
+  'the window is the caller''s: an earlier end leaves out what finished after it — the five oldest, median 236 s — and thirty days leaves out the forty-day-old build that sixty take in');
+
+select pg_temp.must_hold(
+  (select (s.sample_count, s.cache_measured, s.warm_count, s.cold_count) = (0, 0, 0, 0)
+          and s.median_ms is null and s.spread_ms is null
+          and s.warm_median_ms is null and s.cold_median_ms is null
+     from ouroboros.build_replay_sample('org-v121', 'a1210000-0000-0000-0000-0000000000f1',
+            'a1210000-0000-0000-0000-0000000000a1', 'container', 'ghcr.io/acme/sdk:0.17',
+            'west build -b never-built app', now(), 30) s),
+  'a class nobody has built is a count of zero and no number at all');
+
+select pg_temp.must_hold(
+  (select (s.sample_count, s.median_ms) = (1, 900000)
+     from ouroboros.build_replay_sample('org-v121b', 'a1210000-0000-0000-0000-0000000000f3',
+            'a1210000-0000-0000-0000-0000000000a3', 'container', 'ghcr.io/acme/sdk:0.17',
+            'west build -b board app', now(), 30) s),
+  'another workspace''s history is its own, whatever its pools and repositories are called');
+
+-- --- test estimates rest on test history --------------------------------------
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, simulated)
+  values
+    ('a1210000-0000-0000-0000-0000000000c1', 'org-v121', 'a1210000-0000-0000-0000-0000000000f1',
+     1, 'Real', 'standard-fix', 'claude-fable-5', 'building', 'Test', 6, 8, now() - interval '9 hours', false),
+    ('a1210000-0000-0000-0000-0000000000c2', 'org-v121', 'a1210000-0000-0000-0000-0000000000f1',
+     2, 'Simulated', 'standard-fix', 'claude-fable-5', 'building', 'Test', 6, 8, now() - interval '9 hours', true),
+    ('a1210000-0000-0000-0000-0000000000c3', 'org-v121', 'a1210000-0000-0000-0000-0000000000f2',
+     3, 'Other repository', 'standard-fix', 'claude-fable-5', 'building', 'Test', 6, 8, now() - interval '9 hours', false);
+
+-- Attempts 1–5 ran the full set (unit + hil) in 600 s … 640 s; 6 and 7 a smoke set in 60 s and
+-- 70 s; 8 is the newest and full again (700 s); 9 is still running. The simulated run and the
+-- other repository each hold one full-set run of 5 000 s that must not count.
+insert into ouroboros.test_runs
+    (id, organization_id, run_id, attempt_seq, status, wall_ms, sim_ms, physical_ms, started_at)
+select ('a1210000-0000-0000-0000-0000000001' || lpad(n::text, 2, '0'))::uuid, 'org-v121',
+       'a1210000-0000-0000-0000-0000000000c1', n,
+       case when n = 9 then 'running' else 'complete' end,
+       case when n <= 5 then 590000 + 10000 * n when n = 6 then 60000 when n = 7 then 70000
+            when n = 8 then 700000 end,
+       case when n <= 5 then 590000 + 10000 * n when n = 6 then 60000 when n = 7 then 70000
+            when n = 8 then 700000 end,
+       case when n <= 8 then 0 end,
+       now() - make_interval(hours => 10 - n)
+  from generate_series(1, 9) n;
+
+insert into ouroboros.test_runs
+    (id, organization_id, run_id, attempt_seq, status, wall_ms, sim_ms, physical_ms, started_at)
+  values
+    ('a1210000-0000-0000-0000-000000000201', 'org-v121', 'a1210000-0000-0000-0000-0000000000c2', 1,
+     'complete', 5000000, 5000000, 0, now() - interval '30 minutes'),
+    ('a1210000-0000-0000-0000-000000000301', 'org-v121', 'a1210000-0000-0000-0000-0000000000c3', 1,
+     'complete', 5000000, 5000000, 0, now() - interval '30 minutes');
+
+insert into ouroboros.test_suites (organization_id, test_run_id, name, platform, kind)
+select t.organization_id, t.id, suite.name, 'native_sim', 'sim'
+  from ouroboros.test_runs t
+  cross join lateral (
+    select unnest(case when t.attempt_seq in (6, 7) and t.run_id = 'a1210000-0000-0000-0000-0000000000c1'
+                       then array['smoke'] else array['unit', 'hil'] end) as name) suite
+ where t.organization_id = 'org-v121';
+
+select pg_temp.must_hold(
+  ouroboros.test_suite_set('a1210000-0000-0000-0000-000000000101') = array['hil', 'unit']
+  and ouroboros.test_suite_set('a1210000-0000-0000-0000-000000000106') = array['smoke']
+  and ouroboros.test_suite_set('a1210000-0000-0000-0000-00000000dead') = '{}',
+  'a suite set is a test run''s distinct suite names, sorted');
+
+select pg_temp.must_hold(
+  (select s.suites = array['hil', 'unit'] and (s.sample_count, s.median_ms, s.spread_ms) = (6, 625000, 15000)
+     from ouroboros.test_replay_sample('org-v121', 'a1210000-0000-0000-0000-0000000000f1', null, now(), 30) s),
+  'with no suite set named, a test estimate takes the set the repository last measured — six full runs, median 625 s, spread 15 s — never the smoke runs, the running one, the simulated run or another repository''s');
+
+select pg_temp.must_hold(
+  (select s.suites = array['smoke'] and (s.sample_count, s.median_ms, s.spread_ms) = (2, 65000, 5000)
+     from ouroboros.test_replay_sample('org-v121', 'a1210000-0000-0000-0000-0000000000f1', array['smoke', 'smoke'], now(), 30) s)
+  and (select s.suites = array['hil', 'unit'] and s.sample_count = 6
+         from ouroboros.test_replay_sample('org-v121', 'a1210000-0000-0000-0000-0000000000f1', array['unit', 'hil'], now(), 30) s),
+  'a named suite set is matched exactly, whatever order or repetition it was named in');
+
+select pg_temp.must_hold(
+  (select s.suites = array['integration'] and s.sample_count = 0 and s.median_ms is null and s.spread_ms is null
+     from ouroboros.test_replay_sample('org-v121', 'a1210000-0000-0000-0000-0000000000f1', array['integration'], now(), 30) s)
+  and (select s.suites is null and s.sample_count = 0 and s.median_ms is null
+         from ouroboros.test_replay_sample('org-v121b', 'a1210000-0000-0000-0000-0000000000f3', null, now(), 30) s),
+  'a suite set nobody ran is a count of zero, and a repository with no measured test run has no set to name');
+
+select pg_temp.must_hold(
+  (select s.sample_count = 21 from ouroboros.build_replay_sample('org-v121', 'a1210000-0000-0000-0000-0000000000f1',
+            'a1210000-0000-0000-0000-0000000000a1', 'container', 'ghcr.io/acme/sdk:0.17',
+            'west build -b board app', now(), 30) s)
+  and (select s.median_ms = 625000 from ouroboros.test_replay_sample('org-v121', 'a1210000-0000-0000-0000-0000000000f1', null, now(), 30) s),
+  'the test estimate and the build estimate are two samples: 625 s of tests beside 220 s of builds');
+
+-- --- the note, as the card prints it ------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(ouroboros.replay_duration_label(ms) order by ord)
+          = array['0s', '20s', '1m 00s', '4m 02s', '59m 59s', '1h 00m 00s', '1h 03m 20s']
+     from unnest(array[0, 20000, 59600, 242000, 3599000, 3600000, 3800000]::bigint[])
+          with ordinality as t (ms, ord)),
+  'a duration is written 20s, 4m 02s, 1h 03m 20s — rounded to the second');
+
+select pg_temp.must_hold(
+  ouroboros.replay_estimate_note('build', 242000, 214, 20000) = 'est. 4m 02s (214 similar builds, ±20s)'
+  and ouroboros.replay_estimate_note('test', 625000, 6, 15000) = 'est. 10m 25s (6 similar test runs, ±15s)'
+  and ouroboros.replay_estimate_note('build', 242000, 1, 0) = 'est. 4m 02s (1 similar build, ±0s)'
+  and ouroboros.replay_estimate_note('build', null, 7, null)
+      = 'insufficient history — the first real build will measure this (7 similar builds found)'
+  and ouroboros.replay_estimate_note('test', null, 0, null)
+      = 'insufficient history — the first real test run will measure this (0 similar test runs found)',
+  'a replayed note is the estimate with its sample and spread, or the honest fallback with the count found');
+
+-- --- the record: an estimate with its window, or insufficient history ---------
+select pg_temp.must_hold(
+  ouroboros.dry_run_stage_metrics_valid('replayed',
+    '{"estimate_ms": 242000, "sample_count": 214, "spread_ms": 20000, "similarity_class": "c", "window_days": 30}')
+  and ouroboros.dry_run_stage_metrics_valid('replayed',
+    '{"estimate_ms": 242000, "sample_count": 214, "spread_ms": 20000, "similarity_class": "c"}')
+  and ouroboros.dry_run_stage_metrics_valid('replayed',
+    '{"insufficient_history": true, "sample_count": 7, "similarity_class": "c", "window_days": 30}')
+  and ouroboros.dry_run_stage_metrics_valid('replayed',
+    '{"insufficient_history": true, "sample_count": 0, "similarity_class": "c"}'),
+  'a replayed row stores its estimate with the window it was read over, or says it had insufficient history with the count it found — and a row written before V121 still reads');
+
+select pg_temp.must_hold(
+  not ouroboros.dry_run_stage_metrics_valid('replayed',
+    '{"insufficient_history": true, "estimate_ms": 242000, "spread_ms": 20000, "sample_count": 7, "similarity_class": "c"}')
+  and not ouroboros.dry_run_stage_metrics_valid('replayed',
+    '{"insufficient_history": true, "spread_ms": 20000, "sample_count": 7, "similarity_class": "c"}'),
+  'insufficient history never carries a number');
+
+select pg_temp.must_hold(
+  not ouroboros.dry_run_stage_metrics_valid('replayed',
+    '{"insufficient_history": false, "estimate_ms": 242000, "spread_ms": 20000, "sample_count": 214, "similarity_class": "c"}')
+  and not ouroboros.dry_run_stage_metrics_valid('replayed',
+    '{"insufficient_history": true, "similarity_class": "c"}')
+  and not ouroboros.dry_run_stage_metrics_valid('replayed',
+    '{"insufficient_history": true, "sample_count": 7}')
+  and not ouroboros.dry_run_stage_metrics_valid('replayed',
+    '{"estimate_ms": 242000, "sample_count": 214, "spread_ms": 20000, "similarity_class": "c", "window_days": 0}')
+  and not ouroboros.dry_run_stage_metrics_valid('replayed',
+    '{"sample_count": 214, "similarity_class": "c", "window_days": 30}'),
+  'the insufficient marker is true or absent, the count and the class are always there, a window is at least a day, and a row with neither a number nor the marker says nothing');
+
+select pg_temp.must_hold(
+  not ouroboros.dry_run_stage_metrics_valid('llm', '{"tokens": 1, "window_days": 30}')
+  and not ouroboros.dry_run_stage_metrics_valid('deterministic', '{"insufficient_history": true}')
+  and ouroboros.dry_run_stage_metrics_valid('llm', '{"tokens": 1}'),
+  'only a replayed row carries a window or the insufficient marker');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

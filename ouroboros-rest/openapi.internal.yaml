@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.41.4"
+  version: "0.41.5"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -222,6 +222,18 @@ tags:
       type**: every operation answers its payload *and* the source records it read, already
       archived in the investigation's citation ledger with their cite numbers. An answer with a
       payload and no sources is refused as a contract violation, never passed on.
+
+  - name: dry-runs
+    description: |-
+      **Replayed infrastructure — CD.3
+      ([#561](https://github.com/NobuData/ouroboros/issues/561)), decision **W4**.**
+
+      A dry run dispatches nothing to the build farm. Its harness's `build` and `run_tests`
+      tools are replay stubs: instead of running anything they ask here how long builds and test
+      runs *like this stage's* have actually taken. The answer is arithmetic over this
+      workspace's own history — a median, its spread, the sample count and the window, together —
+      or `insufficient_history` with the count that was found. **It is never a model's guess,
+      and below the sample floor it is never a number.**
 
 paths:
   /internal/credentials/lease:
@@ -1956,6 +1968,198 @@ paths:
                 message: A failed investigation names its reason and detail; a cancelled one names neither.
                 details:
                   reason: a failed investigation needs a reason and a detail
+        "500":
+          description: "`internal_error` — the service itself failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /internal/dry-runs/{id}/replay-estimates:
+    post:
+      tags: [dry-runs]
+      summary: Estimate a dry run's build or test stage from history
+      description: |-
+        How long would this stage take, judging by what the farm has already run? Called by the
+        dry-run harness's replay stubs (CD.2, #560) for an infra stage; nothing is dispatched.
+
+        **What is similar.** A **build** is compared with the succeeded builds of the same
+        workspace, repository, pool, executor and *configuration class* — the container image
+        without its tag or digest, plus the whitespace-collapsed command (the command alone for
+        a shell pool). An SDK bump keeps its history; a changed command starts a new one. The
+        executor and image are the pool's as configured now, and a stage without a command takes
+        the pool's default. A **test** is compared with this repository's complete test runs that
+        reported exactly the same *suite set*; without one, the set the repository last measured
+        is used. Test estimates rest on test history, never on build history. The workspace and
+        the repository are the dry run's — its ticket names the repository — and are never sent.
+
+        **What is returned.** `status: estimate` carries `estimateMs` (the median), `spreadMs`
+        (the median absolute deviation — the card's `±`), `sampleCount` and `windowDays`, always
+        all four. Fewer samples than the floor is `status: insufficient_history` with the
+        `sampleCount` found and **no number**. Both carry the `similarityClass`, the `note` the
+        card prints and the registered `formula` with its real inputs, for the Details popover.
+
+        **Cache context.** A build estimate whose sample reported ccache statistics also carries
+        `cache` — the warm (hit rate of one half or more) and cold builds counted and medianed
+        apart. It is context beside the estimate; it never moves `estimateMs`.
+
+        **The stage row.** `stage` is the same answer as the `dry_run_stages` row that records
+        it (`how`, `note`, `metrics`). This operation writes nothing.
+      operationId: estimateDryRunReplay
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: "`dry_runs.id`. The workspace and the repository are resolved from it, never named by the caller."
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplayEstimateRequest"
+            examples:
+              build:
+                summary: The seeded draft's build stage — a pool, and its default command
+                value:
+                  kind: build
+                  runnerPool: pool-a
+              test:
+                summary: A test stage naming its suite set
+                value:
+                  kind: test
+                  suites: ["unit · drivers", "PHYSICAL · HIL rig"]
+      responses:
+        "200":
+          description: The estimate with its whole basis, or insufficient history with the count found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReplayEstimateResponse"
+              examples:
+                estimate:
+                  summary: Enough history — mockup 20's `est. 4m 02s (214 similar builds, ±20s)`
+                  value:
+                    estimate:
+                      status: estimate
+                      kind: build
+                      similarityClass: pool-a · helios-firmware · container · ghcr.io/acme-robotics/zephyr-sdk · west build -b helios_mainboard app
+                      windowDays: 30
+                      note: est. 4m 02s (214 similar builds, ±20s)
+                      estimateMs: 242000
+                      spreadMs: 20000
+                      sampleCount: 214
+                      cache:
+                        measured: 212
+                        warm:
+                          count: 186
+                          medianMs: 236000
+                        cold:
+                          count: 26
+                          medianMs: 410000
+                        note: warm cache ≈ 3m 56s (186 builds) · cold cache ≈ 6m 50s (26 builds)
+                      formula:
+                        id: build_duration_replay
+                        version: 1
+                        title: Estimated build duration
+                        formulaText: The median start-to-finish wall time of the succeeded build-farm jobs in the window that share this stage's similarity class.
+                        sourcePlanes: [build_farm]
+                        caveats: An estimate from history, not a measurement.
+                        unit: duration_ms
+                        dispersion: median_absolute_deviation
+                        inputs:
+                          similarityClass: pool-a · helios-firmware · container · ghcr.io/acme-robotics/zephyr-sdk · west build -b helios_mainboard app
+                          windowDays: 30
+                          sampleFloor: 20
+                          sampleCount: 214
+                    stage:
+                      how: replayed
+                      note: est. 4m 02s (214 similar builds, ±20s)
+                      metrics:
+                        estimate_ms: 242000
+                        spread_ms: 20000
+                        sample_count: 214
+                        similarity_class: pool-a · helios-firmware · container · ghcr.io/acme-robotics/zephyr-sdk · west build -b helios_mainboard app
+                        window_days: 30
+                insufficient:
+                  summary: Below the floor — the count found, and no number anywhere
+                  value:
+                    estimate:
+                      status: insufficient_history
+                      kind: build
+                      similarityClass: pool-b · helios-console · shell · xcodebuild -scheme HeliosConsole
+                      windowDays: 30
+                      note: insufficient history — the first real build will measure this (7 similar builds found)
+                      sampleCount: 7
+                      sampleFloor: 20
+                      formula:
+                        id: build_duration_replay
+                        version: 1
+                        title: Estimated build duration
+                        formulaText: The median start-to-finish wall time of the succeeded build-farm jobs in the window that share this stage's similarity class.
+                        sourcePlanes: [build_farm]
+                        caveats: An estimate from history, not a measurement.
+                        unit: duration_ms
+                        dispersion: median_absolute_deviation
+                        inputs:
+                          similarityClass: pool-b · helios-console · shell · xcodebuild -scheme HeliosConsole
+                          windowDays: 30
+                          sampleFloor: 20
+                          sampleCount: 7
+                    stage:
+                      how: replayed
+                      note: insufficient history — the first real build will measure this (7 similar builds found)
+                      metrics:
+                        insufficient_history: true
+                        sample_count: 7
+                        similarity_class: pool-b · helios-console · shell · xcodebuild -scheme HeliosConsole
+                        window_days: 30
+        "401":
+          description: |-
+            No `X-Ouro-Internal-Key`, or the wrong one. One constant body: `code:
+            "unauthenticated"`, a bare message and empty `details`, whichever it was.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: unauthenticated
+                message: Unauthorized.
+                details: {}
+        "404":
+          description: "`dry_run_not_found` — no dry run has this id."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: dry_run_not_found
+                message: There is no dry run with this id.
+                details:
+                  dryRun: 5eed008b-0000-4000-8000-000000000999
+        "422":
+          description: |-
+            The request names something the workspace does not have, so there is no class to
+            sample — which is different from too little history, and is never answered as it:
+
+            | `code` | when |
+            |---|---|
+            | `replay_repository_unresolved` | the dry run's ticket names no repository this workspace mirrors |
+            | `replay_pool_required` | a build estimate was asked for without `runnerPool` |
+            | `replay_pool_not_found` | the workspace has no runner pool of that name |
+            | `replay_command_required` | neither the request nor the pool names a command |
+            | `validation_failed` | the body or the id is the wrong shape |
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: replay_pool_not_found
+                message: This workspace has no runner pool with that name.
+                details:
+                  runnerPool: pool-z
         "500":
           description: "`internal_error` — the service itself failed."
           content:
@@ -3700,3 +3904,252 @@ components:
                   type: integer
                   minimum: 1
             - type: "null"
+
+    ReplayEstimateRequest:
+      description: |-
+        One infra stage of a dry run to estimate from history (CD.3, #561). The workspace and
+        the repository are the dry run's and are not accepted here.
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          description: What to estimate — a build, or a test run.
+          enum: [build, test]
+        runnerPool:
+          description: The stage's runner pool, by name. Required for a build (`422 replay_pool_required`); ignored for a test.
+          type: string
+          minLength: 1
+          maxLength: 120
+        command:
+          description: The stage's command. A build without one takes its pool's default command; ignored for a test.
+          type: string
+          minLength: 1
+          maxLength: 2000
+        suites:
+          description: A test stage's suite set — suite names, in any order. Without one, the set the repository's most recent measured test run reported. Ignored for a build.
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            type: string
+            minLength: 1
+            maxLength: 200
+
+    ReplayFormula:
+      description: |-
+        The estimator's registered formula, with the inputs this answer was computed from — what
+        the Details popover renders. Registered in the metrics registry's shape (#432).
+      type: object
+      additionalProperties: false
+      required: [id, version, title, formulaText, sourcePlanes, caveats, unit, dispersion, inputs]
+      properties:
+        id:
+          description: The formula's stable id.
+          enum: [build_duration_replay, test_duration_replay]
+        version:
+          description: Raised whenever the computation changes.
+          type: integer
+          minimum: 1
+        title:
+          type: string
+          minLength: 1
+        formulaText:
+          description: The computation, in words a reader can check against the inputs.
+          type: string
+          minLength: 1
+        sourcePlanes:
+          description: The planes whose history it reads.
+          type: array
+          minItems: 1
+          items:
+            type: string
+        caveats:
+          description: What the figure does not say.
+          type: string
+          minLength: 1
+        unit:
+          const: duration_ms
+        dispersion:
+          description: What the estimate's spread is.
+          const: median_absolute_deviation
+        inputs:
+          type: object
+          additionalProperties: false
+          required: [similarityClass, windowDays, sampleFloor, sampleCount]
+          properties:
+            similarityClass:
+              type: string
+              minLength: 1
+            windowDays:
+              type: integer
+              minimum: 1
+            sampleFloor:
+              type: integer
+              minimum: 1
+            sampleCount:
+              type: integer
+              minimum: 0
+
+    ReplayCacheHalf:
+      description: The sampled builds on one side of the cache split, or null when there were none.
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [count, medianMs]
+          properties:
+            count:
+              type: integer
+              minimum: 1
+            medianMs:
+              type: integer
+              minimum: 0
+        - type: "null"
+
+    ReplayEstimate:
+      description: |-
+        An estimator's answer. `estimate` always carries the median, the spread, the sample count
+        and the window; `insufficient_history` carries the count found and no number.
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [status, kind, similarityClass, windowDays, note, formula, estimateMs, spreadMs, sampleCount, cache]
+          properties:
+            status:
+              const: estimate
+            kind:
+              enum: [build, test]
+            similarityClass:
+              description: The class the sample was matched on, as printed.
+              type: string
+              minLength: 1
+            windowDays:
+              description: The window the sample was read over.
+              type: integer
+              minimum: 1
+            note:
+              description: The row's note, as the dry-run card prints it.
+              type: string
+              minLength: 1
+            formula:
+              $ref: "#/components/schemas/ReplayFormula"
+            estimateMs:
+              description: The median wall time of the sample.
+              type: integer
+              minimum: 0
+            spreadMs:
+              description: The median absolute deviation of the sample.
+              type: integer
+              minimum: 0
+            sampleCount:
+              description: The samples the estimate rests on — at least the floor.
+              type: integer
+              minimum: 1
+            cache:
+              description: Cache context for a build whose sample reported ccache statistics; null otherwise, and always for a test.
+              oneOf:
+                - type: object
+                  additionalProperties: false
+                  required: [measured, warm, cold, note]
+                  properties:
+                    measured:
+                      description: The sampled builds that reported ccache statistics.
+                      type: integer
+                      minimum: 1
+                    warm:
+                      $ref: "#/components/schemas/ReplayCacheHalf"
+                    cold:
+                      $ref: "#/components/schemas/ReplayCacheHalf"
+                    note:
+                      description: The range, in words.
+                      type: string
+                - type: "null"
+        - type: object
+          additionalProperties: false
+          required: [status, kind, similarityClass, windowDays, note, formula, sampleCount, sampleFloor]
+          properties:
+            status:
+              const: insufficient_history
+            kind:
+              enum: [build, test]
+            similarityClass:
+              type: string
+              minLength: 1
+            windowDays:
+              type: integer
+              minimum: 1
+            note:
+              description: The honest fallback, naming the count found.
+              type: string
+              minLength: 1
+            formula:
+              $ref: "#/components/schemas/ReplayFormula"
+            sampleCount:
+              description: The samples found — fewer than the floor.
+              type: integer
+              minimum: 0
+            sampleFloor:
+              description: The floor they fell short of.
+              type: integer
+              minimum: 1
+
+    ReplayStageRecord:
+      description: |-
+        An estimate as the `dry_run_stages` row that records it — the shape
+        `dry_run_stage_metrics_valid()` accepts for a replayed stage.
+      type: object
+      additionalProperties: false
+      required: [how, note, metrics]
+      properties:
+        how:
+          const: replayed
+        note:
+          type: string
+          minLength: 1
+        metrics:
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [estimate_ms, spread_ms, sample_count, similarity_class, window_days]
+              properties:
+                estimate_ms:
+                  type: integer
+                  minimum: 0
+                spread_ms:
+                  type: integer
+                  minimum: 0
+                sample_count:
+                  type: integer
+                  minimum: 1
+                similarity_class:
+                  type: string
+                  minLength: 1
+                window_days:
+                  type: integer
+                  minimum: 1
+            - type: object
+              additionalProperties: false
+              required: [insufficient_history, sample_count, similarity_class, window_days]
+              properties:
+                insufficient_history:
+                  const: true
+                sample_count:
+                  type: integer
+                  minimum: 0
+                similarity_class:
+                  type: string
+                  minLength: 1
+                window_days:
+                  type: integer
+                  minimum: 1
+
+    ReplayEstimateResponse:
+      description: The estimate, and the stage row that records it.
+      type: object
+      additionalProperties: false
+      required: [estimate, stage]
+      properties:
+        estimate:
+          $ref: "#/components/schemas/ReplayEstimate"
+        stage:
+          $ref: "#/components/schemas/ReplayStageRecord"

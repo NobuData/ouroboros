@@ -20,6 +20,7 @@ from ouroboros_engine.control_plane.client import (
     ControlPlaneRequest,
 )
 from ouroboros_engine.control_plane.contract import (
+    DRY_RUN_REPLAY_ESTIMATES_PATH,
     INTERNAL_KEY_HEADER,
     INVOKE_MEDIA_TYPE,
     INVOKE_PATH,
@@ -42,6 +43,7 @@ from ouroboros_engine.control_plane.ingest import (
 )
 
 __all__ = [
+    "DRY_RUN_REPLAY_ESTIMATES_PATH",
     "INGEST_PATHS",
     "INTERNAL_KEY_HEADER",
     "INVOKE_MEDIA_TYPE",

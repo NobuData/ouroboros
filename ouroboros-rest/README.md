@@ -5051,6 +5051,60 @@ investigation_not_queued` after that), and `reconcile(org, investigation)` write
 actuals side by side through V109's `record_investigation_estimate_outcome()` — idempotent, with
 generated `sources_within_estimate` / `cost_within_estimate` — which is what recalibration reads.
 
+## Replay estimates
+
+`POST /internal/dry-runs/{id}/replay-estimates` is mockup 20's replayed row —
+`✓ build (replayed from history) est. 4m 02s (214 similar builds, ±20s)` — computed
+([#561](https://github.com/NobuData/ouroboros/issues/561), decision **W4**). A dry run dispatches
+nothing to the farm; its harness's `build` and `run_tests` tools (CD.2, #560) are replay stubs
+that ask here instead.
+
+```
+never:  a model asked "how long will this build take?"
+always: arithmetic over builds this farm actually ran, with the sample attached
+
+dry run ─▶ its workspace, its ticket's repository
+stage   ─▶ similarity class ─▶ sample in the window ─▶ n ≥ floor?
+                                  median · MAD · n        ├─ yes ─▶ estimate {4m 02s, ±20s, n=214, 30 d}
+                                                          └─ no  ─▶ insufficient_history {found: 7}
+```
+
+**The arithmetic is the database's.** `ouroboros-db`'s `V121` owns the similarity class
+(`build_similarity_class()`, `test_similarity_class()`), the statistics (`build_replay_sample()`,
+`test_replay_sample()`), the policy (`replay_estimate_policy()`: 30 days, floor 20) and the words
+(`replay_estimate_note()`), because the dev seed's replayed row must be the same computation.
+`src/modules/replay-estimates/replay.repository.ts` calls those functions and re-derives nothing —
+`replay.repository.spec.ts` fails a statement that reaches for `percentile` or `build_jobs`.
+
+| Rule | Where it is enforced |
+| --- | --- |
+| **Similar is defined.** A build matches on workspace, repository, pool, executor and *configuration class* — the image without its tag or digest, plus the whitespace-collapsed command. An SDK bump keeps its history; a changed command starts a new one. The executor and image are the pool's as configured now; a stage without a command takes the pool's default | `build_config_class()` (V121); `ouroboros-db/tests/constraints.sql` |
+| **An estimate travels with its basis.** Median, spread, sample count and window are one answer | `assertCompleteEstimate()` in `replay.estimate.ts`, run on every result before it leaves; `ReplayEstimate` in `openapi.internal.yaml` requires all four |
+| **The ± is the median absolute deviation** — the median distance from the median — which one stuck build cannot move | `build_replay_sample()`; `REPLAY_DISPERSION` |
+| **Below the floor there is no number.** `insufficient_history` carries the count found, and its shape has no field a number could sit in | `composeEstimate()`; the contract's second `oneOf` branch |
+| **Tests rest on test history.** A test stage is keyed by *suite set* — a run's distinct suite names — over `test_runs.wall_ms`; no suite set named means the one the repository last measured. Runs driven by a simulator are not history | `test_replay_sample()`; `ReplayEstimateService.estimateTest()` never calls the build sample |
+| **Cache context is context.** The warm (ccache hit rate ≥ ½) and cold builds of the sample are counted and medianed apart and returned as `cache`, beside an `estimateMs` they never move | `cacheContext()`; kept off the stage row |
+| **The formula is registered.** Each estimator declares its computation in the metrics registry's shape (id, version, title, formula, source planes, caveats) and every answer carries it with the real inputs, for the Details popover (#568). A change to the computation raises the version | `replay.formulas.ts` |
+| **The workspace and repository are the dry run's.** The repository is the one its ticket names (`meta.github.owner` / `repo`), matched inside the workspace's own mirror; neither is accepted in the body | `ReplayEstimateRepository.context()`; `ReplayEstimateDto` |
+
+The answer also carries `stage` — the same result as the `dry_run_stages` row that records it
+(`how: replayed`, `note`, `metrics`), in the two shapes V121's `dry_run_stage_metrics_valid()`
+accepts. This module writes nothing: recording the row is dry-run orchestration's (CD.4, #562),
+which can also call the exported `ReplayEstimateService` directly.
+
+What it refuses is a request with no class to sample — `dry_run_not_found` (404),
+`replay_repository_unresolved`, `replay_pool_required`, `replay_pool_not_found`,
+`replay_command_required` (422). Too little history is never one of them: it is an answer.
+
+| File | What it holds |
+| --- | --- |
+| `replay.formulas.ts` | The registered formulas, by kind |
+| `replay.estimate.ts` | Pure: the floor decision, the note, cache context, the completeness probe, the stage record |
+| `replay.repository.ts` | The dry run's context, and the calls into V121's functions |
+| `replay.service.ts` | `estimate()` for the route; `estimateBuild()` / `estimateTest()` for callers inside REST |
+| `replay.internal.controller.ts` | The engine-facing route |
+| `replay.integration-spec.ts` | The mockup's figure reproduced from a farm history whose answer is known by inspection; the floor; suite sets; isolation |
+
 ## BetterAuth
 
 **The library is installed, configured, mounted, and doing the work.** `/api/auth/*`
@@ -7273,6 +7327,7 @@ ouroboros-rest/
 │       │                   #   simulate.*  — POST /routing/simulate, one dependency · #197
 │       │                   #   stats.*     — $/run avg, p50, the 30d spend card · #198
 │       │                   #   {matrix,persistence,isolation,honesty}.integration-spec · #199
+│       ├── replay-estimates/ # POST /internal/dry-runs/:id/replay-estimates — infra estimates from farm and test history · #561
 │       ├── research/       # POST /research/estimates — sources & cost, researcher pill · #622
 │       │   ├── loop/       # the investigation loop's control-plane half — /internal/research/investigations/:id/{start,checkpoint,brief,finish}, dispatch, cancel, the resume pass · #620
 │       │   └── tools/      # ResearchToolAdapter SPI, registry, conformance kit, POST /internal/research/tools/:slug/:op · #614

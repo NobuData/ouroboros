@@ -91,6 +91,13 @@ RESEARCH_INVESTIGATION_PATHS = (
     RESEARCH_INVESTIGATION_FINISH_PATH,
 )
 
+#: ``POST`` — estimate one infra stage of a dry run from the farm's own history (CD.3,
+#: `#561 <https://github.com/NobuData/ouroboros/issues/561>`_). ``{id}`` is the dry run. The
+#: dry-run harness's ``build`` and ``run_tests`` replay stubs (CD.2, #560) call it instead of
+#: dispatching anything: the answer is a median with its spread, sample count and window, or
+#: ``insufficient_history`` with the count found — never a model's guess.
+DRY_RUN_REPLAY_ESTIMATES_PATH = "/internal/dry-runs/{id}/replay-estimates"
+
 #: The four controls a person can send a run, and what an executor must do with each:
 #:
 #: ``pause``
