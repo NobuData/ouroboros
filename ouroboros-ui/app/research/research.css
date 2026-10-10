@@ -1,0 +1,136 @@
+/*
+ * Research (#627) — mockup 22's page frame: the head and the grid its six regions mount into.
+ *
+ * The mockup is docs/mockups/22-research.html over docs/mockups/assets/ouroboros.css. What is
+ * taken from it is the anatomy the design system requires of every module page
+ * (docs/DESIGN_SYSTEM_APP_SHELL.md § 2): page head, then the twelve-column card grid, at the
+ * pane's own measure. What is not taken from it is the topbar — this page renders inside the app
+ * shell (#41) and adds no fixed or sticky chrome of its own, so the header and the sidebar stay
+ * put while the pane scrolls.
+ *
+ * The buttons, the eyebrow, the card and the empty note are the primitives in `app/ui/`. What
+ * stays here is what belongs to this page: the gutter rhythm, the head, the grid and its
+ * breakpoint, and the ring a seat wears when an action has just sent the reader to it.
+ *
+ * Held to the two rules every sheet here is (docs/CONVENTIONS.md § 6): every colour is a token
+ * from app/tokens.css, which is what makes both palettes one sheet — the mockup is dark-only —
+ * and every length that should follow the reader's font-size preference is rem, which is what
+ * makes the 125% step correct. Media-query widths are the exception, for the reason
+ * app/shell/shell.css sets out.
+ */
+
+/* ---------- the page frame ---------- */
+
+.research {
+  padding: var(--sp-11) var(--sp-10) var(--sp-12);
+}
+
+.research__head {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-8);
+  margin-bottom: var(--sp-10);
+}
+
+/* The floor keeps the headline from being squeezed beside the two actions. */
+.research__headings {
+  flex: 1;
+  min-width: 20rem;
+}
+
+.research__title {
+  font-size: var(--t-2xl);
+  letter-spacing: var(--tr-tight);
+  text-wrap: balance;
+}
+
+/* Wider than the product's usual subline: four clauses, which the mockup sets on three lines. */
+.research__sub {
+  max-width: 88ch;
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-mut);
+  line-height: var(--lh-body);
+}
+
+.research__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-6);
+}
+
+/* ---------- the grid ---------- */
+
+/* The mockup's `.grid`: twelve columns. */
+.research__grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--sp-8);
+}
+
+/*
+ * A seat is a grid of one, so the card in it fills the cell. The margin is what an action's
+ * landing leaves above the seat, so its ring is not flush against the pane's edge.
+ */
+.research__seat {
+  display: grid;
+  min-width: 0;
+  border-radius: var(--r-lg);
+  scroll-margin-top: var(--sp-8);
+}
+
+.research__seat > * {
+  min-width: 0;
+}
+
+/* A seat takes focus only when an action sends the reader to it; the ring below is its mark. */
+.research__seat:focus {
+  outline: none;
+}
+
+/* The mockup's `c-7`: the composer. */
+.research__seat--main {
+  grid-column: span 7;
+}
+
+/*
+ * The mockup's side column (`c-5 col`): the tools card over the regression watch. A column rather
+ * than two cards placed in the grid, because it stacks its own beside the taller composer.
+ */
+.research__side {
+  display: flex;
+  flex-direction: column;
+  grid-column: span 5;
+  gap: var(--sp-8);
+  min-width: 0;
+}
+
+/* A card in the side column: placed by the column, not by the grid. */
+.research__seat--side {
+  grid-column: auto;
+}
+
+/* The mockup's `c-12`: the brief, the pipeline and the investigations list. */
+.research__seat--wide {
+  grid-column: span 12;
+}
+
+/* The seat an action just sent the reader to — the accent ring, until focus moves on. */
+.research__seat--highlight {
+  box-shadow: 0 0 0 1px var(--accent), 0 0 0 var(--sp-2) var(--accent-tint);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .research__seat {
+    transition: box-shadow 160ms ease;
+  }
+}
+
+/* Narrower, the composer and the side column stack — in the mockup's order. */
+@media (max-width: 68.75rem) {
+  .research__seat--main,
+  .research__side {
+    grid-column: span 12;
+  }
+}

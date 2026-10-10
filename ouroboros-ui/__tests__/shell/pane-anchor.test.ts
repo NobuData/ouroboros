@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fragmentId, landOn, landOnFragment } from "@/app/shell/pane-anchor";
+import {
+  claimPaneLanding,
+  fragmentId,
+  landOn,
+  landOnFragment,
+  paneLandingClaimed,
+} from "@/app/shell/pane-anchor";
 
 /**
  * Landing on the fragment a page was opened with (BS.1,
@@ -81,5 +87,30 @@ describe("landing", () => {
     expect(() => {
       landOn(element);
     }).not.toThrow();
+  });
+});
+
+describe("a screen that lands the pane itself (#627)", () => {
+  it("holds a claim until it releases it", () => {
+    expect(paneLandingClaimed()).toBe(false);
+
+    const release = claimPaneLanding();
+    expect(paneLandingClaimed()).toBe(true);
+
+    release();
+    expect(paneLandingClaimed()).toBe(false);
+  });
+
+  it("releases once, however often the release is called", () => {
+    const first = claimPaneLanding();
+    const second = claimPaneLanding();
+
+    first();
+    first();
+
+    expect(paneLandingClaimed()).toBe(true);
+
+    second();
+    expect(paneLandingClaimed()).toBe(false);
   });
 });

@@ -22,6 +22,7 @@ import {
   KNOWLEDGE_PATH,
   MODELS_PATH,
   PLANNING_PATH,
+  RESEARCH_PATH,
   SETTINGS_PATH,
   WORKFLOWS_PATH,
 } from "@/app/paths";
@@ -123,7 +124,7 @@ describe("the seeded entries", () => {
     }
   });
 
-  it("has exactly ten built destinations today: the dashboard, Issues, Workflows, Models, Build Farm, Knowledge, Planning, Insights, Needs You and Settings", () => {
+  it("has all eleven destinations built: the dashboard, Issues, Workflows, Models, Build Farm, Knowledge, Planning, Research, Insights, Needs You and Settings", () => {
     // A live entry is a promise that a page is behind it, so this list may only grow on the
     // commit that builds one — a live entry without a page would ship a 404 in the product's
     // primary navigation. Models joined it with #200 (`app/(app)/models/(routing)/page.tsx`),
@@ -132,8 +133,9 @@ describe("the seeded entries", () => {
     // `app/(app)/settings/page.tsx` redirects to the section's one built tab, Ticket sources,
     // until #491 builds the hub — Planning with #283 (`app/(app)/planning/page.tsx`), Build
     // Farm with #256 (`app/(app)/build-farm/page.tsx`) and Knowledge with #417
-    // (`app/(app)/knowledge/page.tsx`), Insights with #443 (`app/(app)/insights/page.tsx`) and Needs
-    // You with #466 (`app/(app)/inbox/page.tsx`); the other one waits for its own roadmap issue.
+    // (`app/(app)/knowledge/page.tsx`), Insights with #443 (`app/(app)/insights/page.tsx`), Needs
+    // You with #466 (`app/(app)/inbox/page.tsx`) and — the last — Research with #627
+    // (`app/(app)/research/page.tsx`).
     // Asserted against the constants rather than the strings, so an entry and every redirect
     // to it stay the same fact (#45 moved the dashboard off `/`).
     expect(
@@ -148,10 +150,12 @@ describe("the seeded entries", () => {
       BUILD_FARM_PATH,
       KNOWLEDGE_PATH,
       PLANNING_PATH,
+      RESEARCH_PATH,
       INSIGHTS_PATH,
       INBOX_PATH,
       SETTINGS_PATH,
     ]);
+    expect(SEEDED_NAV_ENTRIES.every((entry) => navStatus(entry) === "live")).toBe(true);
   });
 
   it("explains every unbuilt entry by naming what it waits for", () => {

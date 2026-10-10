@@ -10,6 +10,7 @@ import {
   KNOWLEDGE_PATH,
   MODELS_PATH,
   PLANNING_PATH,
+  RESEARCH_PATH,
   SETTINGS_PATH,
   WORKFLOWS_PATH,
   workflowPath,
@@ -99,6 +100,21 @@ function stage(entry: NavEntry): void {
           registerNavEntry(seeded);
         },
   );
+}
+
+/**
+ * An entry whose screen nobody has built — what a module registering ahead of its screen is.
+ *
+ * @returns The entry, to be staged.
+ */
+function unbuiltEntry(): NavEntry {
+  return navEntry({
+    id: "unbuilt",
+    label: "Unbuilt fixture",
+    route: "/unbuilt",
+    status: "soon",
+    soonNote: "The unbuilt fixture arrives with its own issue.",
+  });
 }
 
 /**
@@ -195,11 +211,11 @@ describe("what the sidebar links to", () => {
   it("links only to routes that exist", () => {
     render(<SidebarNav />);
 
-    // The ten screens that are built: the dashboard (#45), Issues (#115), Workflows (#147),
-    // Models (#200), Build Farm (#256), Knowledge (#417), Planning (#283), Insights (#443), Needs
-    // You (#466) and Settings (#141). Every other entry is a screen nobody has built, and a link
-    // to one would be a 404 in the product's primary navigation. The count is asserted too, so an
-    // eleventh link cannot appear without somebody deciding it should.
+    // All eleven screens are built: the dashboard (#45), Issues (#115), Workflows (#147), Models
+    // (#200), Build Farm (#256), Knowledge (#417), Planning (#283), Research (#627), Insights
+    // (#443), Needs You (#466) and Settings (#141). A link to a screen nobody has built would be a
+    // 404 in the product's primary navigation. The count is asserted too, so a twelfth link cannot
+    // appear without somebody deciding it should.
     const links = screen.getAllByRole("link");
 
     expect(links.map((link) => link.getAttribute("href"))).toEqual([
@@ -210,19 +226,27 @@ describe("what the sidebar links to", () => {
       BUILD_FARM_PATH,
       KNOWLEDGE_PATH,
       PLANNING_PATH,
+      RESEARCH_PATH,
       INSIGHTS_PATH,
       INBOX_PATH,
       SETTINGS_PATH,
     ]);
   });
 
+  it("draws no soon row for the seeded entries, now that #627 has built the last screen", () => {
+    const { container } = render(<SidebarNav />);
+
+    expect(container.querySelectorAll(".shell-nav__item--soon")).toHaveLength(0);
+  });
+
   it("labels an unbuilt entry rather than leaving it dead", () => {
+    // Every seeded screen is built since #627, so the unbuilt entry is a staged one — a module
+    // that registers before its screen exists is what the status is still for.
+    stage(unbuiltEntry());
     const { container } = render(<SidebarNav />);
     const soon = container.querySelectorAll(".shell-nav__item--soon");
 
-    const built = SEEDED_NAV_ENTRIES.filter((entry) => entry.status !== "soon").length;
-
-    expect(soon).toHaveLength(SEEDED_NAV_ENTRIES.length - built);
+    expect(soon).toHaveLength(1);
     for (const row of soon) {
       // The chip is what a sighted reader sees and a screen reader announces; the tooltip
       // carries the reason.
@@ -232,9 +256,12 @@ describe("what the sidebar links to", () => {
   });
 
   it("keeps unbuilt entries out of the tab order and out of the arrow ring", () => {
+    stage(unbuiltEntry());
     const { container } = render(<SidebarNav />);
+    const soon = container.querySelectorAll(".shell-nav__item--soon");
 
-    for (const row of container.querySelectorAll(".shell-nav__item--soon")) {
+    expect(soon).toHaveLength(1);
+    for (const row of soon) {
       // Not a link, not a tab stop, and carrying no id for the arrow keys to land on: the
       // keyboard never stops on a row that does nothing.
       expect(row.tagName).toBe("SPAN");
@@ -285,14 +312,25 @@ describe("the active entry", () => {
   });
 
   it("never highlights an entry whose screen does not exist", () => {
-    // /research is a real path in the registry and an unbuilt one in the product. Until research
-    // lands it must not light up, or the shell claims a page that is not there. (This case named
-    // /issues until #115 built that screen, /workflows until #147, /build-farm until #256 and
-    // /knowledge until #417.)
-    path.current = "/research";
+    // A real path in the registry and an unbuilt one in the product must not light up, or the
+    // shell claims a page that is not there. (This case named /issues until #115 built that
+    // screen, /workflows until #147, /build-farm until #256, /knowledge until #417 and /research
+    // until #627 — the last seeded one, so the entry is staged.)
+    const unbuilt = unbuiltEntry();
+    stage(unbuilt);
+    path.current = unbuilt.route;
     const { container } = render(<SidebarNav />);
 
     expect(container.querySelectorAll(".shell-nav__item--active")).toHaveLength(0);
+  });
+
+  it("lights Research on its own route and on the library's address, now that #627 has built the page", () => {
+    path.current = RESEARCH_PATH;
+    const { container } = render(<SidebarNav />);
+
+    expect(container.querySelectorAll(".shell-nav__item--active")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Research" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Research" })).toHaveAttribute("href", RESEARCH_PATH);
   });
 
   it("lights Knowledge on its own route, now that #417 has built the page", () => {

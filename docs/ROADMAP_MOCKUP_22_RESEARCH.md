@@ -1074,7 +1074,7 @@ anatomy, kind-chip hues, capability/`gap-sev` treatments, `cite` rows,
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CN.1 | #627 | 🟡 Open | ouroboros-ui: [CN.1] Research route, head & page frame | `/research`, head copy, library/new actions, layout | mvp, research, ui, design | N (after #41, BA-D.5) | Y | S | ouroboros-ui |
+| CN.1 | #627 ✅ | 🟢 Done | ouroboros-ui: [CN.1] Research route, head & page frame | `/research`, head copy, library/new actions, layout | mvp, research, ui, design | N (after #41, BA-D.5) | Y | S | ouroboros-ui |
 | CN.2 | #628 | 🟡 Open | ouroboros-ui: [CN.2] Investigation composer | Question, kind segments, depth, tool chips, estimate, start + progress | mvp, research, ui, design | N (after CN.1, CM.3, CM.6) | Y | L | ouroboros-ui |
 | CN.3 | #629 | 🟡 Open | ouroboros-ui: [CN.3] Research tools & regression watch cards | Tool rows with health + enable; watch rows with lifecycle pills | mvp, research, ui, design | N (after CN.1, CL.1, CM.4) | Y | M | ouroboros-ui |
 | CN.4 | #630 | 🟡 Open | ouroboros-ui: [CN.4] Investigation brief view | Matrix, cited brief, sources panel, export, draft-epic action | mvp, research, ui, design | N (after CN.1, CM.2) | Y | L | ouroboros-ui |
@@ -1085,7 +1085,9 @@ anatomy, kind-chip hues, capability/`gap-sev` treatments, `cite` rows,
 
 ### Issue CN.1 — ouroboros-ui: [CN.1] Research route, head & page frame
 
-> **GitHub issue:** #627 · **Status:** 🟡 Open · **Parent epic:** #606
+> **GitHub issue:** #627 ✅ · **Status:** 🟢 Done · **Parent epic:** #606
+
+> **Delivered (#627 — `ouroboros-ui` 0.145.0, `ouroboros-docs` 0.2.5; no REST or DB change):** `/research` (`app/(app)/research/page.tsx` → `app/research/`) in the shell's content pane, the sidebar's **Research** entry live — the last *soon* row, so every seeded entry now has a screen — and the #49 placeholder retired (never built, nothing to delete). **Head** verbatim in the issue's wording (the build, em-dashed kinds — the mockup HTML says *your build* and uses a colon). Three choices were the user's: **the six regions are labelled seats** (`ResearchSeat` — title, one line naming the issue that fills it; ids `composer`, `tools`, `watch`, `brief`, `pipeline`, `investigations`; CN.2–CN.6 render their card inside the seat), **Research library → `/research?view=library`** (`RESEARCH_LIBRARY_PATH`; lands on, focuses and rings the investigations seat — CN.6 draws the filtered list at the same address), and **a `viewer` cannot start** (**New investigation** inert with its reason; `mayContribute`; the full role pass stays #633). **New investigation** scrolls to, focuses and rings the composer seat, no modal; the ring lasts until focus leaves the seat. **Grid** per the mockup HTML — composer `c-7` beside a `c-5` side column (tools over watch), then brief, pipeline and investigations at `c-12` (the issue's ASCII sketch stacks all four on the left) — stacking below 68.75rem. **Shell:** `claimPaneLanding()` (`app/shell/pane-anchor.ts`) — `PaneRestoration` resets the pane to its top on a route without a fragment, in an effect that at hydration runs *after* the page's, so a query-addressed landing was undone; a screen holding a claim keeps its landing, released on cleanup. Tests: `__tests__/research/` (view, screen, route, style suite), the shell suites re-pointed at a staged unbuilt entry. Verified in headless Chromium on the seeded stack: both themes, 125 % font scale, 1100/760/420 px, viewer. Docs: `user-guide/research.mdx` (the page existed since #615 — rewritten opening, **The page**, the four kinds), `finding-your-way.mdx`, new `user-guide.research`, recaptured `user-guide.shell` + `user-guide.command-palette`, coverage `/research`. `tests/e2e/specs/shell-nav.spec.ts` roster gains Research (not run; the roster was already missing Workflows, Needs You and Settings).
 
 - **Problem Statement:** The page frame: the evidenced-answer head copy, the
   two head actions, and the top-nav Research entry going live.
@@ -1512,7 +1514,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    CL.4 (#617) ⊕ CL.5 (#618) ⊕ CL.6 (#619) }
 4. **Phase 3 — Engine & pipeline:** CM.3 (#622) ✅ → CM.1 (#620) ✅ →
    { CM.2 (#621) ⊕ CM.4 (#623) ⊕ CM.6 (#625) } → CM.5 (#624) → CM.7 (#626)
-5. **Phase 4 — UI:** CN.1 (#627) → { CN.2 (#628) ⊕ CN.3 (#629) ⊕
+5. **Phase 4 — UI:** CN.1 (#627) ✅ → { CN.2 (#628) ⊕ CN.3 (#629) ⊕
    CN.4 (#630) ⊕ CN.5 (#631) ⊕ CN.6 (#632) } → CN.7 (#633) →
    **CN.8 (#634) ✅** *(MVP gate, amending #56)*
 6. **v2:** CO.1 (#635) ⊕ CO.3 (#637) ⊕ CO.4 (#638) ⊕ CO.5 (#639);
@@ -1611,7 +1613,7 @@ Issue-level impact:
 
 | Issue | GitHub | Status | Amendment |
 |---|:---:|:---:|---|
-| CN.1 | #627 | 🟡 Open | Mounts in the shell content pane; navigation reached via the sidebar **Research** entry (icon `telescope`), not a topbar link |
+| CN.1 | #627 ✅ | 🟢 Done | Mounts in the shell content pane; navigation reached via the sidebar **Research** entry (icon `telescope`), not a topbar link |
 | CN.2, CN.3, CN.4, CN.5, CN.6, CN.7 | #628, #629, #630, #631, #632, #633 | 🟡 Open | rem-based type, shell tokens; internal wide/tall regions (matrices, documents, long lists) scroll in their own wrappers |
 | CN.8 | #634 | 🟡 Open | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 

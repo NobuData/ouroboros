@@ -214,6 +214,15 @@ export const ANALYZER_PATH = "/analyzer";
 export const INSIGHTS_PATH = "/insights";
 
 /**
+ * Research ([#627](https://github.com/NobuData/ouroboros/issues/627)) — mockup 22.
+ *
+ * The sidebar's **Research** entry (`app/shell/nav-modules.ts`) names it, so `isActiveRoute`
+ * lights the entry here, and the page head's two actions are built from it
+ * (`app/research/view.ts`). This retires the `/research` placeholder #49 held for it.
+ */
+export const RESEARCH_PATH = "/research";
+
+/**
  * The Needs-You inbox ([#466](https://github.com/NobuData/ouroboros/issues/466)) — mockup 16.
  *
  * The sidebar's **Needs You** entry (`app/shell/nav-modules.ts`) names it, so `isActiveRoute`

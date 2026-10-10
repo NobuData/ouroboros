@@ -21,6 +21,7 @@ import {
   KNOWLEDGE_PATH,
   MODELS_PATH,
   PLANNING_PATH,
+  RESEARCH_PATH,
   SETTINGS_PATH,
   WORKFLOWS_PATH,
 } from "@/app/paths";
@@ -43,18 +44,20 @@ import { registerNavEntry } from "./nav-registry";
  * icon set is **lucide** (ISC, tree-shakable), which § 1.2 proposes and this issue records as
  * the decision.
  *
- * Every destination except the dashboard, Issues, Workflows, Models, Build Farm, Knowledge,
- * Planning, Insights, Needs You and Settings is a screen that does not exist yet: the placeholder routes are #49 and
- * each real screen arrives with its own roadmap issue. Rather than link to a 404, those entries are `"soon"` and render as labelled,
- * non-interactive rows — the design system's honesty rule (§ 3.5): a surface that is not
- * ready is *labelled*, never dead. Each note names the issue that turns the row into a link,
- * so the tooltip is a usable answer to "when?" rather than the word *soon* on its own.
+ * Every destination is built since #627 gave Research its screen. Until then a destination
+ * without one was a placeholder route of #49's, and rather than link to a 404 its entry was
+ * `"soon"` and rendered as a labelled, non-interactive row — the design system's honesty rule
+ * (§ 3.5): a surface that is not ready is *labelled*, never dead. Each note named the issue that
+ * turns the row into a link, so the tooltip was a usable answer to "when?" rather than the word
+ * *soon* on its own. The status stays in `app/shell/nav.ts` for a module that registers before
+ * its screen exists.
  *
- * **Models was the first of the nine to be answered, Issues the second, Workflows the third,
- * Planning the fourth, Build Farm the fifth, Knowledge the sixth and Insights the seventh.** #200
- * built `/models`, #115 built `/issues`, #147 built `/workflows`, #283 built `/planning`, #256
- * built `/build-farm`, #417 built `/knowledge` and #443 built `/insights`, so each note has become a route — which is exactly the transition each remaining note promises,
- * and the reason the notes name issues rather than saying *soon* and stopping.
+ * **Models was the first to be answered, Issues the second, Workflows the third, Planning the
+ * fourth, Build Farm the fifth, Knowledge the sixth, Insights the seventh and Research the
+ * last.** #200 built `/models`, #115 built `/issues`, #147 built `/workflows`, #283 built
+ * `/planning`, #256 built `/build-farm`, #417 built `/knowledge`, #443 built `/insights` and #627
+ * built `/research`, so each note has become a route — which is exactly the transition each note
+ * promised, and the reason the notes named issues rather than saying *soon* and stopping.
  */
 
 /**
@@ -149,15 +152,17 @@ export const SEEDED_NAV_ENTRIES: readonly NavEntry[] = [
     group: "primary",
     sort: 70,
   },
+  // Live since #627: the research frame is built (`app/(app)/research/page.tsx`), so the row that
+  // named the roadmap it was waiting for is a link — the amendment the research roadmap recorded
+  // on #49, acted on. The composer, the cards and the investigations list (#628–#632) mount under
+  // it. It was the last *soon* row: every seeded entry now has a screen.
   {
     id: "research",
     label: "Research",
-    route: "/research",
+    route: RESEARCH_PATH,
     icon: Telescope,
     group: "primary",
     sort: 80,
-    status: "soon",
-    soonNote: "Research arrives with its own roadmap (mockup 22).",
   },
   // Live since #443: the insights frame is built (`app/(app)/insights/page.tsx`), so the row that
   // named the roadmap it was waiting for is a link — the amendment the insights roadmap recorded

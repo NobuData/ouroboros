@@ -390,6 +390,12 @@ ouroboros-ui/
 │   │   ├── planning-skeleton.tsx # the loading state, at the real grid's geometry
 │   │   └── planning-screen.tsx # the page head and the four cards
 │   ├── providers/           # mockup 07's Audit log action and the sheet behind it · #225
+│   ├── research/            # mockup 22's frame: head, two actions, six seats on the 7 / 5 + 12 grid · #627
+│   │   ├── view.ts          #   the verbatim head copy, the ?view= rule and where each region sits
+│   │   ├── research-head.tsx #  eyebrow, headline, subline, Research library and New investigation
+│   │   ├── research-seat.tsx #  a region's seat, and what it says until its card exists
+│   │   ├── research.css     #   the head, the grid, its breakpoint and the landing ring
+│   │   └── research-screen.tsx # the head over the grid, and the landing an action or address asks for
 │   ├── runs/                # mockup 10's run console: frame, breadcrumb, watermark and head · #309
 │   │   ├── view.ts          #   every judgement the head makes — eyebrow, headline, tracker URL, status, anchored elapsed
 │   │   ├── origin.ts        #   ?from= read against an allow-list — which module stays lit, where the breadcrumb leads
@@ -4894,6 +4900,65 @@ DEPLOY FREQUENCY      LEAD TIME · ISSUE→MERGE   CHANGE FAILURE RATE [proxy]  
 Every decision is pure, in [`app/insights/dora-view.ts`](app/insights/dora-view.ts),
 [`app/insights/digest-view.ts`](app/insights/digest-view.ts) and
 [`app/insights/states-view.ts`](app/insights/states-view.ts).
+
+## Research
+
+`/research` ([#627](https://github.com/NobuData/ouroboros/issues/627)) is
+[`docs/mockups/22-research.html`](../docs/mockups/22-research.html)'s **frame**: the page head that
+states the page's argument, its two actions, and the grid the six regions mount into — the
+composer (#628), the research tools and regression watch cards (#629), the featured brief (#630),
+the roadmap pipeline (#631) and the investigations list with its library (#632). The sidebar's
+**Research** entry is live and leads here, which retires the `/research` placeholder #49 held — it
+was the last *soon* row, so every seeded entry now has a screen. The mockup's topbar is superseded
+by the shell, and the page adds no chrome of its own.
+
+```
+RESEARCH
+Ask a hard question. Get an evidenced answer — and the tickets to act on it.
+The same loop that handles the build runs investigations — …        [Research library] [New investigation]
+┌ START AN INVESTIGATION ──────────────┐┌ RESEARCH TOOLS ─────────┐
+│ arrives with #628                    │└─────────────────────────┘
+│                                      │┌ REGRESSION WATCH ───────┐
+└──────────────────────────────────────┘└─────────────────────────┘
+┌ FEATURED BRIEF ───────────────────────────────────────────────────┐
+┌ ROADMAP PIPELINE ─────────────────────────────────────────────────┐
+┌ INVESTIGATIONS ───────────────────────────────────────────────────┐
+```
+
+| File | What it holds |
+| --- | --- |
+| [`app/(app)/research/page.tsx`](<app/(app)/research/page.tsx>) | The route: the gate, the address's `?view=`, and whether this reader may start an investigation |
+| [`app/research/view.ts`](app/research/view.ts) | The decisions, framework-free: the head's copy, the address rule, the six regions and where each sits |
+| [`app/research/research-screen.tsx`](app/research/research-screen.tsx) | The screen: the head over the grid, and the landing an action or the address asks for |
+| [`app/research/research-head.tsx`](app/research/research-head.tsx) | The eyebrow, headline, subline and the two actions |
+| [`app/research/research-seat.tsx`](app/research/research-seat.tsx) | A region's seat, and the placeholder it draws until its card exists |
+| [`app/research/research.css`](app/research/research.css) | The frame's own styles: head, grid, breakpoint and the landing ring |
+
+**The head's copy is verbatim** and lives in `view.ts` — the headline is the page's thesis, and a
+test holds both strings to the issue's wording.
+
+**A region is a seat.** The frame owns where a card sits (the mockup's `c-7`, its `c-5` side column
+or `c-12`) and the id an action lands on (`composer`, `tools`, `watch`, `brief`, `pipeline`,
+`investigations`). An empty seat draws the region's heading and one line naming the issue that
+fills it; a sibling issue mounts its card by passing it to the seat as children in
+`research-screen.tsx`, and deletes nothing else.
+
+**Both head actions land on a seat.** *New investigation* scrolls to the composer's, focuses it
+(`tabIndex={-1}`, so it is never a tab stop) and rings it; the ring lasts until focus leaves the
+seat. It opens no modal. *Research library* is a link to `RESEARCH_LIBRARY_PATH`
+(`/research?view=library`), and that address opens the page landed on the investigations seat —
+#632 draws the filtered list there. Any other `view` opens the page from its top.
+
+**The landing is claimed from the shell.** `PaneRestoration` returns the pane to its top when a
+route with no fragment becomes current, in an effect that at hydration runs after the page's — so a
+landing named by a *query* was undone. `claimPaneLanding()`
+([`app/shell/pane-anchor.ts`](app/shell/pane-anchor.ts)) is how a screen says it lands the pane
+itself: the reset stands down while a claim is held, and the screen releases it in its effect's
+cleanup. A fragment address needs none of this.
+
+**Roles.** Every member reads the page. *New investigation* is inert, with its reason as the
+tooltip, for a reader who is not an `owner`, `admin` or `member` (`mayContribute`); the full role
+pass is #633.
 
 ## Run console
 

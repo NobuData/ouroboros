@@ -1,9 +1,11 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { navEntry } from "../helpers/nav";
 import { renderThemed } from "../helpers/theme";
 import { registerCommandSource } from "@/app/shell/command-registry";
 import { resetLeaveGuard, setLeaveGuard } from "@/app/shell/leave-guard";
+import { registerNavEntry } from "@/app/shell/nav-registry";
 import { COMMAND_SEARCH_DELAY_MS } from "@/app/shell/use-command-actions";
 import { THEME_STORAGE_KEY } from "@/app/theme";
 
@@ -60,12 +62,35 @@ function type(box: HTMLElement, query: string): void {
   fireEvent.change(box, { target: { value: query } });
 }
 
+/** Undoes {@link stageUnbuilt}, whatever the case asserted. */
+let unstage: (() => void) | null = null;
+
+/**
+ * Register a screen nobody has built, for the length of one case.
+ *
+ * Every seeded screen is built since #627 gave Research its page, so the unbuilt row is a staged
+ * one — what a module registering ahead of its screen looks like to the palette.
+ */
+function stageUnbuilt(): void {
+  unstage = registerNavEntry(
+    navEntry({
+      id: "unbuilt",
+      label: "Unbuilt fixture",
+      route: "/unbuilt",
+      status: "soon",
+      soonNote: "The unbuilt fixture arrives with its own issue.",
+    }),
+  );
+}
+
 /** The row the keyboard is pointing at, which is the one Enter would run. */
 function highlighted(): HTMLElement | undefined {
   return screen.queryAllByRole("option").find((row) => row.getAttribute("aria-selected") === "true");
 }
 
 beforeEach(() => {
+  unstage?.();
+  unstage = null;
   push.mockClear();
   signOutOfSession.mockClear();
   onClose.mockClear();
@@ -310,11 +335,21 @@ describe("running an action", () => {
     expect(push).toHaveBeenCalledWith("/issues");
   });
 
-  it("does nothing at all on a row that leads nowhere", () => {
+  it("navigates to the research screen, now that #627 has built it", () => {
     const box = open();
 
     type(box, "research");
     fireEvent.click(screen.getByRole("option", { name: /Go to Research/ }));
+
+    expect(push).toHaveBeenCalledWith("/research");
+  });
+
+  it("does nothing at all on a row that leads nowhere", () => {
+    stageUnbuilt();
+    const box = open();
+
+    type(box, "unbuilt");
+    fireEvent.click(screen.getByRole("option", { name: /Go to Unbuilt fixture/ }));
 
     expect(push).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
@@ -385,24 +420,34 @@ describe("a source that searches, which is what #93 registers", () => {
 });
 
 describe("a screen nobody has built", () => {
+  it("is none of the seeded ones, now that #627 has built the last", () => {
+    open();
+
+    for (const row of screen.getAllByRole("option", { name: /^Go to / })) {
+      expect(row).not.toHaveAttribute("aria-disabled");
+    }
+  });
+
   it("is listed, and says what it is waiting for", () => {
-    // Dropping the row would answer "Research" with no matches — a claim that there is no
-    // such screen rather than the truth, which is that it is not built yet (§ 3.5). (Issues was
-    // this suite's example until #115 built that screen, Workflows until #147, Build Farm
-    // until #256 and Knowledge until #417.)
+    // Dropping the row would answer its name with no matches — a claim that there is no such
+    // screen rather than the truth, which is that it is not built yet (§ 3.5). (Issues was this
+    // suite's example until #115 built that screen, Workflows until #147, Build Farm until
+    // #256, Knowledge until #417 and Research until #627 — the last seeded one.)
+    stageUnbuilt();
     const box = open();
 
-    type(box, "research");
+    type(box, "unbuilt");
 
     expect(
-      screen.getByRole("option", { name: /Research arrives with its own roadmap/ }),
+      screen.getByRole("option", { name: /The unbuilt fixture arrives with its own issue/ }),
     ).toBeInTheDocument();
   });
 
   it("is marked, so nothing announces it as something to press", () => {
+    stageUnbuilt();
     open();
 
-    expect(screen.getByRole("option", { name: /Go to Research/ })).toHaveAttribute(
+    expect(screen.getByRole("option", { name: /Go to Unbuilt fixture/ })).toHaveAttribute(
       "aria-disabled",
       "true",
     );

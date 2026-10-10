@@ -19,6 +19,7 @@
     "/planning": "user-guide/planning",
     "/prs/[id]": "user-guide/pull-requests",
     "/prs/[id]/evidence/[evidenceId]": "user-guide/pull-requests",
+    "/research": "user-guide/research",
     "/runs/[id]": "user-guide/runs/console",
     "/runs/[id]/tests": "user-guide/runs/tests",
     "/settings": "administration/index",

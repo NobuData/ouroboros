@@ -2,18 +2,70 @@
 title: "Research"
 sidebar_label: "Research"
 sidebar_position: 16
-description: "What research investigations read, and how every finding is cited."
+description: "The Research page, what an investigation is, what it reads and how every finding is cited."
 ---
 
+**Research**, at `/research`, is where you ask Ouroboros a question instead of handing it a
+ticket. Open it from **Research** in the sidebar.
+
 A **research investigation** reads the outside world, and your own code and history, to answer
-a question. Every claim it makes cites a source it read.
+a question. Every claim it makes cites a source it read, and its findings can become drafted
+tickets for the loop to pick up.
 
-:::info[Not available yet]
+<Screenshot id="user-guide.research" />
 
-The Research page, where you start an investigation and read its brief, arrives in a later
-release.
+:::info[The page is arriving in parts]
+
+The page's frame is here: its head, its two buttons and the six regions of its layout. Each
+region says what it will hold and is filled in by a later release. Until the composer arrives
+you cannot start an investigation from this page.
 
 :::
+
+## The page
+
+The head states what the page is for:
+
+> **Ask a hard question. Get an evidenced answer — and the tickets to act on it.**
+
+Two buttons sit beside it:
+
+- **Research library** opens `/research?view=library`. The page opens scrolled to
+  **Investigations**, which is outlined until you move on. A link to that address opens the
+  same way; any other value of `view` opens the page from its top.
+- **New investigation** scrolls to **Start an investigation** and outlines it. It opens no
+  dialog: the composer is part of the page.
+
+Below the head, the page has six regions:
+
+| Region | What it will hold |
+| --- | --- |
+| **Start an investigation** | The composer: your question, its kind, how deep to go and which tools to use, with an estimate before you start |
+| **Research tools** | Each [research tool](#research-tools), with its health and how to enable it |
+| **Regression watch** | Drift against each release's baseline, from detection to a merged fix |
+| **Featured brief** | A cited brief, with its capability matrix and numbered sources |
+| **Roadmap pipeline** | A brief's roadmap document, and the issues filed from it |
+| **Investigations** | Every investigation, and the library: the same list filtered by kind, status and quarter |
+
+On a wide screen **Start an investigation** sits beside **Research tools** and **Regression
+watch**, and the other three run the full width below. On a narrow screen all six stack in that
+order.
+
+### Who can start an investigation
+
+Everyone in the workspace can read the page and open the library. Starting an investigation
+spends the workspace's money, so **New investigation** is switched off for a **Viewer**. Hover it
+to read why: *Starting an investigation is for workspace owners, admins and members — a viewer
+can read the research.* See [Roles](../administration/roles.mdx).
+
+## The four kinds of investigation
+
+| Kind | What it answers |
+| --- | --- |
+| **Bug root cause** | Why a bug happens: a root-cause brief for a bug fix |
+| **Regression forensics** | What changed between a good version and a bad one |
+| **Roadmap & improvements** | What to build next: a product roadmap and improvement proposals |
+| **Gap analysis** | How a project compares with its competitors |
 
 ## Research tools
 

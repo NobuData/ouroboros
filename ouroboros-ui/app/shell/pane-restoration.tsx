@@ -3,6 +3,7 @@
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 
+import { paneLandingClaimed } from "./pane-anchor";
 import {
   markPaneTraversal,
   recallPanePosition,
@@ -154,7 +155,9 @@ export function PaneRestoration() {
       return restoreAsContentArrives(pane, recallPanePosition(key));
     }
 
-    if (window.location.hash === "") {
+    // A screen that lands the pane itself on this address has said so, and keeps its landing —
+    // see `claimPaneLanding` (`app/shell/pane-anchor.ts`).
+    if (window.location.hash === "" && !paneLandingClaimed()) {
       pane.scrollTop = 0;
     }
   }, [key]);

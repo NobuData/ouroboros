@@ -1736,7 +1736,7 @@ the blockquote above that records what it did and what it did differently.
 | 413 | **CL.4** | [#617](https://github.com/NobuData/ouroboros/issues/617) | Codebase & git mining tool | ouroboros-engine, ouroboros-rest | M | CL.1 |
 | 414 | **CL.5** | [#618](https://github.com/NobuData/ouroboros/issues/618) | Issue & PR history index tool | ouroboros-rest | M | CL.1 |
 | 415 | **CM.1** | [#620](https://github.com/NobuData/ouroboros/issues/620) | Investigation loop & `/v0/investigate` contract | ouroboros-engine, ouroboros-rest | L | CK.2, CL.1 |
-| 416 | **CN.1** | [#627](https://github.com/NobuData/ouroboros/issues/627) | Research route, head & page frame | ouroboros-ui | S | 5.3, D.5 |
+| 416 | **CN.1** | ✅ [#627](https://github.com/NobuData/ouroboros/issues/627) | Research route, head & page frame | ouroboros-ui | S | 5.3, D.5 |
 | 417 | **CD.3** | [#561](https://github.com/NobuData/ouroboros/issues/561) | Infra replay estimators | ouroboros-rest | M | AH.1, BI.2 |
 | 418 | **CL.6** | [#619](https://github.com/NobuData/ouroboros/issues/619) | Build & test telemetry tool | ouroboros-rest | M | BI.2, CL.1 |
 | 419 | **CM.2** | [#621](https://github.com/NobuData/ouroboros/issues/621) | Brief composition, matrices & export | ouroboros-rest | M | CK.3, CM.1 |
