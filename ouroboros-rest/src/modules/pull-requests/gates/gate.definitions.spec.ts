@@ -166,9 +166,14 @@ describe("materializeDefinitions", () => {
 
   it("keeps the policy's provenance when a person also asks for a review", () => {
     expect(
-      byKey({ ...PR_514, reviewRequested: true, policyReview: { required: true, label: "refactor" } })
-        .human_approval.source,
-    ).toBe(`standard-fix@v14 pin + org policy: refactor → human review + ${REVIEW_REQUESTED_SOURCE}`);
+      byKey({
+        ...PR_514,
+        reviewRequested: true,
+        policyReview: { required: true, label: "refactor" },
+      }).human_approval.source,
+    ).toBe(
+      `standard-fix@v14 pin + org policy: refactor → human review + ${REVIEW_REQUESTED_SOURCE}`,
+    );
   });
 
   it("names the policy for a match on effort alone without inventing a label", () => {

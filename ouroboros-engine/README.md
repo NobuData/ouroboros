@@ -585,6 +585,13 @@ A run that does not end in a brief ends as `cancelled`, or as `failed` with one 
 `tool_exhaustion`, `budget_breach`, `synthesis_failure` or `engine_error`. Each keeps the ledger,
 the last checkpoint and the usage.
 
+`tests/test_investigation_lifecycle.py` (CM.7, [#626](https://github.com/NobuData/ouroboros/issues/626))
+holds the loop to that, over the fakes in `tests/investigation_fakes.py`: a checkpoint after every
+step in phase order; a resumed attempt repeating at most the one operation in flight, the ledger
+holding each record once; every failure reason keeping ledger, checkpoint and reconciled usage and
+publishing nothing; a cancel as a designed partial; and no finding ever delivered uncited —
+publishing the uncited candidate in `claims.py` turns nine of its fourteen cases red.
+
 ## The deep dry-run harness
 
 `POST /v0/dry-runs` (CD.2, [#560](https://github.com/NobuData/ouroboros/issues/560)) walks one

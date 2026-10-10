@@ -50,7 +50,11 @@ describe("sourceResolve", () => {
 
     expect(await repository.sourceResolve("item-1", "github", { source: "pr_merged" })).toBe(true);
     expect(database.statements[0].sql).toContain("ouroboros.decision_item_source_resolve(");
-    expect(database.statements[0].parameters).toEqual(["item-1", "github", '{"source":"pr_merged"}']);
+    expect(database.statements[0].parameters).toEqual([
+      "item-1",
+      "github",
+      '{"source":"pr_merged"}',
+    ]);
   });
 
   it("answers false when the item was no longer asking", async () => {
@@ -69,7 +73,9 @@ describe("itemByKey and lockKey", () => {
   });
 
   it("serialises a key with a transaction-scoped advisory lock", async () => {
-    await repository.transaction((trx) => repository.lockKey(trx, ORG, { plane: "facts", sourceRef: "f:1" }));
+    await repository.transaction((trx) =>
+      repository.lockKey(trx, ORG, { plane: "facts", sourceRef: "f:1" }),
+    );
 
     expect(database.sql().map((sql) => sql.trim())).toEqual([
       "begin",
@@ -100,7 +106,10 @@ describe("kinds", () => {
       ],
     });
 
-    expect(await repository.currentKind(FIXTURE_KIND.kindId)).toEqual({ ...FIXTURE_KIND, version: 3 });
+    expect(await repository.currentKind(FIXTURE_KIND.kindId)).toEqual({
+      ...FIXTURE_KIND,
+      version: 3,
+    });
     expect(database.statements[0].sql).toContain('order by "version" desc limit $');
     expect(database.statements[0].sql).toContain("escalation_window::text");
   });
@@ -112,13 +121,17 @@ describe("kinds", () => {
 
     expect(await repository.publishKind(declaration, 2, database.service.db)).toBe(2);
     expect(database.statements[0].sql).toMatch(/^insert into "ouroboros"."decision_kinds"/);
-    expect(database.statements[0].parameters).toEqual(expect.arrayContaining([FIXTURE_KIND.kindId, 2]));
+    expect(database.statements[0].parameters).toEqual(
+      expect.arrayContaining([FIXTURE_KIND.kindId, 2]),
+    );
   });
 
   it("serialises registrations of one kind with a transaction-scoped advisory lock", async () => {
     await repository.transaction((trx) => repository.lockKind(trx, FIXTURE_KIND.kindId));
 
-    expect(database.statements[1].sql).toBe("select pg_advisory_xact_lock(hashtextextended($1, 0))");
+    expect(database.statements[1].sql).toBe(
+      "select pg_advisory_xact_lock(hashtextextended($1, 0))",
+    );
     expect(database.statements[1].parameters).toEqual([`decision-kind:${FIXTURE_KIND.kindId}`]);
   });
 });
@@ -127,7 +140,14 @@ describe("feed", () => {
   it("counts open and elapsed-snooze items apart from hidden ones, per severity, in one workspace", async () => {
     const now = new Date("2026-10-04T09:12:00Z");
     database.answers({
-      rows: [{ severity: "warn", open: "2", snoozed: "1", next_wake_at: new Date("2026-10-04T10:00:00Z") }],
+      rows: [
+        {
+          severity: "warn",
+          open: "2",
+          snoozed: "1",
+          next_wake_at: new Date("2026-10-04T10:00:00Z"),
+        },
+      ],
     });
 
     expect(await repository.feed(ORG, now)).toEqual([

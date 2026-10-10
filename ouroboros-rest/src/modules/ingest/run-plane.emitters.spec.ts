@@ -34,7 +34,17 @@ let database: RecordingDatabase;
 /** Queue `runCardFacts`' two reads: the run, and no ticket. */
 function runRow(): void {
   database.answers(
-    { rows: [{ id: RUN, organization_id: ORG, loop_seq: 1851, issue_title: RUN_FACTS.subject, stage_label: "Build" }] },
+    {
+      rows: [
+        {
+          id: RUN,
+          organization_id: ORG,
+          loop_seq: 1851,
+          issue_title: RUN_FACTS.subject,
+          stage_label: "Build",
+        },
+      ],
+    },
     { rows: [] },
   );
 }
@@ -54,14 +64,19 @@ describe("plan_sign_off", () => {
     });
 
     expect(emission.key).toEqual({ plane: "workflows", sourceRef: `run:${RUN}:stage:plan_review` });
-    expect(renderDecision(SHIPPED_KINDS.plan_sign_off, emission.payload)).toEqual(MOCKUP_PROSE.plan_sign_off);
+    expect(renderDecision(SHIPPED_KINDS.plan_sign_off, emission.payload)).toEqual(
+      MOCKUP_PROSE.plan_sign_off,
+    );
   });
 
   it("files one card per run and stage when the run plane calls the hook", async () => {
     const emitter = new PlanSignOffEmitter(database.service, harness.registry);
 
     runRow();
-    database.answers({ rows: [{ stage_label: "Plan review" }] }, { rows: [{ breakdown: { files: ["a.c", "b.c"] } }] });
+    database.answers(
+      { rows: [{ stage_label: "Plan review" }] },
+      { rows: [{ breakdown: { files: ["a.c", "b.c"] } }] },
+    );
 
     const outcome = await emitter.stageEntered(RUN, "plan_review");
 
@@ -73,7 +88,9 @@ describe("plan_sign_off", () => {
   });
 
   it("files nothing for an unknown run or stage", async () => {
-    expect(await new PlanSignOffEmitter(database.service, harness.registry).stageEntered(RUN, "x")).toBeNull();
+    expect(
+      await new PlanSignOffEmitter(database.service, harness.registry).stageEntered(RUN, "x"),
+    ).toBeNull();
     expect(harness.store.items).toEqual([]);
   });
 
@@ -129,15 +146,22 @@ describe("spend_approval — registered and dormant", () => {
   });
 
   it("has the shape fixed now — the emission renders the card", () => {
-    expect(renderDecision(SHIPPED_KINDS.spend_approval, spendApprovalEmission(RUN_FACTS, 261, 250).payload)).toEqual(
-      MOCKUP_PROSE.spend_approval,
-    );
+    expect(
+      renderDecision(
+        SHIPPED_KINDS.spend_approval,
+        spendApprovalEmission(RUN_FACTS, 261, 250).payload,
+      ),
+    ).toEqual(MOCKUP_PROSE.spend_approval);
   });
 
   it("emits nothing: the registry answers dormant and files no item", async () => {
     runRow();
 
-    const outcome = await new SpendApprovalEmitter(database.service, harness.registry).capCrossed(RUN, 261, 250);
+    const outcome = await new SpendApprovalEmitter(database.service, harness.registry).capCrossed(
+      RUN,
+      261,
+      250,
+    );
 
     expect(outcome).toEqual({ status: "dormant", itemId: null });
     expect(harness.store.items).toEqual([]);

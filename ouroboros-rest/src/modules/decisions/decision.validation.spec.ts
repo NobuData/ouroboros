@@ -26,7 +26,10 @@ describe("DecisionPayloadValidator", () => {
       validator.validate(SHIPPED_KINDS.merge_approval, { ...rest, extra: 1, files: -1 }),
     ).toEqual(
       expect.arrayContaining([
-        { field: "payload.matrix_state", message: "is a fact this kind's templates need, and it is missing." },
+        {
+          field: "payload.matrix_state",
+          message: "is a fact this kind's templates need, and it is missing.",
+        },
         { field: "payload.extra", message: "is not a fact this kind declares." },
         expect.objectContaining({ field: "payload.files" }),
       ]),
@@ -43,7 +46,10 @@ describe("DecisionPayloadValidator", () => {
 
   it("holds a pattern — spend in dollars and cents", () => {
     expect(
-      validator.validate(SHIPPED_KINDS.spend_approval, { ...SEEDED_PAYLOADS.spend_approval, spent: "2.61" }),
+      validator.validate(SHIPPED_KINDS.spend_approval, {
+        ...SEEDED_PAYLOADS.spend_approval,
+        spent: "2.61",
+      }),
     ).toEqual([expect.objectContaining({ field: "payload.spent" })]);
   });
 

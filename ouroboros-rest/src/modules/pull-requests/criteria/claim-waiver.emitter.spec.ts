@@ -35,8 +35,13 @@ describe("claimWaiverEmission", () => {
     });
 
     expect(emission.refs).toEqual([{ type: "pr", id: PR, label: "PR #514" }]);
-    expect(emission.key).toEqual({ plane: "pr.criteria", sourceRef: `pr:${PR}:criterion:${CRITERION}` });
-    expect(renderDecision(SHIPPED_KINDS.claim_waiver, emission.payload)).toEqual(MOCKUP_PROSE.claim_waiver);
+    expect(emission.key).toEqual({
+      plane: "pr.criteria",
+      sourceRef: `pr:${PR}:criterion:${CRITERION}`,
+    });
+    expect(renderDecision(SHIPPED_KINDS.claim_waiver, emission.payload)).toEqual(
+      MOCKUP_PROSE.claim_waiver,
+    );
   });
 
   it("tags the run too when the PR has one", () => {
@@ -78,7 +83,10 @@ describe("criterionSettledDetector", () => {
     const database = recordingDatabase();
 
     expect(
-      await criterionSettledDetector().settled([{ ...item, sourceRef: "pr:x" }], database.service.db),
+      await criterionSettledDetector().settled(
+        [{ ...item, sourceRef: "pr:x" }],
+        database.service.db,
+      ),
     ).toEqual([]);
     expect(database.statements).toEqual([]);
   });
@@ -90,7 +98,15 @@ describe("ClaimWaiverEmitter", () => {
     const database = recordingDatabase();
     database.answers({
       rows: [
-        { id: CRITERION, claim: CLAIM, status: "unverified", pr_id: PR, external_number: 514, run_id: null, loop_seq: null },
+        {
+          id: CRITERION,
+          claim: CLAIM,
+          status: "unverified",
+          pr_id: PR,
+          external_number: 514,
+          run_id: null,
+          loop_seq: null,
+        },
       ],
     });
 
@@ -109,12 +125,32 @@ describe("ClaimWaiverEmitter", () => {
     const harness = registryHarness();
     const settled = recordingDatabase();
     settled.answers({
-      rows: [{ id: CRITERION, claim: CLAIM, status: "waived", pr_id: PR, external_number: 514, run_id: null, loop_seq: null }],
+      rows: [
+        {
+          id: CRITERION,
+          claim: CLAIM,
+          status: "waived",
+          pr_id: PR,
+          external_number: 514,
+          run_id: null,
+          loop_seq: null,
+        },
+      ],
     });
 
-    expect(await new ClaimWaiverEmitter(settled.service, harness.registry).unverifiable(ORG, CRITERION, "x")).toBeNull();
     expect(
-      await new ClaimWaiverEmitter(recordingDatabase().service, harness.registry).unverifiable(ORG, CRITERION, "x"),
+      await new ClaimWaiverEmitter(settled.service, harness.registry).unverifiable(
+        ORG,
+        CRITERION,
+        "x",
+      ),
+    ).toBeNull();
+    expect(
+      await new ClaimWaiverEmitter(recordingDatabase().service, harness.registry).unverifiable(
+        ORG,
+        CRITERION,
+        "x",
+      ),
     ).toBeNull();
     expect(harness.store.items).toEqual([]);
   });
@@ -129,7 +165,10 @@ describe("ClaimWaiverEmitter", () => {
     subject.onModuleInit();
     subject.onModuleDestroy();
 
-    expect(register.mock.calls.map(([detector]) => detector.name)).toEqual(["pr-settled", "criterion-settled"]);
+    expect(register.mock.calls.map(([detector]) => detector.name)).toEqual([
+      "pr-settled",
+      "criterion-settled",
+    ]);
     expect(stop).toHaveBeenCalledTimes(2);
   });
 });

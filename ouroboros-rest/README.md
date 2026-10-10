@@ -5327,6 +5327,39 @@ Not here: the pipeline card (#631) and the brief card's button (#630); editing i
 already filed (push is create-only, so a re-run after filing changes the document and the drift
 check says so); filing items that join the roadmap after its batch was composed (`undrafted`).
 
+### Research suites & mutation checks
+
+CM.7 ([#626](https://github.com/NobuData/ouroboros/issues/626)) certifies the research plane under
+`yarn test:integration`, beside CM.1–CM.6's own suites — **over the development seeds**. The
+suites in `research/certification/` apply every `R__*.sql` to the harness's database the way the
+registry's certification applies its own (`certification.fixture.ts`: one transaction per file,
+in Flyway's description order, so the deferred triggers judge each file whole), and find every
+row by its natural key — `RS-127`, `acme-robotics`, a status — never by a literal id:
+
+| Suite | Holds |
+| ----- | ----- |
+| `citations.certification.integration-spec.ts` | every finding of RS-127's brief cites its own ledger, and in the rows no finding lacks a junction row, none points outside the ledger, cite numbers are dense from 1; a planted uncited finding is `422 brief_claim_uncited` and survives only as a demoted open question; the export is byte-identical twice and keeps its numbering when the ledger grows; every seeded matrix severity reproduces from the stored input, deterministically; an uncited `shipping` cell is `matrix_cell_uncited` and builds nothing; RS-127's deep dive is priced to the figure the seed stored, and with the researcher repointed to an unpriced model the estimate, the start, the list row and the detail carry **no dollar figure anywhere** (`moneyMentions()` walks the payload — every `$`/`¢`/`USD` string, every number under a money key — and is itself tested) |
+| `loop.certification.integration-spec.ts` | the real tool route, invoker, repository and loop service, the engine played by Supertest: an in-memory fake tool, `web` and `code` over their recordings, `competitor`/`tickets`/`telemetry` over the seed's rows, each answered and numbered by the ledger; a payload without a source record is `502 research_tool_contract_violation` and archives nothing; a record fetched again is `deduplicated` under the same number; each failure reason, and a cancel honoured at the next checkpoint, keeps ledger, checkpoint and usage |
+| `pipeline.certification.integration-spec.ts` | a scheduler pass over the seeded watch moves nothing and files nothing, `autoFile` off and the fix waiting; RS-124's document equals its tracker and file; `create-issues` run again files nothing — no skill run, no push, no version; a tracker-side close raises exactly one `drift-detector` suggestion; applying it is a genuine re-run with v1 untouched; and a push killed between the tracker's answer and the record, then resumed, files six issues, not seven |
+| `isolation.certification.integration-spec.ts` | every `/api/v1/research/**` and `/internal/research/**` route the router registers (the first case diffs the table against the router): `404` from the other workspace on every id-bearing route, collections holding none of the seed's ids, the viewer/member/admin/owner gates, `401` on the internal routes for a session |
+
+**Mutation checks.** Removing the mechanism turns the named test red:
+
+| Remove | Red test |
+| ------ | -------- |
+| the junction check (`InvestigationLoopService` never throwing `brief_claim_uncited`) | `refuses a planted uncited finding, and keeps it only as a demoted open question` |
+| the push idempotency key (`github.write.ts` skipping `findByMarker`) | `files each item once when the process dies between the tracker's answer and the record` |
+| the engine's demotion (`claims.py` publishing the uncited candidate) | nine of `ouroboros-engine/tests/test_investigation_lifecycle.py`'s fourteen cases |
+
+```bash
+env -u OURO_DATABASE_URL yarn test:integration src/modules/research/certification
+```
+
+The four suites take about seventeen seconds together. Not certified here: the engine against
+this service (the engine has no integration tier; `test_control_plane_contract.py` mirrors the
+contract), and a detect → bisect chain over the seed, which has no scripted nightly reading
+(`watch/watch.integration-spec.ts` certifies it from scripted telemetry).
+
 ## Replay estimates
 
 `POST /internal/dry-runs/{id}/replay-estimates` is mockup 20's replayed row —

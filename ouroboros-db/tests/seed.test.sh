@@ -1923,6 +1923,8 @@ check_contains "$WORKSPACE_RESEARCH_BODY" 'not exists \(select 1 from ouroboros\
   'a pipeline skill version is written only for a skill that has none'
 check_contains "$WORKSPACE_RESEARCH_BODY" 'batch\.target_source_id, batch\.id' \
   'the roadmap doc names the source it is projected to and the batch create-issues composed'
+check_contains "$WORKSPACE_RESEARCH_BODY" "d\.id = \(item ->> 'draft_id'\)::uuid" \
+  'each roadmap item''s draft is given its provenance, milestone and label from the document, not by hand'
 
 # The card's numbers are the rows'.
 check_absent "$WORKSPACE_RESEARCH_BODY" "'4 active|'23 this quarter|'312 sources|'6 issues|'4 rivals watched" \

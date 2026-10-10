@@ -376,7 +376,10 @@ describe("GateEngineService", () => {
       org({
         ...DEFAULT_ORG_GATE_CONFIG,
         overrides: { human_approval: { disabled: true } },
-        humanReview: { enabled: true, conditions: { any: [{ label: "refactor" }, { effort_gte: "l" }] } },
+        humanReview: {
+          enabled: true,
+          conditions: { any: [{ label: "refactor" }, { effort_gte: "l" }] },
+        },
         policyVersion: 7,
       }),
       listeners,
@@ -424,7 +427,10 @@ describe("GateEngineService", () => {
     store.push(REV_2);
     service = new GateEngineService(
       store,
-      org({ ...DEFAULT_ORG_GATE_CONFIG, humanReview: { enabled: true, conditions: { label: "refactor" } } }),
+      org({
+        ...DEFAULT_ORG_GATE_CONFIG,
+        humanReview: { enabled: true, conditions: { label: "refactor" } },
+      }),
     );
 
     expect((await service.evaluate("pr-514"))?.humanReview).toEqual({

@@ -763,6 +763,26 @@ select '5eed0097-0000-4000-8000-000000001001'::uuid, doc.id, 1,
    and ${ouro_dev_seed}
 on conflict do nothing;
 
+-- The batch create-issues composed carries what the pipeline writes on each draft (#624, V125):
+-- which roadmap item it is, the item's milestone and due date, and `mvp` as a label — written
+-- after the document, which is where the items are read from, and only where nothing is set.
+update ouroboros.ticket_drafts d
+   set research_provenance = jsonb_build_object(
+         'investigation_id', doc.investigation_id, 'origin', 'roadmap',
+         'capability', null, 'severity', null, 'item_key', item ->> 'key',
+         'effort', item -> 'effort', 'sources', '[]'::jsonb),
+       milestone_name = ms ->> 'name',
+       milestone_due  = (ms ->> 'target_date')::date,
+       labels         = case when (item ->> 'mvp')::boolean then '["mvp"]'::jsonb else '[]'::jsonb end
+  from ouroboros.roadmap_docs doc
+  join ouroboros.roadmap_doc_versions v on v.doc_id = doc.id and v.version = 1
+  cross join lateral jsonb_array_elements(v.structure -> 'milestones') ms
+  cross join lateral jsonb_array_elements(ms -> 'items') item
+ where doc.id = '5eed0097-0000-4000-8000-000000000124'
+   and d.id = (item ->> 'draft_id')::uuid
+   and d.research_provenance is null
+   and ${ouro_dev_seed};
+
 insert into ouroboros.doc_suggestions (id, doc_id, author_kind, author_user_id, author_agent, text, hint, created_at)
 select s.id, doc.id, s.kind, case when s.kind = 'user' then ken."id" end, s.agent, s.text, s.hint::jsonb,
        doc.created_at + s.after

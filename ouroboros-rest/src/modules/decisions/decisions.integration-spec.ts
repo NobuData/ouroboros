@@ -234,7 +234,11 @@ describe("the decision registry and its emitters, against a migrated database", 
       [item.id, owner.id],
     );
 
-    expect(await feed()).toMatchObject({ open: 0, snoozed: 1, nextWakeAt: expect.any(String) });
+    expect(await feed()).toMatchObject({
+      open: 0,
+      snoozed: 1,
+      nextWakeAt: expect.any(String) as string,
+    });
     await api.anonymous("get", "/api/v1/inbox/feed").expect(401);
   });
 
@@ -424,7 +428,7 @@ describe("the decision registry and its emitters, against a migrated database", 
       }),
     ).rejects.toMatchObject({
       code: "decision_emission_invalid",
-      message: expect.stringContaining("payload.matrix_state"),
+      message: expect.stringContaining("payload.matrix_state") as string,
     });
     expect(await items(at.org)).toEqual([]);
     expect(await trail(at.org)).toEqual([]);

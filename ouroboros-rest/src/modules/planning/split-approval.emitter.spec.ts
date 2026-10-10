@@ -36,12 +36,20 @@ describe("splitApprovalEmission", () => {
     });
 
     expect(emission?.key).toEqual({ plane: "planning", sourceRef: `batch:${BATCH}` });
-    expect(renderDecision(SHIPPED_KINDS.split_approval, emission?.payload ?? {})).toEqual(MOCKUP_PROSE.split_approval);
+    expect(renderDecision(SHIPPED_KINDS.split_approval, emission?.payload ?? {})).toEqual(
+      MOCKUP_PROSE.split_approval,
+    );
   });
 
   it("asks nothing about a batch with no drafts", () => {
     expect(
-      splitApprovalEmission({ organizationId: ORG, batchId: BATCH, subject: "x", draftCount: 0, target: "t" }),
+      splitApprovalEmission({
+        organizationId: ORG,
+        batchId: BATCH,
+        subject: "x",
+        draftCount: 0,
+        target: "t",
+      }),
     ).toBeNull();
   });
 });
@@ -53,10 +61,20 @@ describe("batchSettledDetector", () => {
 
     expect(
       await batchSettledDetector().settled(
-        [{ id: "item", organizationId: ORG, kindId: "split_approval", refs: [], sourceRef: `batch:${BATCH}` }],
+        [
+          {
+            id: "item",
+            organizationId: ORG,
+            kindId: "split_approval",
+            refs: [],
+            sourceRef: `batch:${BATCH}`,
+          },
+        ],
         database.service.db,
       ),
-    ).toEqual([{ itemId: "item", organizationId: ORG, settlement: "batch_settled", channel: "web" }]);
+    ).toEqual([
+      { itemId: "item", organizationId: ORG, settlement: "batch_settled", channel: "web" },
+    ]);
     expect(database.statements[0].parameters).toEqual([BATCH, "pushed", "abandoned"]);
   });
 });
@@ -66,7 +84,17 @@ describe("SplitApprovalEmitter.drafted", () => {
     const harness = registryHarness();
     const database = recordingDatabase();
     database.answers(
-      { rows: [{ id: BATCH, outline: "# Telemetry v2", source_prompt: "p", status: "drafting", display_name: "acme-robotics/helios-firmware" }] },
+      {
+        rows: [
+          {
+            id: BATCH,
+            outline: "# Telemetry v2",
+            source_prompt: "p",
+            status: "drafting",
+            display_name: "acme-robotics/helios-firmware",
+          },
+        ],
+      },
       { rows: [{ count: "6" }] },
     );
 
@@ -82,10 +110,15 @@ describe("SplitApprovalEmitter.drafted", () => {
   it("files nothing for a batch already pushed, or not this workspace's", async () => {
     const harness = registryHarness();
     const pushed = recordingDatabase();
-    pushed.answers({ rows: [{ id: BATCH, outline: null, source_prompt: "p", status: "pushed", display_name: "t" }] });
+    pushed.answers({
+      rows: [{ id: BATCH, outline: null, source_prompt: "p", status: "pushed", display_name: "t" }],
+    });
 
     await new SplitApprovalEmitter(pushed.service, harness.registry).drafted(ORG, BATCH);
-    await new SplitApprovalEmitter(recordingDatabase().service, harness.registry).drafted(ORG, BATCH);
+    await new SplitApprovalEmitter(recordingDatabase().service, harness.registry).drafted(
+      ORG,
+      BATCH,
+    );
 
     expect(harness.store.items).toEqual([]);
   });

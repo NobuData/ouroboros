@@ -34,7 +34,9 @@ describe("factReviewEmission", () => {
 
     expect(emission?.key).toEqual({ plane: "facts", sourceRef: `fact:${FACT}:proposed` });
     expect(emission?.refs).toEqual([]);
-    expect(renderDecision(SHIPPED_KINDS.fact_review, emission?.payload ?? {})).toEqual(MOCKUP_PROSE.fact_review);
+    expect(renderDecision(SHIPPED_KINDS.fact_review, emission?.payload ?? {})).toEqual(
+      MOCKUP_PROSE.fact_review,
+    );
   });
 
   it("keys a stale episode by the transition that began it, so a second episode asks again", () => {
@@ -66,8 +68,18 @@ describe("factResolvedDetector", () => {
         database.service.db,
       ),
     ).toEqual([
-      { itemId: `fact:${FACT}:proposed`, organizationId: ORG, settlement: "fact_resolved", channel: "web" },
-      { itemId: `fact:${FACT}:stale:${STALE}`, organizationId: ORG, settlement: "fact_resolved", channel: "web" },
+      {
+        itemId: `fact:${FACT}:proposed`,
+        organizationId: ORG,
+        settlement: "fact_resolved",
+        channel: "web",
+      },
+      {
+        itemId: `fact:${FACT}:stale:${STALE}`,
+        organizationId: ORG,
+        settlement: "fact_resolved",
+        channel: "web",
+      },
     ]);
   });
 
@@ -78,7 +90,10 @@ describe("factResolvedDetector", () => {
     expect(
       (
         await factResolvedDetector().settled(
-          [asking(`fact:${FACT}:proposed`), asking("fact:0a1b2c3d-0000-4000-8000-000000000000:proposed")],
+          [
+            asking(`fact:${FACT}:proposed`),
+            asking("fact:0a1b2c3d-0000-4000-8000-000000000000:proposed"),
+          ],
           database.service.db,
         )
       ).map((settled) => settled.itemId),
@@ -93,8 +108,26 @@ describe("FactReviewEmitter", () => {
     const harness = registryHarness();
     const database = recordingDatabase();
     database.answers(
-      { rows: [{ id: FACT, status: "proposed", text: "A", provenance: { line: "from a note", refs: [] } }] },
-      { rows: [{ id: "0a1b2c3d-0000-4000-8000-00000000fac8", status: "stale", text: "B", provenance: { line: "from PR #9", refs: [] } }] },
+      {
+        rows: [
+          {
+            id: FACT,
+            status: "proposed",
+            text: "A",
+            provenance: { line: "from a note", refs: [] },
+          },
+        ],
+      },
+      {
+        rows: [
+          {
+            id: "0a1b2c3d-0000-4000-8000-00000000fac8",
+            status: "stale",
+            text: "B",
+            provenance: { line: "from PR #9", refs: [] },
+          },
+        ],
+      },
       { rows: [{ id: STALE }] },
     );
 
@@ -115,7 +148,16 @@ describe("FactReviewEmitter", () => {
     const database = recordingDatabase();
     database.answers(
       { rows: [{ id: FACT, status: "proposed", text: "", provenance: { line: "x", refs: [] } }] },
-      { rows: [{ id: "0a1b2c3d-0000-4000-8000-00000000fac8", status: "proposed", text: "B", provenance: { line: "x", refs: [] } }] },
+      {
+        rows: [
+          {
+            id: "0a1b2c3d-0000-4000-8000-00000000fac8",
+            status: "proposed",
+            text: "B",
+            provenance: { line: "x", refs: [] },
+          },
+        ],
+      },
     );
 
     await new FactReviewEmitter(database.service, harness.registry).review(ORG, [
@@ -124,7 +166,10 @@ describe("FactReviewEmitter", () => {
     ]);
 
     expect(harness.store.items).toHaveLength(1);
-    expect(Logger.prototype.error).toHaveBeenCalledWith(`Could not file the review of fact ${FACT}.`, expect.anything());
+    expect(Logger.prototype.error).toHaveBeenCalledWith(
+      `Could not file the review of fact ${FACT}.`,
+      expect.anything(),
+    );
   });
 
   it("sweeps the workspace when a fact is decided, and registers its detector", async () => {

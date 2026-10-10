@@ -53,13 +53,22 @@ describe("protectedPathEmission", () => {
     expect(emission.key).toEqual({ plane: "guardrails", sourceRef: `run:${RUN}:path:${PATH}` });
     expect(emission.refs.at(-1)).toEqual({ type: "path", id: PATH, label: PATH });
     expect(
-      renderDecision(SHIPPED_KINDS.protected_path_allow_once, { ...emission.payload, diff_lines: 3 }),
+      renderDecision(SHIPPED_KINDS.protected_path_allow_once, {
+        ...emission.payload,
+        diff_lines: 3,
+      }),
     ).toEqual(MOCKUP_PROSE.protected_path_allow_once);
   });
 
   it("clips a long subject to the kind's limit and never claims a zero-line diff", () => {
     const emission = protectedPathEmission({
-      run: { runId: RUN, organizationId: ORG, subject: "x".repeat(300), stageLabel: "Code", refs: [] },
+      run: {
+        runId: RUN,
+        organizationId: ORG,
+        subject: "x".repeat(300),
+        stageLabel: "Code",
+        refs: [],
+      },
       path: PATH,
       additions: 0,
       deletions: 0,
@@ -78,7 +87,17 @@ describe("ProtectedPathEmitter.verdictFailed", () => {
   function refusal(detail = "1 path inside a protected path.") {
     database.answers(
       { rows: [{ verdict: "fail", evidence: { path: PATH, glob: "boot/**", detail } }] },
-      { rows: [{ id: RUN, organization_id: ORG, loop_seq: 1851, issue_title: "The OTA rollback fix", stage_label: "Code" }] },
+      {
+        rows: [
+          {
+            id: RUN,
+            organization_id: ORG,
+            loop_seq: 1851,
+            issue_title: "The OTA rollback fix",
+            stage_label: "Code",
+          },
+        ],
+      },
       { rows: [{ id: TICKET, external_key: "#479" }] },
       { rows: [{ additions: 1, deletions: 0 }] },
     );
@@ -106,7 +125,12 @@ describe("ProtectedPathEmitter.verdictFailed", () => {
     expect(harness.store.items[0]).toMatchObject({
       kindId: "protected_path_allow_once",
       severity: "warn",
-      payload: { subject: "The OTA rollback fix", edit_summary: "add one line", path: PATH, diff_lines: 1 },
+      payload: {
+        subject: "The OTA rollback fix",
+        edit_summary: "add one line",
+        path: PATH,
+        diff_lines: 1,
+      },
       refs: [
         { type: "run", id: RUN, label: "loop #1851" },
         { type: "ticket", id: TICKET, label: "issue #479" },
@@ -120,7 +144,16 @@ describe("ProtectedPathEmitter.verdictFailed", () => {
     const emitter = new ProtectedPathEmitter(database.service, harness.registry);
 
     database.answers({
-      rows: [{ verdict: "fail", evidence: { path: "src/x.c", glob: "drivers/**", detail: "1 path outside the plan's scope." } }],
+      rows: [
+        {
+          verdict: "fail",
+          evidence: {
+            path: "src/x.c",
+            glob: "drivers/**",
+            detail: "1 path outside the plan's scope.",
+          },
+        },
+      ],
     });
     await emitter.verdictFailed(RUN);
     database.answers({ rows: [{ verdict: "pass", evidence: { detail: "ok" } }] });
@@ -131,7 +164,13 @@ describe("ProtectedPathEmitter.verdictFailed", () => {
 
   it("never throws, so a committed report is never failed by its card", async () => {
     const emitter = new ProtectedPathEmitter(
-      { db: { selectFrom: () => { throw new Error("down"); } } } as never,
+      {
+        db: {
+          selectFrom: () => {
+            throw new Error("down");
+          },
+        },
+      } as never,
       harness.registry,
     );
 

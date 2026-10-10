@@ -199,7 +199,10 @@ export class DecisionKindRegistry {
       const current = await this.repository.currentKind(declaration.kindId, trx);
       const asked = {
         ...declaration,
-        escalationWindow: await this.repository.canonicalInterval(trx, declaration.escalationWindow),
+        escalationWindow: await this.repository.canonicalInterval(
+          trx,
+          declaration.escalationWindow,
+        ),
       };
 
       if (current !== undefined && sameDeclaration(current, asked)) {

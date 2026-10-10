@@ -7,7 +7,12 @@ import {
   templateSlots,
   templateWellFormed,
 } from "./decision.templates";
-import { FIXTURE_KIND, MOCKUP_PROSE, SEEDED_PAYLOADS, SHIPPED_KINDS } from "./decision.kinds.fixture";
+import {
+  FIXTURE_KIND,
+  MOCKUP_PROSE,
+  SEEDED_PAYLOADS,
+  SHIPPED_KINDS,
+} from "./decision.kinds.fixture";
 
 /** Template rendering (X2, #461): typed slots, one pass, the mockup's prose, safe per destination. */
 
