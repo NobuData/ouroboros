@@ -39975,6 +39975,49 @@ select pg_temp.must_hold(
   and not ouroboros.source_locator_valid('web', 'telemetry://metric/merge_rate/30d'),
   'widening telemetry changed no other kind''s rule');
 
+-- ===========================================================================
+-- V123 — who may start an investigation (#625, CM.6)
+-- ===========================================================================
+--
+-- One setting on workspace_settings, defaulting to `member`, read through the effective view.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v123',       'Research Works', 'research-works-v123', now()),
+  ('org-v123-other', 'Quiet Works',    'quiet-works-v123',    now());
+
+select pg_temp.must_hold(
+  (select research_start_role = 'member' and not is_explicit
+     from ouroboros.workspace_settings_effective where organization_id = 'org-v123'),
+  'a workspace that never chose lets members start investigations');
+
+insert into ouroboros.workspace_settings (organization_id, research_start_role)
+  values ('org-v123', 'admin');
+
+select pg_temp.must_hold(
+  (select research_start_role = 'admin'
+     from ouroboros.workspace_settings_effective where organization_id = 'org-v123')
+  and (select research_start_role = 'member'
+         from ouroboros.workspace_settings_effective where organization_id = 'org-v123-other'),
+  'a workspace''s choice of starter role is its own');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workspace_settings set research_start_role = 'viewer'
+     where organization_id = 'org-v123'$$,
+  'a viewer is never the starter role', 'workspace_settings_research_start_role');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workspace_settings set research_start_role = 'owner'
+     where organization_id = 'org-v123'$$,
+  'owners and admins are one tier — there is no owner-only value',
+  'workspace_settings_research_start_role');
+
+select pg_temp.must_hold(
+  (select pg_get_expr(d.adbin, d.adrelid) = '''member''::text'
+     from pg_attrdef d
+     join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+    where d.adrelid = 'ouroboros.workspace_settings'::regclass
+      and a.attname = 'research_start_role'),
+  'the effective view''s default for the starter role is the column''s');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

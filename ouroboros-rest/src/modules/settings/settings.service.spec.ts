@@ -25,6 +25,7 @@ function effective(enabled: boolean): WorkspaceSettingsEffective {
     runner_bearer_fallback: false,
     guardrail_exception_max_ttl_minutes: 1440,
     action_token_ttl_minutes: 2880,
+    research_start_role: "member",
     updated_at: new Date("2026-08-13T09:00:00.000Z"),
     updated_by: FIXTURE_USER.id,
   };
@@ -38,6 +39,7 @@ function stored(enabled: boolean): WorkspaceSettings {
     runner_bearer_fallback: false,
     guardrail_exception_max_ttl_minutes: 1440,
     action_token_ttl_minutes: 2880,
+    research_start_role: "member",
     updated_by: FIXTURE_USER.id,
     created_at: new Date("2026-08-11T10:20:23.114Z"),
     updated_at: new Date("2026-08-13T09:00:00.000Z"),

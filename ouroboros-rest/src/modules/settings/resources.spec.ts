@@ -20,6 +20,7 @@ describe("the auto-merge resource", () => {
       runner_bearer_fallback: false,
       guardrail_exception_max_ttl_minutes: 1440,
       action_token_ttl_minutes: 2880,
+      research_start_role: "member",
       updated_at: STAMP,
       updated_by: ADMINISTRATOR,
     };
@@ -41,6 +42,7 @@ describe("the auto-merge resource", () => {
       runner_bearer_fallback: false,
       guardrail_exception_max_ttl_minutes: 1440,
       action_token_ttl_minutes: 2880,
+      research_start_role: "member",
       updated_at: null,
       updated_by: null,
     };
@@ -65,6 +67,7 @@ describe("the auto-merge resource", () => {
       runner_bearer_fallback: false,
       guardrail_exception_max_ttl_minutes: 1440,
       action_token_ttl_minutes: 2880,
+      research_start_role: "member",
       updated_by: ADMINISTRATOR,
       created_at: new Date("2026-08-11T10:20:23.114Z"),
       updated_at: STAMP,
@@ -77,6 +80,7 @@ describe("the auto-merge resource", () => {
       runner_bearer_fallback: false,
       guardrail_exception_max_ttl_minutes: 1440,
       action_token_ttl_minutes: 2880,
+      research_start_role: "member",
       updated_at: STAMP,
       updated_by: ADMINISTRATOR,
     };
@@ -93,6 +97,7 @@ describe("the auto-merge resource", () => {
       runner_bearer_fallback: false,
       guardrail_exception_max_ttl_minutes: 1440,
       action_token_ttl_minutes: 2880,
+      research_start_role: "member",
       updated_by: null,
       created_at: new Date("2026-08-11T10:20:23.114Z"),
       updated_at: STAMP,

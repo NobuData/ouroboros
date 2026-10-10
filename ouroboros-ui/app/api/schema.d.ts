@@ -11045,6 +11045,219 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/research/investigations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The investigations list — the card, History and the library
+         * @description Mockup 22's investigations card, its **History** toggle and the head's **Research
+         *     library** button are this one list ([#625](https://github.com/NobuData/ouroboros/issues/625),
+         *     decision **V11**), newest first.
+         *
+         *     **Both counts are computed, over the whole workspace, whatever the filters.**
+         *     `counts.active` is every investigation that did not fail and was not cancelled —
+         *     `queued`, `running`, `brief_ready` and `issues_filed`. `counts.thisQuarter` is every
+         *     investigation started inside the current calendar quarter (UTC, `quarter.from`
+         *     inclusive to `quarter.to` exclusive), read from the clock at request time — so it
+         *     resets when the quarter turns.
+         *
+         *     **Filters compose**: every one given must hold. `kind` is a kind's slug; `status` is
+         *     one status, or `active` for the four the card counts; `quarter` is `current` or a
+         *     quarter such as `2026-Q4`. The card asks for `status=active`; History and the library
+         *     ask for whatever the facets say.
+         *
+         *     **A row's `pill` and `link` are derived.** The pill is the status in the card's
+         *     words, except `fix loop live` (a finished investigation whose fix ticket has a run in
+         *     flight) and `cancelling` (a running one asked to stop). The link is the furthest thing
+         *     the investigation led to: the live run, else the roadmap document, else the brief,
+         *     else the test run a ledger record measured — or `null`. `sources` is the ledger's row
+         *     count, kept when a run is cancelled or fails.
+         *
+         *     Every member.
+         */
+        get: operations["listInvestigations"];
+        put?: never;
+        /**
+         * Start an investigation
+         * @description Mockup 22's composer ([#625](https://github.com/NobuData/ouroboros/issues/625)): a
+         *     question, a kind, a depth and (optionally) the enabled tools become an investigation
+         *     with the next `RS-###`, and the engine's loop is handed it.
+         *
+         *     **Estimate, then create, then dispatch — and a refused start leaves nothing queued.**
+         *     The scope estimate (`POST /api/v1/research/estimates`) is computed first: it validates
+         *     the kind and the tools and names the researcher. With no researcher nothing could run,
+         *     so the start is refused (`409 investigation_researcher_unavailable`) before anything
+         *     exists. The investigation is then created `queued` with that estimate stored on it, and
+         *     dispatched. If the dispatch is refused — the engine is unreachable (`502`), or none of
+         *     the enabled tools has an adapter in this build (`409 investigation_tools_unavailable`)
+         *     — the new investigation is **cancelled** and the refusal is answered; its `RS-###` is
+         *     spent, and it appears in History as cancelled.
+         *
+         *     **Who may start is the workspace's setting** (`GET /api/v1/research/settings`):
+         *     `member` — owners, admins and members, the default — or `admin`. A `viewer` never
+         *     may. A person only: a service account has nobody to start one for.
+         *
+         *     Watch the run at `…/{investigationId}/progress`.
+         */
+        post: operations["startInvestigation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/investigations/{investigationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One investigation, opened
+         * @description The row, and everything behind it ([#625](https://github.com/NobuData/ouroboros/issues/625)):
+         *     the estimate it started under and the actuals it finished with; which loop and alias
+         *     ran it; a `progress` reading; the newest brief's reference (read the brief itself at
+         *     `…/brief`); the deliverables it produced; the ledger in summary — how many records,
+         *     and from which tools; and every cross-plane `link` it has, by kind.
+         *
+         *     `failure` says why a `failed` investigation failed. `mayCancel` is whether **this
+         *     caller** may cancel it **now**: it is queued or running, and they started it or are an
+         *     owner or admin.
+         *
+         *     A cancelled or failed investigation keeps its ledger: `sources` and `ledger` still
+         *     count what was gathered.
+         *
+         *     Every member.
+         */
+        get: operations["getInvestigation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/investigations/{investigationId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel an investigation, keeping what it gathered
+         * @description Stops an investigation that is queued or running
+         *     ([#625](https://github.com/NobuData/ouroboros/issues/625)).
+         *
+         *     A **queued** one is cancelled at once: `state` is `cancelled`. A **running** one is
+         *     asked to stop and its worker ends it between two operations: `state` is `cancelling`,
+         *     the pill reads `cancelling`, and the progress stream's last event is `done` with
+         *     `status: cancelled`.
+         *
+         *     **Nothing gathered is discarded.** The ledger, the checkpoint and the usage rows stay,
+         *     `sources` still counts them, and the actuals record what the partial run used — a
+         *     cancelled investigation cost real money and says so.
+         *
+         *     **The person who started it, or an owner or admin.** Anybody else is `403
+         *     investigation_cancel_forbidden`. Cancelling twice while it is still stopping is not an
+         *     error; once it has finished it is `409`.
+         */
+        post: operations["cancelInvestigation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/investigations/{investigationId}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * An investigation's progress, live
+         * @description The composer's in-place progress and the card's pulsing rows
+         *     ([#625](https://github.com/NobuData/ouroboros/issues/625)): status, the round being
+         *     worked, the **source count ticking** and the **spend so far**, as `text/event-stream`.
+         *     Each event's `event:` field is its `kind` and its `data:` the JSON object described by
+         *     `InvestigationProgressEvent`:
+         *
+         *     * `progress` — a reading. The first is sent at once; another follows whenever the
+         *       reading changes (a source archived, a model call recorded, a round finished, a cancel
+         *       requested, the status moved);
+         *     * `done` — always last: the final reading, once the investigation is no longer queued
+         *       or running — `brief_ready`, `failed`, or `cancelled` with its ledger kept. The
+         *       stream then closes;
+         *     * `error` — the stream could not go on (`investigation_not_found` should the
+         *       investigation be deleted under it). The stream then closes.
+         *
+         *     While nothing changes the stream carries a `: keep-alive` comment every fifteen
+         *     seconds or so, which an `EventSource` ignores.
+         *
+         *     **Any number of subscribers may watch one investigation.** Each stream is its own
+         *     read of the stored state, about once a second, so a subscriber that connects late
+         *     starts from the current reading and all of them end with the same `done`. A stream
+         *     opened on an investigation that has already ended answers one `progress` and `done`.
+         *
+         *     **A stream lasts at most half an hour.** One still open then ends without a `done`;
+         *     reconnect — an `EventSource` does by itself — to carry on from the current reading. A
+         *     stream that ended with `done` or `error` has nothing more to say: close the client.
+         *
+         *     An investigation that does not exist is refused with the ordinary `404` envelope, not
+         *     an event. Every member.
+         */
+        get: operations["streamInvestigationProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who may start an investigation in this workspace
+         * @description The lowest role that may start an investigation
+         *     ([#625](https://github.com/NobuData/ouroboros/issues/625)): `member` — owners, admins
+         *     and members; the default for a workspace that never chose — or `admin` — owners and
+         *     admins. A `viewer` never may. Every member reads it, so the composer can say why
+         *     **New investigation** is inert.
+         */
+        get: operations["getResearchSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change who may start an investigation
+         * @description Sets the lowest role that may start an investigation
+         *     ([#625](https://github.com/NobuData/ouroboros/issues/625)). It applies to the next
+         *     start; investigations already started are untouched, and who may cancel does not
+         *     change. A body carrying nothing changes nothing and reads back the current setting.
+         *
+         *     Owners and admins only, and a person.
+         */
+        patch: operations["updateResearchSettings"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -19556,6 +19769,371 @@ export interface components {
             more: number;
             /** @enum {string|null} */
             effort: "xs" | "s" | "m" | "l" | "xl" | null;
+        };
+        /**
+         * InvestigationStatus
+         * @description Where an investigation is: `queued` → `running` → `brief_ready` → `issues_filed`, or
+         *     `failed` / `cancelled` from `queued` or `running`.
+         * @enum {string}
+         */
+        InvestigationStatus: "queued" | "running" | "brief_ready" | "issues_filed" | "failed" | "cancelled";
+        /**
+         * InvestigationStart
+         * @description The composer's payload.
+         */
+        InvestigationStart: {
+            /** @description What to investigate. Surrounding white space is dropped. */
+            question: string;
+            /** @description The investigation kind's slug — `gap_analysis`. */
+            kind: string;
+            /** @enum {string} */
+            depth: "quick" | "standard" | "deep_dive";
+            /** @description The enabled tools. Omit for the kind's playbook defaults. */
+            tools?: string[];
+        };
+        /**
+         * InvestigationPill
+         * @description The card's status pill. `state` is the status, except `fix_loop_live` — a finished
+         *     investigation whose fix ticket has a run in flight — and `cancelling` — a running one
+         *     asked to stop.
+         */
+        InvestigationPill: {
+            /** @enum {string} */
+            state: "queued" | "running" | "brief_ready" | "issues_filed" | "failed" | "cancelled" | "fix_loop_live" | "cancelling";
+            /** @description The words, verbatim — `✓ brief ready`. */
+            label: string;
+            /** @enum {string} */
+            tone: "run" | "warn" | "ok" | "err" | "idle";
+            /** @description Whether the pill pulses — something is running now. */
+            live: boolean;
+        };
+        /**
+         * InvestigationLink
+         * @description Where a contextual link goes. It names the target; the client owns the address.
+         */
+        InvestigationLink: {
+            /** @constant */
+            kind: "run";
+            /** @description `open run →`. */
+            label: string;
+            /**
+             * Format: uuid
+             * @description The run in flight on the fix ticket.
+             */
+            runId: string;
+        } | {
+            /** @constant */
+            kind: "roadmap";
+            /** @description `to roadmap →`. */
+            label: string;
+            /**
+             * Format: uuid
+             * @description The roadmap document generated from the brief.
+             */
+            roadmapDocId: string;
+        } | {
+            /** @constant */
+            kind: "brief";
+            /** @description `brief ↑`. */
+            label: string;
+            /** Format: uuid */
+            briefId: string;
+            version: number;
+        } | {
+            /** @constant */
+            kind: "evidence";
+            /** @description `evidence →`. */
+            label: string;
+            /**
+             * Format: uuid
+             * @description The test run a ledger record measured.
+             */
+            testRunId: string;
+            /**
+             * Format: uuid
+             * @description The run that test run belongs to.
+             */
+            runId: string;
+        };
+        /**
+         * Investigation
+         * @description One row of the investigations card, History and the library.
+         */
+        Investigation: {
+            /** Format: uuid */
+            id: string;
+            /** @description `RS-127` — the workspace's own number, never reused. */
+            displayId: string;
+            /** @description The kind chip. */
+            kind: {
+                /** @description `gap_analysis`. */
+                slug: string;
+                /** @description `Gap analysis`. */
+                name: string;
+                /** @description The chip's hue key — `bug`, `reg`, `road`, `gap`. */
+                tint: string;
+            };
+            question: string;
+            /** @enum {string} */
+            depth: "quick" | "standard" | "deep_dive";
+            /** @description The enabled research tools' slugs. */
+            tools: string[];
+            /**
+             * @description Who opened it.
+             * @enum {string}
+             */
+            origin: "user" | "regression_watch" | "scheduled";
+            status: components["schemas"]["InvestigationStatus"];
+            pill: components["schemas"]["InvestigationPill"];
+            /** @description The ledger's row count — `44 sources`. Kept when a run is cancelled or fails. */
+            sources: number;
+            /** @description The row's contextual link, or null when it has nowhere to go yet. */
+            link: components["schemas"]["InvestigationLink"] | null;
+            /**
+             * @description Who started it; null for one a watch or a schedule opened, or once the person is
+             *     deleted.
+             */
+            startedBy: {
+                id: string;
+                name: string;
+            } | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /**
+         * InvestigationProgress
+         * @description One reading of a run's progress.
+         */
+        InvestigationProgress: {
+            status: components["schemas"]["InvestigationStatus"];
+            /** @description The round being worked, from 1; null before the loop's first checkpoint. */
+            iteration: number | null;
+            /** @description How many rounds the depth runs — 1, 2 or 4. */
+            iterations: number;
+            /** @description The ledger's row count so far. */
+            sources: number;
+            /** @description Model spend so far, in cents; null when no call so far is priced. */
+            spendCents: number | null;
+            /** @description A cancel was asked for and the worker has not stopped yet. */
+            cancelRequested: boolean;
+            /**
+             * Format: date-time
+             * @description When the run last wrote anything.
+             */
+            updatedAt: string;
+        };
+        /**
+         * InvestigationProgressEvent
+         * @description One event of the progress stream — `kind` is also the SSE `event:` field.
+         */
+        InvestigationProgressEvent: {
+            /** @enum {string} */
+            kind: "progress" | "done";
+            status: components["schemas"]["InvestigationStatus"];
+            iteration: number | null;
+            iterations: number;
+            sources: number;
+            spendCents: number | null;
+            cancelRequested: boolean;
+            /** Format: date-time */
+            updatedAt: string;
+        } | {
+            /** @constant */
+            kind: "error";
+            code: string;
+            message: string;
+        };
+        /**
+         * InvestigationDetail
+         * @description An investigation, opened — its row and everything behind it.
+         */
+        InvestigationDetail: {
+            /** Format: uuid */
+            id: string;
+            /** @description `RS-127` — the workspace's own number, never reused. */
+            displayId: string;
+            /** @description The kind chip. */
+            kind: {
+                /** @description `gap_analysis`. */
+                slug: string;
+                /** @description `Gap analysis`. */
+                name: string;
+                /** @description The chip's hue key — `bug`, `reg`, `road`, `gap`. */
+                tint: string;
+            };
+            question: string;
+            /** @enum {string} */
+            depth: "quick" | "standard" | "deep_dive";
+            /** @description The enabled research tools' slugs. */
+            tools: string[];
+            /**
+             * @description Who opened it.
+             * @enum {string}
+             */
+            origin: "user" | "regression_watch" | "scheduled";
+            status: components["schemas"]["InvestigationStatus"];
+            pill: components["schemas"]["InvestigationPill"];
+            /** @description The ledger's row count — `44 sources`. Kept when a run is cancelled or fails. */
+            sources: number;
+            /** @description The row's contextual link, or null when it has nowhere to go yet. */
+            link: components["schemas"]["InvestigationLink"] | null;
+            /**
+             * @description Who started it; null for one a watch or a schedule opened, or once the person is
+             *     deleted.
+             */
+            startedBy: {
+                id: string;
+                name: string;
+            } | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** @description The estimate it started under; null for one opened before estimates were stored. */
+            estimate: {
+                sources: components["schemas"]["InvestigationRange"];
+                /** @description Null when the researcher was unpriced. */
+                costCents: components["schemas"]["InvestigationRange"] | null;
+                calibrationVersion: number | null;
+            } | null;
+            /** @description What it used, once it has ended with a worker's accounting. */
+            actuals: {
+                sourcesUsed: number;
+                spendCents: number | null;
+                durationMs: number;
+            } | null;
+            /** @description Which loop and alias ran it; null before it starts. */
+            provenance: {
+                /** @description The loop version — `loop-v1`. */
+                researcher: string;
+                alias: string;
+                resolutionRef: string | null;
+            } | null;
+            progress: components["schemas"]["InvestigationProgress"];
+            /** @description The newest brief's reference; read the brief at `…/brief`. */
+            brief: {
+                /** Format: uuid */
+                id: string;
+                version: number;
+                /** Format: date-time */
+                createdAt: string;
+            } | null;
+            /** @description What it produced, the brief first. Empty before there is a brief. */
+            deliverables: {
+                /** @description `brief`, `matrix`, `fix_draft`, `roadmap_doc`, `draft_batch`, … */
+                kind: string;
+                id: string;
+            }[];
+            /** @description The citation ledger in summary. Read it whole at `…/sources`. */
+            ledger: {
+                total: number;
+                /** @description Records per tool, largest first. */
+                byTool: {
+                    tool: string;
+                    count: number;
+                }[];
+            };
+            /** @description Every link the investigation has, by kind; null where it has none. */
+            links: {
+                run: components["schemas"]["InvestigationLink"] | null;
+                roadmap: components["schemas"]["InvestigationLink"] | null;
+                brief: components["schemas"]["InvestigationLink"] | null;
+                evidence: components["schemas"]["InvestigationLink"] | null;
+            };
+            /** @description Why it failed; null unless it failed and the loop recorded a reason. */
+            failure: {
+                /** @enum {string} */
+                reason: "tool_exhaustion" | "budget_breach" | "synthesis_failure" | "engine_error";
+                detail: string;
+            } | null;
+            /**
+             * @description Whether this caller may cancel it now: it is queued or running, and they started
+             *     it or are an owner or admin.
+             */
+            mayCancel: boolean;
+        };
+        /**
+         * InvestigationRange
+         * @description An inclusive range of non-negative integers.
+         */
+        InvestigationRange: {
+            min: number;
+            max: number;
+        };
+        /**
+         * InvestigationList
+         * @description One page of investigations, newest first, under the card's two counts.
+         */
+        InvestigationList: {
+            items: components["schemas"]["Investigation"][];
+            /** @description How many investigations match the filters. */
+            total: number;
+            limit: number;
+            offset: number;
+            /** @description `4 active · 23 this quarter` — the whole workspace, whatever the filters. */
+            counts: {
+                /** @description Investigations that did not fail and were not cancelled. */
+                active: number;
+                /** @description Investigations started inside `quarter`. */
+                thisQuarter: number;
+            };
+            /** @description The calendar quarter `thisQuarter` was counted over — the current one, UTC. */
+            quarter: {
+                key: string;
+                /**
+                 * Format: date-time
+                 * @description Inclusive.
+                 */
+                from: string;
+                /**
+                 * Format: date-time
+                 * @description Exclusive.
+                 */
+                to: string;
+            };
+        };
+        /**
+         * StartedInvestigation
+         * @description A started investigation and the estimate stored on it.
+         */
+        StartedInvestigation: {
+            investigation: components["schemas"]["InvestigationDetail"];
+            estimate: components["schemas"]["ScopeEstimate"];
+        };
+        /**
+         * CancelledInvestigation
+         * @description What a cancel left.
+         */
+        CancelledInvestigation: {
+            /**
+             * @description `cancelled` at once, or `cancelling` while the worker finishes its current
+             *     operation.
+             * @enum {string}
+             */
+            state: "cancelled" | "cancelling";
+            investigation: components["schemas"]["InvestigationDetail"];
+        };
+        /**
+         * ResearchSettings
+         * @description A workspace's research settings.
+         */
+        ResearchSettings: {
+            /**
+             * @description The lowest role that may start an investigation: `member` is owner, admin and
+             *     member; `admin` is owner and admin.
+             * @enum {string}
+             */
+            startRole: "member" | "admin";
+        };
+        /**
+         * ResearchSettingsPatch
+         * @description A change to the research settings. Send what changed.
+         */
+        ResearchSettingsPatch: {
+            /** @enum {string} */
+            startRole?: "member" | "admin";
         };
         /**
          * InvestigationBrief
@@ -81258,6 +81836,956 @@ export interface operations {
              * @description `investigation_not_found` — this workspace has no such investigation;
              *     `brief_not_found` — the investigation has not delivered a brief; or
              *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the request is malformed: a field outside its shape, or one
+             *     this operation does not take. `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listInvestigations: {
+        parameters: {
+            query?: {
+                /** @description Only investigations of this kind — its slug, e.g. `gap_analysis`. */
+                kind?: string;
+                /**
+                 * @description Only investigations in this status; `active` is `queued`, `running`, `brief_ready`
+                 *     and `issues_filed` together.
+                 */
+                status?: "active" | "queued" | "running" | "brief_ready" | "issues_filed" | "failed" | "cancelled";
+                /**
+                 * @description Only investigations started in this calendar quarter (UTC): `current`, or a year
+                 *     and quarter such as `2026-Q4`.
+                 */
+                quarter?: string;
+                /** @description The most rows to return. 25 when absent. */
+                limit?: number;
+                /** @description How many rows to skip. 0 when absent. */
+                offset?: number;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of investigations under the two counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvestigationList"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the request is malformed: a field outside its shape, or one
+             *     this operation does not take. `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    startInvestigation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvestigationStart"];
+            };
+        };
+        responses: {
+            /** @description The investigation, dispatched, and the estimate stored on it. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StartedInvestigation"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — your role in this workspace may not start an investigation.
+             *     `details.required` lists the roles the workspace's setting admits: `owner`, `admin`
+             *     and `member`, or `owner` and `admin`. Nothing is created. Also the answer for a
+             *     service account, which may not start one at all.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `investigation_kind_not_found` — this workspace has no investigation kind with that
+             *     slug; or `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none
+             *     you are a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `investigation_researcher_unavailable` — routing resolves no model for the `research`
+             *     task kind, so nothing was created; or `investigation_tools_unavailable` — none of the
+             *     enabled tools has an adapter in this build, and the new investigation was cancelled.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the body is malformed (`details.fields` names each field);
+             *     `research_tool_unknown` — `tools` names a tool this installation does not have; or
+             *     `research_tools_required` — no tools were given and the kind turns none on by default.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `engine_unavailable` — `ouroboros-engine` could not take the investigation. The new
+             *     investigation was cancelled; start it again once the engine answers.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getInvestigation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The investigation. */
+                investigationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The investigation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvestigationDetail"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `investigation_not_found` — this workspace has no such investigation (one of another
+             *     workspace reads exactly the same); or `tenant_not_found` — the `X-Ouro-Tenant` header
+             *     names no workspace, or none you are a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the request is malformed: a field outside its shape, or one
+             *     this operation does not take. `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    cancelInvestigation: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The investigation. */
+                investigationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Whether it is cancelled already or stopping, and the investigation as it stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CancelledInvestigation"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `investigation_cancel_forbidden` — you neither started this investigation nor hold
+             *     `owner` or `admin` here. Nothing changes. `forbidden` — a service account may not
+             *     cancel one.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `investigation_not_found` — this workspace has no such investigation (one of another
+             *     workspace reads exactly the same); or `tenant_not_found` — the `X-Ouro-Tenant` header
+             *     names no workspace, or none you are a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `investigation_not_cancellable` — the investigation has already finished: its brief is
+             *     ready, or it failed or was cancelled. `details.status` says which.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the request is malformed: a field outside its shape, or one
+             *     this operation does not take. `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    streamInvestigationProgress: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The investigation. */
+                investigationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The progress, streamed until the run ends. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example event: progress
+                     *     data: {"kind":"progress","status":"queued","iteration":null,"iterations":4,"sources":0,"spendCents":0,"cancelRequested":false,"updatedAt":"2026-10-10T12:00:00.000Z"}
+                     *
+                     *     event: progress
+                     *     data: {"kind":"progress","status":"running","iteration":1,"iterations":4,"sources":12,"spendCents":140,"cancelRequested":false,"updatedAt":"2026-10-10T12:03:10.000Z"}
+                     *
+                     *     event: progress
+                     *     data: {"kind":"progress","status":"running","iteration":3,"iterations":4,"sources":31,"spendCents":390,"cancelRequested":false,"updatedAt":"2026-10-10T12:11:42.000Z"}
+                     *
+                     *     event: done
+                     *     data: {"kind":"done","status":"brief_ready","iteration":4,"iterations":4,"sources":44,"spendCents":612,"cancelRequested":false,"updatedAt":"2026-10-10T12:18:05.000Z"}
+                     */
+                    "text/event-stream": components["schemas"]["InvestigationProgressEvent"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `investigation_not_found` — this workspace has no such investigation (one of another
+             *     workspace reads exactly the same); or `tenant_not_found` — the `X-Ouro-Tenant` header
+             *     names no workspace, or none you are a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the request is malformed: a field outside its shape, or one
+             *     this operation does not take. `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getResearchSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The setting. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "startRole": "member"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ResearchSettings"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateResearchSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "startRole": "admin"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ResearchSettingsPatch"];
+            };
+        };
+        responses: {
+            /** @description The setting as it now stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "startRole": "admin"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ResearchSettings"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — changing this setting is for `owner` and `admin`. `details.required`
+             *     lists them. Nothing is written.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
              *     a member of.
              */
             404: {

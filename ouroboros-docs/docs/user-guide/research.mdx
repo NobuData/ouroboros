@@ -58,6 +58,41 @@ spends the workspace's money, so **New investigation** is switched off for a **V
 to read why: *Starting an investigation is for workspace owners, admins and members — a viewer
 can read the research.* See [Roles](../administration/roles.mdx).
 
+A workspace chooses the lowest role that may start one. The setting has two values:
+
+| Setting | Who may start an investigation |
+| --- | --- |
+| `member` | Owners, Maintainers and people holding the [`member` role](../administration/roles.mdx#the-member-role). This is what a workspace uses until it chooses. |
+| `admin` | Owners and Maintainers only. |
+
+A Viewer can never start one, whichever value is set. An Owner or a Maintainer changes the
+setting — see [Who may start an investigation](../administration/research.mdx#who-may-start-an-investigation).
+<Since version="0.41.8" module="ouroboros-rest" />
+
+A start that is not allowed is refused with `403 forbidden`, and the refusal lists the roles
+that would have been enough.
+
+### Who can cancel an investigation
+
+An investigation that is queued or running can be cancelled by:
+
+- **the person who started it**, whatever their role is now;
+- an **Owner** or a **Maintainer**.
+
+Anyone else is refused with `403 investigation_cancel_forbidden`. This rule is fixed: the
+setting above does not change it.
+
+Cancelling keeps what the investigation gathered:
+
+- A **queued** investigation is cancelled at once.
+- A **running** one finishes the step it is on, then stops. Until it has stopped its status
+  reads **cancelling**.
+- Its sources stay in the list and are still counted, and it records what the partial run
+  spent. A cancelled investigation is listed as **cancelled** and does not count as active.
+
+An investigation that has already finished cannot be cancelled (`409
+investigation_not_cancellable`).
+
 ## The four kinds of investigation
 
 | Kind | What it answers |

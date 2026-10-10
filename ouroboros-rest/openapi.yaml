@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.7"
+  version: "0.41.8"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -36123,6 +36123,841 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/research/investigations:
+    post:
+      tags: [research]
+      summary: Start an investigation
+      description: |-
+        Mockup 22's composer ([#625](https://github.com/NobuData/ouroboros/issues/625)): a
+        question, a kind, a depth and (optionally) the enabled tools become an investigation
+        with the next `RS-###`, and the engine's loop is handed it.
+
+        **Estimate, then create, then dispatch — and a refused start leaves nothing queued.**
+        The scope estimate (`POST /api/v1/research/estimates`) is computed first: it validates
+        the kind and the tools and names the researcher. With no researcher nothing could run,
+        so the start is refused (`409 investigation_researcher_unavailable`) before anything
+        exists. The investigation is then created `queued` with that estimate stored on it, and
+        dispatched. If the dispatch is refused — the engine is unreachable (`502`), or none of
+        the enabled tools has an adapter in this build (`409 investigation_tools_unavailable`)
+        — the new investigation is **cancelled** and the refusal is answered; its `RS-###` is
+        spent, and it appears in History as cancelled.
+
+        **Who may start is the workspace's setting** (`GET /api/v1/research/settings`):
+        `member` — owners, admins and members, the default — or `admin`. A `viewer` never
+        may. A person only: a service account has nobody to start one for.
+
+        Watch the run at `…/{investigationId}/progress`.
+      operationId: startInvestigation
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvestigationStart"
+            examples:
+              deepDive:
+                summary: A deep-dive gap analysis over five tools
+                value:
+                  question: Fleet OTA rollout vs. the field
+                  kind: gap_analysis
+                  depth: deep_dive
+                  tools: [web, competitor, code, tickets, telemetry]
+              kindDefaults:
+                summary: A quick bug root cause with the kind's default tools
+                value:
+                  question: Why does the console drop pairing after sleep?
+                  kind: bug_root_cause
+                  depth: quick
+      responses:
+        "201":
+          description: The investigation, dispatched, and the estimate stored on it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StartedInvestigation"
+              examples:
+                started:
+                  summary: RS-128, queued — the engine has it
+                  value:
+                    investigation:
+                      id: 0b6f6c1e-6d0b-4a53-9d0e-2f1f3c0a9128
+                      displayId: RS-128
+                      kind: { slug: gap_analysis, name: Gap analysis, tint: gap }
+                      question: Fleet OTA rollout vs. the field
+                      depth: deep_dive
+                      tools: [web, competitor, code, tickets, telemetry]
+                      origin: user
+                      status: queued
+                      pill: { state: queued, label: queued, tone: warn, live: false }
+                      sources: 0
+                      link: null
+                      startedBy: { id: 5eed0001-user-ken, name: Ken Suenobu }
+                      createdAt: "2026-10-10T12:00:00.000Z"
+                      updatedAt: "2026-10-10T12:00:00.000Z"
+                      estimate:
+                        sources: { min: 40, max: 60 }
+                        costCents: { min: 522, max: 687 }
+                        calibrationVersion: 1
+                      actuals: null
+                      provenance: null
+                      progress:
+                        status: queued
+                        iteration: null
+                        iterations: 4
+                        sources: 0
+                        spendCents: 0
+                        cancelRequested: false
+                        updatedAt: "2026-10-10T12:00:00.000Z"
+                      brief: null
+                      deliverables: []
+                      ledger: { total: 0, byTool: [] }
+                      links: { run: null, roadmap: null, brief: null, evidence: null }
+                      failure: null
+                      mayCancel: true
+                    estimate:
+                      depth: deep_dive
+                      tools: [web, competitor, code, tickets, telemetry]
+                      researcher:
+                        taskKind: research
+                        routeTag: research-primary
+                        alias: researcher-long-ctx
+                        modelId: claude-sonnet-4-6
+                      calibrationVersion: 1
+                      operations:
+                        total: 40
+                        byTool:
+                          - { tool: web, operations: 12, hostedCostCents: 0 }
+                          - { tool: competitor, operations: 8, hostedCostCents: 0 }
+                          - { tool: code, operations: 8, hostedCostCents: 0 }
+                          - { tool: tickets, operations: 8, hostedCostCents: 0 }
+                          - { tool: telemetry, operations: 4, hostedCostCents: 0 }
+                      synthesisCalls: { min: 44, max: 64 }
+                      sources: { min: 40, max: 60 }
+                      costCents: { min: 522, max: 687 }
+                      label: "est. 40–60 sources · ~$6"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — your role in this workspace may not start an investigation.
+            `details.required` lists the roles the workspace's setting admits: `owner`, `admin`
+            and `member`, or `owner` and `admin`. Nothing is created. Also the answer for a
+            service account, which may not start one at all.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `investigation_kind_not_found` — this workspace has no investigation kind with that
+            slug; or `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none
+            you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `investigation_researcher_unavailable` — routing resolves no model for the `research`
+            task kind, so nothing was created; or `investigation_tools_unavailable` — none of the
+            enabled tools has an adapter in this build, and the new investigation was cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the body is malformed (`details.fields` names each field);
+            `research_tool_unknown` — `tools` names a tool this installation does not have; or
+            `research_tools_required` — no tools were given and the kind turns none on by default.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: |-
+            `engine_unavailable` — `ouroboros-engine` could not take the investigation. The new
+            investigation was cancelled; start it again once the engine answers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      tags: [research]
+      summary: The investigations list — the card, History and the library
+      description: |-
+        Mockup 22's investigations card, its **History** toggle and the head's **Research
+        library** button are this one list ([#625](https://github.com/NobuData/ouroboros/issues/625),
+        decision **V11**), newest first.
+
+        **Both counts are computed, over the whole workspace, whatever the filters.**
+        `counts.active` is every investigation that did not fail and was not cancelled —
+        `queued`, `running`, `brief_ready` and `issues_filed`. `counts.thisQuarter` is every
+        investigation started inside the current calendar quarter (UTC, `quarter.from`
+        inclusive to `quarter.to` exclusive), read from the clock at request time — so it
+        resets when the quarter turns.
+
+        **Filters compose**: every one given must hold. `kind` is a kind's slug; `status` is
+        one status, or `active` for the four the card counts; `quarter` is `current` or a
+        quarter such as `2026-Q4`. The card asks for `status=active`; History and the library
+        ask for whatever the facets say.
+
+        **A row's `pill` and `link` are derived.** The pill is the status in the card's
+        words, except `fix loop live` (a finished investigation whose fix ticket has a run in
+        flight) and `cancelling` (a running one asked to stop). The link is the furthest thing
+        the investigation led to: the live run, else the roadmap document, else the brief,
+        else the test run a ledger record measured — or `null`. `sources` is the ledger's row
+        count, kept when a run is cancelled or fails.
+
+        Every member.
+      operationId: listInvestigations
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: kind
+          in: query
+          required: false
+          description: Only investigations of this kind — its slug, e.g. `gap_analysis`.
+          schema: { type: string, pattern: "^[a-z][a-z0-9_]{0,47}$" }
+        - name: status
+          in: query
+          required: false
+          description: |-
+            Only investigations in this status; `active` is `queued`, `running`, `brief_ready`
+            and `issues_filed` together.
+          schema:
+            type: string
+            enum: [active, queued, running, brief_ready, issues_filed, failed, cancelled]
+        - name: quarter
+          in: query
+          required: false
+          description: |-
+            Only investigations started in this calendar quarter (UTC): `current`, or a year
+            and quarter such as `2026-Q4`.
+          schema: { type: string, pattern: "^(?:current|\\d{4}-Q[1-4])$" }
+        - name: limit
+          in: query
+          required: false
+          description: The most rows to return. 25 when absent.
+          schema: { type: integer, minimum: 1, maximum: 100 }
+        - name: offset
+          in: query
+          required: false
+          description: How many rows to skip. 0 when absent.
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: One page of investigations under the two counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvestigationList"
+              examples:
+                seeded:
+                  summary: The seeded card, abridged to one row — `4 active · 23 this quarter`
+                  value:
+                    items:
+                      - id: 5eed0084-0000-4000-8000-000000000127
+                        displayId: RS-127
+                        kind: { slug: gap_analysis, name: Gap analysis, tint: gap }
+                        question: Autonomous docking vs. Skylink / AeroMesh / Novum
+                        depth: deep_dive
+                        tools: [web, competitor, code, tickets, telemetry]
+                        origin: user
+                        status: brief_ready
+                        pill: { state: brief_ready, label: "✓ brief ready", tone: ok, live: false }
+                        sources: 44
+                        link:
+                          kind: brief
+                          label: "brief ↑"
+                          briefId: 5eed0086-0000-4000-8000-000000000127
+                          version: 1
+                        startedBy: { id: 5eed0001-user-ken, name: Ken Suenobu }
+                        createdAt: "2026-10-07T12:00:00.000Z"
+                        updatedAt: "2026-10-07T12:42:00.000Z"
+                    total: 4
+                    limit: 25
+                    offset: 0
+                    counts: { active: 4, thisQuarter: 23 }
+                    quarter:
+                      key: 2026-Q4
+                      from: "2026-10-01T00:00:00.000Z"
+                      to: "2027-01-01T00:00:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the request is malformed: a field outside its shape, or one
+            this operation does not take. `details.fields` names each.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/research/investigations/{investigationId}:
+    get:
+      tags: [research]
+      summary: One investigation, opened
+      description: |-
+        The row, and everything behind it ([#625](https://github.com/NobuData/ouroboros/issues/625)):
+        the estimate it started under and the actuals it finished with; which loop and alias
+        ran it; a `progress` reading; the newest brief's reference (read the brief itself at
+        `…/brief`); the deliverables it produced; the ledger in summary — how many records,
+        and from which tools; and every cross-plane `link` it has, by kind.
+
+        `failure` says why a `failed` investigation failed. `mayCancel` is whether **this
+        caller** may cancel it **now**: it is queued or running, and they started it or are an
+        owner or admin.
+
+        A cancelled or failed investigation keeps its ledger: `sources` and `ledger` still
+        count what was gathered.
+
+        Every member.
+      operationId: getInvestigation
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: investigationId
+          in: path
+          required: true
+          description: The investigation.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The investigation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvestigationDetail"
+              examples:
+                seeded:
+                  summary: RS-127 — brief ready, 44 sources
+                  value:
+                    id: 5eed0084-0000-4000-8000-000000000127
+                    displayId: RS-127
+                    kind: { slug: gap_analysis, name: Gap analysis, tint: gap }
+                    question: Autonomous docking vs. Skylink / AeroMesh / Novum
+                    depth: deep_dive
+                    tools: [web, competitor, code, tickets, telemetry]
+                    origin: user
+                    status: brief_ready
+                    pill: { state: brief_ready, label: "✓ brief ready", tone: ok, live: false }
+                    sources: 44
+                    link:
+                      kind: brief
+                      label: "brief ↑"
+                      briefId: 5eed0086-0000-4000-8000-000000000127
+                      version: 1
+                    startedBy: { id: 5eed0001-user-ken, name: Ken Suenobu }
+                    createdAt: "2026-10-07T12:00:00.000Z"
+                    updatedAt: "2026-10-07T12:42:00.000Z"
+                    estimate:
+                      sources: { min: 40, max: 60 }
+                      costCents: { min: 522, max: 687 }
+                      calibrationVersion: 1
+                    actuals: { sourcesUsed: 44, spendCents: 612, durationMs: 2520000 }
+                    provenance: { researcher: loop-v1, alias: researcher-long-ctx, resolutionRef: null }
+                    progress:
+                      status: brief_ready
+                      iteration: null
+                      iterations: 4
+                      sources: 44
+                      spendCents: 612
+                      cancelRequested: false
+                      updatedAt: "2026-10-07T12:42:00.000Z"
+                    brief:
+                      id: 5eed0086-0000-4000-8000-000000000127
+                      version: 1
+                      createdAt: "2026-10-07T12:42:00.000Z"
+                    deliverables:
+                      - { kind: brief, id: 5eed0086-0000-4000-8000-000000000127 }
+                      - { kind: matrix, id: 5eed0094-0000-4000-8000-000000000127 }
+                    ledger:
+                      total: 44
+                      byTool:
+                        - { tool: web, count: 16 }
+                        - { tool: code, count: 9 }
+                    links:
+                      run: null
+                      roadmap: null
+                      brief:
+                        kind: brief
+                        label: "brief ↑"
+                        briefId: 5eed0086-0000-4000-8000-000000000127
+                        version: 1
+                      evidence: null
+                    failure: null
+                    mayCancel: false
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `investigation_not_found` — this workspace has no such investigation (one of another
+            workspace reads exactly the same); or `tenant_not_found` — the `X-Ouro-Tenant` header
+            names no workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the request is malformed: a field outside its shape, or one
+            this operation does not take. `details.fields` names each.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/research/investigations/{investigationId}/cancel:
+    post:
+      tags: [research]
+      summary: Cancel an investigation, keeping what it gathered
+      description: |-
+        Stops an investigation that is queued or running
+        ([#625](https://github.com/NobuData/ouroboros/issues/625)).
+
+        A **queued** one is cancelled at once: `state` is `cancelled`. A **running** one is
+        asked to stop and its worker ends it between two operations: `state` is `cancelling`,
+        the pill reads `cancelling`, and the progress stream's last event is `done` with
+        `status: cancelled`.
+
+        **Nothing gathered is discarded.** The ledger, the checkpoint and the usage rows stay,
+        `sources` still counts them, and the actuals record what the partial run used — a
+        cancelled investigation cost real money and says so.
+
+        **The person who started it, or an owner or admin.** Anybody else is `403
+        investigation_cancel_forbidden`. Cancelling twice while it is still stopping is not an
+        error; once it has finished it is `409`.
+      operationId: cancelInvestigation
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: investigationId
+          in: path
+          required: true
+          description: The investigation.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Whether it is cancelled already or stopping, and the investigation as it stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CancelledInvestigation"
+              examples:
+                stopping:
+                  summary: A running investigation asked to stop — 31 sources kept
+                  value:
+                    state: cancelling
+                    investigation:
+                      id: 0b6f6c1e-6d0b-4a53-9d0e-2f1f3c0a9128
+                      displayId: RS-128
+                      kind: { slug: gap_analysis, name: Gap analysis, tint: gap }
+                      question: Fleet OTA rollout vs. the field
+                      depth: deep_dive
+                      tools: [web, competitor, code, tickets, telemetry]
+                      origin: user
+                      status: running
+                      pill: { state: cancelling, label: cancelling, tone: warn, live: true }
+                      sources: 31
+                      link: null
+                      startedBy: { id: 5eed0001-user-ken, name: Ken Suenobu }
+                      createdAt: "2026-10-10T12:00:00.000Z"
+                      updatedAt: "2026-10-10T12:00:00.000Z"
+                      estimate:
+                        sources: { min: 40, max: 60 }
+                        costCents: { min: 522, max: 687 }
+                        calibrationVersion: 1
+                      actuals: null
+                      provenance: { researcher: loop-v1, alias: researcher-long-ctx, resolutionRef: null }
+                      progress:
+                        status: running
+                        iteration: 3
+                        iterations: 4
+                        sources: 31
+                        spendCents: 390
+                        cancelRequested: true
+                        updatedAt: "2026-10-10T12:00:00.000Z"
+                      brief: null
+                      deliverables: []
+                      ledger:
+                        total: 31
+                        byTool:
+                          - { tool: web, count: 19 }
+                          - { tool: code, count: 12 }
+                      links: { run: null, roadmap: null, brief: null, evidence: null }
+                      failure: null
+                      mayCancel: true
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `investigation_cancel_forbidden` — you neither started this investigation nor hold
+            `owner` or `admin` here. Nothing changes. `forbidden` — a service account may not
+            cancel one.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `investigation_not_found` — this workspace has no such investigation (one of another
+            workspace reads exactly the same); or `tenant_not_found` — the `X-Ouro-Tenant` header
+            names no workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `investigation_not_cancellable` — the investigation has already finished: its brief is
+            ready, or it failed or was cancelled. `details.status` says which.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the request is malformed: a field outside its shape, or one
+            this operation does not take. `details.fields` names each.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/research/investigations/{investigationId}/progress:
+    get:
+      tags: [research]
+      summary: An investigation's progress, live
+      description: |-
+        The composer's in-place progress and the card's pulsing rows
+        ([#625](https://github.com/NobuData/ouroboros/issues/625)): status, the round being
+        worked, the **source count ticking** and the **spend so far**, as `text/event-stream`.
+        Each event's `event:` field is its `kind` and its `data:` the JSON object described by
+        `InvestigationProgressEvent`:
+
+        * `progress` — a reading. The first is sent at once; another follows whenever the
+          reading changes (a source archived, a model call recorded, a round finished, a cancel
+          requested, the status moved);
+        * `done` — always last: the final reading, once the investigation is no longer queued
+          or running — `brief_ready`, `failed`, or `cancelled` with its ledger kept. The
+          stream then closes;
+        * `error` — the stream could not go on (`investigation_not_found` should the
+          investigation be deleted under it). The stream then closes.
+
+        While nothing changes the stream carries a `: keep-alive` comment every fifteen
+        seconds or so, which an `EventSource` ignores.
+
+        **Any number of subscribers may watch one investigation.** Each stream is its own
+        read of the stored state, about once a second, so a subscriber that connects late
+        starts from the current reading and all of them end with the same `done`. A stream
+        opened on an investigation that has already ended answers one `progress` and `done`.
+
+        **A stream lasts at most half an hour.** One still open then ends without a `done`;
+        reconnect — an `EventSource` does by itself — to carry on from the current reading. A
+        stream that ended with `done` or `error` has nothing more to say: close the client.
+
+        An investigation that does not exist is refused with the ordinary `404` envelope, not
+        an event. Every member.
+      operationId: streamInvestigationProgress
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: investigationId
+          in: path
+          required: true
+          description: The investigation.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The progress, streamed until the run ends.
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/InvestigationProgressEvent"
+              example: |
+                event: progress
+                data: {"kind":"progress","status":"queued","iteration":null,"iterations":4,"sources":0,"spendCents":0,"cancelRequested":false,"updatedAt":"2026-10-10T12:00:00.000Z"}
+
+                event: progress
+                data: {"kind":"progress","status":"running","iteration":1,"iterations":4,"sources":12,"spendCents":140,"cancelRequested":false,"updatedAt":"2026-10-10T12:03:10.000Z"}
+
+                event: progress
+                data: {"kind":"progress","status":"running","iteration":3,"iterations":4,"sources":31,"spendCents":390,"cancelRequested":false,"updatedAt":"2026-10-10T12:11:42.000Z"}
+
+                event: done
+                data: {"kind":"done","status":"brief_ready","iteration":4,"iterations":4,"sources":44,"spendCents":612,"cancelRequested":false,"updatedAt":"2026-10-10T12:18:05.000Z"}
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `investigation_not_found` — this workspace has no such investigation (one of another
+            workspace reads exactly the same); or `tenant_not_found` — the `X-Ouro-Tenant` header
+            names no workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the request is malformed: a field outside its shape, or one
+            this operation does not take. `details.fields` names each.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/research/settings:
+    get:
+      tags: [research]
+      summary: Who may start an investigation in this workspace
+      description: |-
+        The lowest role that may start an investigation
+        ([#625](https://github.com/NobuData/ouroboros/issues/625)): `member` — owners, admins
+        and members; the default for a workspace that never chose — or `admin` — owners and
+        admins. A `viewer` never may. Every member reads it, so the composer can say why
+        **New investigation** is inert.
+      operationId: getResearchSettings
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The setting.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchSettings"
+              example:
+                startRole: member
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [research]
+      summary: Change who may start an investigation
+      description: |-
+        Sets the lowest role that may start an investigation
+        ([#625](https://github.com/NobuData/ouroboros/issues/625)). It applies to the next
+        start; investigations already started are untouched, and who may cancel does not
+        change. A body carrying nothing changes nothing and reads back the current setting.
+
+        Owners and admins only, and a person.
+      operationId: updateResearchSettings
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResearchSettingsPatch"
+            example:
+              startRole: admin
+      responses:
+        "200":
+          description: The setting as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchSettings"
+              example:
+                startRole: admin
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — changing this setting is for `owner` and `admin`. `details.required`
+            lists them. Nothing is written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the request is malformed: a field outside its shape, or one
+            this operation does not take. `details.fields` names each.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   # How a caller is recognised. One scheme, because there is one: the cookie the sign-in
   # flow lands.
@@ -49390,6 +50225,509 @@ components:
         effort:
           type: [string, "null"]
           enum: [xs, s, m, l, xl, null]
+    InvestigationStatus:
+      type: string
+      title: InvestigationStatus
+      description: |-
+        Where an investigation is: `queued` → `running` → `brief_ready` → `issues_filed`, or
+        `failed` / `cancelled` from `queued` or `running`.
+      enum: [queued, running, brief_ready, issues_filed, failed, cancelled]
+    InvestigationStart:
+      type: object
+      title: InvestigationStart
+      description: The composer's payload.
+      additionalProperties: false
+      required: [question, kind, depth]
+      properties:
+        question:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          pattern: "\\S"
+          description: What to investigate. Surrounding white space is dropped.
+        kind:
+          type: string
+          pattern: "^[a-z][a-z0-9_]{0,47}$"
+          description: The investigation kind's slug — `gap_analysis`.
+        depth:
+          type: string
+          enum: [quick, standard, deep_dive]
+        tools:
+          type: array
+          description: The enabled tools. Omit for the kind's playbook defaults.
+          minItems: 1
+          maxItems: 32
+          uniqueItems: true
+          items: { type: string, pattern: "^[a-z][a-z0-9_-]{0,31}$" }
+    InvestigationPill:
+      type: object
+      title: InvestigationPill
+      description: |-
+        The card's status pill. `state` is the status, except `fix_loop_live` — a finished
+        investigation whose fix ticket has a run in flight — and `cancelling` — a running one
+        asked to stop.
+      additionalProperties: false
+      required: [state, label, tone, live]
+      properties:
+        state:
+          type: string
+          enum:
+            [queued, running, brief_ready, issues_filed, failed, cancelled, fix_loop_live, cancelling]
+        label:
+          type: string
+          description: "The words, verbatim — `✓ brief ready`."
+        tone:
+          type: string
+          enum: [run, warn, ok, err, idle]
+        live:
+          type: boolean
+          description: Whether the pill pulses — something is running now.
+    InvestigationLink:
+      title: InvestigationLink
+      description: |-
+        Where a contextual link goes. It names the target; the client owns the address.
+      oneOf:
+        - type: object
+          title: RunLink
+          additionalProperties: false
+          required: [kind, label, runId]
+          properties:
+            kind: { type: string, const: run }
+            label: { type: string, description: "`open run →`." }
+            runId: { type: string, format: uuid, description: The run in flight on the fix ticket. }
+        - type: object
+          title: RoadmapLink
+          additionalProperties: false
+          required: [kind, label, roadmapDocId]
+          properties:
+            kind: { type: string, const: roadmap }
+            label: { type: string, description: "`to roadmap →`." }
+            roadmapDocId: { type: string, format: uuid, description: The roadmap document generated from the brief. }
+        - type: object
+          title: BriefLink
+          additionalProperties: false
+          required: [kind, label, briefId, version]
+          properties:
+            kind: { type: string, const: brief }
+            label: { type: string, description: "`brief ↑`." }
+            briefId: { type: string, format: uuid }
+            version: { type: integer, minimum: 1 }
+        - type: object
+          title: EvidenceLink
+          additionalProperties: false
+          required: [kind, label, testRunId, runId]
+          properties:
+            kind: { type: string, const: evidence }
+            label: { type: string, description: "`evidence →`." }
+            testRunId: { type: string, format: uuid, description: The test run a ledger record measured. }
+            runId: { type: string, format: uuid, description: The run that test run belongs to. }
+    Investigation:
+      type: object
+      title: Investigation
+      description: One row of the investigations card, History and the library.
+      additionalProperties: false
+      required: [id, displayId, kind, question, depth, tools, origin, status, pill, sources, link, startedBy, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        displayId:
+          type: string
+          description: "`RS-127` — the workspace's own number, never reused."
+        kind:
+          type: object
+          description: The kind chip.
+          additionalProperties: false
+          required: [slug, name, tint]
+          properties:
+            slug: { type: string, description: "`gap_analysis`." }
+            name: { type: string, description: "`Gap analysis`." }
+            tint: { type: string, description: "The chip's hue key — `bug`, `reg`, `road`, `gap`." }
+        question: { type: string }
+        depth: { type: string, enum: [quick, standard, deep_dive] }
+        tools:
+          type: array
+          description: The enabled research tools' slugs.
+          items: { type: string }
+        origin:
+          type: string
+          enum: [user, regression_watch, scheduled]
+          description: Who opened it.
+        status:
+          $ref: "#/components/schemas/InvestigationStatus"
+        pill:
+          $ref: "#/components/schemas/InvestigationPill"
+        sources:
+          type: integer
+          minimum: 0
+          description: The ledger's row count — `44 sources`. Kept when a run is cancelled or fails.
+        link:
+          description: The row's contextual link, or null when it has nowhere to go yet.
+          oneOf:
+            - $ref: "#/components/schemas/InvestigationLink"
+            - type: "null"
+        startedBy:
+          description: |-
+            Who started it; null for one a watch or a schedule opened, or once the person is
+            deleted.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [id, name]
+              properties:
+                id: { type: string }
+                name: { type: string }
+            - type: "null"
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    InvestigationProgress:
+      type: object
+      title: InvestigationProgress
+      description: One reading of a run's progress.
+      additionalProperties: false
+      required: [status, iteration, iterations, sources, spendCents, cancelRequested, updatedAt]
+      properties:
+        status:
+          $ref: "#/components/schemas/InvestigationStatus"
+        iteration:
+          type: [integer, "null"]
+          minimum: 1
+          description: The round being worked, from 1; null before the loop's first checkpoint.
+        iterations:
+          type: integer
+          minimum: 1
+          description: How many rounds the depth runs — 1, 2 or 4.
+        sources:
+          type: integer
+          minimum: 0
+          description: The ledger's row count so far.
+        spendCents:
+          type: [integer, "null"]
+          minimum: 0
+          description: Model spend so far, in cents; null when no call so far is priced.
+        cancelRequested:
+          type: boolean
+          description: A cancel was asked for and the worker has not stopped yet.
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the run last wrote anything.
+    InvestigationProgressEvent:
+      title: InvestigationProgressEvent
+      description: One event of the progress stream — `kind` is also the SSE `event:` field.
+      oneOf:
+        - type: object
+          title: ProgressReading
+          description: A reading (`progress`), or the final one (`done`).
+          additionalProperties: false
+          required:
+            [kind, status, iteration, iterations, sources, spendCents, cancelRequested, updatedAt]
+          properties:
+            kind: { type: string, enum: [progress, done] }
+            status:
+              $ref: "#/components/schemas/InvestigationStatus"
+            iteration: { type: [integer, "null"], minimum: 1 }
+            iterations: { type: integer, minimum: 1 }
+            sources: { type: integer, minimum: 0 }
+            spendCents: { type: [integer, "null"], minimum: 0 }
+            cancelRequested: { type: boolean }
+            updatedAt: { type: string, format: date-time }
+        - type: object
+          title: ProgressError
+          description: The stream could not go on.
+          additionalProperties: false
+          required: [kind, code, message]
+          properties:
+            kind: { type: string, const: error }
+            code: { type: string }
+            message: { type: string }
+    InvestigationDetail:
+      type: object
+      title: InvestigationDetail
+      description: An investigation, opened — its row and everything behind it.
+      additionalProperties: false
+      required:
+        - id
+        - displayId
+        - kind
+        - question
+        - depth
+        - tools
+        - origin
+        - status
+        - pill
+        - sources
+        - link
+        - startedBy
+        - createdAt
+        - updatedAt
+        - estimate
+        - actuals
+        - provenance
+        - progress
+        - brief
+        - deliverables
+        - ledger
+        - links
+        - failure
+        - mayCancel
+      properties:
+        id: { type: string, format: uuid }
+        displayId:
+          type: string
+          description: "`RS-127` — the workspace's own number, never reused."
+        kind:
+          type: object
+          description: The kind chip.
+          additionalProperties: false
+          required: [slug, name, tint]
+          properties:
+            slug: { type: string, description: "`gap_analysis`." }
+            name: { type: string, description: "`Gap analysis`." }
+            tint: { type: string, description: "The chip's hue key — `bug`, `reg`, `road`, `gap`." }
+        question: { type: string }
+        depth: { type: string, enum: [quick, standard, deep_dive] }
+        tools:
+          type: array
+          description: The enabled research tools' slugs.
+          items: { type: string }
+        origin:
+          type: string
+          enum: [user, regression_watch, scheduled]
+          description: Who opened it.
+        status:
+          $ref: "#/components/schemas/InvestigationStatus"
+        pill:
+          $ref: "#/components/schemas/InvestigationPill"
+        sources:
+          type: integer
+          minimum: 0
+          description: The ledger's row count — `44 sources`. Kept when a run is cancelled or fails.
+        link:
+          description: The row's contextual link, or null when it has nowhere to go yet.
+          oneOf:
+            - $ref: "#/components/schemas/InvestigationLink"
+            - type: "null"
+        startedBy:
+          description: |-
+            Who started it; null for one a watch or a schedule opened, or once the person is
+            deleted.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [id, name]
+              properties:
+                id: { type: string }
+                name: { type: string }
+            - type: "null"
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        estimate:
+          description: The estimate it started under; null for one opened before estimates were stored.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [sources, costCents, calibrationVersion]
+              properties:
+                sources:
+                  $ref: "#/components/schemas/InvestigationRange"
+                costCents:
+                  description: Null when the researcher was unpriced.
+                  oneOf:
+                    - $ref: "#/components/schemas/InvestigationRange"
+                    - type: "null"
+                calibrationVersion: { type: [integer, "null"] }
+            - type: "null"
+        actuals:
+          description: What it used, once it has ended with a worker's accounting.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [sourcesUsed, spendCents, durationMs]
+              properties:
+                sourcesUsed: { type: integer, minimum: 0 }
+                spendCents: { type: [integer, "null"], minimum: 0 }
+                durationMs: { type: integer, minimum: 0 }
+            - type: "null"
+        provenance:
+          description: Which loop and alias ran it; null before it starts.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [researcher, alias, resolutionRef]
+              properties:
+                researcher: { type: string, description: "The loop version — `loop-v1`." }
+                alias: { type: string }
+                resolutionRef: { type: [string, "null"] }
+            - type: "null"
+        progress:
+          $ref: "#/components/schemas/InvestigationProgress"
+        brief:
+          description: The newest brief's reference; read the brief at `…/brief`.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [id, version, createdAt]
+              properties:
+                id: { type: string, format: uuid }
+                version: { type: integer, minimum: 1 }
+                createdAt: { type: string, format: date-time }
+            - type: "null"
+        deliverables:
+          type: array
+          description: What it produced, the brief first. Empty before there is a brief.
+          items:
+            type: object
+            additionalProperties: false
+            required: [kind, id]
+            properties:
+              kind:
+                type: string
+                description: "`brief`, `matrix`, `fix_draft`, `roadmap_doc`, `draft_batch`, …"
+              id: { type: string }
+        ledger:
+          type: object
+          description: The citation ledger in summary. Read it whole at `…/sources`.
+          additionalProperties: false
+          required: [total, byTool]
+          properties:
+            total: { type: integer, minimum: 0 }
+            byTool:
+              type: array
+              description: Records per tool, largest first.
+              items:
+                type: object
+                additionalProperties: false
+                required: [tool, count]
+                properties:
+                  tool: { type: string }
+                  count: { type: integer, minimum: 1 }
+        links:
+          type: object
+          description: Every link the investigation has, by kind; null where it has none.
+          additionalProperties: false
+          required: [run, roadmap, brief, evidence]
+          properties:
+            run:
+              oneOf: [{ $ref: "#/components/schemas/InvestigationLink" }, { type: "null" }]
+            roadmap:
+              oneOf: [{ $ref: "#/components/schemas/InvestigationLink" }, { type: "null" }]
+            brief:
+              oneOf: [{ $ref: "#/components/schemas/InvestigationLink" }, { type: "null" }]
+            evidence:
+              oneOf: [{ $ref: "#/components/schemas/InvestigationLink" }, { type: "null" }]
+        failure:
+          description: Why it failed; null unless it failed and the loop recorded a reason.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [reason, detail]
+              properties:
+                reason:
+                  type: string
+                  enum: [tool_exhaustion, budget_breach, synthesis_failure, engine_error]
+                detail: { type: string }
+            - type: "null"
+        mayCancel:
+          type: boolean
+          description: |-
+            Whether this caller may cancel it now: it is queued or running, and they started
+            it or are an owner or admin.
+    InvestigationRange:
+      type: object
+      title: InvestigationRange
+      description: An inclusive range of non-negative integers.
+      additionalProperties: false
+      required: [min, max]
+      properties:
+        min: { type: integer, minimum: 0 }
+        max: { type: integer, minimum: 0 }
+    InvestigationList:
+      type: object
+      title: InvestigationList
+      description: One page of investigations, newest first, under the card's two counts.
+      additionalProperties: false
+      required: [items, total, limit, offset, counts, quarter]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Investigation"
+        total:
+          type: integer
+          minimum: 0
+          description: How many investigations match the filters.
+        limit: { type: integer, minimum: 1 }
+        offset: { type: integer, minimum: 0 }
+        counts:
+          type: object
+          description: "`4 active · 23 this quarter` — the whole workspace, whatever the filters."
+          additionalProperties: false
+          required: [active, thisQuarter]
+          properties:
+            active:
+              type: integer
+              minimum: 0
+              description: Investigations that did not fail and were not cancelled.
+            thisQuarter:
+              type: integer
+              minimum: 0
+              description: Investigations started inside `quarter`.
+        quarter:
+          type: object
+          description: The calendar quarter `thisQuarter` was counted over — the current one, UTC.
+          additionalProperties: false
+          required: [key, from, to]
+          properties:
+            key: { type: string, pattern: "^\\d{4}-Q[1-4]$" }
+            from: { type: string, format: date-time, description: Inclusive. }
+            to: { type: string, format: date-time, description: Exclusive. }
+    StartedInvestigation:
+      type: object
+      title: StartedInvestigation
+      description: A started investigation and the estimate stored on it.
+      additionalProperties: false
+      required: [investigation, estimate]
+      properties:
+        investigation:
+          $ref: "#/components/schemas/InvestigationDetail"
+        estimate:
+          $ref: "#/components/schemas/ScopeEstimate"
+    CancelledInvestigation:
+      type: object
+      title: CancelledInvestigation
+      description: What a cancel left.
+      additionalProperties: false
+      required: [state, investigation]
+      properties:
+        state:
+          type: string
+          enum: [cancelled, cancelling]
+          description: |-
+            `cancelled` at once, or `cancelling` while the worker finishes its current
+            operation.
+        investigation:
+          $ref: "#/components/schemas/InvestigationDetail"
+    ResearchSettings:
+      type: object
+      title: ResearchSettings
+      description: A workspace's research settings.
+      additionalProperties: false
+      required: [startRole]
+      properties:
+        startRole:
+          type: string
+          enum: [member, admin]
+          description: |-
+            The lowest role that may start an investigation: `member` is owner, admin and
+            member; `admin` is owner and admin.
+    ResearchSettingsPatch:
+      type: object
+      title: ResearchSettingsPatch
+      description: A change to the research settings. Send what changed.
+      additionalProperties: false
+      properties:
+        startRole:
+          type: string
+          enum: [member, admin]
     InvestigationBrief:
       type: object
       title: InvestigationBrief

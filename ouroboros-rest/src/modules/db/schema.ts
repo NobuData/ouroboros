@@ -2374,6 +2374,13 @@ export interface TokenUsageTable {
 }
 
 /**
+ * `workspace_settings.research_start_role` — who may start an investigation (V123,
+ * [#625](https://github.com/NobuData/ouroboros/issues/625)): `member` is owner, admin and
+ * member; `admin` is owner and admin. A viewer never may.
+ */
+export type ResearchStartRole = "member" | "admin";
+
+/**
  * `ouroboros.workspace_settings` — org-scoped typed product settings (V011,
  * [#67](https://github.com/NobuData/ouroboros/issues/67)).
  *
@@ -2403,6 +2410,11 @@ export interface WorkspaceSettingsTable {
   guardrail_exception_max_ttl_minutes: Generated<number>;
   /** How long an emailed action token lives, in minutes (V096) — default 2880, 5 to 10080. */
   action_token_ttl_minutes: Generated<number>;
+  /**
+   * The lowest role that may start an investigation (V123,
+   * [#625](https://github.com/NobuData/ouroboros/issues/625)) — default `member`.
+   */
+  research_start_role: Generated<ResearchStartRole>;
   /** Who last changed a setting here, or null. `on delete set null`, never cascade. */
   updated_by: string | null;
   created_at: Stamped;
@@ -4620,6 +4632,8 @@ export interface WorkspaceSettingsEffectiveView {
   guardrail_exception_max_ttl_minutes: number;
   /** The action token lifetime in minutes, 2880 unless set (V096). */
   action_token_ttl_minutes: number;
+  /** The lowest role that may start an investigation, `member` unless set (V123). */
+  research_start_role: ResearchStartRole;
 }
 
 /**
@@ -7939,6 +7953,7 @@ export const TABLE_COLUMNS = {
     "runner_bearer_fallback",
     "guardrail_exception_max_ttl_minutes",
     "action_token_ttl_minutes",
+    "research_start_role",
   ],
   tenant_keys: [
     "organization_id",
@@ -9422,6 +9437,7 @@ export const TABLE_COLUMNS = {
     "runner_bearer_fallback",
     "guardrail_exception_max_ttl_minutes",
     "action_token_ttl_minutes",
+    "research_start_role",
   ],
   alias_references: [
     "organization_id",

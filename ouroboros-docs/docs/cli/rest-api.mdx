@@ -6,7 +6,7 @@ description: "Calling the REST API with an API token, curl and jq."
 ---
 
 A script, a CI job or a bot can read Ouroboros through its REST API, using `curl` and `jq`. This
-page shows you how to authenticate and which workspace a call reads. It gives five recipes, then
+page shows you how to authenticate and which workspace a call reads. It gives six recipes, then
 covers the error format, polling without wasting requests, and where to get the full API
 description.
 
@@ -186,6 +186,87 @@ curl -s -H "Authorization: Bearer $TOKEN" "$API/insights?range=7d" \
 
 Mind the units: `cycle_time` is in milliseconds and `cost_per_merged_pr` in cents. Each figure's
 `methodology` says how it is computed. Add `repo=<repository id>` to narrow it to one repository.
+
+### List investigations and read a brief
+
+`GET /research/investigations` returns the workspace's
+[research investigations](../user-guide/research.mdx), newest first, a page at a time like
+`GET /runs`. <Since version="0.41.8" module="ouroboros-rest" /> Three filters narrow it, and every
+one you give must hold:
+
+- `kind` — a kind of investigation: `bug_root_cause`, `regression_forensics`,
+  `roadmap_improvements` or `gap_analysis`;
+- `status` — `queued`, `running`, `brief_ready`, `issues_filed`, `failed` or `cancelled`, or
+  `active` for every investigation that did not fail and was not cancelled;
+- `quarter` — `current`, or a calendar quarter such as `2026-Q4`. Quarters are in UTC.
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" "$API/research/investigations?status=active" \
+  | jq -r '"\(.counts.active) active, \(.counts.thisQuarter) this quarter (\(.quarter.key))",
+           (.items[] | "\(.displayId)\t\(.kind.slug)\t\(.sources) sources\t\(.pill.label)")'
+```
+
+```text
+4 active, 23 this quarter (2026-Q4)
+RS-127  gap_analysis          44 sources   ✓ brief ready
+RS-124  roadmap_improvements  312 sources  ✓ issues filed
+RS-121  regression_forensics  9 sources    queued
+RS-118  bug_root_cause        18 sources   ✓ brief ready
+```
+
+`counts` covers the whole workspace whatever you filter by, and `thisQuarter` counts the
+investigations started in the quarter that `quarter` names — the current one.
+
+Filters combine. This lists the gap analyses that were cancelled this quarter:
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$API/research/investigations?kind=gap_analysis&status=cancelled&quarter=current" \
+  | jq -r '[.items[].displayId] | join(" ")'
+```
+
+```text
+RS-125 RS-119 RS-114 RS-110 RS-105
+```
+
+`GET /research/investigations/{id}` opens one investigation: its estimate and what it actually
+used, its sources counted per tool, and what it produced. Take the `id` from the list — the
+address takes the `id`, not `RS-127`.
+
+```bash
+ID=$(curl -s -H "Authorization: Bearer $TOKEN" "$API/research/investigations?kind=gap_analysis&status=brief_ready" \
+  | jq -r '.items[0].id')
+curl -s -H "Authorization: Bearer $TOKEN" "$API/research/investigations/$ID" \
+  | jq -c '{displayId, estimate: .estimate.sources, used: .actuals.sourcesUsed,
+            spendCents: .actuals.spendCents, byTool: [.ledger.byTool[] | "\(.tool) \(.count)"],
+            deliverables: [.deliverables[].kind]}'
+```
+
+```json
+{"displayId":"RS-127","estimate":{"max":60,"min":40},"used":44,"spendCents":612,"byTool":["web 18","tickets 8","code 7","telemetry 6","competitor 5"],"deliverables":["brief","matrix"]}
+```
+
+Add `/brief` to the same address to read the brief itself, as far as the token's read scope
+allows:
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" "$API/research/investigations/$ID/brief" \
+  | jq -r '.brief.paragraphs[].spans[] | select(.claim != null)
+           | "\(.claim.type)\t\([.cites[].label] | join(""))\t\(.text | ltrimstr(" "))"' | head -n 3
+```
+
+```text
+finding  [07]      The docking gap is not sensors: our IMU and rangefinder match Skylink's published spec.
+finding  [12][31]  It is control — Skylink runs a wind-feedforward MPC in the final 2 m
+finding  [git]     while ours is PID with fixed gains (dock_ctrl.c:214, unchanged in 14 months).
+```
+
+`/sources` lists everything the investigation read and `/brief/export` returns the brief as a
+Markdown file — see [Reading a brief](../user-guide/research.mdx#reading-a-brief). An investigation
+that has not delivered a brief answers `/brief` with `404 brief_not_found`.
+
+A token can read investigations but cannot start or cancel one: those need a person's session.
+See [Who can start an investigation](../user-guide/research.mdx#who-can-start-an-investigation).
 
 ## Errors
 
