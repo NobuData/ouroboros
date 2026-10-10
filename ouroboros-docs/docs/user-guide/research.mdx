@@ -25,11 +25,14 @@ tool reports its own health, so a broken setup shows before an investigation dep
 | ◍ **Web search & page reader** | Searches the web, then reads whole pages: the main content, without navigation, banners or footers | Each search result, with its snippet. Each page read, at the address it was read from, with an excerpt and a fingerprint of its content. | Nothing, on a deployment that runs SearXNG. A hosted search provider needs a key. See [Research tools](../administration/research.mdx). |
 | ⌖ **Competitor tracker** | Watches your rivals' release notes, changelogs, GitHub releases and feeds on a schedule, and keeps every change | Each change, as the archived difference between two dated snapshots | An owner or admin adds rivals and their watches. See [Competitor watch](#competitor-watch). |
 | ⌥ **Codebase & git mining** | Reads the workspace's enabled repositories: who last changed a line and when, how often a file changes, what moved between two versions, a module's dependencies, and which commit broke a test | Each answer, at the exact commit it was read at, so it can be read again and give the same answer. A bisect's culprit, with the build-farm jobs that proved it. | Nothing beyond enabling the repository, with **Enable *repository* →** on [Get Started](./getting-started/wizard.mdx). A private repository also needs the workspace's backlog token. See [Code & git mining](#code--git-mining). |
+| ▤ **Issue & PR history index** | Searches your workspace's own history: every ticket from every connected ticket source, your pull requests, and document sets an owner imports, such as churn interviews. It also counts them, by label, period, kind, repository or set. | Each ticket, pull request and imported document it read, at an `issue-index://` address, with the passage that matched | Nothing beyond a connected ticket source. An owner imports document sets. See [Issue & PR history](#issue--pr-history). |
 
 The web tool's row reads *search API + full-page extraction, robots-aware*. The competitor
 tracker's row counts what is watched, for example *4 rivals watched · release notes, changelogs,
 filings*. A rival counts once it has an enabled watch that can be read. The code tool's row names
 the repositories it reads, for example *blame, bisect, dependency graph over helios-firmware*.
+The history index's row counts what it holds, for example *389 issues · 12 pull requests ·
+Support churn interviews Q2*.
 
 ### Pages the web tool does not read
 
@@ -161,3 +164,57 @@ again. Asking the same question again returns the bisect already running, or alr
 Every answer is cited at the exact commit it was read at, so anyone can read the same thing
 again. A blame is cited by the file and the lines, a bisect by its culprit and the farm jobs that
 proved it.
+
+## Issue & PR history
+
+The issue & PR history index is your workspace's own memory, searchable: what was reported, what
+was changed, and what people told you.
+
+It reads three things:
+
+- **Tickets** from every connected [ticket source](../administration/sources.mdx).
+- **Pull requests** mirrored from your git host.
+- **Imported document sets**, such as a quarter's churn interviews, which a workspace owner
+  imports. See [Importing a document set](../administration/research.mdx#importing-a-document-set).
+
+The index does not know which tracker a ticket came from. A ticket from one tracker is searched,
+counted and cited exactly like a ticket from another, so changing tracker changes nothing in
+your investigations.
+
+### What the index can answer
+
+| Question | What you get |
+| --- | --- |
+| **Search** for words, such as *docking abort* | The best matches first, each with the passage that matched. Entries that mention every word come before entries that mention only some, and a match in a title counts for more than one in the text. |
+| **Get** one entry by its address, such as `issue-index://support/churn-2026-q2` | The ticket, pull request, document set or document at that address |
+| **Aggregate**: count entries by **label**, **period** (day, week or month), **kind**, **repository** or **set** | The counts, largest first, or oldest first for a period. An aggregate can also count only the entries that mention given words. |
+
+Search and aggregate can be narrowed by kind (ticket, pull request, document or document set),
+label, date, repository and set. A *set* is one ticket source or one imported document set.
+
+Search understands word forms: *docking* also finds *dock* and *docked*.
+
+An aggregate looks back 90 days unless the investigation names another window or a start date.
+It counts tickets, pull requests and documents. An entry with two labels is counted under both
+labels, and once in the total.
+
+When nothing matches, the tool answers with nothing rather than with an empty result. An
+investigation never sees another workspace's history.
+
+### Citing history
+
+Every entry an investigation reads is cited at an `issue-index://` address:
+
+| Entry | Address | Example |
+| --- | --- | --- |
+| Ticket | The ticket source's name, then the ticket's identifier in its tracker | `issue-index://support/SUP-3001` |
+| Pull request | The source's name, `pull`, then its number | `issue-index://github-acme-robotics/pull/514` |
+| Document set | Its collection, then its name | `issue-index://support/churn-2026-q2` |
+| Document | Its set's address, then its key | `issue-index://support/churn-2026-q2/acct-01` |
+
+A ticket source's name is written in lower case with hyphens, so *GitHub · acme-robotics* becomes
+`github-acme-robotics`.
+
+A search hit is cited with the passage that matched. A count is cited by the newest entries in
+its largest groups, so a claim about how many tickets mention something points at the tickets
+behind it.

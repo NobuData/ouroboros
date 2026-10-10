@@ -2,14 +2,15 @@
 title: "Research tools"
 sidebar_label: "Research"
 sidebar_position: 14
-description: "Choosing the web search provider, how the page reader stays polite, safe and honest, running the competitor tracker, and where the code & git mining tool keeps its clones."
+description: "Choosing the web search provider, how the page reader stays polite, safe and honest, running the competitor tracker, where the code & git mining tool keeps its clones, and importing document sets into the issue & PR history index."
 ---
 
 Research investigations read the outside world through **research tools**. This page covers
 **Web search & page reader**: where its searches go, how it reads a page, what it keeps, and the
 variables that bound it. It also covers the **competitor tracker**: who manages it, what it
 needs, and how it is scheduled. And it covers **Codebase & git mining**: what it reads, where its
-repository clones live, and how a bisect keeps going.
+repository clones live, and how a bisect keeps going. Last, it covers the **Issue & PR history
+index**: what it reads, and how an owner imports a document set.
 
 :::info[Not available yet]
 
@@ -244,6 +245,139 @@ If a runner is lost and the farm retries the job, the bisect follows the retry.
 | **down** | The engine that keeps the clones cannot be reached |
 
 A token GitHub refuses shows on the first question, as a request to reconnect.
+
+## Issue & PR history index
+
+The issue & PR history index searches the workspace's tickets, pull requests and imported
+document sets. What it answers is described in
+[Issue & PR history](../user-guide/research.mdx#issue--pr-history).
+
+### What the index reads
+
+- **Every ticket of every ticket source** the workspace has connected, whatever its tracker. See
+  [Ticket sources](./sources.mdx). A paused source's tickets stay searchable.
+- **Every pull request** mirrored from the workspace's git host.
+- **Every imported document set.**
+
+Nothing is copied or scheduled: a ticket is searchable as soon as its source has synced it, and
+an import as soon as it is stored. The tool has no variables and needs no credential.
+
+### Importing a document set
+
+A **document set** is a file of documents that are not tickets, such as a quarter's churn
+interviews or field notes. Each document becomes searchable and citable.
+
+**Only a workspace owner can import or remove a set.** Every member can list and read them.
+
+:::info[Not available yet]
+
+The screen for importing document sets arrives with the Research page. Until then, sets are
+managed through the REST API, at `/api/v1/research/document-imports`.
+
+:::
+
+To import a set, send `POST /api/v1/research/document-imports` with:
+
+| Field | What to send |
+| --- | --- |
+| `collection` | The first part of the set's address, such as `support`. Lower-case letters, digits, hyphens and underscores, at most 63 characters. |
+| `name` | The second part, such as `churn-2026-q2`. Letters, digits, dots, hyphens and underscores, at most 100 characters. |
+| `title` | What a citation of the set is called, such as *Support churn interviews Q2*. Required for a CSV file. For Markdown, the file's first `#` heading is used when you leave it out. |
+| `description` | Optional. What the set is, in a paragraph. It is searched with the title. |
+| `format` | `csv` or `markdown` |
+| `content` | The file's text |
+
+The set is then cited as `issue-index://support/churn-2026-q2`, and each document as that address
+followed by the document's key.
+
+#### A CSV file
+
+The first row names the columns. Each later row is one document.
+
+| Column | What it holds |
+| --- | --- |
+| `text` | The document. Required. `body` and `content` are read as the same column. |
+| `title` | The document's title. Without it, the first line of the text is used. |
+| `key` | The last part of the document's address, such as `acct-01`. `id` is read as the same column. Without it, documents are numbered `doc-001`, `doc-002` and so on. |
+| `date` | When the document is from, as an ISO 8601 date such as `2026-04-08` |
+| `labels` | Labels, separated by semicolons, vertical bars or commas |
+| Any other column | Kept with the document as extra detail |
+
+```csv
+key,title,date,labels,account,text
+acct-01,Northwind Survey,2026-04-08,docking,Northwind Survey,"The drone gives up after one docking abort."
+acct-03,Cascade Timber,2026-04-21,battery,Cascade Timber,Battery estimates were wrong on cold mornings.
+```
+
+#### A Markdown file
+
+Each `##` heading starts one document, and the heading is its title. When you send no `title`,
+the first `#` heading is the set's title. When you send no `description`, the text under that
+heading is the set's description.
+
+A document can open with `Name: value` lines, followed by a blank line. `Key:`, `Date:` and
+`Labels:` are read as the CSV columns are. Any other name is kept as extra detail. A file with no
+`##` heading is one document.
+
+```markdown
+# Support churn interviews Q2
+
+Exit interviews with accounts that churned in Q2 2026.
+
+## Northwind Survey
+
+Key: acct-01
+Date: 2026-04-08
+Labels: docking
+
+The drone gives up after one docking abort.
+```
+
+#### Limits
+
+| Limit | Value |
+| --- | --- |
+| File size | 2 MiB |
+| Documents in a set | 2,000 |
+| One document's text | 64 KiB |
+| One document's key | Letters, digits, `.`, `_`, `#` and `-`, at most 100 characters, unique in the set |
+
+A file that breaks a limit, or that cannot be read, is refused whole. The refusal names the row
+or section at fault, for example *row 7 has no text*.
+
+### What a set may contain
+
+Import text you are content for the whole workspace to read. Every member can read a set, and
+every investigation in the workspace can search and quote it. A quoted passage is kept in the
+investigation's record of sources, and it stays there after the set is removed.
+
+Do not import passwords, keys or tokens. Remove personal details that an investigation does not
+need, such as contact names and phone numbers.
+
+A set holds text only. Images and attachments are not imported.
+
+### Replacing or removing a set
+
+A set is never edited, because an investigation may have cited it. To replace a set, remove it
+with `DELETE /api/v1/research/document-imports/{importId}` and import the new file. Importing to
+an address that is already taken is refused.
+
+Removing a set takes its documents out of the index. Investigations that cited them keep the
+passages they quoted.
+
+### How long a search may take
+
+Each search, lookup and count must answer within **500 ms**. One that takes longer is stopped,
+and the investigation is told the index did not answer in time, so a slow index cannot stall an
+investigation.
+
+### History index health
+
+| Health | Means |
+| --- | --- |
+| **healthy** | The index holds at least one ticket, pull request or document |
+| **not configured** | Nothing is indexed yet. Connect a ticket source or import a document set. |
+| **down** | The index cannot be read |
 
 ## Variables
 

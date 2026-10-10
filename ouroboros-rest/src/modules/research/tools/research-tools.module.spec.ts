@@ -4,6 +4,7 @@ import { ConfigurationModule } from "../../config/config.module";
 import { testConfiguration } from "../../config/configuration.fixture";
 import { CodeBisectService } from "../code/code-bisect.service";
 import { CompetitorsController } from "../competitors/competitors.controller";
+import { DocumentImportsController } from "../history/document-imports.controller";
 import { FakeResearchTool } from "./adapters/fake.tool.fixture";
 import { ResearchToolInvoker } from "./research-tool.invoker";
 import { RESEARCH_TOOL_ADAPTERS, ResearchToolRegistry } from "./research-tool.registry";
@@ -15,7 +16,7 @@ import { ResearchToolsInternalController } from "./tools.internal.controller";
  * The wiring. Nothing connects: `pg` connects lazily, and no query is issued.
  */
 describe("the research tools module", () => {
-  it("compiles, with the internal route, the registry routes and the three tools registered", async () => {
+  it("compiles, with the internal route, the registry routes and the four tools registered", async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [ConfigurationModule.forRoot(testConfiguration()), ResearchToolsModule],
     }).compile();
@@ -25,8 +26,14 @@ describe("the research tools module", () => {
     );
     expect(moduleRef.get(ResearchToolInvoker)).toBeInstanceOf(ResearchToolInvoker);
     // CL.2 (#615) registers the web tool, CL.3 (#616) the competitor tracker, CL.4 (#617) the
-    // code & git mining tool; CL.5–CL.6 each register one more.
-    expect(moduleRef.get(ResearchToolRegistry).slugs()).toEqual(["code", "competitor", "web"]);
+    // code & git mining tool, CL.5 (#618) the issue & PR history index; CL.6 registers one more.
+    expect(moduleRef.get(ResearchToolRegistry).slugs()).toEqual([
+      "code",
+      "competitor",
+      "tickets",
+      "web",
+    ]);
+    expect(moduleRef.get(DocumentImportsController)).toBeInstanceOf(DocumentImportsController);
     expect(moduleRef.get(CompetitorsController)).toBeInstanceOf(CompetitorsController);
     expect(moduleRef.get(CodeBisectService)).toBeInstanceOf(CodeBisectService);
 

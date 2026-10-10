@@ -194,19 +194,32 @@ describe("the roles & capabilities page (#1189)", () => {
     expect(labels).toEqual(approver);
   });
 
-  it("names delete and restore as the only owner-only routes", () => {
+  it("names every owner-only route: delete, restore, and importing a document set", () => {
     const owners = controllers(join(REPO_ROOT, "ouroboros-rest", "src", "modules")).flatMap(
       (file) => {
         const text = readFileSync(file, "utf8");
+        const base = /@Controller\("([^"]+)"\)/.exec(text)?.[1] ?? "";
         // Each handler's run of decorators, in whatever order they are written.
         return [...text.matchAll(/(?:@\w+\([^)]*\)\s*)+/g)]
           .map((block) => block[0])
           .filter((block) => block.includes('@Roles("owner")'))
-          .map((block) => /@(?:Post|Put|Patch|Delete)\("([^"]+)"\)/.exec(block)?.[1] ?? block);
+          .map((block) => {
+            const route = /@(Post|Put|Patch|Delete)\((?:"([^"]+)")?\)/.exec(block);
+            return route === null
+              ? block
+              : `${route[1]} ${[base, route[2]].filter(Boolean).join("/")}`;
+          });
       },
     );
-    expect(owners.sort()).toEqual(["delete", "restore"]);
+    expect(owners.sort()).toEqual([
+      "Delete research/document-imports/:importId",
+      "Post research/document-imports",
+      "Post settings/lifecycle/delete",
+      "Post settings/lifecycle/restore",
+    ]);
     expect(ROLES).toContain("Owner to delete and restore");
+    // #618: a document set is readable by every investigation, so what goes in is an Owner's call.
+    expect(ROLES).toContain("Only an Owner can import or remove a research document set");
   });
 
   it("quotes the refusals as the app words them", () => {

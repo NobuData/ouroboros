@@ -8,8 +8,9 @@
  * CL.2 (#615) registers the first, `web`, built from the deployment's `OURO_RESEARCH_*`
  * configuration; CL.3 (#616) the second, `competitor`, with the watch scheduler that feeds it;
  * CL.4 (#617) the third, `code`, over the engine's clones and the bisect primitive in
- * `research/code/`. CL.5–CL.6 (#618–#619) each add a line to {@link registeredAdapters}. A slug with no adapter
- * answers `501 research_tool_not_registered`.
+ * `research/code/`; CL.5 (#618) the fourth, `tickets`, over the history index in
+ * `research/history/`. CL.6 (#619) adds a line to {@link registeredAdapters}. A slug with no
+ * adapter answers `501 research_tool_not_registered`.
  *
  * The page reader is one provider ({@link RESEARCH_PAGE_FETCHER}), shared by the web tool and the
  * tracker's snapshots, so robots.txt is read once per site and a host is paced across both.
@@ -29,10 +30,13 @@ import { CodeReader } from "../code/code.reader";
 import { CodeWorkspace } from "../code/code.workspace";
 import { CompetitorsModule } from "../competitors/competitors.module";
 import { CompetitorsRepository } from "../competitors/competitors.repository";
+import { HistoryIndexRepository } from "../history/history-index.repository";
+import { HistoryModule } from "../history/history.module";
 import { buildCodeTool } from "./adapters/code/code.factory";
 import { buildCompetitorTool, buildWatchScheduler } from "./adapters/competitor/competitor.factory";
 import { CompetitorWatchScheduler } from "./adapters/competitor/competitor.scheduler";
 import type { PageFetcher } from "./adapters/web/web.fetcher";
+import { buildTicketsTool } from "./adapters/tickets/tickets.factory";
 import { buildPageFetcher, buildWebTool } from "./adapters/web/web.factory";
 import type { ResearchToolAdapter } from "./research-tool.adapter";
 import { ResearchToolInvoker } from "./research-tool.invoker";
@@ -45,13 +49,14 @@ import { ResearchToolsInternalController } from "./tools.internal.controller";
 export const RESEARCH_PAGE_FETCHER = Symbol("RESEARCH_PAGE_FETCHER");
 
 /**
- * The adapters this build ships. CL.5–CL.6 add theirs.
+ * The adapters this build ships. CL.6 adds its own.
  *
  * @param config - The deployment's configuration, for each adapter's bounds and defaults.
  * @param fetcher - The shared page reader.
  * @param competitors - The competitor registry and archive.
  * @param code - The code & git mining tool's core: engine reads, the bisect primitive, the
  *   workspace's repositories, and the engine itself for health.
+ * @param history - The issue & PR history index.
  * @returns One adapter per registered slug.
  */
 export function registeredAdapters(
@@ -64,16 +69,18 @@ export function registeredAdapters(
     readonly workspace: CodeWorkspace;
     readonly engine: EngineClient;
   },
+  history: HistoryIndexRepository,
 ): readonly ResearchToolAdapter[] {
   return [
     buildWebTool(config, fetcher),
     buildCompetitorTool(competitors),
     buildCodeTool(code.reader, code.bisects, code.workspace, code.engine),
+    buildTicketsTool(history),
   ];
 }
 
 @Module({
-  imports: [DbModule, CompetitorsModule, GithubModule, EngineModule, CodeModule],
+  imports: [DbModule, CompetitorsModule, GithubModule, EngineModule, CodeModule, HistoryModule],
   controllers: [ResearchToolsInternalController],
   providers: [
     { provide: RESEARCH_PAGE_FETCHER, inject: [AppConfigService], useFactory: buildPageFetcher },
@@ -87,6 +94,7 @@ export function registeredAdapters(
         CodeBisectService,
         CodeWorkspace,
         EngineClient,
+        HistoryIndexRepository,
       ],
       useFactory: (
         config: AppConfigService,
@@ -96,7 +104,15 @@ export function registeredAdapters(
         bisects: CodeBisectService,
         workspace: CodeWorkspace,
         engine: EngineClient,
-      ) => registeredAdapters(config, fetcher, competitors, { reader, bisects, workspace, engine }),
+        history: HistoryIndexRepository,
+      ) =>
+        registeredAdapters(
+          config,
+          fetcher,
+          competitors,
+          { reader, bisects, workspace, engine },
+          history,
+        ),
     },
     {
       provide: CompetitorWatchScheduler,

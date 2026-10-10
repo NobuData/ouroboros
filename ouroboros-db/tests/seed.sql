@@ -7420,6 +7420,96 @@ select pg_temp.must_hold(
     where t.external_key in ('#742', '#743', '#744', '#745', '#746', '#747')),
   'each filed issue carries the estimator''s effort and complexity — L · M · M · M · S · XS');
 
+-- The history index's corpus (#618, CL.5): what RS-124 and RS-127 cite is really there.
+select pg_temp.must_hold(
+  (select src.kind = 'custom' and src.status = 'paused'
+          and (select count(*) = 312 and count(*) filter (where t.state = 'open') = 0
+                 from ouroboros.tickets t where t.source_id = src.id)
+     from ouroboros.ticket_sources src
+     join ouroboros.organization org on org."id" = src.organization_id and org."slug" = 'acme-robotics'
+    where src.display_name = 'Support'),
+  'the Support source is a paused second tracker holding 312 closed tickets — no open-ticket count moves');
+
+select pg_temp.must_hold(
+  (select count(*) = 312 and count(e.locator) = 312
+     from ouroboros.source_records s
+     join ouroboros.investigations inv on inv.id = s.investigation_id and inv.seq = 124
+     join ouroboros.organization org on org."id" = inv.organization_id and org."slug" = 'acme-robotics'
+     left join ouroboros.history_index_entries e
+            on e.organization_id = org."id" and e.locator = s.locator and e.kind = 'ticket'),
+  'every one of RS-124''s 312 citations is a ticket the index holds, at the same locator');
+
+select pg_temp.must_hold(
+  (select (select jsonb_object_agg(theme, n)
+             from (select s.meta ->> 'theme' as theme, count(*) as n
+                     from ouroboros.source_records s
+                     join ouroboros.investigations inv on inv.id = s.investigation_id and inv.seq = 124
+                    where inv.organization_id = org."id"
+                    group by 1) cited)
+          = (select jsonb_object_agg(label, n)
+               from (select tag.label, count(*) as n
+                       from ouroboros.history_index_entries e
+                      cross join lateral jsonb_array_elements_text(e.labels) as tag (label)
+                      where e.organization_id = org."id" and e.set_key = 'support' and e.kind = 'ticket'
+                        and tag.label <> 'support'
+                      group by 1) indexed)
+     from ouroboros.organization org where org."slug" = 'acme-robotics'),
+  'counting the index by label reproduces RS-124''s seven themes — 45 · 45 · 45 · 45 · 44 · 44 · 44');
+
+select pg_temp.must_hold(
+  (select count(distinct tag.label) = 7 and min(n) = 44 and max(n) = 45 and sum(n) = 312
+     from (select tag.label, count(*) as n
+             from ouroboros.history_index_entries e
+             join ouroboros.organization org on org."id" = e.organization_id and org."slug" = 'acme-robotics'
+            cross join lateral jsonb_array_elements_text(e.labels) as tag (label)
+            where e.set_key = 'support' and e.kind = 'ticket' and tag.label <> 'support'
+            group by 1) tag),
+  'the seven themes hold 312 tickets between them, 44 or 45 each');
+
+-- Mockup 22's [19], imported: fourteen interviews, nine about docking, at the cited locator.
+select pg_temp.must_hold(
+  (select e.title = 'Support churn interviews Q2'
+          and e.meta = '{"format": "csv", "documents": 14}'::jsonb
+          and exists (select 1 from ouroboros.source_records s
+                        join ouroboros.investigations inv on inv.id = s.investigation_id and inv.seq = 127
+                       where inv.organization_id = e.organization_id
+                         and s.cite_no = 19 and s.locator = e.locator)
+     from ouroboros.history_index_entries e
+     join ouroboros.organization org on org."id" = e.organization_id and org."slug" = 'acme-robotics'
+    where e.kind = 'document_set'),
+  'the churn interviews are an imported set of 14 at the locator RS-127 cites as [19]');
+
+select pg_temp.must_hold(
+  (select count(*) = 14 and count(*) filter (where e.labels ? 'docking') = 9
+          and bool_and(e.locator like 'issue-index://support/churn-2026-q2/acct-%')
+          and bool_and(ouroboros.source_locator_valid('ticket', e.locator))
+     from ouroboros.history_index_entries e
+     join ouroboros.organization org on org."id" = e.organization_id and org."slug" = 'acme-robotics'
+    where e.kind = 'document'),
+  '9 of the 14 interviews cite docking reliability — the citation''s own sentence, counted');
+
+-- The tools card's sub-line is the corpus: counted, never stored.
+select pg_temp.must_hold(
+  (select count(*) filter (where e.kind = 'ticket')
+            = (select count(*) from ouroboros.tickets t where t.organization_id = org."id")
+          and count(*) filter (where e.kind = 'pr')
+            = (select count(*) from ouroboros.pull_requests p where p.organization_id = org."id")
+          and count(*) filter (where e.kind = 'ticket') >= 312
+     from ouroboros.history_index_entries e
+     join ouroboros.organization org on org."id" = e.organization_id and org."slug" = 'acme-robotics'
+    group by org."id"),
+  'the index counts every ticket and pull request of the workspace — the sub-line''s numbers');
+
+-- A search for the diagram's query finds both halves of the corpus.
+select pg_temp.must_hold(
+  (select count(*) filter (where e.kind = 'document_set') = 1
+          and count(*) filter (where e.kind = 'document') >= 9
+          and count(*) filter (where e.kind = 'ticket') >= 44
+     from ouroboros.history_index_entries e
+     join ouroboros.organization org on org."id" = e.organization_id and org."slug" = 'acme-robotics'
+    where e.document @@ plainto_tsquery('english', 'docking abort')),
+  'docking abort is found in the support tickets and in the churn interviews');
+
 -- The personal workspace is the empty-state fixture.
 select pg_temp.must_hold(
   exists (select 1 from ouroboros.organization org where org."slug" = 'kensuenobu' and org.metadata like '%"personal": true%')
@@ -7428,7 +7518,9 @@ select pg_temp.must_hold(
   and not exists (select 1 from ouroboros.competitors c
                     join ouroboros.organization org on org."id" = c.organization_id and org."slug" = 'kensuenobu')
   and not exists (select 1 from ouroboros.regression_baselines b
-                    join ouroboros.organization org on org."id" = b.organization_id and org."slug" = 'kensuenobu'),
+                    join ouroboros.organization org on org."id" = b.organization_id and org."slug" = 'kensuenobu')
+  and not exists (select 1 from ouroboros.document_imports d
+                    join ouroboros.organization org on org."id" = d.organization_id and org."slug" = 'kensuenobu'),
   'Ken''s personal workspace has no research rows — the empty state #633 verifies against');
 
 

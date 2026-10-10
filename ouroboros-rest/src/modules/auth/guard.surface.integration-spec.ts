@@ -140,6 +140,13 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   // `POST /api/v1/settings/webhooks/:id/deliveries/:deliveryId/redeliver` (#487). A uuid, as
   // `ParseUUIDPipe` requires — but the guard answers before any pipe runs.
   deliveryId: "5eed0077-0000-4000-8000-000000000006",
+  // `/api/v1/research/competitors/:competitorId/watches/:watchId` (#616). Well-formed uuids. The
+  // entries were missing, and this walk throws on the first parameter it cannot fill — so they
+  // are added with #618's, whose routes the walk could not otherwise reach.
+  competitorId: "5eed0094-0000-4000-8000-000000000001",
+  watchId: "5eed0094-0000-4000-8000-000000000011",
+  // `/api/v1/research/document-imports/:importId` (#618). A well-formed uuid no workspace holds.
+  importId: "5eed009a-0000-4000-8000-0000000000ff",
 };
 
 /**

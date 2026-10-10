@@ -1649,6 +1649,23 @@
 > `bisect://<owner>/<name>@<culprit sha>?jobs=<uuid>[,…]` (1–32 jobs) — the converged bisect,
 > cited with the jobs that proved it.
 >
+> `V119` ([#618](https://github.com/NobuData/ouroboros/issues/618), CL.5) is the issue & PR
+> history index. `document_imports` holds one imported set — churn interviews, say — at
+> `issue-index://<collection>/<name>` (unique per workspace), with its title, description,
+> `format` `csv | markdown`, the file's `content_hash` and who imported it;
+> `document_import_items` holds its documents — `item_key`, title, `body` (≤ 64 KiB), `labels`,
+> `occurred_at`, `meta` (≤ 8 KiB) — at most 2 000 a set, in the set's workspace by a composite
+> foreign key. Neither is ever updated (a document is what an investigation cited); both cascade
+> with the workspace; `ouroboros_app` may select, insert and delete.
+> `history_index_document(title, body)` is the one full-text definition (title weight A, the
+> body's first 100 000 characters weight B, English), behind a GIN index on `tickets`,
+> `pull_requests` and `document_import_items`. `history_index_entries` is the corpus as one view:
+> every canonical ticket, mirrored PR, imported set and document with its `kind`, `locator`
+> (`history_index_slug(source name)` + `history_index_key(external_id)` for a ticket,
+> `…/pull/<number>` for a PR), `set_key`, labels, `repo`, dates and full-text `document`. **It
+> never reads `ticket_sources.kind`** — which tracker fed a ticket is invisible to research
+> (decision V2). `ouroboros_app` may select it.
+>
 > [#558](https://github.com/NobuData/ouroboros/issues/558) seeds mockup 20 from those rows:
 > [`R__dev_seed_workspace_copilot.sql`](migrations/R__dev_seed_workspace_copilot.sql) — see
 > [What the copilot drafted, and what its dry run said](#what-the-copilot-drafted-and-what-its-dry-run-said).
@@ -2497,7 +2514,10 @@ database seeded before it still holds). It sorts after the base seed, which is a
 | `RS-124 — FROM BRIEF TO ROADMAP TO ISSUES`, ROADMAP.md rendered and raw, `SUGGESTED CHANGES — 2 OPEN` | the `roadmap_docs` row, version 1 (two milestones, six items, MVP flags, #742 checked, target dates the 15th and 51st day of the quarter, the markdown projection), committed at `8c1b2e4`; two open `doc_suggestions`, Ken's and the AI's |
 | `6 issues · 2 milestones`, `1/3 done` · `0/3 done`, effort and `cx:` chips | canonical tickets #742…#747 (#742 closed) with `issue_estimates` (effort; risk as complexity; cycle time) and the batch's six pushed drafts |
 
+| `▤ Issue & PR history index` and `[19] … issue-index://support/churn-2026-q2` ([#618](https://github.com/NobuData/ouroboros/issues/618)) | a paused `custom`-kind ticket source named `Support` holding RS-124's 312 tickets as canonical rows (`SUP-3001`…, closed, labelled by theme — counting the index by label gives the seven themes, 44 or 45 each), and the `support/churn-2026-q2` import: fourteen interviews, nine labelled `docking` |
+
 The filed issues and the watch's fix tickets move mockup 09's GitHub counts to 55 open, 45 sized.
+The Support source's tickets are closed and recently touched, so they move no open or stale count.
 Two of mockup 22's pills are not seeded: `fix loop live` (RS-118) and `loop live` (#743) are live
 loops, and the workspace's three live loops are mockup 02's (`3 loops live`). The mockup's issue
 #512 also shares GitHub's number space with mockup 02's merged PR #512. Ken's personal workspace
@@ -3495,6 +3515,7 @@ ouroboros-db/
 │   ├── V116__source_skips.sql        # source_skips (robots_denied|unsupported_type, note ≤ 500, one per investigation/tool/locator/reason, immutable) — #615
 │   ├── V117__competitor_watch_checks.sql # competitor_watches schedule (next/last check, outcome, note), competitor_snapshot_contents (scoped text under the snapshot's hash) — #616
 │   ├── V118__code_bisects.sql        # code_bisects (candidate line + lo..hi checkpoint, ≤ ⌊log₂ n⌋+1 steps), code_bisect_steps (one farm job each), bisect:// code locators — #617
+│   ├── V119__history_index.sql       # document_imports + document_import_items (imported sets), history_index_document() + GIN indexes, history_index_entries view (tickets ∪ PRs ∪ imports, tracker-agnostic) — #618
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -3514,7 +3535,7 @@ ouroboros-db/
 │   ├── R__dev_seed_workspace_knowledge.sql # mockup 14 — skills, facts, playbooks, env recipe, injection records, dev only — #409
 │   ├── R__dev_seed_workspace_metrics.sql # mockup 15 — ninety days of metric_daily from components, nine graded merges, dev only — #436
 │   ├── R__dev_seed_workspace_metrics_analyzer.sql # mockup 18 — the corpus, two analysis runs, findings, suggestions, measurements, dev only — #509
-│   ├── R__dev_seed_workspace_research.sql # mockup 22 — RS-101…RS-126 (RS-118/121/124 featured, 312-source ledger), the matrix, four rivals, the regression watch, RS-124's ROADMAP.md, dev only — #613
+│   ├── R__dev_seed_workspace_research.sql # mockup 22 — RS-101…RS-126 (RS-118/121/124 featured, 312-source ledger), the matrix, four rivals, the regression watch, RS-124's ROADMAP.md, the Support source + churn import (#618), dev only — #613
 │   ├── R__dev_seed_workspace_settings.sql # mockup 17 — policy v1–v7, members, today's audit lines, retention, webhooks, routes, dev only — #484
 │   ├── R__dev_seed_workspace_copilot.sql # mockup 20 — the security-patch conversation, draft v0.3 with W7 warnings, the dry run on #489, two suggestions, dev only — #558
 │   ├── R__dev_seed_workspace_triage_inbox.sql # mockup 16 — three open cards, the week's eleven answers, PR #504, dev only — #460 (sorts last)
@@ -3764,6 +3785,9 @@ outside this module alters it.
 | `competitor_snapshot_contents` | `V117` | A competitor snapshot's archived, selector-scoped text ([#616](https://github.com/NobuData/ouroboros/issues/616), CL.3, decision **V9**) — `snapshot_id`, `content`, `created_at` | one per snapshot; at most 1 MiB; its sha256 must be the snapshot's `content_hash`; never updated; cascades with the snapshot; `ouroboros_app` may select and insert |
 | `code_bisects` | `V118` | One bisect between a good and a bad commit ([#617](https://github.com/NobuData/ouroboros/issues/617), CL.4) — `organization_id`, `investigation_id`, `github_repo_id`, `repository`, `pool`, `test_ref`, `command`, `good_ref`, `bad_ref`, `good_sha`, `bad_sha`, `build_ref`, `commits`, `lo`, `hi`, `max_steps`, `status`, `culprit_sha`, `note`, `created_by`, timestamps | `commits` an array of 1–10 000; `lo`..`hi` a non-empty window inside it; `max_steps` 1–32; `status` `running\|converged\|inconclusive\|failed\|canceled`; `culprit_sha` exactly when converged; `finished_at` exactly when not running; cascades with the workspace and the repository; `ouroboros_app` may select, insert and update |
 | `code_bisect_steps` | `V118` | One farm job per bisect step ([#617](https://github.com/NobuData/ouroboros/issues/617)) — `bisect_id`, `step`, `candidate`, `commit_sha`, `build_job_id`, `organization_id`, `verdict`, `created_at`, `decided_at` | at most the bisect's `max_steps`; `commit_sha` is `commits[candidate]`; the job is the same workspace's; `verdict` `good\|bad` with `decided_at`; `ouroboros_app` may select, insert and update |
+| `document_imports` | `V119` | One imported document set ([#618](https://github.com/NobuData/ouroboros/issues/618), CL.5) — `organization_id`, `collection`, `name`, `title`, `description`, `format`, `content_hash`, `imported_by`, `created_at` | `(organization_id, collection, name)` unique — the set's `issue-index://` locator; `collection` and `name` are locator segments; `format` is `csv` or `markdown`; never updated (`document_imports_immutable`); cascades with the workspace |
+| `document_import_items` | `V119` | One document of an imported set ([#618](https://github.com/NobuData/ouroboros/issues/618)) — `import_id`, `organization_id`, `position`, `item_key`, `title`, `body`, `labels`, `occurred_at`, `meta`, `created_at` | in its set's workspace (composite foreign key); `item_key` and `position` unique per set, `position` ≤ 2 000; `body` non-blank and ≤ 64 KiB; `labels` a string list; `meta` an object ≤ 8 KiB; never updated (`document_import_items_immutable`); cascades with the set |
+| `history_index_entries` | `V119` | The history index's corpus ([#618](https://github.com/NobuData/ouroboros/issues/618)) — `organization_id`, `kind`, `entry_id`, `set_key`, `locator`, `ref`, `title`, `body`, `state`, `labels`, `author`, `repo`, `url`, `occurred_at`, `changed_at`, `meta`, `document` | A view, so it enforces nothing; every locator passes `source_locator_valid('ticket', …)`, and it never reads `ticket_sources.kind` (`tests/constraints.sql` asserts both) |
 | `regression_watch_settings` | `V115` | A workspace's regression thresholds ([#611](https://github.com/NobuData/ouroboros/issues/611), CK.4) — `thresholds` `{classes, metrics}` | rules of `{direction, warn_pct + err_pct, min_spread_multiple, min_samples}` over `regression_threshold_defaults()`; one row per workspace; `ouroboros_app` may select, insert and update |
 
 Two **functions**, both `V012`'s and both documented in

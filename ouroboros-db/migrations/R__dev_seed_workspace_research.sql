@@ -66,7 +66,8 @@
 -- Ids: `5eed008e` tickets, `5eed008f` estimates, `5eed0090` draft batches and drafts, `5eed0091`
 -- investigations, `5eed0092` their sources, `5eed0093` briefs and claims, `5eed0094`
 -- competitors, watches and snapshots, `5eed0095` the matrix, `5eed0096` the regression watch,
--- `5eed0097` the roadmap doc, `5eed0098` PR #641.
+-- `5eed0097` the roadmap doc, `5eed0098` PR #641, `5eed0099` the Support source and its 312
+-- tickets, `5eed009a` the churn-interview import.
 
 -- ---------------------------------------------------------------------------
 -- Canonical tickets: the bug RS-118 investigated, the watch's fix tickets, and the six
@@ -702,5 +703,105 @@ select s.id, doc.id, s.kind, case when s.kind = 'user' then ken."id" end, s.agen
   ) as s (id, kind, agent, text, hint, after)
   join ouroboros.roadmap_docs doc on doc.id = '5eed0097-0000-4000-8000-000000000124'
   join ouroboros."user" ken       on ken."email" = 'ken@acme-robotics.dev'
+ where ${ouro_dev_seed}
+on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
+-- The history index's corpus (#618, CL.5): the support desk RS-124 read, as canonical tickets,
+-- and the churn interviews mockup 22 cites as [19].
+--
+-- The 312 tickets are the ones RS-124's ledger cites (`issue-index://support/SUP-3001`…), in a
+-- second, `custom`-kind source named `Support` — so the index's locator for each is the ledger's,
+-- and `aggregate` over the source's labels reproduces the seven themes. The source is `paused`:
+-- nothing syncs it; its tickets are `closed`, opened inside the last 90 days and touched inside
+-- the last 30, so no open-ticket or stale-ticket count on another page moves.
+-- ---------------------------------------------------------------------------
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name, config, status)
+select '5eed0099-0000-4000-8000-000000000001'::uuid, org."id", 'custom', 'Support', '{}'::jsonb,
+       'paused'
+  from ouroboros.organization org
+ where org."slug" = 'acme-robotics'
+   and ${ouro_dev_seed}
+on conflict do nothing;
+
+insert into ouroboros.tickets
+  (id, organization_id, source_id, external_id, external_key, external_url, title, body,
+   state, labels, author, source_created_at, source_updated_at, synced_at, sizing_status, meta)
+select ('5eed0099-0000-4000-8000-0001' || lpad(n::text, 8, '0'))::uuid,
+       src.organization_id, src.id, 'SUP-' || (3000 + n), 'SUP-' || (3000 + n),
+       'https://support.acme-robotics.dev/tickets/SUP-' || (3000 + n),
+       initcap(left(theme.subject, 1)) || substr(theme.subject, 2), theme.excerpt,
+       'closed', jsonb_build_array(theme.key, 'support'), 'field-support',
+       now() - make_interval(days => 30 + (n % 55)),
+       now() - make_interval(days => 1 + (n % 25)),
+       now() - interval '1 day',
+       'unsized', '{}'::jsonb
+  from generate_series(1, 312) as n
+  join (values
+    (0, 'docking',     'docking aborts in wind',              'Customer reports the unit aborting docking in moderate wind and waiting at loiter.'),
+    (1, 'battery',     'battery estimate wrong in the cold',  'Remaining-flight estimate drops sharply on cold mornings.'),
+    (2, 'telemetry',   'telemetry gaps during missions',      'Fleet dashboard shows gaps of several minutes mid-mission.'),
+    (3, 'ota',         'update interrupted or failed',        'An interrupted update left the unit needing a manual recovery.'),
+    (4, 'recovery',    'no clear recovery procedure',         'Operator did not know how to recover the unit after an abort.'),
+    (5, 'gusts',       'unstable hover in gusts',             'Unit drifts noticeably in gusty conditions during inspection hovers.'),
+    (6, 'pairing',     'console pairing drops',               'Console loses pairing after the unit sleeps.')
+  ) as theme (slot, key, subject, excerpt) on theme.slot = n % 7
+  join ouroboros.ticket_sources src on src.id = '5eed0099-0000-4000-8000-000000000001'::uuid
+ where ${ouro_dev_seed}
+on conflict do nothing;
+
+-- Mockup 22's [19]: fourteen exit interviews, nine of which name docking reliability.
+insert into ouroboros.document_imports (id, organization_id, collection, name, title, description,
+                                        format, content_hash, imported_by, created_at)
+select '5eed009a-0000-4000-8000-000000000001'::uuid, org."id", 'support', 'churn-2026-q2',
+       'Support churn interviews Q2',
+       'Exit interviews with the 14 accounts that churned in Q2 2026. 9 of 14 cite docking reliability; several said the drone "gives up" after one abort.',
+       'csv',
+       'sha256:' || encode(sha256(convert_to('dev-seed:support/churn-2026-q2', 'UTF8')), 'hex'),
+       ken."id", now() - interval '20 days'
+  from ouroboros.organization org
+  join ouroboros."user" ken on ken."email" = 'ken@acme-robotics.dev'
+ where org."slug" = 'acme-robotics'
+   and ${ouro_dev_seed}
+on conflict do nothing;
+
+insert into ouroboros.document_import_items (id, import_id, organization_id, position, item_key,
+                                             title, body, labels, occurred_at, meta)
+select ('5eed009a-0000-4000-8000-0001' || lpad(doc.n::text, 8, '0'))::uuid,
+       imp.id, imp.organization_id, doc.n, 'acct-' || lpad(doc.n::text, 2, '0'),
+       'Churn interview — ' || doc.account, doc.body, doc.labels::jsonb,
+       doc.held::timestamptz,
+       jsonb_build_object('account', doc.account, 'seats', doc.seats)
+  from (values
+    (1,  'Northwind Survey',    '12', '2026-04-08', '["docking"]',
+     'Docking reliability was the reason. In anything above a light breeze the drone aborts the approach and gives up — it sits at loiter until someone flies it in by hand.'),
+    (2,  'Harbor Inspection',   '30', '2026-04-14', '["docking", "recovery"]',
+     'Coastal sites are windy every afternoon. The drone gives up after one docking abort, and nobody on site knew the recovery procedure.'),
+    (3,  'Cascade Timber',      '6',  '2026-04-21', '["battery"]',
+     'Battery estimates were wrong on cold mornings; two missions ended early and we lost trust in the remaining-flight number.'),
+    (4,  'Meridian Rail',       '18', '2026-04-29', '["docking"]',
+     'Docking aborts in gusts along the embankments. A competitor retries the approach; ours does not.'),
+    (5,  'Polar Logistics',     '9',  '2026-05-04', '["docking", "battery"]',
+     'Docking reliability first, cold-weather battery second. An aborted docking in the cold usually meant a dead unit by the time we reached it.'),
+    (6,  'Vantage Agritech',    '22', '2026-05-11', '["telemetry"]',
+     'Telemetry gaps of several minutes made the fleet dashboard useless for our compliance reports.'),
+    (7,  'Ridgeline Utilities', '40', '2026-05-15', '["docking", "gusts"]',
+     'Docking reliability on ridge sites. The approach is unstable in gusts and the drone gives up rather than re-plan.'),
+    (8,  'Bluewater Ports',     '15', '2026-05-20', '["docking"]',
+     'We need unattended docking. One abort and it waits at loiter until the battery forces a landing.'),
+    (9,  'Summit Mapping',      '4',  '2026-05-27', '["pricing"]',
+     'Budget. The product worked for us; the seat price did not survive our renewal review.'),
+    (10, 'Ironbridge Works',    '11', '2026-06-02', '["docking", "recovery"]',
+     'Docking reliability, and no clear recovery procedure after an abort — operators improvised every time.'),
+    (11, 'Tidewater Energy',    '27', '2026-06-09', '["docking"]',
+     'Offshore wind is constant. Docking aborts were daily and the unit never retried on its own.'),
+    (12, 'Greenfield Co-op',    '5',  '2026-06-12', '["ota"]',
+     'An interrupted update left two units needing manual recovery in the middle of harvest.'),
+    (13, 'Kestrel Security',    '14', '2026-06-18', '["docking", "pairing"]',
+     'Docking reliability at night patrol sites, and the console lost pairing whenever a unit slept.'),
+    (14, 'Lakeshore Transit',   '8',  '2026-06-24', '["pairing"]',
+     'Console pairing dropped several times a week; we moved to a vendor with a wired dock.')
+  ) as doc (n, account, seats, held, labels, body)
+  join ouroboros.document_imports imp on imp.id = '5eed009a-0000-4000-8000-000000000001'::uuid
  where ${ouro_dev_seed}
 on conflict do nothing;

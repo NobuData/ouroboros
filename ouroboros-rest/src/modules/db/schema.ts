@@ -4662,6 +4662,10 @@ export interface WorkspaceSettingsEffectiveView {
  * the tenth**: a `DISTINCT ON` over `pr_gate_results`, for `v_run_guardrails_latest`'s reason — a
  * re-evaluation is a new row in `pr_gate_results`, never a rewrite.
  *
+ * **`history_index_entries` (V119, [#618](https://github.com/NobuData/ouroboros/issues/618)) is
+ * the fourteenth**: a `UNION ALL` of tickets, PRs and imported documents, which PostgreSQL would
+ * refuse a write through.
+ *
  * `schema.spec.ts` holds this list to the view interfaces above; `db.integration-spec.ts`
  * compares their columns against `information_schema` exactly as it does a table's, because a
  * view that lost a column breaks a query the same way a table that lost one does.
@@ -4680,6 +4684,7 @@ export const READ_ONLY_VIEWS = [
   "pr_gate_results_latest",
   "org_policies_effective",
   "notification_routes_effective",
+  "history_index_entries",
 ] as const;
 
 /**
@@ -6199,6 +6204,84 @@ export interface CodeBisectStepsTable {
   decided_at: ColumnType<Date | null, never, Date | string>;
 }
 
+/** `document_imports.format` (V119, #618) — how an imported file was read. */
+export type DocumentImportFormat = "csv" | "markdown";
+
+/**
+ * `ouroboros.document_imports` — one imported document set (V119,
+ * [#618](https://github.com/NobuData/ouroboros/issues/618), CL.5), addressed
+ * `issue-index://<collection>/<name>`. Never updated: replacing a set is removing it and importing
+ * it again.
+ */
+export interface DocumentImportsTable {
+  id: Generated<string>;
+  organization_id: ColumnType<string, string, never>;
+  /** The locator's first segment — `support`. */
+  collection: ColumnType<string, string, never>;
+  /** The locator's second segment — `churn-2026-q2`. */
+  name: ColumnType<string, string, never>;
+  title: ColumnType<string, string, never>;
+  description: ColumnType<string | null, string | null | undefined, never>;
+  format: ColumnType<DocumentImportFormat, DocumentImportFormat, never>;
+  /** `sha256:<hex>` of the imported file. */
+  content_hash: ColumnType<string, string, never>;
+  imported_by: ColumnType<string | null, string | null | undefined, never>;
+  created_at: Stamped;
+}
+
+/**
+ * `ouroboros.document_import_items` — one document of an imported set (V119, #618), addressed
+ * `issue-index://<collection>/<name>/<item_key>`. Never updated.
+ */
+export interface DocumentImportItemsTable {
+  id: Generated<string>;
+  import_id: ColumnType<string, string, never>;
+  organization_id: ColumnType<string, string, never>;
+  /** Its place in the file, from 1. */
+  position: ColumnType<number, number, never>;
+  item_key: ColumnType<string, string, never>;
+  title: ColumnType<string, string, never>;
+  body: ColumnType<string, string, never>;
+  /** Written as a JSON string. */
+  labels: ColumnType<string[], string | undefined, never>;
+  occurred_at: ColumnType<Date | null, Date | string | null | undefined, never>;
+  /** The file's other columns. Written as a JSON string. */
+  meta: ColumnType<Record<string, unknown>, string | undefined, never>;
+  created_at: Stamped;
+}
+
+/** `history_index_entries.kind` (V119) — what a row of the corpus is. */
+export type HistoryIndexKind = "ticket" | "pr" | "document_set" | "document";
+
+/**
+ * `ouroboros.history_index_entries` — the issue & PR history index's corpus (V119, #618): every
+ * canonical ticket, mirrored PR, imported set and imported document of a workspace, in one shape.
+ * It never reads which tracker fed a ticket. **Read only, and always by `organization_id`.**
+ */
+export interface HistoryIndexEntriesView {
+  organization_id: string;
+  kind: HistoryIndexKind;
+  entry_id: string;
+  /** Where it came from: the source's slug, or `<collection>/<name>`. */
+  set_key: string;
+  /** `issue-index://…`. */
+  locator: string;
+  /** What a person calls it — `#482`, `PROJ-142`, `acct-07`. */
+  ref: string;
+  title: string;
+  body: string | null;
+  state: string | null;
+  labels: string[];
+  author: string | null;
+  repo: string | null;
+  url: string | null;
+  occurred_at: Date;
+  changed_at: Date;
+  meta: Record<string, unknown>;
+  /** The full-text document (`tsvector`) — matched in SQL, never selected. */
+  document: string;
+}
+
 /** A ledger row's kind (V108's `source_records_kind` CHECK). */
 export type SourceRecordKindColumn =
   "web" | "competitor_diff" | "code" | "ticket" | "telemetry" | "doc";
@@ -7238,6 +7321,9 @@ export interface Database {
   competitor_snapshot_contents: CompetitorSnapshotContentsTable;
   code_bisects: CodeBisectsTable;
   code_bisect_steps: CodeBisectStepsTable;
+  document_imports: DocumentImportsTable;
+  document_import_items: DocumentImportItemsTable;
+  history_index_entries: HistoryIndexEntriesView;
   metric_definitions: MetricDefinitionsTable;
   metric_daily: MetricDailyTable;
   metric_rollup_state: MetricRollupStateTable;
@@ -8599,6 +8685,50 @@ export const TABLE_COLUMNS = {
     "verdict",
     "created_at",
     "decided_at",
+  ],
+  document_imports: [
+    "id",
+    "organization_id",
+    "collection",
+    "name",
+    "title",
+    "description",
+    "format",
+    "content_hash",
+    "imported_by",
+    "created_at",
+  ],
+  document_import_items: [
+    "id",
+    "import_id",
+    "organization_id",
+    "position",
+    "item_key",
+    "title",
+    "body",
+    "labels",
+    "occurred_at",
+    "meta",
+    "created_at",
+  ],
+  history_index_entries: [
+    "organization_id",
+    "kind",
+    "entry_id",
+    "set_key",
+    "locator",
+    "ref",
+    "title",
+    "body",
+    "state",
+    "labels",
+    "author",
+    "repo",
+    "url",
+    "occurred_at",
+    "changed_at",
+    "meta",
+    "document",
   ],
   metric_definitions: [
     "metric_id",

@@ -114,6 +114,7 @@ tool out — the estimate never guesses.
 | `web` | `adapters/web/` — search through SearXNG (default), Brave, Tavily or Firecrawl; our own robots-aware page reader | CL.2 #615 |
 | `competitor` | `adapters/competitor/` — the watch scheduler, its snapshots and scoped diffs; `query` ops `changes` / `latest` cite archived diffs | CL.3 #616 |
 | `code` | `adapters/code/` over `research/code/` — blame, history, changed-between and dependency graphs read from the engine's clones (`/v0/code/*`), and the bisect primitive over build-farm jobs | CL.4 #617 |
+| `tickets` | `adapters/tickets/` over `research/history/` — full-text search, lookup and aggregates over canonical tickets, mirrored PRs and imported document sets (`history_index_entries`, V119) | CL.5 #618 |
 
 ### `web` (CL.2, #615)
 
@@ -179,6 +180,31 @@ tool out — the estimate never guesses.
   row `for update`; `CodeBisectScheduler` settles on each `JobCompletions` event and resumes every
   `OURO_RESEARCH_BISECT_TICK_MS`. The same question returns the same bisect.
   `CodeModule` exports `CodeBisectService` and `code.sources.ts`'s `bisectSource` for #623.
+
+### `tickets` (CL.5, #618)
+
+- **One corpus, no tracker.** `history_index_entries` (V119) unions canonical tickets (V030),
+  mirrored PRs (V052) and imported documents in one shape, and never reads `ticket_sources.kind`
+  — so `research/history/history-index.repository.ts` cannot tell a Jira-fed ticket from a
+  GitHub-fed one (decision V2; `history-index.integration-spec.ts` ingests one through the
+  in-memory provider and asserts it). Every read names the workspace first.
+- **Locators.** A ticket is `issue-index://<slug of its source's name>/<external_id>`, a PR
+  `…/pull/<number>`, an imported set `issue-index://<collection>/<name>` and a document
+  `…/<key>` — all `ticket`-kind sources V108 accepts. A locator is not a key: `get` answers every
+  entry it names (two sources whose names slug alike).
+- **Search.** `history_index_document(title, body)` — title weight A, body B, English — behind a
+  GIN index on each table. An entry matches any term; those matching every term rank first, then
+  `ts_rank_cd`, then newest. Excerpts are `ts_headline`'s.
+- **`query` ops.** `{op: "search", q, kinds?, labels?, since?, until?, repo?, set?, limit?}`,
+  `{op: "get", ref}`, `{op: "aggregate", groupBy: "label" | "period" | "kind" | "repo" | "set",
+  period?, q?, windowDays?, …filters}`. An aggregate cites the newest three entries of its
+  leading eight buckets; an answer with nothing in it is `null`.
+- **Budget.** `SEARCH_BUDGET_MS` (500) is applied as a statement timeout; a cancelled statement
+  (`57014`) is `upstream`, naming the budget.
+- **Imports** (core, `research/history/`): `document_imports` / `document_import_items`, read by
+  every member and written by an owner at `/api/v1/research/document-imports`
+  (`document-import.parse.ts` reads CSV and Markdown). Never edited — replace by removing.
+- **Sub-line.** `{issues} · {prs} · {imports}`, counted from the view.
 
 ## Writing an adapter
 
