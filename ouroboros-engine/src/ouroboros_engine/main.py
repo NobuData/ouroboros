@@ -27,6 +27,7 @@ from ouroboros_engine.api import (
     copilot,
     estimate,
     health,
+    investigate,
     learn,
     plan,
     root,
@@ -43,6 +44,10 @@ from ouroboros_engine.core.logging import configure_logging
 from ouroboros_engine.core.security import InternalKeyMiddleware
 from ouroboros_engine.core.uptime import Uptime
 from ouroboros_engine.estimation.heuristic import HeuristicEstimator
+from ouroboros_engine.investigation.control import HttpInvestigationControl
+from ouroboros_engine.investigation.loop import InvestigationLoop
+from ouroboros_engine.investigation.model import GatewayModelCaller
+from ouroboros_engine.investigation.runner import InvestigationRunner
 from ouroboros_engine.learning.extractor import UnavailableExtractor
 from ouroboros_engine.openapi import document
 from ouroboros_engine.planning.outline_planner import OutlinePlanner
@@ -169,6 +174,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ControlPlaneClient(resolved.rest_url, resolved.shared_secret), UrllibGateway()
     )
 
+    # The investigation loop (CM.1, #620) and the threads it runs on. Everything durable —
+    # the lifecycle row, the citation ledger, the checkpoint — is `ouroboros-rest`'s, reached
+    # over its internal research surface with the same key; models are called through the
+    # same gateway the copilot uses, so until AF.2 (#235) lands an investigation ends as
+    # `failed: synthesis_failure` naming the gateway rather than pretending. Nothing starts
+    # until `POST /v0/investigate` is called. A test installs a runner over fakes.
+    app.state.investigations = InvestigationRunner(
+        InvestigationLoop(
+            HttpInvestigationControl(resolved.rest_url, resolved.shared_secret),
+            GatewayModelCaller(
+                ControlPlaneClient(resolved.rest_url, resolved.shared_secret),
+                UrllibGateway(),
+            ),
+        )
+    )
+
     # Added before any route is registered, and the only middleware there is, so it is
     # the outermost thing a request meets: the guard cannot be bypassed by a path that
     # is added later, and an unauthenticated request never reaches routing at all.
@@ -195,6 +216,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(analysis.router)
     app.include_router(code.router)
     app.include_router(copilot.router)
+    app.include_router(investigate.router)
     _mount_simulator(app, resolved)
     return app
 

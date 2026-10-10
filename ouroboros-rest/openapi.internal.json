@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest (internal)",
-    "version": "0.41.3",
+    "version": "0.41.4",
     "summary": "What ouroboros-engine may ask the control plane for — and what it is never given.",
     "description": "The **engine-facing** surface of\n[Ouroboros](https://github.com/NobuData/ouroboros)' communications layer. Two\noperations, one caller, and one idea holding both of them together — roadmap decision\n**P3**, [#224](https://github.com/NobuData/ouroboros/issues/224):\n\n> **A worker never holds a provider credential.**\n\nMockup 07's page subline promises something weaker — *\"keys never leave the control\nplane — workers only ever see short-lived tokens\"* — and this document is where the\nfirst clause is made literal and the second is **improved on**. There is no token. A\nfifteen-minute credential is still a credential: it genuinely reaches the worker,\nrevocation is bounded only by its TTL, and the audit surface widens to every process\nthat ever held one. It is also, for most LLM providers, fiction — almost none support\nderiving short-lived scoped keys, so such a token would in practice be a full API key\nwith a timer bolted on by us.\n\nSo the two operations divide the world:\n\n| Operation | For | Hands over |\n|---|---|---|\n| `POST /internal/llm/invoke` | every **cloud** provider | nothing — the control plane makes the call and streams back the answer |\n| `POST /internal/credentials/lease` | **local** providers only | an address, TTL-bounded and audited |\n\nThe exception is narrow and is not a compromise. An engine worker calling an Ollama\ndaemon on the same box gains nothing from proxying its traffic through this service,\nbecause there is no key on that path to protect — so it is told the address and nothing\nelse, and a lease naming a cloud provider is a `403` by policy, enforced here rather\nthan trusted to the caller.\n\n**What is built and what is specified.** The lease is implemented. The proxy is\n*specified* by this document and implemented by AF.2\n([#235](https://github.com/NobuData/ouroboros/issues/235)); calling it today answers\n`501` with `code: \"invocation_not_implemented\"`, deliberately rather than `404`, so an\nexecutor being written against this contract can tell *the path is right and the other\nhalf is not built yet* from *I have the URL wrong*. The contract exists first because\nAF.1 ([#234](https://github.com/NobuData/ouroboros/issues/234)) has to choose an\nexecutor **against** it — a decision recorded afterwards is a description of whatever\ngot built.\n\n**Authentication is the #51 pattern, in the other direction.** Every operation requires\n`X-Ouro-Internal-Key`, carrying `OURO_ENGINE_SHARED_SECRET` — the same header and the\nsame variable `ouroboros-rest` sends when *it* calls the engine\n([#51](https://github.com/NobuData/ouroboros/issues/51)). The comparison is constant\ntime, a missing header takes the same path as a wrong one, and the rejection is one\nconstant body: `401` with `code: \"unauthenticated\"` and nothing else. A session cookie\nis not accepted here, whoever it belongs to.\n\n**These paths are outside `/api`, and unversioned.** `/api` is the browser's boundary;\nthe only caller of these two is deployed alongside this service and upgraded with it, so\na version in the path would be one nobody could ever be on a different side of. That is\nthe same argument `/health/live` and `ouroboros-engine`'s `/healthz` are written under.\n\n**Every error has the shape every other error in this system has** — `{code, message,\ndetails}`, `docs/ARCHITECTURE.md` § 5.3 — so a worker parses one envelope whether it\nwas refused at the boundary or inside a handler.\n\n**The naming convention changes at this boundary, once.** This service writes\n`camelCase` in its contracts and `ouroboros-engine` writes `snake_case` in its own; each\nside translates in exactly one file — `src/modules/engine/engine.contract.ts` here,\n`ouroboros_engine/control_plane/contract.py` there — so no code on either side carries\nthe other's spelling.",
     "license": {
@@ -1507,6 +1507,649 @@
                     "retryAfterSeconds": 12,
                     "detail": "Brave Search asked for fewer searches (429)"
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/research/investigations/{id}/start": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Claim an investigation for the loop, or resume it",
+        "description": "The first call of the engine's investigation loop (CM.1, #620). A **queued** investigation\nbecomes `running`: its provenance (`researcher`, `alias`, `resolution_ref`) and engine\ntask are recorded and attempt 1 begins. A **running** one is resumed: the attempt number\nrises, which is what makes the replaced worker's next write\n`409 investigation_checkpoint_stale`.\n\nThe answer is everything a worker needs to continue: the checkpoint the last attempt\nsaved (null on a first start), how many checkpoints exist, the working time so far,\nwhether a cancel is already pending, and **the ledger so far** — so a resumed loop cites\nthe sources it already archived rather than reading them again.",
+        "operationId": "startInvestigationLoop",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "`investigations.id`. The workspace is resolved from it, never named by the caller.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvestigationStartRequest"
+              },
+              "example": {
+                "loopVersion": "loop-v1",
+                "alias": "researcher-long-ctx",
+                "resolutionRef": "r1",
+                "task": "investigate:5eed0091-0000-4000-8000-000000000127"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The attempt, the checkpoint to continue from and the ledger so far.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestigationStarted"
+                },
+                "example": {
+                  "investigation": "RS-127",
+                  "attempt": 2,
+                  "checkpoint": {
+                    "version": "loop-v1",
+                    "phase": "iterate",
+                    "iteration": 1
+                  },
+                  "checkpointSeq": 9,
+                  "durationMs": 184000,
+                  "cancelRequested": false,
+                  "sources": [
+                    {
+                      "id": "5eed0092-0000-4000-8000-000000000007",
+                      "citeNo": 7,
+                      "citeKey": null,
+                      "tool": "web",
+                      "kind": "web",
+                      "title": "Skylink S4 docking module — teardown & sensor BOM",
+                      "locator": "https://droneanalysts.example.com/s4-teardown",
+                      "excerpt": "The S4 uses the same optical-flow sensor class as Helios."
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No `X-Ouro-Internal-Key`, or the wrong one. One constant body: `code:\n\"unauthenticated\"`, a bare message and empty `details`, whichever it was.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "unauthenticated",
+                  "message": "Unauthorized.",
+                  "details": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`investigation_not_found` — no such investigation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "investigation_not_found",
+                  "message": "This workspace has no such investigation.",
+                  "details": {
+                    "investigationId": "5eed0091-0000-4000-8000-000000000999"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`investigation_not_runnable` — it has already ended (`brief_ready`, `issues_filed`, `failed`, `cancelled`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "investigation_not_runnable",
+                  "message": "Only a queued or running investigation can be started.",
+                  "details": {
+                    "investigation": "RS-127",
+                    "status": "cancelled"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the body is not `{{loopVersion, alias, resolutionRef?, task}}`, or the id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "validation_failed",
+                  "message": "The request is not valid.",
+                  "details": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/research/investigations/{id}/checkpoint": {
+      "put": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Save the loop's state after a step",
+        "description": "Written by the loop after **every** step — each tool operation, each synthesis pass —\nso a restarted worker repeats at most the one operation that was in flight (and the\nledger deduplicates that one).\n\n`seq` must be higher than the last checkpoint's and `attempt` must be the current\nattempt; anything else is `409 investigation_checkpoint_stale`, and the worker that sent\nit stops. `usage` carries the model calls made since the last write, one row per\ngateway usage event; a row is recorded once however often it is sent (`seq` is its key),\nand `actuals.spend_cents` is computed from these rows when the run ends.\n\n**The answer is the cancel check.** `cancelRequested: true` tells the worker a person\nasked for the run to stop; it ends the run through `finish` before its next operation.\n\nThe checkpoint is the loop's own state and opaque here — an object of at most 2 MiB\n(`422 investigation_checkpoint_too_large`).",
+        "operationId": "saveInvestigationCheckpoint",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "`investigations.id`. The workspace is resolved from it, never named by the caller.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvestigationCheckpointRequest"
+              },
+              "example": {
+                "attempt": 1,
+                "seq": 9,
+                "checkpoint": {
+                  "version": "loop-v1",
+                  "phase": "iterate",
+                  "iteration": 1
+                },
+                "durationMs": 184000,
+                "usage": [
+                  {
+                    "seq": 7,
+                    "stage": "digest",
+                    "alias": "researcher-long-ctx",
+                    "hop": 0,
+                    "connection": "5eed0015-0000-4000-8000-000000000001",
+                    "model": "claude-sonnet-4-6",
+                    "inputTokens": 20000,
+                    "outputTokens": 1500,
+                    "costCents": 8.25
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestigationCheckpointSaved"
+                },
+                "example": {
+                  "cancelRequested": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No `X-Ouro-Internal-Key`, or the wrong one. One constant body: `code:\n\"unauthenticated\"`, a bare message and empty `details`, whichever it was.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "unauthenticated",
+                  "message": "Unauthorized.",
+                  "details": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`investigation_not_found` — no such investigation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "investigation_not_found",
+                  "message": "This workspace has no such investigation.",
+                  "details": {
+                    "investigationId": "5eed0091-0000-4000-8000-000000000999"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`investigation_checkpoint_stale` — a newer attempt owns the investigation, or this write was already made; `investigation_not_running` — it has ended. Either way the worker stops and touches nothing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "investigation_checkpoint_stale",
+                  "message": "A newer attempt owns this investigation, or this checkpoint was already written.",
+                  "details": {
+                    "investigation": "RS-127",
+                    "attempt": 1
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`investigation_checkpoint_too_large`, or `validation_failed` for a malformed body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "investigation_checkpoint_too_large",
+                  "message": "The checkpoint is larger than an investigation may keep.",
+                  "details": {
+                    "bytes": 2400000,
+                    "limit": 2097152
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/research/investigations/{id}/brief": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Deliver an investigation's brief, claims and deliverable inputs",
+        "description": "The loop's last write on success. In one transaction: the next brief version, one\n`brief_claims` row per claim span, the claim→source links, the playbook's deliverable\ninputs (`investigation_deliverable_inputs`), the remaining usage rows, the actuals —\nand the investigation becomes `brief_ready`.\n\n**Every finding is cited, and this is the third place that is enforced** (the engine's\ncitation gate and V108's deferred constraint are the other two):\n\n- a `finding` with no source is `422 brief_claim_uncited` — an uncited claim is written\n  as an `open_question`, with `demoted: true` when synthesis had offered it as a finding;\n- a source id — a claim's, or one under any `sources` key of a deliverable input — that\n  is not in **this investigation's** ledger is `422 brief_source_unknown`;\n- spans and claims must agree one to one (`422 brief_invalid`);\n- a deliverable the kind's playbook does not produce is\n  `422 brief_deliverable_unexpected`.\n\n**Actuals are computed, not sent**: `sourcesUsed` is the ledger's row count and\n`spendCents` is the usage rows' priced total rounded up to a cent — `null` when no call\nwas priced, `0` when none was made. The estimate, when there is one, is reconciled against\nthem (`investigation_estimate_outcomes`).",
+        "operationId": "deliverInvestigationBrief",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "`investigations.id`. The workspace is resolved from it, never named by the caller.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvestigationBriefRequest"
+              },
+              "example": {
+                "attempt": 1,
+                "durationMs": 1240000,
+                "usage": [],
+                "body": {
+                  "paragraphs": [
+                    {
+                      "spans": [
+                        {
+                          "text": "The gap is control, not sensors.",
+                          "claim": "c1"
+                        }
+                      ]
+                    },
+                    {
+                      "spans": [
+                        {
+                          "text": "Does AeroMesh use a recovery beacon?",
+                          "claim": "q1"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "claims": [
+                  {
+                    "ref": "c1",
+                    "type": "finding",
+                    "text": "The gap is control, not sensors.",
+                    "sources": [
+                      "5eed0092-0000-4000-8000-000000000007"
+                    ],
+                    "demoted": false
+                  },
+                  {
+                    "ref": "q1",
+                    "type": "open_question",
+                    "text": "Does AeroMesh use a recovery beacon?",
+                    "sources": [],
+                    "demoted": true
+                  }
+                ],
+                "deliverables": {
+                  "matrix": {
+                    "title": "Docking in wind",
+                    "rows": [
+                      {
+                        "capability": "Docking in >8 m/s gusts",
+                        "gap": "high",
+                        "cells": [
+                          {
+                            "subject": "Helios",
+                            "status": "partial",
+                            "sources": [
+                              "5eed0092-0000-4000-8000-000000000007"
+                            ]
+                          },
+                          {
+                            "subject": "Novum",
+                            "status": "unknown",
+                            "sources": []
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Delivered — the brief's version and the actuals recorded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestigationEnded"
+                },
+                "example": {
+                  "investigation": "RS-127",
+                  "status": "brief_ready",
+                  "actuals": {
+                    "sourcesUsed": 44,
+                    "spendCents": 612,
+                    "durationMs": 1240000
+                  },
+                  "brief": {
+                    "id": "5eed0093-0000-4000-8000-000000000127",
+                    "version": 1
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No `X-Ouro-Internal-Key`, or the wrong one. One constant body: `code:\n\"unauthenticated\"`, a bare message and empty `details`, whichever it was.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "unauthenticated",
+                  "message": "Unauthorized.",
+                  "details": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`investigation_not_found` — no such investigation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "investigation_not_found",
+                  "message": "This workspace has no such investigation.",
+                  "details": {
+                    "investigationId": "5eed0091-0000-4000-8000-000000000999"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`investigation_checkpoint_stale` — a newer attempt owns the investigation, or this write was already made; `investigation_not_running` — it has ended. Either way the worker stops and touches nothing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "investigation_checkpoint_stale",
+                  "message": "A newer attempt owns this investigation, or this checkpoint was already written.",
+                  "details": {
+                    "investigation": "RS-127",
+                    "attempt": 1
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`brief_claim_uncited`, `brief_source_unknown`, `brief_invalid`, `brief_deliverable_unexpected`, or `validation_failed`. Nothing is written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "brief_claim_uncited",
+                  "message": "A finding must cite at least one source. An uncited claim is an open question.",
+                  "details": {
+                    "claim": "c3"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/research/investigations/{id}/finish": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "End an investigation as failed or cancelled, keeping what it gathered",
+        "description": "The loop's last write when there is no brief. `failed` names its reason —\n\n| `reason` | when |\n|---|---|\n| `tool_exhaustion` | no research tool returned a source that could be cited |\n| `budget_breach` | the model-spend ceiling was reached |\n| `synthesis_failure` | the model could not be reached, or answered nothing usable |\n| `engine_error` | the loop itself broke |\n\n— and a `detail` sentence; `cancelled` names neither (`422 investigation_ending_invalid`).\n\n**Partials are kept.** The ledger is untouched, the final `checkpoint` and the remaining\nusage rows are stored, and the actuals are computed and recorded exactly as on delivery.\nNothing an investigation paid for is discarded.",
+        "operationId": "finishInvestigationLoop",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "`investigations.id`. The workspace is resolved from it, never named by the caller.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvestigationFinishRequest"
+              },
+              "example": {
+                "attempt": 1,
+                "outcome": "failed",
+                "reason": "budget_breach",
+                "detail": "The investigation reached its spend ceiling of 1031¢.",
+                "durationMs": 960000,
+                "usage": [],
+                "seq": 31,
+                "checkpoint": {
+                  "version": "loop-v1",
+                  "phase": "synthesize"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ended — the actuals recorded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestigationEnded"
+                },
+                "example": {
+                  "investigation": "RS-127",
+                  "status": "failed",
+                  "actuals": {
+                    "sourcesUsed": 38,
+                    "spendCents": 1034,
+                    "durationMs": 960000
+                  },
+                  "brief": null
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No `X-Ouro-Internal-Key`, or the wrong one. One constant body: `code:\n\"unauthenticated\"`, a bare message and empty `details`, whichever it was.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "unauthenticated",
+                  "message": "Unauthorized.",
+                  "details": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`investigation_not_found` — no such investigation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "investigation_not_found",
+                  "message": "This workspace has no such investigation.",
+                  "details": {
+                    "investigationId": "5eed0091-0000-4000-8000-000000000999"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`investigation_checkpoint_stale` — a newer attempt owns the investigation, or this write was already made; `investigation_not_running` — it has ended. Either way the worker stops and touches nothing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "investigation_checkpoint_stale",
+                  "message": "A newer attempt owns this investigation, or this checkpoint was already written.",
+                  "details": {
+                    "investigation": "RS-127",
+                    "attempt": 1
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`investigation_ending_invalid`, `investigation_checkpoint_too_large`, or `validation_failed`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "investigation_ending_invalid",
+                  "message": "A failed investigation names its reason and detail; a cancelled one names neither.",
+                  "details": {
+                    "reason": "a failed investigation needs a reason and a detail"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3289,6 +3932,499 @@
           },
           "budget": {
             "$ref": "#/components/schemas/ToolBudget"
+          }
+        }
+      },
+      "InvestigationUsage": {
+        "type": "object",
+        "title": "InvestigationUsage",
+        "description": "One model call's usage, exactly as the invocation gateway reported it (`investigation_usage`, V120).",
+        "additionalProperties": false,
+        "required": [
+          "seq",
+          "stage",
+          "alias",
+          "hop",
+          "connection",
+          "model",
+          "inputTokens",
+          "outputTokens"
+        ],
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The call's number within the investigation — the row's idempotency key."
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "plan",
+              "select",
+              "digest",
+              "synthesize"
+            ]
+          },
+          "alias": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "The routing alias the call was made on."
+          },
+          "hop": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "connection": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "inputTokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "outputTokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "costCents": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Cents, or null when nothing prices the model — unpriced, never free."
+          }
+        }
+      },
+      "InvestigationStartRequest": {
+        "type": "object",
+        "title": "InvestigationStartRequest",
+        "description": "The researcher claiming an investigation.",
+        "additionalProperties": false,
+        "required": [
+          "loopVersion",
+          "alias",
+          "task"
+        ],
+        "properties": {
+          "loopVersion": {
+            "type": "string",
+            "pattern": "^loop-v[1-9][0-9]{0,3}$",
+            "description": "`investigations.provenance.researcher`."
+          },
+          "alias": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The routing alias synthesis runs on."
+          },
+          "resolutionRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The resolution the alias came from."
+          },
+          "task": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "`investigations.engine_task_ref`."
+          }
+        }
+      },
+      "InvestigationLedgerSource": {
+        "type": "object",
+        "title": "InvestigationLedgerSource",
+        "description": "One archived source, as a loop cites it.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "citeNo",
+          "citeKey",
+          "tool",
+          "kind",
+          "title",
+          "locator",
+          "excerpt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "`source_records.id` — what a claim links to."
+          },
+          "citeNo": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "citeKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tool": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "locator": {
+            "type": "string"
+          },
+          "excerpt": {
+            "type": "string"
+          }
+        }
+      },
+      "InvestigationStarted": {
+        "type": "object",
+        "title": "InvestigationStarted",
+        "description": "What a worker continues from.",
+        "additionalProperties": false,
+        "required": [
+          "investigation",
+          "attempt",
+          "checkpoint",
+          "checkpointSeq",
+          "durationMs",
+          "cancelRequested",
+          "sources"
+        ],
+        "properties": {
+          "investigation": {
+            "type": "string",
+            "description": "The display id — `RS-127`."
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "1 on a first start, one more on every resume."
+          },
+          "checkpoint": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true,
+            "description": "The state the last attempt saved; null on a first start."
+          },
+          "checkpointSeq": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "durationMs": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Working time recorded so far, all attempts."
+          },
+          "cancelRequested": {
+            "type": "boolean"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvestigationLedgerSource"
+            }
+          }
+        }
+      },
+      "InvestigationCheckpointRequest": {
+        "type": "object",
+        "title": "InvestigationCheckpointRequest",
+        "description": "The loop's state after a step.",
+        "additionalProperties": false,
+        "required": [
+          "attempt",
+          "seq",
+          "checkpoint",
+          "durationMs",
+          "usage"
+        ],
+        "properties": {
+          "attempt": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Higher than the last checkpoint's."
+          },
+          "checkpoint": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "The loop's own resume state — opaque here, at most 2 MiB."
+          },
+          "durationMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "usage": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "$ref": "#/components/schemas/InvestigationUsage"
+            }
+          }
+        }
+      },
+      "InvestigationCheckpointSaved": {
+        "type": "object",
+        "title": "InvestigationCheckpointSaved",
+        "description": "The acknowledgment, and the cancel check.",
+        "additionalProperties": false,
+        "required": [
+          "cancelRequested"
+        ],
+        "properties": {
+          "cancelRequested": {
+            "type": "boolean",
+            "description": "A person asked for the run to stop; end it through `finish` before the next operation."
+          }
+        }
+      },
+      "InvestigationClaim": {
+        "type": "object",
+        "title": "InvestigationClaim",
+        "description": "One claim of a brief.",
+        "additionalProperties": false,
+        "required": [
+          "ref",
+          "type",
+          "text",
+          "sources"
+        ],
+        "properties": {
+          "ref": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$",
+            "description": "The body span that states it."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "finding",
+              "open_question"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "sources": {
+            "type": "array",
+            "maxItems": 64,
+            "description": "`source_records` ids of this investigation — at least one for a finding.",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "demoted": {
+            "type": "boolean",
+            "description": "Offered by synthesis as a finding, cited nothing. Only for an `open_question`."
+          }
+        }
+      },
+      "InvestigationBriefRequest": {
+        "type": "object",
+        "title": "InvestigationBriefRequest",
+        "description": "Everything an investigation produced.",
+        "additionalProperties": false,
+        "required": [
+          "attempt",
+          "durationMs",
+          "usage",
+          "body",
+          "claims",
+          "deliverables"
+        ],
+        "properties": {
+          "attempt": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "durationMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "usage": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "$ref": "#/components/schemas/InvestigationUsage"
+            }
+          },
+          "body": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "`{paragraphs: [{spans: [{text, claim?}]}]}` — V108's brief body."
+          },
+          "claims": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "$ref": "#/components/schemas/InvestigationClaim"
+            }
+          },
+          "deliverables": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "The playbook's deliverable inputs by deliverable (`matrix`, `roadmap_doc`, `fix_draft`); each an object of at most 512 KiB whose citations sit under `sources` keys."
+          }
+        }
+      },
+      "InvestigationFinishRequest": {
+        "type": "object",
+        "title": "InvestigationFinishRequest",
+        "description": "A designed end that is not a brief.",
+        "additionalProperties": false,
+        "required": [
+          "attempt",
+          "outcome",
+          "durationMs",
+          "usage",
+          "seq",
+          "checkpoint"
+        ],
+        "properties": {
+          "attempt": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "failed",
+              "cancelled"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "tool_exhaustion",
+              "budget_breach",
+              "synthesis_failure",
+              "engine_error"
+            ],
+            "description": "Required when `failed`; absent when `cancelled`."
+          },
+          "detail": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "A sentence for a person. Required when `failed`; absent when `cancelled`."
+          },
+          "durationMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "usage": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "$ref": "#/components/schemas/InvestigationUsage"
+            }
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "checkpoint": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "The state at the end — the partial that is kept."
+          }
+        }
+      },
+      "InvestigationEnded": {
+        "type": "object",
+        "title": "InvestigationEnded",
+        "description": "How an investigation ended, and what it used.",
+        "additionalProperties": false,
+        "required": [
+          "investigation",
+          "status",
+          "actuals",
+          "brief"
+        ],
+        "properties": {
+          "investigation": {
+            "type": "string",
+            "description": "The display id — `RS-127`."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "brief_ready",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "actuals": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sourcesUsed",
+              "spendCents",
+              "durationMs"
+            ],
+            "properties": {
+              "sourcesUsed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "spendCents": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0,
+                "description": "Null when no model call was priced."
+              },
+              "durationMs": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "brief": {
+            "description": "The brief delivered, or null.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "version"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       }

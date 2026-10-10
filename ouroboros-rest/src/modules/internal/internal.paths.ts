@@ -125,6 +125,38 @@ export const RESEARCH_TOOL_OPERATION_ROUTE = ":slug/:op";
 export const INTERNAL_RESEARCH_TOOL_PATH = `/${RESEARCH_TOOLS_PATH}/${RESEARCH_TOOL_OPERATION_ROUTE}`;
 
 /**
+ * The investigation loop's controller path (CM.1,
+ * [#620](https://github.com/NobuData/ouroboros/issues/620)): where the engine's loop claims a
+ * run, saves its checkpoints, delivers the brief and reports a designed end. Everything durable
+ * about an investigation stays in the control plane, so a restarted worker loses nothing.
+ */
+export const RESEARCH_INVESTIGATIONS_PATH = `${INTERNAL_PATH}/research/investigations`;
+
+/** Route segment of claiming or resuming a run, relative to {@link RESEARCH_INVESTIGATIONS_PATH}. */
+export const INVESTIGATION_START_ROUTE = ":id/start";
+
+/** Route segment of a checkpoint write, relative to {@link RESEARCH_INVESTIGATIONS_PATH}. */
+export const INVESTIGATION_CHECKPOINT_ROUTE = ":id/checkpoint";
+
+/** Route segment of the brief's delivery, relative to {@link RESEARCH_INVESTIGATIONS_PATH}. */
+export const INVESTIGATION_BRIEF_ROUTE = ":id/brief";
+
+/** Route segment of a failed or cancelled end, relative to {@link RESEARCH_INVESTIGATIONS_PATH}. */
+export const INVESTIGATION_FINISH_ROUTE = ":id/finish";
+
+/** Claim or resume a run: `/internal/research/investigations/:id/start`. */
+export const INTERNAL_INVESTIGATION_START_PATH = `/${RESEARCH_INVESTIGATIONS_PATH}/${INVESTIGATION_START_ROUTE}`;
+
+/** Save a checkpoint: `/internal/research/investigations/:id/checkpoint`. */
+export const INTERNAL_INVESTIGATION_CHECKPOINT_PATH = `/${RESEARCH_INVESTIGATIONS_PATH}/${INVESTIGATION_CHECKPOINT_ROUTE}`;
+
+/** Deliver the brief: `/internal/research/investigations/:id/brief`. */
+export const INTERNAL_INVESTIGATION_BRIEF_PATH = `/${RESEARCH_INVESTIGATIONS_PATH}/${INVESTIGATION_BRIEF_ROUTE}`;
+
+/** End without a brief: `/internal/research/investigations/:id/finish`. */
+export const INTERNAL_INVESTIGATION_FINISH_PATH = `/${RESEARCH_INVESTIGATIONS_PATH}/${INVESTIGATION_FINISH_ROUTE}`;
+
+/**
  * Every internal path.
  *
  * The list `src/application.ts` adds to `setGlobalPrefix`'s exclusions, and the list the
@@ -150,6 +182,10 @@ export const INTERNAL_PATHS = [
   INTERNAL_RUN_CONTROLS_FETCH_PATH,
   INTERNAL_RUN_CONTROL_ACK_PATH,
   INTERNAL_RESEARCH_TOOL_PATH,
+  INTERNAL_INVESTIGATION_START_PATH,
+  INTERNAL_INVESTIGATION_CHECKPOINT_PATH,
+  INTERNAL_INVESTIGATION_BRIEF_PATH,
+  INTERNAL_INVESTIGATION_FINISH_PATH,
 ] as const;
 
 /**

@@ -6341,6 +6341,127 @@ export interface SourceRecordsTable {
   created_at: Stamped;
 }
 
+/** Why the investigation loop failed a run (V120's `investigation_loops_failure_reason` CHECK). */
+export type InvestigationFailureReason =
+  "tool_exhaustion" | "budget_breach" | "synthesis_failure" | "engine_error";
+
+/** The step of the loop a model call was made from (V120's `investigation_usage_stage` CHECK). */
+export type InvestigationUsageStage = "plan" | "select" | "digest" | "synthesize";
+
+/** What a playbook produces besides the brief (V120's deliverable CHECK). */
+export type InvestigationDeliverable = "matrix" | "roadmap_doc" | "fix_draft";
+
+/** A claim's standing (V108's `brief_claims_claim_type` CHECK). */
+export type BriefClaimType = "finding" | "open_question";
+
+/** `briefs.body` — paragraphs of spans, a span optionally stating a claim (V108). */
+export interface BriefBodyDocument {
+  paragraphs: { spans: { text: string; claim?: string }[] }[];
+}
+
+/**
+ * `ouroboros.briefs` — an investigation's brief, versioned (V108,
+ * [#609](https://github.com/NobuData/ouroboros/issues/609)). Written by the investigation loop's
+ * delivery ([#620](https://github.com/NobuData/ouroboros/issues/620)). Never updated.
+ */
+export interface BriefsTable {
+  id: ColumnType<string, string | undefined, never>;
+  investigation_id: ColumnType<string, string, never>;
+  /** 1, 2, 3, … — the next version, checked by `briefs_version_next`. */
+  version: ColumnType<number, number, never>;
+  /** Written as JSON text. */
+  body: ColumnType<BriefBodyDocument, string, never>;
+  /** Refs to the other deliverables. Written as JSON text. */
+  deliverables: ColumnType<Record<string, string>, string | undefined, never>;
+  created_at: Stamped;
+}
+
+/**
+ * `ouroboros.brief_claims` — the claims a brief states (V108; `demoted` V120,
+ * [#620](https://github.com/NobuData/ouroboros/issues/620)). Never updated.
+ */
+export interface BriefClaimsTable {
+  id: ColumnType<string, string | undefined, never>;
+  investigation_id: ColumnType<string, string, never>;
+  brief_id: ColumnType<string, string, never>;
+  span_ref: ColumnType<string, string, never>;
+  claim_type: ColumnType<BriefClaimType, BriefClaimType, never>;
+  text: ColumnType<string, string, never>;
+  /** Offered as a finding, cited nothing, written as an open question. */
+  demoted: ColumnType<boolean, boolean | undefined, never>;
+  created_at: Stamped;
+}
+
+/** `ouroboros.brief_claim_sources` — which sources back which claim (V108). Never updated. */
+export interface BriefClaimSourcesTable {
+  investigation_id: ColumnType<string, string, never>;
+  claim_id: ColumnType<string, string, never>;
+  source_id: ColumnType<string, string, never>;
+}
+
+/**
+ * `ouroboros.investigation_loops` — the investigation loop's durable state (V120,
+ * [#620](https://github.com/NobuData/ouroboros/issues/620)): attempt, checkpoint, working time, a
+ * cancel request and the failure reason. `attempt`, `checkpoint_seq` and `duration_ms` only rise.
+ */
+export interface InvestigationLoopsTable {
+  investigation_id: ColumnType<string, string, never>;
+  /** `loop-v1` — fixed once written. */
+  loop_version: ColumnType<string, string, never>;
+  attempt: ColumnType<number, number | undefined, number>;
+  /** The engine's resume state. Written as JSON text. */
+  checkpoint: ColumnType<Record<string, unknown> | null, string | null | undefined, string | null>;
+  checkpoint_seq: ColumnType<number, number | undefined, number>;
+  checkpointed_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  /** A bigint: pg returns it as a string. */
+  duration_ms: ColumnType<string, number | undefined, number>;
+  cancel_requested_at: ColumnType<
+    Date | null,
+    Date | string | null | undefined,
+    Date | string | null
+  >;
+  cancel_requested_by: string | null;
+  failure_reason: InvestigationFailureReason | null;
+  failure_detail: string | null;
+  started_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.investigation_usage` — one row per model call an investigation made, as the
+ * invocation gateway reported it (V120, #620). `actuals.spend_cents` is
+ * `investigation_spend_cents()` over these rows. Never updated.
+ */
+export interface InvestigationUsageTable {
+  investigation_id: ColumnType<string, string, never>;
+  /** The call's number within the investigation — the idempotency key. */
+  seq: ColumnType<number, number, never>;
+  stage: ColumnType<InvestigationUsageStage, InvestigationUsageStage, never>;
+  alias: ColumnType<string, string, never>;
+  hop: ColumnType<number, number, never>;
+  connection: ColumnType<string, string, never>;
+  model: ColumnType<string, string, never>;
+  /** Bigints: pg returns them as strings. */
+  input_tokens: ColumnType<string, number, never>;
+  output_tokens: ColumnType<string, number, never>;
+  /** `numeric(14,4)` cents, or null when unpriced: pg returns it as a string. */
+  cost_cents: ColumnType<string | null, number | null, never>;
+  recorded_at: Stamped;
+}
+
+/**
+ * `ouroboros.investigation_deliverable_inputs` — what a playbook produced besides the brief
+ * (V120, #620): matrix rows, the roadmap-doc input, the fix-draft input. Never updated.
+ */
+export interface InvestigationDeliverableInputsTable {
+  investigation_id: ColumnType<string, string, never>;
+  brief_id: ColumnType<string, string, never>;
+  deliverable: ColumnType<InvestigationDeliverable, InvestigationDeliverable, never>;
+  /** Written as JSON text. */
+  payload: ColumnType<Record<string, unknown>, string, never>;
+  created_at: Stamped;
+}
+
 /**
  * `ouroboros.investigation_estimate_outcomes` — estimate vs actuals, one row per investigation
  * (V109, [#622](https://github.com/NobuData/ouroboros/issues/622)). Written only by
@@ -7315,6 +7436,12 @@ export interface Database {
   investigation_estimate_outcomes: InvestigationEstimateOutcomesTable;
   source_records: SourceRecordsTable;
   source_skips: SourceSkipsTable;
+  briefs: BriefsTable;
+  brief_claims: BriefClaimsTable;
+  brief_claim_sources: BriefClaimSourcesTable;
+  investigation_loops: InvestigationLoopsTable;
+  investigation_usage: InvestigationUsageTable;
+  investigation_deliverable_inputs: InvestigationDeliverableInputsTable;
   competitors: CompetitorsTable;
   competitor_watches: CompetitorWatchesTable;
   competitor_snapshots: CompetitorSnapshotsTable;
@@ -8674,6 +8801,53 @@ export const TABLE_COLUMNS = {
     "created_at",
     "updated_at",
     "finished_at",
+  ],
+  briefs: ["id", "investigation_id", "version", "body", "deliverables", "created_at"],
+  brief_claims: [
+    "id",
+    "investigation_id",
+    "brief_id",
+    "span_ref",
+    "claim_type",
+    "text",
+    "demoted",
+    "created_at",
+  ],
+  brief_claim_sources: ["investigation_id", "claim_id", "source_id"],
+  investigation_loops: [
+    "investigation_id",
+    "loop_version",
+    "attempt",
+    "checkpoint",
+    "checkpoint_seq",
+    "checkpointed_at",
+    "duration_ms",
+    "cancel_requested_at",
+    "cancel_requested_by",
+    "failure_reason",
+    "failure_detail",
+    "started_at",
+    "updated_at",
+  ],
+  investigation_usage: [
+    "investigation_id",
+    "seq",
+    "stage",
+    "alias",
+    "hop",
+    "connection",
+    "model",
+    "input_tokens",
+    "output_tokens",
+    "cost_cents",
+    "recorded_at",
+  ],
+  investigation_deliverable_inputs: [
+    "investigation_id",
+    "brief_id",
+    "deliverable",
+    "payload",
+    "created_at",
   ],
   code_bisect_steps: [
     "bisect_id",

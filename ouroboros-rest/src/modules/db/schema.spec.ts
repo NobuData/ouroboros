@@ -508,7 +508,12 @@ describe("TABLE_COLUMNS", () => {
     // The hundred-and-fifty-fifth to seventh are V119's `document_imports` and
     // `document_import_items` (#618) — imported document sets — and the `history_index_entries`
     // view the issue & PR history tool reads its whole corpus through.
-    expect(TABLE_NAMES).toHaveLength(157);
+    //
+    // The hundred-and-fifty-eighth to sixty-third are the investigation loop's (#620): V108's
+    // `briefs`, `brief_claims` and `brief_claim_sources`, which delivery is the first code to
+    // write, and V120's `investigation_loops`, `investigation_usage` and
+    // `investigation_deliverable_inputs`.
+    expect(TABLE_NAMES).toHaveLength(163);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

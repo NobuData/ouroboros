@@ -780,7 +780,7 @@ compare(hover_drift_gusts, baseline:v2.0.4, nightly) ─▶ {+14%, unit:%, n, wi
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CM.1 | #620 | 🟡 Open | ouroboros-engine: [CM.1] Investigation loop & `/v0/investigate` contract | Plan→tools→synthesize→brief; checkpoints, budgets, citations; AF.2 LLM | mvp, research, engine, providers | N (after CL.1, AF.2, CK.2) | Y | L | ouroboros-engine, ouroboros-rest |
+| CM.1 | #620 ✅ | 🟢 Done | ouroboros-engine: [CM.1] Investigation loop & `/v0/investigate` contract | Plan→tools→synthesize→brief; checkpoints, budgets, citations; AF.2 LLM | mvp, research, engine, providers | N (after CL.1, AF.2, CK.2) | Y | L | ouroboros-engine, ouroboros-rest |
 | CM.2 | #621 | 🟡 Open | ouroboros-rest: [CM.2] Brief composition, matrices & export | Claim-linked briefs, matrix builder, source panels, Markdown export | mvp, research, rest | N (after CM.1, CK.3) | Y | M | ouroboros-rest |
 | CM.3 | #622 ✅ | 🟢 Done | ouroboros-rest: [CM.3] Scope & cost estimation + research routing | Depth×tools×alias-pricing estimates; `research` task kinds registered | mvp, research, rest, routing | N (after CK.1, CH.3) | Y | M | ouroboros-rest |
 | CM.4 | #623 | 🟡 Open | ouroboros-rest: [CM.4] Regression watch service & bisect orchestration | Baseline capture, nightly compare, drift→bisect→forensics→draft chain | mvp, research, rest, engine | N (after CK.4, CL.4, CL.6) | Y | L | ouroboros-rest, ouroboros-engine |
@@ -790,7 +790,7 @@ compare(hover_drift_gusts, baseline:v2.0.4, nightly) ─▶ {+14%, unit:%, n, wi
 
 ### Issue CM.1 — ouroboros-engine: [CM.1] Investigation loop & `/v0/investigate` contract
 
-> **GitHub issue:** #620 · **Status:** 🟡 Open · **Parent epic:** #605
+> **GitHub issue:** #620 ✅ · **Status:** 🟢 Done · **Parent epic:** #605
 
 - **Problem Statement:** The product promise — a principal-engineer-grade
   investigation with every claim cited — needs one orchestrated loop:
@@ -828,6 +828,8 @@ compare(hover_drift_gusts, baseline:v2.0.4, nightly) ─▶ {+14%, unit:%, n, wi
   contract.
 - **Documentation:** None — not user-visible: an internal engine contract (`/v0/investigate`) behind the composer; the depth presets a person chooses are CN.2's to document.
 - **Epic:** CM
+
+> **Delivered (#620 — `ouroboros-engine` 0.7.20, `ouroboros-rest` 0.41.4, `V120__investigation_loop.sql`, `ouroboros-docs` 0.2.4):** Three prerequisites were still open, and the user chose how to proceed on each: **AF.2 (#235) — build to the contract** (the loop calls `/internal/llm/invoke` exactly as the copilot does; until #235 lands a live investigation ends `failed: synthesis_failure`, and the suites run on a recorded model); **#54 — a minimal in-engine runner** (daemon threads, at most four; idempotent submit); **loop state — a new migration and internal routes**. **Engine** `ouroboros_engine/investigation/`: `POST /v0/investigate` → `202`; `loop-v1` = plan → iterate (model-chosen tool operations through CL.1's surface, one digest call per operation that archived something new) → synthesize (1/2/4 passes) → deliver; **the citation gate** (`claims.py`) resolves cite keys against the ledger and demotes an uncited candidate to an open question, deliverable items included (an uncited matrix cell becomes `unknown`); four synthesis templates, no code path per kind (asserted structurally and by fixture over all four kinds); a checkpoint after **every** step, carrying the chosen-but-unrun operations, so a resume repeats at most the operation in flight; each checkpoint's answer is the cancel check; failures `tool_exhaustion | budget_breach | synthesis_failure | engine_error`, each keeping the ledger, checkpoint and usage. **REST** `research/loop/` (`InvestigationLoopModule`): `/internal/research/investigations/:id/{start,checkpoint,brief,finish}` behind the internal key; `start` records provenance (`loop-v1 · alias · resolution_ref`) and bumps the attempt on resume, which makes a replaced worker's writes `409 investigation_checkpoint_stale`; `brief` re-enforces the citation rule against **this investigation's** ledger (`brief_claim_uncited`, `brief_source_unknown`) and writes brief, claims, links and deliverable inputs in one transaction; actuals are computed in the ending transaction (ledger row count, `investigation_spend_cents()` over the usage rows), then reconciled with the estimate. `InvestigationDispatchService` (exported for CM.6) builds the engine request — budget = the scope estimate's operations and sources, spend ceiling = 1.5 × the stored estimate's upper bound, aliases from `research` and `research-plan` — plus `requestCancel` and the resume pass (`OURO_RESEARCH_INVESTIGATION_TICK_MS`; a run silent for ten minutes is re-submitted, failed as `engine_error` after three attempts). **DB** V120: `investigation_loops`, `investigation_usage`, `investigation_deliverable_inputs`, `brief_claims.demoted`. Left to later tickets: the public start/cancel routes (CM.6 #625), the matrix, roadmap-doc and fix-draft *builders* over the stored inputs (CM.2 #621, CM.5 #624, CM.4 #623), and a machine-readable `query` schema per tool — today the model is told only which operations a tool declares. Docs: `administration/research.mdx` § Investigations after a restart.
 
 ```
 plan(question) ─▶ [q1 sensors, q2 control, q3 recovery]
@@ -1508,7 +1510,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    CK.5 (#612) ✅ } → CK.3 (#610) ✅ → CK.6 (#613)
 3. **Phase 2 — Tools:** CL.1 (#614) ✅ → { CL.2 (#615) ⊕ CL.3 (#616) ⊕
    CL.4 (#617) ⊕ CL.5 (#618) ⊕ CL.6 (#619) }
-4. **Phase 3 — Engine & pipeline:** CM.3 (#622) ✅ → CM.1 (#620) →
+4. **Phase 3 — Engine & pipeline:** CM.3 (#622) ✅ → CM.1 (#620) ✅ →
    { CM.2 (#621) ⊕ CM.4 (#623) ⊕ CM.6 (#625) } → CM.5 (#624) → CM.7 (#626)
 5. **Phase 4 — UI:** CN.1 (#627) → { CN.2 (#628) ⊕ CN.3 (#629) ⊕
    CN.4 (#630) ⊕ CN.5 (#631) ⊕ CN.6 (#632) } → CN.7 (#633) →

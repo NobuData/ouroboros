@@ -427,6 +427,14 @@ export class AppConfigService {
   }
 
   /**
+   * `OURO_RESEARCH_INVESTIGATION_TICK_MS` — how often stalled investigations are resumed; 0 off
+   * (#620).
+   */
+  get researchInvestigationTickMs(): number {
+    return this.config.getOrThrow<number>("researchInvestigationTickMs");
+  }
+
+  /**
    * Days without a tracker update after which an open ticket is stale — `OURO_BACKLOG_STALE_DAYS`.
    *
    * The Backlog Health card's third meter (AL.5, #281); configurable rather than mockup 09's fixed
@@ -635,6 +643,7 @@ export class AppConfigService {
       researchWatchBatch: this.researchWatchBatch,
       researchCodeTimeoutMs: this.researchCodeTimeoutMs,
       researchBisectTickMs: this.researchBisectTickMs,
+      researchInvestigationTickMs: this.researchInvestigationTickMs,
       backlogStaleDays: this.backlogStaleDays,
       reestimationHourUtc: this.reestimationHourUtc,
       reestimationJitterMinutes: this.reestimationJitterMinutes,

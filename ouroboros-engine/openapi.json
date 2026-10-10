@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-engine",
-    "version": "0.7.19",
+    "version": "0.7.20",
     "summary": "Internal backend for Ouroboros — executes the work ouroboros-rest brokers.",
     "description": "The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the\nservice that executes the work `ouroboros-rest` brokers.\n\nIt is **internal only**. Every request arrives from `ouroboros-rest`, inside the\ncluster, carrying a shared secret on the `X-Ouro-Internal-Key` header; a browser\nnever reaches it. That is a deployment claim, so the service enforces it itself\nrather than trusting it — **every path but `/healthz` requires the key**, the\ncomparison is constant time, and a request without one is refused before routing.\n\nA rejection is therefore one constant body whether the path exists or not: status\ncodes are how a surface gets mapped from outside, and an unauthenticated caller cannot\ntell `/v0/status` from `/v0/anything-else`. Read the `401` documented on each operation\nbelow as the answer to *anything* unauthenticated, including paths this document does\nnot list.\n\n**Every error has one shape** — `{code, message, details}`, the same envelope\n`ouroboros-rest` answers a browser with (`docs/ARCHITECTURE.md` § 5.3), so a failure\ncrossing the gateway does not change form on the way out. `code` is stable and\nmachine-readable and is what a caller branches on; `message` is written for a person\nand is a constant for anything `5xx`, because the real diagnosis names the inside of\nthis process and belongs in a log; `details` carries what is specific to the failure,\nwhich for a `422` is one entry per field that was refused. That covers the answers no\nroute produced too — a path nothing claims, a method a path does not allow, a body\nthat could not be parsed.\n\n`/v0` is the versioned internal prefix. It is unstable by definition — it changes\nwith the two services that share it, which deploy together — and a stable `/v1` is a\nlater promise, not this one. A field may be added to a response and a route may be\nadded to the prefix; a field that disappears, changes type or changes meaning is a\n`/v1` served alongside this one, not an edit to it.",
     "license": {
@@ -1716,6 +1716,101 @@
           }
         }
       }
+    },
+    "/v0/investigate": {
+      "post": {
+        "tags": [
+          "v0"
+        ],
+        "summary": "Run or resume an investigation in the background",
+        "description": "Accepts an investigation and answers `202` at once; the **investigation loop**\n(`loop-v1`) then runs in the background — CM.1\n([#620](https://github.com/NobuData/ouroboros/issues/620)), mockup 22's\n*Start investigation*:\n\n```\nplan        decompose the question into research questions\niterate     choose tool operations, run each, digest what it archived\nsynthesize  candidate claims, each held to the citation gate\ndeliver     the brief and the playbook's deliverable inputs\n```\n\nEverything durable is `ouroboros-rest`'s: the loop claims the run, calls research\ntools, saves a checkpoint after every step, and delivers through\n`/internal/research/*`. Nothing comes back through this response.\n\n**One loop, every kind.** The request carries the kind's playbook — its synthesis\ntemplate and deliverables — and the loop branches on nothing else (decision V10).\n\n**Every finding is cited.** A candidate claim whose cite keys name no record of the\ninvestigation's ledger is delivered as an open question, never as a finding\n(decision V3).\n\n**Submitting is idempotent.** A process already working on the investigation\nanswers `already_running` and starts nothing; any other starts an attempt that\ncontinues from the stored checkpoint. `ouroboros-rest` submits a `running`\ninvestigation again when its checkpoint stops moving, which is how one survives an\nengine restart.\n\n**Depth and budget.** `quick`, `standard` and `deep_dive` run 1, 2 and 4 iterations\nand synthesis passes; `budget` bounds tool operations, ledger sources and model\nspend. Reaching the spend ceiling ends the investigation as `failed` with\n`budget_breach`; the other designed failures are `tool_exhaustion`,\n`synthesis_failure` and `engine_error`. Each keeps the ledger and the checkpoint.\n\nModels are called through `ouroboros-rest`'s invocation gateway on the aliases the\nrequest names. Until that gateway is implemented (AF.2,\n[#235](https://github.com/NobuData/ouroboros/issues/235)) an investigation ends as\n`failed: synthesis_failure`.",
+        "operationId": "investigate",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvestigateRequest"
+              },
+              "example": {
+                "investigation": "5eed0091-0000-4000-8000-000000000127",
+                "kind": {
+                  "slug": "gap_analysis",
+                  "playbook": {
+                    "version": 1,
+                    "default_tools": [
+                      "web",
+                      "competitor",
+                      "code",
+                      "tickets",
+                      "telemetry"
+                    ],
+                    "synthesis_template": "gap_analysis@1",
+                    "deliverables": [
+                      "brief",
+                      "matrix"
+                    ]
+                  }
+                },
+                "question": "Why do rivals dock reliably in wind and we do not?",
+                "tools": [
+                  {
+                    "slug": "web",
+                    "operations": [
+                      "search",
+                      "fetch"
+                    ],
+                    "description": "Web search and page reader"
+                  },
+                  {
+                    "slug": "code",
+                    "operations": [
+                      "query"
+                    ],
+                    "description": "blame, bisect, dependency graph over helios-firmware"
+                  }
+                ],
+                "depth": "deep_dive",
+                "budget": {
+                  "operations": 40,
+                  "sources": 60,
+                  "spend_cents": 1031
+                },
+                "alias": "researcher-long-ctx",
+                "plan_alias": "sizer",
+                "resolution_version": "r1"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted. The loop runs after this answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestigationAccepted"
+                },
+                "example": {
+                  "investigation": "5eed0091-0000-4000-8000-000000000127",
+                  "task": "investigate:5eed0091-0000-4000-8000-000000000127",
+                  "state": "accepted",
+                  "loop_version": "loop-v1"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvestigationUnprocessable"
+          },
+          "503": {
+            "$ref": "#/components/responses/InvestigationCapacity"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1824,6 +1919,38 @@
             "example": {
               "code": "code_remote_auth",
               "message": "The repository could not be fetched.",
+              "details": {}
+            }
+          }
+        }
+      },
+      "InvestigationUnprocessable": {
+        "description": "`validation_failed` — the body is malformed, with one entry per field; or `investigation_playbook_unsupported` — the playbook names a synthesis template, or a deliverable, this build cannot produce. Refused before any work starts.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "investigation_playbook_unsupported",
+              "message": "this engine has no synthesis template \"gap_analysis@2\"",
+              "details": {
+                "synthesis_template": "gap_analysis@2"
+              }
+            }
+          }
+        }
+      },
+      "InvestigationCapacity": {
+        "description": "`investigation_capacity` — every investigation worker of this process is busy. Nothing was started; submit it again later.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "investigation_capacity",
+              "message": "Every investigation worker is busy. Submit it again in a moment.",
               "details": {}
             }
           }
@@ -4941,6 +5068,242 @@
           },
           "max_steps": {
             "type": "integer"
+          }
+        }
+      },
+      "InvestigateRequest": {
+        "type": "object",
+        "title": "InvestigateRequest",
+        "description": "An investigation to run or resume. Closed.",
+        "additionalProperties": false,
+        "required": [
+          "investigation",
+          "kind",
+          "question",
+          "tools",
+          "depth",
+          "budget",
+          "alias"
+        ],
+        "properties": {
+          "investigation": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$",
+            "description": "`investigations.id`."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/InvestigationKind"
+          },
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000,
+            "description": "What the person asked."
+          },
+          "tools": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "items": {
+              "$ref": "#/components/schemas/InvestigationTool"
+            }
+          },
+          "depth": {
+            "type": "string",
+            "enum": [
+              "quick",
+              "standard",
+              "deep_dive"
+            ],
+            "description": "1, 2 or 4 iterations and synthesis passes."
+          },
+          "budget": {
+            "$ref": "#/components/schemas/InvestigationBudget"
+          },
+          "alias": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The routing alias `research` resolved to — digests and synthesis."
+          },
+          "plan_alias": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The alias `research-plan` resolved to — planning and choosing operations. Null uses `alias`."
+          },
+          "resolution_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The resolution the aliases came from; recorded as the investigation's `resolution_ref`."
+          }
+        }
+      },
+      "InvestigationKind": {
+        "type": "object",
+        "title": "InvestigationKind",
+        "description": "The investigation's kind and the playbook that configures it. Closed.",
+        "additionalProperties": false,
+        "required": [
+          "slug",
+          "playbook"
+        ],
+        "properties": {
+          "slug": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,47}$",
+            "description": "Recorded in logs; never branched on."
+          },
+          "playbook": {
+            "$ref": "#/components/schemas/InvestigationPlaybook"
+          }
+        }
+      },
+      "InvestigationPlaybook": {
+        "type": "object",
+        "title": "InvestigationPlaybook",
+        "description": "A kind's configuration — `investigation_kinds.playbook`. Closed.",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "default_tools",
+          "synthesis_template",
+          "deliverables"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "default_tools": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+            }
+          },
+          "synthesis_template": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "`<name>@<version>` — `gap_analysis@1`, `bug_root_cause@1`, `regression_forensics@1` or `roadmap_improvements@1`."
+          },
+          "deliverables": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "enum": [
+                "brief",
+                "matrix",
+                "roadmap_doc",
+                "fix_draft"
+              ]
+            }
+          }
+        }
+      },
+      "InvestigationTool": {
+        "type": "object",
+        "title": "InvestigationTool",
+        "description": "One enabled research tool and what it can do. Closed.",
+        "additionalProperties": false,
+        "required": [
+          "slug",
+          "operations"
+        ],
+        "properties": {
+          "slug": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+          },
+          "operations": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "enum": [
+                "search",
+                "fetch",
+                "query"
+              ]
+            }
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 400,
+            "description": "The tools card's line for it, shown to the model that chooses operations."
+          }
+        }
+      },
+      "InvestigationBudget": {
+        "type": "object",
+        "title": "InvestigationBudget",
+        "description": "What the investigation may use. Closed.",
+        "additionalProperties": false,
+        "required": [
+          "operations",
+          "sources"
+        ],
+        "properties": {
+          "operations": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2000,
+            "description": "Tool operations, in total."
+          },
+          "sources": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "description": "Ledger records; iteration stops once the ledger holds this many."
+          },
+          "spend_cents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 10000000,
+            "description": "The model-spend ceiling, or null when nothing prices the routed model."
+          }
+        }
+      },
+      "InvestigationAccepted": {
+        "type": "object",
+        "title": "InvestigationAccepted",
+        "description": "The engine task running an investigation. Closed.",
+        "additionalProperties": false,
+        "required": [
+          "investigation",
+          "task",
+          "state",
+          "loop_version"
+        ],
+        "properties": {
+          "investigation": {
+            "type": "string"
+          },
+          "task": {
+            "type": "string",
+            "description": "`investigations.engine_task_ref`."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "already_running"
+            ]
+          },
+          "loop_version": {
+            "type": "string"
           }
         }
       }

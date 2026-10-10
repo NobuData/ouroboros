@@ -92,6 +92,7 @@ That is the command the image runs, minus the `uv` — see [Container](#containe
 | `GET /v0/analysis/analyzers` | yes | The installed Build Analyzer set, in `analysis_runs.analyzer_set`'s shape — #510 |
 | `POST /v0/analysis/runs` | yes | Run the analyzers over an assembled corpus, streaming `started`/`outcome`/`report` as NDJSON — #510 |
 | `POST /v0/code/blame` · `/history` · `/changed-between` · `/dep-graph` · `/bisect-commits` | yes | The code & git mining tool over the engine's repository clones — each answer names the commit it was read at; see [Code & git mining](#code--git-mining) — #617 |
+| `POST /v0/investigate` | yes | Accept an investigation and run the investigation loop in the background — `202`; see [The investigation loop](#the-investigation-loop) |
 | `POST /v0/learn` | yes | Learn candidate facts: a source bundle in, candidates with confidence and typed provenance out — committed for #423; today `unavailable-v0` answers none and says why |
 | `/openapi.json`, `/docs` | yes | The committed specification, served verbatim. A map of the internal surface is not something a misrouted port should hand out |
 
@@ -542,6 +543,46 @@ writes, and that every operation leaves a clone's — and the remote's — bytes
 fixture repository (`tests/code_fixtures.py`) is built commit by commit with fixed dates, so its
 ids are the same everywhere and the documented examples are what it answers.
 
+## The investigation loop
+
+`POST /v0/investigate` (CM.1, [#620](https://github.com/NobuData/ouroboros/issues/620)) accepts an
+investigation, answers `202`, and runs `loop-v1` in the background. `ouroboros_engine/investigation/`:
+
+- `contract.py` — the request: the kind's **playbook** (synthesis template, deliverables), the
+  question, the enabled tools and what each can do, the depth (`quick` / `standard` /
+  `deep_dive` → 1 / 2 / 4 iterations and synthesis passes) and the budget (operations, sources,
+  spend ceiling).
+- `loop.py` — the steps: **plan** (research questions) → **iterate** (choose tool operations, run
+  each through `ouroboros-rest`'s tool surface, digest what it archived) → **synthesize** →
+  **deliver**. State is checkpointed after every step, and each checkpoint's answer says whether
+  a person asked for the run to stop.
+- `claims.py` — the **citation gate**. A candidate claim's cite keys are resolved against the
+  ledger the tools filled; one that resolves to nothing is delivered as an open question
+  (`demoted`), never as a finding. Deliverable inputs get the same treatment, item by item.
+- `playbooks.py` — the synthesis templates (`gap_analysis@1`, `bug_root_cause@1`,
+  `regression_forensics@1`, `roadmap_improvements@1`). Words and shapes only: the loop has no
+  code path per kind, which `tests/test_investigation_loop.py` asserts.
+- `model.py` — one model call through `ouroboros-rest`'s invocation gateway
+  (`/internal/llm/invoke`) on the alias the request names. Until that gateway is implemented
+  (AF.2, [#235](https://github.com/NobuData/ouroboros/issues/235)) every investigation ends as
+  `failed: synthesis_failure`.
+- `control.py` — the control plane's `/internal/research/*` routes: start, tool operation,
+  checkpoint, brief, finish.
+- `runner.py` — daemon threads, at most four investigations at once (`503
+  investigation_capacity` past that). It stands in for the task model
+  ([#54](https://github.com/NobuData/ouroboros/issues/54)).
+
+**Nothing durable lives here.** The lifecycle row, the citation ledger, the checkpoint and the
+usage rows are `ouroboros-rest`'s. A restarted engine has forgotten every investigation;
+`ouroboros-rest` submits a stalled one again and the loop continues from its checkpoint,
+repeating at most the one tool operation that was in flight — which the ledger deduplicates.
+Submitting an investigation this process already holds answers `already_running` and starts
+nothing.
+
+A run that does not end in a brief ends as `cancelled`, or as `failed` with one of
+`tool_exhaustion`, `budget_breach`, `synthesis_failure` or `engine_error`. Each keeps the ledger,
+the last checkpoint and the usage.
+
 ## The simulated-run driver (development only)
 
 [#307](https://github.com/NobuData/ouroboros/issues/307) (AP.5). The Run Console is fed by
@@ -838,6 +879,7 @@ ouroboros-engine/
 │   │   ├── learn.py    #   POST /v0/learn — candidate facts from a bundle       · #412
 │   │   ├── analysis.py #   /v0/analysis — the analyzer set, the streamed run    · #510
 │   │   ├── code.py     #   /v0/code — blame, history, changed-between, deps     · #617
+│   │   ├── investigate.py #   /v0/investigate — accept, run in the background    · #620
 │   │   └── v0.py       #   the versioned prefix and the rule that governs it
 │   ├── core/           # process-wide concerns, not routes
 │   │   ├── errors.py   #   the {code, message, details} envelope, for every failure
@@ -883,6 +925,7 @@ ouroboros-engine/
 │   │   ├── changepoint.py# change_point v1: PELT over daily medians, ranked attribution
 │   │   └── patterns/   #   the six pattern analyzers, one module each           · #512
 │   ├── code/           # clones, ReadOnlyRepo, blame/history/deps, bisect line  · #617
+│   ├── investigation/  # loop-v1: plan → tools → synthesize → brief; citation gate · #620
 │   ├── dev.py          # `uv run dev` entry point; not imported by the application
 │   ├── main.py         # create_app() and the `app` uvicorn serves
 │   ├── openapi.py      # loads the committed spec; `uv run openapi` renders the JSON

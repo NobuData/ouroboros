@@ -34,8 +34,9 @@ from ouroboros_engine.control_plane.contract import (
     LEASE_PATH,
     PROVIDERS,
     PROXIED_PROVIDERS,
-    RUN_CONTROL_ACK_PATH,
+    RESEARCH_INVESTIGATION_PATHS,
     RESEARCH_TOOL_PATH,
+    RUN_CONTROL_ACK_PATH,
     RUN_CONTROLS_FETCH_PATH,
     ControlAck,
     DeltaEvent,
@@ -88,7 +89,10 @@ def test_every_path_the_document_describes_is_one_this_package_mirrors() -> None
     controls = {RUN_CONTROLS_FETCH_PATH, RUN_CONTROL_ACK_PATH}
 
     assert set(_document()["paths"]) == (
-        set(INGEST_PATHS) | _openapi(controls) | {LEASE_PATH, INVOKE_PATH, RESEARCH_TOOL_PATH}
+        set(INGEST_PATHS)
+        | _openapi(controls)
+        | {LEASE_PATH, INVOKE_PATH, RESEARCH_TOOL_PATH}
+        | set(RESEARCH_INVESTIGATION_PATHS)
     )
 
 
