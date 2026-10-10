@@ -5051,6 +5051,40 @@ investigation_not_queued` after that), and `reconcile(org, investigation)` write
 actuals side by side through V109's `record_investigation_estimate_outcome()` — idempotent, with
 generated `sources_within_estimate` / `cost_within_estimate` — which is what recalibration reads.
 
+## Research telemetry
+
+`telemetry` is the fifth research tool — mockup 22's `∿ Build & test telemetry` row
+([#619](https://github.com/NobuData/ouroboros/issues/619)): read-only windows over what the
+product already measures, cited so that every quoted number re-runs. Its contract — operations,
+windows, the no-data record, locators — is [`docs/RESEARCH_TOOLS.md`](../docs/RESEARCH_TOOLS.md)
+§ `telemetry`; this is where the code is.
+
+```
+metric_window(merge_rate, 30d)            ─▶ {91.84 %, n = 98 opened, 2026-09-11..2026-10-10}
+compare(hover_drift_cm, baseline:v2.0.4, 7d)
+   ─▶ {+14% (+4.34 cm), n_a = 48, n_b = 12}
+   ─▶ telemetry://case/<key>/hover_drift_cm/baseline:v2.0.4-vs-2026-10-03T…Z..2026-10-10T…Z
+empty window ─▶ {status: no_data, window searched}        (never 0)
+```
+
+| File | What it holds |
+| --- | --- |
+| `research/telemetry/telemetry.window.ts` | Parsing a window and resolving a relative one to the absolute range it is cited as |
+| `research/telemetry/telemetry.locator.ts` | `locatorOf()` and `queryOf()` — a citation and its query, inverses |
+| `research/telemetry/telemetry.readings.ts` | A reading (`ok` or `no_data`) from each plane, and `compareReadings()` |
+| `research/telemetry/telemetry.stats.ts` | Median, interquartile range, the signed delta |
+| `research/telemetry/telemetry.repository.ts` | The selects over measurements, case history, flake scores, runs, token usage and baselines |
+| `research/telemetry/telemetry.sources.ts` | A result as a `telemetry` source record, its hash the result's digest |
+| `research/tools/adapters/telemetry/telemetry.tool.ts` | The adapter: the four `query` operations and `fetch` |
+| `insights/metrics/metrics.service.ts` § `span()` | The insights plane over explicit days — added for this tool, the same composition `window()` uses |
+
+Three things are held structurally rather than by convention: the repository issues **only
+selects** (`telemetry.repository.spec.ts` enumerates every statement, and the integration spec
+digests every plane before and after running every operation); a `no_data` reading **has no
+numeric field**; and a locator the tool writes is always one `source_locator_valid()` (V122)
+accepts and `queryOf()` reads back to the same query. CM.4's watch (#623) makes its nightly
+comparison through the same `compare`.
+
 ## Replay estimates
 
 `POST /internal/dry-runs/{id}/replay-estimates` is mockup 20's replayed row —
@@ -7330,6 +7364,7 @@ ouroboros-rest/
 │       ├── replay-estimates/ # POST /internal/dry-runs/:id/replay-estimates — infra estimates from farm and test history · #561
 │       ├── research/       # POST /research/estimates — sources & cost, researcher pill · #622
 │       │   ├── loop/       # the investigation loop's control-plane half — /internal/research/investigations/:id/{start,checkpoint,brief,finish}, dispatch, cancel, the resume pass · #620
+│       │   ├── telemetry/  # the telemetry tool's reads: windows, re-runnable telemetry:// locators, readings (ok | no_data), the read-only repository · #619
 │       │   └── tools/      # ResearchToolAdapter SPI, registry, conformance kit, POST /internal/research/tools/:slug/:op · #614
 │       │                   #   estimate.calibration.ts — the versioned constants
 │       ├── providers/     # the ModelProviderAdapter SPI, registry, kit   · #216

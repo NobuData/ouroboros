@@ -24,6 +24,8 @@ import { EngineClient } from "../../engine/engine.client";
 import { EngineModule } from "../../engine/engine.module";
 import { GithubClientFactory } from "../../github/github.client.factory";
 import { GithubModule } from "../../github/github.module";
+import { InsightsModule } from "../../insights/insights.module";
+import { MetricsService } from "../../insights/metrics/metrics.service";
 import { CodeBisectService } from "../code/code-bisect.service";
 import { CodeModule } from "../code/code.module";
 import { CodeReader } from "../code/code.reader";
@@ -32,10 +34,13 @@ import { CompetitorsModule } from "../competitors/competitors.module";
 import { CompetitorsRepository } from "../competitors/competitors.repository";
 import { HistoryIndexRepository } from "../history/history-index.repository";
 import { HistoryModule } from "../history/history.module";
+import { TelemetryModule } from "../telemetry/telemetry.module";
+import { TelemetryRepository } from "../telemetry/telemetry.repository";
 import { buildCodeTool } from "./adapters/code/code.factory";
 import { buildCompetitorTool, buildWatchScheduler } from "./adapters/competitor/competitor.factory";
 import { CompetitorWatchScheduler } from "./adapters/competitor/competitor.scheduler";
 import type { PageFetcher } from "./adapters/web/web.fetcher";
+import { buildTelemetryTool } from "./adapters/telemetry/telemetry.factory";
 import { buildTicketsTool } from "./adapters/tickets/tickets.factory";
 import { buildPageFetcher, buildWebTool } from "./adapters/web/web.factory";
 import type { ResearchToolAdapter } from "./research-tool.adapter";
@@ -70,17 +75,28 @@ export function registeredAdapters(
     readonly engine: EngineClient;
   },
   history: HistoryIndexRepository,
+  telemetry: { readonly repository: TelemetryRepository; readonly metrics: MetricsService },
 ): readonly ResearchToolAdapter[] {
   return [
     buildWebTool(config, fetcher),
     buildCompetitorTool(competitors),
     buildCodeTool(code.reader, code.bisects, code.workspace, code.engine),
     buildTicketsTool(history),
+    buildTelemetryTool(telemetry.repository, telemetry.metrics),
   ];
 }
 
 @Module({
-  imports: [DbModule, CompetitorsModule, GithubModule, EngineModule, CodeModule, HistoryModule],
+  imports: [
+    DbModule,
+    CompetitorsModule,
+    GithubModule,
+    EngineModule,
+    CodeModule,
+    HistoryModule,
+    TelemetryModule,
+    InsightsModule,
+  ],
   controllers: [ResearchToolsInternalController],
   providers: [
     { provide: RESEARCH_PAGE_FETCHER, inject: [AppConfigService], useFactory: buildPageFetcher },
@@ -95,6 +111,8 @@ export function registeredAdapters(
         CodeWorkspace,
         EngineClient,
         HistoryIndexRepository,
+        TelemetryRepository,
+        MetricsService,
       ],
       useFactory: (
         config: AppConfigService,
@@ -105,6 +123,8 @@ export function registeredAdapters(
         workspace: CodeWorkspace,
         engine: EngineClient,
         history: HistoryIndexRepository,
+        telemetry: TelemetryRepository,
+        metrics: MetricsService,
       ) =>
         registeredAdapters(
           config,
@@ -112,6 +132,7 @@ export function registeredAdapters(
           competitors,
           { reader, bisects, workspace, engine },
           history,
+          { repository: telemetry, metrics },
         ),
     },
     {

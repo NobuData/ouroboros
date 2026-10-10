@@ -115,6 +115,7 @@ tool out — the estimate never guesses.
 | `competitor` | `adapters/competitor/` — the watch scheduler, its snapshots and scoped diffs; `query` ops `changes` / `latest` cite archived diffs | CL.3 #616 |
 | `code` | `adapters/code/` over `research/code/` — blame, history, changed-between and dependency graphs read from the engine's clones (`/v0/code/*`), and the bisect primitive over build-farm jobs | CL.4 #617 |
 | `tickets` | `adapters/tickets/` over `research/history/` — full-text search, lookup and aggregates over canonical tickets, mirrored PRs and imported document sets (`history_index_entries`, V119) | CL.5 #618 |
+| `telemetry` | `adapters/telemetry/` over `research/telemetry/` and the insights plane — read-only windows over insights metrics, HIL measurements, case history, runs and token usage; `query` ops `metric_window` / `compare` / `case_history` / `run_series`, and `fetch` to re-run a citation | CL.6 #619 |
 
 ### `web` (CL.2, #615)
 
@@ -205,6 +206,58 @@ tool out — the estimate never guesses.
   every member and written by an owner at `/api/v1/research/document-imports`
   (`document-import.parse.ts` reads CSV and Markdown). Never edited — replace by removing.
 - **Sub-line.** `{issues} · {prs} · {imports}`, counted from the view.
+
+### `telemetry` (CL.6, #619)
+
+- **No new collection.** The tool reads planes that already exist: the insights plane through
+  `MetricsService.span()` (the Insights page's own composition, over explicit days), and — through
+  `research/telemetry/telemetry.repository.ts` — HIL measurements (V053), case history and flake
+  scores (V054), runs, token usage and regression baselines (V115). Farm telemetry (#266) is not
+  one of them: that history does not exist yet.
+- **`query` ops.** `{op: "metric_window", metric, window?, repo?, dimension?}`,
+  `{op: "compare", metric, windowA, windowB, repo?, dimension?}`,
+  `{op: "case_history", case | suite, window?, repo?}`,
+  `{op: "run_series", kind: "runs" | "tokens", window?, repo?}`. A `metric` is V115's
+  `metric_key`: an insights metric id (`merge_rate`) or a case metric
+  `<64-hex case key>:<measurement>`. A window left out is the workspace's default (30 days).
+- **Windows.** `7d` / `36h` / `2w` (ending now), a date range with or without UTC times, or
+  `baseline:<release tag>` — the window a release's baseline was captured over. The insights plane
+  is per UTC day, so its windows are whole days; the others are instants, `[from, to)`. **A
+  relative window is resolved once and cited as the absolute range it was.**
+- **A reading.** `status: "ok"` carries `value`, `unit`, `n`, what `n` counts (`basis`: `samples`
+  · `denominator` · `days` · `baseline`), and — for a sample — `median` and `spread`
+  (`spreadKind: "iqr"`). An insights metric's `value` is the insights service's figure, untouched.
+- **Empty is not zero.** A window with no samples, a rate with no denominator, a sum over days
+  that recorded nothing, a release with no baseline: each is `status: "no_data"` with the window
+  searched and a reason, and that shape holds no number. It is still returned with a source —
+  absence is a finding. A series lists only the days that had anything.
+- **`compare`.** Both readings and the signed `delta` (`b − a`) with its unit, `deltaPct`
+  (null from zero) and a `display` (`+14% (+4.34 cm)`; a percentage metric moves in `pts`). Either
+  side empty, or two units, is `no_data` with no delta. It is the comparison CM.4's watch (#623)
+  makes, so the card and a brief agree.
+- **Citations re-run.** One result, one `telemetry` source. Its locator carries the whole query
+  (`telemetry.locator.ts`; the shape V122 accepts), its `contentHash` is the result's digest with
+  no clock in it, and `fetch(locator)` runs the query again:
+
+  | query | locator |
+  |---|---|
+  | an insights metric | `telemetry://metric/<metric id>/<window>` |
+  | a case metric | `telemetry://case/<case key>/<measurement>/<window>` |
+  | `compare` | either, the window `<a>-vs-<b>` |
+  | one case's history | `telemetry://history/case/<case key>/<window>` |
+  | a suite's history | `telemetry://history/suite/<window>?suite=<name>` |
+  | a series | `telemetry://runs/<runs \| tokens>/<window>` |
+
+  A repository, dimension or suite name rides as a percent-encoded query string. A
+  `telemetry://` locator the tool did not write (the seeded `telemetry://fleet.…/30d` rows) is
+  `unsupported` on `fetch`.
+- **Read-only, and scoped.** Every statement is a `select` and names the workspace
+  (`telemetry.repository.spec.ts` enumerates them; `telemetry.integration-spec.ts` digests every
+  plane before and after running every operation). Another workspace's case key, repository or
+  locator answers `no_data`.
+- **Settings.** None required: one optional `windowDays` (7 / 30 / 90). No credential.
+- **Sub-line.** `{measurements} · {metrics} · {cases}` — `8 HIL measurements · 24 insights
+  metrics · 63 test cases` on the seeded stack.
 
 ## Writing an adapter
 

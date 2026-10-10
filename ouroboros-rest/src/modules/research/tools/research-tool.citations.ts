@@ -39,8 +39,10 @@ const BISECT = new RegExp(
 );
 const BISECT_DOT_SEGMENT = /\/\.\.?@/;
 const DATE = "[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}(:[0-9]{2})?Z)?";
+/** A telemetry window: `<n>h|d|w`, a date range, or a stored baseline by its release tag (V122). */
+const WINDOW = `([1-9][0-9]*[hdw]|${DATE}\\.\\.${DATE}|baseline:[A-Za-z0-9._~%+-]{1,160})`;
 const TELEMETRY = new RegExp(
-  `^telemetry://[a-z0-9][a-z0-9_.-]*(/[a-z0-9][a-z0-9_.-]*)*/([1-9][0-9]*[hdw]|${DATE}\\.\\.${DATE})$`,
+  `^telemetry://[a-z0-9][a-z0-9_.-]*(/[a-z0-9][a-z0-9_.-]*)*/${WINDOW}(-vs-${WINDOW})?(\\?[A-Za-z0-9._~%=&+-]+)?$`,
 );
 const SHA256 = /^sha256:[0-9a-f]{64}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

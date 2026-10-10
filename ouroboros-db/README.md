@@ -1460,7 +1460,7 @@
 > investigation read: the adapter (`tool_slug`), `kind`
 > (`web|competitor_diff|code|ticket|telemetry|doc`), `title`, a **`locator` validated per kind**
 > (an `http(s)` URL, or `issue-index://<index>/<key>`, `git://<repo>@<sha>/<path>#L<n>`,
-> `telemetry://<metric>/<window>`), `retrieved_at`, a `sha256:` `content_hash`, a bounded `excerpt`
+> `telemetry://<metric>/<window>` — widened by `V122` to baselines, comparisons and a query), `retrieved_at`, a `sha256:` `content_hash`, a bounded `excerpt`
 > and `meta`. `cite_no` (`[07]`) is **dense and stable** — drawn from a per-investigation counter row
 > (`source_cite_counters`) at write, never changed (records are never updated) — and `cite_key`
 > (`[git]`) is an optional symbolic alias beside it. Archival caps: 4 KiB per excerpt, 8 KiB of
@@ -1711,6 +1711,19 @@
 > real build will measure this (7 similar builds found)*. **The record:**
 > `dry_run_stage_metrics_valid()` now lets a replayed row carry `window_days`, and — instead of
 > `estimate_ms` and `spread_ms` — `insufficient_history: true` with the `sample_count` it found.
+>
+> `V122` ([#619](https://github.com/NobuData/ouroboros/issues/619), CL.6) widens what a
+> `telemetry` source's locator may say — no table, one function. `source_locator_valid()` still
+> accepts `telemetry://<segment>[/…]/<window>` with a window of `<n>h|d|w` or a date range, and
+> now also: a window of **`baseline:<release tag>`** (the window a release's regression baseline
+> was captured over, V115); **two windows compared**, `<window-a>-vs-<window-b>`; and a
+> percent-encoded **query string** carrying what narrows the reading
+> (`?repo=acme-robotics%2Fhelios-firmware`). That is what lets the build & test telemetry tool
+> cite a comparison as one re-runnable locator —
+> `telemetry://case/<case key>/hover_drift_cm/baseline:v2.0.4-vs-2026-10-03T02:35:00Z..2026-10-10T02:35:00Z`.
+> The tool itself always writes absolute windows; the relative form stays legal for rows already
+> stored. The other kinds' rules are unchanged, and the TypeScript mirror is
+> `ouroboros-rest`'s `research-tool.citations.ts`.
 >
 > [#558](https://github.com/NobuData/ouroboros/issues/558) seeds mockup 20 from those rows:
 > [`R__dev_seed_workspace_copilot.sql`](migrations/R__dev_seed_workspace_copilot.sql) — see
@@ -3570,6 +3583,7 @@ ouroboros-db/
 │   ├── V119__history_index.sql       # document_imports + document_import_items (imported sets), history_index_document() + GIN indexes, history_index_entries view (tickets ∪ PRs ∪ imports, tracker-agnostic) — #618
 │   ├── V120__investigation_loop.sql  # investigation_loops (attempt, checkpoint ≤ 2 MiB, cancel request, failure reason), investigation_usage + investigation_spend_cents(), investigation_deliverable_inputs, brief_claims.demoted — #620
 │   ├── V121__infra_replay_estimates.sql # build_config_class / build_similarity_class, build_replay_sample + test_replay_sample (median, MAD, count; warm/cold cache context), replay_estimate_policy (30 d, floor 20), replay_estimate_note; a replayed stage row may carry window_days or insufficient_history — #561
+│   ├── V122__telemetry_locators.sql  # source_locator_valid(): a telemetry locator may name baseline:<tag>, compare <a>-vs-<b> and carry a ?query — #619
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
