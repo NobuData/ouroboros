@@ -80,6 +80,7 @@ import { TestResultsReadModule } from "../test-results-read/results.module";
 import { TicketSourcesModule } from "../ticket-sources/ticket-sources.module";
 import { WorkflowsModule } from "../workflows/workflows.module";
 import { CopilotModule } from "../copilot/copilot.module";
+import { DryRunsModule } from "../dry-runs/dry-runs.module";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 
@@ -434,6 +435,12 @@ export class AppModule {
         // in), `RoutingModule` (the `copilot-workflow` kind's resolution) and `EngineModule`
         // (the turn); it exports nothing.
         CopilotModule,
+        // CD.4 ([#562](https://github.com/NobuData/ouroboros/issues/562)) — the deep dry run's
+        // lifecycle under `/api/v1/workflows/{id}/dry-runs`: the structural pre-check, the
+        // budget, the harness dispatch with streamed progress, the records and guard audit, the
+        // edge-case picker and the safety strip. `CopilotModule` above imports it for the
+        // picker; it imports nothing of the copilot's back.
+        DryRunsModule,
         // BN.1 ([#461](https://github.com/NobuData/ouroboros/issues/461)) — the decision kind registry,
         // the out-of-band watcher and the Needs-You feed under `/api/v1/inbox`. Every plane that
         // blocks on a person imports it for the registry (facts, pull requests, guardrails, planning,

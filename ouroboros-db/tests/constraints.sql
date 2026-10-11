@@ -40371,6 +40371,116 @@ select pg_temp.must_hold(
   and not has_table_privilege('ouroboros_app', 'ouroboros.roadmap_pipeline_settings', 'delete'),
   'the application reads and writes the policy and never deletes it');
 
+-- ===========================================================================
+-- V126 — the dry-run cap and the cancelled state (#562, CD.4)
+-- ===========================================================================
+--
+-- The cap is a workspace setting with a database default; `cancelled` is a fourth terminal
+-- state, reached only from `running`, carrying no failure reason and keeping its rows.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v126',  'Dry Cap Works', 'dry-cap-works-v126', now()),
+  ('org-v126b', 'Dry Cap Two',   'dry-cap-two-v126',   now());
+
+insert into ouroboros.workflows (id, organization_id, slug, name) values
+  ('a1260000-0000-0000-0000-000000000101', 'org-v126', 'security-patch', 'Security patch');
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('a1260000-0000-0000-0000-00000000000a', 'org-v126', 'github', 'GitHub · dry cap works');
+
+insert into ouroboros.tickets
+    (id, organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values
+    ('a1260000-0000-0000-0000-000000000489', 'org-v126', 'a1260000-0000-0000-0000-00000000000a',
+     '489', '#489', 'https://github.com/dry-cap-works-v126/helios-firmware/issues/489',
+     'CAN arbitration-lost storm under full telemetry load', 'open', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+select pg_temp.must_hold(
+  (select dry_run_cap_cents = 1000 and not is_explicit
+     from ouroboros.workspace_settings_effective where organization_id = 'org-v126'),
+  'a workspace that never chose caps a dry run at $10.00');
+
+insert into ouroboros.workspace_settings (organization_id, dry_run_cap_cents)
+  values ('org-v126', 2500);
+
+select pg_temp.must_hold(
+  (select dry_run_cap_cents = 2500
+     from ouroboros.workspace_settings_effective where organization_id = 'org-v126')
+  and (select dry_run_cap_cents = 1000
+         from ouroboros.workspace_settings_effective where organization_id = 'org-v126b'),
+  'a workspace''s dry-run cap is its own');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workspace_settings set dry_run_cap_cents = 0 where organization_id = 'org-v126'$$,
+  'a dry-run cap is at least one cent', 'workspace_settings_dry_run_cap_bounded');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workspace_settings set dry_run_cap_cents = 100001 where organization_id = 'org-v126'$$,
+  'a dry-run cap is at most $1,000.00', 'workspace_settings_dry_run_cap_bounded');
+
+select pg_temp.must_hold(
+  (select pg_get_expr(d.adbin, d.adrelid) = '1000'
+     from pg_attrdef d
+     join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+    where d.adrelid = 'ouroboros.workspace_settings'::regclass
+      and a.attname = 'dry_run_cap_cents'),
+  'the effective view''s default for the dry-run cap is the column''s');
+
+-- --- cancelled -------------------------------------------------------------------------
+insert into ouroboros.dry_runs
+    (id, organization_id, workflow_id, draft_rev, ticket_id, pinned_sha)
+  values
+    ('a1260000-0000-0000-0000-000000000301', 'org-v126', 'a1260000-0000-0000-0000-000000000101', 2,
+     'a1260000-0000-0000-0000-000000000489', 'c0ffee0000000000000000000000000000000002');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_runs set status = 'cancelled', finished_at = now(), duration_ms = 1
+     where id = 'a1260000-0000-0000-0000-000000000301'$$,
+  'a dry run still in its pre-check is not cancelled — only a running one is', 'dry_runs_transition');
+
+update ouroboros.dry_runs set status = 'running', precheck_findings = '[]'
+ where id = 'a1260000-0000-0000-0000-000000000301';
+
+insert into ouroboros.dry_run_stages
+    (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note)
+  values ('org-v126', 'a1260000-0000-0000-0000-000000000301', 1, 'analyze', 'analyze', 'ok', 'llm',
+          'mapped 4 files');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_runs set status = 'cancelled' where id = 'a1260000-0000-0000-0000-000000000301'$$,
+  'a cancelled dry run is finished, and says when', 'dry_runs_finished_when_terminal');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_runs
+       set status = 'cancelled', finished_at = now(), duration_ms = 4000, failure_reason = 'stopped'
+     where id = 'a1260000-0000-0000-0000-000000000301'$$,
+  'a cancelled dry run did not fail: it carries no failure reason', 'dry_runs_failure_reason');
+
+update ouroboros.dry_runs
+   set status = 'cancelled', finished_at = started_at + interval '4 seconds', duration_ms = 4000,
+       tokens = 12000
+ where id = 'a1260000-0000-0000-0000-000000000301';
+
+select pg_temp.must_hold(
+  (select status = 'cancelled' and failure_reason is null and guards_clean
+          and (select count(*) = 1 from ouroboros.dry_run_stages s where s.dry_run_id = r.id)
+     from ouroboros.dry_runs r where r.id = 'a1260000-0000-0000-0000-000000000301'),
+  'a cancelled dry run keeps the rows it had, and is neither failed nor budget_stopped');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_runs set status = 'failed', failure_reason = 'late'
+     where id = 'a1260000-0000-0000-0000-000000000301'$$,
+  'cancelled is terminal', 'dry_runs_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.dry_runs set tokens = 1 where id = 'a1260000-0000-0000-0000-000000000301'$$,
+  'a cancelled dry run''s record is final', 'dry_runs_transition');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note)
+    values ('org-v126', 'a1260000-0000-0000-0000-000000000301', 2, 'plan', 'plan', 'ok', 'llm', 'late')$$,
+  'a cancelled dry run takes no new result rows', 'dry_run_stages_open');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

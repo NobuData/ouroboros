@@ -710,7 +710,7 @@ const engineEdgeAnchorSchema = z
  * serialising a dataclass sends `null` for an unset field far more often than it omits it,
  * and refusing that would turn an ordinary answer into a `502`.
  */
-const engineFindingSchema = z
+export const engineFindingSchema = z
   .object({
     code: z.string().min(1),
     message: z.string(),

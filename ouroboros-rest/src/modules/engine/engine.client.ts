@@ -104,6 +104,17 @@ import {
   investigationAcceptedSchema,
 } from "./engine.investigate";
 import {
+  ENGINE_DRY_RUN_HARNESS_ROUTE,
+  ENGINE_DRY_RUN_TIMEOUT_MS,
+  ENGINE_DRY_RUNS_ROUTE,
+  dryRunRequestBody,
+  engineDryRunEventSchema,
+  engineDryRunHarnessSchema,
+  type EngineDryRunEvent,
+  type EngineDryRunHarness,
+  type EngineDryRunRequest,
+} from "./engine.dryruns";
+import {
   ENGINE_SKILL_TIMEOUT_MS,
   ENGINE_SKILLS_RUN_ROUTE,
   skillRefusalSchema,
@@ -451,6 +462,67 @@ export class EngineClient {
   }
 
   /**
+   * Run one deep dry run, yielding its events as they stream (CD.4,
+   * [#562](https://github.com/NobuData/ouroboros/issues/562)).
+   *
+   * The engine walks the draft and writes nothing; the caller relays the events and stores the
+   * result. **Bounded by {@link ENGINE_DRY_RUN_TIMEOUT_MS}**, and by the caller's own `signal`:
+   * aborting it closes the connection, which is how a dry run is cancelled mid-stage.
+   *
+   * @param request - The dry run, in this service's names.
+   * @param signal - Aborts the run — the cancel button. Optional.
+   * @yields Each event, in order — `stage_started`, `stage_finished`, `guard_blocked`, then
+   *   exactly one `done`.
+   * @throws {UpstreamError} `engine_unavailable` when the engine could not be reached, refused
+   *   the request, streamed a line that is not the contract, or broke off mid-stream (an abort
+   *   and the deadline included). Events already yielded stay yielded.
+   */
+  async *dryRun(
+    request: EngineDryRunRequest,
+    signal?: AbortSignal,
+  ): AsyncGenerator<EngineDryRunEvent> {
+    const url = engineRouteUrl(this.config.engineUrl, ENGINE_DRY_RUNS_ROUTE);
+    const init: RequestInit = {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: NDJSON_MEDIA_TYPE },
+      body: JSON.stringify(dryRunRequestBody(request)),
+    };
+    const response = await this.send(url, init, ENGINE_DRY_RUN_TIMEOUT_MS, signal);
+
+    if (!response.ok || response.body === null) {
+      await this.refuse(response, url, init);
+    }
+
+    const lines = ndjsonLines(response.body as AsyncIterable<Uint8Array>);
+    for (;;) {
+      let next: IteratorResult<string>;
+      try {
+        next = await lines.next();
+      } catch (error) {
+        this.logger.error(`POST ${url} broke off mid-stream`, describeForLog(error));
+        throw engineUnavailable();
+      }
+      if (next.done === true) {
+        return;
+      }
+
+      yield this.parseLine(url, next.value, engineDryRunEventSchema);
+    }
+  }
+
+  /**
+   * Ask the engine what its dry-run harness can and cannot do (CD.4, #562) — the tools on its
+   * allow-list, its guards and the capabilities it lacks, read from the tables that enforce
+   * them. The safety strip is built from this answer.
+   *
+   * @returns The harness description, in this service's names.
+   * @throws {UpstreamError} `engine_unavailable` for every way this can fail — see {@link call}.
+   */
+  async dryRunHarness(): Promise<EngineDryRunHarness> {
+    return this.call(ENGINE_DRY_RUN_HARNESS_ROUTE, engineDryRunHarnessSchema);
+  }
+
+  /**
    * One line of an analysis stream, parsed.
    *
    * @param url - The route, for the log.
@@ -729,6 +801,7 @@ export class EngineClient {
    * @param url - The absolute URL to call.
    * @param init - Method, headers and body.
    * @param timeoutMs - The deadline; {@link ENGINE_TIMEOUT_MS} for every call but an analysis.
+   * @param signal - The caller's own abort, joined to the deadline; an abort is not retried.
    * @returns Whatever the engine answered, whether or not it is a success.
    * @throws {UpstreamError} `engine_unavailable` when the last attempt did not produce an
    *   answer at all — a refused connection, an unresolvable name, or the deadline.
@@ -737,15 +810,18 @@ export class EngineClient {
     url: string,
     init: RequestInit,
     timeoutMs: number = ENGINE_TIMEOUT_MS,
+    signal?: AbortSignal,
   ): Promise<Response> {
     for (let attempt = 1; ; attempt += 1) {
       try {
+        // Built per attempt, deliberately: a signal that has already fired aborts the
+        // retry before it is sent, which would make the second attempt a formality.
+        const deadline = AbortSignal.timeout(timeoutMs);
+
         return await this.fetchImpl(url, {
           ...init,
           headers: { ...this.headers(), ...init.headers },
-          // Built per attempt, deliberately: a signal that has already fired aborts the
-          // retry before it is sent, which would make the second attempt a formality.
-          signal: AbortSignal.timeout(timeoutMs),
+          signal: signal === undefined ? deadline : AbortSignal.any([deadline, signal]),
         });
       } catch (error) {
         const retryable = attempt < MAX_ATTEMPTS && isRetryable(error);

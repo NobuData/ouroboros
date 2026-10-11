@@ -23,6 +23,7 @@ import type { CopilotChoice, CopilotMessage, CopilotSession, Workflow } from "..
 import { EngineClient } from "../engine/engine.client";
 import type { EngineTranscriptEntry } from "../engine/engine.copilot";
 import { NotFoundError } from "../errors/error.envelope";
+import { DryRunPickerService } from "../dry-runs/dry-runs.picker.service";
 import { ResolutionService } from "../routing/resolution.service";
 import { draftEtag } from "../workflows/draft.etag";
 import { workflowNotFound } from "../workflows/workflows.errors";
@@ -63,6 +64,9 @@ export const COPILOT_TASK_KIND = "copilot-workflow";
 /** The reply could not be made because nothing routes the copilot in this workspace. */
 export const COPILOT_UNROUTED = "copilot_unrouted";
 
+/** How many tickets one `lookup_tickets` may answer with, at most. */
+export const MAX_TICKET_CANDIDATES = 10;
+
 /** How a resolved alias is recorded, and how the exchange is told which to use. */
 interface RoutedModel {
   readonly alias: string;
@@ -79,6 +83,7 @@ export class CopilotService {
    * @param routing - Z.1's resolution, for the `copilot-workflow` kind.
    * @param engine - The typed engine client, for the turn.
    * @param database - The pool, for the etag-guarded apply.
+   * @param picker - The edge-case picker `lookup_tickets` ranks with (CD.4, #562).
    */
   constructor(
     private readonly copilots: CopilotRepository,
@@ -86,6 +91,7 @@ export class CopilotService {
     private readonly routing: ResolutionService,
     private readonly engine: EngineClient,
     private readonly database: DatabaseService,
+    private readonly picker: DryRunPickerService,
   ) {}
 
   /**
@@ -472,8 +478,21 @@ export class CopilotService {
             },
           };
         }),
-      lookupTickets: (query, limit) =>
-        this.copilots.openTickets(workflow.organization_id, query, limit),
+      lookupTickets: async (query, limit) => {
+        // Ranked against the draft as it stands now, by the scorer the dry-run menu uses.
+        const draft = await this.copilots.draftOf(workflow.id);
+        const ranked = await this.picker.rank(workflow.organization_id, draft?.definition ?? null, {
+          limit: Math.min(Math.max(1, Math.trunc(limit)), MAX_TICKET_CANDIDATES),
+          query,
+        });
+
+        return ranked.map((candidate) => ({
+          key: candidate.ticket.key,
+          title: candidate.ticket.title,
+          labels: candidate.ticket.labels,
+          reason: candidate.reason,
+        }));
+      },
     };
   }
 

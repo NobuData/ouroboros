@@ -544,7 +544,9 @@ describe("the exchange loop", () => {
       content: expect.stringContaining('"issue-queued"') as string,
     });
     expect(results[3]).toMatchObject({ content: expect.stringContaining("#489") as string });
-    expect(results[3]).toMatchObject({ content: expect.stringContaining("not ranked") as string });
+    expect(results[3]).toMatchObject({
+      content: expect.stringContaining("ranked for edge cases") as string,
+    });
   });
 
   it("records an unpriced exchange as null cost, never zero", async () => {

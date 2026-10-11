@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.41.12",
+    "version": "0.41.13",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -96,6 +96,10 @@
     {
       "name": "copilot",
       "description": "**The Workflow Copilot** (mockup 20, epic\n[#552](https://github.com/NobuData/ouroboros/issues/552)) — the conversational author of\nthe shared draft. One active session per workflow; every edit the copilot makes is a typed\noperation on the same draft the canvas and the code editor edit (decision **W2**), validated\nbefore it is applied and recorded with `copilot` provenance; questions are chip rows the\nperson answers; a reply streams as server-sent events so the draft is seen being built."
+    },
+    {
+      "name": "dry-runs",
+      "description": "**The deep dry run** (mockup 20, epic\n[#552](https://github.com/NobuData/ouroboros/issues/552)) — a workflow's draft walked for\none ticket by real models over a virtual workspace: writes simulated, infrastructure\nreplayed from history, nothing merged, pushed or opened. These routes are the lifecycle\naround it: the structural pre-check that runs before anything costs, the budget (the lower\nof the workspace's dry-run cap and the draft's spend guard), streamed progress, the record\nwith its guard audit, cancel, re-run, history, the edge-case issue picker and the safety\nstrip as data. A dry run is its own domain: it is in no run, loop or spend figure."
     },
     {
       "name": "skills",
@@ -24988,6 +24992,1061 @@
         }
       }
     },
+    "/api/v1/workflows/{id}/dry-runs": {
+      "post": {
+        "tags": [
+          "dry-runs"
+        ],
+        "summary": "Start a deep dry run of the draft against a ticket",
+        "description": "Mockup 20's **Dry run** — CD.4\n([#562](https://github.com/NobuData/ouroboros/issues/562)). The stored draft is walked\nfor one canonical ticket by the dry-run harness: real models, simulated writes, replayed\ninfrastructure, and nothing written anywhere but the dry run's own record.\n\nIn order:\n\n1. the workflow, its draft at `draftRev`, the ticket and the repository it names are\n   resolved — every refusal below happens here, before anything is recorded;\n2. the commit the virtual workspace reads at is pinned (the head of the repository's\n   default branch);\n3. the dry run is recorded and the **structural pre-check** runs — the DSL validator,\n   then the engine's (R.2). A draft that fails it answers `201` with a dry run that is\n   already `failed` and carries the anchored `precheckFindings`: **no model, estimator\n   or repository read was invoked**;\n4. the budget is the lower of the workspace's dry-run cap and the draft's own spend\n   guard (`budget` says which);\n5. each model stage's alias and knowledge are resolved, and the run is dispatched.\n\nThe answer comes back as soon as the run is dispatched. Follow it on\n`…/dry-runs/{dryRunId}/events`; it ends `complete`, `failed`, `budget_stopped` or\n`cancelled`, each distinct. A populated `guardAudit` always means `failed`.\n\nA dry run tests the draft **at the revision named**: a draft that moved since is a `409`.\nOne dry run per workflow at a time. Owner, admin and member may start one; a viewer may\nnot — it spends the workspace's money on real models.",
+        "operationId": "startDryRun",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartDryRunRequest"
+              },
+              "example": {
+                "ticketId": "5eed0088-0000-4000-8000-000000000489",
+                "draftRev": 3,
+                "sessionId": "5eed008a-0000-4000-8000-000000000001"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The dry run as recorded — `running` with its budget, or `failed` with the pre-check's findings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DryRun"
+                },
+                "example": {
+                  "id": "5eed008b-0000-4000-8000-000000000002",
+                  "workflowId": "5eed0089-0000-4000-8000-000000000001",
+                  "draft": {
+                    "baseVersion": null,
+                    "rev": 3,
+                    "label": "v0.3"
+                  },
+                  "ticket": {
+                    "id": "5eed0088-0000-4000-8000-000000000489",
+                    "key": "#489",
+                    "title": "CAN arbitration-lost storm under full telemetry load",
+                    "url": "https://github.com/acme-robotics/helios-firmware/issues/489"
+                  },
+                  "sessionId": "5eed008a-0000-4000-8000-000000000001",
+                  "pinnedSha": "b7e4c2a19f0d3e5b6a7c8d9e0f1a2b3c4d5e6f70",
+                  "mode": "deep",
+                  "status": "running",
+                  "failureReason": null,
+                  "totals": {
+                    "durationMs": null,
+                    "costCents": null,
+                    "tokens": null
+                  },
+                  "guardAudit": [],
+                  "guardsClean": true,
+                  "precheckFindings": [],
+                  "startedAt": "2026-10-08T15:05:00.000Z",
+                  "finishedAt": null,
+                  "stages": [],
+                  "artifacts": [],
+                  "budget": {
+                    "capCents": 500,
+                    "source": "draft_guard",
+                    "workspaceCapCents": 1000,
+                    "draftGuardCents": 500
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — a viewer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found`; `dry_run_ticket_not_found` — no such ticket in this workspace;\n`github_not_found` — GitHub shows the workspace's token no such repository.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`workflow_draft_absent` — the workflow has no draft open;\n`dry_run_draft_stale` — the draft is not at `draftRev` (`details.currentDraftRev`);\n`dry_run_in_progress` — a dry run of this workflow has not ended (`details.dryRunId`);\n`github_token_missing` — the workspace has no GitHub token to read the repository with.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed`; `dry_run_source_unsupported` — the ticket's tracker is not one a\nworkflow trigger can name; `dry_run_repository_unresolved` — the ticket names no\nrepository this workspace mirrors; `dry_run_session_mismatch` — the session is not a\nconversation about this workflow.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`engine_unavailable` — the pre-check could not be run (the dry run is recorded\n`failed`); or GitHub could not name the commit (`dry_run_commit_unreadable` and the\n`github_*` upstream codes).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "dry-runs"
+        ],
+        "summary": "Read a workflow's dry-run history",
+        "description": "The footer's `history: 1 dry run · draft v0.3 (2 copilot edits applied)`: how many dry\nruns the workflow has had, the draft as it stands now, and the runs newest first — each\nwith the draft revision and ticket it tested, so two runs of the same ticket before and\nafter an edit sit side by side.\n\n`spend` is the workflow's **dry-run accounting**: the sum of what its dry runs cost. It\nis kept apart from loop spend — a dry run is in no run, stage or usage figure.",
+        "operationId": "listDryRuns",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The history.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DryRunHistory"
+                },
+                "example": {
+                  "draft": {
+                    "label": "v0.3",
+                    "rev": 3,
+                    "baseVersion": null,
+                    "copilotEdits": 2
+                  },
+                  "count": 1,
+                  "spend": {
+                    "costCents": 31,
+                    "unpriced": 0
+                  },
+                  "runs": [
+                    {
+                      "id": "5eed008b-0000-4000-8000-000000000001",
+                      "draftLabel": "v0.3",
+                      "draftRev": 3,
+                      "ticket": {
+                        "key": "#489",
+                        "title": "CAN arbitration-lost storm under full telemetry load"
+                      },
+                      "status": "complete",
+                      "failureReason": null,
+                      "totals": {
+                        "durationMs": 161000,
+                        "costCents": 31,
+                        "tokens": 96000
+                      },
+                      "guardsClean": true,
+                      "startedAt": "2026-10-08T15:05:00.000Z",
+                      "finishedAt": "2026-10-08T15:07:41.000Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workflows/{id}/dry-runs/candidates": {
+      "get": {
+        "tags": [
+          "dry-runs"
+        ],
+        "summary": "Rank the tickets most worth dry-running the draft against",
+        "description": "The **Dry-run another issue ▾** menu — decision **W8**. A workflow is best tested\nagainst an issue that does *not* match its assumptions, because that is the ticket that\nexercises the conditional path nobody otherwise sees.\n\nEverything in the draft that tests the ticket is one dimension: each trigger condition\n(one per required label, `effort_lte`, `source`) and each `labels`, `effort` or `source`\npredicate on a fork or a branch. A candidate's `score` is how many dimensions it\n**mismatches**; the highest first, ties to the most recently updated ticket and then the\nlower key. Every candidate carries its `reason`, and a ticket that meets everything says\nso — it exercises the main path.\n\nThe candidates are the workspace's open, sized canonical tickets, whatever tracker they\ncame from. The copilot's `lookup_tickets` ranks with the same scorer.",
+        "operationId": "listDryRunCandidates",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "How many candidates to answer with — 1 to 50, default 10.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The ranked candidates.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DryRunCandidates"
+                },
+                "example": {
+                  "draftLabel": "v0.3",
+                  "candidates": [
+                    {
+                      "rank": 1,
+                      "ticket": {
+                        "id": "5eed0088-0000-4000-8000-000000000489",
+                        "key": "#489",
+                        "title": "CAN arbitration-lost storm under full telemetry load",
+                        "url": "https://github.com/acme-robotics/helios-firmware/issues/489",
+                        "labels": [
+                          "bug",
+                          "can-bus"
+                        ],
+                        "effort": "m",
+                        "source": "github"
+                      },
+                      "score": 1,
+                      "dimensions": 1,
+                      "matchesTrigger": false,
+                      "mismatches": [
+                        {
+                          "dimension": "trigger.label:security",
+                          "where": "trigger",
+                          "detail": "no `security` label"
+                        }
+                      ],
+                      "reason": "no `security` label (trigger) — outside the trigger, so it exercises the path a matching issue would not."
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`workflow_draft_absent` — the workflow has no draft to rank against.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid, or `limit` is outside 1–50.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workflows/{id}/dry-runs/safety": {
+      "get": {
+        "tags": [
+          "dry-runs"
+        ],
+        "summary": "Read the safety strip — three claims, each with the mechanism behind it",
+        "description": "The dry-run card stands on three claims: *writes are simulated*, *infrastructure is\nreplayed*, *the models are real*. This serves them as data **derived from the harness's\nown configuration** — the engine's `GET /v0/dry-runs/harness`: the table that dispatches\na tool call, the guards that refuse one, the paths it asks — so the page claims only\nwhat the mechanism enforces.\n\nA column `holds` only while its mechanism is in place: change a guard or a tool in the\nengine and this answer changes with it. `absent` is the header pill's words (`no writes`\n· `no PRs` · `no merges`), each present only while the capability behind it is one no\ntool provides.",
+        "operationId": "readDryRunSafety",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The strip.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DryRunSafety"
+                },
+                "example": {
+                  "harness": "dry-run-v1",
+                  "columns": [
+                    {
+                      "id": "simulated_writes",
+                      "holds": true,
+                      "mechanism": {
+                        "kind": "overlay",
+                        "tools": [
+                          "edit_file"
+                        ],
+                        "path": null,
+                        "detail": "A stage's edits are held in an in-memory overlay that later stages read through; the overlay becomes the simulated diff and is never written to the repository."
+                      },
+                      "facts": {
+                        "writes": "memory_overlay",
+                        "reads": "provider_api_at_pinned_sha"
+                      }
+                    },
+                    {
+                      "id": "replayed_infra",
+                      "holds": true,
+                      "mechanism": {
+                        "kind": "estimator_service",
+                        "tools": [
+                          "build",
+                          "run_tests"
+                        ],
+                        "path": "/internal/dry-runs/{id}/replay-estimates",
+                        "detail": "Build and test stages are answered by the replay estimator from farm and test history — a median with its sample count and spread, or insufficient history; nothing is built or run."
+                      },
+                      "facts": {
+                        "formulas": [
+                          {
+                            "id": "build_duration_replay",
+                            "version": 1,
+                            "dispersion": "median_absolute_deviation"
+                          },
+                          {
+                            "id": "test_duration_replay",
+                            "version": 1,
+                            "dispersion": "median_absolute_deviation"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "id": "real_models",
+                      "holds": true,
+                      "mechanism": {
+                        "kind": "gateway_routing",
+                        "tools": [],
+                        "path": "/internal/llm/invoke",
+                        "detail": "Model stages run their own prompts through the invocation gateway with the alias routing resolved for each, attributed to the dry run and stopped at its budget; the harness holds no provider credential."
+                      },
+                      "facts": {}
+                    }
+                  ],
+                  "absent": [
+                    {
+                      "claim": "no writes",
+                      "capability": "repository_write"
+                    },
+                    {
+                      "claim": "no PRs",
+                      "capability": "pull_request"
+                    },
+                    {
+                      "claim": "no merges",
+                      "capability": "pull_request"
+                    }
+                  ],
+                  "guards": [
+                    {
+                      "name": "allow_list",
+                      "refuses": "Refuses any tool that is not on the allow-list; the call is never run."
+                    },
+                    {
+                      "name": "workspace_boundary",
+                      "refuses": "Refuses a path outside the repository's own tree."
+                    }
+                  ],
+                  "blockedCallFailsRun": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`engine_unavailable` — a strip that cannot be derived is not shown.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workflows/{id}/dry-runs/{dryRunId}": {
+      "get": {
+        "tags": [
+          "dry-runs"
+        ],
+        "summary": "Read one dry run, whole",
+        "description": "The dry-run card: the header (ticket, draft revision, the commit read at, `2m 41s ·\n$0.31`), the result rows in order with the truth of how each was produced (`howLabel`:\n`simulated`, `replayed from history`, `skipped`), the simulated diff and excerpts, the\nguard audit, and — for a draft that failed its pre-check — the anchored findings.\n\nA cost is `null` when unpriced, never a fabricated `0`. A run still in flight answers\nwith the rows it has reached.",
+        "operationId": "readDryRun",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowId"
+          },
+          {
+            "$ref": "#/components/parameters/DryRunId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The dry run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DryRun"
+                },
+                "example": {
+                  "id": "5eed008b-0000-4000-8000-000000000001",
+                  "workflowId": "5eed0089-0000-4000-8000-000000000001",
+                  "draft": {
+                    "baseVersion": null,
+                    "rev": 3,
+                    "label": "v0.3"
+                  },
+                  "ticket": {
+                    "id": "5eed0088-0000-4000-8000-000000000489",
+                    "key": "#489",
+                    "title": "CAN arbitration-lost storm under full telemetry load",
+                    "url": "https://github.com/acme-robotics/helios-firmware/issues/489"
+                  },
+                  "sessionId": "5eed008a-0000-4000-8000-000000000001",
+                  "pinnedSha": "b7e4c2a19f0d3e5b6a7c8d9e0f1a2b3c4d5e6f70",
+                  "mode": "deep",
+                  "status": "complete",
+                  "failureReason": null,
+                  "totals": {
+                    "durationMs": 161000,
+                    "costCents": 31,
+                    "tokens": 96000
+                  },
+                  "guardAudit": [],
+                  "guardsClean": true,
+                  "precheckFindings": [],
+                  "startedAt": "2026-10-08T15:05:00.000Z",
+                  "finishedAt": "2026-10-08T15:07:41.000Z",
+                  "stages": [
+                    {
+                      "seq": 3,
+                      "stageKey": "implement",
+                      "displayName": "implement",
+                      "verdict": "ok",
+                      "how": "llm",
+                      "howLabel": "simulated",
+                      "note": "diff drafted +41 −9 (below) · 84k tokens",
+                      "metrics": {
+                        "tokens": 84000,
+                        "simulated_writes": 1,
+                        "lines_added": 41,
+                        "lines_removed": 9
+                      },
+                      "skipReason": null,
+                      "startedAt": "2026-10-08T15:05:40.000Z",
+                      "finishedAt": "2026-10-08T15:06:50.000Z"
+                    },
+                    {
+                      "seq": 4,
+                      "stageKey": "build",
+                      "displayName": "build",
+                      "verdict": "ok",
+                      "how": "replayed",
+                      "howLabel": "replayed from history",
+                      "note": "est. 4m 02s (214 similar builds, ±20s)",
+                      "metrics": {
+                        "estimate_ms": 242000,
+                        "sample_count": 214,
+                        "spread_ms": 20000,
+                        "similarity_class": "helios-firmware · pool-a · docker · zephyr-sdk west build"
+                      },
+                      "skipReason": null,
+                      "startedAt": "2026-10-08T15:06:50.000Z",
+                      "finishedAt": "2026-10-08T15:06:51.000Z"
+                    }
+                  ],
+                  "artifacts": [
+                    {
+                      "kind": "overlay_diff",
+                      "content": "@@ drivers/can/arbitration.c · simulated diff (never written to repo) @@",
+                      "truncated": false,
+                      "originalBytes": 72,
+                      "pathSummary": [
+                        {
+                          "path": "drivers/can/arbitration.c",
+                          "added": 41,
+                          "removed": 9
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found`, or `dry_run_not_found` — no such dry run of this workflow for this caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — an id that is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workflows/{id}/dry-runs/{dryRunId}/events": {
+      "get": {
+        "tags": [
+          "dry-runs"
+        ],
+        "summary": "Follow a dry run's progress, live",
+        "description": "The card's live rows. The answer is `text/event-stream`; each event's `event:` field is\nits `kind` and its `data:` the JSON object described by `DryRunStreamEvent`:\n\n* `accepted` — always first: the dry run as recorded;\n* `stage_started` — a row has begun (it is *running*);\n* `stage_finished` — a row has its result, with its verdict;\n* `guard_blocked` — the tool boundary refused a call, as it happened;\n* `done` — always last: the dry run as it ended, with its rows, artifacts and **totals**.\n\nEvents arrive in stage order. A row with no event yet is *queued*. A subscriber that\narrives late is replayed the stream from the top; a dry run that has already ended\nanswers `accepted`, its rows as `stage_finished`, and `done`. Everything that can refuse\nthe request is checked before the stream opens, so a refusal is an ordinary error\nenvelope.",
+        "operationId": "followDryRun",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowId"
+          },
+          {
+            "$ref": "#/components/parameters/DryRunId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The stream.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/DryRunStreamEvent"
+                },
+                "example": "event: stage_started\ndata: {\"kind\":\"stage_started\",\"seq\":4,\"stageKey\":\"build\",\"displayName\":\"build\"}\n\nevent: stage_finished\ndata: {\"kind\":\"stage_finished\",\"stage\":{\"seq\":4,\"stageKey\":\"build\",\"displayName\":\"build\",\"verdict\":\"ok\",\"how\":\"replayed\",\"howLabel\":\"replayed from history\",\"note\":\"est. 4m 02s (214 similar builds, ±20s)\",\"metrics\":{\"estimate_ms\":242000,\"sample_count\":214,\"spread_ms\":20000,\"similarity_class\":\"x\"},\"skipReason\":null,\"startedAt\":\"2026-10-08T15:06:50.000Z\",\"finishedAt\":\"2026-10-08T15:06:51.000Z\"}}\n"
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found`, or `dry_run_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — an id that is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workflows/{id}/dry-runs/{dryRunId}/cancel": {
+      "post": {
+        "tags": [
+          "dry-runs"
+        ],
+        "summary": "Cancel a running dry run",
+        "description": "Stops the run. The rows it reached are kept, and it ends `cancelled` — a terminal state\nof its own, with no `failureReason`: it did not fail, and it did not reach its budget.\n\nOwner, admin and member.",
+        "operationId": "cancelDryRun",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowId"
+          },
+          {
+            "$ref": "#/components/parameters/DryRunId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The dry run as it ended.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DryRun"
+                },
+                "example": {
+                  "id": "5eed008b-0000-4000-8000-000000000002",
+                  "workflowId": "5eed0089-0000-4000-8000-000000000001",
+                  "draft": {
+                    "baseVersion": null,
+                    "rev": 3,
+                    "label": "v0.3"
+                  },
+                  "ticket": {
+                    "id": "5eed0088-0000-4000-8000-000000000489",
+                    "key": "#489",
+                    "title": "CAN arbitration-lost storm under full telemetry load",
+                    "url": "https://github.com/acme-robotics/helios-firmware/issues/489"
+                  },
+                  "sessionId": null,
+                  "pinnedSha": "b7e4c2a19f0d3e5b6a7c8d9e0f1a2b3c4d5e6f70",
+                  "mode": "deep",
+                  "status": "cancelled",
+                  "failureReason": null,
+                  "totals": {
+                    "durationMs": 48000,
+                    "costCents": 6,
+                    "tokens": 21000
+                  },
+                  "guardAudit": [],
+                  "guardsClean": true,
+                  "precheckFindings": [],
+                  "startedAt": "2026-10-08T15:05:00.000Z",
+                  "finishedAt": "2026-10-08T15:05:48.000Z",
+                  "stages": [
+                    {
+                      "seq": 1,
+                      "stageKey": "analyze",
+                      "displayName": "analyze",
+                      "verdict": "ok",
+                      "how": "llm",
+                      "howLabel": null,
+                      "note": "mapped 4 files",
+                      "metrics": {
+                        "tokens": 12000,
+                        "files_touched": 4
+                      },
+                      "skipReason": null,
+                      "startedAt": "2026-10-08T15:05:01.000Z",
+                      "finishedAt": "2026-10-08T15:05:30.000Z"
+                    }
+                  ],
+                  "artifacts": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — a viewer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found`, or `dry_run_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`dry_run_not_running` — it has already ended (`details.status`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — an id that is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workflows/{id}/dry-runs/{dryRunId}/rerun": {
+      "post": {
+        "tags": [
+          "dry-runs"
+        ],
+        "summary": "Run a dry run again, on the draft as it is now",
+        "description": "**Re-run dry run.** The same ticket, the same copilot session — and the draft's\n**current** revision, not the one the original tested. That is the point of it: apply a\nsuggestion, re-run, and the new run demonstrates the change. The original stays in the\nhistory beside it.\n\nEverything a start does, it does: a new commit is pinned, the pre-check runs, the budget\nis computed afresh. Owner, admin and member.",
+        "operationId": "rerunDryRun",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowId"
+          },
+          {
+            "$ref": "#/components/parameters/DryRunId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The new dry run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DryRun"
+                },
+                "example": {
+                  "id": "5eed008b-0000-4000-8000-000000000003",
+                  "workflowId": "5eed0089-0000-4000-8000-000000000001",
+                  "draft": {
+                    "baseVersion": null,
+                    "rev": 4,
+                    "label": "v0.4"
+                  },
+                  "ticket": {
+                    "id": "5eed0088-0000-4000-8000-000000000489",
+                    "key": "#489",
+                    "title": "CAN arbitration-lost storm under full telemetry load",
+                    "url": "https://github.com/acme-robotics/helios-firmware/issues/489"
+                  },
+                  "sessionId": "5eed008a-0000-4000-8000-000000000001",
+                  "pinnedSha": "b7e4c2a19f0d3e5b6a7c8d9e0f1a2b3c4d5e6f70",
+                  "mode": "deep",
+                  "status": "running",
+                  "failureReason": null,
+                  "totals": {
+                    "durationMs": null,
+                    "costCents": null,
+                    "tokens": null
+                  },
+                  "guardAudit": [],
+                  "guardsClean": true,
+                  "precheckFindings": [],
+                  "startedAt": "2026-10-08T15:20:00.000Z",
+                  "finishedAt": null,
+                  "stages": [],
+                  "artifacts": [],
+                  "budget": {
+                    "capCents": 500,
+                    "source": "draft_guard",
+                    "workspaceCapCents": 1000,
+                    "draftGuardCents": 500
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — a viewer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found`, `dry_run_not_found`, `dry_run_ticket_not_found`, or `github_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`workflow_draft_absent`, `dry_run_in_progress`, or `github_token_missing`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed`, `dry_run_source_unsupported`, or `dry_run_repository_unresolved`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`engine_unavailable`, `dry_run_commit_unreadable`, or a `github_*` upstream code.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/skills": {
       "get": {
         "tags": [
@@ -45724,6 +46783,17 @@
           "type": "string",
           "format": "uuid"
         }
+      },
+      "DryRunId": {
+        "name": "dryRunId",
+        "in": "path",
+        "required": true,
+        "description": "The dry run — `dry_runs.id`. Anything that is not a uuid is a `422`; a well-formed id\nthat names no dry run of this workflow for this caller is a `404`.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "example": "5eed008b-0000-4000-8000-000000000001"
       },
       "WorkflowId": {
         "name": "id",
@@ -75567,6 +76637,1036 @@
             "$ref": "#/components/schemas/CopilotDraft"
           }
         }
+      },
+      "StartDryRunRequest": {
+        "type": "object",
+        "title": "StartDryRunRequest",
+        "description": "The body of `POST /api/v1/workflows/{id}/dry-runs`.",
+        "additionalProperties": false,
+        "required": [
+          "ticketId",
+          "draftRev"
+        ],
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The canonical ticket to run against — `tickets.id`, whatever tracker it came from."
+          },
+          "draftRev": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The draft revision the caller is looking at — the `3` of `v0.3`. A dry run tests the\nstored draft; naming the revision turns *the draft moved under me* into a `409`."
+          },
+          "sessionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The copilot session that proposed the dry run, when one did."
+          }
+        }
+      },
+      "DryRunTicket": {
+        "type": "object",
+        "title": "DryRunTicket",
+        "description": "The ticket a dry run ran against.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "key",
+          "title",
+          "url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "key": {
+            "type": "string",
+            "description": "The display key — `#489`, `PROJ-142`."
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "description": "The ticket in its own tracker."
+          }
+        }
+      },
+      "DryRunStage": {
+        "type": "object",
+        "title": "DryRunStage",
+        "description": "One result row of the dry-run card. `verdict` is what happened and `how` is how the\nresult was produced — the honesty of the card. A `replayed` row is a statistical\nestimate, not a measurement, and its `metrics` carry the estimate with its sample.",
+        "additionalProperties": false,
+        "required": [
+          "seq",
+          "stageKey",
+          "displayName",
+          "verdict",
+          "how",
+          "howLabel",
+          "note",
+          "metrics",
+          "skipReason",
+          "startedAt",
+          "finishedAt"
+        ],
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The row's place on the card, from 1."
+          },
+          "stageKey": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "What the card prints — `review ×2` for two parallel reviewers sharing a row."
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "skipped",
+              "failed",
+              "not_reached"
+            ]
+          },
+          "how": {
+            "type": "string",
+            "enum": [
+              "llm",
+              "replayed",
+              "deterministic",
+              "skipped"
+            ],
+            "description": "A real model call, a replay of history, a deterministic evaluation, or nothing."
+          },
+          "howLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "replayed from history",
+              "skipped",
+              "simulated",
+              null
+            ],
+            "description": "Derived from `how` and `metrics`, never stored — `simulated` is a model stage whose writes were virtualized."
+          },
+          "note": {
+            "type": "string",
+            "description": "The composed result line; blank only for a stage the run never reached."
+          },
+          "metrics": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "`tokens`, `cost_cents` (absent when unpriced), `files_touched`, `simulated_writes`,\n`lines_added`, `lines_removed`; on a replay also `estimate_ms`, `sample_count`,\n`spread_ms`, `similarity_class` and `window_days`, or `insufficient_history`."
+          },
+          "skipReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why a skipped stage had nothing to do — set exactly when `verdict` is `skipped`."
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "DryRunArtifact": {
+        "type": "object",
+        "title": "DryRunArtifact",
+        "description": "The simulated diff — never written to the repository — or an excerpt of the plan or the reviews, at most 64 KiB.",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "content",
+          "truncated",
+          "originalBytes",
+          "pathSummary"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "overlay_diff",
+              "plan_excerpt",
+              "review_excerpt"
+            ]
+          },
+          "content": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "Whether `content` is a prefix of something larger."
+          },
+          "originalBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The size before truncation."
+          },
+          "pathSummary": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "The diff's files and ± counts; `null` on an excerpt.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "added",
+                "removed"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "added": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "removed": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        }
+      },
+      "DryRunGuardAuditEntry": {
+        "type": "object",
+        "title": "DryRunGuardAuditEntry",
+        "description": "One call the tool boundary refused, and how often.",
+        "additionalProperties": false,
+        "required": [
+          "guard",
+          "call",
+          "count"
+        ],
+        "properties": {
+          "guard": {
+            "type": "string",
+            "description": "Which guard held — `allow_list`, `workspace_boundary`."
+          },
+          "call": {
+            "type": "string",
+            "description": "What was attempted."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "stage_key": {
+            "type": "string",
+            "description": "The stage that attempted it."
+          }
+        }
+      },
+      "DryRunBudget": {
+        "type": "object",
+        "title": "DryRunBudget",
+        "description": "The budget a dry run was started under — the lower of two caps.",
+        "additionalProperties": false,
+        "required": [
+          "capCents",
+          "source",
+          "workspaceCapCents",
+          "draftGuardCents"
+        ],
+        "properties": {
+          "capCents": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The most the run may spend, in cents."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "workspace_cap",
+              "draft_guard"
+            ],
+            "description": "Which cap decided it — the workspace's on a tie."
+          },
+          "workspaceCapCents": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The workspace's dry-run cap."
+          },
+          "draftGuardCents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The draft's own per-run spend guard, or `null` when it carries none."
+          }
+        }
+      },
+      "DryRunTotals": {
+        "type": "object",
+        "title": "DryRunTotals",
+        "description": "Wall time, cost and tokens — each `null` until known, and the cost also when unpriced.",
+        "additionalProperties": false,
+        "required": [
+          "durationMs",
+          "costCents",
+          "tokens"
+        ],
+        "properties": {
+          "durationMs": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "costCents": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "`null` when unpriced — never a fabricated `0`."
+          },
+          "tokens": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        }
+      },
+      "DryRun": {
+        "type": "object",
+        "title": "DryRun",
+        "description": "One deep dry run of a draft revision against a ticket (V111, CC.3) — the dry-run card.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "workflowId",
+          "draft",
+          "ticket",
+          "sessionId",
+          "pinnedSha",
+          "mode",
+          "status",
+          "failureReason",
+          "totals",
+          "guardAudit",
+          "guardsClean",
+          "precheckFindings",
+          "startedAt",
+          "finishedAt",
+          "stages",
+          "artifacts"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflowId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "draft": {
+            "type": "object",
+            "description": "The draft under test.",
+            "additionalProperties": false,
+            "required": [
+              "baseVersion",
+              "rev",
+              "label"
+            ],
+            "properties": {
+              "baseVersion": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "The published version the draft was based on; `null` before the first publish."
+              },
+              "rev": {
+                "type": "integer"
+              },
+              "label": {
+                "type": "string",
+                "examples": [
+                  "v0.3"
+                ]
+              }
+            }
+          },
+          "ticket": {
+            "$ref": "#/components/schemas/DryRunTicket"
+          },
+          "sessionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The copilot session that proposed it, or `null`."
+          },
+          "pinnedSha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$",
+            "description": "The commit the virtual workspace read at."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "deep",
+              "deep_build"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "precheck",
+              "running",
+              "complete",
+              "failed",
+              "budget_stopped",
+              "cancelled"
+            ],
+            "description": "`precheck` → `running` → one of four distinct ends: `complete`; `failed` (a stage\nbroke, the pre-check found problems, or a guard had to hold); `budget_stopped` (the\ncap was reached — the rows so far are kept); `cancelled` (a person stopped it — the\nrows so far are kept)."
+          },
+          "failureReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it stopped — set exactly for `failed` and `budget_stopped`."
+          },
+          "totals": {
+            "$ref": "#/components/schemas/DryRunTotals"
+          },
+          "guardAudit": {
+            "type": "array",
+            "description": "Every call the tool boundary refused — empty on a clean run; populated means the run is `failed`.",
+            "items": {
+              "$ref": "#/components/schemas/DryRunGuardAuditEntry"
+            }
+          },
+          "guardsClean": {
+            "type": "boolean",
+            "description": "Whether `guardAudit` is empty."
+          },
+          "precheckFindings": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "The structural pre-check's anchored findings — `null` until it has run, empty when it passed.",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowFinding"
+            }
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "stages": {
+            "type": "array",
+            "description": "The result rows so far, in card order.",
+            "items": {
+              "$ref": "#/components/schemas/DryRunStage"
+            }
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DryRunArtifact"
+            }
+          },
+          "budget": {
+            "$ref": "#/components/schemas/DryRunBudget"
+          }
+        }
+      },
+      "DryRunSummary": {
+        "type": "object",
+        "title": "DryRunSummary",
+        "description": "One line of the history.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "draftLabel",
+          "draftRev",
+          "ticket",
+          "status",
+          "failureReason",
+          "totals",
+          "guardsClean",
+          "startedAt",
+          "finishedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "draftLabel": {
+            "type": "string",
+            "examples": [
+              "v0.3"
+            ]
+          },
+          "draftRev": {
+            "type": "integer"
+          },
+          "ticket": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "key",
+              "title"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "precheck",
+              "running",
+              "complete",
+              "failed",
+              "budget_stopped",
+              "cancelled"
+            ]
+          },
+          "failureReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "totals": {
+            "$ref": "#/components/schemas/DryRunTotals"
+          },
+          "guardsClean": {
+            "type": "boolean"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "DryRunHistory": {
+        "type": "object",
+        "title": "DryRunHistory",
+        "description": "A workflow's dry-run history — the footer's line and what is behind it.",
+        "additionalProperties": false,
+        "required": [
+          "draft",
+          "count",
+          "spend",
+          "runs"
+        ],
+        "properties": {
+          "draft": {
+            "type": "object",
+            "description": "The draft as it stands now.",
+            "additionalProperties": false,
+            "required": [
+              "label",
+              "rev",
+              "baseVersion",
+              "copilotEdits"
+            ],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "rev": {
+                "type": "integer"
+              },
+              "baseVersion": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "copilotEdits": {
+                "type": "integer",
+                "description": "Operation batches the copilot applied to the current draft."
+              }
+            }
+          },
+          "count": {
+            "type": "integer",
+            "description": "How many dry runs the workflow has had."
+          },
+          "spend": {
+            "type": "object",
+            "description": "The workflow's dry-run accounting — kept apart from loop spend.",
+            "additionalProperties": false,
+            "required": [
+              "costCents",
+              "unpriced"
+            ],
+            "properties": {
+              "costCents": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "The sum of priced dry runs, or `null` when none was priced."
+              },
+              "unpriced": {
+                "type": "integer",
+                "description": "Finished dry runs that carry no price."
+              }
+            }
+          },
+          "runs": {
+            "type": "array",
+            "description": "Newest first, at most 50.",
+            "items": {
+              "$ref": "#/components/schemas/DryRunSummary"
+            }
+          }
+        }
+      },
+      "DryRunCandidate": {
+        "type": "object",
+        "title": "DryRunCandidate",
+        "description": "One ranked candidate of the edge-case picker.",
+        "additionalProperties": false,
+        "required": [
+          "rank",
+          "ticket",
+          "score",
+          "dimensions",
+          "matchesTrigger",
+          "mismatches",
+          "reason"
+        ],
+        "properties": {
+          "rank": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "ticket": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "key",
+              "title",
+              "url",
+              "labels",
+              "effort",
+              "source"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "key": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "labels": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "effort": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "xs",
+                  "s",
+                  "m",
+                  "l",
+                  "xl",
+                  null
+                ]
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "github",
+                  "gitlab",
+                  "jira",
+                  "linear"
+                ]
+              }
+            }
+          },
+          "score": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many of the draft's ticket-testing dimensions it mismatches."
+          },
+          "dimensions": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many such dimensions the draft has."
+          },
+          "matchesTrigger": {
+            "type": "boolean",
+            "description": "Whether the ticket would trigger the workflow as drafted."
+          },
+          "mismatches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "dimension",
+                "where",
+                "detail"
+              ],
+              "properties": {
+                "dimension": {
+                  "type": "string",
+                  "examples": [
+                    "trigger.label:security"
+                  ]
+                },
+                "where": {
+                  "type": "string",
+                  "description": "`trigger`, `stage <id>` or `branch <from> → <to>`."
+                },
+                "detail": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why it ranks where it does, as one sentence."
+          }
+        }
+      },
+      "DryRunCandidates": {
+        "type": "object",
+        "title": "DryRunCandidates",
+        "description": "The picker's answer.",
+        "additionalProperties": false,
+        "required": [
+          "draftLabel",
+          "candidates"
+        ],
+        "properties": {
+          "draftLabel": {
+            "type": "string",
+            "description": "The draft the ranking is for."
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DryRunCandidate"
+            }
+          }
+        }
+      },
+      "DryRunSafetyColumn": {
+        "type": "object",
+        "title": "DryRunSafetyColumn",
+        "description": "One column of the safety strip — a claim, and the mechanism that makes it true.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "holds",
+          "mechanism",
+          "facts"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "simulated_writes",
+              "replayed_infra",
+              "real_models"
+            ]
+          },
+          "holds": {
+            "type": "boolean",
+            "description": "Whether the mechanism is in place. `false` means the page must not make the claim."
+          },
+          "mechanism": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "tools",
+              "path",
+              "detail"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "overlay",
+                  "estimator_service",
+                  "gateway_routing"
+                ]
+              },
+              "tools": {
+                "type": "array",
+                "description": "The harness tools that carry the mechanism.",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "path": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The control-plane path it goes through, when it goes through one."
+              },
+              "detail": {
+                "type": "string"
+              }
+            }
+          },
+          "facts": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Facts the column may print beside the claim."
+          }
+        }
+      },
+      "DryRunSafety": {
+        "type": "object",
+        "title": "DryRunSafety",
+        "description": "The safety strip, derived from the harness's own configuration.",
+        "additionalProperties": false,
+        "required": [
+          "harness",
+          "columns",
+          "absent",
+          "guards",
+          "blockedCallFailsRun"
+        ],
+        "properties": {
+          "harness": {
+            "type": "string",
+            "description": "The harness the claims are about."
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DryRunSafetyColumn"
+            }
+          },
+          "absent": {
+            "type": "array",
+            "description": "The header pill's words, each backed by a capability no tool provides.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "claim",
+                "capability"
+              ],
+              "properties": {
+                "claim": {
+                  "type": "string"
+                },
+                "capability": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "guards": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "refuses"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "refuses": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "blockedCallFailsRun": {
+            "type": "boolean",
+            "const": true,
+            "description": "A dry run whose guards had to hold is failed, never trusted."
+          }
+        }
+      },
+      "DryRunStreamEvent": {
+        "type": "object",
+        "title": "DryRunStreamEvent",
+        "description": "One server-sent event of a dry run — the `data:` of an event whose `event:` field is its\n`kind`. See `followDryRun` for the sequence.",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "stage_started",
+              "stage_finished",
+              "guard_blocked",
+              "done"
+            ]
+          }
+        },
+        "oneOf": [
+          {
+            "type": "object",
+            "title": "accepted",
+            "required": [
+              "kind",
+              "dryRun"
+            ],
+            "properties": {
+              "kind": {
+                "const": "accepted"
+              },
+              "dryRun": {
+                "$ref": "#/components/schemas/DryRun"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "stage_started",
+            "required": [
+              "kind",
+              "seq",
+              "stageKey",
+              "displayName"
+            ],
+            "properties": {
+              "kind": {
+                "const": "stage_started"
+              },
+              "seq": {
+                "type": "integer"
+              },
+              "stageKey": {
+                "type": "string"
+              },
+              "displayName": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "stage_finished",
+            "required": [
+              "kind",
+              "stage"
+            ],
+            "properties": {
+              "kind": {
+                "const": "stage_finished"
+              },
+              "stage": {
+                "$ref": "#/components/schemas/DryRunStage"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "guard_blocked",
+            "required": [
+              "kind",
+              "guard",
+              "call",
+              "stageKey"
+            ],
+            "properties": {
+              "kind": {
+                "const": "guard_blocked"
+              },
+              "guard": {
+                "type": "string"
+              },
+              "call": {
+                "type": "string"
+              },
+              "stageKey": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "title": "done",
+            "required": [
+              "kind",
+              "dryRun"
+            ],
+            "properties": {
+              "kind": {
+                "const": "done"
+              },
+              "dryRun": {
+                "$ref": "#/components/schemas/DryRun"
+              }
+            }
+          }
+        ]
       },
       "CopilotStreamEvent": {
         "type": "object",

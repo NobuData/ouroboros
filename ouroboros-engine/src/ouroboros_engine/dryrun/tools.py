@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from .estimates import EstimateUnavailableError, InfraKind, ReplayEstimates
 from .guard import ALLOW_LIST, WORKSPACE_BOUNDARY, Blocked, GuardAudit, is_allowed
@@ -23,6 +23,11 @@ from .workspace import VirtualWorkspace, WorkspaceError
 
 #: The most characters of one file a tool result carries back to the model.
 MAX_READ_CHARS: Final = 60_000
+
+
+#: What a tool does to the world: read the pinned commit, draft a change in the in-memory
+#: overlay, or answer from history instead of running anything.
+ToolEffect = Literal["read", "simulated_write", "replay"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,11 +38,13 @@ class ToolSpec:
         name: What it is called.
         arguments: Its arguments, as ``name: what it is``.
         does: One sentence.
+        effect: What kind of thing it does — the harness description's column for it.
     """
 
     name: str
     arguments: dict[str, str]
     does: str
+    effect: ToolEffect
 
 
 #: The tools, in the order the manifest lists them.
@@ -46,16 +53,19 @@ TOOL_SPECS: Final[tuple[ToolSpec, ...]] = (
         "read_file",
         {"path": "a path from the repository root"},
         "Read a file as it stands in this dry run.",
+        effect="read",
     ),
     ToolSpec(
         "list_dir",
         {"path": 'a directory, or "" for the root'},
         "List a directory's immediate children.",
+        effect="read",
     ),
     ToolSpec(
         "search",
         {"query": "literal text", "path": "optional directory to search under"},
         "Find text in file paths and file contents.",
+        effect="read",
     ),
     ToolSpec(
         "edit_file",
@@ -66,16 +76,19 @@ TOOL_SPECS: Final[tuple[ToolSpec, ...]] = (
         },
         "Draft a change. It is held in memory as a simulated diff; the repository is "
         "never written.",
+        effect="simulated_write",
     ),
     ToolSpec(
         "build",
         {},
         "Estimate the build from the farm's history. Nothing is built.",
+        effect="replay",
     ),
     ToolSpec(
         "run_tests",
         {},
         "Estimate the test run from history. No test is run.",
+        effect="replay",
     ),
 )
 

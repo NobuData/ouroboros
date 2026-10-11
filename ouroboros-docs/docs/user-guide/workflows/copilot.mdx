@@ -1,0 +1,163 @@
+---
+title: "Workflow Copilot"
+sidebar_label: "Copilot"
+sidebar_position: 3
+description: "The deep dry run of a workflow draft: the pre-check, the budget, how a run ends, cancel, re-run, history and choosing an issue to test against."
+---
+
+The **Workflow Copilot** drafts a workflow with you in conversation and then proves the draft
+on one of your own issues with a **dry run**, before anything is published. It edits the same
+draft the [Workflow Studio](./studio.mdx) and the [code view](./code.mdx) edit.
+
+:::info[The page is arriving in parts]
+
+The Copilot's own page — the conversation, the draft's stage list and the dry-run card — is
+not in the app yet. What is delivered is the dry run behind that card, which this page
+describes. Until the page arrives, a dry run is started and read through the
+[REST API](../../cli/rest-api.mdx#the-api-description) from a signed-in session; an API token
+cannot start one.
+
+:::
+
+## Dry runs
+
+A dry run walks a workflow's draft for one issue, the way a loop would, with three
+differences that make it safe to run on a draft:
+
+| What happens | In a dry run |
+| --- | --- |
+| Model stages | Run for real, with the draft's own prompts, skills and routing. This is what a dry run tests. |
+| Edits to the repository | Held in memory as a **simulated diff**. Nothing is written, pushed or opened as a pull request, and nothing is merged. |
+| Build and test stages | **Replayed from history**: an estimate from similar past builds and test runs, with how many it is based on and how much they varied. Nothing is built or run. |
+
+It is not the Studio's [**Dry run**](./studio.mdx#dry-runs), which walks the graph without
+calling a model and costs nothing. A dry run here calls models and has a cost, so it has a
+budget.
+
+A dry run is kept apart from your loops. It is not a run, and its cost is not counted in any
+run, dashboard or spend figure.
+
+### Starting a dry run
+
+A dry run needs three things:
+
+- **A draft.** The dry run tests the workflow's saved draft at the revision you are looking
+  at — `v0.3`, for example. If the draft has changed since you opened it, the dry run is
+  refused and you are asked to reload.
+- **An issue.** An issue from a GitHub, GitLab, Jira or Linear source that names a GitHub
+  repository mirrored for the workspace. An issue that names none is refused, because the dry
+  run would have nothing to read.
+- **The workspace's backlog token**, the GitHub token the repository is read with. Without one
+  the dry run is refused. See
+  [Setting the backlog token](../../administration/sources.mdx#setting-the-backlog-token).
+
+Owners, admins and members can start, cancel and re-run a dry run. Viewers can read them.
+
+A workflow has **one dry run at a time**. Starting a second while the first is still going is
+refused; follow the first or cancel it.
+
+When a dry run starts, Ouroboros notes the newest commit on the repository's default branch.
+Every stage reads the repository as it was at that commit, so an edit made while the dry run
+is going does not change what it sees.
+
+### The structural pre-check
+
+Before any model is called, the draft is checked for structural problems — a stage nothing
+leads to, a branch with no condition, a trigger that is not valid. These are the same checks
+[**Validate**](./studio.mdx#validation) runs.
+
+If the check finds a problem, the dry run ends at once as **failed**, lists each finding
+against the stage or edge it is about, and **calls nothing** — no model, no estimate and no
+repository read, so it costs nothing. Fix the draft and start again.
+
+A stage that names a skill, a task route or a model alias that does not exist yet is not a
+structural problem. The dry run still runs: a stage whose model cannot be resolved is
+**skipped** with the reason, and a stage whose skill does not exist runs without it and says
+so.
+
+### The budget
+
+A dry run stops spending at its **budget**, which is the lower of two caps:
+
+- **The workspace's dry-run cap** — `$10.00` unless your administrator has changed it. See
+  [The dry-run cap](../../administration/policies.mdx#the-dry-run-cap).
+- **The draft's own spend guard** — a per-run cap set on the draft in conversation with the
+  Copilot, such as *cap spend at $5 a run*. A draft with none has only the workspace's cap.
+
+For example, a draft with a `$5.00` spend guard in a workspace capped at `$10.00` has a budget
+of `$5.00`. A dry run says which of the two caps set its budget.
+
+### How a dry run ends
+
+A dry run reports each stage as it starts and as it finishes, in order. It ends in one of
+four ways:
+
+| Ends as | Meaning | What is kept |
+| --- | --- | --- |
+| **complete** | Every stage that could run did. | Every row, the simulated diff, the totals. |
+| **budget stopped** | The budget was reached. | The rows reached so far; the rest are marked not reached. |
+| **cancelled** | Someone cancelled it. | The rows reached so far. |
+| **failed** | The pre-check found a problem, a stage failed, or a guard blocked a call. | The findings, or the rows reached so far, with the reason. |
+
+Each finished stage shows what happened and **how the result was produced**: a real model
+call, **simulated** (a model stage whose edits were held in memory), **replayed from history**
+(an estimate), or **skipped** with the reason.
+
+The totals are the time taken, the tokens used and the cost. A cost is left blank when the
+models used have no price set; it is never shown as `$0.00`.
+
+#### Guards
+
+Stages in a dry run can only read the repository, draft edits in memory, and ask for a build
+or test estimate. If a stage tries anything else — running a command, pushing, opening a pull
+request, reaching the network — the attempt is blocked and recorded.
+
+A dry run that had to block an attempt **fails**, even if every stage finished. Its result
+lists what was attempted and by which stage. A clean dry run lists nothing.
+
+### Cancelling
+
+Cancelling stops a dry run that is still going. The rows it had reached are kept, and it ends
+as **cancelled** — not failed, and not budget stopped. A dry run that has already ended cannot
+be cancelled.
+
+### Re-running
+
+A re-run starts a new dry run against the **same issue** and the draft **as it is now** — not
+the revision the first run tested. Change the draft, re-run, and the new dry run shows what
+the change did. The first run stays in the history beside it.
+
+A re-run does everything a new dry run does: it notes the newest commit, runs the pre-check
+and works out the budget again.
+
+### History
+
+Each workflow keeps its dry runs, newest first. The history says how many there have been and
+which draft is current, for example `1 dry run · draft v0.3 (2 copilot edits applied)`. Each
+entry shows the draft revision and issue it tested, how it ended, and its totals, so two runs
+of the same issue before and after an edit can be compared.
+
+The history also gives the total the workflow's dry runs have cost.
+
+### Choosing an issue
+
+A dry run is most useful on an issue that does **not** fit what the workflow expects, because
+that is the issue that shows what the workflow's conditions do. Ouroboros ranks the
+workspace's open, sized issues for a draft and gives a reason for each.
+
+It looks at everything in the draft that tests the issue:
+
+- each condition of the trigger — every required label, the largest effort, the source;
+- each stage or branch that tests the issue's labels, effort or source.
+
+An issue scores one point for each of these it does **not** meet. The highest score comes
+first; equal scores go to the issue updated most recently.
+
+For example, for a draft triggered by the label `security`:
+
+| Rank | Issue | Reason |
+| --- | --- | --- |
+| 1 | `#489` — labels `bug`, `can-bus` | no `security` label (trigger) — outside the trigger, so it exercises the path a matching issue would not. |
+| 2 | `#550` — labels `ota`, `security` | Meets every condition — exercises the main path. |
+
+The Copilot uses the same ranking when it suggests an issue to dry-run against.

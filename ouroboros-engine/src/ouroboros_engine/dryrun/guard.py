@@ -34,6 +34,12 @@ ALLOW_LIST: Final = "allow_list"
 #: The guard that refuses a path outside the repository.
 WORKSPACE_BOUNDARY: Final = "workspace_boundary"
 
+#: Every guard at the tool boundary, with what it refuses — the harness description's rows.
+GUARDS: Final[dict[str, str]] = {
+    ALLOW_LIST: "Refuses any tool that is not on the allow-list; the call is never run.",
+    WORKSPACE_BOUNDARY: "Refuses a path outside the repository's own tree.",
+}
+
 #: What a dry run must not be able to do, and what a model might call it.
 FORBIDDEN_CAPABILITIES: Final[dict[str, tuple[str, ...]]] = {
     "network_egress": (

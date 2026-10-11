@@ -6740,6 +6740,230 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workflows/{id}/dry-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a workflow's dry-run history
+         * @description The footer's `history: 1 dry run · draft v0.3 (2 copilot edits applied)`: how many dry
+         *     runs the workflow has had, the draft as it stands now, and the runs newest first — each
+         *     with the draft revision and ticket it tested, so two runs of the same ticket before and
+         *     after an edit sit side by side.
+         *
+         *     `spend` is the workflow's **dry-run accounting**: the sum of what its dry runs cost. It
+         *     is kept apart from loop spend — a dry run is in no run, stage or usage figure.
+         */
+        get: operations["listDryRuns"];
+        put?: never;
+        /**
+         * Start a deep dry run of the draft against a ticket
+         * @description Mockup 20's **Dry run** — CD.4
+         *     ([#562](https://github.com/NobuData/ouroboros/issues/562)). The stored draft is walked
+         *     for one canonical ticket by the dry-run harness: real models, simulated writes, replayed
+         *     infrastructure, and nothing written anywhere but the dry run's own record.
+         *
+         *     In order:
+         *
+         *     1. the workflow, its draft at `draftRev`, the ticket and the repository it names are
+         *        resolved — every refusal below happens here, before anything is recorded;
+         *     2. the commit the virtual workspace reads at is pinned (the head of the repository's
+         *        default branch);
+         *     3. the dry run is recorded and the **structural pre-check** runs — the DSL validator,
+         *        then the engine's (R.2). A draft that fails it answers `201` with a dry run that is
+         *        already `failed` and carries the anchored `precheckFindings`: **no model, estimator
+         *        or repository read was invoked**;
+         *     4. the budget is the lower of the workspace's dry-run cap and the draft's own spend
+         *        guard (`budget` says which);
+         *     5. each model stage's alias and knowledge are resolved, and the run is dispatched.
+         *
+         *     The answer comes back as soon as the run is dispatched. Follow it on
+         *     `…/dry-runs/{dryRunId}/events`; it ends `complete`, `failed`, `budget_stopped` or
+         *     `cancelled`, each distinct. A populated `guardAudit` always means `failed`.
+         *
+         *     A dry run tests the draft **at the revision named**: a draft that moved since is a `409`.
+         *     One dry run per workflow at a time. Owner, admin and member may start one; a viewer may
+         *     not — it spends the workspace's money on real models.
+         */
+        post: operations["startDryRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/{id}/dry-runs/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Rank the tickets most worth dry-running the draft against
+         * @description The **Dry-run another issue ▾** menu — decision **W8**. A workflow is best tested
+         *     against an issue that does *not* match its assumptions, because that is the ticket that
+         *     exercises the conditional path nobody otherwise sees.
+         *
+         *     Everything in the draft that tests the ticket is one dimension: each trigger condition
+         *     (one per required label, `effort_lte`, `source`) and each `labels`, `effort` or `source`
+         *     predicate on a fork or a branch. A candidate's `score` is how many dimensions it
+         *     **mismatches**; the highest first, ties to the most recently updated ticket and then the
+         *     lower key. Every candidate carries its `reason`, and a ticket that meets everything says
+         *     so — it exercises the main path.
+         *
+         *     The candidates are the workspace's open, sized canonical tickets, whatever tracker they
+         *     came from. The copilot's `lookup_tickets` ranks with the same scorer.
+         */
+        get: operations["listDryRunCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/{id}/dry-runs/safety": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the safety strip — three claims, each with the mechanism behind it
+         * @description The dry-run card stands on three claims: *writes are simulated*, *infrastructure is
+         *     replayed*, *the models are real*. This serves them as data **derived from the harness's
+         *     own configuration** — the engine's `GET /v0/dry-runs/harness`: the table that dispatches
+         *     a tool call, the guards that refuse one, the paths it asks — so the page claims only
+         *     what the mechanism enforces.
+         *
+         *     A column `holds` only while its mechanism is in place: change a guard or a tool in the
+         *     engine and this answer changes with it. `absent` is the header pill's words (`no writes`
+         *     · `no PRs` · `no merges`), each present only while the capability behind it is one no
+         *     tool provides.
+         */
+        get: operations["readDryRunSafety"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/{id}/dry-runs/{dryRunId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one dry run, whole
+         * @description The dry-run card: the header (ticket, draft revision, the commit read at, `2m 41s ·
+         *     $0.31`), the result rows in order with the truth of how each was produced (`howLabel`:
+         *     `simulated`, `replayed from history`, `skipped`), the simulated diff and excerpts, the
+         *     guard audit, and — for a draft that failed its pre-check — the anchored findings.
+         *
+         *     A cost is `null` when unpriced, never a fabricated `0`. A run still in flight answers
+         *     with the rows it has reached.
+         */
+        get: operations["readDryRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/{id}/dry-runs/{dryRunId}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Follow a dry run's progress, live
+         * @description The card's live rows. The answer is `text/event-stream`; each event's `event:` field is
+         *     its `kind` and its `data:` the JSON object described by `DryRunStreamEvent`:
+         *
+         *     * `accepted` — always first: the dry run as recorded;
+         *     * `stage_started` — a row has begun (it is *running*);
+         *     * `stage_finished` — a row has its result, with its verdict;
+         *     * `guard_blocked` — the tool boundary refused a call, as it happened;
+         *     * `done` — always last: the dry run as it ended, with its rows, artifacts and **totals**.
+         *
+         *     Events arrive in stage order. A row with no event yet is *queued*. A subscriber that
+         *     arrives late is replayed the stream from the top; a dry run that has already ended
+         *     answers `accepted`, its rows as `stage_finished`, and `done`. Everything that can refuse
+         *     the request is checked before the stream opens, so a refusal is an ordinary error
+         *     envelope.
+         */
+        get: operations["followDryRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/{id}/dry-runs/{dryRunId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a running dry run
+         * @description Stops the run. The rows it reached are kept, and it ends `cancelled` — a terminal state
+         *     of its own, with no `failureReason`: it did not fail, and it did not reach its budget.
+         *
+         *     Owner, admin and member.
+         */
+        post: operations["cancelDryRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/{id}/dry-runs/{dryRunId}/rerun": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run a dry run again, on the draft as it is now
+         * @description **Re-run dry run.** The same ticket, the same copilot session — and the draft's
+         *     **current** revision, not the one the original tested. That is the point of it: apply a
+         *     suggestion, re-run, and the new run demonstrates the change. The original stays in the
+         *     history beside it.
+         *
+         *     Everything a start does, it does: a new commit is pinned, the pre-check runs, the budget
+         *     is computed afresh. Owner, admin and member.
+         */
+        post: operations["rerunDryRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/skills": {
         parameters: {
             query?: never;
@@ -25165,6 +25389,364 @@ export interface components {
             draft: components["schemas"]["CopilotDraft"];
         };
         /**
+         * StartDryRunRequest
+         * @description The body of `POST /api/v1/workflows/{id}/dry-runs`.
+         */
+        StartDryRunRequest: {
+            /**
+             * Format: uuid
+             * @description The canonical ticket to run against — `tickets.id`, whatever tracker it came from.
+             */
+            ticketId: string;
+            /**
+             * @description The draft revision the caller is looking at — the `3` of `v0.3`. A dry run tests the
+             *     stored draft; naming the revision turns *the draft moved under me* into a `409`.
+             */
+            draftRev: number;
+            /**
+             * Format: uuid
+             * @description The copilot session that proposed the dry run, when one did.
+             */
+            sessionId?: string;
+        };
+        /**
+         * DryRunTicket
+         * @description The ticket a dry run ran against.
+         */
+        DryRunTicket: {
+            /** Format: uuid */
+            id: string;
+            /** @description The display key — `#489`, `PROJ-142`. */
+            key: string;
+            title: string;
+            /** @description The ticket in its own tracker. */
+            url: string;
+        };
+        /**
+         * DryRunStage
+         * @description One result row of the dry-run card. `verdict` is what happened and `how` is how the
+         *     result was produced — the honesty of the card. A `replayed` row is a statistical
+         *     estimate, not a measurement, and its `metrics` carry the estimate with its sample.
+         */
+        DryRunStage: {
+            /** @description The row's place on the card, from 1. */
+            seq: number;
+            stageKey: string;
+            /** @description What the card prints — `review ×2` for two parallel reviewers sharing a row. */
+            displayName: string;
+            /** @enum {string} */
+            verdict: "ok" | "skipped" | "failed" | "not_reached";
+            /**
+             * @description A real model call, a replay of history, a deterministic evaluation, or nothing.
+             * @enum {string}
+             */
+            how: "llm" | "replayed" | "deterministic" | "skipped";
+            /**
+             * @description Derived from `how` and `metrics`, never stored — `simulated` is a model stage whose writes were virtualized.
+             * @enum {string|null}
+             */
+            howLabel: "replayed from history" | "skipped" | "simulated" | null;
+            /** @description The composed result line; blank only for a stage the run never reached. */
+            note: string;
+            /**
+             * @description `tokens`, `cost_cents` (absent when unpriced), `files_touched`, `simulated_writes`,
+             *     `lines_added`, `lines_removed`; on a replay also `estimate_ms`, `sample_count`,
+             *     `spread_ms`, `similarity_class` and `window_days`, or `insufficient_history`.
+             */
+            metrics: {
+                [key: string]: unknown;
+            };
+            /** @description Why a skipped stage had nothing to do — set exactly when `verdict` is `skipped`. */
+            skipReason: string | null;
+            /** Format: date-time */
+            startedAt: string | null;
+            /** Format: date-time */
+            finishedAt: string | null;
+        };
+        /**
+         * DryRunArtifact
+         * @description The simulated diff — never written to the repository — or an excerpt of the plan or the reviews, at most 64 KiB.
+         */
+        DryRunArtifact: {
+            /** @enum {string} */
+            kind: "overlay_diff" | "plan_excerpt" | "review_excerpt";
+            content: string;
+            /** @description Whether `content` is a prefix of something larger. */
+            truncated: boolean;
+            /** @description The size before truncation. */
+            originalBytes: number;
+            /** @description The diff's files and ± counts; `null` on an excerpt. */
+            pathSummary: {
+                path: string;
+                added: number;
+                removed: number;
+            }[] | null;
+        };
+        /**
+         * DryRunGuardAuditEntry
+         * @description One call the tool boundary refused, and how often.
+         */
+        DryRunGuardAuditEntry: {
+            /** @description Which guard held — `allow_list`, `workspace_boundary`. */
+            guard: string;
+            /** @description What was attempted. */
+            call: string;
+            count: number;
+            /** @description The stage that attempted it. */
+            stage_key?: string;
+        };
+        /**
+         * DryRunBudget
+         * @description The budget a dry run was started under — the lower of two caps.
+         */
+        DryRunBudget: {
+            /** @description The most the run may spend, in cents. */
+            capCents: number;
+            /**
+             * @description Which cap decided it — the workspace's on a tie.
+             * @enum {string}
+             */
+            source: "workspace_cap" | "draft_guard";
+            /** @description The workspace's dry-run cap. */
+            workspaceCapCents: number;
+            /** @description The draft's own per-run spend guard, or `null` when it carries none. */
+            draftGuardCents: number | null;
+        };
+        /**
+         * DryRunTotals
+         * @description Wall time, cost and tokens — each `null` until known, and the cost also when unpriced.
+         */
+        DryRunTotals: {
+            durationMs: number | null;
+            /** @description `null` when unpriced — never a fabricated `0`. */
+            costCents: number | null;
+            tokens: number | null;
+        };
+        /**
+         * DryRun
+         * @description One deep dry run of a draft revision against a ticket (V111, CC.3) — the dry-run card.
+         */
+        DryRun: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            workflowId: string;
+            /** @description The draft under test. */
+            draft: {
+                /** @description The published version the draft was based on; `null` before the first publish. */
+                baseVersion: number | null;
+                rev: number;
+                /** @example v0.3 */
+                label: string;
+            };
+            ticket: components["schemas"]["DryRunTicket"];
+            /**
+             * Format: uuid
+             * @description The copilot session that proposed it, or `null`.
+             */
+            sessionId: string | null;
+            /** @description The commit the virtual workspace read at. */
+            pinnedSha: string;
+            /** @enum {string} */
+            mode: "deep" | "deep_build";
+            /**
+             * @description `precheck` → `running` → one of four distinct ends: `complete`; `failed` (a stage
+             *     broke, the pre-check found problems, or a guard had to hold); `budget_stopped` (the
+             *     cap was reached — the rows so far are kept); `cancelled` (a person stopped it — the
+             *     rows so far are kept).
+             * @enum {string}
+             */
+            status: "precheck" | "running" | "complete" | "failed" | "budget_stopped" | "cancelled";
+            /** @description Why it stopped — set exactly for `failed` and `budget_stopped`. */
+            failureReason: string | null;
+            totals: components["schemas"]["DryRunTotals"];
+            /** @description Every call the tool boundary refused — empty on a clean run; populated means the run is `failed`. */
+            guardAudit: components["schemas"]["DryRunGuardAuditEntry"][];
+            /** @description Whether `guardAudit` is empty. */
+            guardsClean: boolean;
+            /** @description The structural pre-check's anchored findings — `null` until it has run, empty when it passed. */
+            precheckFindings: components["schemas"]["WorkflowFinding"][] | null;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            finishedAt: string | null;
+            /** @description The result rows so far, in card order. */
+            stages: components["schemas"]["DryRunStage"][];
+            artifacts: components["schemas"]["DryRunArtifact"][];
+            budget?: components["schemas"]["DryRunBudget"];
+        };
+        /**
+         * DryRunSummary
+         * @description One line of the history.
+         */
+        DryRunSummary: {
+            /** Format: uuid */
+            id: string;
+            /** @example v0.3 */
+            draftLabel: string;
+            draftRev: number;
+            ticket: {
+                key: string;
+                title: string;
+            };
+            /** @enum {string} */
+            status: "precheck" | "running" | "complete" | "failed" | "budget_stopped" | "cancelled";
+            failureReason: string | null;
+            totals: components["schemas"]["DryRunTotals"];
+            guardsClean: boolean;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            finishedAt: string | null;
+        };
+        /**
+         * DryRunHistory
+         * @description A workflow's dry-run history — the footer's line and what is behind it.
+         */
+        DryRunHistory: {
+            /** @description The draft as it stands now. */
+            draft: {
+                label: string;
+                rev: number;
+                baseVersion: number | null;
+                /** @description Operation batches the copilot applied to the current draft. */
+                copilotEdits: number;
+            };
+            /** @description How many dry runs the workflow has had. */
+            count: number;
+            /** @description The workflow's dry-run accounting — kept apart from loop spend. */
+            spend: {
+                /** @description The sum of priced dry runs, or `null` when none was priced. */
+                costCents: number | null;
+                /** @description Finished dry runs that carry no price. */
+                unpriced: number;
+            };
+            /** @description Newest first, at most 50. */
+            runs: components["schemas"]["DryRunSummary"][];
+        };
+        /**
+         * DryRunCandidate
+         * @description One ranked candidate of the edge-case picker.
+         */
+        DryRunCandidate: {
+            rank: number;
+            ticket: {
+                /** Format: uuid */
+                id: string;
+                key: string;
+                title: string;
+                url: string;
+                labels: string[];
+                /** @enum {string|null} */
+                effort: "xs" | "s" | "m" | "l" | "xl" | null;
+                /** @enum {string} */
+                source: "github" | "gitlab" | "jira" | "linear";
+            };
+            /** @description How many of the draft's ticket-testing dimensions it mismatches. */
+            score: number;
+            /** @description How many such dimensions the draft has. */
+            dimensions: number;
+            /** @description Whether the ticket would trigger the workflow as drafted. */
+            matchesTrigger: boolean;
+            mismatches: {
+                /** @example trigger.label:security */
+                dimension: string;
+                /** @description `trigger`, `stage <id>` or `branch <from> → <to>`. */
+                where: string;
+                detail: string;
+            }[];
+            /** @description Why it ranks where it does, as one sentence. */
+            reason: string;
+        };
+        /**
+         * DryRunCandidates
+         * @description The picker's answer.
+         */
+        DryRunCandidates: {
+            /** @description The draft the ranking is for. */
+            draftLabel: string;
+            candidates: components["schemas"]["DryRunCandidate"][];
+        };
+        /**
+         * DryRunSafetyColumn
+         * @description One column of the safety strip — a claim, and the mechanism that makes it true.
+         */
+        DryRunSafetyColumn: {
+            /** @enum {string} */
+            id: "simulated_writes" | "replayed_infra" | "real_models";
+            /** @description Whether the mechanism is in place. `false` means the page must not make the claim. */
+            holds: boolean;
+            mechanism: {
+                /** @enum {string} */
+                kind: "overlay" | "estimator_service" | "gateway_routing";
+                /** @description The harness tools that carry the mechanism. */
+                tools: string[];
+                /** @description The control-plane path it goes through, when it goes through one. */
+                path: string | null;
+                detail: string;
+            };
+            /** @description Facts the column may print beside the claim. */
+            facts: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * DryRunSafety
+         * @description The safety strip, derived from the harness's own configuration.
+         */
+        DryRunSafety: {
+            /** @description The harness the claims are about. */
+            harness: string;
+            columns: components["schemas"]["DryRunSafetyColumn"][];
+            /** @description The header pill's words, each backed by a capability no tool provides. */
+            absent: {
+                claim: string;
+                capability: string;
+            }[];
+            guards: {
+                name: string;
+                refuses: string;
+            }[];
+            /**
+             * @description A dry run whose guards had to hold is failed, never trusted.
+             * @constant
+             */
+            blockedCallFailsRun: true;
+        };
+        /**
+         * DryRunStreamEvent
+         * @description One server-sent event of a dry run — the `data:` of an event whose `event:` field is its
+         *     `kind`. See `followDryRun` for the sequence.
+         */
+        DryRunStreamEvent: {
+            /** @enum {string} */
+            kind: "accepted" | "stage_started" | "stage_finished" | "guard_blocked" | "done";
+        } & ({
+            /** @constant */
+            kind: "accepted";
+            dryRun: components["schemas"]["DryRun"];
+        } | {
+            /** @constant */
+            kind: "stage_started";
+            seq: number;
+            stageKey: string;
+            displayName: string;
+        } | {
+            /** @constant */
+            kind: "stage_finished";
+            stage: components["schemas"]["DryRunStage"];
+        } | {
+            /** @constant */
+            kind: "guard_blocked";
+            guard: string;
+            call: string;
+            stageKey: string;
+        } | {
+            /** @constant */
+            kind: "done";
+            dryRun: components["schemas"]["DryRun"];
+        });
+        /**
          * CopilotStreamEvent
          * @description One server-sent event of an exchange — the `data:` of an event whose `event:` field is
          *     its `kind`. See `sendCopilotMessage` for the sequence.
@@ -29847,6 +30429,12 @@ export interface components {
         CopilotSessionId: string;
         /** @description The copilot reply whose question is being answered — `copilot_messages.id`, a uuid. */
         CopilotMessageId: string;
+        /**
+         * @description The dry run — `dry_runs.id`. Anything that is not a uuid is a `422`; a well-formed id
+         *     that names no dry run of this workflow for this caller is a `404`.
+         * @example 5eed008b-0000-4000-8000-000000000001
+         */
+        DryRunId: string;
         /**
          * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
          *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
@@ -61667,6 +62255,1337 @@ export interface operations {
              *     no such question, did not offer that option, or the question was already answered.
              */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listDryRuns: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "draft": {
+                     *         "label": "v0.3",
+                     *         "rev": 3,
+                     *         "baseVersion": null,
+                     *         "copilotEdits": 2
+                     *       },
+                     *       "count": 1,
+                     *       "spend": {
+                     *         "costCents": 31,
+                     *         "unpriced": 0
+                     *       },
+                     *       "runs": [
+                     *         {
+                     *           "id": "5eed008b-0000-4000-8000-000000000001",
+                     *           "draftLabel": "v0.3",
+                     *           "draftRev": 3,
+                     *           "ticket": {
+                     *             "key": "#489",
+                     *             "title": "CAN arbitration-lost storm under full telemetry load"
+                     *           },
+                     *           "status": "complete",
+                     *           "failureReason": null,
+                     *           "totals": {
+                     *             "durationMs": 161000,
+                     *             "costCents": 31,
+                     *             "tokens": 96000
+                     *           },
+                     *           "guardsClean": true,
+                     *           "startedAt": "2026-10-08T15:05:00.000Z",
+                     *           "finishedAt": "2026-10-08T15:07:41.000Z"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DryRunHistory"];
+                };
+            };
+            /** @description `organization_required`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workflow_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    startDryRun: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "ticketId": "5eed0088-0000-4000-8000-000000000489",
+                 *       "draftRev": 3,
+                 *       "sessionId": "5eed008a-0000-4000-8000-000000000001"
+                 *     }
+                 */
+                "application/json": components["schemas"]["StartDryRunRequest"];
+            };
+        };
+        responses: {
+            /** @description The dry run as recorded — `running` with its budget, or `failed` with the pre-check's findings. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed008b-0000-4000-8000-000000000002",
+                     *       "workflowId": "5eed0089-0000-4000-8000-000000000001",
+                     *       "draft": {
+                     *         "baseVersion": null,
+                     *         "rev": 3,
+                     *         "label": "v0.3"
+                     *       },
+                     *       "ticket": {
+                     *         "id": "5eed0088-0000-4000-8000-000000000489",
+                     *         "key": "#489",
+                     *         "title": "CAN arbitration-lost storm under full telemetry load",
+                     *         "url": "https://github.com/acme-robotics/helios-firmware/issues/489"
+                     *       },
+                     *       "sessionId": "5eed008a-0000-4000-8000-000000000001",
+                     *       "pinnedSha": "b7e4c2a19f0d3e5b6a7c8d9e0f1a2b3c4d5e6f70",
+                     *       "mode": "deep",
+                     *       "status": "running",
+                     *       "failureReason": null,
+                     *       "totals": {
+                     *         "durationMs": null,
+                     *         "costCents": null,
+                     *         "tokens": null
+                     *       },
+                     *       "guardAudit": [],
+                     *       "guardsClean": true,
+                     *       "precheckFindings": [],
+                     *       "startedAt": "2026-10-08T15:05:00.000Z",
+                     *       "finishedAt": null,
+                     *       "stages": [],
+                     *       "artifacts": [],
+                     *       "budget": {
+                     *         "capCents": 500,
+                     *         "source": "draft_guard",
+                     *         "workspaceCapCents": 1000,
+                     *         "draftGuardCents": 500
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DryRun"];
+                };
+            };
+            /** @description `organization_required`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — a viewer. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `workflow_not_found`; `dry_run_ticket_not_found` — no such ticket in this workspace;
+             *     `github_not_found` — GitHub shows the workspace's token no such repository.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `workflow_draft_absent` — the workflow has no draft open;
+             *     `dry_run_draft_stale` — the draft is not at `draftRev` (`details.currentDraftRev`);
+             *     `dry_run_in_progress` — a dry run of this workflow has not ended (`details.dryRunId`);
+             *     `github_token_missing` — the workspace has no GitHub token to read the repository with.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed`; `dry_run_source_unsupported` — the ticket's tracker is not one a
+             *     workflow trigger can name; `dry_run_repository_unresolved` — the ticket names no
+             *     repository this workspace mirrors; `dry_run_session_mismatch` — the session is not a
+             *     conversation about this workflow.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `engine_unavailable` — the pre-check could not be run (the dry run is recorded
+             *     `failed`); or GitHub could not name the commit (`dry_run_commit_unreadable` and the
+             *     `github_*` upstream codes).
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listDryRunCandidates: {
+        parameters: {
+            query?: {
+                /** @description How many candidates to answer with — 1 to 50, default 10. */
+                limit?: number;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The ranked candidates. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "draftLabel": "v0.3",
+                     *       "candidates": [
+                     *         {
+                     *           "rank": 1,
+                     *           "ticket": {
+                     *             "id": "5eed0088-0000-4000-8000-000000000489",
+                     *             "key": "#489",
+                     *             "title": "CAN arbitration-lost storm under full telemetry load",
+                     *             "url": "https://github.com/acme-robotics/helios-firmware/issues/489",
+                     *             "labels": [
+                     *               "bug",
+                     *               "can-bus"
+                     *             ],
+                     *             "effort": "m",
+                     *             "source": "github"
+                     *           },
+                     *           "score": 1,
+                     *           "dimensions": 1,
+                     *           "matchesTrigger": false,
+                     *           "mismatches": [
+                     *             {
+                     *               "dimension": "trigger.label:security",
+                     *               "where": "trigger",
+                     *               "detail": "no `security` label"
+                     *             }
+                     *           ],
+                     *           "reason": "no `security` label (trigger) — outside the trigger, so it exercises the path a matching issue would not."
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DryRunCandidates"];
+                };
+            };
+            /** @description `organization_required`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workflow_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workflow_draft_absent` — the workflow has no draft to rank against. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid, or `limit` is outside 1–50. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readDryRunSafety: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The strip. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "harness": "dry-run-v1",
+                     *       "columns": [
+                     *         {
+                     *           "id": "simulated_writes",
+                     *           "holds": true,
+                     *           "mechanism": {
+                     *             "kind": "overlay",
+                     *             "tools": [
+                     *               "edit_file"
+                     *             ],
+                     *             "path": null,
+                     *             "detail": "A stage's edits are held in an in-memory overlay that later stages read through; the overlay becomes the simulated diff and is never written to the repository."
+                     *           },
+                     *           "facts": {
+                     *             "writes": "memory_overlay",
+                     *             "reads": "provider_api_at_pinned_sha"
+                     *           }
+                     *         },
+                     *         {
+                     *           "id": "replayed_infra",
+                     *           "holds": true,
+                     *           "mechanism": {
+                     *             "kind": "estimator_service",
+                     *             "tools": [
+                     *               "build",
+                     *               "run_tests"
+                     *             ],
+                     *             "path": "/internal/dry-runs/{id}/replay-estimates",
+                     *             "detail": "Build and test stages are answered by the replay estimator from farm and test history — a median with its sample count and spread, or insufficient history; nothing is built or run."
+                     *           },
+                     *           "facts": {
+                     *             "formulas": [
+                     *               {
+                     *                 "id": "build_duration_replay",
+                     *                 "version": 1,
+                     *                 "dispersion": "median_absolute_deviation"
+                     *               },
+                     *               {
+                     *                 "id": "test_duration_replay",
+                     *                 "version": 1,
+                     *                 "dispersion": "median_absolute_deviation"
+                     *               }
+                     *             ]
+                     *           }
+                     *         },
+                     *         {
+                     *           "id": "real_models",
+                     *           "holds": true,
+                     *           "mechanism": {
+                     *             "kind": "gateway_routing",
+                     *             "tools": [],
+                     *             "path": "/internal/llm/invoke",
+                     *             "detail": "Model stages run their own prompts through the invocation gateway with the alias routing resolved for each, attributed to the dry run and stopped at its budget; the harness holds no provider credential."
+                     *           },
+                     *           "facts": {}
+                     *         }
+                     *       ],
+                     *       "absent": [
+                     *         {
+                     *           "claim": "no writes",
+                     *           "capability": "repository_write"
+                     *         },
+                     *         {
+                     *           "claim": "no PRs",
+                     *           "capability": "pull_request"
+                     *         },
+                     *         {
+                     *           "claim": "no merges",
+                     *           "capability": "pull_request"
+                     *         }
+                     *       ],
+                     *       "guards": [
+                     *         {
+                     *           "name": "allow_list",
+                     *           "refuses": "Refuses any tool that is not on the allow-list; the call is never run."
+                     *         },
+                     *         {
+                     *           "name": "workspace_boundary",
+                     *           "refuses": "Refuses a path outside the repository's own tree."
+                     *         }
+                     *       ],
+                     *       "blockedCallFailsRun": true
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DryRunSafety"];
+                };
+            };
+            /** @description `organization_required`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workflow_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `engine_unavailable` — a strip that cannot be derived is not shown. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readDryRun: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+                /**
+                 * @description The dry run — `dry_runs.id`. Anything that is not a uuid is a `422`; a well-formed id
+                 *     that names no dry run of this workflow for this caller is a `404`.
+                 * @example 5eed008b-0000-4000-8000-000000000001
+                 */
+                dryRunId: components["parameters"]["DryRunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dry run. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed008b-0000-4000-8000-000000000001",
+                     *       "workflowId": "5eed0089-0000-4000-8000-000000000001",
+                     *       "draft": {
+                     *         "baseVersion": null,
+                     *         "rev": 3,
+                     *         "label": "v0.3"
+                     *       },
+                     *       "ticket": {
+                     *         "id": "5eed0088-0000-4000-8000-000000000489",
+                     *         "key": "#489",
+                     *         "title": "CAN arbitration-lost storm under full telemetry load",
+                     *         "url": "https://github.com/acme-robotics/helios-firmware/issues/489"
+                     *       },
+                     *       "sessionId": "5eed008a-0000-4000-8000-000000000001",
+                     *       "pinnedSha": "b7e4c2a19f0d3e5b6a7c8d9e0f1a2b3c4d5e6f70",
+                     *       "mode": "deep",
+                     *       "status": "complete",
+                     *       "failureReason": null,
+                     *       "totals": {
+                     *         "durationMs": 161000,
+                     *         "costCents": 31,
+                     *         "tokens": 96000
+                     *       },
+                     *       "guardAudit": [],
+                     *       "guardsClean": true,
+                     *       "precheckFindings": [],
+                     *       "startedAt": "2026-10-08T15:05:00.000Z",
+                     *       "finishedAt": "2026-10-08T15:07:41.000Z",
+                     *       "stages": [
+                     *         {
+                     *           "seq": 3,
+                     *           "stageKey": "implement",
+                     *           "displayName": "implement",
+                     *           "verdict": "ok",
+                     *           "how": "llm",
+                     *           "howLabel": "simulated",
+                     *           "note": "diff drafted +41 −9 (below) · 84k tokens",
+                     *           "metrics": {
+                     *             "tokens": 84000,
+                     *             "simulated_writes": 1,
+                     *             "lines_added": 41,
+                     *             "lines_removed": 9
+                     *           },
+                     *           "skipReason": null,
+                     *           "startedAt": "2026-10-08T15:05:40.000Z",
+                     *           "finishedAt": "2026-10-08T15:06:50.000Z"
+                     *         },
+                     *         {
+                     *           "seq": 4,
+                     *           "stageKey": "build",
+                     *           "displayName": "build",
+                     *           "verdict": "ok",
+                     *           "how": "replayed",
+                     *           "howLabel": "replayed from history",
+                     *           "note": "est. 4m 02s (214 similar builds, ±20s)",
+                     *           "metrics": {
+                     *             "estimate_ms": 242000,
+                     *             "sample_count": 214,
+                     *             "spread_ms": 20000,
+                     *             "similarity_class": "helios-firmware · pool-a · docker · zephyr-sdk west build"
+                     *           },
+                     *           "skipReason": null,
+                     *           "startedAt": "2026-10-08T15:06:50.000Z",
+                     *           "finishedAt": "2026-10-08T15:06:51.000Z"
+                     *         }
+                     *       ],
+                     *       "artifacts": [
+                     *         {
+                     *           "kind": "overlay_diff",
+                     *           "content": "@@ drivers/can/arbitration.c · simulated diff (never written to repo) @@",
+                     *           "truncated": false,
+                     *           "originalBytes": 72,
+                     *           "pathSummary": [
+                     *             {
+                     *               "path": "drivers/can/arbitration.c",
+                     *               "added": 41,
+                     *               "removed": 9
+                     *             }
+                     *           ]
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DryRun"];
+                };
+            };
+            /** @description `organization_required`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workflow_not_found`, or `dry_run_not_found` — no such dry run of this workflow for this caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id that is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    followDryRun: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+                /**
+                 * @description The dry run — `dry_runs.id`. Anything that is not a uuid is a `422`; a well-formed id
+                 *     that names no dry run of this workflow for this caller is a `404`.
+                 * @example 5eed008b-0000-4000-8000-000000000001
+                 */
+                dryRunId: components["parameters"]["DryRunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The stream. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example event: stage_started
+                     *     data: {"kind":"stage_started","seq":4,"stageKey":"build","displayName":"build"}
+                     *
+                     *     event: stage_finished
+                     *     data: {"kind":"stage_finished","stage":{"seq":4,"stageKey":"build","displayName":"build","verdict":"ok","how":"replayed","howLabel":"replayed from history","note":"est. 4m 02s (214 similar builds, ±20s)","metrics":{"estimate_ms":242000,"sample_count":214,"spread_ms":20000,"similarity_class":"x"},"skipReason":null,"startedAt":"2026-10-08T15:06:50.000Z","finishedAt":"2026-10-08T15:06:51.000Z"}}
+                     */
+                    "text/event-stream": components["schemas"]["DryRunStreamEvent"];
+                };
+            };
+            /** @description `organization_required`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workflow_not_found`, or `dry_run_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id that is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    cancelDryRun: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+                /**
+                 * @description The dry run — `dry_runs.id`. Anything that is not a uuid is a `422`; a well-formed id
+                 *     that names no dry run of this workflow for this caller is a `404`.
+                 * @example 5eed008b-0000-4000-8000-000000000001
+                 */
+                dryRunId: components["parameters"]["DryRunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dry run as it ended. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed008b-0000-4000-8000-000000000002",
+                     *       "workflowId": "5eed0089-0000-4000-8000-000000000001",
+                     *       "draft": {
+                     *         "baseVersion": null,
+                     *         "rev": 3,
+                     *         "label": "v0.3"
+                     *       },
+                     *       "ticket": {
+                     *         "id": "5eed0088-0000-4000-8000-000000000489",
+                     *         "key": "#489",
+                     *         "title": "CAN arbitration-lost storm under full telemetry load",
+                     *         "url": "https://github.com/acme-robotics/helios-firmware/issues/489"
+                     *       },
+                     *       "sessionId": null,
+                     *       "pinnedSha": "b7e4c2a19f0d3e5b6a7c8d9e0f1a2b3c4d5e6f70",
+                     *       "mode": "deep",
+                     *       "status": "cancelled",
+                     *       "failureReason": null,
+                     *       "totals": {
+                     *         "durationMs": 48000,
+                     *         "costCents": 6,
+                     *         "tokens": 21000
+                     *       },
+                     *       "guardAudit": [],
+                     *       "guardsClean": true,
+                     *       "precheckFindings": [],
+                     *       "startedAt": "2026-10-08T15:05:00.000Z",
+                     *       "finishedAt": "2026-10-08T15:05:48.000Z",
+                     *       "stages": [
+                     *         {
+                     *           "seq": 1,
+                     *           "stageKey": "analyze",
+                     *           "displayName": "analyze",
+                     *           "verdict": "ok",
+                     *           "how": "llm",
+                     *           "howLabel": null,
+                     *           "note": "mapped 4 files",
+                     *           "metrics": {
+                     *             "tokens": 12000,
+                     *             "files_touched": 4
+                     *           },
+                     *           "skipReason": null,
+                     *           "startedAt": "2026-10-08T15:05:01.000Z",
+                     *           "finishedAt": "2026-10-08T15:05:30.000Z"
+                     *         }
+                     *       ],
+                     *       "artifacts": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DryRun"];
+                };
+            };
+            /** @description `organization_required`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — a viewer. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workflow_not_found`, or `dry_run_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `dry_run_not_running` — it has already ended (`details.status`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id that is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    rerunDryRun: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+                /**
+                 * @description The dry run — `dry_runs.id`. Anything that is not a uuid is a `422`; a well-formed id
+                 *     that names no dry run of this workflow for this caller is a `404`.
+                 * @example 5eed008b-0000-4000-8000-000000000001
+                 */
+                dryRunId: components["parameters"]["DryRunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The new dry run. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed008b-0000-4000-8000-000000000003",
+                     *       "workflowId": "5eed0089-0000-4000-8000-000000000001",
+                     *       "draft": {
+                     *         "baseVersion": null,
+                     *         "rev": 4,
+                     *         "label": "v0.4"
+                     *       },
+                     *       "ticket": {
+                     *         "id": "5eed0088-0000-4000-8000-000000000489",
+                     *         "key": "#489",
+                     *         "title": "CAN arbitration-lost storm under full telemetry load",
+                     *         "url": "https://github.com/acme-robotics/helios-firmware/issues/489"
+                     *       },
+                     *       "sessionId": "5eed008a-0000-4000-8000-000000000001",
+                     *       "pinnedSha": "b7e4c2a19f0d3e5b6a7c8d9e0f1a2b3c4d5e6f70",
+                     *       "mode": "deep",
+                     *       "status": "running",
+                     *       "failureReason": null,
+                     *       "totals": {
+                     *         "durationMs": null,
+                     *         "costCents": null,
+                     *         "tokens": null
+                     *       },
+                     *       "guardAudit": [],
+                     *       "guardsClean": true,
+                     *       "precheckFindings": [],
+                     *       "startedAt": "2026-10-08T15:20:00.000Z",
+                     *       "finishedAt": null,
+                     *       "stages": [],
+                     *       "artifacts": [],
+                     *       "budget": {
+                     *         "capCents": 500,
+                     *         "source": "draft_guard",
+                     *         "workspaceCapCents": 1000,
+                     *         "draftGuardCents": 500
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DryRun"];
+                };
+            };
+            /** @description `organization_required`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — a viewer. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workflow_not_found`, `dry_run_not_found`, `dry_run_ticket_not_found`, or `github_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workflow_draft_absent`, `dry_run_in_progress`, or `github_token_missing`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed`, `dry_run_source_unsupported`, or `dry_run_repository_unresolved`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `engine_unavailable`, `dry_run_commit_unreadable`, or a `github_*` upstream code. */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -14,7 +14,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-engine
-  version: 0.7.26
+  version: 0.7.27
   summary: Internal backend for Ouroboros — executes the work ouroboros-rest brokers.
   description: |-
     The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the
@@ -1412,6 +1412,62 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
+
+  /v0/dry-runs/harness:
+    get:
+      tags: [v0]
+      summary: "Describe the dry-run harness: its tools, guards and absent capabilities"
+      description: |-
+        What the installed dry-run harness can and cannot do — CD.4
+        ([#562](https://github.com/NobuData/ouroboros/issues/562)). `ouroboros-rest` builds the
+        dry-run page's safety strip from this answer, so the page claims only what the
+        mechanism enforces.
+
+        Nothing here is written by hand: `tools` is the table that dispatches a call (each with
+        its `effect` — `read` the pinned commit, `simulated_write` to the in-memory overlay, or
+        `replay` an estimate from history), `guards` are the guards that refuse one, and
+        `forbidden_capabilities` names what no tool provides. `replay_estimates_path` and
+        `invoke_path` are the two control-plane paths the harness asks. Change a tool or a
+        guard and this answer changes with it.
+      operationId: describeDryRunHarness
+      responses:
+        "200":
+          description: The harness, as it is installed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DryRunHarnessDescription"
+              example:
+                harness: dry-run-v1
+                tools:
+                - name: read_file
+                  effect: read
+                  does: Read a file as it stands in this dry run.
+                - name: edit_file
+                  effect: simulated_write
+                  does: Draft a change. It is held in memory as a simulated diff; the repository is never written.
+                - name: build
+                  effect: replay
+                  does: Estimate the build from the farm's history. Nothing is built.
+                guards:
+                - name: allow_list
+                  refuses: Refuses any tool that is not on the allow-list; the call is never run.
+                - name: workspace_boundary
+                  refuses: Refuses a path outside the repository's own tree.
+                forbidden_capabilities:
+                - network_egress
+                - shell
+                - repository_write
+                - farm_dispatch
+                - pull_request
+                - ticket_source_write
+                - credential_access
+                writes: memory_overlay
+                reads: provider_api_at_pinned_sha
+                replay_estimates_path: /internal/dry-runs/{id}/replay-estimates
+                invoke_path: /internal/llm/invoke
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /v0/analysis/analyzers:
     get:
@@ -5249,6 +5305,95 @@ components:
         result:
           $ref: '#/components/schemas/DryRunResult'
 
+    DryRunHarnessTool:
+      type: object
+      title: DryRunHarnessTool
+      description: One tool a dry-run stage has.
+      additionalProperties: false
+      required:
+      - name
+      - effect
+      - does
+      properties:
+        name:
+          description: What a model calls it.
+          minLength: 1
+          type: string
+        effect:
+          description: '`read` (the pinned commit), `simulated_write` (the in-memory overlay) or `replay` (an estimate from history — nothing is run).'
+          enum:
+          - read
+          - simulated_write
+          - replay
+          type: string
+        does:
+          description: One sentence, as the model is told.
+          minLength: 1
+          type: string
+    DryRunHarnessGuard:
+      type: object
+      title: DryRunHarnessGuard
+      description: One guard at the tool boundary.
+      additionalProperties: false
+      required:
+      - name
+      - refuses
+      properties:
+        name:
+          description: The name an audit entry carries in `guard`.
+          minLength: 1
+          type: string
+        refuses:
+          description: What it refuses, as a sentence.
+          minLength: 1
+          type: string
+    DryRunHarnessDescription:
+      type: object
+      title: DryRunHarnessDescription
+      description: What the installed harness can and cannot do — read from its own tables.
+      additionalProperties: false
+      required:
+      - harness
+      - tools
+      - guards
+      - forbidden_capabilities
+      - writes
+      - reads
+      - replay_estimates_path
+      - invoke_path
+      properties:
+        harness:
+          description: The harness version a result names.
+          type: string
+        tools:
+          description: Every tool a stage has, in manifest order. There is no other way to act.
+          items:
+            $ref: '#/components/schemas/DryRunHarnessTool'
+          type: array
+        guards:
+          description: Every guard that can refuse a call.
+          items:
+            $ref: '#/components/schemas/DryRunHarnessGuard'
+          type: array
+        forbidden_capabilities:
+          description: The capabilities no tool provides.
+          items:
+            type: string
+          type: array
+        writes:
+          description: Where a stage's writes go — always `memory_overlay`.
+          const: memory_overlay
+          type: string
+        reads:
+          description: Where a stage's reads come from — the provider's API at the pinned commit.
+          const: provider_api_at_pinned_sha
+          type: string
+        replay_estimates_path:
+          description: The control-plane path an infrastructure stage asks.
+          type: string
+        invoke_path:
+          description: The control-plane path every model call goes through.
+          type: string
     SkillRef:
       type: object
       title: SkillRef

@@ -7,13 +7,30 @@ import pytest
 from fastapi.testclient import TestClient
 
 from dryrun_fakes import DRY_RUN, TOKEN, Bench, request
-from ouroboros_engine.api.dryruns import DRY_RUNS_ROUTE, NDJSON_MEDIA_TYPE
+from ouroboros_engine.api.dryruns import (
+    DRY_RUN_HARNESS_ROUTE,
+    DRY_RUNS_ROUTE,
+    NDJSON_MEDIA_TYPE,
+)
 from ouroboros_engine.api.v0 import V0_PREFIX
+from ouroboros_engine.control_plane.contract import (
+    DRY_RUN_REPLAY_ESTIMATES_PATH,
+    INVOKE_PATH,
+)
+from ouroboros_engine.dryrun import guard as guard_module
 from ouroboros_engine.dryrun.contract import (
     HARNESS_VERSION,
     DryRunRequest,
     DryRunResult,
+    HarnessDescription,
     StageResult,
+)
+from ouroboros_engine.dryrun.describe import describe_harness
+from ouroboros_engine.dryrun.guard import (
+    ALLOW_LIST,
+    ALLOWED_TOOLS,
+    FORBIDDEN_CAPABILITIES,
+    WORKSPACE_BOUNDARY,
 )
 from ouroboros_engine.dryrun.harness import DryRunHarness
 
@@ -206,3 +223,70 @@ def test_an_invalid_definition_still_answers_200_with_a_failed_result(served):
     assert [line["kind"] for line in lines] == ["done"]
     assert lines[0]["result"]["status"] == "failed"
     assert lines[0]["result"]["findings"]
+
+
+HARNESS_PATH = f"{V0_PREFIX}{DRY_RUN_HARNESS_ROUTE}"
+
+
+def test_the_harness_describes_itself_from_its_own_tables(client: TestClient):
+    # CD.4 (#562): the safety strip is served as data, and this is where the data starts.
+    response = client.get(HARNESS_PATH)
+
+    assert response.status_code == 200
+    described = HarnessDescription.model_validate(response.json())
+    assert described == describe_harness()
+    assert described.harness == HARNESS_VERSION
+    assert {tool.name for tool in described.tools} == ALLOWED_TOOLS
+    assert {tool.name: tool.effect for tool in described.tools} == {
+        "read_file": "read",
+        "list_dir": "read",
+        "search": "read",
+        "edit_file": "simulated_write",
+        "build": "replay",
+        "run_tests": "replay",
+    }
+    assert [guard.name for guard in described.guards] == [
+        ALLOW_LIST,
+        WORKSPACE_BOUNDARY,
+    ]
+    assert described.forbidden_capabilities == list(FORBIDDEN_CAPABILITIES)
+    assert (described.writes, described.reads) == (
+        "memory_overlay",
+        "provider_api_at_pinned_sha",
+    )
+    assert (described.replay_estimates_path, described.invoke_path) == (
+        DRY_RUN_REPLAY_ESTIMATES_PATH,
+        INVOKE_PATH,
+    )
+
+
+def test_no_described_tool_is_a_forbidden_capability():
+    forbidden = {name for names in FORBIDDEN_CAPABILITIES.values() for name in names}
+
+    assert not forbidden & {tool.name for tool in describe_harness().tools}
+
+
+def test_changing_a_guard_changes_the_description(monkeypatch):
+    # The acceptance criterion: the description is read, not written.
+    monkeypatch.setitem(
+        guard_module.GUARDS, "egress_filter", "Refuses an outbound call."
+    )
+
+    assert "egress_filter" in [guard.name for guard in describe_harness().guards]
+
+
+def test_a_tool_taken_off_the_allow_list_leaves_the_description(monkeypatch):
+    monkeypatch.setattr(
+        guard_module, "ALLOWED_TOOLS", guard_module.ALLOWED_TOOLS - {"edit_file"}
+    )
+
+    described = describe_harness()
+
+    assert "edit_file" not in [tool.name for tool in described.tools]
+    assert "simulated_write" not in [tool.effect for tool in described.tools]
+
+
+def test_the_harness_description_needs_the_internal_key(
+    anonymous_client: TestClient,
+):
+    assert anonymous_client.get(HARNESS_PATH).status_code == 401

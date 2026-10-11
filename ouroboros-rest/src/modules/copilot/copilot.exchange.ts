@@ -102,16 +102,17 @@ export interface DraftPort {
    */
   apply(operation: DraftOperation, expectedEtag: string): Promise<ApplyResult>;
   /**
-   * Open tickets for a dry-run proposal.
+   * Open tickets for a dry-run proposal, ranked by the edge-case picker (decision W8; CD.4,
+   * #562) — the ticket that mismatches the draft's conditions most comes first.
    *
    * @param query - What the model asked for.
    * @param limit - How many.
-   * @returns The candidates.
+   * @returns The candidates, best first, each with the reason for its rank.
    */
   lookupTickets(
     query: string,
     limit: number,
-  ): Promise<readonly { key: string; title: string; labels: readonly string[] }[]>;
+  ): Promise<readonly { key: string; title: string; labels: readonly string[]; reason?: string }[]>;
 }
 
 /** What the loop needs of the engine. */
@@ -403,7 +404,8 @@ export async function* runExchange(
           result(
             tickets.length === 0
               ? "no open tickets match."
-              : JSON.stringify(tickets) + " (newest first; not ranked for edge cases)",
+              : JSON.stringify(tickets) +
+                  " (ranked for edge cases: the ticket that mismatches the draft's conditions most is first, each with its reason)",
           );
           break;
         }

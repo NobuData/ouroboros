@@ -517,7 +517,11 @@ describe("TABLE_COLUMNS", () => {
     // The hundred-and-sixty-fourth to seventh are V112's `capability_matrices`, `matrix_rows`,
     // `matrix_cells` and `matrix_cell_sources`, which the matrix builder (#621) is the first code
     // to read and write.
-    expect(TABLE_NAMES).toHaveLength(167);
+    //
+    // The hundred-and-sixty-eighth to seventieth are V111's `dry_runs`, `dry_run_stages` and
+    // `dry_run_artifacts`, which the dry-run orchestrator (#562) is the first code to read and
+    // write.
+    expect(TABLE_NAMES).toHaveLength(170);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
