@@ -14530,12 +14530,15 @@ select pg_temp.must_hold(
    -- so a draft operation is recorded only with the draft it changed — asserted in V110's section.
    -- #557 added `dry_runs_sweep()`, so the dry-run retention sweep can remove finished dry runs
    -- and their artifacts while the writer still cannot delete one — asserted in V111's section.
+   -- #565 added `discard_workflow_draft()`, so a draft can be dropped with its operation log
+   -- while the writer still cannot delete an operation — asserted in V129's section.
    and (select array_agg(proname::text order by proname) = array['apply_draft_batch',
                                                                  'audit_events_purge',
                                                                  'copilot_messages_allocate_seq',
                                                                  'copilot_sessions_sweep',
                                                                  'decision_ref_resolves',
                                                                  'decision_ttl_settings',
+                                                                 'discard_workflow_draft',
                                                                  'dry_runs_sweep',
                                                                  'fact_transitions_record',
                                                                  'failure_classifications_routed_valid',
@@ -14550,7 +14553,7 @@ select pg_temp.must_hold(
                                                                  'sync_intervention_events']
           from pg_proc
          where pronamespace = 'ouroboros'::regnamespace and prosecdef),
-  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks, #457''s decision ref resolver, #459''s TTL settings reader, #482''s transcript sweep, #486''s audit purge, #608''s RS allocator and #555''s copilot seq allocator and chat sweep and #609''s cite allocator and #556''s draft batch writer and #557''s dry-run sweep are the only functions in the schema that run as the owner at all');
+  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks, #457''s decision ref resolver, #459''s TTL settings reader, #482''s transcript sweep, #486''s audit purge, #608''s RS allocator and #555''s copilot seq allocator and chat sweep and #609''s cite allocator and #556''s draft batch writer and #557''s dry-run sweep and #565''s draft discard are the only functions in the schema that run as the owner at all');
 
 -- --- the cascades ----------------------------------------------------------------
 delete from ouroboros.runs where id = 'a6100000-0000-0000-0000-000000000484';
@@ -40692,6 +40695,209 @@ select pg_temp.must_hold(
         where dry_run_id = 'a1280000-0000-0000-0000-000000000301' and source = 'llm'
           and confidence is null and status = 'open'),
   'an advisory suggestion is ignored, and the copilot''s stays open and unscored');
+
+-- ===========================================================================
+-- V129 — Discard draft (#565, CE.1)
+-- ===========================================================================
+--
+-- A draft is four things that must agree — the row, its operation log, `draft_rev` and
+-- `provenance_summary` — and `discard_workflow_draft()` drops all four under the workflow's
+-- lock and closes the conversation about it. What is asserted: the probe stays empty, the next
+-- first edit is revision 1 over the base, a published workflow is its version again with the
+-- earlier base's history intact, and the transcript is kept.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v129',  'Discard Works', 'discard-works-v129', now()),
+  ('org-v129b', 'Discard Two',   'discard-two-v129',   now());
+
+insert into ouroboros.workflows (id, organization_id, slug, name) values
+  ('a1290000-0000-0000-0000-000000000101', 'org-v129',  'security-patch', 'Security patch'),
+  ('a1290000-0000-0000-0000-000000000102', 'org-v129',  'standard-fix',   'Standard fix'),
+  ('a1290000-0000-0000-0000-000000000103', 'org-v129b', 'security-patch', 'Security patch');
+
+insert into ouroboros.copilot_sessions (id, organization_id, workflow_id, draft_name) values
+  ('a1290000-0000-0000-0000-000000000201', 'org-v129',  'a1290000-0000-0000-0000-000000000101', 'security-patch'),
+  ('a1290000-0000-0000-0000-000000000203', 'org-v129b', 'a1290000-0000-0000-0000-000000000103', 'security-patch');
+
+insert into ouroboros.copilot_messages (organization_id, session_id, role, body) values
+  ('org-v129', 'a1290000-0000-0000-0000-000000000201', 'user', 'security patches: never auto-merge');
+insert into ouroboros.copilot_messages (organization_id, session_id, role, body) values
+  ('org-v129', 'a1290000-0000-0000-0000-000000000201', 'copilot', 'Drafted security-patch.');
+
+-- --- a draft never published: v0.2, one batch the author's and one the copilot's ----------
+select pg_temp.must_hold(
+  (select draft_rev = 1 from ouroboros.apply_draft_batch(
+     'org-v129', 'a1290000-0000-0000-0000-000000000101', 'code', null, null, null,
+     '[{"kind": "set_trigger", "params": {"trigger": {"event": "ticket_queued", "conditions": {}}}},
+       {"kind": "add_stage", "params": {"node": {"id": "start", "type": "trigger", "title": "Issue queued",
+                                                 "position": {"x": 0, "y": 0}, "config": {}}}}]'))
+  and (select draft_rev = 2 from ouroboros.apply_draft_batch(
+     'org-v129', 'a1290000-0000-0000-0000-000000000101', 'copilot', null,
+     'a1290000-0000-0000-0000-000000000201', null,
+     '[{"kind": "add_stage", "params": {"node": {"id": "done", "type": "term", "title": "Needs review",
+                                                 "position": {"x": 240, "y": 0},
+                                                 "config": {"action": "needs_review", "options": {}}}}}]')),
+  'the fixture draft is v0.2: the author''s batch, then the copilot''s');
+
+-- Why a function: dropping the row and resetting the counter is not enough. The discarded
+-- draft's first batch is still in the log at revision 1, where the new draft's would go.
+select pg_temp.must_reject(
+  $stmt$do $do$
+    begin
+      delete from ouroboros.workflow_versions
+       where workflow_id = 'a1290000-0000-0000-0000-000000000101' and version is null;
+      update ouroboros.workflows set draft_rev = 0
+       where id = 'a1290000-0000-0000-0000-000000000101';
+      perform ouroboros.apply_draft_batch(
+        'org-v129', 'a1290000-0000-0000-0000-000000000101', 'canvas', null, null, null,
+        '[{"kind": "set_trigger", "params": {"trigger": {"event": "ticket_queued", "conditions": {}}}}]');
+    end
+  $do$ $stmt$,
+  'a draft dropped without its log cannot be started again: revision 1 is already recorded',
+  'draft_operations_revision_seq_key');
+
+select pg_temp.must_raise(
+  $$select * from ouroboros.discard_workflow_draft('org-v129b', 'a1290000-0000-0000-0000-000000000101')$$,
+  '23503', 'a workspace cannot discard another workspace''s draft');
+
+select pg_temp.must_hold(
+  (select draft_discarded and operations_removed = 3
+          and session_id = 'a1290000-0000-0000-0000-000000000201'
+     from ouroboros.discard_workflow_draft('org-v129', 'a1290000-0000-0000-0000-000000000101')),
+  'discarding answers what went: the draft, its three logged operations, and the session it closed');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.workflow_versions
+    where workflow_id = 'a1290000-0000-0000-0000-000000000101')
+  and (select count(*) = 0 from ouroboros.draft_operations
+        where workflow_id = 'a1290000-0000-0000-0000-000000000101')
+  and (select current_version is null and status = 'active' and draft_rev = 0
+              and provenance_summary = '{"canvas": 0, "code": 0, "copilot": 0, "suggestion": 0}'
+         from ouroboros.workflows where id = 'a1290000-0000-0000-0000-000000000101'),
+  'the workflow stays — empty and unpublished, at revision 0 with no batch counted');
+
+select pg_temp.must_hold(
+  (select status = 'discarded' and closed_at is not null and closed_at >= created_at and last_seq = 2
+     from ouroboros.copilot_sessions where id = 'a1290000-0000-0000-0000-000000000201')
+  and (select count(*) = 2 from ouroboros.copilot_messages
+        where session_id = 'a1290000-0000-0000-0000-000000000201'),
+  'the conversation closes as discarded and its transcript is kept');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.workflow_draft_replay_mismatches
+    where organization_id in ('org-v129', 'org-v129b')),
+  'a discarded draft is not a replay mismatch');
+
+select pg_temp.must_hold(
+  (select not draft_discarded and operations_removed = 0 and session_id is null
+     from ouroboros.discard_workflow_draft('org-v129', 'a1290000-0000-0000-0000-000000000101')),
+  'with neither a draft nor an active session there is nothing to discard, and the answer says so');
+
+-- The next first edit starts from the empty base at revision 1, and replays.
+select pg_temp.must_hold(
+  (select draft_rev = 1 from ouroboros.apply_draft_batch(
+     'org-v129', 'a1290000-0000-0000-0000-000000000101', 'canvas', null, null, null,
+     '[{"kind": "set_trigger", "params": {"trigger": {"event": "ticket_queued", "conditions": {}}}}]')),
+  'a new draft''s first edit is revision 1');
+
+select pg_temp.must_hold(
+  (select v.definition = '{"dsl_version": "1.0", "nodes": [], "edges": [],
+                               "trigger": {"event": "ticket_queued", "conditions": {}}}'::jsonb
+         from ouroboros.workflow_versions v
+        where v.workflow_id = 'a1290000-0000-0000-0000-000000000101' and v.version is null)
+  and (select provenance_summary = '{"canvas": 1, "code": 0, "copilot": 0, "suggestion": 0}'
+         from ouroboros.workflows where id = 'a1290000-0000-0000-0000-000000000101')
+  and (select count(*) = 0 from ouroboros.workflow_draft_replay_mismatches
+        where workflow_id = 'a1290000-0000-0000-0000-000000000101'),
+  'and it is built over the empty base, carrying nothing of the discarded one');
+
+-- And a new conversation may start: the discarded one no longer holds the active slot.
+insert into ouroboros.copilot_sessions (id, organization_id, workflow_id, draft_name) values
+  ('a1290000-0000-0000-0000-000000000211', 'org-v129', 'a1290000-0000-0000-0000-000000000101', 'security-patch');
+
+-- --- a published workflow: it is its version again, and the earlier base's log stays --------
+select pg_temp.must_hold(
+  (select draft_rev = 1 from ouroboros.apply_draft_batch(
+     'org-v129', 'a1290000-0000-0000-0000-000000000102', 'canvas', null, null, null,
+     '[{"kind": "add_stage", "params": {"node": {"id": "start", "type": "trigger", "title": "Issue queued",
+                                                 "position": {"x": 0, "y": 0}, "config": {}}}}]')),
+  'the second fixture draft is v0.1');
+
+insert into ouroboros.workflow_versions (workflow_id, version, definition, published_at)
+select workflow_id, 1, definition, now() from ouroboros.workflow_versions
+ where workflow_id = 'a1290000-0000-0000-0000-000000000102' and version is null;
+update ouroboros.workflows set current_version = 1
+ where id = 'a1290000-0000-0000-0000-000000000102';
+
+select pg_temp.must_hold(
+  (select draft_rev = 1 from ouroboros.apply_draft_batch(
+     'org-v129', 'a1290000-0000-0000-0000-000000000102', 'canvas', null, null, null,
+     '[{"kind": "add_stage", "params": {"node": {"id": "done", "type": "term", "title": "Auto-merge",
+                                                 "position": {"x": 240, "y": 0},
+                                                 "config": {"action": "open_pr_automerge",
+                                                            "options": {"merge_method": "squash", "delete_branch": true}}}}}]')),
+  'and after its publish, v1.1');
+
+select pg_temp.must_hold(
+  (select draft_discarded and operations_removed = 1 and session_id is null
+     from ouroboros.discard_workflow_draft('org-v129', 'a1290000-0000-0000-0000-000000000102')),
+  'discarding v1.1 removes the one operation applied over v1, and closes nothing where nobody was talking');
+
+select pg_temp.must_hold(
+  (select current_version = 1 and draft_rev = 0 from ouroboros.workflows
+    where id = 'a1290000-0000-0000-0000-000000000102')
+  and (select count(*) = 1 and bool_and(version = 1) from ouroboros.workflow_versions
+        where workflow_id = 'a1290000-0000-0000-0000-000000000102')
+  and (select count(*) = 1 and bool_and(base_version is null) from ouroboros.draft_operations
+        where workflow_id = 'a1290000-0000-0000-0000-000000000102'),
+  'the workflow is its published version again, and the log of the draft that became v1 is still history');
+
+select pg_temp.must_hold(
+  (select draft_rev = 1 from ouroboros.apply_draft_batch(
+     'org-v129', 'a1290000-0000-0000-0000-000000000102', 'canvas', null, null, null,
+     '[{"kind": "add_stage", "params": {"node": {"id": "review", "type": "term", "title": "Needs review",
+                                                 "position": {"x": 240, "y": 0},
+                                                 "config": {"action": "needs_review", "options": {}}}}}]')),
+  'its next first edit is revision 1 again');
+
+select pg_temp.must_hold(
+  (select jsonb_path_query_array(v.definition, '$.nodes[*].id') = '["start", "review"]'::jsonb
+         from ouroboros.workflow_versions v
+        where v.workflow_id = 'a1290000-0000-0000-0000-000000000102' and v.version is null)
+  and (select count(*) = 0 from ouroboros.workflow_draft_replay_mismatches
+        where workflow_id = 'a1290000-0000-0000-0000-000000000102'),
+  'and the draft starts from v1 — the published stage and the new one, nothing of the discarded edit');
+
+-- --- a conversation with no draft yet: only the session closes ------------------------------
+select pg_temp.must_hold(
+  (select not draft_discarded and operations_removed = 0
+          and session_id = 'a1290000-0000-0000-0000-000000000203'
+     from ouroboros.discard_workflow_draft('org-v129b', 'a1290000-0000-0000-0000-000000000103')),
+  'a conversation that never produced a draft is discarded on its own');
+
+select pg_temp.must_hold(
+  (select status = 'discarded' and closed_at is not null from ouroboros.copilot_sessions
+    where id = 'a1290000-0000-0000-0000-000000000203'),
+  'and it is closed');
+
+-- --- the application role: it may discard, and still cannot delete an operation -------------
+set local role ouroboros_app;
+select pg_temp.must_hold(
+  (select draft_discarded and operations_removed = 1
+     from ouroboros.discard_workflow_draft('org-v129', 'a1290000-0000-0000-0000-000000000102')),
+  'the app role discards a draft through the function');
+select pg_temp.must_raise(
+  $$delete from ouroboros.draft_operations where workflow_id = 'a1290000-0000-0000-0000-000000000102'$$,
+  '42501', 'and still cannot delete a draft operation itself');
+reset role;
+
+select pg_temp.must_hold(
+  (select prosecdef
+          and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+          and not has_function_privilege('public', oid, 'execute')
+          and has_function_privilege('ouroboros_app', oid, 'execute')
+     from pg_proc
+    where pronamespace = 'ouroboros'::regnamespace and proname = 'discard_workflow_draft'),
+  'discard_workflow_draft runs as its owner with its search_path pinned, for the app role and not for public');
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.

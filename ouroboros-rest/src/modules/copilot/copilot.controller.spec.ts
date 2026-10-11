@@ -1,4 +1,5 @@
-import { PATH_METADATA } from "@nestjs/common/constants";
+import { HttpStatus, RequestMethod } from "@nestjs/common";
+import { HTTP_CODE_METADATA, METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants";
 import { Reflector } from "@nestjs/core";
 
 import { ADMINISTRATORS, REQUIRED_ROLES } from "../tenancy/roles.guard";
@@ -34,7 +35,9 @@ function response() {
 }
 
 describe("the copilot controller", () => {
-  let service: jest.Mocked<Pick<CopilotService, "start" | "conversation" | "send" | "answer">>;
+  let service: jest.Mocked<
+    Pick<CopilotService, "start" | "conversation" | "promotion" | "discard" | "send" | "answer">
+  >;
   let controller: CopilotController;
   let reflector: Reflector;
 
@@ -44,6 +47,10 @@ describe("the copilot controller", () => {
       conversation: jest
         .fn()
         .mockResolvedValue({ session: { id: SESSION }, messages: [], draft: {} }),
+      promotion: jest.fn().mockResolvedValue({ blocked: false }),
+      discard: jest
+        .fn()
+        .mockResolvedValue({ workflowId: WORKFLOW, draftDiscarded: true, session: null }),
       send: jest.fn().mockImplementation(() => stream({ kind: "delta", text: "hi" })),
       answer: jest.fn().mockImplementation(() => stream({ kind: "delta", text: "ok" })),
     };
@@ -70,6 +77,34 @@ describe("the copilot controller", () => {
 
     expect(service.conversation).toHaveBeenCalledWith(TENANT.id, WORKFLOW);
     expect(reflector.get(REQUIRED_ROLES, controller.conversation)).toBeUndefined();
+  });
+
+  it("reads what a promotion would publish for every member", async () => {
+    await expect(controller.promotion(TENANT, { id: WORKFLOW })).resolves.toEqual({
+      blocked: false,
+    });
+
+    expect(service.promotion).toHaveBeenCalledWith(TENANT.id, WORKFLOW);
+    expect(reflector.get<string>(PATH_METADATA, controller.promotion)).toBe("promotion");
+    expect(reflector.get<RequestMethod>(METHOD_METADATA, controller.promotion)).toBe(
+      RequestMethod.GET,
+    );
+    expect(reflector.get(REQUIRED_ROLES, controller.promotion)).toBeUndefined();
+  });
+
+  it("discards the draft for the tenant and the workflow, answering 200", async () => {
+    await expect(controller.discard(TENANT, { id: WORKFLOW })).resolves.toEqual({
+      workflowId: WORKFLOW,
+      draftDiscarded: true,
+      session: null,
+    });
+
+    expect(service.discard).toHaveBeenCalledWith(TENANT.id, WORKFLOW);
+    expect(reflector.get<string>(PATH_METADATA, controller.discard)).toBe("discard");
+    expect(reflector.get<RequestMethod>(METHOD_METADATA, controller.discard)).toBe(
+      RequestMethod.POST,
+    );
+    expect(reflector.get<number>(HTTP_CODE_METADATA, controller.discard)).toBe(HttpStatus.OK);
   });
 
   it("streams a message's reply as server-sent events", async () => {
@@ -106,7 +141,12 @@ describe("the copilot controller", () => {
   });
 
   it("reserves the writes for administrators, like the draft's own save", () => {
-    for (const handler of [controller.start, controller.send, controller.answer]) {
+    for (const handler of [
+      controller.start,
+      controller.discard,
+      controller.send,
+      controller.answer,
+    ]) {
       expect(reflector.get(REQUIRED_ROLES, handler)).toEqual(ADMINISTRATORS);
     }
   });

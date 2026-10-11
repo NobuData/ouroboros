@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { ADD_STAGE_LABEL, CANVAS_LABEL, ZOOM_IN_LABEL } from "@/app/workflows/canvas/view";
 import { APPLY_LABEL, INSPECTOR_LABEL, MEMBER_REASON } from "@/app/workflows/inspector/inspector";
-import { WORKFLOWS_PATH, workflowCodePath, workflowPath } from "@/app/paths";
+import { WORKFLOWS_PATH, workflowCodePath, workflowCopilotPath, workflowPath } from "@/app/paths";
 import {
   DEV_SEED_NOTE,
   EMPTY_TITLE,
@@ -22,7 +22,7 @@ import {
   BROWSE_TEMPLATES_LABEL,
   BROWSE_TEMPLATES_SOON,
   CODE_NEEDS_WORKFLOW_NOTE,
-  COPILOT_SOON_NOTE,
+  COPILOT_NEEDS_WORKFLOW_NOTE,
   DRY_RUN_LABEL,
   DRY_RUN_NEEDS_WORKFLOW,
   NEW_WORKFLOW_LABEL,
@@ -42,8 +42,8 @@ import { railEntry, readings, seededRail, unpublishedEntry, workflowDetail } fro
  * in its seat.
  *
  * The acceptance criteria this suite exists for, in the ticket's words: **head values are
- * real**; **actions are role-gated — a member sees no Publish**; **Code and Copilot are
- * visibly disabled with an honest "soon" label**; **both themes**; and **shell: mounts in the
+ * real**; **actions are role-gated — a member sees no Publish**; **Code and Copilot link to
+ * the workflow's own surfaces, and are inert with a reason when none is selected** (#169, #565); **both themes**; and **shell: mounts in the
  * content pane, header and sidebar do not scroll with content** — the last of which is the
  * absence of any chrome of its own. The rail's parity is `workflow-rail.test.tsx`'s; the
  * decisions behind every sentence are `view.test.ts`'s and `states.test.ts`'s; the canvas
@@ -153,20 +153,17 @@ describe("the segmented control", () => {
     expect(visual).toHaveAttribute("href", workflowPath("standard-fix"));
     expect(code).not.toHaveAttribute("aria-current");
     expect(code).toHaveAttribute("href", workflowCodePath("standard-fix"));
-    expect(within(segments()).getAllByRole("link")).toHaveLength(2);
+    expect(within(segments()).getAllByRole("link")).toHaveLength(3);
   });
 
-  it("labels Copilot honestly — a span, out of the tab order, marked soon and naming what builds it", () => {
-    // S.1's honesty obligation: *they ship visibly disabled and labelled, not as buttons that
-    // quietly do nothing.*
+  it("links Copilot to this workflow's conversation — live since CE.1, and no longer marked soon (#565)", () => {
     render(<StudioScreen mayAdminister readings={readings()} role="owner" />);
 
-    const segment = within(segments()).getByTitle(`Copilot — ${COPILOT_SOON_NOTE}`);
+    const copilot = within(segments()).getByRole("link", { name: "Copilot" });
 
-    expect(segment.tagName).toBe("SPAN");
-    expect(segment).toHaveTextContent(/soon/);
-    expect(within(segments()).queryByRole("link", { name: /Copilot/ })).toBeNull();
-    expect(within(segments()).queryByRole("button", { name: /Copilot/ })).toBeNull();
+    expect(copilot).toHaveAttribute("href", workflowCopilotPath("standard-fix"));
+    expect(copilot).not.toHaveAttribute("aria-current");
+    expect(segments()).not.toHaveTextContent(/soon/);
   });
 });
 
@@ -442,6 +439,16 @@ describe("a URL naming a workflow the rail does not hold", () => {
     expect(code.tagName).toBe("SPAN");
     expect(code).not.toHaveTextContent(/soon/);
     expect(within(segments()).queryByRole("link", { name: "Code" })).toBeNull();
+  });
+
+  it("draws Copilot inert for the same reason — built, with nothing to open, and not soon (#565)", () => {
+    render(<StudioScreen mayAdminister readings={missing} role="owner" />);
+
+    const copilot = within(segments()).getByTitle(`Copilot — ${COPILOT_NEEDS_WORKFLOW_NOTE}`);
+
+    expect(copilot.tagName).toBe("SPAN");
+    expect(copilot).not.toHaveTextContent(/soon/);
+    expect(within(segments()).queryByRole("link", { name: "Copilot" })).toBeNull();
   });
 });
 

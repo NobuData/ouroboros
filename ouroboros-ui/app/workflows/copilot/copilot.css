@@ -1,0 +1,352 @@
+/*
+ * The workflow copilot's frame — CE.1 (#565), docs/mockups/20-workflow-copilot.html.
+ *
+ * The head, the tab row, the rail and the grid they sit in are the studio's (workflows.css), and
+ * the dialogs are the shell's overlay with the studio's own dialog classes. What is here is what
+ * only this surface draws: the head's two actions with the gate's notes under them, mockup 20's
+ * two columns of seats, the read-only transcript, and what the promote confirmation states.
+ *
+ * Every colour is a token, so the light and dark renderings are the token sheet's; every size is
+ * a token or a rem, so the font-size preference scales the surface (the 125% step included) and
+ * nothing here has a fixed height a larger type could be clipped by. Nothing scrolls inside
+ * itself: the content pane is the page's one scroller.
+ */
+
+/* ---------- the head's actions, and the gate under them ---------- */
+
+/*
+ * The two buttons on a row, the gate's notes under them. A column so the notes sit beneath the
+ * button they explain; a measure so a long reason wraps instead of widening the head and pushing
+ * the title into a sliver.
+ */
+.copilot-view__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  max-width: 34rem;
+  min-width: 0;
+}
+
+.copilot-view__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+}
+
+/*
+ * A note of the gate: a hairline box with a rule on its leading edge (the rail's 3px rule, for
+ * the rail's reason — a rule that grew with the type would be a different rule).
+ */
+.copilot-view__gate {
+  min-width: 0;
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* What stops a promote, on the error rule. */
+.copilot-view__gate--blocked {
+  border-left: 3px solid var(--err);
+}
+
+/* What a promote goes through with, on the warning rule — a flag, not a stop. */
+.copilot-view__gate--flagged {
+  border-left: 3px solid var(--warn);
+}
+
+.copilot-view__gate-title {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.copilot-view__gate-sub {
+  margin: var(--sp-4) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.copilot-view__gate-list {
+  margin: var(--sp-2) 0 0;
+  padding: 0 0 0 var(--sp-8);
+}
+
+.copilot-view__gate-foot {
+  margin: var(--sp-4) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+/* A reference, by stage and by name — values, so mono. */
+.copilot-view__ref {
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* The way to where references are resolved. */
+.copilot-view__resolve {
+  display: inline-block;
+  margin-top: var(--sp-4);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---------- the body: mockup 20's two columns ---------- */
+
+/*
+ * Beside the rail, across the canvas's and the inspector's tracks: the conversation in mockup
+ * 20's five columns of twelve, the stage list and the dry run in its seven. Both tracks are
+ * floored at zero so a long line in a transcript wraps instead of widening the pane (§ 1.3).
+ */
+.copilot-view__body {
+  display: grid;
+  grid-column: 2 / -1;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: var(--sp-8);
+  align-items: start;
+  min-width: 0;
+}
+
+/* The right column: the stage list over the dry run. */
+.copilot-view__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  min-width: 0;
+}
+
+/* A seat is the card primitive's; this only keeps it from widening its track. */
+.copilot-view__seat {
+  min-width: 0;
+}
+
+/*
+ * The one seat drawn in place of the three, in the states with no workflow open — across the
+ * same tracks, with a floor so the page has a foot rather than ending under the rail.
+ */
+.copilot-view__vacant {
+  grid-column: 2 / -1;
+  min-height: 24rem;
+}
+
+/* ---------- the read-only transcript ---------- */
+
+.copilot-view__transcript {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  min-width: 0;
+}
+
+/* Why it is read-only — the studio's read-only note's inks, in the card's own rhythm. */
+.copilot-view__readonly {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.copilot-view__silent {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-sm);
+}
+
+.copilot-view__messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One message: a hairline above it, so the list reads as a record rather than as bubbles. */
+.copilot-view__message {
+  min-width: 0;
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--line);
+}
+
+.copilot-view__message-head {
+  margin: 0;
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.copilot-view__speaker {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.copilot-view__time {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+}
+
+/* The text as it was written: its own line breaks kept, a long token wrapped. */
+.copilot-view__message-body {
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- the promote confirmation: what is being published ---------- */
+
+.copilot-view__summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-8);
+  min-width: 0;
+}
+
+.copilot-view__summary-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-md);
+}
+
+.copilot-view__summary-sub {
+  margin: var(--sp-4) 0 0;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.copilot-view__summary-none {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* The version and the draft, as term and value pairs that wrap as pairs. */
+.copilot-view__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4) var(--sp-9);
+  margin: 0;
+}
+
+.copilot-view__fact {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.copilot-view__fact dd {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+  overflow-wrap: anywhere;
+}
+
+.copilot-view__guards,
+.copilot-view__refs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* One guard: its name, where it came from, whether it holds a real run, and where. */
+.copilot-view__guard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+  padding: var(--sp-4) var(--sp-5);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+/* A guard a real run is held to: solid, on the ok rule. */
+.copilot-view__guard--enforced {
+  border: 1px solid var(--ok-line);
+  border-left: 3px solid var(--ok);
+}
+
+/*
+ * A guard no real run is held to yet: dashed, on the warning rule and tint. Never the ok hue and
+ * never a solid box — it is a promise recorded, not a protection, and must not look like one.
+ */
+.copilot-view__guard--unenforced {
+  border: 1px dashed var(--warn-line);
+  border-left: 3px dashed var(--warn);
+  background: var(--warn-tint);
+}
+
+.copilot-view__guard-name {
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-weight: 600;
+}
+
+.copilot-view__guard-source {
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+}
+
+.copilot-view__guard-state {
+  color: var(--ink);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+
+.copilot-view__guard-where {
+  color: var(--ink-dim);
+}
+
+.copilot-view__guard-warning {
+  color: var(--ink);
+  font-size: var(--t-xs);
+}
+
+/* ---------- the loading skeleton ---------- */
+
+/* The body's two columns, on the body's own rule, with a block where each seat will be. */
+.copilot-view__skeleton-seat {
+  display: block;
+  min-height: 12rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--inset);
+}
+
+/* ---------- one column, at the studio's own break ---------- */
+
+@media (max-width: 68.75rem) {
+  /* One track: a span would add a column rather than fill the one there is. */
+  .copilot-view__body,
+  .copilot-view__vacant {
+    grid-column: auto;
+  }
+
+  .copilot-view__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .copilot-view__actions {
+    max-width: none;
+  }
+}

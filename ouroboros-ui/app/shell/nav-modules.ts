@@ -96,7 +96,7 @@ export const SEEDED_NAV_ENTRIES: readonly NavEntry[] = [
   // that named the roadmap it was waiting for is a link — the amendment mockup 04's roadmap
   // recorded on #49, acted on. `WORKFLOWS_PATH` rather than a workflow's own URL, so the entry
   // lights on every studio URL (`/workflows/standard-fix` included) and the code and copilot
-  // views (#169, #565) change nothing here.
+  // views (#169, #565 — `/workflows/standard-fix/code`, `…/copilot`) changed nothing here.
   {
     id: "workflows",
     label: "Workflows",

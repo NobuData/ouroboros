@@ -3,9 +3,10 @@ import type { ReactNode } from "react";
 import { StudioModeGuard } from "@/app/workflows/mode-guard";
 
 /**
- * The layout one workflow's two editors share (V.1,
- * [#169](https://github.com/NobuData/ouroboros/issues/169)) — `/workflows/<slug>` (Visual) and
- * `/workflows/<slug>/code` (Code).
+ * The layout one workflow's three surfaces share (V.1,
+ * [#169](https://github.com/NobuData/ouroboros/issues/169); the third since CE.1,
+ * [#565](https://github.com/NobuData/ouroboros/issues/565)) — `/workflows/<slug>` (Visual),
+ * `/workflows/<slug>/code` (Code) and `/workflows/<slug>/copilot` (Copilot).
  *
  * It holds exactly one thing, and it is not the draft. Decision **C3** puts the draft in one
  * place, the service's draft slot, and each editor's page reads it when it renders — which is

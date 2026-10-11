@@ -109,6 +109,60 @@ export interface CopilotConversationResource {
   readonly draft: CopilotDraftResource;
 }
 
+/** One guard a promotion carries, with where it is really enforced (CE.1, #565). */
+export interface CopilotPromotionGuardResource {
+  readonly id: "never_auto_merge" | "spend_guard";
+  /** The chip — `never auto-merge`, `spend cap $5.00/run`. */
+  readonly label: string;
+  /** Whether the document itself says it, or the conversation proposed it. */
+  readonly source: "definition" | "conversation";
+  /** `enforced` on real runs, or honoured by dry runs only. */
+  readonly enforcement: "enforced" | "dry_run_only";
+  /** One sentence naming where it is enforced — or is not yet. */
+  readonly enforcedBy: string;
+}
+
+/** An unresolved reference of the draft, with whether the publish gate refuses it. */
+export interface CopilotPromotionReferenceResource extends CopilotWarningResource {
+  /** `true` exactly for `reference.unknown_alias`; skills and task routes are advisory. */
+  readonly blocking: boolean;
+}
+
+/** What **Promote to workflow** would publish (CE.1, #565). */
+export interface CopilotPromotionResource {
+  readonly workflow: { readonly id: string; readonly slug: string; readonly name: string };
+  /** The version a publish would create, and how the dialog names it — `security-patch v1`. */
+  readonly publishes: { readonly version: number; readonly label: string };
+  readonly draft: {
+    /** `false` when the workflow has no draft row. */
+    readonly present: boolean;
+    /** `v{published}.{rev}` — `v0.3`. */
+    readonly label: string;
+    /** The draft slot's etag — what a save sends as `If-Match`. */
+    readonly etag: string;
+  };
+  /** The active session, else the most recently closed one, else `null`. */
+  readonly session: {
+    readonly id: string;
+    readonly status: "active" | "promoted" | "discarded";
+  } | null;
+  readonly guards: readonly CopilotPromotionGuardResource[];
+  readonly references: readonly CopilotPromotionReferenceResource[];
+  /** Whether something already known stands in the way. Publishing still validates. */
+  readonly blocked: boolean;
+  /** A sentence per reason; empty when not blocked. */
+  readonly blockedReasons: readonly string[];
+}
+
+/** What **Discard draft** did (CE.1, #565). */
+export interface CopilotDiscardResource {
+  readonly workflowId: string;
+  /** Whether a draft was removed — `false` when only a conversation was closed. */
+  readonly draftDiscarded: boolean;
+  /** The session just closed as `discarded`, or `null` when none was active. */
+  readonly session: CopilotSessionResource | null;
+}
+
 /**
  * The draft's revision label.
  *

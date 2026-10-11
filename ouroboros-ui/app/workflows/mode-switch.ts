@@ -4,7 +4,11 @@
  *
  * Decision **C3** is *one draft, two editors*: **Visual** and **Code** both read the draft slot
  * P.3 stores ([#134](https://github.com/NobuData/ouroboros/issues/134)), so moving between them
- * converts nothing and carries nothing — each page reads the same row when it renders. There is
+ * converts nothing and carries nothing — each page reads the same row when it renders. Decision
+ * **W9** makes **Copilot** the third (CE.1,
+ * [#565](https://github.com/NobuData/ouroboros/issues/565)): it edits that same draft, and its
+ * conversation is stored by the service and read again on arrival, so a switch to or from it
+ * carries nothing either. There is
  * exactly one thing a switch can lose, and decision **C4** names it: a code buffer that has not
  * parsed yet. It never reached the draft, because the service refuses a file that does not
  * read, so it exists only in the page that holds it. Leaving that page discards it.
@@ -24,8 +28,9 @@ import type { StudioSurface } from "./view";
  *
  * The canvas has no buffer in this sense: what it draws is the draft, and S.6's autosave
  * ([#152](https://github.com/NobuData/ouroboros/issues/152)) writes each move to the draft
- * rather than keeping it aside. A surface joins this union when it gains something that can
- * exist only in the page.
+ * rather than keeping it aside. The copilot has none either: its draft is the shared one and its
+ * conversation is the service's (W9). A surface joins this union when it gains something that
+ * can exist only in the page.
  */
 export type BufferSurface = Extract<StudioSurface, "code">;
 
@@ -51,6 +56,7 @@ export interface UnsavedBuffer {
 export const SURFACE_LABELS: Readonly<Record<StudioSurface, string>> = {
   visual: "Visual",
   code: "Code",
+  copilot: "Copilot",
 };
 
 /** What a prompt says: a title, a sentence, and its two answers. */
@@ -79,7 +85,7 @@ export const SWITCH_PROMPT_CANCEL = "Keep editing";
  */
 export function switchPromptBody(to: StudioSurface): string {
   return (
-    "This code has not parsed yet, so none of it has reached the draft both editors share. " +
+    "This code has not parsed yet, so none of it has reached the draft every surface shares. " +
     `Switching to ${SURFACE_LABELS[to]} discards it, and ${SURFACE_LABELS[to]} opens on the ` +
     "last draft that saved."
   );

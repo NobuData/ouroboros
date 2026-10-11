@@ -2,7 +2,7 @@ import { EditorView } from "@codemirror/view";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { workflowCodePath, workflowPath } from "@/app/paths";
+import { workflowCodePath, workflowCopilotPath, workflowPath } from "@/app/paths";
 import { PANEL_LABEL, PANEL_TOGGLE_LABEL } from "@/app/workflows/code/code-panel";
 import { CODE_IDLE_NOTE } from "@/app/workflows/code/code-save";
 import {
@@ -38,7 +38,6 @@ import {
 import {
   BROWSE_TEMPLATES_LABEL,
   BROWSE_TEMPLATES_SOON,
-  COPILOT_SOON_NOTE,
   STUDIO_EYEBROW,
 } from "@/app/workflows/view";
 
@@ -57,8 +56,8 @@ import { railEntry } from "../../helpers/workflows";
  *
  * The acceptance criteria this suite exists for, in the ticket's words: the **head per the
  * mockup** (h1 `<slug>.loop.ts`, the subline verbatim, Visual and Code both live); **role gates
- * match the visual editor — a member reaches the route read-only**; **Copilot is visibly
- * disabled and labelled "soon"**; **both themes**; and **shell: mounts in the content pane**.
+ * match the visual editor — a member reaches the route read-only**; **Copilot links to the
+ * workflow's conversation** (live since CE.1, #565); **both themes**; and **shell: mounts in the content pane**.
  * The decisions behind every sentence are `code-view.test.ts`'s; the guard on a switch is
  * `mode-guard.test.tsx`'s.
  */
@@ -147,14 +146,14 @@ describe("the segmented control", () => {
     expect(visual).toHaveAttribute("href", workflowPath("standard-fix"));
   });
 
-  it("draws Copilot visibly disabled and labelled soon", () => {
+  it("links Copilot to this workflow's conversation — live since CE.1, and no longer marked soon (#565)", () => {
     render(<CodeScreen mayAdminister readings={codeReadings()} role="owner" />);
 
-    const copilot = within(segments()).getByTitle(`Copilot — ${COPILOT_SOON_NOTE}`);
+    const copilot = within(segments()).getByRole("link", { name: "Copilot" });
 
-    expect(copilot.tagName).toBe("SPAN");
-    expect(copilot).toHaveTextContent(/soon/);
-    expect(within(segments()).queryByRole("link", { name: /Copilot/ })).toBeNull();
+    expect(copilot).toHaveAttribute("href", workflowCopilotPath("standard-fix"));
+    expect(copilot).not.toHaveAttribute("aria-current");
+    expect(segments()).not.toHaveTextContent(/soon/);
   });
 });
 

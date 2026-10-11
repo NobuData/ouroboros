@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { AnchorHTMLAttributes } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { workflowCodePath, workflowPath } from "@/app/paths";
+import { workflowCodePath, workflowCopilotPath, workflowPath } from "@/app/paths";
 import {
   SWITCH_PROMPT_CANCEL,
   SWITCH_PROMPT_TITLE,
@@ -112,6 +112,15 @@ describe("a switch that discards nothing", () => {
     expect(navigate).toHaveBeenCalledExactlyOnceWith(workflowPath("standard-fix"));
   });
 
+  it("navigates to Copilot with nothing asked when no buffer is held — the third surface reads the one draft too (#565)", () => {
+    render(<CodePage holding={false} />);
+
+    fireEvent.click(segment("Copilot"));
+
+    expect(prompt()).toBeNull();
+    expect(navigate).toHaveBeenCalledExactlyOnceWith(workflowCopilotPath("standard-fix"));
+  });
+
   it("navigates with nothing asked for a press on the tab already open", () => {
     render(<CodePage />);
 
@@ -163,6 +172,20 @@ describe("a switch that would discard a buffer", () => {
     expect(dialog).toHaveTextContent(switchPromptBody("visual"));
     expect(navigate).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
+  });
+
+  it("asks before leaving Code for Copilot too, and switches there once the reader says so (#565)", () => {
+    render(<CodePage />);
+
+    fireEvent.click(segment("Copilot"));
+
+    expect(prompt()).toHaveTextContent(switchPromptBody("copilot"));
+    expect(navigate).not.toHaveBeenCalled();
+
+    fireEvent.click(within(prompt()!).getByRole("button", { name: "Discard and open Copilot" }));
+
+    expect(prompt()).toBeNull();
+    expect(push).toHaveBeenCalledExactlyOnceWith(workflowCopilotPath("standard-fix"));
   });
 
   it("keeps the buffer and the page when the reader keeps editing — and asks again next time", () => {

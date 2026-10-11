@@ -13,7 +13,15 @@
  * that locks the draft row, compares the etag the loop holds to the slot's, and only then calls
  * `apply_draft_batch()` — the same discipline the canvas and the code editor save under (WF-P.3).
  * **Continuity** (decision W9) is `conversation()`: the active session, its messages, and the
- * draft as it stands — what a surface read when it switches back.
+ * draft as it stands — what a surface read when it switches back. With nothing active it
+ * answers the conversation closed last, read-only: a transcript outlives its draft.
+ * **A conversation ends one of two ways** (CE.1, #565). *Promote* is the workflow's own publish
+ * (`workflows.service.ts` moves the active session to `promoted` in the publish's transaction);
+ * what this service adds is `promotion()`, the read that says what a publish would create and
+ * names each guard with its real enforcement (`copilot.promotion.ts`). *Discard* is
+ * `discard()`: the draft is dropped whole — row, operation log and counters, by V129's
+ * `discard_workflow_draft()` — the session moves to `discarded`, and the workflow stays: its
+ * published version again, or empty and unpublished.
  */
 
 import { Injectable, type OnModuleInit } from "@nestjs/common";
@@ -25,7 +33,9 @@ import type { EngineTranscriptEntry } from "../engine/engine.copilot";
 import { NotFoundError } from "../errors/error.envelope";
 import { DryRunAftermath } from "../dry-runs/dry-runs.aftermath";
 import { DryRunPickerService } from "../dry-runs/dry-runs.picker.service";
+import { dryRunInProgress } from "../dry-runs/dry-runs.errors";
 import { DryRunSuggestionsService } from "../dry-runs/suggestions.service";
+import { ENGINE_DRY_RUN_TIMEOUT_MS } from "../engine/engine.dryruns";
 import { ResolutionService } from "../routing/resolution.service";
 import { draftEtag } from "../workflows/draft.etag";
 import { workflowNotFound } from "../workflows/workflows.errors";
@@ -35,6 +45,7 @@ import {
   answerInvalid,
   exchangeBusy,
   messageNotFound,
+  nothingToDiscard,
   sessionActive,
   sessionClosed,
   sessionNotFound,
@@ -46,6 +57,7 @@ import {
   type ExchangeOutcome,
 } from "./copilot.exchange";
 import type { DraftOperation } from "./copilot.operations";
+import { blockedReasons, promotionGuards, promotionReference } from "./copilot.promotion";
 import { unresolvedReferences } from "./copilot.references";
 import { CopilotRepository, EMPTY_TRACE } from "./copilot.repository";
 import {
@@ -54,7 +66,9 @@ import {
   copilotWarning,
   draftLabel,
   type CopilotConversationResource,
+  type CopilotDiscardResource,
   type CopilotDraftResource,
+  type CopilotPromotionResource,
   type CopilotSessionResource,
 } from "./copilot.resources";
 import type { CopilotStreamEvent } from "./copilot.stream";
@@ -177,19 +191,25 @@ export class CopilotService implements OnModuleInit {
   }
 
   /**
-   * The active conversation and the draft as it stands — decision **W9**'s continuity read.
+   * The conversation and the draft as it stands — decision **W9**'s continuity read.
+   *
+   * The active session when there is one. Otherwise the session closed last — promoted or
+   * discarded, its `status` says which — with its messages, read-only (CE.1, #565): every
+   * route that writes to a session still refuses a closed one with `copilot_session_closed`.
+   * The draft beside it is always the workflow's draft *now*, which after a discard is none.
    *
    * @param organizationId - The workspace.
    * @param workflowId - The workflow.
    * @returns The session, its messages in order, and the draft with its W7 warnings.
-   * @throws {NotFoundError} `workflow_not_found`, or `copilot_session_not_found` when none is active.
+   * @throws {NotFoundError} `workflow_not_found`, or `copilot_session_not_found` when the
+   *   workflow never had a conversation.
    */
   async conversation(
     organizationId: string,
     workflowId: string,
   ): Promise<CopilotConversationResource> {
     const workflow = await this.requireWorkflow(organizationId, workflowId);
-    const session = await this.copilots.activeSession(organizationId, workflow.id);
+    const session = await this.latestSession(organizationId, workflow.id);
     if (session === undefined) throw sessionNotFound(workflow.id);
 
     const [messages, { catalogue }] = await Promise.all([
@@ -201,6 +221,102 @@ export class CopilotService implements OnModuleInit {
       session: copilotSession(session),
       messages: messages.map(copilotMessage),
       draft: await this.draftResource(workflow, catalogue),
+    };
+  }
+
+  /**
+   * What **Promote to workflow** would publish — the version, the guards with where each is
+   * really enforced, and the references that do not resolve (CE.1, #565).
+   *
+   * A read, and an honest one: it does **not** run the engine's validation, so `blocked` is
+   * only what is known without asking — no draft, or a pinned alias the publish gate refuses.
+   * The publish still validates, and its `422 workflow_definition_invalid` is the authority.
+   *
+   * @param organizationId - The workspace.
+   * @param workflowId - The workflow.
+   * @returns The promotion as it stands.
+   * @throws {NotFoundError} `workflow_not_found`.
+   */
+  async promotion(organizationId: string, workflowId: string): Promise<CopilotPromotionResource> {
+    const workflow = await this.requireWorkflow(organizationId, workflowId);
+    const [draft, highest, session, spendCapCents, { catalogue }] = await Promise.all([
+      this.copilots.draftOf(workflow.id),
+      this.copilots.highestVersion(workflow.id),
+      this.latestSession(organizationId, workflow.id),
+      this.suggestions.draftSpendGuardCents(organizationId, workflow.id),
+      this.grounding.grounding(organizationId),
+    ]);
+
+    const definition = draft?.definition ?? null;
+    const version = (highest ?? 0) + 1;
+    const references = unresolvedReferences(definition, catalogue).map(promotionReference);
+    const reasons = blockedReasons(draft !== undefined, references);
+
+    return {
+      workflow: { id: workflow.id, slug: workflow.slug, name: workflow.name },
+      publishes: { version, label: `${workflow.slug} v${version}` },
+      draft: {
+        present: draft !== undefined,
+        label: draftLabel(workflow),
+        etag: draftEtag(draft),
+      },
+      session: session === undefined ? null : { id: session.id, status: session.status },
+      guards: promotionGuards(definition, spendCapCents),
+      references,
+      blocked: reasons.length > 0,
+      blockedReasons: reasons,
+    };
+  }
+
+  /**
+   * **Discard draft**: drop the draft and close the conversation; keep the workflow and the
+   * transcript (CE.1, #565).
+   *
+   * The workflow returns to its published version, or — never published — to an empty
+   * unpublished workflow that stays listed. One transaction: the draft row is locked first
+   * (every draft writer takes that lock first, so a save in flight finishes before the draft
+   * goes, and one arriving after finds no draft and is told so by its etag), then
+   * `discard_workflow_draft()` (V129) removes the row, its operation log and its counters and
+   * moves the active session to `discarded`.
+   *
+   * **Refused while a dry run is in progress.** The run was sent a copy of the draft, so it
+   * would not fail — it would go on spending against, and then file suggestions for, a draft
+   * that no longer exists. The person is told which run, to follow or cancel it. A run left
+   * open longer than the harness's own deadline cannot still be running anywhere and does not
+   * stand in the way; the next dry run's start ends it (`DryRunsService`).
+   *
+   * @param organizationId - The workspace.
+   * @param workflowId - The workflow.
+   * @returns Whether a draft went, and the session that was closed, if one was.
+   * @throws {NotFoundError} `workflow_not_found`.
+   * @throws {ConflictError} `dry_run_in_progress`, or `copilot_nothing_to_discard` when the
+   *   workflow has neither a draft nor an active session.
+   */
+  async discard(organizationId: string, workflowId: string): Promise<CopilotDiscardResource> {
+    const workflow = await this.requireWorkflow(organizationId, workflowId);
+
+    const open = await this.copilots.openDryRun(workflow.id);
+    if (open !== undefined && Date.now() - open.started_at.getTime() <= ENGINE_DRY_RUN_TIMEOUT_MS) {
+      throw dryRunInProgress(open.id);
+    }
+
+    const discarded = await this.database.transaction(async (trx) => {
+      const draft = await this.copilots.draftOf(workflow.id, trx, true);
+      const active = await this.copilots.activeSession(organizationId, workflow.id, trx);
+      if (draft === undefined && active === undefined) throw nothingToDiscard(workflow.id);
+
+      return this.copilots.discardDraft(organizationId, workflow.id, trx);
+    });
+
+    const session =
+      discarded.session_id === null
+        ? undefined
+        : await this.copilots.session(organizationId, workflow.id, discarded.session_id);
+
+    return {
+      workflowId: workflow.id,
+      draftDiscarded: discarded.draft_discarded,
+      session: session === undefined ? null : copilotSession(session),
     };
   }
 
@@ -612,6 +728,23 @@ export class CopilotService implements OnModuleInit {
       provenanceSummary: workflow.provenance_summary,
       warnings: unresolvedReferences(definition, catalogue).map(copilotWarning),
     };
+  }
+
+  /**
+   * The session a read is about: the active one, else the one closed last.
+   *
+   * @param organizationId - The workspace.
+   * @param workflowId - The workflow.
+   * @returns The session, or `undefined` when the workflow never had one.
+   */
+  private async latestSession(
+    organizationId: string,
+    workflowId: string,
+  ): Promise<CopilotSession | undefined> {
+    return (
+      (await this.copilots.activeSession(organizationId, workflowId)) ??
+      (await this.copilots.lastClosedSession(organizationId, workflowId))
+    );
   }
 
   private async requireWorkflow(organizationId: string, workflowId: string): Promise<Workflow> {

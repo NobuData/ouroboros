@@ -128,6 +128,21 @@ export class DryRunSuggestionsService {
   ) {}
 
   /**
+   * The draft's per-run spend guard, exactly as a dry run is held to it.
+   *
+   * The promote dialog (CE.1, #565) names this cap and says it is honoured by dry runs only;
+   * it asks here so the figure it names is the one `effectiveBudget` is given — one derivation
+   * (`guardTraces` → `draftSpendGuardCents`), not a second reading of the transcript.
+   *
+   * @param organizationId - The workspace.
+   * @param workflowId - The workflow.
+   * @returns The cap in cents, or `null` when no live conversation proposed one.
+   */
+  async draftSpendGuardCents(organizationId: string, workflowId: string): Promise<number | null> {
+    return draftSpendGuardCents(await this.dryRuns.guardTraces(organizationId, workflowId));
+  }
+
+  /**
    * File the rule pack's suggestions for a dry run that has just ended.
    *
    * Once per run, and only for a run that ended with results. Never throws: the run is already

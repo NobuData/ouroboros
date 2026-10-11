@@ -6305,6 +6305,12 @@ export interface paths {
          *     back through `GET /api/v1/workflows/{id}?version=15`, which is the same resource the
          *     workflow already had, so a `201` would owe a `Location` that names nothing new.
          *
+         *     **Publishing promotes the conversation.** When the workflow has an active copilot
+         *     session, it moves to `promoted` with its `closedAt` in the same transaction as the
+         *     publish (CE.1, [#565](https://github.com/NobuData/ouroboros/issues/565)); its transcript
+         *     stays readable through `GET …/copilot/conversation`. A workflow with no active session
+         *     publishes exactly as before.
+         *
          *     **`owner` or `admin`.**
          */
         post: operations["publishWorkflow"];
@@ -6650,18 +6656,111 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Read the active conversation and the draft as it stands
+         * Read the conversation and the draft as it stands
          * @description Decision **W9**: switching to the canvas or the code view and back preserves the
          *     conversation. This is what a surface reads when it comes back — the active session, its
          *     messages in order (chips with their answers, tool traces, per-exchange cost), and the
          *     shared draft: its `etag` (the same one the canvas sends as `If-Match`), its `v0.N` label,
          *     the provenance summary and the W7 unresolved-reference warnings.
          *
+         *     **A closed conversation stays readable.** When no session is active, this answers the
+         *     workflow's **most recently closed** session — `promoted` or `discarded`, newest
+         *     `closedAt`; `session.status` says which — with its messages, read-only: every route
+         *     that writes to a session still answers `409 copilot_session_closed`. The `draft` beside
+         *     it is the workflow's draft *now* (after a discard, `definition` is `null`). A workflow
+         *     that never had a conversation is `404 copilot_session_not_found`.
+         *
          *     Every member may read it, like the draft.
          */
         get: operations["readCopilotConversation"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/{id}/copilot/promotion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read what Promote to workflow would publish
+         * @description The promote dialog's content (mockup 20; CE.1,
+         *     [#565](https://github.com/NobuData/ouroboros/issues/565)): the version a publish would
+         *     create (`security-patch v1`), the draft it would publish, the conversation it would
+         *     close, and — said honestly — the **guards** and the **unresolved references**.
+         *
+         *     **Guards are named with their real enforcement; none is compiled into configuration.**
+         *
+         *     | `id` | listed when | `source` | `enforcement` |
+         *     |---|---|---|---|
+         *     | `never_auto_merge` | the draft has at least one `term` node and none of them is `open_pr_automerge` | `definition` | `enforced` — the graph itself cannot merge |
+         *     | `spend_guard` | the conversation proposed a per-run spend cap (the copilot's `set_guard`) | `conversation` | `dry_run_only` — dry runs are held to it; **real runs are not yet**, because the workflow language has no guard construct |
+         *
+         *     `enforcedBy` is one sentence saying where, for a person to read.
+         *
+         *     **References** are the draft's W7 warnings with `blocking`: `true` exactly for
+         *     `reference.unknown_alias`, which the publish gate refuses; an unknown skill or task
+         *     route is advisory and publishes.
+         *
+         *     **`blocked` is what is known without validating** — no draft, or a blocking reference —
+         *     with a sentence each in `blockedReasons`. This read does **not** run the engine's
+         *     validation: `POST …/publish` does, and its `422 workflow_definition_invalid` findings
+         *     remain the authority. A promotion that is not `blocked` may still be refused there.
+         *
+         *     Promoting is `POST /api/v1/workflows/{id}/publish`; `draft.etag` is the draft slot's
+         *     etag as every save uses it.
+         *
+         *     Every member may read it, like the draft.
+         */
+        get: operations["readCopilotPromotion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/{id}/copilot/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discard the draft and close the conversation
+         * @description **Discard draft** (mockup 20's head; CE.1,
+         *     [#565](https://github.com/NobuData/ouroboros/issues/565)). Atomically:
+         *
+         *     * **the draft is dropped** — the draft row, the operation log of that draft and its
+         *       `v0.N` counters. The workflow **stays**: it is its published version again, or, never
+         *       published, an empty unpublished workflow that is still listed. The next edit starts a
+         *       new draft at revision 1;
+         *     * **the active copilot session, if any, moves to `discarded`** with its `closedAt`. Its
+         *       messages are kept and stay readable through `GET …/copilot/conversation`.
+         *
+         *     Either half alone is enough: a draft nobody was talking about is discarded
+         *     (`session` is `null`), and a conversation that never produced a draft is closed
+         *     (`draftDiscarded` is `false`). With neither there is nothing to do, and the answer is
+         *     `409 copilot_nothing_to_discard`.
+         *
+         *     **Refused while a dry run of the workflow is in progress** — `409 dry_run_in_progress`,
+         *     `details.dryRunId` naming the run to follow or cancel: it was started on the draft
+         *     being discarded and would go on spending against it. Published versions are never
+         *     touched.
+         *
+         *     No request body. **`owner` or `admin`.**
+         */
+        post: operations["discardCopilotDraft"];
         delete?: never;
         options?: never;
         head?: never;
@@ -25658,6 +25757,111 @@ export interface components {
             session: components["schemas"]["CopilotSession"];
             messages: components["schemas"]["CopilotMessage"][];
             draft: components["schemas"]["CopilotDraft"];
+        };
+        /**
+         * CopilotPromotionGuard
+         * @description One guard a promotion carries, with where it is really enforced (CE.1, #565). A guard is
+         *     never compiled into new configuration on promote: it is named, and `enforcement` says
+         *     whether real runs are held to it.
+         */
+        CopilotPromotionGuard: {
+            /** @enum {string} */
+            id: "never_auto_merge" | "spend_guard";
+            /**
+             * @description The chip — `never auto-merge`, or `spend cap $5.00/run`.
+             * @example never auto-merge
+             * @example spend cap $5.00/run
+             */
+            label: string;
+            /**
+             * @description `definition` — the document itself says it; `conversation` — the copilot proposed it and it is not in the document.
+             * @enum {string}
+             */
+            source: "definition" | "conversation";
+            /**
+             * @description `enforced` on every real run, or `dry_run_only` — honoured by dry runs and not yet by real ones.
+             * @enum {string}
+             */
+            enforcement: "enforced" | "dry_run_only";
+            /** @description One sentence naming where the guard is enforced — or is not yet. */
+            enforcedBy: string;
+        };
+        /**
+         * CopilotPromotionReference
+         * @description An unresolved reference of the draft — a `CopilotWarning` — with whether the publish
+         *     gate refuses it.
+         */
+        CopilotPromotionReference: {
+            /** @enum {string} */
+            code: "reference.unknown_skill" | "reference.unknown_alias" | "reference.unknown_task";
+            /** @description The stage that names it. */
+            node: string;
+            /** @description The name that resolved to nothing. */
+            name: string;
+            /** @description An RFC 6901 pointer to the value. */
+            path: string;
+            message: string;
+            /** @description `true` exactly for `reference.unknown_alias`, which publishing refuses; an unknown skill or task route is advisory. */
+            blocking: boolean;
+        };
+        /**
+         * CopilotPromotion
+         * @description What **Promote to workflow** would publish (CE.1,
+         */
+        CopilotPromotion: {
+            workflow: {
+                /** Format: uuid */
+                id: string;
+                slug: string;
+                name: string;
+            };
+            /** @description The version a publish would create. */
+            publishes: {
+                /** @description One above the workflow's highest published version — `1` for a workflow never published. */
+                version: number;
+                /**
+                 * @description `<slug> v<version>`.
+                 * @example security-patch v1
+                 */
+                label: string;
+            };
+            draft: {
+                /** @description `false` when the workflow has no draft — nothing to promote. */
+                present: boolean;
+                /**
+                 * @description `v{published}.{rev}`.
+                 * @example v0.3
+                 */
+                label: string;
+                /** @description The draft slot's etag — what a save sends as `If-Match`. */
+                etag: string;
+            };
+            /** @description The active session, else the most recently closed one, else `null` — a workflow nobody talked to the copilot about. */
+            session: {
+                /** Format: uuid */
+                id: string;
+                /** @enum {string} */
+                status: "active" | "promoted" | "discarded";
+            } | null;
+            guards: components["schemas"]["CopilotPromotionGuard"][];
+            /** @description The draft's unresolved references, in document order. */
+            references: components["schemas"]["CopilotPromotionReference"][];
+            /** @description Whether something already known stands in the way — no draft, or a blocking reference. Publishing still validates; this is not its verdict. */
+            blocked: boolean;
+            /** @description A sentence per reason. Empty when `blocked` is `false`. */
+            blockedReasons: string[];
+        };
+        /**
+         * CopilotDiscard
+         * @description What **Discard draft** did (CE.1,
+         */
+        CopilotDiscard: {
+            /** Format: uuid */
+            workflowId: string;
+            /** @description Whether a draft was removed — `false` when only a conversation was closed. */
+            draftDiscarded: boolean;
+            /** @description The session just closed as `discarded`, or `null` when none was active. */
+            session: components["schemas"]["CopilotSession"] | null;
         };
         /**
          * StartDryRunRequest
@@ -62391,8 +62595,254 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description `workflow_not_found`, or `copilot_session_not_found` when no session is active. */
+            /** @description `workflow_not_found`, or `copilot_session_not_found` when the workflow never had a session — active or closed. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readCopilotPromotion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The promotion as it stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CopilotPromotion"];
+                };
+            };
+            /** @description `organization_required`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workflow_not_found` — no such workflow for this caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    discardCopilotDraft: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What was discarded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "workflowId": "5eed0089-0000-4000-8000-000000000001",
+                     *       "draftDiscarded": true,
+                     *       "session": {
+                     *         "id": "5eed008a-0000-4000-8000-000000000001",
+                     *         "workflowId": "5eed0089-0000-4000-8000-000000000001",
+                     *         "status": "discarded",
+                     *         "draftName": "security-patch",
+                     *         "modelProvenance": [
+                     *           {
+                     *             "seq": 2,
+                     *             "alias": "coder-max",
+                     *             "modelId": "claude-fable-5"
+                     *           }
+                     *         ],
+                     *         "createdAt": "2026-10-08T15:02:00.000Z",
+                     *         "closedAt": "2026-10-11T09:30:00.000Z",
+                     *         "lastSeq": 6
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CopilotDiscard"];
+                };
+            };
+            /** @description `organization_required` — this session is not acting in any workspace. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — a member below `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workflow_not_found` — no such workflow for this caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `copilot_nothing_to_discard` — the workflow has neither a draft nor an active
+             *     session; `dry_run_in_progress` — a dry run of this workflow has not ended
+             *     (`details.dryRunId`).
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

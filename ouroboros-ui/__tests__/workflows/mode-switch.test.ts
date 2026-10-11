@@ -36,6 +36,21 @@ describe("switchPrompt", () => {
     expect(prompt?.cancel).toBe(SWITCH_PROMPT_CANCEL);
   });
 
+  it("asks before leaving Code for Copilot too — the third surface is guarded as the first is (#565)", () => {
+    const prompt = switchPrompt(HELD, "code", "copilot");
+
+    expect(prompt?.body).toBe(switchPromptBody("copilot"));
+    expect(prompt?.body).toMatch(/Switching to Copilot discards it, and Copilot opens on the last draft that saved/);
+    expect(prompt?.confirm).toBe("Discard and open Copilot");
+  });
+
+  it("asks nothing when leaving Copilot, which holds nothing only the page has (#565)", () => {
+    // The draft is the shared one and the conversation is the service's (W9).
+    expect(switchPrompt(null, "copilot", "visual")).toBeNull();
+    expect(switchPrompt(null, "copilot", "code")).toBeNull();
+    expect(switchPrompt(HELD, "copilot", "visual")).toBeNull();
+  });
+
   it("asks nothing when no buffer is held — both editors read the one draft", () => {
     expect(switchPrompt(null, "code", "visual")).toBeNull();
     expect(switchPrompt(null, "visual", "code")).toBeNull();
@@ -56,13 +71,13 @@ describe("what the prompt says", () => {
     const body = switchPromptBody("visual");
 
     expect(body).toMatch(/has not parsed yet/);
-    expect(body).toMatch(/none of it has reached the draft both editors share/);
+    expect(body).toMatch(/none of it has reached the draft every surface shares/);
     expect(body).toMatch(/Switching to Visual discards it/);
     expect(body).toMatch(/last draft that saved/);
   });
 
   it("names each surface the way the segmented control does", () => {
-    expect(SURFACE_LABELS).toEqual({ visual: "Visual", code: "Code" });
+    expect(SURFACE_LABELS).toEqual({ visual: "Visual", code: "Code", copilot: "Copilot" });
     expect(switchPromptBody("code")).toMatch(/Switching to Code discards it/);
   });
 

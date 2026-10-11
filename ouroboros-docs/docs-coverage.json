@@ -29,6 +29,7 @@
     "/workflows": "user-guide/workflows/studio",
     "/workflows/[slug]": "user-guide/workflows/studio",
     "/workflows/[slug]/code": "user-guide/workflows/code",
+    "/workflows/[slug]/copilot": "user-guide/workflows/copilot",
     "/workspace-recovery": "user-guide/getting-started/sign-in",
     "/workshop/charts": {
       "undocumented": "a developer workshop for the chart components; not a product screen"

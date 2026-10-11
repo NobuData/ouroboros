@@ -452,8 +452,10 @@
   text-align: start;
 }
 
+/* A button on the canvas and in the code view; a link to the stage's row on the copilot (#565). */
 .studio-findings__finding--anchored {
   cursor: pointer;
+  text-decoration: none;
 }
 
 .studio-findings__finding--anchored:hover,
@@ -669,6 +671,54 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-8);
+}
+
+/*
+ * Where the new workflow opens — the canvas or the copilot (#565). A fieldset, undone to a plain
+ * column: its legend in the fields' own label ink, then one row an option — the radio, its name,
+ * and what choosing it does — wrapping as a row at a larger type rather than clipping.
+ */
+.studio-create__start {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.studio-create__start-legend {
+  padding: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.studio-create__option {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2) var(--sp-4);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.studio-create__option input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.studio-create__option-label {
+  color: var(--ink);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.studio-create__option-hint {
+  flex: 1 1 14rem;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
 }
 
 /* The refusal, in the error hue, above the actions it explains. */

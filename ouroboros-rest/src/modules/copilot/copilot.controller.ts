@@ -1,9 +1,11 @@
 /**
  * `/api/v1/workflows/{id}/copilot/…` — the conversation's routes.
  *
- * Starting a session and sending to it change the draft, so they are administrators' like the
- * draft's own `PUT`; reading the conversation is every member's, like reading the draft. The two
- * sending routes answer `text/event-stream` written directly to the response — see
+ * Starting a session, sending to it and discarding the draft change the draft, so they are
+ * administrators' like the draft's own `PUT`; reading the conversation, and reading what a
+ * promotion would publish, is every member's, like reading the draft. **Promote** itself has no
+ * route here: it is `POST /workflows/{id}/publish`, which closes the conversation as `promoted`
+ * (CE.1, #565). The two sending routes answer `text/event-stream` written directly to the response — see
  * `copilot.stream.ts` for why the headers go out after the first event.
  */
 
@@ -22,7 +24,12 @@ import {
   CopilotWorkflowParams,
   StartCopilotSessionBody,
 } from "./copilot.dto";
-import type { CopilotConversationResource, CopilotSessionResource } from "./copilot.resources";
+import type {
+  CopilotConversationResource,
+  CopilotDiscardResource,
+  CopilotPromotionResource,
+  CopilotSessionResource,
+} from "./copilot.resources";
 import { CopilotService } from "./copilot.service";
 import { writeSse, type SseResponse } from "./copilot.stream";
 
@@ -56,7 +63,8 @@ export class CopilotController {
 
   /**
    * `GET /api/v1/workflows/{id}/copilot/conversation` — the active conversation and the draft as it
-   * stands, for a surface switching back (decision W9).
+   * stands, for a surface switching back (decision W9); with none active, the conversation
+   * closed last, read-only.
    *
    * @param tenant - The workspace.
    * @param params - The workflow's id.
@@ -68,6 +76,40 @@ export class CopilotController {
     @Param() params: CopilotWorkflowParams,
   ): Promise<CopilotConversationResource> {
     return this.copilot.conversation(tenant.id, params.id);
+  }
+
+  /**
+   * `GET /api/v1/workflows/{id}/copilot/promotion` — what **Promote to workflow** would publish:
+   * the version, each guard with where it is really enforced, and the unresolved references.
+   *
+   * @param tenant - The workspace.
+   * @param params - The workflow's id.
+   * @returns The promotion as it stands.
+   */
+  @Get("promotion")
+  promotion(
+    @CurrentTenant() tenant: Organization,
+    @Param() params: CopilotWorkflowParams,
+  ): Promise<CopilotPromotionResource> {
+    return this.copilot.promotion(tenant.id, params.id);
+  }
+
+  /**
+   * `POST /api/v1/workflows/{id}/copilot/discard` — **Discard draft**: the draft goes, the
+   * conversation closes as `discarded`, the workflow and the transcript stay.
+   *
+   * @param tenant - The workspace.
+   * @param params - The workflow's id.
+   * @returns What was discarded, `200`.
+   */
+  @Roles(...ADMINISTRATORS)
+  @Post("discard")
+  @HttpCode(HttpStatus.OK)
+  discard(
+    @CurrentTenant() tenant: Organization,
+    @Param() params: CopilotWorkflowParams,
+  ): Promise<CopilotDiscardResource> {
+    return this.copilot.discard(tenant.id, params.id);
   }
 
   /**

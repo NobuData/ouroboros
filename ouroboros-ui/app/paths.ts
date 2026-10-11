@@ -339,6 +339,21 @@ export function workflowCodePath(slug: string): string {
 }
 
 /**
+ * The studio's copilot, opened on one workflow — `/workflows/security-patch/copilot` (CE.1,
+ * [#565](https://github.com/NobuData/ouroboros/issues/565)), mockup 20.
+ *
+ * The third tab of the same surface, beneath {@link workflowPath} for the reason
+ * {@link workflowCodePath} gives: the sidebar's **Workflows** entry stays lit here, and the
+ * segmented control's three segments are three spellings of one workflow's URL.
+ *
+ * @param slug The workflow's slug, encoded for the reason {@link workflowPath} gives.
+ * @returns The path.
+ */
+export function workflowCopilotPath(slug: string): string {
+  return `${workflowPath(slug)}/copilot`;
+}
+
+/**
  * The run console ([#309](https://github.com/NobuData/ouroboros/issues/309)) — mockup 10.
  *
  * **A contextual surface with no sidebar entry of its own**

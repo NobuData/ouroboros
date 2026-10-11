@@ -5,6 +5,7 @@ import {
   answerInvalid,
   exchangeBusy,
   messageNotFound,
+  nothingToDiscard,
   sessionActive,
   sessionClosed,
   sessionNotFound,
@@ -37,6 +38,13 @@ describe("the copilot errors", () => {
     const invalid = answerInvalid("That question was already answered.");
     expect(invalid.getStatus()).toBe(HttpStatus.UNPROCESSABLE_ENTITY);
     expect(invalid.message).toBe("That question was already answered.");
+  });
+
+  it("answers a discard with nothing to discard as a 409 naming the workflow", () => {
+    const error = nothingToDiscard("wf-1");
+    expect(error.getStatus()).toBe(HttpStatus.CONFLICT);
+    expect(error.code).toBe("copilot_nothing_to_discard");
+    expect(error.details).toEqual({ workflowId: "wf-1" });
   });
 
   it("documents every code once", () => {

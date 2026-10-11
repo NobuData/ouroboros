@@ -6,23 +6,28 @@
  * through the database's own functions: `apply_draft_batch()` is the **only** writer of
  * `draft_operations` (V110, #556) and the application role cannot insert one directly, which is
  * what makes *every copilot edit is a recorded, attributable operation* a property of the schema
- * rather than of this file.
+ * rather than of this file. **Discard draft** (CE.1, #565) is the same argument from the other
+ * side: a draft is its row, its log and two counters, the application may not delete an
+ * operation, and so `discard_workflow_draft()` (V129) drops all of it — and closes the
+ * conversation — in one call.
  */
 
 import { Injectable } from "@nestjs/common";
 import { sql, type Transaction } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
-import type {
-  CopilotChoice,
-  CopilotMessage,
-  CopilotMessageStatus,
-  CopilotModelProvenanceEntry,
-  CopilotSession,
-  CopilotToolTrace,
-  Database,
-  Workflow,
-  WorkflowVersion,
+import {
+  DRY_RUN_TERMINAL_STATUSES,
+  type CopilotChoice,
+  type CopilotMessage,
+  type CopilotMessageStatus,
+  type CopilotModelProvenanceEntry,
+  type CopilotSession,
+  type CopilotToolTrace,
+  type Database,
+  type DryRun,
+  type Workflow,
+  type WorkflowVersion,
 } from "../db/schema";
 import { queryOn } from "../tenancy/queries";
 import type { ProposedOperation } from "./copilot.operations";
@@ -45,6 +50,16 @@ export interface ReplyRecord {
 export interface AppliedBatch {
   readonly draft_rev: number;
   readonly batch_id: string;
+}
+
+/** What `discard_workflow_draft()` returns. */
+export interface DiscardedDraft {
+  /** Whether a draft row was removed. */
+  readonly draft_discarded: boolean;
+  /** How many logged operations went with it. */
+  readonly operations_removed: number;
+  /** The session it closed as `discarded`, or `null` when none was active. */
+  readonly session_id: string | null;
 }
 
 @Injectable()
@@ -120,9 +135,36 @@ export class CopilotRepository {
    *
    * @param organizationId - The workspace.
    * @param workflowId - The workflow.
+   * @param trx - The transaction to read within, when there is one.
    * @returns The session, or `undefined`.
    */
   async activeSession(
+    organizationId: string,
+    workflowId: string,
+    trx?: Transaction<Database>,
+  ): Promise<CopilotSession | undefined> {
+    return queryOn(this.database, trx)
+      .selectFrom("copilot_sessions")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .where("workflow_id", "=", workflowId)
+      .where("status", "=", "active")
+      .executeTakeFirst();
+  }
+
+  /**
+   * The workflow's most recently closed session — promoted or discarded — if it has one.
+   *
+   * What the conversation read falls back to when nothing is active (CE.1, #565): the
+   * transcript of a conversation that was promoted or discarded stays readable until the
+   * retention sweep removes it. A workflow's sessions are few, and
+   * `copilot_sessions_organization_workflow_idx` finds them.
+   *
+   * @param organizationId - The workspace.
+   * @param workflowId - The workflow.
+   * @returns The session closed last, or `undefined` when none ever closed.
+   */
+  async lastClosedSession(
     organizationId: string,
     workflowId: string,
   ): Promise<CopilotSession | undefined> {
@@ -131,7 +173,48 @@ export class CopilotRepository {
       .selectAll()
       .where("organization_id", "=", organizationId)
       .where("workflow_id", "=", workflowId)
-      .where("status", "=", "active")
+      .where("status", "<>", "active")
+      .orderBy("closed_at", "desc")
+      .orderBy("created_at", "desc")
+      .limit(1)
+      .executeTakeFirst();
+  }
+
+  /**
+   * The highest version a workflow has published — what the next publish is numbered after.
+   *
+   * `max(version)` rather than `workflows.current_version`, because that is what
+   * `WorkflowsRepository.publish` numbers from: the version in force is not necessarily the
+   * newest, and the promote dialog must name the number a publish would really take.
+   *
+   * @param workflowId - The workflow.
+   * @returns The number, or `null` for a workflow that has published nothing.
+   */
+  async highestVersion(workflowId: string): Promise<number | null> {
+    const row = await this.database.db
+      .selectFrom("workflow_versions")
+      .where("workflow_id", "=", workflowId)
+      .select(sql<number | null>`max(version)`.as("highest"))
+      .executeTakeFirstOrThrow();
+
+    return row.highest;
+  }
+
+  /**
+   * The workflow's dry run that has not ended, if there is one — what a discard must not pull
+   * the draft out from under.
+   *
+   * @param workflowId - The workflow.
+   * @returns The open run's id and start, or `undefined`.
+   */
+  async openDryRun(workflowId: string): Promise<Pick<DryRun, "id" | "started_at"> | undefined> {
+    return this.database.db
+      .selectFrom("dry_runs")
+      .select(["id", "started_at"])
+      .where("workflow_id", "=", workflowId)
+      .where("status", "not in", DRY_RUN_TERMINAL_STATUSES)
+      .orderBy("started_at", "desc")
+      .limit(1)
       .executeTakeFirst();
   }
 
@@ -349,6 +432,35 @@ export class CopilotRepository {
 
     const [row] = result.rows;
     if (row === undefined) throw new Error("apply_draft_batch returned no row");
+    return row;
+  }
+
+  /**
+   * Drop the workflow's draft and close the conversation about it —
+   * `ouroboros.discard_workflow_draft()` (V129).
+   *
+   * One call rather than four statements because the application cannot make three of them:
+   * the function deletes the draft row **and the current base's `draft_operations`**, returns
+   * `draft_rev` to 0 and `provenance_summary` to zeros, and moves the active session to
+   * `discarded` — under the workflow's lock, so the replay probe stays empty and the next first
+   * edit is revision 1 over the base. The session's messages are not touched.
+   *
+   * @param organizationId - The workspace.
+   * @param workflowId - The workflow.
+   * @param trx - The transaction — the caller's, which holds the draft lock it decided under.
+   * @returns Whether a draft went, how many operations with it, and the session closed.
+   */
+  async discardDraft(
+    organizationId: string,
+    workflowId: string,
+    trx: Transaction<Database>,
+  ): Promise<DiscardedDraft> {
+    const result = await sql<DiscardedDraft>`
+      select draft_discarded, operations_removed, session_id
+        from ouroboros.discard_workflow_draft(${organizationId}, ${workflowId}::uuid)`.execute(trx);
+
+    const [row] = result.rows;
+    if (row === undefined) throw new Error("discard_workflow_draft returned no row");
     return row;
   }
 }

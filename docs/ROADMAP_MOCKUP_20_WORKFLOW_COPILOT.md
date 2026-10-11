@@ -613,7 +613,7 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CE.1 | #565 | 🟡 Open | ouroboros-ui: [CE.1] Copilot route, head & promote/discard | Third-surface frame, live segment, the promote gate flow | mvp, copilot, ui, design | N (after WF-S.1, CD.4, BA-D.5) | Y | M | ouroboros-ui |
+| CE.1 | #565 ✅ | 🟢 Done | ouroboros-ui: [CE.1] Copilot route, head & promote/discard | Third-surface frame, live segment, the promote gate flow | mvp, copilot, ui, design | N (after WF-S.1, CD.4, BA-D.5) | Y | M | ouroboros-ui |
 | CE.2 | #566 | 🟡 Open | ouroboros-ui: [CE.2] Conversation card | Bubbles, choice chips, composer, streaming replies | mvp, copilot, ui, design | N (after CE.1, CD.1) | Y | L | ouroboros-ui |
 | CE.3 | #567 | 🟡 Open | ouroboros-ui: [CE.3] Draft stage list | Numbered rows, tags, provenance pills, W7 warnings, edit links | mvp, copilot, ui, design | N (after CE.1, CC.2) | Y | M | ouroboros-ui |
 | CE.4 | #568 | 🟡 Open | ouroboros-ui: [CE.4] Dry-run card | Result rows, simulated diff, suggestion callouts, pickers | mvp, copilot, ui, design | N (after CE.1, CD.4/CD.5) | Y | L | ouroboros-ui |
@@ -621,7 +621,9 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 
 ### Issue CE.1 — ouroboros-ui: [CE.1] Copilot route, head & promote/discard
 
-> **GitHub issue:** #565 · **Status:** 🟡 Open · **Parent epic:** #553
+> **GitHub issue:** #565 ✅ · **Status:** 🟢 Done · **Parent epic:** #553
+>
+> **Delivered (#565 — `ouroboros-ui` 0.152.0, `ouroboros-rest` 0.41.18, `V129__discard_workflow_draft.sql`, `ouroboros-docs` 0.3.5):** `/workflows/[slug]/copilot` with the mockup's head, and the Visual · Code · Copilot segment live on all three surfaces (the *soon* tab and its note are gone; the unparsed-code guard also covers leaving Code for Copilot). **Promote draft → `<slug>` vN** reuses the shared publish dialog and path, with a *What is being published* summary naming each guard and where it is enforced; `422` findings link to `#stage-<node id>` (the rows are #567's; `stageAnchorId` is exported for it). The gate is shown before the click: blocking references (unknown alias, as the publish gate refuses) disable Promote with the reasons listed, advisory ones (skill, task route) are flagged. **Discard draft** confirms, drops the draft and keeps the conversation read-only. The page body is labelled seats for #566/#567/#568, except a closed or read-only conversation, which shows a plain transcript. The rail's create dialog gains **Start with** Canvas / Copilot. REST: `GET …/copilot/promotion`, `POST …/copilot/discard` (definer `discard_workflow_draft()`: draft row, the current base's operation log, `draft_rev` and the summary reset, active session → `discarded`), the conversation read answers the newest closed session, and publishing closes the active session as `promoted`. **Decisions taken with the user:** REST built in this ticket; guards are **named with their real enforcement, not compiled** (`never auto-merge` is enforced by the definition, `spend cap $X/run` is `dry_run_only` and says *Not enforced on real runs yet*); discard keeps the workflow; both screenshots captured here. Known gap: a reply still streaming when its session is closed can keep applying — the apply port should check the session is active (#566).
 
 - **Problem Statement:** The third surface joins the studio: the live
   segment (W9), the draft-named promote action, and discard.
@@ -950,7 +952,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    CC.4 (#558)
 3. **Phase 2 — Services:** { CD.1 (#559) ⊕ CD.2 (#560) ✅ ⊕ CD.3 (#561) ✅ } →
    CD.4 (#562) ✅ → CD.5 (#563) ✅ → CD.6 (#564)
-4. **Phase 3 — UI:** CE.1 (#565) → { CE.2 (#566) ⊕ CE.3 (#567) ⊕
+4. **Phase 3 — UI:** CE.1 (#565) ✅ → { CE.2 (#566) ⊕ CE.3 (#567) ⊕
    CE.4 (#568) } → **CE.5 (#569) ✅** *(MVP gate, amending #56)*
 5. **v2:** CF.1 (#570) ⊕ CF.2 (#571) ⊕ CF.3 (#572) ⊕ CF.4 (#573) ⊕
    CF.5 (#574) after their dependencies (CF.4 coordinated with BX.2, #523).
@@ -1042,7 +1044,7 @@ Issue-level impact:
 
 | Issue | GitHub | Status | Amendment |
 |---|:---:|:---:|---|
-| CE.1 | #565 | 🟡 Open | Mounts in the shell content pane; navigation reached via the sidebar **Workflows** entry, not a topbar link; the Workflows subnav renders as PageSubnav, sticky in-pane |
+| CE.1 | #565 ✅ | 🟢 Done | Mounts in the shell content pane; navigation reached via the sidebar **Workflows** entry, not a topbar link; the Workflows subnav renders as PageSubnav, sticky in-pane |
 | CE.2, CE.3, CE.4 | #566, #567, #568 | 🟡 Open | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
 | CE.5 | #569 | 🟡 Open | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 

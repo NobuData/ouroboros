@@ -24,8 +24,9 @@ published version.
   **Runs when a sized issue with effort ≤ M is queued.**), when it was last edited, the
   version in force (**v14**), **draft edits** when the draft differs from that version, and
   how many runs use it.
-- **Visual** and **Code** switch between the canvas and the workflow as code — see
-  [Workflows as code](./code.mdx). **Copilot** is marked **soon** and is not available yet.
+- **Visual**, **Code** and **Copilot** are three views of the open workflow's draft: the
+  canvas, the workflow as code — see [Workflows as code](./code.mdx) — and the
+  [Workflow Copilot](./copilot.mdx#the-copilot-page).
 - **Dry run** and **Publish vN** act on the open workflow; see [Dry runs](#dry-runs) and
   [Publishing a version](#publishing-a-version).
 - **Browse templates** is not available yet; the template library has not arrived.
@@ -40,6 +41,10 @@ Choose **+ New workflow** at the foot of the rail. Give it a **Name** and a **Sl
 lower-case words joined by hyphens, like `standard-fix`, unique in the workspace — and choose
 **Create workflow**. It starts as a blank draft: nothing runs it until you publish it. The
 slug is what queued issues are tagged with, and it cannot be changed afterwards.
+
+**Start with** decides where the new workflow opens: **Canvas**, the blank canvas to build
+stage by stage, or **Copilot**, to
+[describe it in a conversation](./copilot.mdx#starting-a-workflow-from-a-conversation).
 
 ## The canvas
 

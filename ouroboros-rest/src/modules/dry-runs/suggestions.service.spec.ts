@@ -165,6 +165,22 @@ function bench(options: { draft?: unknown; run?: DryRun } = {}) {
   };
 }
 
+describe("the draft's spend guard, as a dry run is held to it", () => {
+  it("is the newest per-run cap the conversation proposed", async () => {
+    const { service, dryRuns } = bench();
+
+    await expect(service.draftSpendGuardCents(WORKSPACE, WORKFLOW)).resolves.toBe(500);
+    expect(dryRuns.guardTraces).toHaveBeenCalledWith(WORKSPACE, WORKFLOW);
+  });
+
+  it("is null when no live conversation proposed one", async () => {
+    const { service, dryRuns } = bench();
+    dryRuns.guardTraces.mockResolvedValue([]);
+
+    await expect(service.draftSpendGuardCents(WORKSPACE, WORKFLOW)).resolves.toBeNull();
+  });
+});
+
 describe("filing a dry run's suggestions", () => {
   it("files the pack's findings as rule suggestions, each with its confidence and basis", async () => {
     const { service, rows } = bench();

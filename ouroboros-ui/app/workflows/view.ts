@@ -35,7 +35,7 @@ import type {
   WorkflowStageCatalog,
 } from "@/app/api/workflows";
 import { relativeAgo } from "@/app/format";
-import { WORKFLOWS_PATH, workflowCodePath, workflowPath } from "@/app/paths";
+import { WORKFLOWS_PATH, workflowCodePath, workflowCopilotPath, workflowPath } from "@/app/paths";
 
 import { DRAFT_EDITS, draftDiverges } from "./autosave";
 
@@ -449,18 +449,17 @@ export const PUBLISH_NEEDS_WORKFLOW =
 /* ------------------------------------------------------------------ the segmented control */
 
 /**
- * The studio surfaces that are built — the ids a page may claim as the tab it *is*.
+ * The studio's surfaces — the ids a page may claim as the tab it *is*.
  *
  * A type rather than a list, so the tab set below cannot link to a surface that does not
- * exist. `"code"` joined it with V.1 ([#169](https://github.com/NobuData/ouroboros/issues/169));
- * `"copilot"` joins it with CE.1 ([#565](https://github.com/NobuData/ouroboros/issues/565)) —
- * the amendment recorded on the ticket — and the compiler will name the tab that has to change,
- * which is what the union is for.
+ * exist. `"code"` joined it with V.1 ([#169](https://github.com/NobuData/ouroboros/issues/169))
+ * and `"copilot"` with CE.1 ([#565](https://github.com/NobuData/ouroboros/issues/565)), the
+ * amendment recorded on S.1's ticket: since then every segment of the control is a surface.
  */
-export type StudioSurface = "visual" | "code";
+export type StudioSurface = "visual" | "code" | "copilot";
 
-/** Every segment's id, built or not. */
-export type StudioTabId = StudioSurface | "copilot";
+/** Every segment's id. Since CE.1 (#565) each one is a surface. */
+export type StudioTabId = StudioSurface;
 
 /** What every segment carries: a stable id, which is also the React key, and what it says. */
 interface StudioTabBase {
@@ -468,9 +467,8 @@ interface StudioTabBase {
   readonly label: string;
 }
 
-/** A segment whose surface exists. It links there. */
+/** A segment that leads somewhere from this page. It links there. */
 export interface LiveStudioTab extends StudioTabBase {
-  readonly id: StudioSurface;
   /** Where it goes — spelled from `app/paths.ts`, so the tab and the route are one fact. */
   readonly href: string;
 }
@@ -483,16 +481,15 @@ export interface LiveStudioTab extends StudioTabBase {
  * and never a link to a `404`. S.1's words: *they ship visibly disabled and labelled, not as
  * buttons that quietly do nothing.*
  *
- * There are two reasons a segment is inert, and `soon` tells them apart. **Copilot** is not
- * built, and is marked *soon*. **Code** is built, but a file is always one workflow's, so on a
- * page with no workflow selected — an empty workspace, a refused rail, a slug the rail does not
- * hold — it has nothing to open, and *soon* would be untrue.
+ * There is one reason left for a segment to be inert. **Code** and **Copilot** are both built,
+ * but a file and a conversation are always one workflow's, so on a page with no workflow
+ * selected — an empty workspace, a refused rail — they have nothing to open. Neither is marked
+ * *soon*, which would be untrue: the *soon* state this type once carried for Copilot went with
+ * CE.1 ([#565](https://github.com/NobuData/ouroboros/issues/565)).
  */
 export interface InertStudioTab extends StudioTabBase {
-  /** Why it is not reachable — which issue builds it, or what has to be selected first. */
+  /** Why it is not reachable — what has to be selected first. */
   readonly note: string;
-  /** `true` when the surface is not built yet, which is what the *soon* mark says. */
-  readonly soon: boolean;
 }
 
 /** One segment of the control: linking, or inert and saying why. */
@@ -502,7 +499,8 @@ export type StudioTab = LiveStudioTab | InertStudioTab;
  * Whether a segment leads somewhere.
  *
  * @param tab The segment.
- * @returns `true` for a built surface, narrowing the type to the one that carries an `href`.
+ * @returns `true` for a segment with somewhere to go, narrowing the type to the one that
+ *   carries an `href`.
  */
 export function isLiveTab(tab: StudioTab): tab is LiveStudioTab {
   return "href" in tab;
@@ -512,18 +510,20 @@ export function isLiveTab(tab: StudioTab): tab is LiveStudioTab {
 export const CODE_NEEDS_WORKFLOW_NOTE =
   "A workflow's code opens once a workflow is selected — pick one from the rail.";
 
-/** Why **Copilot** leads nowhere yet — mockup 20's roadmap, CE.1. */
-export const COPILOT_SOON_NOTE = "The workflow copilot arrives with #565.";
+/** Why **Copilot** cannot be pressed on a page with no workflow selected. */
+export const COPILOT_NEEDS_WORKFLOW_NOTE =
+  "A workflow's copilot opens once a workflow is selected — pick one from the rail.";
 
 /**
- * The segmented control — Visual · Code · Copilot — in the order mockups 04 and 05 draw it.
+ * The segmented control — Visual · Code · Copilot — in the order mockups 04, 05 and 20 draw it.
  *
- * A function rather than a constant, because the two live segments link to *this* workflow:
- * the Visual surface of `standard-fix` is `/workflows/standard-fix` and its Code surface is
- * `/workflows/standard-fix/code`, and a tab set that linked to the section's landing would
- * deselect the workflow on every press. With nothing selected — an empty rail, a refused read —
- * Visual links to the landing, which is the only Visual surface there is, and Code is inert and
- * says why (see {@link InertStudioTab}).
+ * A function rather than a constant, because the live segments link to *this* workflow: the
+ * Visual surface of `standard-fix` is `/workflows/standard-fix`, its Code surface is
+ * `/workflows/standard-fix/code` and its Copilot surface is `/workflows/standard-fix/copilot`,
+ * and a tab set that linked to the section's landing would deselect the workflow on every
+ * press. With nothing selected — an empty rail, a refused read — Visual links to the landing,
+ * which is the only Visual surface there is, and Code and Copilot are inert and say why (see
+ * {@link InertStudioTab}).
  *
  * @param slug The selected workflow's slug, or `null` when nothing is selected.
  * @returns The three segments.
@@ -532,9 +532,11 @@ export function studioTabs(slug: string | null): readonly StudioTab[] {
   return [
     { id: "visual", label: "Visual", href: slug === null ? WORKFLOWS_PATH : workflowPath(slug) },
     slug === null
-      ? { id: "code", label: "Code", note: CODE_NEEDS_WORKFLOW_NOTE, soon: false }
+      ? { id: "code", label: "Code", note: CODE_NEEDS_WORKFLOW_NOTE }
       : { id: "code", label: "Code", href: workflowCodePath(slug) },
-    { id: "copilot", label: "Copilot", note: COPILOT_SOON_NOTE, soon: true },
+    slug === null
+      ? { id: "copilot", label: "Copilot", note: COPILOT_NEEDS_WORKFLOW_NOTE }
+      : { id: "copilot", label: "Copilot", href: workflowCopilotPath(slug) },
   ];
 }
 
@@ -572,7 +574,7 @@ export interface RailItem {
   readonly name: string;
   /** The composed caption, printed as served — `6 stages · auto-merge`, `5 stages · paused`. */
   readonly caption: string;
-  /** Where the entry links — `workflowPath(slug)`. */
+  /** Where the entry links — this workflow, on the surface the page is. */
   readonly href: string;
   /** Whether this is the workflow the studio is open on: the accent-gradient treatment. */
   readonly active: boolean;
@@ -592,17 +594,22 @@ export interface RailItem {
  *
  * @param entries The rail as served.
  * @param activeSlug The selected workflow's slug, or `null` when nothing is selected.
+ * @param surface The surface the page is. The copilot's rail (CE.1,
+ *   [#565](https://github.com/NobuData/ouroboros/issues/565)) links each workflow to its own
+ *   conversation, so following the rail changes the workflow and not the surface; every other
+ *   rail links to the canvas, as it always has.
  * @returns The items.
  */
 export function railItems(
   entries: readonly WorkflowRailEntry[],
   activeSlug: string | null,
+  surface: StudioSurface = "visual",
 ): readonly RailItem[] {
   return entries.map((entry) => ({
     slug: entry.slug,
     name: entry.name,
     caption: entry.caption,
-    href: workflowPath(entry.slug),
+    href: surface === "copilot" ? workflowCopilotPath(entry.slug) : workflowPath(entry.slug),
     active: entry.slug === activeSlug,
     paused: entry.status === "paused",
   }));

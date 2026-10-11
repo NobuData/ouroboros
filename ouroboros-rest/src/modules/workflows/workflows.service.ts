@@ -533,7 +533,8 @@ export class WorkflowsService {
    * @param body - The change note, when the publisher wrote one.
    * @param publishedBy - Who pressed Publish — `"user"."id"`, from the session.
    * @param now - The publish instant. Passed in so one request has one clock.
-   * @returns The version as it was stored. `workflows.current_version` now names it.
+   * @returns The version as it was stored. `workflows.current_version` now names it, and the
+   *   workflow's active copilot session — if it had one — is `promoted` (CE.1, #565).
    * @throws {NotFoundError} `workflow_not_found`.
    * @throws {ConflictError} `workflow_draft_absent` when there is nothing to publish, and
    *   `workflow_draft_conflict` when the draft changed while the gate was running.
@@ -591,6 +592,12 @@ export class WorkflowsService {
           },
           trx,
         );
+
+        // Publishing is promoting (CE.1, #565): the conversation that produced this draft, if
+        // one is still open, closes as `promoted` with the version it became — in this
+        // transaction, so there is never a published draft with a live conversation about it,
+        // nor a promoted conversation whose publish rolled back.
+        await this.workflows.promoteCopilotSession(organizationId, workflow.id, trx);
 
         return workflowVersion(version);
       } catch (error) {

@@ -15,7 +15,8 @@ import "./workflows.css";
  * anatomy — page head, optional subnav, then the page's own content — and this is that
  * anatomy for `/workflows`, in the shape `app/models/models-frame.tsx` gave the Models
  * section: the frame owns the `<main>`, its gutter rhythm, the head's two columns and how they
- * wrap, the eyebrow's word (it is always *Workflow Studio*) and the control's placement; the
+ * wrap, the eyebrow's word (*Workflow Studio*, unless a surface names itself beside it) and the
+ * control's placement; the
  * page supplies its title, its subline, its actions and everything below the control.
  *
  * ### The title is a node, and that is the one difference from the Models frame
@@ -37,6 +38,12 @@ export interface StudioFrameProps {
   readonly slug: string | null;
   /** Which editor this page is — the segment the control marks current (V.1, #169). */
   readonly current: StudioSurface;
+  /**
+   * The eyebrow's words. Defaults to the section's name, *Workflow Studio*, which is what the
+   * canvas and the code view print; the copilot (CE.1, #565) prints mockup 20's *Workflow Studio
+   * · Copilot*. The control's accessible name is the section's either way.
+   */
+  readonly eyebrow?: string;
   /** The `<h1>` — the workflow's name, or a state's title, or the skeleton's bar. */
   readonly title: ReactNode;
   /** The sentence under the title — the composed subline, a state's sentence, or a bar. */
@@ -63,6 +70,7 @@ export interface StudioFrameProps {
 export function StudioFrame({
   slug,
   current,
+  eyebrow = STUDIO_EYEBROW,
   title,
   subline,
   actions,
@@ -73,7 +81,7 @@ export function StudioFrame({
     <main aria-busy={busy === undefined ? undefined : true} aria-label={busy} className="studio">
       <div className="studio__head">
         <div className="studio__headings">
-          <Eyebrow>{STUDIO_EYEBROW}</Eyebrow>
+          <Eyebrow>{eyebrow}</Eyebrow>
           <h1 className="studio__title">{title}</h1>
           <p className="studio__sub">{subline}</p>
         </div>

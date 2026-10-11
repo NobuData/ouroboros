@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { workflowPath } from "@/app/paths";
@@ -112,6 +112,39 @@ describe("the seeded rail", () => {
       "aria-disabled",
       "true",
     );
+  });
+});
+
+describe("on the copilot (CE.1, #565)", () => {
+  it("links each workflow to its own conversation, so the rail changes the workflow and not the surface", () => {
+    render(<WorkflowRail activeSlug="deps-refresh" entries={seededRail()} mayAdminister surface="copilot" />);
+
+    for (const entry of seededRail()) {
+      expect(within(rail()).getByRole("link", { name: new RegExp(`^${entry.name}`) })).toHaveAttribute(
+        "href",
+        `/workflows/${entry.slug}/copilot`,
+      );
+    }
+    expect(within(rail()).getByRole("link", { current: "page" })).toHaveAttribute(
+      "href",
+      "/workflows/deps-refresh/copilot",
+    );
+  });
+
+  it("opens the tile's dialog with Copilot chosen", () => {
+    render(<WorkflowRail activeSlug={null} entries={seededRail()} mayAdminister surface="copilot" />);
+
+    fireEvent.click(within(rail()).getByRole("button", { name: NEW_WORKFLOW_LABEL }));
+
+    expect(screen.getByRole("radio", { name: "Copilot" })).toBeChecked();
+  });
+
+  it("opens it with Canvas chosen everywhere else", () => {
+    render(<WorkflowRail activeSlug={null} entries={seededRail()} mayAdminister />);
+
+    fireEvent.click(within(rail()).getByRole("button", { name: NEW_WORKFLOW_LABEL }));
+
+    expect(screen.getByRole("radio", { name: "Canvas" })).toBeChecked();
   });
 });
 

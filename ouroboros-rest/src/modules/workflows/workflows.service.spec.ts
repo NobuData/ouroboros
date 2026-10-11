@@ -115,6 +115,7 @@ function harness(overrides: Partial<jest.Mocked<WorkflowsRepository>> = {}): Har
     countVersions: jest.fn().mockResolvedValue(0),
     versionAt: jest.fn().mockResolvedValue(published()),
     publish: jest.fn().mockResolvedValue(published()),
+    promoteCopilotSession: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   } as unknown as jest.Mocked<WorkflowsRepository>;
 
@@ -530,6 +531,44 @@ describe("publishing", () => {
       { definition: draft().definition, changeNote: null, publishedBy: PERSON, publishedAt: AT },
       expect.anything(),
     );
+  });
+
+  it("promotes the workflow's active copilot session in the publish's own transaction", async () => {
+    const { service, repository } = harness({
+      promoteCopilotSession: jest.fn().mockResolvedValue("5eed008a-0000-4000-8000-000000000001"),
+    });
+
+    const version = await service.publish(WORKSPACE, WORKFLOW, {}, PERSON, AT);
+
+    // The same transaction object the version was written in — and after it.
+    const trx = repository.publish.mock.calls[0][2];
+    expect(repository.promoteCopilotSession).toHaveBeenCalledWith(WORKSPACE, WORKFLOW, trx);
+    expect(repository.promoteCopilotSession.mock.invocationCallOrder[0]).toBeGreaterThan(
+      repository.publish.mock.invocationCallOrder[0],
+    );
+    // No response-shape change: the version, as before.
+    expect(version.version).toBe(15);
+  });
+
+  it("publishes a workflow with no conversation exactly as before", async () => {
+    const { service, repository } = harness();
+
+    const version = await service.publish(WORKSPACE, WORKFLOW, {}, PERSON, AT);
+
+    expect(repository.promoteCopilotSession).toHaveBeenCalledTimes(1);
+    expect(version.version).toBe(15);
+  });
+
+  it("promotes nothing when the publish is refused", async () => {
+    const state = harness();
+    state.gate.check.mockResolvedValue({
+      findings: [{ source: "dsl", code: "structure.no_trigger", message: "…", path: "/nodes" }],
+      engineConsulted: false,
+    });
+
+    await expect(state.service.publish(WORKSPACE, WORKFLOW, {}, PERSON, AT)).rejects.toBeDefined();
+
+    expect(state.repository.promoteCopilotSession).not.toHaveBeenCalled();
   });
 
   it("carries the change note into the immutable row", async () => {

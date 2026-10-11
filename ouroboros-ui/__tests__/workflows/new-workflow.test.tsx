@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { workflowPath } from "@/app/paths";
+import { workflowCopilotPath, workflowPath } from "@/app/paths";
 import {
   CREATE_CANCEL,
   CREATE_READ_ONLY,
@@ -13,6 +13,8 @@ import {
   SLUG_LABEL,
   SLUG_SHAPE,
   SLUG_TAKEN,
+  START_LABEL,
+  START_OPTIONS,
 } from "@/app/workflows/create";
 import type { CreateOutcome } from "@/app/workflows/create-actions";
 import { NEW_WORKFLOW_LABEL, NEW_WORKFLOW_MEMBER_REASON } from "@/app/workflows/view";
@@ -275,6 +277,20 @@ describe("what a create does to the page", () => {
     });
   });
 
+  it("lands on the canvas when nothing was chosen — the dialog's behaviour before #565 is the default", async () => {
+    open();
+
+    expect(screen.getByRole("radio", { name: "Canvas" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Copilot" })).not.toBeChecked();
+
+    typeName("Hotfix P1");
+    fireEvent.click(submit());
+
+    await waitFor(() => {
+      expect(push).toHaveBeenCalledExactlyOnceWith(workflowPath("hotfix-p1"));
+    });
+  });
+
   it("navigates nothing when the dialog is cancelled", () => {
     open();
     typeName("Hotfix P1");
@@ -365,5 +381,87 @@ describe("both palettes", () => {
     const [light, dark] = renderInBothPalettes(<NewWorkflow mayAdminister slugs={TAKEN} />);
 
     expect(light).toBe(dark);
+  });
+});
+
+describe("starting from a conversation (CE.1, #565)", () => {
+  /** The **Start with** group. */
+  function startGroup(): HTMLElement {
+    return screen.getByRole("group", { name: START_LABEL });
+  }
+
+  it("offers the choice in the dialog: Canvas, the default, and Copilot — each saying what it does", () => {
+    open();
+
+    const options = within(startGroup()).getAllByRole("radio");
+
+    expect(options).toHaveLength(2);
+    expect(options[0]).toHaveAccessibleName("Canvas");
+    expect(options[0]).toHaveAccessibleDescription(START_OPTIONS.canvas.hint);
+    expect(options[1]).toHaveAccessibleName("Copilot");
+    expect(options[1]).toHaveAccessibleDescription(START_OPTIONS.copilot.hint);
+    expect(options[0]).toBeChecked();
+    expect(START_OPTIONS.copilot.hint).toMatch(/conversation/);
+  });
+
+  it("lands on the new workflow's copilot when Copilot was chosen", async () => {
+    open();
+    typeName("Hotfix P1");
+    fireEvent.click(screen.getByRole("radio", { name: "Copilot" }));
+    fireEvent.click(submit());
+
+    await waitFor(() => {
+      expect(push).toHaveBeenCalledExactlyOnceWith(workflowCopilotPath("hotfix-p1"));
+    });
+    expect(workflowCopilotPath("hotfix-p1")).toBe("/workflows/hotfix-p1/copilot");
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("creates the same blank workflow either way — the choice is about the page, and starts no conversation", async () => {
+    open();
+    typeName("Hotfix P1");
+    fireEvent.click(screen.getByRole("radio", { name: "Copilot" }));
+    fireEvent.click(submit());
+
+    await waitFor(() => expect(push).toHaveBeenCalled());
+    expect(createWorkflow).toHaveBeenCalledExactlyOnceWith({ name: "Hotfix P1", slug: "hotfix-p1" });
+  });
+
+  it("opens on Copilot where the caller says so — the copilot's own rail", async () => {
+    render(<NewWorkflow mayAdminister slugs={TAKEN} start="copilot" />);
+    fireEvent.click(screen.getByRole("button", { name: NEW_WORKFLOW_LABEL }));
+
+    expect(screen.getByRole("radio", { name: "Copilot" })).toBeChecked();
+
+    typeName("Hotfix P1");
+    fireEvent.click(submit());
+
+    await waitFor(() => {
+      expect(push).toHaveBeenCalledExactlyOnceWith(workflowCopilotPath("hotfix-p1"));
+    });
+  });
+
+  it("goes back to its default every time it opens, so a choice abandoned halfway does not stick", () => {
+    open();
+    fireEvent.click(screen.getByRole("radio", { name: "Copilot" }));
+    fireEvent.click(screen.getByRole("button", { name: CREATE_CANCEL }));
+    fireEvent.click(screen.getByRole("button", { name: NEW_WORKFLOW_LABEL }));
+
+    expect(screen.getByRole("radio", { name: "Canvas" })).toBeChecked();
+  });
+
+  it("lands nowhere when the create is refused, whichever was chosen", async () => {
+    createWorkflow.mockResolvedValue({
+      ok: false,
+      refusal: { code: "workflow_slug_taken", message: "Taken.", details: {} },
+    });
+    open();
+    typeName("Hotfix P1");
+    fireEvent.click(screen.getByRole("radio", { name: "Copilot" }));
+    fireEvent.click(submit());
+
+    await screen.findAllByRole("alert");
+    expect(push).not.toHaveBeenCalled();
   });
 });

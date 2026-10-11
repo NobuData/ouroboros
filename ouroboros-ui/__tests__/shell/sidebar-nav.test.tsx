@@ -13,6 +13,8 @@ import {
   RESEARCH_PATH,
   SETTINGS_PATH,
   WORKFLOWS_PATH,
+  workflowCodePath,
+  workflowCopilotPath,
   workflowPath,
 } from "@/app/paths";
 import { focusStops } from "@/app/shell/focus-trap";
@@ -352,7 +354,13 @@ describe("the active entry", () => {
   it("lights Workflows on its own route and on a workflow beneath it, now that #147 has built the studio", () => {
     // Section matching (§ 1.2): `/workflows/standard-fix` is a studio URL, and the entry stays
     // lit there — which is what the studio's rail relies on when it links each workflow.
-    for (const current of [WORKFLOWS_PATH, workflowPath("standard-fix")]) {
+    // …and on the workflow's code view (#169) and its copilot (#565), which are tabs beneath it.
+    for (const current of [
+      WORKFLOWS_PATH,
+      workflowPath("standard-fix"),
+      workflowCodePath("standard-fix"),
+      workflowCopilotPath("standard-fix"),
+    ]) {
       path.current = current;
       const { container, unmount } = render(<SidebarNav />);
 
