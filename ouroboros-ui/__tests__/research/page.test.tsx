@@ -10,6 +10,7 @@ import {
   composerReadings,
   emptyWatch,
   featuredBrief,
+  featuredPipeline,
   investigationDetail,
   investigationList,
   seededBrief,
@@ -25,6 +26,7 @@ import {
 const requireWorkspace = vi.fn();
 const readComposer = vi.fn();
 const readFeaturedBrief = vi.fn();
+const readFeaturedPipeline = vi.fn();
 const readInvestigationPage = vi.fn();
 const readOpenedInvestigation = vi.fn();
 const readWatch = vi.fn();
@@ -32,6 +34,11 @@ const readWatch = vi.fn();
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
 vi.mock("@/app/research/composer-data", () => ({ readComposer: () => readComposer() }));
 vi.mock("@/app/research/brief-data", () => ({ readFeaturedBrief: () => readFeaturedBrief() }));
+vi.mock("@/app/research/pipeline-data", () => ({ readFeaturedPipeline: () => readFeaturedPipeline() }));
+vi.mock("@/app/research/pipeline-actions", () => ({
+  applyRoadmapSuggestion: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "x" } }),
+  dismissRoadmapSuggestion: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "x" } }),
+}));
 vi.mock("@/app/research/investigations-data", () => ({
   readInvestigationPage: (filters: unknown) => readInvestigationPage(filters),
   readOpenedInvestigation: (id: unknown) => readOpenedInvestigation(id),
@@ -92,6 +99,7 @@ beforeEach(() => {
   requireWorkspace.mockReset().mockResolvedValue(access());
   readComposer.mockReset().mockResolvedValue(composerReadings());
   readFeaturedBrief.mockReset().mockResolvedValue({ ok: true, value: featuredBrief() });
+  readFeaturedPipeline.mockReset().mockResolvedValue({ ok: true, value: featuredPipeline() });
   readWatch.mockReset().mockResolvedValue({ ok: true, value: seededWatch() });
   vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
   readInvestigationPage.mockReset().mockResolvedValue({ ok: true, value: investigationList() });
@@ -110,6 +118,8 @@ describe("the research route", () => {
     expect(readInvestigationPage).toHaveBeenCalledExactlyOnceWith({ kind: null, status: "active", quarter: null });
     expect(readOpenedInvestigation).not.toHaveBeenCalled();
     expect(screen.getByRole("region", { name: /RS-127/ })).toBeInTheDocument();
+    expect(readFeaturedPipeline).toHaveBeenCalledOnce();
+    expect(screen.getByRole("region", { name: /RS-124/ })).toHaveTextContent("6 issues · 2 milestones · synced");
     expect(screen.getByRole("list", { name: "Investigations" }).querySelectorAll("li")).toHaveLength(4);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
       "Ask a hard question. Get an evidenced answer — and the tickets to act on it.",

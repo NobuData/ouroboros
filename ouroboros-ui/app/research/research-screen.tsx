@@ -14,6 +14,8 @@ import type { ComposerReadings } from "./composer";
 import { ComposerCard } from "./composer-card";
 import type { OpenedInvestigation } from "./investigations";
 import { InvestigationsCard } from "./investigations-card";
+import type { FeaturedPipeline } from "./pipeline";
+import { FeaturedPipelineSeat } from "./pipeline-card";
 import type { ProgressSourceFactory } from "./progress";
 import { ResearchHead } from "./research-head";
 import { ResearchSeat } from "./research-seat";
@@ -48,11 +50,16 @@ export interface ResearchScreenProps {
   readonly composer: ComposerReadings;
   /** The featured brief — the newest finished investigation's — read on the server (#630). */
   readonly brief: Reading<FeaturedBrief | null>;
+  /** The roadmap the pipeline's seat shows, read on the server (#631). */
+  readonly pipeline: Reading<FeaturedPipeline | null>;
   /** The regression watch card, read on the server (#629). */
   readonly watch: Reading<RegressionWatchCard>;
   /** Whether this reader may draft work from a brief — `owner`, `admin` or `member`. */
   readonly mayDraft: boolean;
-  /** Whether this reader may enable a tool, dismiss a watch item and capture a baseline. */
+  /**
+   * Whether this reader may enable a tool, dismiss a watch item, capture a baseline, and apply or
+   * dismiss a roadmap suggestion.
+   */
   readonly mayAdminister: boolean;
   /** The investigations the address asked for — the active rows, or the library's page (#632). */
   readonly investigations: Reading<InvestigationList>;
@@ -98,8 +105,10 @@ function enterRegion(id: ResearchRegionId): boolean {
  * says what is coming until its card exists. **The composer's card** (CN.2, #628) and **the
  * featured brief's** (CN.4, [#630](https://github.com/NobuData/ouroboros/issues/630)) are here: a
  * run that produces a brief lands the reader on the brief's seat and re-reads the page, so the
- * new brief is the one featured; a roadmap brief's document chip lands on the pipeline's seat —
- * the placeholder until CN.5 (#631) mounts its card there, which needs no change here.
+ * new brief is the one featured; a roadmap brief's document chip lands on the pipeline's seat,
+ * where **the roadmap pipeline card** (CN.5,
+ * [#631](https://github.com/NobuData/ouroboros/issues/631)) draws the newest roadmap document
+ * beside the issues filed from it.
  *
  * **The head's actions land on a seat.** *New investigation* scrolls to the composer's, focuses
  * it and rings it; the library's address (`?view=library`) does the same for the investigations
@@ -120,6 +129,7 @@ export function ResearchScreen({
   startReason,
   composer,
   brief,
+  pipeline,
   watch,
   mayDraft,
   mayAdminister,
@@ -181,6 +191,7 @@ export function ResearchScreen({
     tools: <ToolsCard mayAdminister={mayAdminister} onChanged={refreshSide} reading={besideNow.tools} />,
     watch: <WatchCard mayAdminister={mayAdminister} onChanged={refreshSide} reading={besideNow.watch} />,
     brief: <FeaturedBriefSeat mayDraft={mayDraft} onLandPipeline={onLandPipeline} reading={brief} />,
+    pipeline: <FeaturedPipelineSeat mayAdminister={mayAdminister} reading={pipeline} />,
     investigations: (
       <InvestigationsCard
         featuredId={featuredId}

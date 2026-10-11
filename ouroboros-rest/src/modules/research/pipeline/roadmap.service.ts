@@ -478,9 +478,11 @@ export class RoadmapService {
     const ticketIds = itemsOf(loaded.version.structure).flatMap(({ item }) =>
       item.ticket_id === null ? [] : [item.ticket_id],
     );
-    const [issues, suggestions] = await Promise.all([
+    const [issues, suggestions, repoUrl, skillVersions] = await Promise.all([
       this.store.issues(loaded.doc.organizationId, ticketIds),
       this.store.suggestions(loaded.doc.id),
+      this.projector.repoUrl(loaded.doc),
+      this.store.skillVersions(loaded.doc.organizationId),
     ]);
 
     return roadmapResource(
@@ -490,6 +492,7 @@ export class RoadmapService {
       issues,
       suggestions,
       problem,
+      { repoUrl, skillVersions },
     );
   }
 

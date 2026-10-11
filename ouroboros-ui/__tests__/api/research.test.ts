@@ -9,6 +9,7 @@ import {
   seededBrief,
   seededKinds,
   seededCatalog,
+  seededRoadmap,
   startedInvestigation,
 } from "../helpers/research";
 
@@ -133,5 +134,28 @@ describe("the brief (#630)", () => {
 
     await research.draftEpic(STARTED_ID, {}, client);
     expect(await requests[1]?.json()).toEqual({});
+  });
+});
+
+describe("the roadmap pipeline (#631)", () => {
+  it("reads an investigation's roadmap document", async () => {
+    const { client, requests } = clientAnswering(seededRoadmap());
+
+    expect(await research.roadmap(STARTED_ID, client)).toEqual(seededRoadmap());
+    expect(requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/research/investigations/${STARTED_ID}/roadmap`);
+    expect(requests[0]?.method).toBe("GET");
+  });
+
+  it("applies and dismisses a suggestion on its own route, with no body", async () => {
+    const { client, requests } = clientAnswering(seededRoadmap());
+    const base = `${STUB_BASE_URL}/api/v1/research/investigations/${STARTED_ID}/roadmap/suggestions/s-1`;
+
+    expect(await research.applyRoadmapSuggestion(STARTED_ID, "s-1", client)).toEqual(seededRoadmap());
+    expect(await research.dismissRoadmapSuggestion(STARTED_ID, "s-1", client)).toEqual(seededRoadmap());
+    expect(requests.map((request) => [request.method, request.url])).toEqual([
+      ["POST", `${base}/apply`],
+      ["POST", `${base}/dismiss`],
+    ]);
+    expect(await requests[0]?.text()).toBe("");
   });
 });

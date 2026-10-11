@@ -5,6 +5,7 @@ import { startGate } from "@/app/research/composer";
 import { readComposer } from "@/app/research/composer-data";
 import { listQuery } from "@/app/research/investigations";
 import { readInvestigationPage, readOpenedInvestigation } from "@/app/research/investigations-data";
+import { readFeaturedPipeline } from "@/app/research/pipeline-data";
 import { ResearchScreen } from "@/app/research/research-screen";
 import { readWatch } from "@/app/research/side-data";
 import { VIEW_PARAM, parseLibraryFilters, parseOpen, parseView } from "@/app/research/view";
@@ -21,6 +22,8 @@ import { VIEW_PARAM, parseLibraryFilters, parseOpen, parseView } from "@/app/res
  * `app/research/brief-data.ts`) and the investigations the address asks for — the active rows,
  * or the library's filtered page and an opened investigation (CN.6,
  * [#632](https://github.com/NobuData/ouroboros/issues/632), `app/research/investigations-data.ts`)
+ * — the roadmap the pipeline's seat shows (CN.5,
+ * [#631](https://github.com/NobuData/ouroboros/issues/631), `app/research/pipeline-data.ts`)
  * — and the regression watch (CN.3, [#629](https://github.com/NobuData/ouroboros/issues/629),
  * `app/research/side-data.ts`; the tools card draws from the composer's reading of the catalog)
  * — are made here, once and together, so each card arrives whole.
@@ -39,7 +42,8 @@ import { VIEW_PARAM, parseLibraryFilters, parseOpen, parseView } from "@/app/res
  * drafting work from a brief, is for an `owner`, `admin` or `member` — or for owners and admins
  * only, where the workspace says so for starting — and the reason a reader may not is decided
  * here and handed to the head and the composer alike. Enabling a research tool, dismissing a
- * watch item and capturing a baseline are an `owner`'s or an `admin`'s.
+ * watch item, capturing a baseline and applying or dismissing a roadmap suggestion are an
+ * `owner`'s or an `admin`'s.
  *
  * @param props.searchParams The address's query.
  * @returns The research page, for the workspace this request is operating in.
@@ -52,9 +56,10 @@ export default async function Page({
   const view = parseView(params[VIEW_PARAM]);
   const filters = parseLibraryFilters(params);
   const openId = parseOpen(params);
-  const [composer, brief, watch, investigations, openedReading] = await Promise.all([
+  const [composer, brief, pipeline, watch, investigations, openedReading] = await Promise.all([
     readComposer(),
     readFeaturedBrief(),
+    readFeaturedPipeline(),
     readWatch(),
     readInvestigationPage(listQuery(view, filters)),
     openId === null ? Promise.resolve(null) : readOpenedInvestigation(openId),
@@ -69,6 +74,7 @@ export default async function Page({
       investigations={investigations}
       mayAdminister={mayAdminister(roles)}
       mayDraft={mayContribute(roles)}
+      pipeline={pipeline}
       opened={openId === null || openedReading === null ? null : { id: openId, reading: openedReading }}
       startReason={startGate(mayContribute(roles), mayAdminister(roles), composer.settings)}
       view={view}

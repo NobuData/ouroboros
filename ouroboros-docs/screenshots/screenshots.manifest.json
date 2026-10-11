@@ -720,6 +720,18 @@
       "seedRef": "890a3fe4096322d1958e55f6c58d864f57e536dc"
     },
     {
+      "id": "user-guide.research.pipeline",
+      "route": "/research",
+      "workspace": "acme-robotics",
+      "ready": "#pipeline .research__pipe-caption",
+      "clip": "#pipeline",
+      "caption": "The pipeline card: RS-124's ROADMAP.md with its suggested changes, beside the issues filed from it.",
+      "alt": "The roadmap pipeline card: a Roadmap & improvements chip, the heading RS-124 — FROM BRIEF TO ROADMAP TO ISSUES, the chips skill · create-roadmap and skill · create-issues, and the Open ROADMAP.md ↗ button. On the left, 1 · create-roadmap → ROADMAP.md at v1 with the Rendered and Raw .md views: the line docs/ROADMAP.md · committed 8c1b2e4 · generated from the RS-124 brief, the title Helios — Q4 Improvement Roadmap, and the milestones M1 · Docking parity and M2 · Fleet reliability with three items each, #742 ticked; under it Suggested changes — 2 open with one suggestion from KS and one from AI, each with Apply ⟳ and Dismiss. On the right, 2 · create-issues → GitHub tagged 6 issues · 2 milestones · synced: the milestones ◆ M1 · Docking parity, 1/3 done, and ◆ M2 · Fleet reliability, 0/3 done, with a row per issue from #742 est 3.0 loop-days L cx:high ✓ closed to #747 est 0.3 loop-day XS cx:low queued.",
+      "capturedAt": "2026-10-11T16:04:02.830Z",
+      "uiVersion": "0.150.0",
+      "seedRef": "1d5da622b3e244d47f0fbc36144ee88038b259da"
+    },
+    {
       "id": "user-guide.research.matrix",
       "route": "/research",
       "workspace": "acme-robotics",

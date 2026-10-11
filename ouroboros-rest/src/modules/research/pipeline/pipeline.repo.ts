@@ -11,6 +11,7 @@
 import { Injectable } from "@nestjs/common";
 
 import type { CreatePrInput, HostPrState, PrRef } from "../../ticket-sources/ticket-source.pr";
+import { supportsWrites } from "../../ticket-sources/ticket-source.provider";
 import { TicketSourceRegistry } from "../../ticket-sources/ticket-source.registry";
 import {
   supportsRepoDocs,
@@ -19,6 +20,7 @@ import {
   type RepoDocState,
   type UpdatePrInput,
 } from "../../ticket-sources/ticket-source.repo-doc";
+import { TicketSourceError } from "../../ticket-sources/ticket-source.errors";
 import type { SyncSource } from "../../ticket-sources/ticket-sources.repository";
 import { TicketSourcesService } from "../../ticket-sources/ticket-sources.service";
 
@@ -64,7 +66,19 @@ export interface RepoGateway {
    * @throws {TicketSourceError} The host's refusal, classified by the provider.
    */
   open<T>(source: SyncSource, work: (repo: RoadmapRepo) => Promise<T>): Promise<T | undefined>;
+  /**
+   * Where a reader opens the source's repository in a browser (#631). Reads the stored
+   * configuration only — no credential is opened and the host is not called.
+   *
+   * @param source - The ticket source whose push target holds the document.
+   * @returns `https://github.com/acme-robotics/helios-firmware`; null for a host whose address
+   *   the pipeline cannot compose, or a configuration that names no repository.
+   */
+  webUrl(source: SyncSource): string | null;
 }
+
+/** The web origin of each host a roadmap document's address can be composed for. */
+const WEB_ORIGINS: Partial<Record<SyncSource["kind"], string>> = { github: "https://github.com" };
 
 @Injectable()
 export class ProviderRepoGateway implements RepoGateway {
@@ -104,5 +118,25 @@ export class ProviderRepoGateway implements RepoGateway {
         prState: async (prNumber) => (await provider.getPR(context, prNumber)).state,
       }),
     );
+  }
+
+  /** @inheritdoc */
+  webUrl(source: SyncSource): string | null {
+    const origin = WEB_ORIGINS[source.kind];
+    const provider = this.registry.find(source.kind);
+
+    // The document lives where a push lands, so only a host that both holds documents and names
+    // its push target has an address here.
+    if (origin === undefined || provider === undefined) return null;
+    if (!supportsRepoDocs(provider) || !supportsWrites(provider)) return null;
+
+    try {
+      return `${origin}/${provider.pushTargetName(source.config)}`;
+    } catch (error) {
+      // A configuration that names no repository has no address; anything else is a defect.
+      if (!TicketSourceError.is(error)) throw error;
+
+      return null;
+    }
   }
 }

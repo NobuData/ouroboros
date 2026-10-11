@@ -28744,6 +28744,8 @@ export interface components {
              * @example docs/ROADMAP.md · committed 8c1b2e4
              */
             label: string;
+            /** @description Where **Open ROADMAP.md ↗** goes — the pull request while one is open, else the file at the commit holding it. Null while the version is not in the repository, and for a repository whose web address cannot be composed. */
+            href: string | null;
             /** @description Why the projection could not be moved just now; null when nothing is wrong. */
             problem: string | null;
         };
@@ -28781,6 +28783,41 @@ export interface components {
                 /** @description `estMinutes` in loop-days, to one decimal. */
                 loopDays: number | null;
             } | null;
+            /** @description The issue's status pill, read from the tracker's mirror and the issue's newest run together; null while the item is unfiled, and while the mirror has no row for it yet. */
+            status: components["schemas"]["ResearchRoadmapIssueStatus"] | null;
+        };
+        /**
+         * ResearchRoadmapIssueStatus
+         * @description Where a filed issue stands. `merged` — a loop on it merged; `closed` — the tracker closed
+         *     it another way; `live` — a loop is running; `needs_human` and `failed` — its newest loop
+         *     stopped; `queued` — open, with no loop started (or the last one cancelled).
+         */
+        ResearchRoadmapIssueStatus: {
+            /** @enum {string} */
+            state: "merged" | "closed" | "live" | "needs_human" | "failed" | "queued";
+            /**
+             * @description The pill's words.
+             * @example ✓ merged
+             * @example loop live
+             * @example queued
+             */
+            label: string;
+            /** @enum {string} */
+            tone: "ok" | "run" | "warn" | "err" | "idle";
+            /** @description Whether the pill pulses. */
+            live: boolean;
+        };
+        /**
+         * ResearchRoadmapSkill
+         * @description One of the two skills the pipeline runs, as the card's chip names it.
+         */
+        ResearchRoadmapSkill: {
+            /** @enum {string} */
+            slug: "create-roadmap" | "create-issues";
+            /** @example skill · create-roadmap */
+            label: string;
+            /** @description The version the workspace has published; null when it holds none yet. */
+            version: number | null;
         };
         /**
          * ResearchRoadmapMilestone
@@ -28847,6 +28884,8 @@ export interface components {
                 targetSourceId: string | null;
             };
             projection: components["schemas"]["ResearchRoadmapProjection"];
+            /** @description The two skills behind the card, in the order they run. */
+            skills: components["schemas"]["ResearchRoadmapSkill"][];
             /** @description `ROADMAP.md`, exactly as projected. */
             markdown: string;
             milestones: components["schemas"]["ResearchRoadmapMilestone"][];

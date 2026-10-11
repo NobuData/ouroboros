@@ -22,6 +22,8 @@ import type {
   VersionRow,
   DocRow,
 } from "./pipeline.repository";
+import { ACTIVE_RUN_STATUSES, type RunStatus } from "../../db/schema";
+import { SHIPPED_SKILLS, type PipelineSkillSlug } from "./pipeline.skills";
 import type { DriftDifference } from "./roadmap.drift";
 import { itemsOf, targetLabel, type RoadmapEffort } from "./roadmap.structure";
 
@@ -40,8 +42,37 @@ export interface ProjectionResource {
   readonly observedSha: string | null;
   /** `docs/ROADMAP.md · committed 8c1b2e4` — the card's line. */
   readonly label: string;
+  /**
+   * Where **Open ROADMAP.md ↗** goes (#631): the pull request while one is open, else the file
+   * at the commit holding it. Null while the version is not in the repository, and for a
+   * repository whose address cannot be composed.
+   */
+  readonly href: string | null;
   /** Why the projection could not be moved just now; null when nothing is wrong. */
   readonly problem: string | null;
+}
+
+/** Where a filed issue stands — the row's status pill (#631). */
+export interface IssueStatusResource {
+  /**
+   * `merged` — a loop on it merged; `closed` — the tracker closed it another way; `live` — a loop
+   * is running; `needs_human` / `failed` — its newest loop stopped; `queued` — open, no loop yet.
+   */
+  readonly state: "merged" | "closed" | "live" | "needs_human" | "failed" | "queued";
+  /** `✓ merged`, `loop live`, `queued` — the pill's words. */
+  readonly label: string;
+  readonly tone: "ok" | "run" | "warn" | "err" | "idle";
+  /** Whether the pill pulses. */
+  readonly live: boolean;
+}
+
+/** One of the two skills the pipeline runs, as the card's chip names it (#631). */
+export interface PipelineSkillResource {
+  readonly slug: PipelineSkillSlug;
+  /** `skill · create-roadmap`. */
+  readonly label: string;
+  /** The version the workspace has published; null when it holds none yet. */
+  readonly version: number | null;
 }
 
 /** One item of a milestone, with its issue once filed. */
@@ -73,6 +104,11 @@ export interface RoadmapItemResource {
     /** `3.0` — {@link estMinutes} in loop-days, one decimal; null with it. */
     readonly loopDays: number | null;
   } | null;
+  /**
+   * The issue's status pill, from the tracker and its newest run; null while unfiled, and while
+   * the tracker's mirror has no row for it yet.
+   */
+  readonly status: IssueStatusResource | null;
 }
 
 /** One milestone. */
@@ -121,6 +157,8 @@ export interface RoadmapResource {
     readonly targetSourceId: string | null;
   };
   readonly projection: ProjectionResource;
+  /** The two skills behind the card, in the order they run. */
+  readonly skills: readonly PipelineSkillResource[];
   /** `ROADMAP.md`, exactly as projected. */
   readonly markdown: string;
   readonly milestones: readonly RoadmapMilestoneResource[];
@@ -252,13 +290,97 @@ export function suggestionResource(row: SuggestionRow): SuggestionResource {
 /**
  * A projection as the card draws it.
  *
+/** The pill of each state. */
+const ISSUE_STATUS: Readonly<Record<IssueStatusResource["state"], IssueStatusResource>> =
+  Object.freeze({
+    merged: { state: "merged", label: "✓ merged", tone: "ok", live: false },
+    closed: { state: "closed", label: "✓ closed", tone: "ok", live: false },
+    live: { state: "live", label: "loop live", tone: "run", live: true },
+    needs_human: { state: "needs_human", label: "needs human", tone: "warn", live: false },
+    failed: { state: "failed", label: "loop failed", tone: "err", live: false },
+    queued: { state: "queued", label: "queued", tone: "idle", live: false },
+  });
+
+/**
+ * A filed issue's status pill — the tracker's word and the newest run's, read together.
+ *
+ * A merged loop is the strongest statement; a closed issue is done however it was closed, so a
+ * run still recorded against it does not reopen it. Otherwise the newest run speaks, and an
+ * open issue no loop has been started on — or whose loop was cancelled — is `queued`.
+ *
+ * @param ticket - The issue's state in the tracker's mirror.
+ * @param run - Its newest run's status, or null when it has none.
+ * @returns The pill.
+ */
+export function issueStatus(ticket: "open" | "closed", run: RunStatus | null): IssueStatusResource {
+  if (run === "merged") return ISSUE_STATUS.merged;
+  if (ticket === "closed") return ISSUE_STATUS.closed;
+  if (run !== null && (ACTIVE_RUN_STATUSES as readonly RunStatus[]).includes(run)) {
+    return ISSUE_STATUS.live;
+  }
+  if (run === "needs_human") return ISSUE_STATUS.needs_human;
+  if (run === "failed") return ISSUE_STATUS.failed;
+
+  return ISSUE_STATUS.queued;
+}
+
+/**
+ * Where a version's file is read in a browser.
+ *
+ * @param projection - The stored projection.
+ * @param repoUrl - The repository's web address, or null.
+ * @returns The open pull request, else the file at its commit; null while there is neither.
+ */
+export function projectionHref(projection: RepoProjection, repoUrl: string | null): string | null {
+  if (repoUrl === null) return null;
+
+  if (projection.state === "pr_open") {
+    const number = projection.pr_ref?.replace(/^#/, "") ?? "";
+
+    return /^\d+$/.test(number) ? `${repoUrl}/pull/${number}` : null;
+  }
+
+  if (projection.committed_sha === null) return null;
+
+  const path = projection.path.split("/").map(encodeURIComponent).join("/");
+
+  return `${repoUrl}/blob/${projection.committed_sha}/${path}`;
+}
+
+/** What the card needs beyond the document's own rows (#631). */
+export interface RoadmapSurroundings {
+  /** The repository's web address, or null. */
+  readonly repoUrl?: string | null;
+  /** The published version of each pipeline skill, or null. */
+  readonly skillVersions?: Readonly<Record<PipelineSkillSlug, number | null>>;
+}
+
+/**
+ * The two skills, as the card's chips name them.
+ *
+ * @param versions - The published version of each, when read.
+ * @returns `create-roadmap` then `create-issues`.
+ */
+export function skillResources(
+  versions: RoadmapSurroundings["skillVersions"],
+): PipelineSkillResource[] {
+  return (Object.keys(SHIPPED_SKILLS) as PipelineSkillSlug[]).map((slug) => ({
+    slug,
+    label: `skill · ${slug}`,
+    version: versions?.[slug] ?? null,
+  }));
+}
+
+/**
  * @param projection - The stored projection.
  * @param problem - Why it could not be moved just now, or null.
+ * @param repoUrl - The repository's web address, or null.
  * @returns The resource, with its line.
  */
 export function projectionResource(
   projection: RepoProjection,
   problem: string | null = null,
+  repoUrl: string | null = null,
 ): ProjectionResource {
   const sha = projection.committed_sha?.slice(0, 7) ?? null;
   const words: Record<RepoProjection["state"], string> = {
@@ -275,6 +397,7 @@ export function projectionResource(
     committedSha: projection.committed_sha,
     observedSha: projection.observed_sha,
     label: `${projection.path} · ${words[projection.state]}`,
+    href: projectionHref(projection, repoUrl),
     problem,
   };
 }
@@ -288,6 +411,7 @@ export function projectionResource(
  * @param issues - The tracker's mirror of its filed items.
  * @param suggestions - Its suggestions, oldest first.
  * @param problem - Why the projection could not be moved just now, or null.
+ * @param around - The repository's address and the skills' versions.
  * @returns The card.
  */
 export function roadmapResource(
@@ -297,6 +421,7 @@ export function roadmapResource(
   issues: readonly IssueRow[],
   suggestions: readonly SuggestionRow[],
   problem: string | null = null,
+  around: RoadmapSurroundings = {},
 ): RoadmapResource {
   const byId = new Map(issues.map((issue) => [issue.id, issue]));
   const all = itemsOf(version.structure);
@@ -339,6 +464,10 @@ export function roadmapResource(
                     ? null
                     : Math.round((issue.estimate.estMinutes / MINUTES_PER_LOOP_DAY) * 10) / 10,
               },
+        status:
+          issue === undefined || item.ticket_key === null
+            ? null
+            : issueStatus(issue.state, issue.runStatus),
       };
     }),
   }));
@@ -353,7 +482,8 @@ export function roadmapResource(
       generatedAt: version.createdAt.toISOString(),
       targetSourceId: doc.targetSourceId,
     },
-    projection: projectionResource(version.projection, problem),
+    projection: projectionResource(version.projection, problem, around.repoUrl ?? null),
+    skills: skillResources(around.skillVersions),
     markdown: version.markdown,
     milestones,
     issues: {

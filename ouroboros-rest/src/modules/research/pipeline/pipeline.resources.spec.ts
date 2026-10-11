@@ -8,7 +8,9 @@ import {
 } from "./pipeline.repository";
 import {
   initialsOf,
+  issueStatus,
   planningHref,
+  projectionHref,
   projectionResource,
   roadmapResource,
   settingsResource,
@@ -63,6 +65,7 @@ const ISSUE: IssueRow = {
   state: "closed",
   labels: ["mvp"],
   estimate: { effort: "l", risk: "high", estMinutes: 4320 },
+  runStatus: null,
 };
 
 function suggestion(change: Partial<SuggestionRow> = {}): SuggestionRow {
@@ -113,6 +116,7 @@ describe("the pipeline card", () => {
       draftId: "d-1",
       ticket: { id: "t-742", key: "#742", url: ISSUE.url, state: "closed" },
       estimate: { effort: "l", complexity: "high", estMinutes: 4320, loopDays: 3 },
+      status: { state: "closed", label: "✓ closed", tone: "ok", live: false },
     });
     expect(card.issues).toEqual({
       batchId: "batch-1",
@@ -131,7 +135,97 @@ describe("the pipeline card", () => {
     expect(card.milestones[0]?.items[0]).toMatchObject({
       ticket: { id: "t-742", key: "#742", url: null, state: null },
       estimate: null,
+      status: null,
     });
+  });
+
+  it("names the two skills in the order they run, with the versions the workspace published", () => {
+    const unread = roadmapResource(RS124, doc(), version(), [], []);
+    const read = roadmapResource(RS124, doc(), version(), [], [], null, {
+      skillVersions: { "create-roadmap": 3, "create-issues": null },
+    });
+
+    expect(unread.skills).toEqual([
+      { slug: "create-roadmap", label: "skill · create-roadmap", version: null },
+      { slug: "create-issues", label: "skill · create-issues", version: null },
+    ]);
+    expect(read.skills.map((skill) => skill.version)).toEqual([3, null]);
+  });
+
+  it("addresses the document in its repository only when the repository has an address", () => {
+    const repoUrl = "https://github.com/acme-robotics/helios-firmware";
+
+    expect(roadmapResource(RS124, doc(), version(), [], []).projection.href).toBeNull();
+    expect(
+      roadmapResource(RS124, doc(), version(), [], [], null, { repoUrl }).projection.href,
+    ).toBe(`${repoUrl}/blob/${SHA}/docs/ROADMAP.md`);
+  });
+});
+
+describe("an issue's status pill", () => {
+  it.each([
+    ["open", null, "queued", "queued", false],
+    ["open", "canceled", "queued", "queued", false],
+    ["open", "coding", "live", "loop live", true],
+    ["open", "building", "live", "loop live", true],
+    ["open", "review", "live", "loop live", true],
+    ["open", "needs_human", "needs_human", "needs human", false],
+    ["open", "failed", "failed", "loop failed", false],
+    ["open", "merged", "merged", "✓ merged", false],
+    ["closed", "merged", "merged", "✓ merged", false],
+    ["closed", null, "closed", "✓ closed", false],
+    ["closed", "coding", "closed", "✓ closed", false],
+  ] as const)(
+    "reads a %s issue whose newest run is %s as %s",
+    (ticket, run, state, label, live) => {
+      expect(issueStatus(ticket, run)).toMatchObject({ state, label, live });
+    },
+  );
+
+  it("is drawn on the row from the tracker's mirror and the run together", () => {
+    const card = roadmapResource(
+      RS124,
+      doc(),
+      version(),
+      [{ ...ISSUE, state: "open", runStatus: "building" }],
+      [],
+    );
+
+    expect(card.milestones[0]?.items[0]?.status).toEqual({
+      state: "live",
+      label: "loop live",
+      tone: "run",
+      live: true,
+    });
+  });
+});
+
+describe("where a version's file is read", () => {
+  const repoUrl = "https://github.com/acme-robotics/helios-firmware";
+  const pending = pendingProjection("docs/ROAD MAP.md");
+
+  it("is nowhere while the version is not in the repository", () => {
+    expect(projectionHref(pending, repoUrl)).toBeNull();
+  });
+
+  it("is the pull request while one is open", () => {
+    expect(projectionHref({ ...pending, state: "pr_open", pr_ref: "#88" }, repoUrl)).toBe(
+      `${repoUrl}/pull/88`,
+    );
+    expect(projectionHref({ ...pending, state: "pr_open", pr_ref: "eighty" }, repoUrl)).toBeNull();
+  });
+
+  it("is the file at its commit once committed, and still when drift is seen", () => {
+    const committed = { ...pending, state: "committed" as const, committed_sha: SHA };
+
+    expect(projectionHref(committed, repoUrl)).toBe(`${repoUrl}/blob/${SHA}/docs/ROAD%20MAP.md`);
+    expect(projectionHref({ ...committed, state: "drift_detected" }, repoUrl)).toBe(
+      `${repoUrl}/blob/${SHA}/docs/ROAD%20MAP.md`,
+    );
+  });
+
+  it("is nowhere for a repository with no address", () => {
+    expect(projectionHref({ ...pending, state: "committed", committed_sha: SHA }, null)).toBeNull();
   });
 
   it("rounds loop-days to one decimal, and leaves an unknown time unknown", () => {
