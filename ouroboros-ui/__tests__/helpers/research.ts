@@ -13,14 +13,18 @@ import type {
   MatrixCell,
   RegressionWatchCard,
   RegressionWatchItem,
+  ResearchRoadmap,
   ResearchToolCatalog,
   ResearchToolCatalogEntry,
   ResearchToolEnableForm,
+  RoadmapItem,
+  RoadmapSuggestion,
   ScopeEstimate,
   StartedInvestigation,
 } from "@/app/api/research";
 import type { FeaturedBrief } from "@/app/research/brief";
 import type { ComposerReadings, DepthEstimates } from "@/app/research/composer";
+import type { FeaturedPipeline } from "@/app/research/pipeline";
 import type { ProgressMessage, ProgressSource, ProgressSourceFactory } from "@/app/research/progress";
 
 /**
@@ -940,6 +944,277 @@ export function investigationList(over: Partial<InvestigationList> = {}): Invest
     offset: 0,
     counts: { active: 4, thisQuarter: 23 },
     quarter: { key: "2026-Q4", from: "2026-10-01T00:00:00.000Z", to: "2027-01-01T00:00:00.000Z" },
+    ...over,
+  };
+}
+
+/** RS-124 — the investigation the seeded roadmap came from. */
+export const RS124_ID = "5eed0091-0000-4000-8000-000000000124";
+
+/** The seeded human suggestion's id, and the estimator's. */
+export const HUMAN_SUGGESTION_ID = "5eed0097-0000-4000-8000-000000002001";
+export const AI_SUGGESTION_ID = "5eed0097-0000-4000-8000-000000002002";
+
+/** Where the seeded document is read in its repository. */
+export const ROADMAP_HREF =
+  "https://github.com/acme-robotics/helios-firmware/blob/8c1b2e4/docs/ROADMAP.md";
+
+/**
+ * One roadmap item, filed and sized — #742 as seeded unless the case says otherwise.
+ *
+ * @param number The issue number.
+ * @param over What this case changes.
+ * @returns The item.
+ */
+export function roadmapItem(number: number, over: Partial<RoadmapItem> = {}): RoadmapItem {
+  return {
+    key: `item-${String(number)}`,
+    title: "Wind-feedforward MPC in final approach",
+    mvp: false,
+    effort: "m",
+    checked: false,
+    draftId: `draft-${String(number)}`,
+    ticket: {
+      id: `ticket-${String(number)}`,
+      key: `#${String(number)}`,
+      url: `https://github.com/acme-robotics/helios-firmware/issues/${String(number)}`,
+      state: "open",
+    },
+    estimate: { effort: "m", complexity: "medium", estMinutes: 2160, loopDays: 1.5 },
+    status: { state: "queued", label: "queued", tone: "idle", live: false },
+    ...over,
+  };
+}
+
+/**
+ * One suggested change.
+ *
+ * @param over What this case changes.
+ * @returns The seeded human suggestion unless the case says otherwise.
+ */
+export function roadmapSuggestion(over: Partial<RoadmapSuggestion> = {}): RoadmapSuggestion {
+  return {
+    id: HUMAN_SUGGESTION_ID,
+    authorKind: "user",
+    authorLabel: "KS",
+    authorName: "Ken Suenobu",
+    text: "Pull #744 into the M1 MVP set — churn interviews rank gust handling above battery accuracy.",
+    hint: { item: "dock-gust", change: "mvp", to: true },
+    status: "open",
+    appliedVersion: null,
+    createdAt: "2026-10-03T12:00:00.000Z",
+    ...over,
+  };
+}
+
+/**
+ * RS-124's roadmap as the seeded stack answers it: version 1, committed at `8c1b2e4`, two
+ * milestones of three issues each, #742 closed and the rest queued, two open suggestions.
+ *
+ * @param over What this case changes.
+ * @returns The card.
+ */
+export function seededRoadmap(over: Partial<ResearchRoadmap> = {}): ResearchRoadmap {
+  const closed = { state: "closed", label: "✓ closed", tone: "ok", live: false } as const;
+
+  return {
+    investigation: { id: RS124_ID, displayId: "RS-124" },
+    doc: {
+      id: "5eed0097-0000-4000-8000-000000000124",
+      title: "Helios — Q4 Improvement Roadmap",
+      version: 1,
+      generatedBy: "create-roadmap@rs-124",
+      generatedAt: "2026-10-01T13:00:00.000Z",
+      targetSourceId: "5eed0020-0000-4000-8000-000000000001",
+    },
+    projection: {
+      state: "committed",
+      path: "docs/ROADMAP.md",
+      prRef: null,
+      committedSha: "8c1b2e4",
+      observedSha: null,
+      label: "docs/ROADMAP.md · committed 8c1b2e4",
+      href: ROADMAP_HREF,
+      problem: null,
+    },
+    skills: [
+      { slug: "create-roadmap", label: "skill · create-roadmap", version: 1 },
+      { slug: "create-issues", label: "skill · create-issues", version: 1 },
+    ],
+    markdown:
+      "# Helios — Q4 Improvement Roadmap\n\n" +
+      "## M1 · Docking parity — target Oct 15\n" +
+      "- [x] #742 Wind-feedforward MPC in final approach `MVP` `L`\n" +
+      "- [ ] #743 Re-planned abort & retry vectors `MVP` `M`\n" +
+      "- [ ] #744 Gust estimator from IMU residuals `M`\n\n" +
+      "## M2 · Fleet reliability — target Nov 20\n" +
+      "- [ ] #745 Battery health model v2 `M`\n" +
+      "- [ ] #746 Telemetry gap alerts `S`\n" +
+      "- [ ] #747 Operator recovery playbook docs `XS`\n",
+    milestones: [
+      {
+        key: "m1",
+        name: "Docking parity",
+        targetDate: "2026-10-15",
+        dueLabel: "due Oct 15",
+        done: 1,
+        total: 3,
+        items: [
+          roadmapItem(742, {
+            key: "dock-mpc",
+            mvp: true,
+            effort: "l",
+            checked: true,
+            ticket: {
+              id: "ticket-742",
+              key: "#742",
+              url: "https://github.com/acme-robotics/helios-firmware/issues/742",
+              state: "closed",
+            },
+            estimate: { effort: "l", complexity: "high", estMinutes: 4320, loopDays: 3 },
+            status: closed,
+          }),
+          roadmapItem(743, { key: "dock-retry", title: "Re-planned abort & retry vectors", mvp: true }),
+          roadmapItem(744, {
+            key: "dock-gust",
+            title: "Gust estimator from IMU residuals",
+            estimate: { effort: "m", complexity: "medium", estMinutes: 1440, loopDays: 1 },
+          }),
+        ],
+      },
+      {
+        key: "m2",
+        name: "Fleet reliability",
+        targetDate: "2026-11-20",
+        dueLabel: "due Nov 20",
+        done: 0,
+        total: 3,
+        items: [
+          roadmapItem(745, {
+            key: "fleet-battery",
+            title: "Battery health model v2",
+            estimate: { effort: "m", complexity: "high", estMinutes: 2880, loopDays: 2 },
+          }),
+          roadmapItem(746, {
+            key: "fleet-gaps",
+            title: "Telemetry gap alerts",
+            effort: "s",
+            estimate: { effort: "s", complexity: "low", estMinutes: 720, loopDays: 0.5 },
+          }),
+          roadmapItem(747, {
+            key: "fleet-playbook",
+            title: "Operator recovery playbook docs",
+            effort: "xs",
+            estimate: { effort: "xs", complexity: "low", estMinutes: 360, loopDays: 0.3 },
+          }),
+        ],
+      },
+    ],
+    issues: {
+      batchId: "5eed0090-0000-4000-8000-000000000124",
+      filed: 6,
+      total: 6,
+      label: "6 issues · 2 milestones",
+    },
+    suggestions: {
+      open: 2,
+      items: [
+        roadmapSuggestion(),
+        roadmapSuggestion({
+          id: AI_SUGGESTION_ID,
+          authorKind: "ai",
+          authorLabel: "AI",
+          authorName: "create-roadmap",
+          text: "Split #745 — complexity is high for a single loop; model + calibration land better as two issues.",
+          hint: null,
+          createdAt: "2026-10-04T12:00:00.000Z",
+        }),
+      ],
+    },
+    ...over,
+  };
+}
+
+/**
+ * The seeded roadmap after **Apply ⟳** on the human suggestion: version 2, #744 in the MVP set,
+ * the suggestion applied to it.
+ *
+ * @returns The card the service answers the apply with.
+ */
+export function appliedRoadmap(): ResearchRoadmap {
+  const before = seededRoadmap();
+  const [m1, m2] = before.milestones as [ResearchRoadmap["milestones"][0], ResearchRoadmap["milestones"][0]];
+
+  return {
+    ...before,
+    doc: { ...before.doc, version: 2, generatedBy: "create-roadmap@v1" },
+    projection: {
+      ...before.projection,
+      state: "pr_open",
+      prRef: "#88",
+      label: "docs/ROADMAP.md · pull request #88 open",
+      href: "https://github.com/acme-robotics/helios-firmware/pull/88",
+    },
+    markdown: before.markdown.replace("residuals `M`", "residuals `MVP` `M`"),
+    milestones: [
+      { ...m1, items: m1.items.map((item) => (item.key === "dock-gust" ? { ...item, mvp: true } : item)) },
+      m2,
+    ],
+    suggestions: {
+      open: 1,
+      items: before.suggestions.items.map((suggestion) =>
+        suggestion.id === HUMAN_SUGGESTION_ID
+          ? { ...suggestion, status: "applied" as const, appliedVersion: 2 }
+          : suggestion,
+      ),
+    },
+  };
+}
+
+/**
+ * The seeded roadmap in drift: the tracker's #743 was retitled, and the detector raised its
+ * suggestion.
+ *
+ * @returns The card a drift check leaves.
+ */
+export function driftedRoadmap(): ResearchRoadmap {
+  const before = seededRoadmap();
+
+  return {
+    ...before,
+    projection: {
+      ...before.projection,
+      state: "drift_detected",
+      observedSha: "a41f2c9",
+      label: "docs/ROADMAP.md · drift detected since 8c1b2e4",
+    },
+    suggestions: {
+      open: 3,
+      items: [
+        ...before.suggestions.items,
+        roadmapSuggestion({
+          id: "5eed0097-0000-4000-8000-000000002003",
+          authorKind: "ai",
+          authorLabel: "AI",
+          authorName: "drift-detector",
+          text: "Reconcile ROADMAP.md with the tracker: #743 is titled differently there.",
+          hint: null,
+        }),
+      ],
+    },
+  };
+}
+
+/**
+ * What the pipeline's seat is handed.
+ *
+ * @param over What this case changes.
+ * @returns The seeded roadmap, from a roadmap investigation.
+ */
+export function featuredPipeline(over: Partial<FeaturedPipeline> = {}): FeaturedPipeline {
+  return {
+    roadmap: seededRoadmap(),
+    kind: { slug: "roadmap_improvements", name: "Roadmap & improvements", tint: "road" },
     ...over,
   };
 }

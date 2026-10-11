@@ -12,6 +12,7 @@ import {
   composerReadings,
   depthEstimates,
   featuredBrief,
+  featuredPipeline,
   investigationList,
   openFakeSource,
   progress,
@@ -47,6 +48,10 @@ vi.mock("@/app/research/brief-actions", () => ({
   readBriefLedger: () => Promise.resolve({ ok: true, total: 0, items: [] }),
   readTrackers: () => Promise.resolve({ ok: true, trackers: [] }),
   draftEpicFromGaps: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "x" } }),
+}));
+vi.mock("@/app/research/pipeline-actions", () => ({
+  applyRoadmapSuggestion: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "x" } }),
+  dismissRoadmapSuggestion: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "x" } }),
 }));
 const enableTool = vi.fn();
 vi.mock("@/app/research/side-actions", () => ({
@@ -88,6 +93,7 @@ function Screen(over: Partial<ResearchScreenProps>) {
       mayDraft
       opened={null}
       openProgress={openFakeSource}
+      pipeline={{ ok: true, value: featuredPipeline() }}
       sidePoll={{ read: () => new Promise(() => undefined) }}
       startReason={null}
       view="page"
@@ -296,19 +302,17 @@ describe("the grid frame", () => {
     for (const id of ["brief", "pipeline", "investigations"]) expect(seat(id)).toHaveClass("research__seat--wide");
   });
 
-  it("labels every seat with its region, and the ones still empty with the issue that fills them", () => {
+  it("labels every seat with its region — every one now holds its card, none a placeholder", () => {
     render(<Screen />);
 
+    // The brief's card and the pipeline's are named by what they hold, not by the region.
+    const named: Partial<Record<string, RegExp>> = { brief: /RS-127/, pipeline: /RS-124/ };
+
     for (const region of RESEARCH_REGIONS) {
-      // The brief's card is named by the brief it holds, not by the region.
-      const card = screen.getByRole("region", { name: region.id === "brief" ? /RS-127/ : region.title });
+      const card = screen.getByRole("region", { name: named[region.id] ?? region.title });
 
       expect(seat(region.id)).toContainElement(card);
-      if (region.id !== "pipeline") {
-        expect(card).not.toHaveTextContent(region.arrives);
-      } else {
-        expect(card).toHaveTextContent(region.arrives);
-      }
+      expect(card).not.toHaveTextContent(region.arrives);
     }
   });
 
@@ -385,6 +389,31 @@ describe("the featured brief in its seat (#630)", () => {
     render(<Screen brief={{ ok: true, value: null }} />);
 
     expect(screen.getByRole("region", { name: "Featured brief" })).toHaveTextContent("No brief yet");
+  });
+});
+
+describe("the roadmap pipeline in its seat (#631)", () => {
+  it("fills the pipeline's seat with the newest roadmap's card, both steps", () => {
+    render(<Screen />);
+
+    const card = within(seat("pipeline")).getByRole("region", { name: "RS-124 — From brief to roadmap to issues" });
+
+    expect(card).toHaveTextContent("docs/ROADMAP.md · committed 8c1b2e4 · generated from the RS-124 brief");
+    expect(card).toHaveTextContent("6 issues · 2 milestones · synced");
+  });
+
+  it("says so when the workspace has no roadmap", () => {
+    render(<Screen pipeline={{ ok: true, value: null }} />);
+
+    expect(within(seat("pipeline")).getByRole("region", { name: "Roadmap pipeline" })).toHaveTextContent("No roadmap yet");
+  });
+
+  it("hands the reader's standing to the suggestions' actions", () => {
+    render(<Screen mayAdminister={false} />);
+
+    const apply = within(seat("pipeline")).getAllByRole("button", { name: /^Apply ⟳: / })[0]!;
+
+    expect(apply).toHaveAttribute("aria-disabled", "true");
   });
 });
 

@@ -14,14 +14,6 @@ tickets for the loop to pick up.
 
 <Screenshot id="user-guide.research" />
 
-:::info[The page is arriving in parts]
-
-Five of the page's six regions are here: the composer, the research tools, the regression
-watch, the featured brief and the investigations list. **Roadmap pipeline** still says what it
-will hold, and is filled in by a later release.
-
-:::
-
 ## The page
 
 The head states what the page is for:
@@ -46,7 +38,7 @@ Below the head, the page has six regions:
 | **Research tools** | Each [research tool](#research-tools), with its health and how to enable it — see [The Research tools card](#the-research-tools-card) |
 | **Regression watch** | Drift against each release's baseline, from detection to a merged fix — see [The Regression watch card](#the-regression-watch-card) |
 | **Featured brief** | A cited brief, with its capability matrix and numbered sources |
-| **Roadmap pipeline** | A brief's roadmap document, and the issues filed from it |
+| **Roadmap pipeline** | The newest roadmap document, beside the issues filed from it — see [The pipeline card](#the-pipeline-card) |
 | **Investigations** | Every investigation, and the library: the same list filtered by kind, status and quarter — see [Investigations and the library](#investigations-and-the-library) |
 
 On a wide screen **Start an investigation** sits beside **Research tools** and **Regression
@@ -946,14 +938,87 @@ brief → create-roadmap → ROADMAP.md → pull request
 ROADMAP.md → create-issues → drafts → sized → issues → written back into ROADMAP.md
 ```
 
-:::info[Use the API for now]
+:::info[Some steps are still API requests]
 
-The pipeline card arrives in a later release. Until then every step below is a request to the
-[REST API](../cli/rest-api.mdx), under
+The [pipeline card](#the-pipeline-card) shows a roadmap and lets you apply or dismiss a
+suggestion. Generating a roadmap, writing a suggestion, filing the issues and running a drift
+check are still requests to the [REST API](../cli/rest-api.mdx), under
 `/api/v1/research/investigations/{investigationId}/roadmap`. Everyone in the workspace can read
 a roadmap with `GET` on that address.
 
 :::
+
+### The pipeline card
+
+<Screenshot id="user-guide.research.pipeline" />
+
+The **Roadmap pipeline** region shows one roadmap: the newest whose issues are filed, or
+otherwise the newest generated from a finished brief. A workspace with no roadmap reads
+**No roadmap yet**. <Since version="0.150.0" module="ouroboros-ui" />
+
+The head reads **RS-124 — From brief to roadmap to issues**, after the kind of investigation
+the roadmap came from. Beside it:
+
+- **skill · create-roadmap** → **skill · create-issues** are the two skills behind the card, in
+  the order they run. Each opens the skills table on the
+  [Knowledge](./knowledge.mdx#the-roadmap-pipelines-skills) page, where you can read the
+  procedure. Hover one to see the version your workspace has published.
+- **Open ROADMAP.md ↗** opens the pull request while one is open, and the file at its commit
+  once it is merged. It is switched off, and says why, while the file is not in your
+  repository yet.
+
+Under the head, the document and the tracker sit side by side, so you can check one against the
+other. On a narrow screen the tracker goes under the document. A long document and a long list
+of issues each scroll on their own.
+
+**1 · create-roadmap → ROADMAP.md** is the document. Its version, **v1**, is beside the
+heading, and it has two views:
+
+| View | What it shows |
+| --- | --- |
+| **Rendered** | The roadmap as you review it. A first line gives the file's path, where it stands in your repository and the brief it came from — `docs/ROADMAP.md · committed 8c1b2e4 · generated from the RS-124 brief`. Then each milestone with its target date, and each item with its tick, issue number, **MVP** flag and effort. |
+| **Raw .md** | The Markdown exactly as it is written to your repository. It cannot be edited here. |
+
+**Suggested changes** are listed under the document — see
+[Suggested changes](#suggested-changes).
+
+**2 · create-issues → GitHub** is the tracker: the issues filed from the roadmap, grouped by
+milestone. Each milestone shows its due date and how many of its issues are done, for example
+**1/3 done**. Each row is one issue:
+
+| Part | What it shows |
+| --- | --- |
+| **#742** | The issue's number, a link to it in your tracker |
+| **est 3.0 loop-days** | The estimator's loop time for the issue |
+| **L** | The estimator's effort |
+| **cx:high** | The estimator's complexity: **cx:low**, **cx:med** or **cx:high** |
+| The pill | Where the issue stands |
+
+The pill is read from the issue and from the newest loop run on it:
+
+| Pill | What it means |
+| --- | --- |
+| **queued** | The issue is open and no loop is running on it |
+| **loop live** | A loop is running on it |
+| **✓ merged** | A loop's pull request for it was merged |
+| **✓ closed** | It was closed in your tracker without a merged loop |
+| **needs human** | Its newest loop stopped and is waiting for a person |
+| **loop failed** | Its newest loop failed |
+| **not filed** | The item has no issue yet |
+
+The tag beside the tracker's heading counts the issues and milestones, and then says whether
+the document and the tracker agree:
+
+| The tag ends with | What it means |
+| --- | --- |
+| **synced** | Every item has its issue, and the file that records them is committed |
+| **drift detected** | A drift check found a difference. The suggestion it raised is quoted under the tag — see [Drift](#drift). |
+| **writeback not committed yet** | The issues are filed, and the version that records them is still in a pull request |
+| **4 of 6 filed** | Filing stopped before every item had its issue |
+| **not filed yet** | **create-issues** has not run for this roadmap |
+
+The card closes with a line saying where its figures come from: dates, estimates, effort and
+complexity are the estimator's, written when the issues are created.
 
 ### Who can do what
 
@@ -1030,13 +1095,30 @@ Anyone who can draft can suggest a change with `POST …/roadmap/suggestions`:
 { "text": "Pull the gust estimator into the M1 MVP set." }
 ```
 
-A suggestion waits, **open**, until an Owner or a Maintainer settles it:
+On the [pipeline card](#the-pipeline-card), open suggestions are listed under the document,
+under **Suggested changes — 2 open**. Each shows who raised it — a person's initials, or
+**AI** — and its text.
 
-- **Apply** (`POST …/suggestions/{suggestionId}/apply`) runs **create-roadmap** again, with the
-  current version and every suggestion applied so far. What it writes is stored as the next
+A suggestion waits, **open**, until an Owner or a Maintainer settles it with one of the two
+buttons on its row. For everyone else the buttons are switched off and say why.
+
+- **Apply ⟳** (`POST …/suggestions/{suggestionId}/apply`) runs **create-roadmap** again, with
+  the current version and every suggestion applied so far. What it writes is stored as the next
   version, and the suggestion records which version it produced. The pull request is updated.
 - **Dismiss** (`POST …/suggestions/{suggestionId}/dismiss`) closes it and changes nothing. The
-  dismissal is recorded in the audit log.
+  row leaves the card at once, and the dismissal is recorded in the audit log.
+
+**Apply ⟳** asks you to confirm first, because it is a new run and not an edit:
+
+1. Press **Apply ⟳**, then **Re-run create-roadmap**.
+2. The card shows **create-roadmap** running against the current version —
+   **Re-running create-roadmap on v1…** The other buttons wait until it finishes.
+3. When it finishes the line reads **create-roadmap finished — v1 → v2**. The version beside
+   the document's heading becomes **v2**, and the document shows what the new version says.
+4. The suggestion moves to the list under the open ones, tagged **applied · v2**.
+
+If the run cannot start or fails, the card shows the reason, and the document stays on its
+version with the suggestion still open.
 
 Applying a suggestion never edits the roadmap in place. Each version is kept as it was written,
 so you can see what every suggestion changed.
@@ -1098,7 +1180,8 @@ the roadmap.
 
 When something differs:
 
-- the roadmap is marked `drift_detected`;
+- the roadmap is marked `drift_detected`, and the [pipeline card](#the-pipeline-card)'s tag
+  reads **drift detected** in place of **synced**, with the raised suggestion quoted under it;
 - **one** suggestion is raised, by `drift-detector`, naming every difference:
 
   > Tracker drift — #744 is done in the tracker and open in the document. Apply to regenerate

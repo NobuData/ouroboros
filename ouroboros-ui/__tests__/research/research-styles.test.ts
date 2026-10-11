@@ -56,9 +56,18 @@ describe("the sheet and the components", () => {
     expect(COMPONENT).toMatch(/\bEyebrow\b/);
   });
 
-  it("adds no fixed or sticky chrome to the shell, and no scroll container of its own", () => {
+  it("adds no fixed or sticky chrome to the shell, and scrolls only inside the pipeline's two steps", () => {
     expect(CODE).not.toMatch(/position:\s*(fixed|sticky)/);
-    expect(CODE).not.toMatch(/overflow(-[xy])?:\s*(auto|scroll)/);
+
+    // #631: a long document and a long issue list each scroll in their own wrapper — one rule,
+    // vertical only, bounded in rem so the 125% step grows it. Nothing else on the page scrolls.
+    const scrollers = [...CODE.matchAll(/([^{}]*)\{([^}]*overflow(?:-[xy])?:\s*(?:auto|scroll)[^}]*)\}/g)];
+
+    expect(scrollers.map((match) => match[1]!.trim())).toEqual([".research__pipe-scroll"]);
+    expect(rule("\\.research__pipe-scroll")).toMatch(/overflow-y:\s*auto/);
+    expect(rule("\\.research__pipe-scroll")).not.toMatch(/overflow(-x)?:\s*(auto|scroll)/);
+    expect(rule("\\.research__pipe-scroll")).toMatch(/max-height:\s*[\d.]+rem/);
+    expect(COMPONENT.match(/research__pipe-scroll/g)).toHaveLength(3);
   });
 });
 

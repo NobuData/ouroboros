@@ -168,6 +168,8 @@ export class FakeRepo implements RepoGateway, RoadmapRepo {
 
   /** False for a tracker with no repository: `open` answers undefined. */
   supported = true;
+  /** The repository's web address, as {@link webUrl} answers it. */
+  url: string | null = "https://github.com/acme-robotics/helios-firmware";
   /** When set, every `open` is refused with it. */
   refusal: TicketSourceError | null = null;
 
@@ -183,6 +185,11 @@ export class FakeRepo implements RepoGateway, RoadmapRepo {
     if (this.refusal !== null) throw this.refusal;
 
     return work(this);
+  }
+
+  /** @inheritdoc */
+  webUrl(): string | null {
+    return this.supported ? this.url : null;
   }
 
   /** @inheritdoc */
@@ -350,6 +357,11 @@ export class MemoryPipelineStore implements PipelineStore {
   readonly policy = new Map<string, PipelineSettings>();
   readonly gapBatches = new Map<string, { batchId: string; epicId: string | null }>();
   readonly filed: string[] = [];
+  /** The published version of each pipeline skill, as {@link skillVersions} answers it. */
+  skillsPublished: Record<PipelineSkillSlug, number | null> = {
+    "create-roadmap": 1,
+    "create-issues": 1,
+  };
 
   /** When true, the next `addVersion` loses a race. */
   raceNext = false;
@@ -568,6 +580,11 @@ export class MemoryPipelineStore implements PipelineStore {
         return ticket?.organizationId === organizationId ? [ticket] : [];
       }),
     );
+  }
+
+  /** @inheritdoc */
+  skillVersions() {
+    return Promise.resolve({ ...this.skillsPublished });
   }
 
   /** @inheritdoc */
@@ -797,6 +814,7 @@ export class FakePlanning {
         state: "open",
         labels: [...(draft.input.labels ?? [])],
         estimate: draft.sized ? { effort: "m", risk: "medium", estMinutes: 2160 } : null,
+        runStatus: null,
       });
     }
 

@@ -147,6 +147,24 @@ export type DraftEpicRequest = components["schemas"]["ResearchDraftEpicRequest"]
 export type DraftEpic = components["schemas"]["ResearchDraftEpic"];
 
 /** The research calls. Each takes the client to use, defaulting to the request's own. */
+/** The pipeline card — a roadmap document on its current version (#631). */
+export type ResearchRoadmap = components["schemas"]["ResearchRoadmap"];
+
+/** One milestone of a roadmap. */
+export type RoadmapMilestone = components["schemas"]["ResearchRoadmapMilestone"];
+
+/** One item of a milestone, with its issue once filed. */
+export type RoadmapItem = components["schemas"]["ResearchRoadmapItem"];
+
+/** One suggested change to a roadmap. */
+export type RoadmapSuggestion = components["schemas"]["ResearchRoadmapSuggestion"];
+
+/** A filed issue's status pill. */
+export type RoadmapIssueStatus = components["schemas"]["ResearchRoadmapIssueStatus"];
+
+/** One of the two skills the pipeline runs. */
+export type RoadmapSkill = components["schemas"]["ResearchRoadmapSkill"];
+
 export const research = {
   /**
    * The workspace's investigation kinds.
@@ -367,6 +385,63 @@ export const research = {
         params: { path: { investigationId } },
         body,
       }),
+    );
+  },
+
+  /**
+   * An investigation's roadmap document — the pipeline card.
+   *
+   * @param investigationId The investigation.
+   * @param client The client to call through.
+   * @returns The card — `404 roadmap_not_found` for an investigation with no document.
+   */
+  async roadmap(investigationId: string, client: ApiClient = api()): Promise<ResearchRoadmap> {
+    return unwrap(
+      await client.GET("/api/v1/research/investigations/{investigationId}/roadmap", {
+        params: { path: { investigationId } },
+      }),
+    );
+  },
+
+  /**
+   * **Apply ⟳** — re-run `create-roadmap` with a suggestion, writing the next version.
+   *
+   * @param investigationId The investigation.
+   * @param suggestionId The suggestion.
+   * @param client The client to call through.
+   * @returns The card on its new version, the suggestion applied.
+   */
+  async applyRoadmapSuggestion(
+    investigationId: string,
+    suggestionId: string,
+    client: ApiClient = api(),
+  ): Promise<ResearchRoadmap> {
+    return unwrap(
+      await client.POST(
+        "/api/v1/research/investigations/{investigationId}/roadmap/suggestions/{suggestionId}/apply",
+        { params: { path: { investigationId, suggestionId } } },
+      ),
+    );
+  },
+
+  /**
+   * **Dismiss** a suggestion. The service records it in the audit log.
+   *
+   * @param investigationId The investigation.
+   * @param suggestionId The suggestion.
+   * @param client The client to call through.
+   * @returns The card, the suggestion dismissed.
+   */
+  async dismissRoadmapSuggestion(
+    investigationId: string,
+    suggestionId: string,
+    client: ApiClient = api(),
+  ): Promise<ResearchRoadmap> {
+    return unwrap(
+      await client.POST(
+        "/api/v1/research/investigations/{investigationId}/roadmap/suggestions/{suggestionId}/dismiss",
+        { params: { path: { investigationId, suggestionId } } },
+      ),
     );
   },
 };

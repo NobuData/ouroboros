@@ -121,6 +121,21 @@ export class RoadmapProjector {
   }
 
   /**
+   * Where a reader opens the document's repository in a browser (#631).
+   *
+   * @param doc - The document.
+   * @returns The repository's web address; null when its ticket source was removed or its host
+   *   has no address the pipeline can compose.
+   */
+  async repoUrl(doc: DocRow): Promise<string | null> {
+    if (doc.targetSourceId === null) return null;
+
+    const source = await this.store.source(doc.organizationId, doc.targetSourceId);
+
+    return source === undefined ? null : this.gateway.webUrl(source);
+  }
+
+  /**
    * Bring a version's projection as far as the repository allows: project a `pending` one, and
    * follow an open PR to `committed` or back to `pending`.
    *

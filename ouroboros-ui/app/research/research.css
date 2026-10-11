@@ -1257,3 +1257,364 @@
   justify-content: flex-end;
   gap: var(--sp-6);
 }
+
+/* ---------- the roadmap pipeline card (#631) ---------- */
+
+/* A skill chip — the mockup's `.skill-chip`, in the model hue, and a link to the registry. */
+.research__skill-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--sp-1) var(--sp-5);
+  border: 1px solid var(--model-line);
+  border-radius: var(--r-pill);
+  background: var(--model-tint);
+  color: var(--model);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.research__skill-chip:hover,
+.research__skill-chip:focus-visible {
+  text-decoration: underline;
+}
+
+.research__skill-arrow {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* The two steps side by side — the mockup's c-6 beside c-6 — stacking on a narrow pane. */
+.research__pipe {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-8);
+}
+
+@media (max-width: 68.75rem) {
+  .research__pipe {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.research__pipe-step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+
+.research__pipe-step-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-5);
+}
+
+.research__pipe-step-head--sub {
+  margin-top: var(--sp-5);
+}
+
+/* The step's heading takes the row; what follows it sits at the far end. */
+.research__pipe-step-title {
+  flex: 1;
+  min-width: 12rem;
+  margin: 0;
+  color: var(--ink-mut);
+  font-family: var(--f-disp);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.research__pipe-hint {
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+}
+
+/*
+ * The one place the page scrolls inside itself: a long document and a long issue list each keep
+ * to their own wrapper, so neither pushes the other — or the investigations under them — away.
+ * Vertical only; a long line wraps.
+ */
+.research__pipe-scroll {
+  max-height: 26rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.research__pipe-scroll:focus-visible {
+  outline: var(--sp-1) solid var(--accent);
+  outline-offset: var(--sp-1);
+}
+
+.research__pipe-note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.research__pipe-caption {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* A drift is the claim failing — it is said in the warning hue, beside the suggestion raised. */
+.research__pipe-drift {
+  margin: 0;
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+  color: var(--warn);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.research__pipe-drift-text {
+  color: var(--ink-dim);
+}
+
+/* The re-run's line: empty until an apply starts, then the skill running, then the version. */
+.research__pipe-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-5);
+  margin: 0;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.research__pipe-progress:empty {
+  display: none;
+}
+
+/* The rendered document — the mockup's `.md-render`. */
+.research__md {
+  margin: 0;
+  padding: var(--sp-8) var(--sp-9);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.research__md-raw {
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.research__md-meta {
+  margin: 0 0 var(--sp-4);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.research__md-h1 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--f-disp);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+.research__md-h2 {
+  margin: var(--sp-7) 0 var(--sp-3);
+  color: var(--accent);
+  font-family: var(--f-disp);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.research__md-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.research__md-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-5);
+  padding: var(--sp-2) 0;
+}
+
+.research__md-box {
+  flex: none;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.research__md-box--done {
+  color: var(--ok);
+}
+
+.research__md-text {
+  flex: 1;
+  min-width: 9rem;
+}
+
+.research__md-num {
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* The MVP flag — the mockup's `.mvp`. */
+.research__mvp {
+  flex: none;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-xs);
+  color: var(--warn);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/* Suggested changes — the mockup's `.sugg` rows. */
+.research__sugg-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.research__sugg-list--applied {
+  opacity: 0.75;
+}
+
+.research__sugg {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-6);
+  padding: var(--sp-6) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.research__sugg:last-child {
+  border-bottom: none;
+}
+
+/* Who suggested it: a person's initials in the accent, the product's `AI` in the model hue. */
+.research__sugg-who {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-round);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-family: var(--f-disp);
+  font-size: var(--t-2xs);
+  font-weight: 600;
+}
+
+.research__sugg-who--ai {
+  border-color: var(--model-line);
+  background: var(--model-tint);
+  color: var(--model);
+}
+
+.research__sugg-text {
+  flex: 1;
+  min-width: 11rem;
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.research__sugg-ref {
+  color: var(--accent);
+  font-family: var(--f-mono);
+}
+
+/* The tracker — the mockup's `.ms-head` over its `.iss-row`s. */
+.research__ms + .research__ms {
+  margin-top: var(--sp-8);
+}
+
+.research__ms-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-6);
+  margin-bottom: var(--sp-1);
+}
+
+.research__ms-name {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--f-disp);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.research__ms-done {
+  margin-left: auto;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.research__iss-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.research__iss-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-5);
+  min-width: 0;
+  padding: var(--sp-5) var(--sp-1);
+  border-bottom: 1px solid var(--line);
+}
+
+.research__iss-row:last-child {
+  border-bottom: none;
+}
+
+.research__iss-num {
+  flex: none;
+  width: 2.75rem;
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.research__iss-title {
+  flex: 1;
+  min-width: 9rem;
+  color: var(--ink);
+  font-size: var(--t-sm);
+}
+
+.research__iss-est {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}

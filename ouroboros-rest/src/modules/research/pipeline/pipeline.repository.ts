@@ -18,8 +18,14 @@ import { Injectable } from "@nestjs/common";
 import { sql } from "kysely";
 
 import { DatabaseService } from "../../db/db.service";
-import { SCHEMA_NAME, type InvestigationStatus, type TicketSourceKind } from "../../db/schema";
+import {
+  SCHEMA_NAME,
+  type InvestigationStatus,
+  type RunStatus,
+  type TicketSourceKind,
+} from "../../db/schema";
 import type { SyncSource } from "../../ticket-sources/ticket-sources.repository";
+import { SHIPPED_SKILLS, type PipelineSkillSlug } from "./pipeline.skills";
 import type { RoadmapEffort, RoadmapStructure, TrackerTicket } from "./roadmap.structure";
 
 /** Where a version's file stands in the repository (V113's `repo_projection`). */
@@ -134,6 +140,11 @@ export interface IssueRow extends TrackerTicket {
     /** The loop time, in minutes. */
     readonly estMinutes: number | null;
   } | null;
+  /**
+   * Where the newest run on the issue stands, or null when no loop has been started on it
+   * (#631) — the half of the row's status pill the tracker cannot say.
+   */
+  readonly runStatus: RunStatus | null;
 }
 
 /** The workspace's pipeline policy. */
@@ -256,9 +267,16 @@ export interface PipelineStore {
   /**
    * @param organizationId - The workspace.
    * @param ticketIds - Canonical tickets.
-   * @returns Those the workspace holds, each with its estimate in force.
+   * @returns Those the workspace holds, each with its estimate in force and its newest run's
+   *   status.
    */
   issues(organizationId: string, ticketIds: readonly string[]): Promise<IssueRow[]>;
+  /**
+   * @param organizationId - The workspace.
+   * @returns The published version of each pipeline skill in the workspace's registry — null for
+   *   one the workspace does not hold yet, or holds unpublished. Reads only: nothing is created.
+   */
+  skillVersions(organizationId: string): Promise<Record<PipelineSkillSlug, number | null>>;
   /**
    * @param organizationId - The workspace.
    * @returns Its pipeline policy; the defaults when it has stored none.
@@ -666,10 +684,37 @@ export class PipelineRepository implements PipelineStore {
       effort: RoadmapEffort | null;
       risk: string | null;
       est_minutes: number | null;
+      run_status: RunStatus | null;
     }>`
       select t.id, t.external_key, t.external_url, t.title, t.state, t.labels,
-             e.effort, e.risk, (e.breakdown ->> 'est_minutes')::float8 as est_minutes
+             e.effort, e.risk, (e.breakdown ->> 'est_minutes')::float8 as est_minutes,
+             newest.status as run_status
         from ${schema}.tickets t
+        -- The two ways a run belongs to a ticket, as the regression watch reads them (#629):
+        -- through the pull request that names both, or as a run on the ticket's mirrored issue.
+        left join lateral (
+               select found.status
+                 from (
+                   select r.id, r.status, r.started_at
+                     from ${schema}.pull_requests p
+                     join ${schema}.runs r
+                       on r.id = p.run_id and r.organization_id = p.organization_id
+                    where p.organization_id = t.organization_id and p.ticket_id = t.id
+                   union all
+                   select r.id, r.status, r.started_at
+                     from ${schema}.github_issues gi
+                     join ${schema}.github_repos gr on gr.id = gi.github_repo_id
+                     join ${schema}.github_orgs go on go.id = gr.org_id
+                     join ${schema}.runs r
+                       on r.organization_id = gi.organization_id
+                      and r.github_repo_id = gi.github_repo_id and r.issue_number = gi.number
+                    where gi.organization_id = t.organization_id
+                      and gi.number::text = t.external_id
+                      and lower(go.login) = lower(t.meta #>> '{github,owner}')
+                      and lower(gr.name) = lower(t.meta #>> '{github,repo}')) found
+                order by found.started_at desc, found.id
+                limit 1
+             ) newest on true
         left join lateral (
                select ie.effort, ie.risk, ie.breakdown
                  from ${schema}.issue_estimates ie
@@ -694,7 +739,24 @@ export class PipelineRepository implements PipelineStore {
         row.effort === null
           ? null
           : { effort: row.effort, risk: row.risk, estMinutes: row.est_minutes },
+      runStatus: row.run_status,
     }));
+  }
+
+  /** @inheritdoc */
+  async skillVersions(organizationId: string): Promise<Record<PipelineSkillSlug, number | null>> {
+    const { rows } = await sql<{ slug: PipelineSkillSlug; current_version: number | null }>`
+      select s.slug, s.current_version
+        from ${schema}.skills s
+       where s.organization_id = ${organizationId}
+         and s.slug = any(${sql.val(Object.keys(SHIPPED_SKILLS))}::text[])
+    `.execute(this.database.db);
+    const published = new Map(rows.map((row) => [row.slug, row.current_version]));
+
+    return {
+      "create-roadmap": published.get("create-roadmap") ?? null,
+      "create-issues": published.get("create-issues") ?? null,
+    };
   }
 
   /** @inheritdoc */

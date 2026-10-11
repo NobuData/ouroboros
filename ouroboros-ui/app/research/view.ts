@@ -253,7 +253,7 @@ export const COMPOSER_REGION: ResearchRegionId = "composer";
 /** The region a finished investigation's **View brief ↑** lands on (CN.2, #628). */
 export const BRIEF_REGION: ResearchRegionId = "brief";
 
-/** The region a roadmap brief's document chip lands on (CN.4, #630), until #631's card. */
+/** The region a roadmap brief's document chip lands on (CN.4, #630) — the pipeline card's (#631). */
 export const PIPELINE_REGION: ResearchRegionId = "pipeline";
 
 /** The region the library's address lands on. */

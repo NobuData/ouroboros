@@ -1,3 +1,4 @@
+import { TicketSourceError } from "../../ticket-sources/ticket-source.errors";
 import type { TicketSourceRegistry } from "../../ticket-sources/ticket-source.registry";
 import type { SyncSource } from "../../ticket-sources/ticket-sources.repository";
 import type { TicketSourcesService } from "../../ticket-sources/ticket-sources.service";
@@ -16,7 +17,7 @@ const CONTEXT = { sourceId: "source-1", credentials: "sealed-and-opened" };
 
 function provider(change: Record<string, unknown> = {}) {
   return {
-    capabilities: () => ({ pr: { pullRequests: true } }),
+    capabilities: () => ({ pr: { pullRequests: true }, write: { createTicket: true } }),
     defaultBranch: jest.fn().mockResolvedValue("main"),
     fileAt: jest.fn().mockResolvedValue(null),
     commitFile: jest.fn().mockResolvedValue({ commitSha: "abc1234", changed: true }),
@@ -84,7 +85,9 @@ describe("the pipeline's repository gateway", () => {
     ["no provider for the kind", undefined],
     [
       "a tracker that opens no pull requests",
-      provider({ capabilities: () => ({ pr: { pullRequests: false } }) }),
+      provider({
+        capabilities: () => ({ pr: { pullRequests: false }, write: { createTicket: true } }),
+      }),
     ],
     ["a git host that cannot commit a file", provider({ commitFile: undefined })],
   ])(
@@ -98,6 +101,56 @@ describe("the pipeline's repository gateway", () => {
       expect(withCredentials).not.toHaveBeenCalled();
     },
   );
+
+  it("composes the repository's web address from the stored configuration alone", () => {
+    const pushTargetName = jest.fn().mockReturnValue("acme-robotics/helios-firmware");
+    const { gateway: repo, withCredentials } = gateway(provider({ pushTargetName }));
+
+    expect(repo.webUrl(SOURCE)).toBe("https://github.com/acme-robotics/helios-firmware");
+    expect(pushTargetName).toHaveBeenCalledWith(SOURCE.config);
+    expect(withCredentials).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["no provider for the kind", SOURCE, undefined],
+    ["a host that cannot hold a document", SOURCE, provider({ commitFile: undefined })],
+    [
+      "a host that files nothing",
+      SOURCE,
+      provider({
+        capabilities: () => ({ pr: { pullRequests: true }, write: { createTicket: false } }),
+        pushTargetName: () => "acme-robotics/helios-firmware",
+      }),
+    ],
+    [
+      "a host whose address it cannot compose",
+      { ...SOURCE, kind: "custom" as const },
+      provider({ pushTargetName: () => "acme/support" }),
+    ],
+    [
+      "a configuration that names no repository",
+      SOURCE,
+      provider({
+        pushTargetName: () => {
+          throw new TicketSourceError("validation", "The source names no repository.");
+        },
+      }),
+    ],
+  ])("has no web address for %s", (_name, source, found) => {
+    expect(gateway(found).gateway.webUrl(source)).toBeNull();
+  });
+
+  it("does not swallow a defect while composing the address", () => {
+    const { gateway: repo } = gateway(
+      provider({
+        pushTargetName: () => {
+          throw new TypeError("not a refusal");
+        },
+      }),
+    );
+
+    expect(() => repo.webUrl(SOURCE)).toThrow(TypeError);
+  });
 
   it("refuses a provider that declares pull requests and opens none", async () => {
     const { gateway: repo } = gateway(provider({ createPR: jest.fn().mockResolvedValue(null) }));

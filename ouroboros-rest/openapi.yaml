@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.14"
+  version: "0.41.15"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -38844,8 +38844,12 @@ paths:
                       prRef: null
                       committedSha: 8c1b2e4
                       observedSha: null
+                      href: https://github.com/acme-robotics/helios-firmware/blob/8c1b2e4/docs/ROADMAP.md
                       label: docs/ROADMAP.md · committed 8c1b2e4
                       problem: null
+                    skills:
+                      - { slug: create-roadmap, label: "skill · create-roadmap", version: 1 }
+                      - { slug: create-issues, label: "skill · create-issues", version: 1 }
                     markdown: "# Helios — Q4 Improvement Roadmap\n\n## M1 · Docking parity — target Oct 15\n- [x] #742 Wind-feedforward MPC in final approach `MVP` `L`\n"
                     milestones:
                       - key: m1
@@ -38867,6 +38871,7 @@ paths:
                               url: https://github.com/acme-robotics/helios-firmware/issues/742
                               state: closed
                             estimate: { effort: l, complexity: high, estMinutes: 4320, loopDays: 3 }
+                            status: { state: closed, label: "✓ closed", tone: ok, live: false }
                     issues:
                       batchId: 5eed0090-0000-4000-8000-000000000124
                       filed: 1
@@ -39000,8 +39005,12 @@ paths:
                       prRef: null
                       committedSha: 8c1b2e4
                       observedSha: null
+                      href: https://github.com/acme-robotics/helios-firmware/blob/8c1b2e4/docs/ROADMAP.md
                       label: docs/ROADMAP.md · committed 8c1b2e4
                       problem: null
+                    skills:
+                      - { slug: create-roadmap, label: "skill · create-roadmap", version: 1 }
+                      - { slug: create-issues, label: "skill · create-issues", version: 1 }
                     markdown: "# Helios — Q4 Improvement Roadmap\n\n## M1 · Docking parity — target Oct 15\n- [x] #742 Wind-feedforward MPC in final approach `MVP` `L`\n"
                     milestones:
                       - key: m1
@@ -39023,6 +39032,7 @@ paths:
                               url: https://github.com/acme-robotics/helios-firmware/issues/742
                               state: closed
                             estimate: { effort: l, complexity: high, estMinutes: 4320, loopDays: 3 }
+                            status: { state: closed, label: "✓ closed", tone: ok, live: false }
                     issues:
                       batchId: 5eed0090-0000-4000-8000-000000000124
                       filed: 1
@@ -39227,8 +39237,12 @@ paths:
                       prRef: null
                       committedSha: 8c1b2e4
                       observedSha: null
+                      href: https://github.com/acme-robotics/helios-firmware/blob/8c1b2e4/docs/ROADMAP.md
                       label: docs/ROADMAP.md · committed 8c1b2e4
                       problem: null
+                    skills:
+                      - { slug: create-roadmap, label: "skill · create-roadmap", version: 1 }
+                      - { slug: create-issues, label: "skill · create-issues", version: 1 }
                     markdown: "# Helios — Q4 Improvement Roadmap\n\n## M1 · Docking parity — target Oct 15\n- [x] #742 Wind-feedforward MPC in final approach `MVP` `L`\n"
                     milestones:
                       - key: m1
@@ -39250,6 +39264,7 @@ paths:
                               url: https://github.com/acme-robotics/helios-firmware/issues/742
                               state: closed
                             estimate: { effort: l, complexity: high, estMinutes: 4320, loopDays: 3 }
+                            status: { state: closed, label: "✓ closed", tone: ok, live: false }
                     issues:
                       batchId: 5eed0090-0000-4000-8000-000000000124
                       filed: 1
@@ -39385,8 +39400,12 @@ paths:
                       prRef: null
                       committedSha: 8c1b2e4
                       observedSha: null
+                      href: https://github.com/acme-robotics/helios-firmware/blob/8c1b2e4/docs/ROADMAP.md
                       label: docs/ROADMAP.md · committed 8c1b2e4
                       problem: null
+                    skills:
+                      - { slug: create-roadmap, label: "skill · create-roadmap", version: 1 }
+                      - { slug: create-issues, label: "skill · create-issues", version: 1 }
                     markdown: "# Helios — Q4 Improvement Roadmap\n\n## M1 · Docking parity — target Oct 15\n- [x] #742 Wind-feedforward MPC in final approach `MVP` `L`\n"
                     milestones:
                       - key: m1
@@ -39408,6 +39427,7 @@ paths:
                               url: https://github.com/acme-robotics/helios-firmware/issues/742
                               state: closed
                             estimate: { effort: l, complexity: high, estMinutes: 4320, loopDays: 3 }
+                            status: { state: closed, label: "✓ closed", tone: ok, live: false }
                     issues:
                       batchId: 5eed0090-0000-4000-8000-000000000124
                       filed: 1
@@ -39560,8 +39580,12 @@ paths:
                         prRef: null
                         committedSha: 8c1b2e4
                         observedSha: null
+                        href: https://github.com/acme-robotics/helios-firmware/blob/8c1b2e4/docs/ROADMAP.md
                         label: docs/ROADMAP.md · committed 8c1b2e4
                         problem: null
+                      skills:
+                        - { slug: create-roadmap, label: "skill · create-roadmap", version: 1 }
+                        - { slug: create-issues, label: "skill · create-issues", version: 1 }
                       markdown: "# Helios — Q4 Improvement Roadmap\n\n## M1 · Docking parity — target Oct 15\n- [x] #742 Wind-feedforward MPC in final approach `MVP` `L`\n"
                       milestones:
                         - key: m1
@@ -39583,6 +39607,7 @@ paths:
                                 url: https://github.com/acme-robotics/helios-firmware/issues/742
                                 state: closed
                               estimate: { effort: l, complexity: high, estMinutes: 4320, loopDays: 3 }
+                              status: { state: closed, label: "✓ closed", tone: ok, live: false }
                       issues:
                         batchId: 5eed0090-0000-4000-8000-000000000124
                         filed: 1
@@ -39727,8 +39752,12 @@ paths:
                         prRef: null
                         committedSha: 8c1b2e4
                         observedSha: null
+                        href: https://github.com/acme-robotics/helios-firmware/blob/8c1b2e4/docs/ROADMAP.md
                         label: docs/ROADMAP.md · committed 8c1b2e4
                         problem: null
+                      skills:
+                        - { slug: create-roadmap, label: "skill · create-roadmap", version: 1 }
+                        - { slug: create-issues, label: "skill · create-issues", version: 1 }
                       markdown: "# Helios — Q4 Improvement Roadmap\n\n## M1 · Docking parity — target Oct 15\n- [x] #742 Wind-feedforward MPC in final approach `MVP` `L`\n"
                       milestones:
                         - key: m1
@@ -39750,6 +39779,7 @@ paths:
                                 url: https://github.com/acme-robotics/helios-firmware/issues/742
                                 state: closed
                               estimate: { effort: l, complexity: high, estMinutes: 4320, loopDays: 3 }
+                              status: { state: closed, label: "✓ closed", tone: ok, live: false }
                       issues:
                         batchId: 5eed0090-0000-4000-8000-000000000124
                         filed: 1
@@ -64798,7 +64828,7 @@ components:
         `pending → pr_open → committed → drift_detected`, with `pr_open → pending` for a pull
         request closed unmerged and `pending → committed` for a direct commit.
       additionalProperties: false
-      required: [state, path, prRef, committedSha, observedSha, label, problem]
+      required: [state, path, prRef, committedSha, observedSha, label, href, problem]
       properties:
         state:
           type: string
@@ -64824,6 +64854,15 @@ components:
           type: string
           description: The card's line.
           examples: ["docs/ROADMAP.md · committed 8c1b2e4"]
+        href:
+          description: >-
+            Where **Open ROADMAP.md ↗** goes — the pull request while one is open, else the file at
+            the commit holding it. Null while the version is not in the repository, and for a
+            repository whose web address cannot be composed.
+          oneOf:
+            - type: string
+              format: uri
+            - type: "null"
         problem:
           description: Why the projection could not be moved just now; null when nothing is wrong.
           oneOf:
@@ -64835,7 +64874,7 @@ components:
       title: ResearchRoadmapItem
       description: One item of a milestone, with its issue once filed.
       additionalProperties: false
-      required: [key, title, mvp, effort, checked, draftId, ticket, estimate]
+      required: [key, title, mvp, effort, checked, draftId, ticket, estimate, status]
       properties:
         key:
           type: string
@@ -64906,6 +64945,57 @@ components:
                   oneOf:
                     - type: number
                     - type: "null"
+            - type: "null"
+        status:
+          description: >-
+            The issue's status pill, read from the tracker's mirror and the issue's newest run
+            together; null while the item is unfiled, and while the mirror has no row for it yet.
+          oneOf:
+            - $ref: "#/components/schemas/ResearchRoadmapIssueStatus"
+            - type: "null"
+
+    ResearchRoadmapIssueStatus:
+      type: object
+      title: ResearchRoadmapIssueStatus
+      description: |-
+        Where a filed issue stands. `merged` — a loop on it merged; `closed` — the tracker closed
+        it another way; `live` — a loop is running; `needs_human` and `failed` — its newest loop
+        stopped; `queued` — open, with no loop started (or the last one cancelled).
+      additionalProperties: false
+      required: [state, label, tone, live]
+      properties:
+        state:
+          type: string
+          enum: [merged, closed, live, needs_human, failed, queued]
+        label:
+          type: string
+          description: The pill's words.
+          examples: ["✓ merged", "loop live", "queued"]
+        tone:
+          type: string
+          enum: [ok, run, warn, err, idle]
+        live:
+          type: boolean
+          description: Whether the pill pulses.
+
+    ResearchRoadmapSkill:
+      type: object
+      title: ResearchRoadmapSkill
+      description: One of the two skills the pipeline runs, as the card's chip names it.
+      additionalProperties: false
+      required: [slug, label, version]
+      properties:
+        slug:
+          type: string
+          enum: [create-roadmap, create-issues]
+        label:
+          type: string
+          examples: ["skill · create-roadmap"]
+        version:
+          description: The version the workspace has published; null when it holds none yet.
+          oneOf:
+            - type: integer
+              minimum: 1
             - type: "null"
 
     ResearchRoadmapMilestone:
@@ -64986,7 +65076,7 @@ components:
       title: ResearchRoadmap
       description: The pipeline card — a roadmap document on its current version.
       additionalProperties: false
-      required: [investigation, doc, projection, markdown, milestones, issues, suggestions]
+      required: [investigation, doc, projection, skills, markdown, milestones, issues, suggestions]
       properties:
         investigation:
           type: object
@@ -65027,6 +65117,11 @@ components:
                 - type: "null"
         projection:
           $ref: "#/components/schemas/ResearchRoadmapProjection"
+        skills:
+          type: array
+          description: The two skills behind the card, in the order they run.
+          items:
+            $ref: "#/components/schemas/ResearchRoadmapSkill"
         markdown:
           type: string
           description: "`ROADMAP.md`, exactly as projected."

@@ -235,11 +235,28 @@ describe("the roadmap document service", () => {
   });
 
   describe("the card", () => {
+    it("has no address for a document whose repository has none", async () => {
+      const bench = await generated();
+
+      bench.repo.url = null;
+
+      expect((await bench.roadmap.card(ORG, INVESTIGATION)).projection.href).toBeNull();
+    });
+
     it("draws milestones, due labels and counts", async () => {
       const bench = await generated();
       const card = await bench.roadmap.card(ORG, INVESTIGATION);
 
       expect(card.investigation).toEqual({ id: INVESTIGATION, displayId: "RS-124" });
+      // #631: the open pull request's address, and the two skills on their published versions.
+      expect(card.projection).toMatchObject({
+        state: "pr_open",
+        href: "https://github.com/acme-robotics/helios-firmware/pull/88",
+      });
+      expect(card.skills).toEqual([
+        { slug: "create-roadmap", label: "skill · create-roadmap", version: 1 },
+        { slug: "create-issues", label: "skill · create-issues", version: 1 },
+      ]);
       expect(card.milestones.map((m) => [m.key, m.dueLabel, m.done, m.total])).toEqual([
         ["m1", "due Oct 15", 0, 3],
         ["m2", "due Nov 20", 0, 3],
