@@ -401,7 +401,7 @@ seeds: session(6 msgs, chips ✓) · draft v0.3 (9 stages, 2 copilot ops, W7 war
 | CD.2 | #560 ✅ | 🟢 Done | ouroboros-engine: [CD.2] Deep dry-run harness | Virtual FS, guarded tools, real LLM stages, conditional logic (W3) | mvp, copilot, engine | N (after CC.3, AF.2, BF.5) | Y | L | ouroboros-engine |
 | CD.3 | #561 ✅ | 🟢 Done | ouroboros-rest: [CD.3] Infra replay estimators | Similar-build/test statistics with sample counts + spread | mvp, copilot, rest | N (after AH.1, BI.2) | Y | M | ouroboros-rest |
 | CD.4 | #562 ✅ | 🟢 Done | ouroboros-rest: [CD.4] Dry-run orchestration & guards | Pre-check, budget caps, guard enforcement audit, records | mvp, copilot, rest | N (after CD.2/CD.3, WF-R.2) | Y | M | ouroboros-rest |
-| CD.5 | #563 | 🟡 Open | ouroboros-rest: [CD.5] Suggestion rules & apply flow | Deterministic post-run rules, edge-case picker, op application | mvp, copilot, rest | N (after CD.4, CC.4) | Y | M | ouroboros-rest |
+| CD.5 | #563 ✅ | 🟢 Done | ouroboros-rest: [CD.5] Suggestion rules & apply flow | Deterministic post-run rules, edge-case picker, op application | mvp, copilot, rest | N (after CD.4, CC.4) | Y | M | ouroboros-rest |
 | CD.6 | #564 | 🟡 Open | ouroboros-rest: [CD.6] Copilot integration tests | Op parity, harness guards, estimator math, promote gate | mvp, copilot, rest, ci | N (after CD.1–CD.5) | Y | M | ouroboros-rest |
 
 ### Issue CD.1 — ouroboros-engine: [CD.1] Copilot conversation service
@@ -545,7 +545,9 @@ picker: #489 (security×no-CVE — exercises the conditional path) · #491 (has-
 
 ### Issue CD.5 — ouroboros-rest: [CD.5] Suggestion rules & apply flow
 
-> **GitHub issue:** #563 · **Status:** 🟡 Open · **Parent epic:** #552
+> **GitHub issue:** #563 ✅ · **Status:** 🟢 Done · **Parent epic:** #552
+>
+> **Delivered (#563 — `ouroboros-rest` 0.41.17, `V128__suggestion_rules.sql`, `ouroboros-engine` 0.7.28, `ouroboros-ui` 0.151.1 (regenerated API types only), `ouroboros-docs` 0.3.4):** A versioned rule pack (`dry-runs/suggestions.rules.ts`, pack v1) files `dry_run_suggestions` when a dry run ends `complete`/`budget_stopped`, before `done` is streamed: `skipped-nothing-to-do` (a `has-<input>` decision + branch edges — the DSL has no per-stage `when`), `budget-proximity` (advisory), `unresolved-reference-persists` (nearest catalogue name, else advisory) and `reviewer-disagreement` (dormant without `review_replay_pairs`). Confidence = `round(rule strength × sample adequacy × 100)`, made only by `score()`, with both factors in the basis. Routes under `/workflows/{id}/dry-runs/{dryRunId}/suggestions`: list, `…/explanation`, `…/apply` (one `suggestion`-actor batch through `apply_draft_batch()`; `409 dry_run_suggestion_conflict` when an operation no longer fits the draft, nothing written), `…/ignore` (not re-proposed for the same draft revision). **Decisions taken with the user:** (1) skips are structured — `dry_run_stages.skip_kind`/`skip_input` (V128), set by the harness, with a new `nothing_to_do` result verdict naming the missing input; (2) advisory suggestions — `proposed_ops` may be empty and Apply refuses them; (3) LLM enrichment — engine copilot tool `propose_suggestion` plus one automatic exchange when a session's dry run ends (the reply is recorded with `dry_run_results` on its trace; no user message is written); (4) `source: llm` suggestions are validated as operations and **unscored** (`confidence` null, basis `llm_unscored`). Rule ids follow this issue (the seed's `deterministic-skip`/`replay-disagreement` rows are re-keyed and now equal the pack's output; an existing dev database keeps its old rows, which are immutable). Built to contract while the model gateway (#235) is open.
 
 - **Problem Statement:** Post-run intelligence (W5): deterministic rules
   over outcomes, LLM enrichment through the conversation, and Apply as
@@ -947,7 +949,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 2. **Phase 1 — Domain:** CC.1 (#555) ✅ → { CC.2 (#556) ✅ ⊕ CC.3 (#557) ✅ } →
    CC.4 (#558)
 3. **Phase 2 — Services:** { CD.1 (#559) ⊕ CD.2 (#560) ✅ ⊕ CD.3 (#561) ✅ } →
-   CD.4 (#562) ✅ → CD.5 (#563) → CD.6 (#564)
+   CD.4 (#562) ✅ → CD.5 (#563) ✅ → CD.6 (#564)
 4. **Phase 3 — UI:** CE.1 (#565) → { CE.2 (#566) ⊕ CE.3 (#567) ⊕
    CE.4 (#568) } → **CE.5 (#569) ✅** *(MVP gate, amending #56)*
 5. **v2:** CF.1 (#570) ⊕ CF.2 (#571) ⊕ CF.3 (#572) ⊕ CF.4 (#573) ⊕

@@ -4,6 +4,7 @@ import type { EngineClient } from "../engine/engine.client";
 import { ENGINE_DRY_RUN_TIMEOUT_MS, type EngineDryRunRequest } from "../engine/engine.dryruns";
 import { ENGINE_ERRORS } from "../engine/engine.errors";
 import { WORKFLOW_ERRORS } from "../workflows/workflows.errors";
+import type { DryRunAftermath } from "./dry-runs.aftermath";
 import type { PinnedCommitReader } from "./dry-runs.commit";
 import { DRY_RUN_ERRORS } from "./dry-runs.errors";
 import { DryRunPickerService } from "./dry-runs.picker.service";
@@ -55,7 +56,13 @@ function bench(
   const store = new DryRunStore();
   const engine = new FakeEngine(script);
   const records = new DryRunRecords(store.repository);
-  const runner = new DryRunRunner(engine as unknown as EngineClient, store.repository, records);
+  const aftermath = { ended: jest.fn().mockResolvedValue(undefined), debrief: jest.fn() };
+  const runner = new DryRunRunner(
+    engine as unknown as EngineClient,
+    store.repository,
+    records,
+    aftermath as unknown as DryRunAftermath,
+  );
   const commits = {
     pin: jest.fn().mockResolvedValue({
       slug: "acme-robotics/helios-firmware",

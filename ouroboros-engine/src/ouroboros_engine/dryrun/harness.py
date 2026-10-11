@@ -19,7 +19,10 @@ Loop edges are not walked: a dry run makes one pass.
 
 **Skipping is a result, not a failure.** Besides a branch not taken, a model stage whose
 route did not resolve (a task kind the catalog does not have yet — decision W7) is skipped
-with its warning, and the walk continues past it.
+with its warning, and the walk continues past it. So is a model stage that ran and answered
+that it has nothing to do for this ticket — the input it works on is not there — with what
+it spent kept on the row. Every skipped row says which of these it was in ``skip_kind``, so
+a suggestion rule matches a kind rather than a sentence (CD.5, #563).
 
 **Three ways to end.** ``complete``; ``budget_stopped`` when a token or spend cap is reached,
 with every row so far kept and the rest ``not_reached``; ``failed`` when a stage fails, the
@@ -70,6 +73,7 @@ from .contract import (
     DryRunSubject,
     GuardBlocked,
     PathChange,
+    SkipKind,
     StageFinished,
     StageHow,
     StagePlan,
@@ -361,7 +365,7 @@ class _Run:
         self.rows: list[StageResult] = []
         self.reports: list[tuple[WorkflowNode, StageReport]] = []
         self.reached: set[str] = set()
-        self.unreached: dict[str, str] = {}
+        self.unreached: dict[str, tuple[SkipKind, str]] = {}
         self.halt: tuple[str, str] | None = None
         self.outgoing: dict[str, list[WorkflowEdge]] = {
             n.id: [] for n in document.nodes
@@ -451,10 +455,17 @@ class _Run:
 
         if first.id not in self.reached:
             if self.halt is None:
-                reason = self.unreached.get(
-                    first.id, "nothing on the walk leads to this stage"
+                kind, reason = self.unreached.get(
+                    first.id, ("unreached", "nothing on the walk leads to this stage")
                 )
-                yield self._row(group, "skipped", "skipped", reason, skip_reason=reason)
+                yield self._row(
+                    group,
+                    "skipped",
+                    "skipped",
+                    reason,
+                    skip_reason=reason,
+                    skip_kind=kind,
+                )
             else:
                 yield self._row(group, "not_reached", "deterministic", "")
             return
@@ -488,7 +499,7 @@ class _Run:
             return
         reason = f"the trigger does not fire for {self.request.ticket.external_key}"
         for node in self.document.nodes:
-            self.unreached[node.id] = reason
+            self.unreached[node.id] = ("unreached", reason)
 
     def _follow(self, node: WorkflowNode) -> None:
         """Decide every edge out of a stage that was reached.
@@ -507,8 +518,11 @@ class _Run:
             else:
                 self.unreached.setdefault(
                     edge.to,
-                    f"the branch from `{edge.from_}` is not taken, because "
-                    f"{evaluation.clause}",
+                    (
+                        "branch_not_taken",
+                        f"the branch from `{edge.from_}` is not taken, because "
+                        f"{evaluation.clause}",
+                    ),
                 )
 
     # -- infrastructure: replayed -------------------------------------------------------
@@ -569,7 +583,14 @@ class _Run:
                 else f"no route resolves for stage `{first.id}` — its task kind or alias "
                 "is not in the catalog yet"
             )
-            yield self._row(group, "skipped", "skipped", reason, skip_reason=reason)
+            yield self._row(
+                group,
+                "skipped",
+                "skipped",
+                reason,
+                skip_reason=reason,
+                skip_kind="unresolved_reference",
+            )
             return
 
         capped = self._run_cap()
@@ -644,6 +665,22 @@ class _Run:
         elif read:
             metrics["files_touched"] = read
 
+        if note is None and reports and all(r.nothing_to_do for r in reports):
+            # The stage ran and found no work for this ticket: a skip, with what it spent.
+            skip_input = next((r.missing for r in reports if r.missing), None)
+            reason = nothing_to_do_reason(reports[0].summary, skip_input)
+            yield self._row(
+                group,
+                "skipped",
+                "skipped",
+                reason,
+                metrics=metrics,
+                skip_reason=reason,
+                skip_kind="nothing_to_do",
+                skip_input=skip_input,
+                began=began,
+            )
+            return
         if note is None:
             note = llm_note(
                 reports,
@@ -885,6 +922,8 @@ class _Run:
         *,
         metrics: dict[str, Any] | None = None,
         skip_reason: str | None = None,
+        skip_kind: SkipKind | None = None,
+        skip_input: str | None = None,
         began: datetime | None = None,
     ) -> StageFinished:
         """Record a row and make its event.
@@ -896,6 +935,8 @@ class _Run:
             note: Its note line.
             metrics: Its metrics.
             skip_reason: Why it was skipped.
+            skip_kind: Which sort of skip it was.
+            skip_input: The input a ``nothing_to_do`` stage named as missing.
             began: When work on it began; ``None`` for a row no work was done for.
 
         Returns:
@@ -912,6 +953,8 @@ class _Run:
             note=note,
             metrics=metrics or {},
             skip_reason=skip_reason,
+            skip_kind=skip_kind,
+            skip_input=skip_input,
             started_at=began,
             finished_at=None if began is None else self.clock(),
         )
@@ -1014,8 +1057,27 @@ def _recap(node: WorkflowNode, report: StageReport) -> str:
         lines.append("Would touch: " + ", ".join(report.would_touch))
     if report.verdict is not None:
         lines.append(f"Verdict: {report.verdict}")
+    if report.nothing_to_do:
+        lines.append(nothing_to_do_reason("", report.missing).capitalize() + ".")
     lines.extend(f"- {nit.kind or 'nit'}: {nit.text}" for nit in report.nits)
     return "\n".join(lines)
+
+
+def nothing_to_do_reason(summary: str, skip_input: str | None) -> str:
+    """Say why a stage that ran was skipped.
+
+    Args:
+        summary: The stage's own summary, or ``""``.
+        skip_input: The input it named as missing, or ``None``.
+
+    Returns:
+        The stage's summary when it gave one; otherwise *the stage had nothing to do*,
+        naming the input the ticket lacks when the stage did.
+    """
+    if summary:
+        return summary
+    lacking = "" if skip_input is None else f" — the ticket carries no `{skip_input}`"
+    return f"the stage had nothing to do{lacking}"
 
 
 def _artifact(kind: str, content: str, summary: list[PathChange]) -> DryRunArtifact:

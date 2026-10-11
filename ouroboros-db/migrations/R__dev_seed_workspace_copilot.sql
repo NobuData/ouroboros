@@ -274,9 +274,13 @@ select '5eed008b-0000-4000-8000-000000000001'::uuid, wf.organization_id, wf.id, 
 on conflict do nothing;
 
 insert into ouroboros.dry_run_stages (id, organization_id, dry_run_id, seq, stage_key, display_name,
-                                      verdict, how, note, metrics, skip_reason)
+                                      verdict, how, note, metrics, skip_reason, skip_kind, skip_input)
 select st.id, r.organization_id, r.id, st.seq, st.stage_key, st.display_name, st.verdict, st.how,
-       st.note, st.metrics, st.skip_reason
+       st.note, st.metrics, st.skip_reason,
+       -- The one skipped row had nothing to do, and the input it missed is the CVE (V128, #563):
+       -- what the `skipped-nothing-to-do` rule reads to propose the `has-cve` decision.
+       case when st.verdict = 'skipped' then 'nothing_to_do' end,
+       case when st.verdict = 'skipped' then 'cve' end
   from ouroboros.dry_runs r
   cross join (values
     ('5eed008b-0000-4000-8000-000000000101'::uuid, 1, 'analyze', 'analyze', 'ok', 'llm',

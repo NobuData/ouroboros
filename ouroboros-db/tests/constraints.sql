@@ -38072,8 +38072,10 @@ returns text language sql as $$
                       evidence, proposed_ops, confidence, confidence_basis)
                    values ('org-v114', 'a1140000-0000-0000-0000-000000000101', '%s', %s, %s,
                            'Make exploit-verify conditional', 'It had nothing to do.',
-                           %s, %s, 93, %s)$f$,
-                source, rule, case when rule = 'null' then 'null' else '1' end, evidence, ops, basis);
+                           %s, %s, %s, %s)$f$,
+                source, rule, case when rule = 'null' then 'null' else '1' end, evidence, ops,
+                -- A rule scores; the copilot's suggestion is unscored (V128, #563).
+                case when source = 'llm' then 'null' else '93' end, basis);
 $$;
 
 -- The pieces the refusals vary.
@@ -38104,9 +38106,7 @@ select pg_temp.must_reject(
 select pg_temp.must_reject(
   pg_temp.v114_suggestion('rule', '''deterministic-skip''', $$'{"inputs": {"base": 95}}'$$, pg_temp.v114('ops')),
   'and so is one that does not say how it was scored', 'dry_run_suggestions_confidence_basis');
-select pg_temp.must_reject(
-  pg_temp.v114_suggestion('rule', '''deterministic-skip''', pg_temp.v114('basis'), $$'[]'$$),
-  'a suggestion proposes at least one operation', 'dry_run_suggestions_proposed_ops_shape');
+-- (No operations at all is an advisory suggestion since V128, #563 — see that section.)
 select pg_temp.must_reject(
   pg_temp.v114_suggestion('rule', '''deterministic-skip''', pg_temp.v114('basis'), $$'[{"kind": "add exploit-verify conditional"}]'$$),
   'a proposed operation is a typed draft operation, not prose', 'dry_run_suggestions_proposed_ops_shape');
@@ -38121,7 +38121,7 @@ select pg_temp.must_hold(
   'a basis names a method and its inputs');
 
 do $x$ begin execute pg_temp.v114_suggestion('rule', '''deterministic-skip''', pg_temp.v114('basis'), pg_temp.v114('ops')); end $x$;
-do $x$ begin execute pg_temp.v114_suggestion('llm', 'null', $$'{"method": "llm_self_report", "inputs": {"model": "claude-fable-5"}}'$$, pg_temp.v114('ops')); end $x$;
+do $x$ begin execute pg_temp.v114_suggestion('llm', 'null', $$'{"method": "llm_unscored", "inputs": {"alias": "coder-max", "validated_ops": 2}}'$$, pg_temp.v114('ops')); end $x$;
 
 select pg_temp.must_reject(
   $$insert into ouroboros.dry_run_suggestions (organization_id, dry_run_id, source, rule_id, rule_version, title, body,
@@ -40558,6 +40558,140 @@ delete from ouroboros.organization where "id" = 'org-v127b';
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.research_tool_settings where organization_id = 'org-v127b'),
   'a workspace takes its tool settings with it');
+
+-- ===========================================================================
+-- V128 — structured skips, advisory suggestions and unscored ones (#563, CD.5)
+-- ===========================================================================
+--
+-- A skipped row may say why as a value (and, where it had nothing to do, which input was
+-- missing); a suggestion may carry no operations; and a confidence is null exactly on the
+-- copilot's own suggestions.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v128', 'Rule Pack Works', 'rule-pack-works-v128', now());
+
+insert into ouroboros.workflows (id, organization_id, slug, name) values
+  ('a1280000-0000-0000-0000-000000000101', 'org-v128', 'security-patch', 'Security patch');
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('a1280000-0000-0000-0000-00000000000a', 'org-v128', 'github', 'GitHub · rule pack works');
+
+insert into ouroboros.tickets
+    (id, organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values
+    ('a1280000-0000-0000-0000-000000000489', 'org-v128', 'a1280000-0000-0000-0000-00000000000a',
+     '489', '#489', 'https://github.com/rule-pack-works-v128/helios-firmware/issues/489',
+     'CAN arbitration-lost storm under full telemetry load', 'open', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+insert into ouroboros.dry_runs
+    (id, organization_id, workflow_id, draft_rev, ticket_id, pinned_sha)
+  values
+    ('a1280000-0000-0000-0000-000000000301', 'org-v128', 'a1280000-0000-0000-0000-000000000101', 0,
+     'a1280000-0000-0000-0000-000000000489', 'c0ffee0000000000000000000000000000000128');
+
+update ouroboros.dry_runs set status = 'running', precheck_findings = '[]'
+ where id = 'a1280000-0000-0000-0000-000000000301';
+
+-- --- skip_kind / skip_input ------------------------------------------------------------
+insert into ouroboros.dry_run_stages
+    (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note, skip_reason,
+     skip_kind, skip_input)
+  values
+    ('org-v128', 'a1280000-0000-0000-0000-000000000301', 1, 'exploit-verify', 'exploit-verify',
+     'skipped', 'skipped', 'the stage had nothing to do', 'the stage had nothing to do',
+     'nothing_to_do', 'cve'),
+    ('org-v128', 'a1280000-0000-0000-0000-000000000301', 2, 'docs', 'docs',
+     'skipped', 'skipped', 'the branch is not taken', 'the branch is not taken',
+     'branch_not_taken', null),
+    -- A row recorded before V128 says why only in words.
+    ('org-v128', 'a1280000-0000-0000-0000-000000000301', 3, 'legacy', 'legacy',
+     'skipped', 'skipped', 'skipped', 'skipped', null, null);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note, skip_kind)
+    values ('org-v128', 'a1280000-0000-0000-0000-000000000301', 4, 'plan', 'plan', 'ok', 'llm', 'planned', 'nothing_to_do')$$,
+  'a stage that did not skip has no skip kind', 'dry_run_stages_skip_kind');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note, skip_reason, skip_kind)
+    values ('org-v128', 'a1280000-0000-0000-0000-000000000301', 4, 'plan', 'plan', 'skipped', 'skipped', 'bored', 'bored', 'bored')$$,
+  'a skip kind is one of the four', 'dry_run_stages_skip_kind');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note, skip_reason, skip_kind, skip_input)
+    values ('org-v128', 'a1280000-0000-0000-0000-000000000301', 4, 'plan', 'plan', 'skipped', 'skipped', 'not taken', 'not taken', 'branch_not_taken', 'cve')$$,
+  'only a stage with nothing to do names a missing input', 'dry_run_stages_skip_input');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_stages (organization_id, dry_run_id, seq, stage_key, display_name, verdict, how, note, skip_reason, skip_kind, skip_input)
+    values ('org-v128', 'a1280000-0000-0000-0000-000000000301', 4, 'plan', 'plan', 'skipped', 'skipped', 'nothing', 'nothing', 'nothing_to_do', 'Has CVE')$$,
+  'a missing input is spelled as a label slug', 'dry_run_stages_skip_input');
+
+-- --- advisory and unscored suggestions -------------------------------------------------
+select pg_temp.must_hold(
+  ouroboros.dry_run_suggestion_ops_valid('[]')
+  and not ouroboros.dry_run_suggestion_ops_valid('{}')
+  and not ouroboros.dry_run_suggestion_ops_valid('[{"kind": "explode", "params": {}}]')
+  and not ouroboros.dry_run_suggestion_ops_valid(
+        (select jsonb_agg(jsonb_build_object('kind', 'remove_stage', 'params', jsonb_build_object('id', 's' || n)))
+           from generate_series(1, 51) n)),
+  'proposed operations may be empty, and are still at most 50 typed operations');
+
+insert into ouroboros.dry_run_suggestions
+    (id, organization_id, dry_run_id, source, rule_id, rule_version, title, body, evidence,
+     proposed_ops, confidence, confidence_basis)
+  values
+    ('a1280000-0000-0000-0000-000000000401', 'org-v128', 'a1280000-0000-0000-0000-000000000301',
+     'rule', 'budget-proximity', 1, 'Raise the dry-run cap or trim implement',
+     'This run spent $4.31 of its $5.00 cap (86%).', '{"cost_cents": 431, "cap_cents": 500}',
+     '[]', 88,
+     '{"method": "rule_strength_x_sample_adequacy", "inputs": {"rule_strength": 0.9, "sample_adequacy": 0.98}}');
+
+insert into ouroboros.dry_run_suggestions
+    (id, organization_id, dry_run_id, source, title, body, evidence, proposed_ops, confidence,
+     confidence_basis)
+  values
+    ('a1280000-0000-0000-0000-000000000402', 'org-v128', 'a1280000-0000-0000-0000-000000000301',
+     'llm', 'Drop the docs stage', 'The docs stage never ran in this dry run.',
+     '{"alias": "coder-max"}', '[{"kind": "remove_stage", "params": {"id": "docs"}}]', null,
+     '{"method": "llm_unscored", "inputs": {"alias": "coder-max", "validated_ops": 1}}');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_suggestions (organization_id, dry_run_id, source, title, body, evidence, proposed_ops, confidence, confidence_basis)
+    values ('org-v128', 'a1280000-0000-0000-0000-000000000301', 'llm', 'Scored', 'A model scored itself.', '{}',
+            '[{"kind": "remove_stage", "params": {"id": "docs"}}]', 70,
+            '{"method": "model_self_report", "inputs": {"reported": 70}}')$$,
+  'the copilot''s suggestion is never scored', 'dry_run_suggestions_confidence_scored');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_suggestions (organization_id, dry_run_id, source, rule_id, rule_version, title, body, evidence, proposed_ops, confidence, confidence_basis)
+    values ('org-v128', 'a1280000-0000-0000-0000-000000000301', 'rule', 'budget-proximity', 1, 'Unscored', 'A rule did not score.', '{}',
+            '[]', null, '{"method": "rule_strength_x_sample_adequacy", "inputs": {"rule_strength": 0.9}}')$$,
+  'a rule''s suggestion always carries its confidence', 'dry_run_suggestions_confidence_scored');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.dry_run_suggestions (organization_id, dry_run_id, source, title, body, evidence, proposed_ops, confidence, confidence_basis)
+    values ('org-v128', 'a1280000-0000-0000-0000-000000000301', 'llm', 'No basis', 'An unscored suggestion still says how it came to be.', '{}',
+            '[{"kind": "remove_stage", "params": {"id": "docs"}}]', null, '{"method": "llm_unscored", "inputs": {}}')$$,
+  'an unscored suggestion still carries a basis', 'dry_run_suggestions_confidence_basis');
+
+-- An advisory suggestion has no batch to name, so it cannot be applied — only ignored.
+select pg_temp.must_reject(
+  $$update ouroboros.dry_run_suggestions set status = 'applied', resolved_at = now()
+     where id = 'a1280000-0000-0000-0000-000000000401'$$,
+  'an advisory suggestion has nothing to apply', 'dry_run_suggestions_resolution_coherent');
+
+update ouroboros.dry_run_suggestions set status = 'ignored', resolved_at = now()
+ where id = 'a1280000-0000-0000-0000-000000000401';
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.dry_run_suggestions
+    where dry_run_id = 'a1280000-0000-0000-0000-000000000301' and status = 'ignored'
+      and proposed_ops = '[]'::jsonb)
+  and (select count(*) = 1 from ouroboros.dry_run_suggestions
+        where dry_run_id = 'a1280000-0000-0000-0000-000000000301' and source = 'llm'
+          and confidence is null and status = 'open'),
+  'an advisory suggestion is ignored, and the copilot''s stays open and unscored');
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.

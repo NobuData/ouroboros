@@ -102,6 +102,10 @@ def test_the_payload_carries_the_rules_the_manifest_and_the_grounding() -> None:
     system = payload["system"]
     assert "ONLY way to change the draft is a tool call" in system
     assert "- add_stage:" in system and "- ask_user:" in system
+    # CD.5 (#563): suggestions come from a finished dry run and are never self-scored.
+    assert "- propose_suggestion:" in system
+    assert "NEVER state a confidence, a probability or a percentage" in system
+    assert "says a rule already made" in system
     assert "pr-etiquette" in system and "review" in system and "spend_guard" in system
     assert "no draft yet" in system
     assert payload["messages"] == [

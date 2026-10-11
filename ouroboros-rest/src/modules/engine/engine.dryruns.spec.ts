@@ -127,6 +127,8 @@ describe("the dry-run harness contract", () => {
         note: "mapped 4 files · skill advisory-db skipped (not defined yet)",
         metrics: { tokens: 3000, cost_cents: 3, files_touched: 4 },
         skipReason: null,
+        skipKind: null,
+        skipInput: null,
         startedAt: "2026-10-10T12:00:01Z",
         finishedAt: "2026-10-10T12:00:02Z",
       },

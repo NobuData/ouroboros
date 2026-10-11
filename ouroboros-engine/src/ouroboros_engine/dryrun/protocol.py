@@ -14,11 +14,13 @@ what a model says it did.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any, Final
 
 from ouroboros_engine.copilot.prompt import TOOL_FENCE_CLOSE, TOOL_FENCE_OPEN
 
+from .contract import MAX_SKIP_INPUT
 from .tools import render_manifest
 
 #: The fence a finished stage's result is written in.
@@ -31,7 +33,12 @@ MAX_CALLS_PER_REPLY: Final = 8
 MAX_ITEMS: Final = 20
 MAX_ITEM_CHARS: Final = 300
 
+#: The ``verdict`` of a stage that found it has no work for this ticket (CD.5, #563).
+NOTHING_TO_DO: Final = "nothing_to_do"
+
 ReviewVerdict = str  # ``approve`` or ``request_changes``
+
+_SLUG_RUN = re.compile(r"[a-z0-9]+")
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +79,11 @@ class StageReport:
         would_touch: The files a plan expects to change.
         verdict: A review's verdict, or ``None`` for a stage that reviewed nothing.
         nits: A review's remarks.
+        nothing_to_do: Whether the stage answered ``"verdict": "nothing_to_do"`` — the
+            input it works on does not exist for this ticket. Kept apart from ``verdict``,
+            which stays a review's.
+        missing: The input such a stage named as absent, as a label slug; ``None`` when it
+            named none, or nothing a slug can be made of.
     """
 
     summary: str = ""
@@ -79,6 +91,8 @@ class StageReport:
     would_touch: tuple[str, ...] = ()
     verdict: ReviewVerdict | None = None
     nits: tuple[Nit, ...] = ()
+    nothing_to_do: bool = False
+    missing: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,7 +143,17 @@ When the stage's work is done, finish with exactly one block:
  "verdict": "for a review: approve or request_changes",
  "nits": [{{"kind": "style", "text": "for a review: each remark"}}]}}
 {TOOL_FENCE_CLOSE}
-Leave out the keys that do not apply to your stage."""
+Leave out the keys that do not apply to your stage.
+
+If your stage has nothing to do for this ticket, because the input it works on does not
+exist (a proof-of-concept stage on a ticket that names no CVE), do not invent work. Finish
+with "verdict": "{NOTHING_TO_DO}" and name the missing input in "missing" as a short
+lower-case label slug, the label a ticket would carry if it had it:
+{RESULT_FENCE_OPEN}
+{{"summary": "why there is nothing to do, in a sentence",
+ "verdict": "{NOTHING_TO_DO}",
+ "missing": "cve"}}
+{TOOL_FENCE_CLOSE}"""
 
 
 def parse_reply(text: str) -> Reply:
@@ -206,18 +230,38 @@ def _read_report(body: str) -> StageReport | None:
         return None
 
     verdict = parsed.get("verdict")
+    nothing_to_do = verdict == NOTHING_TO_DO
     return StageReport(
         summary=_clip(parsed.get("summary"), 1000),
         steps=_strings(parsed.get("steps")),
         would_touch=_strings(parsed.get("would_touch")),
         verdict=verdict if verdict in ("approve", "request_changes") else None,
         nits=_nits(parsed.get("nits")),
+        nothing_to_do=nothing_to_do,
+        missing=_slug(parsed.get("missing")) if nothing_to_do else None,
     )
 
 
 def _clip(value: Any, limit: int) -> str:
     """A string field, trimmed and bounded; ``""`` for anything else."""
     return value.strip()[:limit] if isinstance(value, str) else ""
+
+
+def _slug(value: Any) -> str | None:
+    """A label slug out of whatever a model wrote: ``"CVE"``, ``"label: cve"``, ``"`cve`"``.
+
+    Args:
+        value: The ``missing`` field.
+
+    Returns:
+        The lower-cased runs of letters and digits joined by hyphens; ``None`` for anything
+        that is not a string, has no such run, or is longer than a label.
+    """
+    if not isinstance(value, str):
+        return None
+    text = value.strip().lower().removeprefix("label:")
+    slug = "-".join(_SLUG_RUN.findall(text))
+    return slug if slug and len(slug) <= MAX_SKIP_INPUT else None
 
 
 def _strings(value: Any) -> tuple[str, ...]:

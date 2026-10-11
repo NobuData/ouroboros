@@ -2,7 +2,7 @@
 title: "Workflow Copilot"
 sidebar_label: "Copilot"
 sidebar_position: 3
-description: "The deep dry run of a workflow draft: the pre-check, the budget, how a run ends, cancel, re-run, history and choosing an issue to test against."
+description: "The deep dry run of a workflow draft: the pre-check, the budget, how a run ends, cancel, re-run, history, choosing an issue to test against, and the suggestions a run produces."
 ---
 
 The **Workflow Copilot** drafts a workflow with you in conversation and then proves the draft
@@ -12,8 +12,9 @@ draft the [Workflow Studio](./studio.mdx) and the [code view](./code.mdx) edit.
 :::info[The page is arriving in parts]
 
 The Copilot's own page — the conversation, the draft's stage list and the dry-run card — is
-not in the app yet. What is delivered is the dry run behind that card, which this page
-describes. Until the page arrives, a dry run is started and read through the
+not in the app yet. What is delivered is the dry run behind that card and the suggestions it
+produces, which this page describes. Until the page arrives, a dry run and its suggestions are
+started and read through the
 [REST API](../../cli/rest-api.mdx#the-api-description) from a signed-in session; an API token
 cannot start one.
 
@@ -161,3 +162,99 @@ For example, for a draft triggered by the label `security`:
 | 2 | `#550` — labels `ota`, `security` | Meets every condition — exercises the main path. |
 
 The Copilot uses the same ranking when it suggests an issue to dry-run against.
+
+## Suggestions
+
+When a dry run ends **complete** or **budget stopped**, Ouroboros reads its result rows and
+files **suggestions**: proposed changes to the draft, each one worked out from what the run
+recorded. A dry run that failed or was cancelled gets none.
+
+A suggestion has a title, a sentence saying what it is based on, the exact change it would
+make to the draft, and three actions: **Apply to draft**, **Explain** and **Ignore**.
+
+### The rules
+
+Suggestions come from a fixed set of rules. A rule either finds what it looks for in the run
+or says nothing; it does not guess.
+
+| Rule | Fires when | Proposes |
+| --- | --- | --- |
+| `skipped-nothing-to-do` | A stage was skipped because it had nothing to do on this issue, and named the label the issue lacks. | A decision ahead of the stage, so issues without that label go around it. |
+| `budget-proximity` | The run spent at least 80% of its budget, or stopped at it. | Raising the cap or trimming the costliest stage, with the run's own figures. Advice only. |
+| `unresolved-reference-persists` | A stage was skipped because a skill, task route or alias it names does not exist, and the draft still names it. | The closest name the workspace does define, when one is close. Otherwise advice only. |
+| `reviewer-disagreement` | Review replays exist for the workflow, at least five pairs were replayed, and at least half disagreed on style — more than on substance. | Loading the `pr-etiquette` skill into both reviewer stages. Advice only when the workspace has no such skill. |
+
+For example, a `security-patch` draft dry-run against `#489`, which has no `cve` label, skips
+its `exploit-verify` stage with nothing to check. The first rule proposes a `has-cve` decision
+ahead of that stage: issues labelled `cve` go through it, the rest go straight to review.
+
+:::info[Not available yet]
+
+`reviewer-disagreement` needs review replays, which Ouroboros does not record yet. Until it
+does, this rule never fires and no such suggestion appears.
+
+:::
+
+A suggestion marked **advice only** proposes no change to the draft. It can be explained and
+ignored, and **Apply to draft** is not offered for it.
+
+### Confidence
+
+Each rule's suggestion shows a confidence from 0 to 100. It is always
+**rule strength × sample adequacy**, rounded to a whole number:
+
+- **Rule strength** is how firmly what the rule saw implies what it proposes.
+- **Sample adequacy** is how much evidence there was. One dry run against one issue counts as
+  `0.98`. Review replays count as `1 − 1/n` for `n` replayed pairs.
+
+| Rule | Rule strength | Sample adequacy | Example |
+| --- | --- | --- | --- |
+| `skipped-nothing-to-do` | `0.95` | `0.98` | 93 |
+| `budget-proximity` | `0.9` | `0.98` | 88 |
+| `unresolved-reference-persists` | `0.95` | `0.9` when a close name is proposed, `0.98` otherwise | 86 or 93 |
+| `reviewer-disagreement` | `0.9` | `1 − 1/n` | 81 for 10 pairs |
+
+Both numbers are stored with the suggestion, together with what the rule counted, and
+**Explain** shows them.
+
+### Suggestions from the Copilot
+
+If the dry run was started from a Copilot conversation, the Copilot is shown the results when
+the run ends and may add suggestions of its own. These are labelled as coming from the
+Copilot rather than from a rule, and they show **no confidence**: the change they propose is
+checked against the draft before it is kept, but it is not scored.
+
+The Copilot's reply appears in the conversation as its next message. It does not repeat a
+suggestion a rule has already made.
+
+### Apply to draft
+
+**Apply to draft** makes the suggestion's change to the draft in one step. The draft moves to
+its next revision, for example from `v0.3` to `v0.4`, and the change is recorded as coming
+from a suggestion. [Re-run](#re-running) the dry run to see what the change did: in the
+example above, `exploit-verify` is now skipped because the decision routes `#489` around it.
+
+The change was worked out for the draft as it was when the dry run ended. If the draft has
+been edited since, **Apply to draft** checks the change against the draft as it is now:
+
+- If the edit did not touch what the suggestion changes, it is applied.
+- If it did — the stage or connection the suggestion relies on is gone, or the decision it
+  adds already exists — nothing is changed, and you are told which part no longer fits. Run
+  the dry run again to get suggestions for the current draft.
+
+A suggestion can be applied once. Owners, admins and members can apply; viewers cannot.
+
+### Explain
+
+**Explain** shows how a suggestion was reached: the rule and its version, when that rule
+fires and what it proposes, what it found in this run (the stage, the counts, the issue), and
+the two confidence numbers with the inputs behind them. For a Copilot suggestion it shows the
+model alias that proposed it and that it is unscored.
+
+### Ignore
+
+**Ignore** dismisses a suggestion. It stays in the dry run's record as ignored, and the same
+rule does not make the same suggestion again on later dry runs of the **same draft
+revision**. Once the draft changes, a new dry run may suggest it again.
+
+An ignored suggestion cannot be applied afterwards.

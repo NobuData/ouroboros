@@ -5,6 +5,7 @@ import json
 from urllib import error
 
 import pytest
+from pydantic import ValidationError
 
 from dryrun_fakes import (
     ARBITRATION,
@@ -17,6 +18,7 @@ from dryrun_fakes import (
 from ouroboros_engine.control_plane.client import ControlPlaneClient
 from ouroboros_engine.control_plane.contract import INTERNAL_KEY_HEADER
 from ouroboros_engine.copilot.gateway import GatewayError
+from ouroboros_engine.dryrun.contract import StageResult
 from ouroboros_engine.dryrun.estimates import (
     EstimateUnavailableError,
     HttpReplayEstimates,
@@ -251,6 +253,118 @@ def test_a_result_is_read_field_by_field_and_bounded():
         Nit(kind="style", text="Rename."),
         Nit(kind="", text="Odd kind."),
     )
+
+
+@pytest.mark.parametrize(
+    ("missing", "slug"),
+    [
+        ("cve", "cve"),
+        (" CVE ", "cve"),
+        ("`cve`", "cve"),
+        ("label: Security Advisory", "security-advisory"),
+        ("needs_repro", "needs-repro"),
+        ("", None),
+        ("--", None),
+        (7, None),
+        (None, None),
+        ("x" * 65, None),
+    ],
+)
+def test_a_stage_with_nothing_to_do_names_the_missing_input_as_a_label_slug(
+    missing, slug
+):
+    report = parse_reply(
+        "```result\n"
+        + json.dumps(
+            {"summary": "No CVE.", "verdict": "nothing_to_do", "missing": missing}
+        )
+        + "\n```"
+    ).report
+
+    assert report.nothing_to_do is True
+    assert report.missing == slug
+    # It is not a review's verdict, so no review note is composed from it.
+    assert report.verdict is None
+
+
+def _stage_row(**fields) -> dict:
+    """A stage row as the wire carries it."""
+    return {
+        "seq": 1,
+        "stage_key": "exploit-verify",
+        "display_name": "exploit-verify",
+        "nodes": ["exploit-verify"],
+        "verdict": "skipped",
+        "how": "skipped",
+        "note": "why",
+        "skip_reason": "why",
+        **fields,
+    }
+
+
+@pytest.mark.parametrize(
+    "kind", ["branch_not_taken", "unreached", "unresolved_reference", "nothing_to_do"]
+)
+def test_a_skipped_row_says_which_sort_of_skip_it_was(kind):
+    row = StageResult.model_validate(_stage_row(skip_kind=kind))
+
+    assert row.skip_kind == kind
+    assert row.model_dump(mode="json")["skip_kind"] == kind
+    assert row.model_dump(mode="json")["skip_input"] is None
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {},  # skipped, and no kind
+        {"skip_kind": "because"},
+        {"verdict": "ok", "how": "llm", "skip_kind": "nothing_to_do"},
+        {"verdict": "not_reached", "how": "deterministic", "skip_kind": "unreached"},
+        {"skip_kind": "branch_not_taken", "skip_input": "cve"},
+        {"skip_kind": "unreached", "skip_input": "cve"},
+        {"skip_kind": "unresolved_reference", "skip_input": "cve"},
+        {"verdict": "ok", "how": "llm", "skip_input": "cve"},
+        {"skip_kind": "nothing_to_do", "skip_input": "CVE"},
+        {"skip_kind": "nothing_to_do", "skip_input": "no cve"},
+        {"skip_kind": "nothing_to_do", "skip_input": "-cve"},
+        {"skip_kind": "nothing_to_do", "skip_input": ""},
+        {"skip_kind": "nothing_to_do", "skip_input": "x" * 65},
+    ],
+)
+def test_the_skip_fields_are_held_to_the_verdict(fields):
+    with pytest.raises(ValidationError):
+        StageResult.model_validate(_stage_row(**fields))
+
+
+def test_only_a_stage_with_nothing_to_do_names_an_input():
+    row = StageResult.model_validate(
+        _stage_row(skip_kind="nothing_to_do", skip_input="security-advisory")
+    )
+    assert row.skip_input == "security-advisory"
+    assert StageResult.model_validate(
+        _stage_row(skip_kind="nothing_to_do", skip_input="x" * 64)
+    )
+    ran = StageResult.model_validate(
+        _stage_row(verdict="ok", how="llm", skip_reason=None)
+    )
+    assert (ran.skip_kind, ran.skip_input) == (None, None)
+
+
+def test_missing_is_read_only_from_a_stage_with_nothing_to_do():
+    report = parse_reply(
+        '```result\n{"summary": "Fine.", "verdict": "approve", "missing": "cve"}\n```'
+    ).report
+
+    assert (report.nothing_to_do, report.missing) == (False, None)
+    assert StageReport().nothing_to_do is False
+
+
+def test_the_system_prompt_tells_a_stage_how_to_say_it_has_nothing_to_do():
+    prompt = system_prompt()
+
+    assert '"verdict": "nothing_to_do"' in prompt
+    assert '"missing": "cve"' in prompt
+    assert "do not invent work" in prompt
 
 
 def test_a_result_that_is_not_an_object_is_no_report_and_the_last_valid_one_wins():

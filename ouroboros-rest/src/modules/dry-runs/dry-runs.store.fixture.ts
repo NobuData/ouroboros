@@ -258,6 +258,8 @@ export class DryRunStore {
         note: stage.note,
         metrics: { ...stage.metrics },
         skip_reason: stage.skipReason,
+        skip_kind: stage.skipKind,
+        skip_input: stage.skipInput,
         started_at: stage.startedAt === null ? null : new Date(stage.startedAt),
         finished_at: stage.finishedAt === null ? null : new Date(stage.finishedAt),
       });
@@ -404,6 +406,8 @@ export function harnessStage(
     note: `${key} done`,
     metrics: { tokens: 1000 },
     skipReason: null,
+    skipKind: null,
+    skipInput: null,
     startedAt: "2026-10-06T15:05:00.000Z",
     finishedAt: "2026-10-06T15:05:30.000Z",
     ...overrides,

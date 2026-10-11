@@ -29,6 +29,13 @@ export class DryRunParams extends DryRunWorkflowParams {
   dryRunId!: string;
 }
 
+/** The path of one suggestion — `/workflows/{id}/dry-runs/{dryRunId}/suggestions/{suggestionId}…`. */
+export class DryRunSuggestionParams extends DryRunParams {
+  /** The suggestion — `dry_run_suggestions.id`. */
+  @IsUUID()
+  suggestionId!: string;
+}
+
 /** The body of `POST /api/v1/workflows/{id}/dry-runs`. */
 export class StartDryRunBody {
   /** The canonical ticket to run against — `tickets.id`. */

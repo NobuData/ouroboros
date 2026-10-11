@@ -35,7 +35,11 @@ from ouroboros_engine.copilot.contract import (
     ToolResultTurn,
     UserTurn,
 )
-from ouroboros_engine.copilot.tools import ASK_USER, manifest_text
+from ouroboros_engine.copilot.tools import (
+    ASK_USER,
+    PROPOSE_SUGGESTION,
+    manifest_text,
+)
 
 #: The fence that opens a tool call in the reply text.
 TOOL_FENCE_OPEN = "```tool"
@@ -64,7 +68,13 @@ instead of guessing. After asking, stop and wait for the answer.
 4. A guard proposed with set_guard is a proposal: the workflow language has no guard construct \
 yet. Say so when you propose one.
 5. Keep replies short and concrete: what you drafted, what you invented, what you need to know.
-6. To call a tool, write a fenced block exactly like this, one per call, with nothing else \
+6. When the conversation contains a finished dry run's results, you MAY propose improvements \
+with {PROPOSE_SUGGESTION}: each one a title, a body of one or two sentences grounded in the \
+result rows, and the exact operations that would make the change. A suggestion changes nothing \
+until the person accepts it. NEVER state a confidence, a probability or a percentage for a \
+suggestion of your own — yours are shown as model-sourced and unscored. Do not repeat a \
+suggestion the results message says a rule already made.
+7. To call a tool, write a fenced block exactly like this, one per call, with nothing else \
 inside the fences:
 
 {TOOL_FENCE_OPEN}

@@ -3842,6 +3842,13 @@ export type DryRunMode = "deep" | "deep_build";
 /** `dry_run_stages.verdict`. */
 export type DryRunStageVerdict = "ok" | "skipped" | "failed" | "not_reached";
 
+/**
+ * `dry_run_stages.skip_kind` (V128, #563) — why a skipped stage skipped, as a value the
+ * suggestion rules read.
+ */
+export type DryRunSkipKind =
+  "branch_not_taken" | "unreached" | "unresolved_reference" | "nothing_to_do";
+
 /** `dry_run_stages.how` — how a row's result was produced. */
 export type DryRunStageHow = "llm" | "replayed" | "deterministic" | "skipped";
 
@@ -3933,6 +3940,78 @@ export interface DryRunStagesTable {
   skip_reason: string | null;
   started_at: Date | null;
   finished_at: Date | null;
+  /** Why it skipped, as a value. Null on a stage that did not skip, or a row older than V128. */
+  skip_kind: DryRunSkipKind | null;
+  /** On a `nothing_to_do` skip, the ticket label that would have carried the missing input. */
+  skip_input: string | null;
+}
+
+/** `dry_run_suggestions.source` (V114). */
+export type DryRunSuggestionSource = "rule" | "llm";
+
+/** `dry_run_suggestions.status` (V114): written `open`, settled once. */
+export type DryRunSuggestionStatus = "open" | "applied" | "ignored";
+
+/** One typed draft operation, as `proposed_ops` and `draft_operations.op` store it (V110). */
+export interface StoredDraftOperation {
+  readonly kind: string;
+  readonly params: Record<string, unknown>;
+}
+
+/** `dry_run_suggestions.confidence_basis` — how a figure was scored, and from what. */
+export interface DryRunConfidenceBasis {
+  readonly method: string;
+  readonly inputs: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * `ouroboros.dry_run_suggestions` — a dry run's improvement suggestions as records with a basis
+ * (V114, [#558](https://github.com/NobuData/ouroboros/issues/558); advisory and unscored ones
+ * since V128, #563). Nothing but the resolution is ever updated
+ * (`dry_run_suggestions_transition`).
+ */
+export interface DryRunSuggestionsTable {
+  id: Generated<string>;
+  organization_id: string;
+  dry_run_id: string;
+  source: DryRunSuggestionSource;
+  /** The rule and its version — set exactly on a `rule` suggestion. */
+  rule_id: string | null;
+  rule_version: number | null;
+  title: string;
+  body: string;
+  /** What the rule computed. Written as a JSON string. */
+  evidence: ColumnType<Record<string, unknown>, string, never>;
+  /** The operations Apply executes; empty on an advisory suggestion. Written as a JSON string. */
+  proposed_ops: ColumnType<StoredDraftOperation[], string, never>;
+  /** 0–100 on a rule's suggestion; null exactly on the copilot's. */
+  confidence: number | null;
+  confidence_basis: ColumnType<DryRunConfidenceBasis, string, never>;
+  status: Generated<DryRunSuggestionStatus>;
+  /** The `draft_operations` batch an Apply produced. */
+  applied_op_batch_id: string | null;
+  resolved_by: string | null;
+  resolved_at: Date | null;
+  created_at: Generated<Date>;
+}
+
+/** `review_replay_pairs.disagreement_class` (V114). */
+export type ReviewDisagreementClass = "style" | "substance";
+
+/**
+ * `ouroboros.review_replay_pairs` — reviewer-pair replays over historical diffs (V114; produced
+ * for real by CF.5, #574): the basis the `reviewer-disagreement` suggestion stands on.
+ */
+export interface ReviewReplayPairsTable {
+  id: Generated<string>;
+  organization_id: string;
+  workflow_id: string;
+  replay_set: string;
+  sample_ref: string;
+  reviewer_stages: string[];
+  agreed: boolean;
+  disagreement_class: ReviewDisagreementClass | null;
+  replayed_at: Date;
 }
 
 /**
@@ -7631,6 +7710,8 @@ export interface Database {
   dry_runs: DryRunsTable;
   dry_run_stages: DryRunStagesTable;
   dry_run_artifacts: DryRunArtifactsTable;
+  dry_run_suggestions: DryRunSuggestionsTable;
+  review_replay_pairs: ReviewReplayPairsTable;
   ticket_sources: TicketSourcesTable;
   tickets: TicketsTable;
   draft_batches: DraftBatchesTable;
@@ -8379,6 +8460,38 @@ export const TABLE_COLUMNS = {
     "skip_reason",
     "started_at",
     "finished_at",
+    "skip_kind",
+    "skip_input",
+  ],
+  dry_run_suggestions: [
+    "id",
+    "organization_id",
+    "dry_run_id",
+    "source",
+    "rule_id",
+    "rule_version",
+    "title",
+    "body",
+    "evidence",
+    "proposed_ops",
+    "confidence",
+    "confidence_basis",
+    "status",
+    "applied_op_batch_id",
+    "resolved_by",
+    "resolved_at",
+    "created_at",
+  ],
+  review_replay_pairs: [
+    "id",
+    "organization_id",
+    "workflow_id",
+    "replay_set",
+    "sample_ref",
+    "reviewer_stages",
+    "agreed",
+    "disagreement_class",
+    "replayed_at",
   ],
   dry_run_artifacts: [
     "id",
@@ -10120,6 +10233,10 @@ export type DraftOperation = Selectable<DraftOperationsTable>;
 export type DryRun = Selectable<DryRunsTable>;
 /** A row of `ouroboros.dry_run_stages`, as a `select` returns it. */
 export type DryRunStage = Selectable<DryRunStagesTable>;
+/** A row of `ouroboros.dry_run_suggestions`, as a `select` returns it. */
+export type DryRunSuggestion = Selectable<DryRunSuggestionsTable>;
+/** A row of `ouroboros.review_replay_pairs`, as a `select` returns it. */
+export type ReviewReplayPair = Selectable<ReviewReplayPairsTable>;
 /** A row of `ouroboros.dry_run_artifacts`, as a `select` returns it. */
 export type DryRunArtifact = Selectable<DryRunArtifactsTable>;
 /**

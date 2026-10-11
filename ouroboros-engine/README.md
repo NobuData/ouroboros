@@ -628,7 +628,9 @@ mockup 20's safety strip as mechanism — `ouroboros_engine/dryrun/`:
   guard and the description changes with it.
 - `protocol.py` — tool calls are fenced `tool` blocks in the reply, as the copilot's are, and a
   stage finishes with one fenced `result` block: a summary, a plan's steps, a review's verdict
-  and nits.
+  and nits — or `"verdict": "nothing_to_do"` with the `missing` input named as a label slug,
+  when the input the stage works on does not exist for the ticket (CD.5,
+  [#563](https://github.com/NobuData/ouroboros/issues/563)).
 - `notes.py` — the card's note lines, **composed from what a stage did**, never written by a
   model: a change to the simulated diff reads `diff drafted +41 −9 (below) · 84k tokens`,
   verdicts read `both approve · 1 style nit`, steps read `3 steps · would touch <file>`, reads
@@ -636,7 +638,11 @@ mockup 20's safety strip as mechanism — `ouroboros_engine/dryrun/`:
 - `harness.py` — the walk. Stages run in a topological order of the non-loop edges; a branch
   whose condition is false leaves its stage `skipped` with the clause that decided it, and a
   `paths` condition is tested against the simulated diff as it stands. A model stage with no
-  resolved alias is `skipped` with its W7 warning and the walk continues. An undefined skill
+  resolved alias is `skipped` with its W7 warning and the walk continues. A model stage that
+  answers `nothing_to_do` is `skipped` with what it spent kept in its metrics. Every skipped
+  row says which it was in `skip_kind` — `branch_not_taken`, `unreached`,
+  `unresolved_reference` or `nothing_to_do` (with `skip_input`, the missing input, when the
+  stage named it) — so a suggestion rule matches a kind, not a sentence. An undefined skill
   runs the stage without it and says so. A terminal is `not_reached`. Parallel model stages
   that share a title and their predecessors share a row (`review ×2`).
 

@@ -183,6 +183,9 @@ describe("the dry-runs repository", () => {
       "implement done",
       '{"tokens":84000}',
       null,
+      // skip_kind and skip_input (V128, #563): null on a stage that did not skip.
+      null,
+      null,
       new Date("2026-10-06T15:05:00.000Z"),
       new Date("2026-10-06T15:05:30.000Z"),
     ]);

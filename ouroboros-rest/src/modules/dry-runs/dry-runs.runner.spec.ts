@@ -3,6 +3,7 @@ import { Logger } from "@nestjs/common";
 import type { DryRun } from "../db/schema";
 import type { EngineClient } from "../engine/engine.client";
 import type { EngineDryRunRequest } from "../engine/engine.dryruns";
+import type { DryRunAftermath } from "./dry-runs.aftermath";
 import { effectiveBudget } from "./dry-runs.budget";
 import { DryRunRecords } from "./dry-runs.records";
 import { DryRunRunner, HARNESS_STOPPED, RESULT_UNRECORDED, endingOf } from "./dry-runs.runner";
@@ -26,7 +27,22 @@ async function bench(script: (request: EngineDryRunRequest) => ScriptStep[]) {
   const store = new DryRunStore();
   const engine = new FakeEngine(script);
   const records = new DryRunRecords(store.repository);
-  const runner = new DryRunRunner(engine as unknown as EngineClient, store.repository, records);
+  const order: string[] = [];
+  const aftermath = {
+    ended: jest.fn().mockImplementation((ended: DryRun) => {
+      order.push(`ended:${ended.status}`);
+      return Promise.resolve();
+    }),
+    debrief: jest.fn().mockImplementation((ended: DryRun) => {
+      order.push(`debrief:${ended.status}`);
+    }),
+  };
+  const runner = new DryRunRunner(
+    engine as unknown as EngineClient,
+    store.repository,
+    records,
+    aftermath as unknown as DryRunAftermath,
+  );
   const recorded = await store.insert({
     organizationId: WORKSPACE,
     workflowId: WORKFLOW_ID,
@@ -53,7 +69,7 @@ async function bench(script: (request: EngineDryRunRequest) => ScriptStep[]) {
     budget: { runCostCents: 500, stageCostCents: null, runTokens: null, stageTokens: null },
   };
 
-  return { store, engine, runner, run, request };
+  return { store, engine, runner, run, request, aftermath, order };
 }
 
 async function collect(stream: AsyncGenerator<DryRunStreamEvent, boolean>) {
@@ -435,6 +451,26 @@ describe("a dry run in flight", () => {
     expect(stored(store, run)).toMatchObject({ status: "failed", failure_reason: HARNESS_STOPPED });
     expect(store.stageRows).toHaveLength(1);
     expect(runner.isLive(run.id)).toBe(false);
+  });
+
+  it("files the rule pack's suggestions before done, and debriefs after it (#563)", async () => {
+    const { runner, run, request, aftermath, order, store } = await bench((sent) => [
+      { kind: "done", result: harnessResult(sent.dryRun) },
+    ]);
+    aftermath.ended.mockImplementation((ended: DryRun) => {
+      // The run is already ended in the record when the rules read it.
+      order.push(`ended:${ended.status}:${store.runs[0].status}`);
+      return Promise.resolve();
+    });
+
+    await runner.launch(run, request, BUDGET);
+    const events = await collect(runner.follow(run.id));
+    await runner.settled(run.id);
+
+    expect(events.at(-1)?.kind).toBe("done");
+    expect(order).toEqual(["ended:complete:complete", "debrief:complete"]);
+    expect(aftermath.ended).toHaveBeenCalledTimes(1);
+    expect(aftermath.debrief).toHaveBeenCalledTimes(1);
   });
 
   it("fails a run whose stream ended without a result", async () => {

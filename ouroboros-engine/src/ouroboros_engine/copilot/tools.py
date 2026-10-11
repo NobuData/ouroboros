@@ -1,7 +1,7 @@
 """The tool manifest — what the copilot may do, and the one way it may change anything.
 
 ``ops + {ask_user, reads, propose_dry_run} - no file writes, no publish, no execution`` is the
-issue's own summary of this file, and ``tests/test_copilot_tools.py`` holds it to that: every
+issue's own summary of this file (CD.5, #563, adds ``propose_suggestion`` to the proposals), and ``tests/test_copilot_tools.py`` holds it to that: every
 tool that writes is one of :data:`OPERATION_KINDS`, and nothing else writes.
 
 * **The typed operations** are the only write path. Their arguments are the DSL's own objects
@@ -16,6 +16,11 @@ tool that writes is one of :data:`OPERATION_KINDS`, and nothing else writes.
 * **The reads** ground a proposal in what exists; they write nothing.
 * **``propose_dry_run``** is the *"#489 — no CVE, a useful edge case"* moment: a proposal
   recorded on the reply, never a run started (CD.4, #562, starts one).
+* **``propose_suggestion``** is an improvement read off a finished dry run (CD.5, #563): a
+  title, a body, and the operations that would make the change. It writes nothing — the
+  operations are *carried*, not applied; ``ouroboros-rest`` validates them against the DSL,
+  bounces a bad one as a failed tool result, and applies a good one only when a person
+  accepts the suggestion.
 
 The arguments are pydantic models so a call is validated here, once, with a message a model can
 correct from — and so the manifest the model reads is rendered from the same models that check
@@ -25,7 +30,7 @@ what it sends back.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Annotated, Any, Final
+from typing import Annotated, Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -53,8 +58,20 @@ LOOKUP_TICKETS: Final = "lookup_tickets"
 #: The dry-run proposal.
 PROPOSE_DRY_RUN: Final = "propose_dry_run"
 
+#: The suggestion proposal.
+PROPOSE_SUGGESTION: Final = "propose_suggestion"
+
 #: How many chips one question may offer, at most.
 MAX_OPTIONS: Final = 6
+
+#: How many operations one suggestion may carry, at most.
+MAX_SUGGESTION_OPS: Final = 50
+
+#: What a suggestion's operation may be: the DSL's own operations. ``set_guard`` is left out
+#: because it is itself only a proposal — there would be nothing for an accept to apply.
+SuggestionOpKind = Literal[
+    "add_stage", "set_stage", "remove_stage", "add_edge", "remove_edge", "set_trigger"
+]
 
 
 class _Arguments(BaseModel):
@@ -151,6 +168,37 @@ class ProposeDryRunArguments(_Arguments):
     reason: Annotated[str, Field(min_length=1, max_length=400)]
 
 
+class SuggestionOp(_Arguments):
+    """One operation a suggestion would apply — ``draft_operations.op``'s ``{kind, params}``.
+
+    The parameters are not read here: whether they are a valid node, edge or trigger is the
+    DSL validator's answer, in ``ouroboros-rest``.
+    """
+
+    kind: SuggestionOpKind
+    params: dict[str, Any] = Field(
+        description="The operation's own arguments — {node: {...}} for add_stage."
+    )
+
+
+class ProposeSuggestionArguments(_Arguments):
+    """``propose_suggestion`` — one improvement, and the operations that would make it."""
+
+    title: Annotated[str, Field(min_length=1, max_length=200, pattern=r"\S")] = Field(
+        description="The change, in a few words — 'Skip exploit-verify when no CVE'."
+    )
+    body: Annotated[str, Field(min_length=1, max_length=2000, pattern=r"\S")] = Field(
+        description="One or two sentences grounded in the dry run's result rows."
+    )
+    ops: Annotated[
+        list[SuggestionOp], Field(min_length=1, max_length=MAX_SUGGESTION_OPS)
+    ] = Field(
+        description="The exact operations, in order: [{kind, params}], kind one of "
+        "add_stage, set_stage, remove_stage, add_edge, remove_edge, set_trigger and "
+        "params that tool's own arguments."
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class Tool:
     """One tool of the manifest.
@@ -229,6 +277,13 @@ MANIFEST: Final[tuple[Tool, ...]] = (
         PROPOSE_DRY_RUN,
         "Propose a dry run of the draft on one ticket, with the reason it is a useful case.",
         ProposeDryRunArguments,
+        writes=False,
+    ),
+    Tool(
+        PROPOSE_SUGGESTION,
+        "Propose one improvement to the draft from a finished dry run's results, with the "
+        "exact operations that would make it. Nothing is applied until the user accepts.",
+        ProposeSuggestionArguments,
         writes=False,
     ),
 )

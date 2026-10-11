@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.16"
+  version: "0.41.17"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -23173,6 +23173,8 @@ paths:
                     note: diff drafted +41 −9 (below) · 84k tokens
                     metrics: {tokens: 84000, simulated_writes: 1, lines_added: 41, lines_removed: 9}
                     skipReason: null
+                    skipKind: null
+                    skipInput: null
                     startedAt: "2026-10-08T15:05:40.000Z"
                     finishedAt: "2026-10-08T15:06:50.000Z"
                   - seq: 4
@@ -23184,6 +23186,8 @@ paths:
                     note: est. 4m 02s (214 similar builds, ±20s)
                     metrics: {estimate_ms: 242000, sample_count: 214, spread_ms: 20000, similarity_class: "helios-firmware · pool-a · docker · zephyr-sdk west build"}
                     skipReason: null
+                    skipKind: null
+                    skipInput: null
                     startedAt: "2026-10-08T15:06:50.000Z"
                     finishedAt: "2026-10-08T15:06:51.000Z"
                 artifacts:
@@ -23254,7 +23258,7 @@ paths:
                 data: {"kind":"stage_started","seq":4,"stageKey":"build","displayName":"build"}
 
                 event: stage_finished
-                data: {"kind":"stage_finished","stage":{"seq":4,"stageKey":"build","displayName":"build","verdict":"ok","how":"replayed","howLabel":"replayed from history","note":"est. 4m 02s (214 similar builds, ±20s)","metrics":{"estimate_ms":242000,"sample_count":214,"spread_ms":20000,"similarity_class":"x"},"skipReason":null,"startedAt":"2026-10-08T15:06:50.000Z","finishedAt":"2026-10-08T15:06:51.000Z"}}
+                data: {"kind":"stage_finished","stage":{"seq":4,"stageKey":"build","displayName":"build","verdict":"ok","how":"replayed","howLabel":"replayed from history","note":"est. 4m 02s (214 similar builds, ±20s)","metrics":{"estimate_ms":242000,"sample_count":214,"spread_ms":20000,"similarity_class":"x"},"skipReason":null,"skipKind":null,"skipInput":null,"startedAt":"2026-10-08T15:06:50.000Z","finishedAt":"2026-10-08T15:06:51.000Z"}}
         "400":
           description: "`organization_required`."
           content:
@@ -23331,6 +23335,8 @@ paths:
                     note: mapped 4 files
                     metrics: {tokens: 12000, files_touched: 4}
                     skipReason: null
+                    skipKind: null
+                    skipInput: null
                     startedAt: "2026-10-08T15:05:01.000Z"
                     finishedAt: "2026-10-08T15:05:30.000Z"
                 artifacts: []
@@ -23456,6 +23462,373 @@ paths:
                 $ref: "#/components/schemas/Error"
         "502":
           description: "`engine_unavailable`, `dry_run_commit_unreadable`, or a `github_*` upstream code."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/workflows/{id}/dry-runs/{dryRunId}/suggestions:
+    get:
+      tags: [dry-runs]
+      summary: A dry run's suggestions
+      description: |-
+        The callouts under the dry-run card (CD.5,
+        [#563](https://github.com/NobuData/ouroboros/issues/563)), in card order.
+
+        A suggestion is filed when the run ends `complete` or `budget_stopped`, by a **versioned
+        rule pack** reading the run's own rows — `skipped-nothing-to-do`, `budget-proximity`,
+        `unresolved-reference-persists` and `reviewer-disagreement` (which produces nothing
+        until review replays exist, CF.5). Each rule's suggestion carries `source` `rule`, its
+        `ruleId` and `ruleVersion`, and a `confidence` that is rule strength × sample adequacy,
+        with both factors in `confidenceBasis.inputs`.
+
+        The copilot may add its own after the run. Those carry `source` `llm`, no rule, and
+        `confidence` `null` — their operations are validated, their confidence is never scored.
+
+        `applicable` is `false` on an advisory suggestion, which proposes no operation.
+
+        Every member of the workspace.
+      operationId: listDryRunSuggestions
+      parameters:
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/DryRunId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The suggestions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DryRunSuggestions"
+              example:
+                dryRunId: 5eed008b-0000-4000-8000-000000000001
+                suggestions:
+                  - id: 5eed008c-0000-4000-8000-000000000001
+                    dryRunId: 5eed008b-0000-4000-8000-000000000001
+                    source: rule
+                    ruleId: skipped-nothing-to-do
+                    ruleVersion: 1
+                    title: Make exploit-verify conditional
+                    body: "Make exploit-verify conditional — it had nothing to do because #489 carries no `cve` label. Route issues without `cve` around it, so it skips cleanly instead of running with nothing to check."
+                    confidence: 93
+                    confidenceBasis:
+                      method: rule_strength_x_sample_adequacy
+                      inputs:
+                        rule: skipped-nothing-to-do
+                        rule_version: 1
+                        rule_strength: 0.95
+                        sample_adequacy: 0.98
+                        outcome: skipped_nothing_to_do
+                        deterministic: true
+                        observations: 1
+                    applicable: true
+                    proposedOps:
+                      - kind: remove_edge
+                        params: {from: test, to: exploit-verify}
+                    status: open
+                    appliedOpBatchId: null
+                    resolvedAt: null
+                    createdAt: "2026-10-10T15:08:00.000Z"
+        "400":
+          description: "`organization_required`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "`unauthenticated`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`forbidden` — not a member of the workspace."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "`workflow_not_found`, or `dry_run_not_found`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "`validation_failed` — an id that is not a uuid."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/workflows/{id}/dry-runs/{dryRunId}/suggestions/{suggestionId}/explanation:
+    get:
+      tags: [dry-runs]
+      summary: Explain a suggestion
+      description: |-
+        The derivation rather than a restatement — the rule (as the running pack describes it:
+        when it fires, what it proposes, how each scoring factor is chosen) and the version that
+        made the suggestion, the `evidence` it computed (stage keys, counts, samples) and the
+        scoring inputs behind the confidence.
+
+        On a copilot suggestion `rule` and `confidence` are `null`, and the basis says
+        `llm_unscored` with the alias that proposed it. A rule this pack no longer holds keeps
+        its id and version, with its descriptions `null`.
+
+        Every member of the workspace.
+      operationId: explainDryRunSuggestion
+      parameters:
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/DryRunId"
+        - $ref: "#/components/parameters/DryRunSuggestionId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The explanation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DryRunSuggestionExplanation"
+              example:
+                suggestionId: 5eed008c-0000-4000-8000-000000000001
+                source: rule
+                rule:
+                  id: skipped-nothing-to-do
+                  version: 1
+                  packVersion: 1
+                  firesWhen: A stage was skipped because it had nothing to do, and named the input the ticket lacks.
+                  proposes: A decision ahead of the stage that routes tickets without that label around it (advisory when the draft cannot take one).
+                  scoring:
+                    strength: 0.95 — the skip is a recorded, deterministic outcome of the stage itself.
+                    adequacy: 0.98 — observed in one dry run against one ticket.
+                evidence:
+                  stage_key: exploit-verify
+                  verdict: skipped
+                  skip_kind: nothing_to_do
+                  skip_input: cve
+                  ticket: "#489"
+                confidence: 93
+                confidenceBasis:
+                  method: rule_strength_x_sample_adequacy
+                  inputs: {rule: skipped-nothing-to-do, rule_version: 1, rule_strength: 0.95, sample_adequacy: 0.98}
+                proposedOps:
+                  - kind: remove_edge
+                    params: {from: test, to: exploit-verify}
+        "400":
+          description: "`organization_required`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "`unauthenticated`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`forbidden` — not a member of the workspace."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "`workflow_not_found`, `dry_run_not_found`, or `dry_run_suggestion_not_found`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "`validation_failed` — an id that is not a uuid."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/workflows/{id}/dry-runs/{dryRunId}/suggestions/{suggestionId}/apply:
+    post:
+      tags: [dry-runs]
+      summary: Apply a suggestion to the draft
+      description: |-
+        Applies the suggestion's `proposedOps` to the workflow's shared draft as **one batch**
+        through the same write path as a canvas edit, recorded with the `suggestion` actor and
+        this suggestion's id. The draft's revision moves on by one (`v0.3` → `v0.4`), so the
+        next dry run tests the changed draft; the suggestion becomes `applied` and names the
+        batch.
+
+        The operations were computed when the suggestion was made. Each is checked against the
+        draft **as it is now**: a draft that moved on without disturbing what they touch still
+        applies; one where an operation no longer fits answers `409`
+        `dry_run_suggestion_conflict` and **nothing is written**.
+
+        Owner, admin and member.
+      operationId: applyDryRunSuggestion
+      parameters:
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/DryRunId"
+        - $ref: "#/components/parameters/DryRunSuggestionId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The suggestion, applied, and the draft revision it produced.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DryRunSuggestionApplied"
+              example:
+                suggestion:
+                  id: 5eed008c-0000-4000-8000-000000000001
+                  dryRunId: 5eed008b-0000-4000-8000-000000000001
+                  source: rule
+                  ruleId: skipped-nothing-to-do
+                  ruleVersion: 1
+                  title: Make exploit-verify conditional
+                  body: "Make exploit-verify conditional — it had nothing to do because #489 carries no `cve` label. Route issues without `cve` around it, so it skips cleanly instead of running with nothing to check."
+                  confidence: 93
+                  confidenceBasis:
+                    method: rule_strength_x_sample_adequacy
+                    inputs:
+                      rule: skipped-nothing-to-do
+                      rule_version: 1
+                      rule_strength: 0.95
+                      sample_adequacy: 0.98
+                      outcome: skipped_nothing_to_do
+                      deterministic: true
+                      observations: 1
+                  applicable: true
+                  proposedOps:
+                    - kind: remove_edge
+                      params: {from: test, to: exploit-verify}
+                  status: applied
+                  appliedOpBatchId: 5eed008e-0000-4000-8000-000000000004
+                  resolvedAt: "2026-10-10T15:12:00.000Z"
+                  createdAt: "2026-10-10T15:08:00.000Z"
+                draftRev: 4
+                draftLabel: v0.4
+                etag: 9f2c1d7a4b8e60513c7d2a9b6e4f108d5a3c7b1e9d2f4a6c8b0e1d3f5a7c9b2e
+        "400":
+          description: "`organization_required`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "`unauthenticated`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`forbidden` — a viewer."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "`workflow_not_found`, `dry_run_not_found`, or `dry_run_suggestion_not_found`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `dry_run_suggestion_conflict` — the draft moved on and an operation no longer fits
+            (`details.operation`, `details.kind`, `details.reason`, `details.testedDraftRev`,
+            `details.draftRev`); `dry_run_suggestion_resolved` — it was already applied or
+            ignored (`details.status`); or `dry_run_suggestion_not_applicable` — it is advisory
+            and proposes no operation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "`validation_failed` — an id that is not a uuid."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/workflows/{id}/dry-runs/{dryRunId}/suggestions/{suggestionId}/ignore:
+    post:
+      tags: [dry-runs]
+      summary: Ignore a suggestion
+      description: |-
+        Settles the suggestion as `ignored`. It stays in the record, and the same rule does not
+        propose the identical suggestion again on a later dry run of the **same draft
+        revision**; once the draft moves on, the question is asked afresh.
+
+        Owner, admin and member.
+      operationId: ignoreDryRunSuggestion
+      parameters:
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/DryRunId"
+        - $ref: "#/components/parameters/DryRunSuggestionId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The suggestion, ignored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DryRunSuggestion"
+              example:
+                id: 5eed008c-0000-4000-8000-000000000001
+                dryRunId: 5eed008b-0000-4000-8000-000000000001
+                source: rule
+                ruleId: skipped-nothing-to-do
+                ruleVersion: 1
+                title: Make exploit-verify conditional
+                body: "Make exploit-verify conditional — it had nothing to do because #489 carries no `cve` label. Route issues without `cve` around it, so it skips cleanly instead of running with nothing to check."
+                confidence: 93
+                confidenceBasis:
+                  method: rule_strength_x_sample_adequacy
+                  inputs:
+                    rule: skipped-nothing-to-do
+                    rule_version: 1
+                    rule_strength: 0.95
+                    sample_adequacy: 0.98
+                    outcome: skipped_nothing_to_do
+                    deterministic: true
+                    observations: 1
+                applicable: true
+                proposedOps:
+                  - kind: remove_edge
+                    params: {from: test, to: exploit-verify}
+                status: ignored
+                appliedOpBatchId: null
+                resolvedAt: "2026-10-10T15:12:00.000Z"
+                createdAt: "2026-10-10T15:08:00.000Z"
+        "400":
+          description: "`organization_required`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "`unauthenticated`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`forbidden` — a viewer."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "`workflow_not_found`, `dry_run_not_found`, or `dry_run_suggestion_not_found`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "`dry_run_suggestion_resolved` — it was already applied or ignored (`details.status`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "`validation_failed` — an id that is not a uuid."
           content:
             application/json:
               schema:
@@ -40527,6 +40900,17 @@ components:
       schema:
         type: string
         format: uuid
+    DryRunSuggestionId:
+      name: suggestionId
+      in: path
+      required: true
+      description: |-
+        The suggestion — `dry_run_suggestions.id`. Anything that is not a uuid is a `422`; a
+        well-formed id that names no suggestion of this dry run is a `404`.
+      schema:
+        type: string
+        format: uuid
+      example: 5eed008c-0000-4000-8000-000000000001
     DryRunId:
       name: dryRunId
       in: path
@@ -59775,7 +60159,7 @@ components:
         result was produced — the honesty of the card. A `replayed` row is a statistical
         estimate, not a measurement, and its `metrics` carry the estimate with its sample.
       additionalProperties: false
-      required: [seq, stageKey, displayName, verdict, how, howLabel, note, metrics, skipReason, startedAt, finishedAt]
+      required: [seq, stageKey, displayName, verdict, how, howLabel, note, metrics, skipReason, skipKind, skipInput, startedAt, finishedAt]
       properties:
         seq:
           type: integer
@@ -59810,6 +60194,17 @@ components:
         skipReason:
           type: [string, "null"]
           description: Why a skipped stage had nothing to do — set exactly when `verdict` is `skipped`.
+        skipKind:
+          type: [string, "null"]
+          enum: [branch_not_taken, unreached, unresolved_reference, nothing_to_do, null]
+          description: |-
+            Why it skipped, as a value — a branch routed around it, nothing on the walk leads to
+            it, a skill, task route or alias it names does not resolve, or it ran into nothing
+            to do. `null` unless `verdict` is `skipped`, and on a row recorded before this
+            field existed.
+        skipInput:
+          type: [string, "null"]
+          description: On a `nothing_to_do` skip, the ticket label that would have carried the input the stage needed (`cve`).
         startedAt:
           type: [string, "null"]
           format: date-time
@@ -60231,6 +60626,195 @@ components:
           type: boolean
           const: true
           description: A dry run whose guards had to hold is failed, never trusted.
+
+    DraftOperationEnvelope:
+      type: object
+      title: DraftOperationEnvelope
+      description: |-
+        One typed operation on a workflow's shared draft — `add_stage{node}`, `set_stage{node}`,
+        `remove_stage{id}`, `add_edge{edge}`, `remove_edge{from,to}` or `set_trigger{trigger}`,
+        with the workflow language's own objects as `params`.
+      additionalProperties: false
+      required: [kind, params]
+      properties:
+        kind:
+          type: string
+          enum: [add_stage, set_stage, remove_stage, add_edge, remove_edge, set_trigger]
+        params:
+          type: object
+          additionalProperties: true
+
+    DryRunConfidenceBasis:
+      type: object
+      title: DryRunConfidenceBasis
+      description: |-
+        How a suggestion's confidence was scored, and from what. A rule's basis has `method`
+        `rule_strength_x_sample_adequacy` and `inputs` holding `rule`, `rule_version`,
+        `rule_strength`, `sample_adequacy` and whatever else the rule counted — the confidence
+        is `round(rule_strength × sample_adequacy × 100)`. A copilot suggestion's has `method`
+        `llm_unscored` and names the alias that proposed it.
+      additionalProperties: false
+      required: [method, inputs]
+      properties:
+        method:
+          type: string
+        inputs:
+          type: object
+          additionalProperties: true
+
+    DryRunSuggestion:
+      type: object
+      title: DryRunSuggestion
+      description: |-
+        One callout under a dry run (CD.5). `source` says who made it: `rule` — computed by the
+        rule pack, with `ruleId`, `ruleVersion` and a `confidence`; `llm` — proposed by the
+        copilot, validated as operations, with no rule and no confidence.
+      additionalProperties: false
+      required: [id, dryRunId, source, ruleId, ruleVersion, title, body, confidence, confidenceBasis, applicable, proposedOps, status, appliedOpBatchId, resolvedAt, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        dryRunId:
+          type: string
+          format: uuid
+        source:
+          type: string
+          enum: [rule, llm]
+        ruleId:
+          type: [string, "null"]
+          description: The rule that made it — `null` on a copilot suggestion.
+        ruleVersion:
+          type: [integer, "null"]
+          minimum: 1
+        title:
+          type: string
+        body:
+          type: string
+        confidence:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 100
+          description: 0–100 on a rule's suggestion; `null` exactly on a copilot suggestion, which is never scored.
+        confidenceBasis:
+          $ref: "#/components/schemas/DryRunConfidenceBasis"
+        applicable:
+          type: boolean
+          description: Whether Apply has anything to do — `false` on an advisory suggestion.
+        proposedOps:
+          type: array
+          maxItems: 50
+          description: The operations Apply executes, computed when the suggestion was made. Empty on an advisory suggestion.
+          items:
+            $ref: "#/components/schemas/DraftOperationEnvelope"
+        status:
+          type: string
+          enum: [open, applied, ignored]
+          description: Written `open`, and settled once.
+        appliedOpBatchId:
+          type: [string, "null"]
+          format: uuid
+          description: The draft operation batch an Apply produced.
+        resolvedAt:
+          type: [string, "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    DryRunSuggestions:
+      type: object
+      title: DryRunSuggestions
+      description: A dry run's suggestions, in card order — oldest first, the most confident first, the copilot's unscored ones last.
+      additionalProperties: false
+      required: [dryRunId, suggestions]
+      properties:
+        dryRunId:
+          type: string
+          format: uuid
+        suggestions:
+          type: array
+          items:
+            $ref: "#/components/schemas/DryRunSuggestion"
+
+    DryRunSuggestionApplied:
+      type: object
+      title: DryRunSuggestionApplied
+      description: What Apply answers — the suggestion, settled, and the draft it produced.
+      additionalProperties: false
+      required: [suggestion, draftRev, draftLabel, etag]
+      properties:
+        suggestion:
+          $ref: "#/components/schemas/DryRunSuggestion"
+        draftRev:
+          type: integer
+          minimum: 1
+          description: The draft's new revision — the `4` of `v0.4`.
+        draftLabel:
+          type: string
+          description: "`v0.4`, for the toast."
+        etag:
+          type: string
+          description: The draft's new etag, for whichever editor is open.
+
+    DryRunSuggestionExplanation:
+      type: object
+      title: DryRunSuggestionExplanation
+      description: A suggestion's derivation — the rule and its version, the evidence it computed and the scoring inputs.
+      additionalProperties: false
+      required: [suggestionId, source, rule, evidence, confidence, confidenceBasis, proposedOps]
+      properties:
+        suggestionId:
+          type: string
+          format: uuid
+        source:
+          type: string
+          enum: [rule, llm]
+        rule:
+          type: [object, "null"]
+          description: The rule, as the running pack describes it — `null` on a copilot suggestion.
+          additionalProperties: false
+          required: [id, version, packVersion, firesWhen, proposes, scoring]
+          properties:
+            id:
+              type: string
+            version:
+              type: integer
+              minimum: 1
+              description: The rule version that made this suggestion.
+            packVersion:
+              type: integer
+              minimum: 1
+              description: The version of the rule pack this service runs.
+            firesWhen:
+              type: [string, "null"]
+              description: When the rule fires — `null` when the pack no longer holds the rule.
+            proposes:
+              type: [string, "null"]
+            scoring:
+              type: [object, "null"]
+              description: How each factor of the confidence is chosen.
+              additionalProperties: false
+              required: [strength, adequacy]
+              properties:
+                strength:
+                  type: string
+                adequacy:
+                  type: string
+        evidence:
+          type: object
+          additionalProperties: true
+          description: What was computed — stage keys, counts, samples.
+        confidence:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 100
+        confidenceBasis:
+          $ref: "#/components/schemas/DryRunConfidenceBasis"
+        proposedOps:
+          type: array
+          items:
+            $ref: "#/components/schemas/DraftOperationEnvelope"
 
     DryRunStreamEvent:
       type: object

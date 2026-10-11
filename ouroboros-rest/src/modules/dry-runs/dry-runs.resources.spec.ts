@@ -57,6 +57,8 @@ const STAGE: DryRunStage = {
   note: "est. 4m 02s (214 similar builds, ±20s)",
   metrics: { estimate_ms: 242000, sample_count: 214, spread_ms: 20000, similarity_class: "x" },
   skip_reason: null,
+  skip_kind: null,
+  skip_input: null,
   started_at: new Date("2026-10-06T15:06:00Z"),
   finished_at: null,
 };
@@ -87,6 +89,8 @@ describe("the dry run's wire shapes", () => {
       note: "est. 4m 02s (214 similar builds, ±20s)",
       metrics: STAGE.metrics,
       skipReason: null,
+      skipKind: null,
+      skipInput: null,
       startedAt: "2026-10-06T15:06:00.000Z",
       finishedAt: null,
     });
@@ -96,6 +100,7 @@ describe("the dry run's wire shapes", () => {
         verdict: "skipped",
         how: "skipped",
         skipReason: 'Task kind "exploit-verify" has no route yet',
+        skipKind: "unresolved_reference",
         startedAt: null,
         finishedAt: "2026-10-06T15:07:00+00:00",
       }),
@@ -104,6 +109,8 @@ describe("the dry run's wire shapes", () => {
     expect(streamed).toMatchObject({
       howLabel: "skipped",
       skipReason: 'Task kind "exploit-verify" has no route yet',
+      skipKind: "unresolved_reference",
+      skipInput: null,
       startedAt: null,
       finishedAt: "2026-10-06T15:07:00.000Z",
     });

@@ -21,6 +21,7 @@ import type {
   DryRunGuardAuditEntry,
   DryRunMode,
   DryRunPathChange,
+  DryRunSkipKind,
   DryRunStage,
   DryRunStageHow,
   DryRunStageVerdict,
@@ -55,6 +56,10 @@ export interface DryRunStageResource {
   readonly note: string;
   readonly metrics: Readonly<Record<string, unknown>>;
   readonly skipReason: string | null;
+  /** Why it skipped, as a value — `null` unless the row skipped (and on rows older than V128). */
+  readonly skipKind: DryRunSkipKind | null;
+  /** On a `nothing_to_do` skip, the ticket label that would have carried the missing input. */
+  readonly skipInput: string | null;
   readonly startedAt: string | null;
   readonly finishedAt: string | null;
 }
@@ -251,6 +256,8 @@ export function dryRunStage(row: DryRunStage): DryRunStageResource {
     note: row.note,
     metrics: row.metrics,
     skipReason: row.skip_reason,
+    skipKind: row.skip_kind,
+    skipInput: row.skip_input,
     startedAt: row.started_at?.toISOString() ?? null,
     finishedAt: row.finished_at?.toISOString() ?? null,
   };
@@ -274,6 +281,8 @@ export function streamedStage(stage: EngineDryRunStage): DryRunStageResource {
     note: stage.note,
     metrics: stage.metrics,
     skipReason: stage.skipReason,
+    skipKind: stage.skipKind,
+    skipInput: stage.skipInput,
     startedAt: stage.startedAt === null ? null : new Date(stage.startedAt).toISOString(),
     finishedAt: stage.finishedAt === null ? null : new Date(stage.finishedAt).toISOString(),
   };

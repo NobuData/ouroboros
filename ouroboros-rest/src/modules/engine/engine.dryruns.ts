@@ -15,6 +15,7 @@
 
 import { z } from "zod";
 
+import type { DryRunSkipKind } from "../db/schema";
 import {
   ENGINE_API_VERSION,
   engineFindingSchema,
@@ -139,6 +140,10 @@ export interface EngineDryRunStage {
   readonly note: string;
   readonly metrics: Readonly<Record<string, unknown>>;
   readonly skipReason: string | null;
+  /** Why it skipped, as a value (engine 0.7.28, #563) — `null` unless the row skipped. */
+  readonly skipKind: DryRunSkipKind | null;
+  /** On a `nothing_to_do` skip, the label that would have carried the missing input. */
+  readonly skipInput: string | null;
   readonly startedAt: string | null;
   readonly finishedAt: string | null;
 }
@@ -210,6 +215,11 @@ const stageSchema = z
     note: z.string(),
     metrics: z.record(z.string(), z.unknown()).default({}),
     skip_reason: z.string().nullable().default(null),
+    skip_kind: z
+      .enum(["branch_not_taken", "unreached", "unresolved_reference", "nothing_to_do"])
+      .nullable()
+      .default(null),
+    skip_input: z.string().nullable().default(null),
     started_at: z.string().nullable().default(null),
     finished_at: z.string().nullable().default(null),
   })
@@ -223,6 +233,8 @@ const stageSchema = z
     note: stage.note,
     metrics: stage.metrics,
     skipReason: stage.skip_reason,
+    skipKind: stage.skip_kind,
+    skipInput: stage.skip_input,
     startedAt: stage.started_at,
     finishedAt: stage.finished_at,
   }));

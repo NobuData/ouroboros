@@ -375,6 +375,8 @@ export class DryRunsRepository {
         note: stage.note,
         metrics: JSON.stringify(stage.metrics),
         skip_reason: stage.skipReason,
+        skip_kind: stage.skipKind,
+        skip_input: stage.skipInput,
         started_at: stage.startedAt === null ? null : new Date(stage.startedAt),
         finished_at: stage.finishedAt === null ? null : new Date(stage.finishedAt),
       })
