@@ -7245,7 +7245,7 @@ select pg_temp.must_hold(
 -- The suggestions: 93% and 81%, both rules, both with a basis; the 81% basis equals the replays.
 select pg_temp.must_hold(
   (select array_agg(s.rule_id || ':' || s.confidence order by s.confidence desc)
-          = array['deterministic-skip:93', 'replay-disagreement:81']
+          = array['skipped-nothing-to-do:93', 'reviewer-disagreement:81']
           and bool_and(s.source = 'rule' and s.status = 'open'
                        and ouroboros.dry_run_confidence_basis_valid(s.confidence_basis))
      from ouroboros.dry_run_suggestions s
@@ -7257,9 +7257,30 @@ select pg_temp.must_hold(
           from ouroboros.dry_run_suggestions s
           join ouroboros.review_replay_pairs p
             on p.replay_set = (s.confidence_basis #>> '{inputs,replay_set}')::uuid
-         where s.rule_id = 'replay-disagreement'
+         where s.rule_id = 'reviewer-disagreement'
          group by s.id, s.confidence_basis),
   'both suggestions are rules with a confidence basis, and the 81% basis is the seeded replays — 6 of 10');
+
+-- CD.5 (#563): the skipped row says why as a value, and each suggestion's confidence is its
+-- basis's own arithmetic — rule strength x sample adequacy — not a typed figure.
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(st.stage_key = 'exploit-verify' and st.skip_kind = 'nothing_to_do'
+                                    and st.skip_input = 'cve')
+     from ouroboros.dry_run_stages st
+     join ouroboros.dry_runs r on r.id = st.dry_run_id
+     join ouroboros.workflows wf on wf.id = r.workflow_id and wf.slug = 'security-patch'
+    where st.verdict = 'skipped')
+  and (select count(*) = 2
+              and bool_and(s.confidence_basis ->> 'method' = 'rule_strength_x_sample_adequacy'
+                           and s.confidence = round((s.confidence_basis #>> '{inputs,rule_strength}')::numeric
+                                                    * (s.confidence_basis #>> '{inputs,sample_adequacy}')::numeric
+                                                    * 100)
+                           and s.confidence_basis #>> '{inputs,rule}' = s.rule_id
+                           and s.evidence <> '{}'::jsonb)
+         from ouroboros.dry_run_suggestions s
+         join ouroboros.dry_runs r on r.id = s.dry_run_id
+         join ouroboros.workflows wf on wf.id = r.workflow_id and wf.slug = 'security-patch'),
+  'the seeded skip names its kind and missing input, and each seeded confidence is rule strength x sample adequacy from its own basis');
 
 -- ===========================================================================
 -- Dry runs stay out of the run plane, and say what they rest on (#557, CC.3)

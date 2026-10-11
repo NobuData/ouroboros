@@ -14,7 +14,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-engine
-  version: 0.7.27
+  version: 0.7.28
   summary: Internal backend for Ouroboros — executes the work ouroboros-rest brokers.
   description: |-
     The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the
@@ -995,8 +995,12 @@ paths:
         **The only write path is the typed operation vocabulary.** The manifest's write tools
         are exactly `add_stage`, `set_stage`, `remove_stage`, `add_edge`, `remove_edge`,
         `set_trigger` and `set_guard`; `ask_user` asks a question whose options render as chips;
-        `read_draft`, `read_catalog`, `read_skills` and `lookup_tickets` ground a proposal; and
-        `propose_dry_run` names a ticket worth trying. Nothing here applies anything:
+        `read_draft`, `read_catalog`, `read_skills` and `lookup_tickets` ground a proposal;
+        `propose_dry_run` names a ticket worth trying; and `propose_suggestion` (CD.5,
+        [#563](https://github.com/NobuData/ouroboros/issues/563)) offers an improvement read off
+        a finished dry run's results — `{title, body, ops: [{kind, params}]}`, one to fifty
+        operations in the write vocabulary less `set_guard` — which is recorded, never applied,
+        and carries no confidence of the model's own. Nothing here applies anything:
         `ouroboros-rest` runs the loop — it validates each operation against the DSL before
         applying it under the draft's etag with `copilot` provenance, bounces an invalid one back
         as a `tool` transcript entry carrying the validator's message, and sends the next turn.
@@ -1113,7 +1117,13 @@ paths:
         with the clause that decided it; conditions over changed paths are tested against the
         simulated diff as it stands. A model stage with no `alias` — a task kind the catalog
         does not have yet — is `skipped` with its warning, and the walk goes on past it. A
-        terminal is `not_reached`: a dry run opens nothing.
+        model stage that ran and answered `"verdict": "nothing_to_do"` in its result — the input
+        it works on does not exist for this ticket — is `skipped` too, with what it spent kept in
+        `metrics` and the input it named in `skip_input`. Every skipped row carries a
+        `skip_kind` (`branch_not_taken`, `unreached`, `unresolved_reference`, `nothing_to_do`),
+        which is what CD.5's suggestion rules
+        ([#563](https://github.com/NobuData/ouroboros/issues/563)) match on. A terminal is
+        `not_reached`: a dry run opens nothing.
 
         **Caps.** `budget` holds per-stage and per-run token and spend caps; a stage's own
         `limits.token_budget` applies too. Reaching one ends the run `budget_stopped` with every
@@ -1394,20 +1404,20 @@ paths:
                     done: "#/components/schemas/DryRunDone"
               example: |
                 {"kind":"stage_started","seq":1,"stage_key":"analyze","display_name":"analyze"}
-                {"kind":"stage_finished","stage":{"seq":1,"stage_key":"analyze","display_name":"analyze","nodes":["analyze"],"verdict":"ok","how":"llm","note":"mapped 4 files · skill advisory-db skipped (not defined yet)","metrics":{"tokens":3000,"cost_cents":3,"files_touched":4},"skip_reason":null,"started_at":"2026-10-10T12:00:01Z","finished_at":"2026-10-10T12:00:02Z"}}
+                {"kind":"stage_finished","stage":{"seq":1,"stage_key":"analyze","display_name":"analyze","nodes":["analyze"],"verdict":"ok","how":"llm","note":"mapped 4 files · skill advisory-db skipped (not defined yet)","metrics":{"tokens":3000,"cost_cents":3,"files_touched":4},"skip_reason":null,"skip_kind":null,"skip_input":null,"started_at":"2026-10-10T12:00:01Z","finished_at":"2026-10-10T12:00:02Z"}}
                 {"kind":"stage_started","seq":2,"stage_key":"plan","display_name":"plan"}
-                {"kind":"stage_finished","stage":{"seq":2,"stage_key":"plan","display_name":"plan","nodes":["plan"],"verdict":"ok","how":"llm","note":"3 steps · would touch drivers/can/arbitration.c","metrics":{"tokens":1000,"cost_cents":1},"skip_reason":null,"started_at":"2026-10-10T12:00:03Z","finished_at":"2026-10-10T12:00:04Z"}}
+                {"kind":"stage_finished","stage":{"seq":2,"stage_key":"plan","display_name":"plan","nodes":["plan"],"verdict":"ok","how":"llm","note":"3 steps · would touch drivers/can/arbitration.c","metrics":{"tokens":1000,"cost_cents":1},"skip_reason":null,"skip_kind":null,"skip_input":null,"started_at":"2026-10-10T12:00:03Z","finished_at":"2026-10-10T12:00:04Z"}}
                 {"kind":"stage_started","seq":3,"stage_key":"implement","display_name":"implement"}
-                {"kind":"stage_finished","stage":{"seq":3,"stage_key":"implement","display_name":"implement","nodes":["implement"],"verdict":"ok","how":"llm","note":"diff drafted +3 −1 (below) · 3k tokens","metrics":{"tokens":3000,"cost_cents":3,"files_touched":1,"simulated_writes":1,"lines_added":3,"lines_removed":1},"skip_reason":null,"started_at":"2026-10-10T12:00:05Z","finished_at":"2026-10-10T12:00:06Z"}}
+                {"kind":"stage_finished","stage":{"seq":3,"stage_key":"implement","display_name":"implement","nodes":["implement"],"verdict":"ok","how":"llm","note":"diff drafted +3 −1 (below) · 3k tokens","metrics":{"tokens":3000,"cost_cents":3,"files_touched":1,"simulated_writes":1,"lines_added":3,"lines_removed":1},"skip_reason":null,"skip_kind":null,"skip_input":null,"started_at":"2026-10-10T12:00:05Z","finished_at":"2026-10-10T12:00:06Z"}}
                 {"kind":"stage_started","seq":4,"stage_key":"build","display_name":"build"}
-                {"kind":"stage_finished","stage":{"seq":4,"stage_key":"build","display_name":"build","nodes":["build"],"verdict":"ok","how":"replayed","note":"est. 4m 02s (214 similar builds, ±20s)","metrics":{"estimate_ms":242000,"spread_ms":20000,"sample_count":214,"similarity_class":"pool-a · helios-firmware","window_days":30},"skip_reason":null,"started_at":"2026-10-10T12:00:07Z","finished_at":"2026-10-10T12:00:08Z"}}
+                {"kind":"stage_finished","stage":{"seq":4,"stage_key":"build","display_name":"build","nodes":["build"],"verdict":"ok","how":"replayed","note":"est. 4m 02s (214 similar builds, ±20s)","metrics":{"estimate_ms":242000,"spread_ms":20000,"sample_count":214,"similarity_class":"pool-a · helios-firmware","window_days":30},"skip_reason":null,"skip_kind":null,"skip_input":null,"started_at":"2026-10-10T12:00:07Z","finished_at":"2026-10-10T12:00:08Z"}}
                 {"kind":"stage_started","seq":5,"stage_key":"test","display_name":"test"}
-                {"kind":"stage_finished","stage":{"seq":5,"stage_key":"test","display_name":"test","nodes":["test"],"verdict":"ok","how":"replayed","note":"insufficient history — the first real run will measure this (0 similar runs found)","metrics":{"insufficient_history":true,"sample_count":0,"similarity_class":"helios-firmware · tests","window_days":30},"skip_reason":null,"started_at":"2026-10-10T12:00:09Z","finished_at":"2026-10-10T12:00:10Z"}}
-                {"kind":"stage_finished","stage":{"seq":6,"stage_key":"exploit-verify","display_name":"exploit-verify","nodes":["exploit-verify"],"verdict":"skipped","how":"skipped","note":"No routing task named `exploit-verify` exists in this workspace yet.","metrics":{},"skip_reason":"No routing task named `exploit-verify` exists in this workspace yet.","started_at":null,"finished_at":null}}
+                {"kind":"stage_finished","stage":{"seq":5,"stage_key":"test","display_name":"test","nodes":["test"],"verdict":"ok","how":"replayed","note":"insufficient history — the first real run will measure this (0 similar runs found)","metrics":{"insufficient_history":true,"sample_count":0,"similarity_class":"helios-firmware · tests","window_days":30},"skip_reason":null,"skip_kind":null,"skip_input":null,"started_at":"2026-10-10T12:00:09Z","finished_at":"2026-10-10T12:00:10Z"}}
+                {"kind":"stage_finished","stage":{"seq":6,"stage_key":"exploit-verify","display_name":"exploit-verify","nodes":["exploit-verify"],"verdict":"skipped","how":"skipped","note":"No routing task named `exploit-verify` exists in this workspace yet.","metrics":{},"skip_reason":"No routing task named `exploit-verify` exists in this workspace yet.","skip_kind":"unresolved_reference","skip_input":null,"started_at":null,"finished_at":null}}
                 {"kind":"stage_started","seq":7,"stage_key":"review","display_name":"review ×2"}
-                {"kind":"stage_finished","stage":{"seq":7,"stage_key":"review","display_name":"review ×2","nodes":["review-primary","review-second"],"verdict":"ok","how":"llm","note":"both approve · 1 style nit","metrics":{"tokens":3000,"cost_cents":3,"files_touched":1},"skip_reason":null,"started_at":"2026-10-10T12:00:11Z","finished_at":"2026-10-10T12:00:12Z"}}
-                {"kind":"stage_finished","stage":{"seq":8,"stage_key":"open-pr","display_name":"open PR","nodes":["open-pr"],"verdict":"not_reached","how":"deterministic","note":"would open DRAFT PR · not merged (policy)","metrics":{},"skip_reason":null,"started_at":null,"finished_at":null}}
-                {"kind":"done","result":{"dry_run":"5eed008b-0000-4000-8000-000000000001","harness":"dry-run-v1","status":"complete","failure_reason":null,"findings":[],"stages":[{"seq":1,"stage_key":"analyze","display_name":"analyze","nodes":["analyze"],"verdict":"ok","how":"llm","note":"mapped 4 files · skill advisory-db skipped (not defined yet)","metrics":{"tokens":3000,"cost_cents":3,"files_touched":4},"skip_reason":null,"started_at":"2026-10-10T12:00:01Z","finished_at":"2026-10-10T12:00:02Z"},{"seq":2,"stage_key":"plan","display_name":"plan","nodes":["plan"],"verdict":"ok","how":"llm","note":"3 steps · would touch drivers/can/arbitration.c","metrics":{"tokens":1000,"cost_cents":1},"skip_reason":null,"started_at":"2026-10-10T12:00:03Z","finished_at":"2026-10-10T12:00:04Z"},{"seq":3,"stage_key":"implement","display_name":"implement","nodes":["implement"],"verdict":"ok","how":"llm","note":"diff drafted +3 −1 (below) · 3k tokens","metrics":{"tokens":3000,"cost_cents":3,"files_touched":1,"simulated_writes":1,"lines_added":3,"lines_removed":1},"skip_reason":null,"started_at":"2026-10-10T12:00:05Z","finished_at":"2026-10-10T12:00:06Z"},{"seq":4,"stage_key":"build","display_name":"build","nodes":["build"],"verdict":"ok","how":"replayed","note":"est. 4m 02s (214 similar builds, ±20s)","metrics":{"estimate_ms":242000,"spread_ms":20000,"sample_count":214,"similarity_class":"pool-a · helios-firmware","window_days":30},"skip_reason":null,"started_at":"2026-10-10T12:00:07Z","finished_at":"2026-10-10T12:00:08Z"},{"seq":5,"stage_key":"test","display_name":"test","nodes":["test"],"verdict":"ok","how":"replayed","note":"insufficient history — the first real run will measure this (0 similar runs found)","metrics":{"insufficient_history":true,"sample_count":0,"similarity_class":"helios-firmware · tests","window_days":30},"skip_reason":null,"started_at":"2026-10-10T12:00:09Z","finished_at":"2026-10-10T12:00:10Z"},{"seq":6,"stage_key":"exploit-verify","display_name":"exploit-verify","nodes":["exploit-verify"],"verdict":"skipped","how":"skipped","note":"No routing task named `exploit-verify` exists in this workspace yet.","metrics":{},"skip_reason":"No routing task named `exploit-verify` exists in this workspace yet.","started_at":null,"finished_at":null},{"seq":7,"stage_key":"review","display_name":"review ×2","nodes":["review-primary","review-second"],"verdict":"ok","how":"llm","note":"both approve · 1 style nit","metrics":{"tokens":3000,"cost_cents":3,"files_touched":1},"skip_reason":null,"started_at":"2026-10-10T12:00:11Z","finished_at":"2026-10-10T12:00:12Z"},{"seq":8,"stage_key":"open-pr","display_name":"open PR","nodes":["open-pr"],"verdict":"not_reached","how":"deterministic","note":"would open DRAFT PR · not merged (policy)","metrics":{},"skip_reason":null,"started_at":null,"finished_at":null}],"artifacts":[{"kind":"overlay_diff","content":"--- a/drivers/can/arbitration.c\n+++ b/drivers/can/arbitration.c\n@@ -1,6 +1,8 @@\n static void can_handle_tx_error(const struct device *dev)\n {\n \tif (err & CAN_ERR_LOSTARB) {\n-\t\tcan_retry_tx(dev, frame); /* immediate retry floods the bus */\n+\t\tk_sleep(K_USEC(backoff_us)); /* exponential backoff */\n+\t\tbackoff_us = MIN(backoff_us << 1, CAN_ARB_BACKOFF_MAX_US);\n+\t\tcan_retry_tx(dev, frame);\n \t}\n }\n","truncated":false,"original_bytes":395,"path_summary":[{"path":"drivers/can/arbitration.c","added":3,"removed":1}]},{"kind":"plan_excerpt","content":"plan\n1. Add a backoff counter\n2. Sleep before retry\n3. Cap the backoff","truncated":false,"original_bytes":70,"path_summary":[]},{"kind":"review_excerpt","content":"review-primary: approve\nCorrect.\n- style: Name the 50 us constant.\n\nreview-second: approve\nFine.","truncated":false,"original_bytes":96,"path_summary":[]}],"guard_audit":[],"guards_clean":true,"tokens":10000,"cost_cents":10,"duration_ms":13000,"workspace_notes":[],"fetches":6}}
+                {"kind":"stage_finished","stage":{"seq":7,"stage_key":"review","display_name":"review ×2","nodes":["review-primary","review-second"],"verdict":"ok","how":"llm","note":"both approve · 1 style nit","metrics":{"tokens":3000,"cost_cents":3,"files_touched":1},"skip_reason":null,"skip_kind":null,"skip_input":null,"started_at":"2026-10-10T12:00:11Z","finished_at":"2026-10-10T12:00:12Z"}}
+                {"kind":"stage_finished","stage":{"seq":8,"stage_key":"open-pr","display_name":"open PR","nodes":["open-pr"],"verdict":"not_reached","how":"deterministic","note":"would open DRAFT PR · not merged (policy)","metrics":{},"skip_reason":null,"skip_kind":null,"skip_input":null,"started_at":null,"finished_at":null}}
+                {"kind":"done","result":{"dry_run":"5eed008b-0000-4000-8000-000000000001","harness":"dry-run-v1","status":"complete","failure_reason":null,"findings":[],"stages":[{"seq":1,"stage_key":"analyze","display_name":"analyze","nodes":["analyze"],"verdict":"ok","how":"llm","note":"mapped 4 files · skill advisory-db skipped (not defined yet)","metrics":{"tokens":3000,"cost_cents":3,"files_touched":4},"skip_reason":null,"skip_kind":null,"skip_input":null,"started_at":"2026-10-10T12:00:01Z","finished_at":"2026-10-10T12:00:02Z"},{"seq":2,"stage_key":"plan","display_name":"plan","nodes":["plan"],"verdict":"ok","how":"llm","note":"3 steps · would touch drivers/can/arbitration.c","metrics":{"tokens":1000,"cost_cents":1},"skip_reason":null,"skip_kind":null,"skip_input":null,"started_at":"2026-10-10T12:00:03Z","finished_at":"2026-10-10T12:00:04Z"},{"seq":3,"stage_key":"implement","display_name":"implement","nodes":["implement"],"verdict":"ok","how":"llm","note":"diff drafted +3 −1 (below) · 3k tokens","metrics":{"tokens":3000,"cost_cents":3,"files_touched":1,"simulated_writes":1,"lines_added":3,"lines_removed":1},"skip_reason":null,"skip_kind":null,"skip_input":null,"started_at":"2026-10-10T12:00:05Z","finished_at":"2026-10-10T12:00:06Z"},{"seq":4,"stage_key":"build","display_name":"build","nodes":["build"],"verdict":"ok","how":"replayed","note":"est. 4m 02s (214 similar builds, ±20s)","metrics":{"estimate_ms":242000,"spread_ms":20000,"sample_count":214,"similarity_class":"pool-a · helios-firmware","window_days":30},"skip_reason":null,"skip_kind":null,"skip_input":null,"started_at":"2026-10-10T12:00:07Z","finished_at":"2026-10-10T12:00:08Z"},{"seq":5,"stage_key":"test","display_name":"test","nodes":["test"],"verdict":"ok","how":"replayed","note":"insufficient history — the first real run will measure this (0 similar runs found)","metrics":{"insufficient_history":true,"sample_count":0,"similarity_class":"helios-firmware · tests","window_days":30},"skip_reason":null,"skip_kind":null,"skip_input":null,"started_at":"2026-10-10T12:00:09Z","finished_at":"2026-10-10T12:00:10Z"},{"seq":6,"stage_key":"exploit-verify","display_name":"exploit-verify","nodes":["exploit-verify"],"verdict":"skipped","how":"skipped","note":"No routing task named `exploit-verify` exists in this workspace yet.","metrics":{},"skip_reason":"No routing task named `exploit-verify` exists in this workspace yet.","skip_kind":"unresolved_reference","skip_input":null,"started_at":null,"finished_at":null},{"seq":7,"stage_key":"review","display_name":"review ×2","nodes":["review-primary","review-second"],"verdict":"ok","how":"llm","note":"both approve · 1 style nit","metrics":{"tokens":3000,"cost_cents":3,"files_touched":1},"skip_reason":null,"skip_kind":null,"skip_input":null,"started_at":"2026-10-10T12:00:11Z","finished_at":"2026-10-10T12:00:12Z"},{"seq":8,"stage_key":"open-pr","display_name":"open PR","nodes":["open-pr"],"verdict":"not_reached","how":"deterministic","note":"would open DRAFT PR · not merged (policy)","metrics":{},"skip_reason":null,"skip_kind":null,"skip_input":null,"started_at":null,"finished_at":null}],"artifacts":[{"kind":"overlay_diff","content":"--- a/drivers/can/arbitration.c\n+++ b/drivers/can/arbitration.c\n@@ -1,6 +1,8 @@\n static void can_handle_tx_error(const struct device *dev)\n {\n \tif (err & CAN_ERR_LOSTARB) {\n-\t\tcan_retry_tx(dev, frame); /* immediate retry floods the bus */\n+\t\tk_sleep(K_USEC(backoff_us)); /* exponential backoff */\n+\t\tbackoff_us = MIN(backoff_us << 1, CAN_ARB_BACKOFF_MAX_US);\n+\t\tcan_retry_tx(dev, frame);\n \t}\n }\n","truncated":false,"original_bytes":395,"path_summary":[{"path":"drivers/can/arbitration.c","added":3,"removed":1}]},{"kind":"plan_excerpt","content":"plan\n1. Add a backoff counter\n2. Sleep before retry\n3. Cap the backoff","truncated":false,"original_bytes":70,"path_summary":[]},{"kind":"review_excerpt","content":"review-primary: approve\nCorrect.\n- style: Name the 50 us constant.\n\nreview-second: approve\nFine.","truncated":false,"original_bytes":96,"path_summary":[]}],"guard_audit":[],"guards_clean":true,"tokens":10000,"cost_cents":10,"duration_ms":13000,"workspace_notes":[],"fetches":6}}
         "401":
           $ref: "#/components/responses/Unauthorized"
         "422":
@@ -5059,6 +5069,30 @@ components:
           type: object
         skip_reason:
           description: Why it was skipped; set exactly when `verdict` is `skipped`.
+          type:
+          - string
+          - 'null'
+        skip_kind:
+          description: 'Which sort of skip it was; set exactly when `verdict` is `skipped`. `branch_not_taken`:
+            a branch edge''s condition was false. `unreached`: nothing on the walk leads to the stage
+            (the trigger did not fire, or no edge into it was taken). `unresolved_reference`: a model
+            stage whose route did not resolve (decision W7). `nothing_to_do`: the stage ran and answered
+            that the input it works on does not exist for this ticket — its `metrics` are what it spent.'
+          enum:
+          - branch_not_taken
+          - unreached
+          - unresolved_reference
+          - nothing_to_do
+          - null
+          type:
+          - string
+          - 'null'
+        skip_input:
+          description: The input the stage needed and the ticket lacks, spelled as the ticket label that
+            would carry it (`cve`). Only a `nothing_to_do` skip names one, and only when the stage said
+            which.
+          maxLength: 64
+          pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
           type:
           - string
           - 'null'

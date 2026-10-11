@@ -13,15 +13,39 @@ from ouroboros_engine.copilot.tools import (
     MANIFEST,
     OPERATION_KINDS,
     PROPOSE_DRY_RUN,
+    PROPOSE_SUGGESTION,
     READ_CATALOG,
     READ_DRAFT,
     READ_SKILLS,
     WRITE_TOOLS,
     AskUserArguments,
+    ProposeSuggestionArguments,
     RemoveEdgeArguments,
     manifest_text,
     tool_named,
 )
+
+#: The suggestion mockup 20 shows: put the PoC stage behind a branch on the `cve` label.
+_SUGGESTION: dict = {
+    "title": "Skip exploit-verify when the ticket has no CVE",
+    "body": "exploit-verify had nothing to do on #489: the ticket carries no cve label.",
+    "ops": [
+        {"kind": "remove_edge", "params": {"from": "test", "to": "exploit-verify"}},
+        {
+            "kind": "add_edge",
+            "params": {
+                "edge": {
+                    "from": "test",
+                    "to": "exploit-verify",
+                    "kind": "branch",
+                    "condition": {"kind": "labels", "op": "any", "values": ["cve"]},
+                }
+            },
+        },
+    ],
+}
+
+_OP: dict = {"kind": "remove_stage", "params": {"id": "x"}}
 
 
 def test_the_only_write_tools_are_the_typed_operations() -> None:
@@ -43,6 +67,7 @@ def test_no_read_question_or_proposal_writes() -> None:
         READ_SKILLS,
         LOOKUP_TICKETS,
         PROPOSE_DRY_RUN,
+        PROPOSE_SUGGESTION,
     ):
         tool = tool_named(name)
         assert tool is not None, name
@@ -107,6 +132,58 @@ def test_remove_edge_speaks_the_document_spelling() -> None:
     assert parsed.model_dump(by_alias=True) == {"from": "test", "to": "review-primary"}
 
 
+def test_the_manifest_lists_the_suggestion_proposal_after_the_dry_run_proposal() -> (
+    None
+):
+    names = [tool.name for tool in MANIFEST]
+
+    assert names[-2:] == [PROPOSE_DRY_RUN, PROPOSE_SUGGESTION]
+    assert tool_named(PROPOSE_SUGGESTION).arguments is ProposeSuggestionArguments
+    text = manifest_text()
+    assert "- propose_suggestion:" in text
+    for field in ("title", "body", "ops"):
+        assert f"- {field} (required)" in text
+
+
+def test_a_suggestion_carries_a_title_a_body_and_typed_operations() -> None:
+    parsed = ProposeSuggestionArguments.model_validate(_SUGGESTION)
+
+    assert parsed.model_dump() == _SUGGESTION
+    # What an operation's params hold is the DSL validator's question, not this model's.
+    ProposeSuggestionArguments.model_validate(
+        {**_SUGGESTION, "ops": [{"kind": "set_trigger", "params": {"anything": 1}}]}
+    )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"title": ""},
+        {"title": "   "},
+        {"title": "t" * 201},
+        {"body": ""},
+        {"body": " \n "},
+        {"body": "b" * 2001},
+        {"ops": []},
+        {"ops": [_OP] * 51},
+        {"ops": [{"kind": "set_guard", "params": {}}]},
+        {"ops": [{"kind": "publish", "params": {}}]},
+        {"ops": [{"kind": "remove_stage"}]},
+        {"ops": [{**_OP, "confidence": 0.9}]},
+    ],
+)
+def test_a_suggestion_out_of_bounds_is_refused(change: dict) -> None:
+    with pytest.raises(ValidationError):
+        ProposeSuggestionArguments.model_validate({**_SUGGESTION, **change})
+
+
+def test_a_suggestion_may_carry_fifty_operations_and_the_longest_texts() -> None:
+    parsed = ProposeSuggestionArguments.model_validate(
+        {"title": "t" * 200, "body": "b" * 2000, "ops": [_OP] * 50}
+    )
+    assert len(parsed.ops) == 50
+
+
 def test_an_unknown_tool_is_none() -> None:
     assert tool_named("publish") is None
 
@@ -127,4 +204,9 @@ def _minimal(name: str) -> dict:
         READ_SKILLS: {},
         LOOKUP_TICKETS: {},
         PROPOSE_DRY_RUN: {"ticket": "#489", "reason": "edge case"},
+        PROPOSE_SUGGESTION: {
+            "title": "t",
+            "body": "b",
+            "ops": [{"kind": "remove_stage", "params": {"id": "test"}}],
+        },
     }[name]

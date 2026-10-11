@@ -141,6 +141,8 @@ def test_a_skipped_row_has_a_reason_exactly_when_it_is_skipped():
     for row in done.stages:
         assert (row.verdict == "skipped") == (row.how == "skipped")
         assert (row.verdict == "skipped") == (row.skip_reason is not None)
+        assert (row.verdict == "skipped") == (row.skip_kind is not None)
+        assert row.skip_input is None
         assert row.verdict == "not_reached" or row.note.strip()
 
 
@@ -513,6 +515,7 @@ def test_an_unresolved_stage_kind_skips_with_its_warning_and_the_run_goes_on():
         W7,
         W7,
     )
+    assert (skipped.skip_kind, skipped.skip_input) == ("unresolved_reference", None)
     assert "exploit-verify" not in bench.model.stages_called()
     assert done.status == "complete"
     # The stages after it still ran.
@@ -531,6 +534,7 @@ def test_a_stage_with_no_resolution_at_all_is_treated_as_unresolved():
     assert plan.skip_reason == (
         "no route resolves for stage `plan` — its task kind or alias is not in the catalog yet"
     )
+    assert plan.skip_kind == "unresolved_reference"
     assert done.status == "complete"
 
 
@@ -584,6 +588,7 @@ def test_a_false_predicate_skips_its_stage_with_the_composed_reason():
         "the branch from `test` is not taken, because "
     )
     assert "`cve`" in skipped.skip_reason
+    assert (skipped.skip_kind, skipped.skip_input) == ("branch_not_taken", None)
     assert "exploit-verify" not in bench.model.stages_called()
     assert done.status == "complete"
     assert next(r for r in done.stages if r.stage_key == "review").verdict == "ok"
@@ -641,6 +646,55 @@ def test_a_paths_predicate_is_tested_against_the_simulated_diff():
         "the branch from `test` is not taken, because no path the simulated diff changes "
         "matches `drivers/can/**`"
     )
+    assert skipped.skip_kind == "branch_not_taken"
+
+
+def test_a_stage_behind_a_skipped_one_is_unreached_not_a_branch_decision():
+    doc = _branching()
+    doc["nodes"].append(
+        _llm_stage("poc-report", "Write up the proof-of-concept result.")
+    )
+    doc["edges"].append(
+        {"from": "exploit-verify", "to": "poc-report", "kind": "default"}
+    )
+    doc["edges"].append({"from": "poc-report", "to": "open-pr", "kind": "default"})
+    assert validate_workflow_document(doc).valid
+    stages = {
+        **STAGES,
+        "exploit-verify": {"alias": "coder-max"},
+        "poc-report": {"alias": "coder-std"},
+    }
+    bench = Bench()
+    _, done = bench.run(definition=doc, stages=stages)
+    by_key = {r.stage_key: r for r in done.stages}
+
+    assert by_key["exploit-verify"].skip_kind == "branch_not_taken"
+    report = by_key["poc-report"]
+    assert (report.verdict, report.how, report.skip_kind, report.skip_input) == (
+        "skipped",
+        "skipped",
+        "unreached",
+        None,
+    )
+    assert report.skip_reason == "nothing on the walk leads to this stage"
+    assert "poc-report" not in bench.model.stages_called()
+
+
+def _llm_stage(node_id: str, prompt: str) -> dict:
+    """One more model stage for a draft."""
+    return {
+        "id": node_id,
+        "type": "llm",
+        "title": node_id,
+        "position": {"x": 0, "y": 0},
+        "config": {
+            "mode": "prompt",
+            "prompt_template": prompt,
+            "routing": {"pinned_model": {"alias": "coder-std"}},
+            "limits": {"max_retries": 1, "token_budget": 200000},
+            "permissions": {"push_fixup": False, "touch_ci": False},
+        },
+    }
 
 
 def test_deep_evaluate_reads_real_changed_paths_and_none_inverts():
@@ -679,7 +733,201 @@ def test_a_trigger_that_does_not_fire_skips_every_stage_and_calls_nothing():
     assert {r.skip_reason for r in done.stages} == {
         "the trigger does not fire for #490"
     }
+    assert {r.skip_kind for r in done.stages} == {"unreached"}
     assert done.artifacts == []
+
+
+# -- a stage with nothing to do (CD.5, #563) --------------------------------------------
+
+
+def _nothing_to_do(**report) -> tuple[Bench, object]:
+    """The seeded run with a resolved PoC stage that answers it has nothing to do."""
+    script = happy()
+    script["exploit-verify"] = [
+        tool("search", query="CVE-"),
+        result(verdict="nothing_to_do", **report),
+    ]
+    bench = Bench(model=ScriptedModel(script))
+    _, done = bench.run(stages={**STAGES, "exploit-verify": {"alias": "coder-max"}})
+    return bench, done
+
+
+def test_a_stage_with_nothing_to_do_is_skipped_naming_the_missing_input():
+    bench, done = _nothing_to_do(missing="CVE")
+    skipped = next(r for r in done.stages if r.stage_key == "exploit-verify")
+    reason = "the stage had nothing to do — the ticket carries no `cve`"
+
+    assert (skipped.verdict, skipped.how, skipped.note, skipped.skip_reason) == (
+        "skipped",
+        "skipped",
+        reason,
+        reason,
+    )
+    assert (skipped.skip_kind, skipped.skip_input) == ("nothing_to_do", "cve")
+    # It ran: what it spent is real, and stays on the row and in the totals.
+    assert "exploit-verify" in bench.model.stages_called()
+    assert skipped.metrics["tokens"] == 2000
+    assert skipped.metrics["cost_cents"] == 2
+    assert skipped.started_at is not None and skipped.finished_at is not None
+    assert done.tokens == 12000
+
+
+def test_the_walk_goes_on_past_a_stage_with_nothing_to_do():
+    bench, done = _nothing_to_do(missing="cve")
+
+    assert done.status == "complete"
+    assert done.failure_reason is None
+    assert bench.model.stages_called()[-3:] == [
+        "exploit-verify",
+        "review-primary",
+        "review-second",
+    ]
+    review = next(r for r in done.stages if r.stage_key == "review")
+    assert (review.verdict, review.note) == ("ok", "both approve · 1 style nit")
+    assert done.stages[-1].verdict == "not_reached"
+    # A later stage is told the earlier one had nothing to do, and for want of what.
+    told = next(c for c in bench.model.calls if c.stage_key == "review-primary")
+    assert (
+        "The stage had nothing to do — the ticket carries no `cve`."
+        in (told.messages[0]["content"])
+    )
+
+
+def test_a_stage_with_nothing_to_do_and_no_named_input_says_only_that():
+    _, done = _nothing_to_do()
+    skipped = next(r for r in done.stages if r.stage_key == "exploit-verify")
+
+    assert (skipped.skip_kind, skipped.skip_input) == ("nothing_to_do", None)
+    assert skipped.skip_reason == skipped.note == "the stage had nothing to do"
+
+
+def test_an_input_no_slug_can_be_made_of_is_left_unnamed():
+    _, done = _nothing_to_do(missing="???")
+    skipped = next(r for r in done.stages if r.stage_key == "exploit-verify")
+
+    assert (skipped.skip_kind, skipped.skip_input) == ("nothing_to_do", None)
+    assert skipped.skip_reason == "the stage had nothing to do"
+
+
+def test_the_stages_own_summary_is_the_reason_when_it_gives_one():
+    _, done = _nothing_to_do(
+        summary="No CVE is named, so no PoC exists.", missing="cve"
+    )
+    skipped = next(r for r in done.stages if r.stage_key == "exploit-verify")
+
+    assert skipped.skip_reason == skipped.note == "No CVE is named, so no PoC exists."
+    assert (skipped.skip_kind, skipped.skip_input) == ("nothing_to_do", "cve")
+
+
+def test_parallel_stages_are_skipped_only_when_every_one_had_nothing_to_do():
+    script = happy()
+    script["review-second"] = [result(verdict="nothing_to_do", missing="diff")]
+    _, done = Bench(model=ScriptedModel(script)).run()
+    review = next(r for r in done.stages if r.stage_key == "review")
+    assert (review.verdict, review.how, review.skip_kind) == ("ok", "llm", None)
+
+    script = happy()
+    for reviewer in ("review-primary", "review-second"):
+        script[reviewer] = [result(verdict="nothing_to_do", missing="diff")]
+    _, done = Bench(model=ScriptedModel(script)).run()
+    review = next(r for r in done.stages if r.stage_key == "review")
+    assert (review.verdict, review.how, review.skip_kind, review.skip_input) == (
+        "skipped",
+        "skipped",
+        "nothing_to_do",
+        "diff",
+    )
+    assert review.nodes == ["review-primary", "review-second"]
+
+
+# -- the applied suggestion: a decision on the `cve` label (CD.5, #563) -----------------
+
+
+def _decided() -> dict:
+    """The seeded draft after the suggestion is applied: ``test`` leads to a decision."""
+    doc = copy.deepcopy(definition())
+    doc["edges"] = [
+        e for e in doc["edges"] if "exploit-verify" not in (e["from"], e["to"])
+    ]
+    has_cve = {"kind": "labels", "op": "any", "values": ["cve"]}
+    no_cve = {"kind": "labels", "op": "none", "values": ["cve"]}
+    doc["nodes"].append(
+        {
+            "id": "has-cve",
+            "type": "flow",
+            "title": "has CVE?",
+            "position": {"x": 0, "y": 0},
+            "config": {"kind": "decision", "predicate": has_cve},
+        }
+    )
+    doc["edges"].append({"from": "test", "to": "has-cve", "kind": "default"})
+    doc["edges"].append(
+        {
+            "from": "has-cve",
+            "to": "exploit-verify",
+            "kind": "branch",
+            "label": "cve",
+            "condition": has_cve,
+        }
+    )
+    for reviewer in ("review-primary", "review-second"):
+        doc["edges"].append(
+            {
+                "from": "has-cve",
+                "to": reviewer,
+                "kind": "branch",
+                "label": "no cve",
+                "condition": no_cve,
+            }
+        )
+        doc["edges"].append(
+            {"from": "exploit-verify", "to": reviewer, "kind": "default"}
+        )
+    return doc
+
+
+def test_a_subsequent_dry_run_honours_the_new_predicate():
+    assert validate_workflow_document(_decided()).valid
+    bench = Bench()
+    _, done = bench.run(
+        definition=_decided(),
+        stages={**STAGES, "exploit-verify": {"alias": "coder-max"}},
+    )
+    skipped = next(r for r in done.stages if r.stage_key == "exploit-verify")
+
+    assert (skipped.verdict, skipped.how) == ("skipped", "skipped")
+    assert (skipped.skip_kind, skipped.skip_input) == ("branch_not_taken", None)
+    assert skipped.skip_reason.startswith(
+        "the branch from `has-cve` is not taken, because "
+    )
+    assert skipped.metrics == {}
+    # No model call is made for it, and the decision is not a row of its own.
+    assert all(call.stage_key != "exploit-verify" for call in bench.model.calls)
+    assert "has-cve" not in {r.stage_key for r in done.stages}
+    assert done.status == "complete"
+    assert next(r for r in done.stages if r.stage_key == "review").verdict == "ok"
+
+
+def test_the_new_predicate_runs_the_stage_for_a_ticket_that_has_the_label():
+    script = happy()
+    script["exploit-verify"] = [result(summary="PoC no longer reproduces.")]
+    ticket = {
+        "external_key": "#501",
+        "source": "github",
+        "labels": ["security", "cve"],
+        "estimate": None,
+        "title": "CVE-2026-1234 in the CAN stack",
+    }
+    bench = Bench(model=ScriptedModel(script))
+    _, done = bench.run(
+        definition=_decided(),
+        stages={**STAGES, "exploit-verify": {"alias": "coder-max"}},
+        ticket=ticket,
+    )
+    ran = next(r for r in done.stages if r.stage_key == "exploit-verify")
+
+    assert (ran.verdict, ran.how, ran.skip_kind) == ("ok", "llm", None)
+    assert next(r for r in done.stages if r.stage_key == "review").verdict == "ok"
 
 
 # -- budgets ----------------------------------------------------------------------------

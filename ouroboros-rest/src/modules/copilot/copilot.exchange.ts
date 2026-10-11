@@ -71,6 +71,18 @@ export const READ_CATALOG = "read_catalog";
 export const READ_SKILLS = "read_skills";
 export const LOOKUP_TICKETS = "lookup_tickets";
 export const PROPOSE_DRY_RUN = "propose_dry_run";
+export const PROPOSE_SUGGESTION = "propose_suggestion";
+
+/** A suggestion the copilot proposed after a dry run, as its tool call carried it (CD.5, #563). */
+export interface SuggestionProposal {
+  readonly title: string;
+  readonly body: string;
+  readonly ops: readonly ProposedOperation[];
+}
+
+/** What the model is told a recorded suggestion is — and is not. */
+export const SUGGESTION_RECORDED =
+  "recorded as a suggestion under the dry run, labelled as yours and unscored — the user can Apply, Explain or Ignore it. Do not state a confidence for it.";
 
 /** The draft as the loop holds it between operations. */
 export interface DraftState {
@@ -113,6 +125,16 @@ export interface DraftPort {
     query: string,
     limit: number,
   ): Promise<readonly { key: string; title: string; labels: readonly string[]; reason?: string }[]>;
+  /**
+   * Record a suggestion under the conversation's newest finished dry run (CD.5, #563). Its
+   * operations are validated against the draft as Apply would apply them; nothing is applied.
+   *
+   * @param proposal - The title, the body and the exact operations.
+   * @returns Recorded, or refused with the validator's sentence.
+   */
+  suggest(
+    proposal: SuggestionProposal,
+  ): Promise<{ readonly ok: true } | { readonly ok: false; readonly message: string }>;
 }
 
 /** What the loop needs of the engine. */
@@ -417,6 +439,34 @@ export async function* runExchange(
           result("proposal recorded — the user can start the dry run from the conversation.");
           break;
         }
+        case PROPOSE_SUGGESTION: {
+          const proposal: SuggestionProposal = {
+            title: argumentText(call.arguments.title),
+            body: argumentText(call.arguments.body),
+            ops: Array.isArray(call.arguments.ops)
+              ? call.arguments.ops.filter(isProposedOperation)
+              : [],
+          };
+          // The trace names the suggestion by its title; the operations are on the suggestion.
+          const recorded = { kind: PROPOSE_SUGGESTION, params: { title: proposal.title } };
+          const outcome = await drafts.suggest(proposal);
+          if (!outcome.ok) {
+            trace.operations.push({
+              op: recorded,
+              outcome: "bounced",
+              validator_message: outcome.message,
+            });
+            yield operationEvent(recorded, "bounced", outcome.message);
+            bounces += 1;
+            lastBounce = outcome.message;
+            result(outcome.message, false);
+            break;
+          }
+          trace.operations.push({ op: recorded, outcome: "proposed" });
+          yield operationEvent(recorded, "proposed", null);
+          result(SUGGESTION_RECORDED);
+          break;
+        }
         default: {
           const message = `there is no tool named "${call.tool}".`;
           bounces += 1;
@@ -503,6 +553,23 @@ function operationEvent(
     etag: null,
     warnings: [],
   };
+}
+
+/**
+ * Whether a tool argument is an operation in the `{kind, params}` envelope.
+ *
+ * @param value - One element of a `propose_suggestion` call's `ops`.
+ * @returns `true` when it names a kind and carries a params object.
+ */
+function isProposedOperation(value: unknown): value is ProposedOperation {
+  const candidate = value as { kind?: unknown; params?: unknown } | null;
+  return (
+    candidate !== null &&
+    typeof candidate === "object" &&
+    typeof candidate.kind === "string" &&
+    candidate.params !== null &&
+    typeof candidate.params === "object"
+  );
 }
 
 /**

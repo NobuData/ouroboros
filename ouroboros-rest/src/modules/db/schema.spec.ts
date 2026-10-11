@@ -521,7 +521,11 @@ describe("TABLE_COLUMNS", () => {
     // The hundred-and-sixty-eighth to seventieth are V111's `dry_runs`, `dry_run_stages` and
     // `dry_run_artifacts`, which the dry-run orchestrator (#562) is the first code to read and
     // write.
-    expect(TABLE_NAMES).toHaveLength(170);
+    //
+    // The hundred-and-seventy-first and second are V114's `dry_run_suggestions` and
+    // `review_replay_pairs`, which the suggestion rule pack (#563) is the first code to read and
+    // write.
+    expect(TABLE_NAMES).toHaveLength(172);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

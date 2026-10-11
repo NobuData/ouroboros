@@ -6964,6 +6964,125 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workflows/{id}/dry-runs/{dryRunId}/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A dry run's suggestions
+         * @description The callouts under the dry-run card (CD.5,
+         *     [#563](https://github.com/NobuData/ouroboros/issues/563)), in card order.
+         *
+         *     A suggestion is filed when the run ends `complete` or `budget_stopped`, by a **versioned
+         *     rule pack** reading the run's own rows — `skipped-nothing-to-do`, `budget-proximity`,
+         *     `unresolved-reference-persists` and `reviewer-disagreement` (which produces nothing
+         *     until review replays exist, CF.5). Each rule's suggestion carries `source` `rule`, its
+         *     `ruleId` and `ruleVersion`, and a `confidence` that is rule strength × sample adequacy,
+         *     with both factors in `confidenceBasis.inputs`.
+         *
+         *     The copilot may add its own after the run. Those carry `source` `llm`, no rule, and
+         *     `confidence` `null` — their operations are validated, their confidence is never scored.
+         *
+         *     `applicable` is `false` on an advisory suggestion, which proposes no operation.
+         *
+         *     Every member of the workspace.
+         */
+        get: operations["listDryRunSuggestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/{id}/dry-runs/{dryRunId}/suggestions/{suggestionId}/explanation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Explain a suggestion
+         * @description The derivation rather than a restatement — the rule (as the running pack describes it:
+         *     when it fires, what it proposes, how each scoring factor is chosen) and the version that
+         *     made the suggestion, the `evidence` it computed (stage keys, counts, samples) and the
+         *     scoring inputs behind the confidence.
+         *
+         *     On a copilot suggestion `rule` and `confidence` are `null`, and the basis says
+         *     `llm_unscored` with the alias that proposed it. A rule this pack no longer holds keeps
+         *     its id and version, with its descriptions `null`.
+         *
+         *     Every member of the workspace.
+         */
+        get: operations["explainDryRunSuggestion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/{id}/dry-runs/{dryRunId}/suggestions/{suggestionId}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply a suggestion to the draft
+         * @description Applies the suggestion's `proposedOps` to the workflow's shared draft as **one batch**
+         *     through the same write path as a canvas edit, recorded with the `suggestion` actor and
+         *     this suggestion's id. The draft's revision moves on by one (`v0.3` → `v0.4`), so the
+         *     next dry run tests the changed draft; the suggestion becomes `applied` and names the
+         *     batch.
+         *
+         *     The operations were computed when the suggestion was made. Each is checked against the
+         *     draft **as it is now**: a draft that moved on without disturbing what they touch still
+         *     applies; one where an operation no longer fits answers `409`
+         *     `dry_run_suggestion_conflict` and **nothing is written**.
+         *
+         *     Owner, admin and member.
+         */
+        post: operations["applyDryRunSuggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflows/{id}/dry-runs/{dryRunId}/suggestions/{suggestionId}/ignore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ignore a suggestion
+         * @description Settles the suggestion as `ignored`. It stays in the record, and the same rule does not
+         *     propose the identical suggestion again on a later dry run of the **same draft
+         *     revision**; once the draft moves on, the question is asked afresh.
+         *
+         *     Owner, admin and member.
+         */
+        post: operations["ignoreDryRunSuggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/skills": {
         parameters: {
             query?: never;
@@ -25610,6 +25729,16 @@ export interface components {
             };
             /** @description Why a skipped stage had nothing to do — set exactly when `verdict` is `skipped`. */
             skipReason: string | null;
+            /**
+             * @description Why it skipped, as a value — a branch routed around it, nothing on the walk leads to
+             *     it, a skill, task route or alias it names does not resolve, or it ran into nothing
+             *     to do. `null` unless `verdict` is `skipped`, and on a row recorded before this
+             *     field existed.
+             * @enum {string|null}
+             */
+            skipKind: "branch_not_taken" | "unreached" | "unresolved_reference" | "nothing_to_do" | null;
+            /** @description On a `nothing_to_do` skip, the ticket label that would have carried the input the stage needed (`cve`). */
+            skipInput: string | null;
             /** Format: date-time */
             startedAt: string | null;
             /** Format: date-time */
@@ -25864,6 +25993,128 @@ export interface components {
              * @constant
              */
             blockedCallFailsRun: true;
+        };
+        /**
+         * DraftOperationEnvelope
+         * @description One typed operation on a workflow's shared draft — `add_stage{node}`, `set_stage{node}`,
+         *     `remove_stage{id}`, `add_edge{edge}`, `remove_edge{from,to}` or `set_trigger{trigger}`,
+         *     with the workflow language's own objects as `params`.
+         */
+        DraftOperationEnvelope: {
+            /** @enum {string} */
+            kind: "add_stage" | "set_stage" | "remove_stage" | "add_edge" | "remove_edge" | "set_trigger";
+            params: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * DryRunConfidenceBasis
+         * @description How a suggestion's confidence was scored, and from what. A rule's basis has `method`
+         *     `rule_strength_x_sample_adequacy` and `inputs` holding `rule`, `rule_version`,
+         *     `rule_strength`, `sample_adequacy` and whatever else the rule counted — the confidence
+         *     is `round(rule_strength × sample_adequacy × 100)`. A copilot suggestion's has `method`
+         *     `llm_unscored` and names the alias that proposed it.
+         */
+        DryRunConfidenceBasis: {
+            method: string;
+            inputs: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * DryRunSuggestion
+         * @description One callout under a dry run (CD.5). `source` says who made it: `rule` — computed by the
+         *     rule pack, with `ruleId`, `ruleVersion` and a `confidence`; `llm` — proposed by the
+         *     copilot, validated as operations, with no rule and no confidence.
+         */
+        DryRunSuggestion: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            dryRunId: string;
+            /** @enum {string} */
+            source: "rule" | "llm";
+            /** @description The rule that made it — `null` on a copilot suggestion. */
+            ruleId: string | null;
+            ruleVersion: number | null;
+            title: string;
+            body: string;
+            /** @description 0–100 on a rule's suggestion; `null` exactly on a copilot suggestion, which is never scored. */
+            confidence: number | null;
+            confidenceBasis: components["schemas"]["DryRunConfidenceBasis"];
+            /** @description Whether Apply has anything to do — `false` on an advisory suggestion. */
+            applicable: boolean;
+            /** @description The operations Apply executes, computed when the suggestion was made. Empty on an advisory suggestion. */
+            proposedOps: components["schemas"]["DraftOperationEnvelope"][];
+            /**
+             * @description Written `open`, and settled once.
+             * @enum {string}
+             */
+            status: "open" | "applied" | "ignored";
+            /**
+             * Format: uuid
+             * @description The draft operation batch an Apply produced.
+             */
+            appliedOpBatchId: string | null;
+            /** Format: date-time */
+            resolvedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /**
+         * DryRunSuggestions
+         * @description A dry run's suggestions, in card order — oldest first, the most confident first, the copilot's unscored ones last.
+         */
+        DryRunSuggestions: {
+            /** Format: uuid */
+            dryRunId: string;
+            suggestions: components["schemas"]["DryRunSuggestion"][];
+        };
+        /**
+         * DryRunSuggestionApplied
+         * @description What Apply answers — the suggestion, settled, and the draft it produced.
+         */
+        DryRunSuggestionApplied: {
+            suggestion: components["schemas"]["DryRunSuggestion"];
+            /** @description The draft's new revision — the `4` of `v0.4`. */
+            draftRev: number;
+            /** @description `v0.4`, for the toast. */
+            draftLabel: string;
+            /** @description The draft's new etag, for whichever editor is open. */
+            etag: string;
+        };
+        /**
+         * DryRunSuggestionExplanation
+         * @description A suggestion's derivation — the rule and its version, the evidence it computed and the scoring inputs.
+         */
+        DryRunSuggestionExplanation: {
+            /** Format: uuid */
+            suggestionId: string;
+            /** @enum {string} */
+            source: "rule" | "llm";
+            /** @description The rule, as the running pack describes it — `null` on a copilot suggestion. */
+            rule: {
+                id: string;
+                /** @description The rule version that made this suggestion. */
+                version: number;
+                /** @description The version of the rule pack this service runs. */
+                packVersion: number;
+                /** @description When the rule fires — `null` when the pack no longer holds the rule. */
+                firesWhen: string | null;
+                proposes: string | null;
+                /** @description How each factor of the confidence is chosen. */
+                scoring: {
+                    strength: string;
+                    adequacy: string;
+                } | null;
+            } | null;
+            /** @description What was computed — stage keys, counts, samples. */
+            evidence: {
+                [key: string]: unknown;
+            };
+            confidence: number | null;
+            confidenceBasis: components["schemas"]["DryRunConfidenceBasis"];
+            proposedOps: components["schemas"]["DraftOperationEnvelope"][];
         };
         /**
          * DryRunStreamEvent
@@ -30620,6 +30871,12 @@ export interface components {
         CopilotSessionId: string;
         /** @description The copilot reply whose question is being answered — `copilot_messages.id`, a uuid. */
         CopilotMessageId: string;
+        /**
+         * @description The suggestion — `dry_run_suggestions.id`. Anything that is not a uuid is a `422`; a
+         *     well-formed id that names no suggestion of this dry run is a `404`.
+         * @example 5eed008c-0000-4000-8000-000000000001
+         */
+        DryRunSuggestionId: string;
         /**
          * @description The dry run — `dry_runs.id`. Anything that is not a uuid is a `422`; a well-formed id
          *     that names no dry run of this workflow for this caller is a `404`.
@@ -63242,6 +63499,8 @@ export interface operations {
                      *             "lines_removed": 9
                      *           },
                      *           "skipReason": null,
+                     *           "skipKind": null,
+                     *           "skipInput": null,
                      *           "startedAt": "2026-10-08T15:05:40.000Z",
                      *           "finishedAt": "2026-10-08T15:06:50.000Z"
                      *         },
@@ -63260,6 +63519,8 @@ export interface operations {
                      *             "similarity_class": "helios-firmware · pool-a · docker · zephyr-sdk west build"
                      *           },
                      *           "skipReason": null,
+                     *           "skipKind": null,
+                     *           "skipInput": null,
                      *           "startedAt": "2026-10-08T15:06:50.000Z",
                      *           "finishedAt": "2026-10-08T15:06:51.000Z"
                      *         }
@@ -63393,7 +63654,7 @@ export interface operations {
                      *     data: {"kind":"stage_started","seq":4,"stageKey":"build","displayName":"build"}
                      *
                      *     event: stage_finished
-                     *     data: {"kind":"stage_finished","stage":{"seq":4,"stageKey":"build","displayName":"build","verdict":"ok","how":"replayed","howLabel":"replayed from history","note":"est. 4m 02s (214 similar builds, ±20s)","metrics":{"estimate_ms":242000,"sample_count":214,"spread_ms":20000,"similarity_class":"x"},"skipReason":null,"startedAt":"2026-10-08T15:06:50.000Z","finishedAt":"2026-10-08T15:06:51.000Z"}}
+                     *     data: {"kind":"stage_finished","stage":{"seq":4,"stageKey":"build","displayName":"build","verdict":"ok","how":"replayed","howLabel":"replayed from history","note":"est. 4m 02s (214 similar builds, ±20s)","metrics":{"estimate_ms":242000,"sample_count":214,"spread_ms":20000,"similarity_class":"x"},"skipReason":null,"skipKind":null,"skipInput":null,"startedAt":"2026-10-08T15:06:50.000Z","finishedAt":"2026-10-08T15:06:51.000Z"}}
                      */
                     "text/event-stream": components["schemas"]["DryRunStreamEvent"];
                 };
@@ -63546,6 +63807,8 @@ export interface operations {
                      *             "files_touched": 4
                      *           },
                      *           "skipReason": null,
+                     *           "skipKind": null,
+                     *           "skipInput": null,
                      *           "startedAt": "2026-10-08T15:05:01.000Z",
                      *           "finishedAt": "2026-10-08T15:05:30.000Z"
                      *         }
@@ -63777,6 +64040,679 @@ export interface operations {
             };
             /** @description `engine_unavailable`, `dry_run_commit_unreadable`, or a `github_*` upstream code. */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listDryRunSuggestions: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+                /**
+                 * @description The dry run — `dry_runs.id`. Anything that is not a uuid is a `422`; a well-formed id
+                 *     that names no dry run of this workflow for this caller is a `404`.
+                 * @example 5eed008b-0000-4000-8000-000000000001
+                 */
+                dryRunId: components["parameters"]["DryRunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The suggestions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "dryRunId": "5eed008b-0000-4000-8000-000000000001",
+                     *       "suggestions": [
+                     *         {
+                     *           "id": "5eed008c-0000-4000-8000-000000000001",
+                     *           "dryRunId": "5eed008b-0000-4000-8000-000000000001",
+                     *           "source": "rule",
+                     *           "ruleId": "skipped-nothing-to-do",
+                     *           "ruleVersion": 1,
+                     *           "title": "Make exploit-verify conditional",
+                     *           "body": "Make exploit-verify conditional — it had nothing to do because #489 carries no `cve` label. Route issues without `cve` around it, so it skips cleanly instead of running with nothing to check.",
+                     *           "confidence": 93,
+                     *           "confidenceBasis": {
+                     *             "method": "rule_strength_x_sample_adequacy",
+                     *             "inputs": {
+                     *               "rule": "skipped-nothing-to-do",
+                     *               "rule_version": 1,
+                     *               "rule_strength": 0.95,
+                     *               "sample_adequacy": 0.98,
+                     *               "outcome": "skipped_nothing_to_do",
+                     *               "deterministic": true,
+                     *               "observations": 1
+                     *             }
+                     *           },
+                     *           "applicable": true,
+                     *           "proposedOps": [
+                     *             {
+                     *               "kind": "remove_edge",
+                     *               "params": {
+                     *                 "from": "test",
+                     *                 "to": "exploit-verify"
+                     *               }
+                     *             }
+                     *           ],
+                     *           "status": "open",
+                     *           "appliedOpBatchId": null,
+                     *           "resolvedAt": null,
+                     *           "createdAt": "2026-10-10T15:08:00.000Z"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DryRunSuggestions"];
+                };
+            };
+            /** @description `organization_required`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — not a member of the workspace. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workflow_not_found`, or `dry_run_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id that is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    explainDryRunSuggestion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+                /**
+                 * @description The dry run — `dry_runs.id`. Anything that is not a uuid is a `422`; a well-formed id
+                 *     that names no dry run of this workflow for this caller is a `404`.
+                 * @example 5eed008b-0000-4000-8000-000000000001
+                 */
+                dryRunId: components["parameters"]["DryRunId"];
+                /**
+                 * @description The suggestion — `dry_run_suggestions.id`. Anything that is not a uuid is a `422`; a
+                 *     well-formed id that names no suggestion of this dry run is a `404`.
+                 * @example 5eed008c-0000-4000-8000-000000000001
+                 */
+                suggestionId: components["parameters"]["DryRunSuggestionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The explanation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "suggestionId": "5eed008c-0000-4000-8000-000000000001",
+                     *       "source": "rule",
+                     *       "rule": {
+                     *         "id": "skipped-nothing-to-do",
+                     *         "version": 1,
+                     *         "packVersion": 1,
+                     *         "firesWhen": "A stage was skipped because it had nothing to do, and named the input the ticket lacks.",
+                     *         "proposes": "A decision ahead of the stage that routes tickets without that label around it (advisory when the draft cannot take one).",
+                     *         "scoring": {
+                     *           "strength": "0.95 — the skip is a recorded, deterministic outcome of the stage itself.",
+                     *           "adequacy": "0.98 — observed in one dry run against one ticket."
+                     *         }
+                     *       },
+                     *       "evidence": {
+                     *         "stage_key": "exploit-verify",
+                     *         "verdict": "skipped",
+                     *         "skip_kind": "nothing_to_do",
+                     *         "skip_input": "cve",
+                     *         "ticket": "#489"
+                     *       },
+                     *       "confidence": 93,
+                     *       "confidenceBasis": {
+                     *         "method": "rule_strength_x_sample_adequacy",
+                     *         "inputs": {
+                     *           "rule": "skipped-nothing-to-do",
+                     *           "rule_version": 1,
+                     *           "rule_strength": 0.95,
+                     *           "sample_adequacy": 0.98
+                     *         }
+                     *       },
+                     *       "proposedOps": [
+                     *         {
+                     *           "kind": "remove_edge",
+                     *           "params": {
+                     *             "from": "test",
+                     *             "to": "exploit-verify"
+                     *           }
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DryRunSuggestionExplanation"];
+                };
+            };
+            /** @description `organization_required`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — not a member of the workspace. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workflow_not_found`, `dry_run_not_found`, or `dry_run_suggestion_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id that is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    applyDryRunSuggestion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+                /**
+                 * @description The dry run — `dry_runs.id`. Anything that is not a uuid is a `422`; a well-formed id
+                 *     that names no dry run of this workflow for this caller is a `404`.
+                 * @example 5eed008b-0000-4000-8000-000000000001
+                 */
+                dryRunId: components["parameters"]["DryRunId"];
+                /**
+                 * @description The suggestion — `dry_run_suggestions.id`. Anything that is not a uuid is a `422`; a
+                 *     well-formed id that names no suggestion of this dry run is a `404`.
+                 * @example 5eed008c-0000-4000-8000-000000000001
+                 */
+                suggestionId: components["parameters"]["DryRunSuggestionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The suggestion, applied, and the draft revision it produced. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "suggestion": {
+                     *         "id": "5eed008c-0000-4000-8000-000000000001",
+                     *         "dryRunId": "5eed008b-0000-4000-8000-000000000001",
+                     *         "source": "rule",
+                     *         "ruleId": "skipped-nothing-to-do",
+                     *         "ruleVersion": 1,
+                     *         "title": "Make exploit-verify conditional",
+                     *         "body": "Make exploit-verify conditional — it had nothing to do because #489 carries no `cve` label. Route issues without `cve` around it, so it skips cleanly instead of running with nothing to check.",
+                     *         "confidence": 93,
+                     *         "confidenceBasis": {
+                     *           "method": "rule_strength_x_sample_adequacy",
+                     *           "inputs": {
+                     *             "rule": "skipped-nothing-to-do",
+                     *             "rule_version": 1,
+                     *             "rule_strength": 0.95,
+                     *             "sample_adequacy": 0.98,
+                     *             "outcome": "skipped_nothing_to_do",
+                     *             "deterministic": true,
+                     *             "observations": 1
+                     *           }
+                     *         },
+                     *         "applicable": true,
+                     *         "proposedOps": [
+                     *           {
+                     *             "kind": "remove_edge",
+                     *             "params": {
+                     *               "from": "test",
+                     *               "to": "exploit-verify"
+                     *             }
+                     *           }
+                     *         ],
+                     *         "status": "applied",
+                     *         "appliedOpBatchId": "5eed008e-0000-4000-8000-000000000004",
+                     *         "resolvedAt": "2026-10-10T15:12:00.000Z",
+                     *         "createdAt": "2026-10-10T15:08:00.000Z"
+                     *       },
+                     *       "draftRev": 4,
+                     *       "draftLabel": "v0.4",
+                     *       "etag": "9f2c1d7a4b8e60513c7d2a9b6e4f108d5a3c7b1e9d2f4a6c8b0e1d3f5a7c9b2e"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DryRunSuggestionApplied"];
+                };
+            };
+            /** @description `organization_required`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — a viewer. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workflow_not_found`, `dry_run_not_found`, or `dry_run_suggestion_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `dry_run_suggestion_conflict` — the draft moved on and an operation no longer fits
+             *     (`details.operation`, `details.kind`, `details.reason`, `details.testedDraftRev`,
+             *     `details.draftRev`); `dry_run_suggestion_resolved` — it was already applied or
+             *     ignored (`details.status`); or `dry_run_suggestion_not_applicable` — it is advisory
+             *     and proposes no operation.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id that is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    ignoreDryRunSuggestion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+                /**
+                 * @description The dry run — `dry_runs.id`. Anything that is not a uuid is a `422`; a well-formed id
+                 *     that names no dry run of this workflow for this caller is a `404`.
+                 * @example 5eed008b-0000-4000-8000-000000000001
+                 */
+                dryRunId: components["parameters"]["DryRunId"];
+                /**
+                 * @description The suggestion — `dry_run_suggestions.id`. Anything that is not a uuid is a `422`; a
+                 *     well-formed id that names no suggestion of this dry run is a `404`.
+                 * @example 5eed008c-0000-4000-8000-000000000001
+                 */
+                suggestionId: components["parameters"]["DryRunSuggestionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The suggestion, ignored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed008c-0000-4000-8000-000000000001",
+                     *       "dryRunId": "5eed008b-0000-4000-8000-000000000001",
+                     *       "source": "rule",
+                     *       "ruleId": "skipped-nothing-to-do",
+                     *       "ruleVersion": 1,
+                     *       "title": "Make exploit-verify conditional",
+                     *       "body": "Make exploit-verify conditional — it had nothing to do because #489 carries no `cve` label. Route issues without `cve` around it, so it skips cleanly instead of running with nothing to check.",
+                     *       "confidence": 93,
+                     *       "confidenceBasis": {
+                     *         "method": "rule_strength_x_sample_adequacy",
+                     *         "inputs": {
+                     *           "rule": "skipped-nothing-to-do",
+                     *           "rule_version": 1,
+                     *           "rule_strength": 0.95,
+                     *           "sample_adequacy": 0.98,
+                     *           "outcome": "skipped_nothing_to_do",
+                     *           "deterministic": true,
+                     *           "observations": 1
+                     *         }
+                     *       },
+                     *       "applicable": true,
+                     *       "proposedOps": [
+                     *         {
+                     *           "kind": "remove_edge",
+                     *           "params": {
+                     *             "from": "test",
+                     *             "to": "exploit-verify"
+                     *           }
+                     *         }
+                     *       ],
+                     *       "status": "ignored",
+                     *       "appliedOpBatchId": null,
+                     *       "resolvedAt": "2026-10-10T15:12:00.000Z",
+                     *       "createdAt": "2026-10-10T15:08:00.000Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DryRunSuggestion"];
+                };
+            };
+            /** @description `organization_required`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — a viewer. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workflow_not_found`, `dry_run_not_found`, or `dry_run_suggestion_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `dry_run_suggestion_resolved` — it was already applied or ignored (`details.status`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id that is not a uuid. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

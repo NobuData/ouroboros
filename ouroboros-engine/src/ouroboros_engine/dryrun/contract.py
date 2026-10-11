@@ -19,9 +19,9 @@ pinned commit and is never logged, echoed, stored or shown to a model.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ouroboros_engine.workflows.contract import DryRunTicket, WorkflowFinding
 from ouroboros_engine.workflows.dsl import ALIAS_NAME_PATTERN, NODE_ID_PATTERN
@@ -45,6 +45,19 @@ StageVerdict = Literal["ok", "skipped", "failed", "not_reached"]
 StageHow = Literal["llm", "replayed", "deterministic", "skipped"]
 RunStatus = Literal["complete", "failed", "budget_stopped"]
 ArtifactKind = Literal["overlay_diff", "plan_excerpt", "review_excerpt"]
+
+#: Why a row was skipped, as something a rule can match on (CD.5, #563): a branch whose
+#: condition was false; a stage nothing on the walk leads to; a model stage whose route did
+#: not resolve (decision W7); a stage that ran and found the input it works on is not there.
+SkipKind = Literal[
+    "branch_not_taken", "unreached", "unresolved_reference", "nothing_to_do"
+]
+
+#: The grammar of a row's ``skip_input`` — a ticket label's slug.
+SKIP_INPUT_PATTERN = r"^[a-z0-9]+(-[a-z0-9]+)*$"
+
+#: The most characters of a ``skip_input``.
+MAX_SKIP_INPUT = 64
 
 _CLOSED = ConfigDict(extra="forbid", frozen=True)
 
@@ -173,6 +186,10 @@ class StageResult(BaseModel):
             ``simulated_writes``, ``lines_added``, ``lines_removed``; a replayed row's
             estimate fields are the estimator's own.
         skip_reason: Why it was skipped; set exactly when ``verdict`` is ``skipped``.
+        skip_kind: Which sort of skip it was; set exactly when ``verdict`` is ``skipped``.
+        skip_input: The input the stage needed and the ticket lacks, spelled as the ticket
+            label that would carry it (``cve``). Only a ``nothing_to_do`` skip names one,
+            and only when the stage said which.
         started_at: When work on it began, or ``None`` when none did.
         finished_at: When it ended.
     """
@@ -188,8 +205,29 @@ class StageResult(BaseModel):
     note: str
     metrics: dict[str, Any] = Field(default_factory=dict)
     skip_reason: str | None = None
+    skip_kind: SkipKind | None = None
+    skip_input: str | None = Field(
+        default=None, pattern=SKIP_INPUT_PATTERN, max_length=MAX_SKIP_INPUT
+    )
     started_at: datetime | None = None
     finished_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _skips_are_classified(self) -> Self:
+        """Hold the skip fields to the verdict.
+
+        Returns:
+            The row.
+
+        Raises:
+            ValueError: ``skip_kind`` is set on a row that was not skipped or missing on one
+                that was, or ``skip_input`` is set on a skip that is not ``nothing_to_do``.
+        """
+        if (self.verdict == "skipped") != (self.skip_kind is not None):
+            raise ValueError("skip_kind is set exactly when verdict is skipped")
+        if self.skip_input is not None and self.skip_kind != "nothing_to_do":
+            raise ValueError("skip_input goes with skip_kind nothing_to_do only")
+        return self
 
 
 class PathChange(BaseModel):

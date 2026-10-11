@@ -16,14 +16,16 @@
  * draft as it stands — what a surface read when it switches back.
  */
 
-import { Injectable } from "@nestjs/common";
+import { Injectable, type OnModuleInit } from "@nestjs/common";
 
 import { DatabaseService } from "../db/db.service";
-import type { CopilotChoice, CopilotMessage, CopilotSession, Workflow } from "../db/schema";
+import type { CopilotChoice, CopilotMessage, CopilotSession, DryRun, Workflow } from "../db/schema";
 import { EngineClient } from "../engine/engine.client";
 import type { EngineTranscriptEntry } from "../engine/engine.copilot";
 import { NotFoundError } from "../errors/error.envelope";
+import { DryRunAftermath } from "../dry-runs/dry-runs.aftermath";
 import { DryRunPickerService } from "../dry-runs/dry-runs.picker.service";
+import { DryRunSuggestionsService } from "../dry-runs/suggestions.service";
 import { ResolutionService } from "../routing/resolution.service";
 import { draftEtag } from "../workflows/draft.etag";
 import { workflowNotFound } from "../workflows/workflows.errors";
@@ -64,6 +66,9 @@ export const COPILOT_TASK_KIND = "copilot-workflow";
 /** The reply could not be made because nothing routes the copilot in this workspace. */
 export const COPILOT_UNROUTED = "copilot_unrouted";
 
+/** The read a reply's trace carries when a dry run's results were its input (CD.5, #563). */
+export const DRY_RUN_RESULTS = "dry_run_results";
+
 /** How many tickets one `lookup_tickets` may answer with, at most. */
 export const MAX_TICKET_CANDIDATES = 10;
 
@@ -76,7 +81,7 @@ interface RoutedModel {
 }
 
 @Injectable()
-export class CopilotService {
+export class CopilotService implements OnModuleInit {
   /**
    * @param copilots - The statements.
    * @param grounding - The context assembly (catalog, skills, task routes, guards).
@@ -84,6 +89,8 @@ export class CopilotService {
    * @param engine - The typed engine client, for the turn.
    * @param database - The pool, for the etag-guarded apply.
    * @param picker - The edge-case picker `lookup_tickets` ranks with (CD.4, #562).
+   * @param suggestions - Where a `propose_suggestion` is validated and recorded (CD.5, #563).
+   * @param aftermath - Where this service registers to be told a dry run ended.
    */
   constructor(
     private readonly copilots: CopilotRepository,
@@ -92,7 +99,52 @@ export class CopilotService {
     private readonly engine: EngineClient,
     private readonly database: DatabaseService,
     private readonly picker: DryRunPickerService,
+    private readonly suggestions: DryRunSuggestionsService,
+    private readonly aftermath: DryRunAftermath,
   ) {}
+
+  /** Ask to be told when a dry run ends, so its results reach the conversation it came from. */
+  onModuleInit(): void {
+    this.aftermath.register((run) => this.debrief(run));
+  }
+
+  /**
+   * Feed a finished dry run's results to the conversation it was started from — LLM
+   * enrichment (CD.5, #563).
+   *
+   * One exchange nobody is watching: the results enter as the turn's input (not as a message
+   * the person typed), and the copilot's reply is recorded as its next bubble, with
+   * `dry_run_results` on its trace's reads. Anything it proposes through `propose_suggestion`
+   * is validated as operations and filed under the run as `source: llm`.
+   *
+   * Skipped, silently, whenever the conversation is not there to receive it: the run had no
+   * session, the session is closed, or an exchange is already streaming.
+   *
+   * @param run - The dry run, as it ended.
+   * @returns When the reply is recorded, or at once when there is nothing to do.
+   */
+  async debrief(run: DryRun): Promise<void> {
+    if (run.session_id === null) return;
+
+    const results = await this.suggestions.debriefing(run);
+    if (results === undefined) return;
+
+    const workflow = await this.copilots.workflow(run.organization_id, run.workflow_id);
+    if (workflow === undefined) return;
+
+    const session = await this.copilots.session(run.organization_id, workflow.id, run.session_id);
+    if (session?.status !== "active") return;
+
+    const messages = await this.copilots.messages(session.id);
+    if (messages.some((message) => message.status === "streaming")) return;
+
+    const reply = await this.copilots.insertStreamingReply(run.organization_id, session.id);
+    const events = this.reply(workflow, session, reply, messages, session.created_by, results, [
+      { tool: DRY_RUN_RESULTS },
+    ]);
+    // Nobody is on the stream; the conversation read shows the reply.
+    for await (const event of events) void event;
+  }
 
   /**
    * Start a conversation on a workflow's draft.
@@ -285,6 +337,31 @@ export class CopilotService {
       replySeq: reply.seq,
     };
 
+    yield* this.reply(workflow, session, reply, history, userId, text);
+  }
+
+  /**
+   * Build one reply: route, run the loop, record what it produced.
+   *
+   * @param workflow - The workflow.
+   * @param session - The session.
+   * @param reply - The reply's row, already inserted `streaming`.
+   * @param history - The messages before this turn.
+   * @param userId - Whose provenance the operations carry.
+   * @param text - The turn's input — the person's message, or a dry run's results.
+   * @param reads - Reads to record on the reply's trace ahead of the loop's own.
+   * @yields The events after `accepted`, `done` last.
+   */
+  private async *reply(
+    workflow: Workflow,
+    session: CopilotSession,
+    reply: CopilotMessage,
+    history: readonly CopilotMessage[],
+    userId: string | null,
+    text: string,
+    reads: readonly { readonly tool: string }[] = [],
+  ): AsyncGenerator<CopilotStreamEvent> {
+    const organizationId = workflow.organization_id;
     const { context, catalogue } = await this.grounding.grounding(organizationId);
     const routed = await this.route(organizationId);
 
@@ -327,7 +404,7 @@ export class CopilotService {
         draft: initial,
       },
       this.engine,
-      this.draftPort(workflow, session, userId),
+      this.draftPort(workflow, session, userId, routed.model),
     );
 
     let outcome: ExchangeOutcome;
@@ -343,7 +420,7 @@ export class CopilotService {
     const recorded = await this.copilots.finishReply(reply.id, {
       body: outcome.body,
       choices: outcome.choices,
-      tool_trace: outcome.trace,
+      tool_trace: { ...outcome.trace, reads: [...reads, ...outcome.trace.reads] },
       tokens_in: outcome.tokensIn,
       tokens_out: outcome.tokensOut,
       cost_cents: outcome.costCents,
@@ -436,10 +513,29 @@ export class CopilotService {
    * @param workflow - The workflow.
    * @param session - The session.
    * @param userId - The person in the conversation.
+   * @param model - The model the exchange resolved to — a suggestion's provenance.
    * @returns The port the loop applies through.
    */
-  private draftPort(workflow: Workflow, session: CopilotSession, userId: string | null): DraftPort {
+  private draftPort(
+    workflow: Workflow,
+    session: CopilotSession,
+    userId: string | null,
+    model: RoutedModel,
+  ): DraftPort {
     return {
+      suggest: async (proposal) => {
+        const outcome = await this.suggestions.propose(
+          workflow.organization_id,
+          workflow.id,
+          proposal,
+          {
+            sessionId: session.id,
+            alias: model.alias,
+            resolutionVersion: model.resolutionVersion,
+          },
+        );
+        return outcome.ok ? { ok: true } : outcome;
+      },
       apply: async (operation: DraftOperation, expectedEtag: string) =>
         this.database.transaction(async (trx) => {
           const existing = await this.copilots.draftOf(workflow.id, trx, true);

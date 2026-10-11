@@ -1,6 +1,14 @@
 import type { DatabaseService } from "../db/db.service";
-import type { CopilotMessage, CopilotSession, Workflow, WorkflowVersion } from "../db/schema";
+import type {
+  CopilotMessage,
+  CopilotSession,
+  DryRun,
+  Workflow,
+  WorkflowVersion,
+} from "../db/schema";
+import type { DryRunAftermath } from "../dry-runs/dry-runs.aftermath";
 import type { DryRunPickerService } from "../dry-runs/dry-runs.picker.service";
+import type { DryRunSuggestionsService } from "../dry-runs/suggestions.service";
 import type { EngineClient } from "../engine/engine.client";
 import type { EngineCopilotEvent, EngineCopilotTurnRequest } from "../engine/engine.copilot";
 import { NotFoundError } from "../errors/error.envelope";
@@ -11,6 +19,7 @@ import type { CopilotRepository } from "./copilot.repository";
 import {
   COPILOT_TASK_KIND,
   COPILOT_UNROUTED,
+  DRY_RUN_RESULTS,
   CopilotService,
   MAX_TICKET_CANDIDATES,
   transcriptOf,
@@ -228,6 +237,12 @@ function harness(
 
   const picker = { rank: jest.fn().mockResolvedValue(options.ranked ?? []) };
 
+  const suggestions = {
+    propose: jest.fn().mockResolvedValue({ ok: true, suggestion: { id: "s-1" } }),
+    debriefing: jest.fn().mockResolvedValue("[dry run results] exploit-verify: skipped"),
+  };
+  const aftermath = { register: jest.fn() };
+
   const trx = { transaction: "fake" };
   const database = {
     transaction: jest
@@ -242,10 +257,14 @@ function harness(
     engine as unknown as EngineClient,
     database as unknown as DatabaseService,
     picker as unknown as DryRunPickerService,
+    suggestions as unknown as DryRunSuggestionsService,
+    aftermath as unknown as DryRunAftermath,
   );
 
   return {
     service,
+    suggestions,
+    aftermath,
     copilots,
     picker,
     routing,
@@ -660,6 +679,148 @@ describe("an exchange", () => {
     ).rejects.toMatchObject({
       code: COPILOT_ERRORS.messageNotFound,
     });
+  });
+});
+
+describe("a finished dry run's results reaching the conversation (#563)", () => {
+  const RUN = {
+    id: "5eed008b-0000-4000-8000-000000000001",
+    organization_id: WORKSPACE,
+    workflow_id: WORKFLOW,
+    session_id: SESSION,
+    status: "complete",
+  } as DryRun;
+
+  it("registers to be told when a dry run ends", async () => {
+    const { service, aftermath, suggestions } = harness({ turns: [] });
+
+    service.onModuleInit();
+
+    expect(aftermath.register).toHaveBeenCalledTimes(1);
+    const [debriefer] = aftermath.register.mock.calls[0] as [(run: DryRun) => Promise<void>];
+    await debriefer(RUN);
+    expect(suggestions.debriefing).toHaveBeenCalledWith(RUN);
+  });
+
+  it("runs one exchange on the results, records only the copilot's reply, and files what it proposes", async () => {
+    const ops = [{ kind: "remove_stage", params: { id: "test" } }];
+    const { service, copilots, suggestions, sent, finished } = harness({
+      messages: [message({ id: "m-1", seq: 1, role: "user", body: "dry run #489" })],
+      turns: [
+        [
+          {
+            kind: "tool_call",
+            id: "call-1",
+            tool: "propose_suggestion",
+            arguments: { title: "Drop test", body: "It never ran.", ops },
+            error: null,
+          },
+          { kind: "done", finishReason: "tool_calls" },
+        ],
+        [
+          { kind: "delta", text: "Dry run finished — one more suggestion below." },
+          { kind: "done", finishReason: "stop" },
+        ],
+      ],
+    });
+
+    await service.debrief(RUN);
+
+    // The results are the turn's input, never a message the person typed.
+    expect(copilots.insertUserMessage).not.toHaveBeenCalled();
+    expect(copilots.insertStreamingReply).toHaveBeenCalledTimes(1);
+    const first = sent[0] as EngineCopilotTurnRequest;
+    expect(first.transcript).toEqual([
+      { role: "user", text: "dry run #489" },
+      { role: "user", text: "[dry run results] exploit-verify: skipped" },
+    ]);
+    expect(suggestions.propose).toHaveBeenCalledWith(
+      WORKSPACE,
+      WORKFLOW,
+      { title: "Drop test", body: "It never ran.", ops },
+      { sessionId: SESSION, alias: "coder-max", resolutionVersion: "z1-v1" },
+    );
+    expect(finished).toHaveLength(1);
+    expect(finished[0]).toMatchObject({
+      body: "Dry run finished — one more suggestion below.",
+      status: "complete",
+      tool_trace: {
+        operations: [
+          {
+            op: { kind: "propose_suggestion", params: { title: "Drop test" } },
+            outcome: "proposed",
+          },
+        ],
+        reads: [{ tool: DRY_RUN_RESULTS }],
+        dry_run_proposals: [],
+      },
+    });
+  });
+
+  it("tells the model when a proposal was refused, and records the bounce", async () => {
+    const { service, suggestions, finished } = harness({
+      turns: [
+        [
+          {
+            kind: "tool_call",
+            id: "call-1",
+            tool: "propose_suggestion",
+            arguments: { title: "Drop ghost", body: "It is gone.", ops: [] },
+            error: null,
+          },
+          { kind: "done", finishReason: "tool_calls" },
+        ],
+        [{ kind: "done", finishReason: "stop" }],
+      ],
+    });
+    suggestions.propose.mockResolvedValue({ ok: false, message: "no stage named ghost." });
+
+    await service.debrief(RUN);
+
+    expect(finished[0]).toMatchObject({
+      tool_trace: {
+        operations: [
+          {
+            op: { kind: "propose_suggestion", params: { title: "Drop ghost" } },
+            outcome: "bounced",
+            validator_message: "no stage named ghost.",
+          },
+        ],
+      },
+    });
+  });
+
+  it("stays silent when there is no conversation to receive it", async () => {
+    const withoutSession = harness({ turns: [] });
+    await withoutSession.service.debrief({ ...RUN, session_id: null });
+    expect(withoutSession.suggestions.debriefing).not.toHaveBeenCalled();
+
+    const withoutResults = harness({ turns: [] });
+    withoutResults.suggestions.debriefing.mockResolvedValue(undefined);
+    await withoutResults.service.debrief(RUN);
+
+    const withoutWorkflow = harness({ turns: [] });
+    withoutWorkflow.copilots.workflow.mockResolvedValue(undefined);
+    await withoutWorkflow.service.debrief(RUN);
+
+    const closed = harness({ turns: [] });
+    closed.copilots.session.mockResolvedValue(session({ status: "promoted" }));
+    await closed.service.debrief(RUN);
+
+    const swept = harness({ turns: [] });
+    swept.copilots.session.mockResolvedValue(undefined);
+    await swept.service.debrief(RUN);
+
+    const busy = harness({
+      turns: [],
+      messages: [message({ id: "m-9", seq: 1, role: "copilot", body: "", status: "streaming" })],
+    });
+    await busy.service.debrief(RUN);
+
+    for (const bench of [withoutSession, withoutResults, withoutWorkflow, closed, swept, busy]) {
+      expect(bench.copilots.insertStreamingReply).not.toHaveBeenCalled();
+      expect(bench.engine.copilotTurn).not.toHaveBeenCalled();
+    }
   });
 });
 

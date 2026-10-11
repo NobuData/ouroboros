@@ -13,7 +13,7 @@
 --   * **Proposed operations apply.** Every seeded suggestion's `proposed_ops` folds over the seeded
 --     draft (`dry_run_suggestion_preview`) without an error — their DSL validity is ci/db's parity
 --     step; this is that they apply.
---   * **The 81% basis is real.** The replay-disagreement suggestion's basis equals the
+--   * **The 81% basis is real.** The reviewer-disagreement suggestion's basis equals the
 --     `review_replay_pairs` it names.
 --   * **References resolve.** The dry run's ticket is #489's canonical twin of the intake mirror,
 --     its session is a conversation about its workflow, and every suggestion's dry run exists.
@@ -86,12 +86,12 @@ select pg_temp.must_hold(
 select pg_temp.must_hold(
   (select bool_and((ouroboros.dry_run_suggestion_preview(s.id) -> 'nodes') @>
                    jsonb_build_array(jsonb_build_object('id', 'has-cve')))
-     from ouroboros.dry_run_suggestions s where s.rule_id = 'deterministic-skip')
+     from ouroboros.dry_run_suggestions s where s.rule_id = 'skipped-nothing-to-do')
   and (select bool_and(not exists (
                  select 1 from jsonb_array_elements(ouroboros.dry_run_suggestion_preview(s.id) -> 'nodes') n
                   where n ->> 'id' in ('review-primary', 'review-second')
                     and n #>> '{config,skill}' is distinct from 'pr-etiquette'))
-         from ouroboros.dry_run_suggestions s where s.rule_id = 'replay-disagreement'),
+         from ouroboros.dry_run_suggestions s where s.rule_id = 'reviewer-disagreement'),
   'proposed_ops_apply: the 93% suggestion adds the has-cve decision and the 81% loads pr-etiquette into both reviewers');
 
 -- ===========================================================================
@@ -107,7 +107,7 @@ select pg_temp.must_hold(
               (count(*) filter (where p.disagreement_class = 'style'))::int as style
          from ouroboros.review_replay_pairs p
         where p.replay_set::text = s.confidence_basis #>> '{inputs,replay_set}') pairs
-    where s.rule_id = 'replay-disagreement'),
+    where s.rule_id = 'reviewer-disagreement'),
   'replay_basis_real: the reviewer-pair suggestion''s basis equals the review_replay_pairs it names');
 
 -- ===========================================================================

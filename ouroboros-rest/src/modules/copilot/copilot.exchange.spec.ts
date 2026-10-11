@@ -3,12 +3,14 @@ import type { EngineCopilotEvent, EngineCopilotTurnRequest } from "../engine/eng
 import {
   MAX_BOUNCES,
   MAX_TURNS,
+  SUGGESTION_RECORDED,
   runExchange,
   type ApplyResult,
   type DraftPort,
   type DraftState,
   type ExchangeInput,
   type ExchangeOutcome,
+  type SuggestionProposal,
   type TurnPort,
 } from "./copilot.exchange";
 import { applyOperation, asDraftDocument, type DraftOperation } from "./copilot.operations";
@@ -124,12 +126,15 @@ function drafts(initial: DraftState = INITIAL) {
   let state = initial;
   let rev = 0;
   const applied: DraftOperation[] = [];
+  const suggested: SuggestionProposal[] = [];
   const port: DraftPort & {
     state(): DraftState;
     move(editedIn: string | null): void;
     applied: DraftOperation[];
+    suggested: SuggestionProposal[];
   } = {
     applied,
+    suggested,
     state: () => state,
     move(editedIn) {
       state = { ...state, etag: `moved-${rev}`, label: `v0.${rev}` };
@@ -153,6 +158,13 @@ function drafts(initial: DraftState = INITIAL) {
     async lookupTickets() {
       await Promise.resolve();
       return [{ key: "#489", title: "CAN arbitration storm", labels: ["bug"] }];
+    },
+    async suggest(proposal) {
+      await Promise.resolve();
+      suggested.push(proposal);
+      return proposal.ops.length === 0
+        ? { ok: false, message: "a suggestion carries 1 to 50 operations." }
+        : { ok: true };
     },
   };
   let moved: string | null | undefined;
@@ -495,6 +507,56 @@ describe("the exchange loop", () => {
       ok: true,
       content: expect.stringContaining("proposed, not enforced") as string,
     });
+  });
+
+  it("records a suggestion the copilot proposes, and bounces one that is refused (#563)", async () => {
+    const port = drafts();
+    const ops = [{ kind: "remove_stage", params: { id: "test" } }];
+    const turns = engine(
+      [
+        call("call-1", "propose_suggestion", { title: "Drop test", body: "It never ran.", ops }),
+        call("call-2", "propose_suggestion", {
+          title: "Nothing to apply",
+          body: "No operations.",
+          // Not operations: dropped before the port sees them.
+          ops: ["remove the stage", { kind: "remove_stage" }],
+        }),
+        { kind: "done", finishReason: "stop" },
+      ],
+      [
+        { kind: "delta", text: "I filed one suggestion under the dry run." },
+        { kind: "done", finishReason: "stop" },
+      ],
+    );
+
+    const { events, outcome } = await run(input(), turns, port);
+
+    expect(port.suggested).toEqual([
+      { title: "Drop test", body: "It never ran.", ops },
+      { title: "Nothing to apply", body: "No operations.", ops: [] },
+    ]);
+    // Proposed, not applied: the draft is untouched.
+    expect(port.applied).toEqual([]);
+    expect(outcome.trace.operations).toEqual([
+      { op: { kind: "propose_suggestion", params: { title: "Drop test" } }, outcome: "proposed" },
+      {
+        op: { kind: "propose_suggestion", params: { title: "Nothing to apply" } },
+        outcome: "bounced",
+        validator_message: "a suggestion carries 1 to 50 operations.",
+      },
+    ]);
+    expect(
+      events.filter((event) => event.kind === "operation").map((event) => event.outcome),
+    ).toEqual(["proposed", "bounced"]);
+    expect(turns.sent[1].transcript.filter((entry) => entry.role === "tool")).toEqual([
+      { role: "tool", callId: "call-1", ok: true, content: SUGGESTION_RECORDED },
+      {
+        role: "tool",
+        callId: "call-2",
+        ok: false,
+        content: "a suggestion carries 1 to 50 operations.",
+      },
+    ]);
   });
 
   it("serves the reads and the dry-run proposal, tracing each", async () => {

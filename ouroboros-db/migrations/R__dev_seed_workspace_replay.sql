@@ -78,18 +78,24 @@ update ouroboros.dry_runs r
 -- ---------------------------------------------------------------------------
 -- The two suggestions — both rule-derived, with typed operations and a confidence basis.
 -- ---------------------------------------------------------------------------
+--
+-- Each row is what CD.5's rule pack (#563, `ouroboros-rest` `dry-runs/suggestions`, pack v1)
+-- computes from this dry run: the rule ids, the composed body, the evidence, the operations and
+-- the scoring — confidence = rule strength x sample adequacy, rounded, with both factors in the
+-- basis. `suggestions.seed.spec.ts` holds the pack to these rows.
 
--- 93%: deterministic-skip. exploit-verify skipped with nothing to do on a security-labelled issue
--- with no CVE; the operations put a `has-cve` decision ahead of it so such issues route around it.
+-- 93%: skipped-nothing-to-do. exploit-verify skipped with nothing to do on a security-labelled
+-- issue with no CVE; the operations put a `has-cve` decision ahead of it so such issues route
+-- around it. 0.95 (a deterministic outcome) x 0.98 (seen in one run) = 93.
 insert into ouroboros.dry_run_suggestions (id, organization_id, dry_run_id, source, rule_id, rule_version,
                                            title, body, evidence, proposed_ops, confidence,
                                            confidence_basis, created_at)
 select '5eed008c-0000-4000-8000-000000000001'::uuid, r.organization_id, r.id, 'rule',
-       'deterministic-skip', 1,
+       'skipped-nothing-to-do', 1,
        'Make exploit-verify conditional',
-       'Make exploit-verify conditional — it stalled with nothing to do because #489 has no CVE. Add when: issue.cve != null so security-labeled issues without a PoC skip it cleanly.',
-       '{"stage_key": "exploit-verify", "verdict": "skipped",
-         "skip_reason": "no PoC exists: stage had nothing to do",
+       'Make exploit-verify conditional — it had nothing to do because #489 carries no `cve` label. Route issues without `cve` around it, so it skips cleanly instead of running with nothing to check.',
+       '{"stage_key": "exploit-verify", "verdict": "skipped", "skip_kind": "nothing_to_do",
+         "skip_input": "cve", "skip_reason": "no PoC exists: stage had nothing to do",
          "ticket": "#489", "ticket_labels": ["bug", "can-bus"], "trigger_labels": ["security"]}',
        '[{"kind": "add_stage", "params": {"node": {"id": "has-cve", "type": "flow", "title": "has CVE?",
           "position": {"x": 0, "y": 660},
@@ -103,9 +109,10 @@ select '5eed008c-0000-4000-8000-000000000001'::uuid, r.organization_id, r.id, 'r
          {"kind": "add_edge", "params": {"edge": {"from": "has-cve", "to": "review-second", "kind": "branch",
           "label": "no cve", "condition": {"kind": "labels", "op": "none", "values": ["cve"]}}}}]',
        93,
-       '{"method": "rule_strength",
-         "inputs": {"rule": "deterministic-skip", "outcome": "skipped_nothing_to_do", "deterministic": true,
-                    "observations": 1, "base": 95, "single_observation_penalty": 2}}',
+       '{"method": "rule_strength_x_sample_adequacy",
+         "inputs": {"rule": "skipped-nothing-to-do", "rule_version": 1, "rule_strength": 0.95,
+                    "sample_adequacy": 0.98, "outcome": "skipped_nothing_to_do",
+                    "deterministic": true, "observations": 1}}',
        date_trunc('day', now() - interval '16 hours') + time '15:08'
   from ouroboros.dry_runs r
  where r.id = '5eed008b-0000-4000-8000-000000000001'
@@ -113,15 +120,16 @@ select '5eed008c-0000-4000-8000-000000000001'::uuid, r.organization_id, r.id, 'r
    and ${ouro_dev_seed}
 on conflict do nothing;
 
--- 81%: replay-disagreement. 6 of the 10 replayed pairs disagreed on style; the operations load the
--- pr-etiquette skill (R__dev_seed_workspace_knowledge.sql) into both reviewer stages.
+-- 81%: reviewer-disagreement. 6 of the 10 replayed pairs disagreed on style; the operations load
+-- the pr-etiquette skill (R__dev_seed_workspace_knowledge.sql) into both reviewer stages.
+-- 0.9 (style-class disagreement in at least half the pairs) x 0.9 (1 - 1/10 pairs) = 81.
 insert into ouroboros.dry_run_suggestions (id, organization_id, dry_run_id, source, rule_id, rule_version,
                                            title, body, evidence, proposed_ops, confidence,
                                            confidence_basis, created_at)
 select '5eed008c-0000-4000-8000-000000000002'::uuid, r.organization_id, r.id, 'rule',
-       'replay-disagreement', 1,
+       'reviewer-disagreement', 1,
        'Pin the pr-etiquette skill to both reviewers',
-       'Pin the pr-etiquette skill to both reviewers — in 10 replayed review pairs, the two models disagreed on style nits 6 times; the shared skill removes the noise.',
+       'Pin the pr-etiquette skill to both reviewers — 6 of 10 replayed review pairs disagreed on comment style, not substance.',
        jsonb_build_object('stage_keys', jsonb_build_array('review-primary', 'review-second'),
                           'replay_set', '5eed008d-0000-4000-8000-000000000000',
                           'pairs_replayed', 10, 'style_disagreements', 6,
@@ -132,10 +140,11 @@ select '5eed008c-0000-4000-8000-000000000002'::uuid, r.organization_id, r.id, 'r
           from jsonb_array_elements(v.definition -> 'nodes') n
          where n ->> 'id' in ('review-primary', 'review-second')),
        81,
-       '{"method": "replay_statistics",
-         "inputs": {"replay_set": "5eed008d-0000-4000-8000-000000000000", "pairs": 10,
-                    "style_disagreements": 6, "substance_disagreements": 0,
-                    "disagreement_rate": 0.6, "sample_penalty": 9}}',
+       '{"method": "rule_strength_x_sample_adequacy",
+         "inputs": {"rule": "reviewer-disagreement", "rule_version": 1, "rule_strength": 0.9,
+                    "sample_adequacy": 0.9, "replay_set": "5eed008d-0000-4000-8000-000000000000",
+                    "pairs": 10, "style_disagreements": 6, "substance_disagreements": 0,
+                    "disagreement_rate": 0.6}}',
        date_trunc('day', now() - interval '16 hours') + time '15:08'
   from ouroboros.dry_runs r
   join ouroboros.workflow_versions v on v.workflow_id = r.workflow_id and v.version is null

@@ -43,6 +43,7 @@ import type {
 } from "../engine/engine.dryruns";
 import { UpstreamError } from "../errors/error.envelope";
 import { describeForLog } from "../errors/failure";
+import { DryRunAftermath } from "./dry-runs.aftermath";
 import type { DryRunBudget } from "./dry-runs.budget";
 import { DryRunRecords } from "./dry-runs.records";
 import { DryRunsRepository, type DryRunEnding } from "./dry-runs.repository";
@@ -159,6 +160,7 @@ export class DryRunRunner implements OnModuleDestroy {
     private readonly engine: EngineClient,
     private readonly dryRuns: DryRunsRepository,
     private readonly records: DryRunRecords,
+    private readonly aftermath: DryRunAftermath,
   ) {}
 
   /**
@@ -351,6 +353,10 @@ export class DryRunRunner implements OnModuleDestroy {
     }
 
     const ended = (await this.dryRuns.finish(run.id, ending)) ?? run;
+    // The rule pack's suggestions are filed before `done`, so the card reads them as soon as it
+    // hears the run ended; the copilot's debrief is a model exchange, and nobody waits for it.
+    await this.aftermath.ended(ended);
     this.emit(live, { kind: "done", dryRun: await this.records.resource(ended) });
+    this.aftermath.debrief(ended);
   }
 }
