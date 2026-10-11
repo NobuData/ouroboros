@@ -25,6 +25,7 @@ import { EngineModule } from "../../engine/engine.module";
 import { GithubClientFactory } from "../../github/github.client.factory";
 import { GithubModule } from "../../github/github.module";
 import { InsightsModule } from "../../insights/insights.module";
+import { VaultModule } from "../../vault/vault.module";
 import { MetricsService } from "../../insights/metrics/metrics.service";
 import { CodeBisectService } from "../code/code-bisect.service";
 import { CodeModule } from "../code/code.module";
@@ -48,6 +49,7 @@ import { ResearchToolInvoker } from "./research-tool.invoker";
 import { RESEARCH_TOOL_ADAPTERS, ResearchToolRegistry } from "./research-tool.registry";
 import { ResearchToolRepository } from "./research-tool.repository";
 import { ResearchToolSettings } from "./research-tool.settings";
+import { StoredToolSettings } from "./research-tool.settings.store";
 import { ResearchToolsInternalController } from "./tools.internal.controller";
 
 /** The DI token the shared page reader is bound under. */
@@ -89,6 +91,7 @@ export function registeredAdapters(
 @Module({
   imports: [
     DbModule,
+    VaultModule,
     CompetitorsModule,
     GithubModule,
     EngineModule,
@@ -142,9 +145,10 @@ export function registeredAdapters(
     },
     ResearchToolRegistry,
     ResearchToolRepository,
-    ResearchToolSettings,
+    StoredToolSettings,
+    { provide: ResearchToolSettings, useExisting: StoredToolSettings },
     ResearchToolInvoker,
   ],
-  exports: [ResearchToolRegistry, ResearchToolSettings, ResearchToolRepository],
+  exports: [ResearchToolRegistry, ResearchToolSettings, StoredToolSettings, ResearchToolRepository],
 })
 export class ResearchToolsModule {}

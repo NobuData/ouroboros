@@ -5060,8 +5060,27 @@ workspace's `investigation_kinds` — slug, label, hue key (`tint`) and playbook
 **connected** when CL.1's registry holds an adapter for it (named and glyphed by the adapter;
 `docs` keeps V106's title and is idle until its v2 adapter). *Connected* is the registry's answer
 and needs no network; whether a workspace's configuration of a tool is healthy is the tools
-card's dot (#629, `healthCheck()`). Both are open to every member; the tool catalog names no
-workspace. #629's tools card and #632's kind facets read the same two.
+card's dot (#629, `healthCheck()`). Both are open to every member. #632's kind facets read the
+kinds.
+
+**The tools card's read and the enable flow** (CN.3,
+[#629](https://github.com/NobuData/ouroboros/issues/629)). `GET /api/v1/research/tools` is read
+for the session's workspace: beside `connected`, each tool carries its **`subLine`** (the
+adapter's template filled from `counts()`), its **`health`** (`healthCheck()` under the
+workspace's stored settings, with the dot it maps to), `configured`, `hasCredential` and
+**`enable`** — the fields of the adapter's `configSchema()` with the stored non-secret values,
+or `{kind: "planned", release, issue}` for a tool with no adapter (`docs` → #635, from
+`PLANNED_TOOLS`). `connectedCount` counts the healthy and degraded tools. An adapter that breaks
+its never-reject promise is drawn `down`; the read itself does not fail. `PUT
+/api/v1/research/tools/:slug` (owners and admins, a person) judges `{config}` against the
+adapter's schema (`422 research_tool_config_invalid`, by field), seals the secret field and
+stores the row. **Storage is V127's `research_tool_settings`** through `StoredToolSettings`
+(`tools/research-tool.settings.store.ts`), bound as `ResearchToolSettings` — so the invoker and
+the estimate's pricing read the same settings. A row is what *enabled* means; a save without a
+credential keeps the stored one; a credential that will not open reads as none. The regression
+watch card gains what its links need: `bisect.commitUrl`, `fixRun` (the fix ticket's newest run)
+and `fixTicketUrl`, read in one statement per card (`WatchRepository.fixLinks`), and its items
+are ordered worst-first among the open ones.
 
 ## Research telemetry
 

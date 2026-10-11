@@ -5128,6 +5128,31 @@ own.
 that has not — with `← All investigations` back and `?open=<id>` in the address, which the route
 honours on load.
 
+### The side column: research tools and regression watch
+
+CN.3 ([#629](https://github.com/NobuData/ouroboros/issues/629)) fills the `tools` and `watch`
+seats — `app/research/tools-card.tsx` and `watch-card.tsx`, with every rule in `side.ts`.
+
+**One poll for both.** `GET /api/research/side` (`app/api/research-side.ts`) answers the tools
+catalog and the watch card together and names its own interval — `HEALTH_CYCLE_SECONDS`, 30 —
+so a tool that stops answering turns its dot within a cycle, with no reload. The first paint is
+the server's: the tools card draws from the composer's reading of the catalog, the watch from
+`side-data.ts`. A write from either card asks the poll again at once.
+
+**The tools card adds no fact of its own.** Glyph, name, computed sub-line, health dot and the
+*N connected* tag are the service's. An idle row offers **enable** (`tools-enable.tsx`): the
+tool's form, drawn by `SchemaFields` from the fields the service flattened out of
+`configSchema()` — no tool-specific code — or, for a tool with no adapter, the note saying it
+arrives in v2 with the issue to follow. The form is an owner's or admin's; the note is anyone's.
+
+**A watch row is a way in.** `watchFragments` splits the service's `detail` and links what it
+names: the bisect's commit (GitHub), the fix (`#512` → its run console, or its tracker page while
+no run exists; a draft's key is plain) and the merged PR. The title is computed
+(`watchTitle`: the metric's key in words, its drift, `since <release>`). A `needs repro` item is
+its own row with the service's explanation. **dismiss** (`watch-dialogs.tsx`) asks for the
+reason the audit log keeps and removes the row at once; a workspace with no baseline is offered
+**Capture a baseline** — both for owners and admins, with the reason shown to everyone else.
+
 ## Run console
 
 `/runs/:id` ([#309](https://github.com/NobuData/ouroboros/issues/309)) is

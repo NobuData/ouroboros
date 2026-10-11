@@ -182,9 +182,7 @@ describe("the watch repository", () => {
     );
 
     expect((await repository.items(ORG, 100))[0].id).toBe(ITEM);
-    expect(last().sql).toContain(
-      "order by (w.status in ('fixed_merged', 'dismissed')), w.detected_at desc",
-    );
+    expect(last().sql).toContain("order by (w.status in ('fixed_merged', 'dismissed')),");
     expect((await repository.item(ORG, ITEM))?.driftValue).toBe(14);
     expect(last().sql).toContain("w.organization_id = $1 and w.id = $2::uuid");
     expect(await repository.openItem(ORG, BASELINE)).toBeUndefined();
@@ -384,6 +382,53 @@ describe("the watch repository", () => {
       ranBefore: false,
       mergedPr: null,
     });
+  });
+});
+
+describe("where a fix ticket is read", () => {
+  it("asks nothing for no tickets", async () => {
+    const database = recordingDatabase();
+
+    expect(await new WatchRepository(database.service).fixLinks(ORG, [])).toEqual(new Map());
+    expect(database.statements).toHaveLength(0);
+  });
+
+  it("reads each ticket's tracker page and its newest run, through its pull request or its mirrored issue", async () => {
+    const database = recordingDatabase();
+    const repository = new WatchRepository(database.service);
+    database.answers({
+      rows: [
+        { ticket_id: "t1", url: "https://tracker.example/1", run_id: "r1" },
+        { ticket_id: "t2", url: "https://tracker.example/2", run_id: null },
+      ],
+    });
+
+    expect(await repository.fixLinks(ORG, ["t1", "t2"])).toEqual(
+      new Map([
+        ["t1", { runId: "r1", url: "https://tracker.example/1" }],
+        ["t2", { runId: null, url: "https://tracker.example/2" }],
+      ]),
+    );
+
+    const { sql, parameters } = database.statements[database.statements.length - 1];
+    expect(sql).toContain("r.id = p.run_id and r.organization_id = p.organization_id");
+    expect(sql).toContain("p.organization_id = t.organization_id and p.ticket_id = t.id");
+    expect(sql).toContain("r.github_repo_id = gi.github_repo_id and r.issue_number = gi.number");
+    expect(sql).toContain("order by found.started_at desc, found.run_id");
+    expect(sql).toContain("where t.organization_id = $1");
+    expect(parameters).toEqual([ORG, "t1", "t2"]);
+  });
+});
+
+describe("the card's order", () => {
+  it("puts open items first, the worst of them on top, then the newest", async () => {
+    const database = recordingDatabase();
+
+    await new WatchRepository(database.service).items(ORG, 50);
+
+    expect(database.statements[0].sql.replace(/\s+/g, " ")).toContain(
+      "order by (w.status in ('fixed_merged', 'dismissed')), case w.severity when 'err' then 0 when 'warn' then 1 else 2 end, w.detected_at desc, w.id",
+    );
   });
 });
 

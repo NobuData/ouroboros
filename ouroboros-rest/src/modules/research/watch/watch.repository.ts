@@ -206,6 +206,14 @@ export interface FixProgress {
   readonly mergedPr: { readonly id: string; readonly number: number } | null;
 }
 
+/** Where a filed fix ticket is read. */
+export interface FixLinks {
+  /** The newest run on the ticket, or null before any. */
+  readonly runId: string | null;
+  /** The ticket's page on its tracker. */
+  readonly url: string | null;
+}
+
 /** The storage the watch's services are written against; tests substitute an in-memory one. */
 export interface WatchStore {
   /** @returns The workspace's settings, defaults where it stored none. */
@@ -271,6 +279,15 @@ export interface WatchStore {
   draftState(organizationId: string, draftId: string): Promise<DraftState | undefined>;
   /** @returns Where a fix ticket stands. */
   fixProgress(organizationId: string, ticketId: string): Promise<FixProgress>;
+  /**
+   * Where each of some fix tickets is read: its newest run, in flight or ended — what the
+   * card's `#512` opens — and its page on its tracker, for a ticket no run has touched.
+   * @returns The links by ticket id; a ticket that is gone is absent.
+   */
+  fixLinks(
+    organizationId: string,
+    ticketIds: readonly string[],
+  ): Promise<ReadonlyMap<string, FixLinks>>;
 }
 
 const schema = sql.id(SCHEMA_NAME);
@@ -513,7 +530,9 @@ export class WatchRepository implements WatchStore {
     const { rows } = await sql<ItemRecord>`
       ${ITEM_SELECT}
        where w.organization_id = ${organizationId}
-       order by (w.status in ('fixed_merged', 'dismissed')), w.detected_at desc, w.id
+       order by (w.status in ('fixed_merged', 'dismissed')),
+                case w.severity when 'err' then 0 when 'warn' then 1 else 2 end,
+                w.detected_at desc, w.id
        limit ${limit}
     `.execute(this.database.db);
 
@@ -747,6 +766,46 @@ export class WatchRepository implements WatchStore {
           ? null
           : { id: row.pr_id, number: row.pr_number },
     };
+  }
+
+  /** @inheritdoc */
+  async fixLinks(
+    organizationId: string,
+    ticketIds: readonly string[],
+  ): Promise<ReadonlyMap<string, FixLinks>> {
+    if (ticketIds.length === 0) return new Map();
+
+    // The two ways a run belongs to a ticket, as `fixProgress` reads them: through the pull
+    // request that names both, or as a run on the ticket's mirrored issue.
+    const { rows } = await sql<{ ticket_id: string; url: string | null; run_id: string | null }>`
+      select t.id::text as ticket_id, t.external_url as url, newest.run_id
+        from ${schema}.tickets t
+        left join lateral (
+          select found.run_id
+            from (
+              select r.id as run_id, r.started_at
+                from ${schema}.pull_requests p
+                join ${schema}.runs r on r.id = p.run_id and r.organization_id = p.organization_id
+               where p.organization_id = t.organization_id and p.ticket_id = t.id
+              union all
+              select r.id as run_id, r.started_at
+                from ${schema}.github_issues gi
+                join ${schema}.github_repos gr on gr.id = gi.github_repo_id
+                join ${schema}.github_orgs go on go.id = gr.org_id
+                join ${schema}.runs r
+                  on r.organization_id = gi.organization_id
+                 and r.github_repo_id = gi.github_repo_id and r.issue_number = gi.number
+               where gi.organization_id = t.organization_id
+                 and gi.number::text = t.external_id
+                 and lower(go.login) = lower(t.meta #>> '{github,owner}')
+                 and lower(gr.name) = lower(t.meta #>> '{github,repo}')) found
+           order by found.started_at desc, found.run_id
+           limit 1) newest on true
+       where t.organization_id = ${organizationId}
+         and t.id in (${sql.join(ticketIds.map((id) => sql`${id}::uuid`))})
+    `.execute(this.database.db);
+
+    return new Map(rows.map((row) => [row.ticket_id, { runId: row.run_id, url: row.url }]));
   }
 
   /**

@@ -6,7 +6,15 @@ import { ADMIN_ONLY_START_REASON, START_LABEL } from "@/app/research/composer";
 import { VIEWER_START_REASON } from "@/app/research/view";
 
 import { membership, sessionUser } from "../helpers/login";
-import { composerReadings, featuredBrief, investigationDetail, investigationList, seededBrief } from "../helpers/research";
+import {
+  composerReadings,
+  emptyWatch,
+  featuredBrief,
+  investigationDetail,
+  investigationList,
+  seededBrief,
+  seededWatch,
+} from "../helpers/research";
 
 /**
  * The research route (#627): the gate is asked first, the address's view is read, and the
@@ -19,6 +27,7 @@ const readComposer = vi.fn();
 const readFeaturedBrief = vi.fn();
 const readInvestigationPage = vi.fn();
 const readOpenedInvestigation = vi.fn();
+const readWatch = vi.fn();
 
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
 vi.mock("@/app/research/composer-data", () => ({ readComposer: () => readComposer() }));
@@ -26,6 +35,12 @@ vi.mock("@/app/research/brief-data", () => ({ readFeaturedBrief: () => readFeatu
 vi.mock("@/app/research/investigations-data", () => ({
   readInvestigationPage: (filters: unknown) => readInvestigationPage(filters),
   readOpenedInvestigation: (id: unknown) => readOpenedInvestigation(id),
+}));
+vi.mock("@/app/research/side-data", () => ({ readWatch: () => readWatch() }));
+vi.mock("@/app/research/side-actions", () => ({
+  enableTool: () => new Promise(() => {}),
+  dismissWatchItem: () => new Promise(() => {}),
+  captureBaselines: () => new Promise(() => {}),
 }));
 vi.mock("@/app/research/investigations-actions", () => ({
   readInvestigations: () => new Promise(() => {}),
@@ -77,6 +92,8 @@ beforeEach(() => {
   requireWorkspace.mockReset().mockResolvedValue(access());
   readComposer.mockReset().mockResolvedValue(composerReadings());
   readFeaturedBrief.mockReset().mockResolvedValue({ ok: true, value: featuredBrief() });
+  readWatch.mockReset().mockResolvedValue({ ok: true, value: seededWatch() });
+  vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
   readInvestigationPage.mockReset().mockResolvedValue({ ok: true, value: investigationList() });
   readOpenedInvestigation
     .mockReset()
@@ -195,5 +212,35 @@ describe("the research route", () => {
     render(await page());
 
     expect(newInvestigation()).not.toHaveAttribute("aria-disabled");
+  });
+});
+
+describe("the side column's standing (#629)", () => {
+  it("reads the watch once and seats both cards", async () => {
+    render(await page());
+
+    expect(readWatch).toHaveBeenCalledOnce();
+    expect(screen.getByRole("region", { name: "Research tools" })).toHaveTextContent("5 connected");
+    expect(screen.getByRole("region", { name: "Regression watch" })).toHaveTextContent("Hover drift +14% since v2.0.4");
+  });
+
+  it.each<[Role, boolean]>([
+    ["owner", true],
+    ["admin", true],
+    ["member", false],
+    ["viewer", false],
+  ])("lets a %s capture a baseline and dismiss an item: %s", async (role, may) => {
+    requireWorkspace.mockResolvedValue(access([role]));
+    readWatch.mockResolvedValue({ ok: true, value: emptyWatch() });
+
+    render(await page());
+
+    expect(screen.queryByRole("button", { name: "Capture a baseline" }) !== null).toBe(may);
+    cleanup();
+
+    readWatch.mockResolvedValue({ ok: true, value: seededWatch() });
+    render(await page());
+
+    expect(screen.getByRole("button", { name: "Dismiss Hover drift +14% since v2.0.4" }).hasAttribute("title")).toBe(!may);
   });
 });

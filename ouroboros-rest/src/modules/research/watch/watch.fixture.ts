@@ -9,6 +9,7 @@ import {
   OPEN_STATUSES,
   type BaselineRow,
   type DraftState,
+  type FixLinks,
   type FixProgress,
   type ItemChange,
   type ItemReading,
@@ -114,6 +115,8 @@ export class MemoryWatchStore implements WatchStore {
   sources: string[] = ["50000000-0000-4000-8000-000000000001"];
   drafts = new Map<string, DraftState>();
   progress = new Map<string, FixProgress>();
+  /** Where a fix ticket is read, by ticket id — what `fixLinks` answers. */
+  links = new Map<string, FixLinks>();
   catalogue = new Set(["merge_rate", "build_duration"]);
   opened: { organizationId: string; question: string; tools: readonly string[] }[] = [];
   hasForensicsKind = true;
@@ -351,6 +354,21 @@ export class MemoryWatchStore implements WatchStore {
         ranBefore: false,
         mergedPr: null,
       },
+    );
+  }
+
+  /** @inheritdoc */
+  fixLinks(
+    _organizationId: string,
+    ticketIds: readonly string[],
+  ): Promise<ReadonlyMap<string, FixLinks>> {
+    return Promise.resolve(
+      new Map(
+        ticketIds.flatMap((id): [string, FixLinks][] => {
+          const links = this.links.get(id);
+          return links === undefined ? [] : [[id, links]];
+        }),
+      ),
     );
   }
 

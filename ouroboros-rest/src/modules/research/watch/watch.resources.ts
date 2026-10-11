@@ -12,6 +12,7 @@ import { type MetricClass, type ThresholdRule, type WindowStats, tidy } from "./
 import { metricLabel } from "./watch.inbox";
 import type {
   BaselineRow,
+  FixLinks,
   FixTicketRef,
   MetricSource,
   PrRef,
@@ -155,11 +156,23 @@ export interface WatchItemResource {
     readonly culpritSha: string;
     /** The first seven characters, as the card prints it. */
     readonly culprit: string;
+    /** Where the culprit commit is read — its page on GitHub, the one code host there is. */
+    readonly commitUrl: string;
     readonly steps: number;
     readonly farmJobIds: readonly string[];
   } | null;
   readonly investigation: { readonly id: string; readonly displayId: string | null } | null;
   readonly fixTicket: FixTicketRef | null;
+  /**
+   * The newest run on the fix ticket — what the row's `#512` opens (the run console). Null
+   * before any run exists, and on an answer that did not look (a dismissal's).
+   */
+  readonly fixRun: { readonly id: string } | null;
+  /**
+   * The filed fix ticket's page on its tracker — what `#512` opens while no run exists. Null
+   * for a draft, and on an answer that did not look.
+   */
+  readonly fixTicketUrl: string | null;
   /** The pull request that merged the fix; `key` is its number as shown — `#641`. */
   readonly pullRequest: { readonly id: string; readonly key: string } | null;
   readonly detectedAt: string;
@@ -290,12 +303,27 @@ export function detailOf(item: WatchItemRow): string {
 }
 
 /**
+ * Where a commit is read.
+ *
+ * @param repo - The repository, `owner/name`.
+ * @param sha - The commit.
+ * @returns Its page on GitHub — the only code host a repository here can be on.
+ */
+export function commitUrl(repo: string, sha: string): string {
+  return `https://github.com/${repo}/commit/${sha}`;
+}
+
+/**
  * A watch item, published.
  *
  * @param item - The row.
+ * @param links - Where its filed fix ticket is read, or null when it has none or nobody looked.
  * @returns The card's row.
  */
-export function watchItemResource(item: WatchItemRow): WatchItemResource {
+export function watchItemResource(
+  item: WatchItemRow,
+  links: FixLinks | null = null,
+): WatchItemResource {
   return {
     id: item.id,
     repository: item.baseline.repo,
@@ -319,6 +347,7 @@ export function watchItemResource(item: WatchItemRow): WatchItemResource {
             id: item.bisectId,
             culpritSha: item.bisectResult.culprit_sha,
             culprit: item.bisectResult.culprit_sha.slice(0, 7),
+            commitUrl: commitUrl(item.baseline.repo, item.bisectResult.culprit_sha),
             steps: item.bisectResult.steps,
             farmJobIds: [...item.bisectResult.farm_job_ids],
           },
@@ -327,6 +356,8 @@ export function watchItemResource(item: WatchItemRow): WatchItemResource {
         ? null
         : { id: item.investigationId, displayId: item.investigationDisplayId },
     fixTicket: item.fixTicketRef,
+    fixRun: links?.runId == null ? null : { id: links.runId },
+    fixTicketUrl: links?.url ?? null,
     pullRequest: prResource(item.prRef),
     detectedAt: item.detectedAt.toISOString(),
     statusChangedAt: item.statusChangedAt.toISOString(),
@@ -349,6 +380,7 @@ function prResource(ref: PrRef | null): { readonly id: string; readonly key: str
  * @param items - The workspace's items, open ones first.
  * @param baselines - The newest baseline of each repository and metric.
  * @param settings - The workspace's settings.
+ * @param fixLinks - Where each filed fix ticket is read, by ticket id.
  * @returns The card: its headline names the release when there is one, the releases when
  *   repositories are on different ones.
  */
@@ -356,6 +388,7 @@ export function cardResource(
   items: readonly WatchItemRow[],
   baselines: readonly BaselineRow[],
   settings: WatchSettingsRow,
+  fixLinks: ReadonlyMap<string, FixLinks> = new Map(),
 ): WatchCardResource {
   const releases = [
     ...new Set(
@@ -381,7 +414,12 @@ export function cardResource(
       err: open.filter((item) => item.severity === "err").length,
       warn: open.filter((item) => item.severity === "warn").length,
     },
-    items: items.map(watchItemResource),
+    items: items.map((item) =>
+      watchItemResource(
+        item,
+        item.fixTicketRef?.kind === "ticket" ? (fixLinks.get(item.fixTicketRef.id) ?? null) : null,
+      ),
+    ),
     baselines: baselines.length,
     lastComparedAt: settings.lastComparedAt?.toISOString() ?? null,
   };

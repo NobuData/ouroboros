@@ -27,6 +27,7 @@ import {
   ConflictError,
   ForbiddenError,
   InvalidRequestError,
+  NotFoundError,
   NotImplementedError,
   UpstreamError,
 } from "../../errors/error.envelope";
@@ -104,6 +105,10 @@ export function isResearchToolError(error: unknown): error is ResearchToolError 
 export const RESEARCH_TOOL_ERRORS = {
   /** `501` — a slug with no adapter in this build. */
   toolNotRegistered: "research_tool_not_registered",
+  /** `404` — the installation has no research tool with that slug. */
+  toolNotFound: "research_tool_not_found",
+  /** `422` — a submitted configuration does not satisfy the tool's schema. */
+  toolConfigInvalid: "research_tool_config_invalid",
   /** `422` — the tool does not declare that operation, or the input is not one it takes. */
   operationUnsupported: "research_tool_operation_unsupported",
   /** `403` — the investigation did not enable this tool. */
@@ -119,6 +124,38 @@ export const RESEARCH_TOOL_ERRORS = {
   /** `502` — the tool answered outside the citation contract. */
   contractViolation: "research_tool_contract_violation",
 } as const;
+
+/**
+ * `404` — the installation has no research tool with that slug.
+ *
+ * @param slug - The slug asked for.
+ * @returns The error to throw.
+ */
+export function toolNotFound(slug: string): NotFoundError {
+  return new NotFoundError(RESEARCH_TOOL_ERRORS.toolNotFound, "No research tool has that slug.", {
+    tool: slug,
+  });
+}
+
+/**
+ * `422` — the submitted configuration does not satisfy the tool's own schema.
+ *
+ * @param slug - The tool.
+ * @param fields - Field name to the sentences about it, as `toolConfigViolations` reported
+ *   them. Never empty.
+ * @returns The error to throw, with `details.fields` in the `{field: [sentences]}` shape
+ *   `errors/validation.ts` produces — so the enable form has one renderer for both.
+ */
+export function toolConfigInvalid(
+  slug: string,
+  fields: Readonly<Record<string, string[]>>,
+): InvalidRequestError {
+  return new InvalidRequestError(
+    RESEARCH_TOOL_ERRORS.toolConfigInvalid,
+    "The configuration does not satisfy this tool's schema. See `details.fields`.",
+    { tool: slug, fields },
+  );
+}
 
 /**
  * `501` — this build has no adapter for that slug.

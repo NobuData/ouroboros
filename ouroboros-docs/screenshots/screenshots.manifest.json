@@ -659,11 +659,11 @@
       "workspace": "acme-robotics",
       "ready": ".research__estimate:has-text('est. 40–60 sources · ~$6')",
       "clip": "page",
-      "caption": "Research: the head and its two buttons, over the composer, the featured brief and the regions still to come.",
-      "alt": "The Research page with Research lit in the sidebar: the heading Ask a hard question. Get an evidenced answer — and the tickets to act on it., the Research library and New investigation buttons, the Start an investigation composer beside the Research tools and Regression watch regions, then the featured brief RS-127 — Autonomous docking vs. the field with its capability matrix, text and sources, and the Roadmap pipeline and Investigations regions saying which release fills them.",
-      "capturedAt": "2026-10-10T20:33:11.847Z",
-      "uiVersion": "0.147.0",
-      "seedRef": "890a3fe4096322d1958e55f6c58d864f57e536dc"
+      "caption": "Research: the head and its two buttons, over the composer beside the Research tools and Regression watch cards.",
+      "alt": "The Research page with Research lit in the sidebar: the heading Ask a hard question. Get an evidenced answer — and the tickets to act on it., the Research library and New investigation buttons, the Start an investigation composer beside the Research tools card — tagged 4 connected, listing six tools with their health dots and an enable button on Docs, standards & papers — and, under it, the top of the Regression watch card tagged nightly vs. 2 release baselines with the rows Hover drift +14% since v2.0.4 and Boot time +230 ms since v2.1.0-rc1.",
+      "capturedAt": "2026-10-11T15:24:45.778Z",
+      "uiVersion": "0.149.0",
+      "seedRef": "8924a362b2849d2b716e7140ee5ed56265ba1a51"
     },
     {
       "id": "user-guide.research.composer",
@@ -682,6 +682,30 @@
       "capturedAt": "2026-10-10T19:59:10.713Z",
       "uiVersion": "0.146.0",
       "seedRef": "e529fa2e7d23b409a29ea174105bff5543cedd08"
+    },
+    {
+      "id": "user-guide.research.tools",
+      "route": "/research",
+      "workspace": "acme-robotics",
+      "ready": "#tools .research__dot--idle",
+      "clip": "#tools",
+      "caption": "The Research tools card: each tool with its live sub-line and health dot, the count of tools answering, and enable on the tool that is not set up.",
+      "alt": "The Research tools card with the tag 4 connected and six rows: Web search & page reader, search API + full-page extraction, robots-aware, with a green dot; Competitor tracker, 4 rivals watched · release notes, changelogs, filings, with a red dot; Codebase & git mining, blame, bisect, dependency graph over 4 repositories, with a green dot; Issue & PR history index, 389 issues · 12 pull requests · Support churn interviews Q2, with a green dot; Build & test telemetry, 8 HIL measurements · 24 insights metrics · 63 test cases, with a green dot; and Docs, standards & papers, datasheets, RFCs, arXiv — PDF reader with citations, with a grey ring and an enable button.",
+      "capturedAt": "2026-10-11T15:24:24.298Z",
+      "uiVersion": "0.149.0",
+      "seedRef": "8924a362b2849d2b716e7140ee5ed56265ba1a51"
+    },
+    {
+      "id": "user-guide.research.watch",
+      "route": "/research",
+      "workspace": "acme-robotics",
+      "ready": "#watch .research__watch-caption",
+      "clip": "#watch",
+      "caption": "The Regression watch card: each drifted metric with its severity, where its fix stands, and links to the culprit commit, the fix and the merged pull request.",
+      "alt": "The Regression watch card with the tag nightly vs. 2 release baselines and three rows: Hover drift +14% since v2.0.4 with a red dot, the line bisected → a41f2c9 · fix loop running · #512, a fixing pill and a dismiss button; Boot time +230 ms since v2.1.0-rc1 with an amber dot, the line bisected → 7c03d1e · fix ticket drafted · #517, a queued pill and a dismiss button; and Soc error +2.8% since v2.0.4 with a green dot, the line root-caused, fixed & merged · PR #641 and a ✓ merged pill. Under them the caption Watch compares every nightly HIL run to the last release baseline; any drift opens a forensics investigation automatically.",
+      "capturedAt": "2026-10-11T15:24:29.939Z",
+      "uiVersion": "0.149.0",
+      "seedRef": "8924a362b2849d2b716e7140ee5ed56265ba1a51"
     },
     {
       "id": "user-guide.research.brief",

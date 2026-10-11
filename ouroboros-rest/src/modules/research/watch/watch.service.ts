@@ -313,7 +313,16 @@ export class RegressionWatchService {
       this.store.settings(organizationId),
     ]);
 
-    return cardResource(items, baselines, settings);
+    const tickets = items.flatMap((item) =>
+      item.fixTicketRef?.kind === "ticket" ? [item.fixTicketRef.id] : [],
+    );
+
+    return cardResource(
+      items,
+      baselines,
+      settings,
+      await this.store.fixLinks(organizationId, tickets),
+    );
   }
 
   /**

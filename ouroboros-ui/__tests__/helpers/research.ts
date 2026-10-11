@@ -11,7 +11,11 @@ import type {
   InvestigationList,
   InvestigationProgress,
   MatrixCell,
+  RegressionWatchCard,
+  RegressionWatchItem,
+  ResearchToolCatalog,
   ResearchToolCatalogEntry,
+  ResearchToolEnableForm,
   ScopeEstimate,
   StartedInvestigation,
 } from "@/app/api/research";
@@ -56,16 +60,244 @@ export function kind(
   return { slug, name, tint, playbook: { version: 1, defaultTools, deliverables } };
 }
 
-/** The six tools in the composer's order — five connected, `docs` idle. */
+/** A one-field form: what a tool with nothing required offers. */
+export function plainForm(title: string): ResearchToolEnableForm {
+  return {
+    kind: "form",
+    title,
+    values: {},
+    fields: [
+      {
+        name: "windowDays",
+        label: "Window (days)",
+        widget: "text",
+        required: false,
+        help: null,
+        placeholder: null,
+        defaultValue: null,
+        choices: null,
+        minLength: null,
+        maxLength: null,
+        pattern: null,
+        minItems: null,
+        maxItems: null,
+      },
+    ],
+  };
+}
+
+/**
+ * One enabled, healthy tool.
+ *
+ * @param slug Its slug.
+ * @param name Its name.
+ * @param glyph Its glyph.
+ * @param subLine Its computed sub-line.
+ * @param over What this case changes.
+ * @returns The catalog entry.
+ */
+export function tool(
+  slug: string,
+  name: string,
+  glyph: string,
+  subLine: string,
+  over: Partial<ResearchToolCatalogEntry> = {},
+): ResearchToolCatalogEntry {
+  return {
+    slug,
+    name,
+    glyph,
+    connected: true,
+    subLine,
+    health: { state: "healthy", dot: "ok", detail: "200 · 41ms" },
+    configured: true,
+    hasCredential: false,
+    enable: plainForm(name),
+    ...over,
+  };
+}
+
+/** The six tools in the composer's order — five enabled and healthy, `docs` planned and idle. */
 export function seededTools(): ResearchToolCatalogEntry[] {
   return [
-    { slug: "web", name: "Web search & page reader", glyph: "◍", connected: true },
-    { slug: "competitor", name: "Competitor tracker", glyph: "⌖", connected: true },
-    { slug: "code", name: "Codebase & git mining", glyph: "⌥", connected: true },
-    { slug: "tickets", name: "Issue & PR history index", glyph: "▤", connected: true },
-    { slug: "telemetry", name: "Build & test telemetry", glyph: "∿", connected: true },
-    { slug: "docs", name: "Docs, standards & papers", glyph: null, connected: false },
+    tool("web", "Web search & page reader", "◍", "SearXNG · full-page extraction, robots-aware"),
+    tool("competitor", "Competitor tracker", "⌖", "4 rivals watched · release notes, changelogs, filings"),
+    tool("code", "Codebase & git mining", "⌥", "blame, bisect, dependency graph over helios-firmware"),
+    tool("tickets", "Issue & PR history index", "▤", "3,412 issues · support tickets · churn interviews"),
+    tool("telemetry", "Build & test telemetry", "∿", "HIL bench measurements · 6 metrics"),
+    {
+      slug: "docs",
+      name: "Docs, standards & papers",
+      glyph: "§",
+      connected: false,
+      subLine: "datasheets, RFCs, arXiv — PDF reader with citations",
+      health: { state: "not_configured", dot: "idle", detail: "not configured" },
+      configured: false,
+      hasCredential: false,
+      enable: { kind: "planned", release: "v2", issue: 635 },
+    },
   ];
+}
+
+/** The seeded catalog: the six tools, five of them answering. */
+export function seededCatalog(tools: ResearchToolCatalogEntry[] = seededTools()): ResearchToolCatalog {
+  return {
+    tools,
+    connectedCount: tools.filter((entry) => entry.health.dot === "ok" || entry.health.dot === "warn").length,
+  };
+}
+
+/** A window of samples — what an item's `baseline` and `current` carry. */
+const WINDOW: RegressionWatchItem["baseline"] = {
+  n: 14,
+  median: 31,
+  spread: 4.2,
+  spreadKind: "iqr",
+  unit: "cm",
+  from: "2026-10-03T00:00:00Z",
+  to: "2026-10-10T00:00:00Z",
+};
+
+/**
+ * One watch item — the seeded hover drift unless told otherwise.
+ *
+ * @param over What this case changes.
+ * @returns The item.
+ */
+export function watchItem(over: Partial<RegressionWatchItem> = {}): RegressionWatchItem {
+  return {
+    id: "5eed0096-0000-4000-8000-000000000101",
+    repository: "acme-robotics/helios-firmware",
+    metric: "hover_drift_cm",
+    metricLabel: "hover_drift_cm",
+    releaseTag: "v2.0.4",
+    severity: "err",
+    status: "fix_running",
+    drift: "+14%",
+    driftValue: 14,
+    driftUnit: "%",
+    baseline: WINDOW,
+    current: WINDOW,
+    detail: "bisected → a41f2c9 · fix loop running · #512",
+    pill: { label: "fixing", tone: "run" },
+    note: null,
+    bisect: {
+      id: null,
+      culpritSha: "a41f2c95d0b7e31c8a64f20e9d1b37c55a8f06e2",
+      culprit: "a41f2c9",
+      commitUrl:
+        "https://github.com/acme-robotics/helios-firmware/commit/a41f2c95d0b7e31c8a64f20e9d1b37c55a8f06e2",
+      steps: 5,
+      farmJobIds: [],
+    },
+    investigation: null,
+    fixTicket: { kind: "ticket", id: "5eed008e-0000-4000-8000-000000000512", key: "#512" },
+    fixRun: { id: "5eed0009-0000-4000-8000-000000000512" },
+    fixTicketUrl: "https://github.com/acme-robotics/helios-firmware/issues/512",
+    pullRequest: null,
+    detectedAt: "2026-10-05T02:00:00Z",
+    statusChangedAt: "2026-10-06T02:00:00Z",
+    ...over,
+  };
+}
+
+/** Mockup 22's three rows: fixing with a run, queued with a ticket only, and merged. */
+export function seededWatchItems(): RegressionWatchItem[] {
+  return [
+    watchItem(),
+    watchItem({
+      id: "5eed0096-0000-4000-8000-000000000102",
+      metric: "boot_time_ms",
+      metricLabel: "boot_time_ms",
+      releaseTag: "v2.1.0-rc1",
+      baseline: { ...WINDOW, median: 4120, spread: 35, unit: "ms" },
+      current: { ...WINDOW, median: 4350, spread: 38, unit: "ms" },
+      severity: "warn",
+      status: "fix_drafted",
+      drift: "+230 ms",
+      detail: "bisected → 7c03d1e · fix ticket drafted · #517",
+      pill: { label: "queued", tone: "warn" },
+      bisect: {
+        id: null,
+        culpritSha: "7c03d1e4a92f6b08e31d57c2a9b40f61e7d38c05",
+        culprit: "7c03d1e",
+        commitUrl:
+          "https://github.com/acme-robotics/helios-firmware/commit/7c03d1e4a92f6b08e31d57c2a9b40f61e7d38c05",
+        steps: 4,
+        farmJobIds: [],
+      },
+      fixTicket: { kind: "ticket", id: "5eed008e-0000-4000-8000-000000000517", key: "#517" },
+      fixRun: null,
+      fixTicketUrl: "https://github.com/acme-robotics/helios-firmware/issues/517",
+    }),
+    watchItem({
+      id: "5eed0096-0000-4000-8000-000000000103",
+      metric: "soc_error_pct",
+      metricLabel: "soc_error_pct",
+      baseline: { ...WINDOW, median: 2.1, spread: 0.4, unit: "%" },
+      current: { ...WINDOW, median: 4.9, spread: 0.5, unit: "%" },
+      severity: "ok",
+      status: "fixed_merged",
+      drift: "+2.8%",
+      detail: "root-caused, fixed & merged · PR #641",
+      pill: { label: "✓ merged", tone: "ok" },
+      fixTicket: { kind: "ticket", id: "5eed008e-0000-4000-8000-000000000639", key: "#639" },
+      fixRun: null,
+      fixTicketUrl: "https://github.com/acme-robotics/helios-firmware/issues/639",
+      pullRequest: { id: "5eed0098-0000-4000-8000-000000000641", key: "#641" },
+    }),
+  ];
+}
+
+/** An item the watch could not bisect, resting at `detected` with its explanation. */
+export function needsReproItem(): RegressionWatchItem {
+  return watchItem({
+    id: "5eed0096-0000-4000-8000-000000000104",
+    metric: "fan_rpm_variance",
+    metricLabel: "fan_rpm_variance",
+    baseline: { ...WINDOW, unit: "rpm" },
+    current: { ...WINDOW, unit: "rpm" },
+    severity: "warn",
+    status: "detected",
+    drift: "+9%",
+    detail: "needs repro: no replayable test is configured for this metric, so it cannot be bisected",
+    note: "needs repro: no replayable test is configured for this metric, so it cannot be bisected",
+    pill: { label: "detected", tone: "warn" },
+    bisect: null,
+    fixTicket: null,
+    fixRun: null,
+    fixTicketUrl: null,
+  });
+}
+
+/**
+ * The watch card as the seed draws it.
+ *
+ * @param over What this case changes.
+ * @returns The card.
+ */
+export function seededWatch(over: Partial<RegressionWatchCard> = {}): RegressionWatchCard {
+  return {
+    headline: "nightly vs. 2 release baselines",
+    releases: ["v2.1.0-rc1", "v2.0.4"],
+    counts: { open: 2, err: 1, warn: 1 },
+    items: seededWatchItems(),
+    baselines: 3,
+    lastComparedAt: "2026-10-10T02:00:00Z",
+    ...over,
+  };
+}
+
+/** A workspace that has captured no baseline. */
+export function emptyWatch(): RegressionWatchCard {
+  return {
+    headline: null,
+    releases: [],
+    counts: { open: 0, err: 0, warn: 0 },
+    items: [],
+    baselines: 0,
+    lastComparedAt: null,
+  };
 }
 
 /** The five slugs the seeded gap analysis turns on. */
@@ -80,7 +312,7 @@ export const FIVE_TOOLS = ["web", "competitor", "code", "tickets", "telemetry"];
 export function composerReadings(over: Partial<ComposerReadings> = {}): ComposerReadings {
   return {
     kinds: { ok: true, value: { kinds: seededKinds() } },
-    tools: { ok: true, value: { tools: seededTools() } },
+    tools: { ok: true, value: seededCatalog() },
     settings: { ok: true, value: { startRole: "member" } },
     ...over,
   };
