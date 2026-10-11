@@ -352,19 +352,21 @@ EG.8) and **per-customer rate cards for a hosted tier** (EG.7).
 
 ## Epics, Labels & Milestones
 
+> **Filed 2026-10-10** by `create-issues` in `NobuData/ouroboros`: epic parents #1466–#1472, work issues #1473–#1528, numbered in dependency order. Each work issue is a sub-issue of its epic with blocked-by links, Priority, Effort and type set. Statements below that nothing is filed predate this; relabelling or amending *existing* issues described by this roadmap has **not** been done.
+
 Each epic would be a parent tracking issue on GitHub; every roadmap issue
 below would be filed as one of its sub-issues (GitHub Relationships).
 **None is filed.**
 
 | Epic | GitHub | Status | Name | Goal | Modules | Milestone |
 |------|:------:|:------:|------|------|---------|-----------|
-| EA | — | ⚪ Not filed | Budget Hierarchy | Ledger attribution, budgets, counters, resolver, API, design source, settings surface, seeds | ouroboros-db, ouroboros-rest, ouroboros-ui | Spend Governance MVP |
-| EB | — | ⚪ Not filed | Enforcement Before the Call | The gate, simulated enforcement, executor hook, run stop, soft stop, ask, states, tests | ouroboros-rest, ouroboros-engine, ouroboros-ui | Spend Governance MVP |
-| EC | — | ⚪ Not filed | Pre-Run Cost Estimate | Cost range per issue, queue-time check, estimate against actuals, calibration | ouroboros-db, ouroboros-rest, ouroboros-engine, ouroboros-ui | Spend Governance v2 |
-| ED | — | ⚪ Not filed | Spend Alerts | Thresholds, evaluator, inbox/email/webhook delivery, configuration, forecasts, anomalies | ouroboros-db, ouroboros-rest, ouroboros-ui | Spend Governance MVP |
-| EE | — | ⚪ Not filed | Reconciliation | Catalogue reconciliation, provider usage reports, drift findings, surface | ouroboros-db, ouroboros-rest, ouroboros-ui | Spend Governance v2 |
-| EF | — | ⚪ Not filed | Usage API & Export | Read API, CSV, token scope, explorer, chargeback, FOCUS, docs, e2e | ouroboros-rest, ouroboros-ui, ouroboros-docs, tests/e2e | Spend Governance MVP |
-| EG | — | ⚪ Not filed | Non-Token Units | Unit-aware ledger, unit prices, farm compute, Studio units, budgets over units, rate cards | ouroboros-db, ouroboros-rest, ouroboros-ui | Spend Governance v2 (EG.1 in MVP) |
+| EA | #1466 | 🟡 Open | Budget Hierarchy | Ledger attribution, budgets, counters, resolver, API, design source, settings surface, seeds | ouroboros-db, ouroboros-rest, ouroboros-ui | Spend Governance MVP |
+| EB | #1467 | 🟡 Open | Enforcement Before the Call | The gate, simulated enforcement, executor hook, run stop, soft stop, ask, states, tests | ouroboros-rest, ouroboros-engine, ouroboros-ui | Spend Governance MVP |
+| EC | #1468 | 🟡 Open | Pre-Run Cost Estimate | Cost range per issue, queue-time check, estimate against actuals, calibration | ouroboros-db, ouroboros-rest, ouroboros-engine, ouroboros-ui | Spend Governance v2 |
+| ED | #1469 | 🟡 Open | Spend Alerts | Thresholds, evaluator, inbox/email/webhook delivery, configuration, forecasts, anomalies | ouroboros-db, ouroboros-rest, ouroboros-ui | Spend Governance MVP |
+| EE | #1470 | 🟡 Open | Reconciliation | Catalogue reconciliation, provider usage reports, drift findings, surface | ouroboros-db, ouroboros-rest, ouroboros-ui | Spend Governance v2 |
+| EF | #1471 | 🟡 Open | Usage API & Export | Read API, CSV, token scope, explorer, chargeback, FOCUS, docs, e2e | ouroboros-rest, ouroboros-ui, ouroboros-docs, tests/e2e | Spend Governance MVP |
+| EG | #1472 | 🟡 Open | Non-Token Units | Unit-aware ledger, unit prices, farm compute, Studio units, budgets over units, rate cards | ouroboros-db, ouroboros-rest, ouroboros-ui | Spend Governance v2 (EG.1 in MVP) |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set
 (`mvp`, `v2`, `rest`, `db`, `engine`, `ui`, `ci`, `design`,
@@ -386,20 +388,20 @@ user-visible changes update `ouroboros-docs`; closed issues get a ✅ here.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EA.1 | — | ⚪ Planned | ouroboros-db: [EA.1] Usage ledger attribution columns | Repository, workflow, PR, initiating user, stage and price provenance on every ledger row | mvp, spend, db | N (after #92, #826) | Y | M | ouroboros-db |
-| EA.2 | — | ⚪ Planned | ouroboros-db: [EA.2] Budgets schema — scopes, periods & limit outcomes | `budgets` rows per scope with period, amount, outcome and thresholds | mvp, spend, db | Y (∥ EA.1) | Y | M | ouroboros-db |
-| EA.3 | — | ⚪ Planned | ouroboros-db: [EA.3] Budget counters, reservations & grants | Per-period counters, expiring reservations, single-use grants, atomic functions | mvp, spend, db | N (after EA.2) | Y | L | ouroboros-db |
-| EA.4 | — | ⚪ Planned | ouroboros-rest: [EA.4] Effective-budget resolver | Which budgets cover a call, strictest wins, folded with spend guard, route and provider caps | mvp, spend, rest, settings | N (after EA.1, EA.2) | Y | M | ouroboros-rest |
-| EA.5 | — | ⚪ Planned | ouroboros-rest: [EA.5] Budgets API, roles & audit | CRUD, status with headroom, role checks, audit events | mvp, spend, rest, settings | N (after EA.3, EA.4) | Y | M | ouroboros-rest, ouroboros-docs |
-| EA.6 | — | ⚪ Planned | ouroboros-ui: [EA.6] Spend governance mockup (24) & design spec | The missing design source for budgets, alerts, usage and stopped states | mvp, spend, ui, design | Y (first) | Y | M | docs/mockups, ouroboros-ui |
-| EA.7 | — | ⚪ Planned | ouroboros-ui: [EA.7] Budgets settings surface — workspace & run | `/settings/spend`: budget cards, meters, edit sheets, honest states | mvp, spend, ui, settings | N (after EA.5, EA.6) | Y | M | ouroboros-ui, ouroboros-docs |
-| EA.8 | — | ⚪ Planned | ouroboros-rest: [EA.8] Repository, workflow & user budgets | Activates the three remaining scopes end to end | v2, spend, rest, ui | N (after EA.5, EB.1) | N | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
-| EA.9 | — | ⚪ Planned | ouroboros-rest: [EA.9] Budget groups — teams & cost centres | Named groups of repositories and members with their own budget and code | v2, spend, rest, db, ui | N (after EA.8) | N | L | ouroboros-db, ouroboros-rest, ouroboros-ui, ouroboros-docs |
-| EA.10 | — | ⚪ Planned | ouroboros-db: [EA.10] Spend governance dev seeds & CI probes | Seeded budgets at each threshold, attributed usage, probes | mvp, spend, db, ci | N (after EA.1–EA.3) | Y | S | ouroboros-db, .github |
+| EA.1 | #1473 | 🟡 Open | ouroboros-db: [EA.1] Usage ledger attribution columns | Repository, workflow, PR, initiating user, stage and price provenance on every ledger row | mvp, spend, db | N (after #92, #826) | Y | M | ouroboros-db |
+| EA.2 | #1474 | 🟡 Open | ouroboros-db: [EA.2] Budgets schema — scopes, periods & limit outcomes | `budgets` rows per scope with period, amount, outcome and thresholds | mvp, spend, db | Y (∥ EA.1) | Y | M | ouroboros-db |
+| EA.3 | #1475 | 🟡 Open | ouroboros-db: [EA.3] Budget counters, reservations & grants | Per-period counters, expiring reservations, single-use grants, atomic functions | mvp, spend, db | N (after EA.2) | Y | L | ouroboros-db |
+| EA.4 | #1476 | 🟡 Open | ouroboros-rest: [EA.4] Effective-budget resolver | Which budgets cover a call, strictest wins, folded with spend guard, route and provider caps | mvp, spend, rest, settings | N (after EA.1, EA.2) | Y | M | ouroboros-rest |
+| EA.5 | #1477 | 🟡 Open | ouroboros-rest: [EA.5] Budgets API, roles & audit | CRUD, status with headroom, role checks, audit events | mvp, spend, rest, settings | N (after EA.3, EA.4) | Y | M | ouroboros-rest, ouroboros-docs |
+| EA.6 | #1478 | 🟡 Open | ouroboros-ui: [EA.6] Spend governance mockup (24) & design spec | The missing design source for budgets, alerts, usage and stopped states | mvp, spend, ui, design | Y (first) | Y | M | docs/mockups, ouroboros-ui |
+| EA.7 | #1479 | 🟡 Open | ouroboros-ui: [EA.7] Budgets settings surface — workspace & run | `/settings/spend`: budget cards, meters, edit sheets, honest states | mvp, spend, ui, settings | N (after EA.5, EA.6) | Y | M | ouroboros-ui, ouroboros-docs |
+| EA.8 | #1481 | 🟡 Open | ouroboros-rest: [EA.8] Repository, workflow & user budgets | Activates the three remaining scopes end to end | v2, spend, rest, ui | N (after EA.5, EB.1) | N | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| EA.9 | #1482 | 🟡 Open | ouroboros-rest: [EA.9] Budget groups — teams & cost centres | Named groups of repositories and members with their own budget and code | v2, spend, rest, db, ui | N (after EA.8) | N | L | ouroboros-db, ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| EA.10 | #1520 | 🟡 Open | ouroboros-db: [EA.10] Spend governance dev seeds & CI probes | Seeded budgets at each threshold, attributed usage, probes | mvp, spend, db, ci | N (after EA.1–EA.3) | Y | S | ouroboros-db, .github |
 
 ### Issue EA.1 — ouroboros-db: [EA.1] Usage ledger attribution columns
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EA
+> **GitHub issue:** #1473 · **Status:** 🟡 Open · **Parent epic:** #1466
 
 - **Problem Statement:** `token_usage` knows the workspace, optionally the
   run, the provider, the model and (since V020) the task kind. It cannot say
@@ -452,7 +454,7 @@ token_usage (one row per hop)
 
 ### Issue EA.2 — ouroboros-db: [EA.2] Budgets schema — scopes, periods & limit outcomes
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EA
+> **GitHub issue:** #1474 · **Status:** 🟡 Open · **Parent epic:** #1466
 
 - **Problem Statement:** The product has three caps in three places (route,
   provider connection, policy document) and no object that says "this
@@ -506,7 +508,7 @@ budgets
 
 ### Issue EA.3 — ouroboros-db: [EA.3] Budget counters, reservations & grants
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EA
+> **GitHub issue:** #1475 · **Status:** 🟡 Open · **Parent epic:** #1466
 
 - **Problem Statement:** Summing the ledger on every model call is too slow
   and is not atomic: two calls can both see the same headroom. The gate
@@ -565,7 +567,7 @@ reserve(req-a01, …, 50000)               ─▶ refused by: workspace (headroo
 
 ### Issue EA.4 — ouroboros-rest: [EA.4] Effective-budget resolver
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EA
+> **GitHub issue:** #1476 · **Status:** 🟡 Open · **Parent epic:** #1466
 
 - **Problem Statement:** A call is covered by several limits at once: the
   workspace budget, the run budget, `spend_guard`'s per-run cap, the
@@ -620,7 +622,7 @@ call(run 418 · repo helios-firmware · workflow bugfix · route "implement" · 
 
 ### Issue EA.5 — ouroboros-rest: [EA.5] Budgets API, roles & audit
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EA
+> **GitHub issue:** #1477 · **Status:** 🟡 Open · **Parent epic:** #1466
 
 - **Problem Statement:** Budgets need to be created, changed and read by
   people and by service accounts, with the same role and audit discipline
@@ -662,7 +664,7 @@ PATCH /api/v1/budgets/b-17 {amount: 150000}
 
 ### Issue EA.6 — ouroboros-ui: [EA.6] Spend governance mockup (24) & design spec
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EA
+> **GitHub issue:** #1478 · **Status:** 🟡 Open · **Parent epic:** #1466
 
 - **Problem Statement:** Every other roadmap in this repository starts from
   a mockup. This one has none: `docs/mockups/README.md` lists spend
@@ -709,7 +711,7 @@ PATCH /api/v1/budgets/b-17 {amount: 150000}
 
 ### Issue EA.7 — ouroboros-ui: [EA.7] Budgets settings surface — workspace & run
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EA
+> **GitHub issue:** #1479 · **Status:** 🟡 Open · **Parent epic:** #1466
 
 - **Problem Statement:** A budget nobody can see or set in the product is a
   database row. The settings page's *Spend guard* row is today the only
@@ -754,7 +756,7 @@ PATCH /api/v1/budgets/b-17 {amount: 150000}
 
 ### Issue EA.8 — ouroboros-rest: [EA.8] Repository, workflow & user budgets
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EA
+> **GitHub issue:** #1481 · **Status:** 🟡 Open · **Parent epic:** #1466
 
 - **Problem Statement:** The MVP governs the workspace and the run. The
   description's hierarchy also names the repository, the user and the
@@ -797,7 +799,7 @@ verdict: refused by user:ks (weekly) — headroom $0.42 < reserve $1.10
 
 ### Issue EA.9 — ouroboros-rest: [EA.9] Budget groups — teams & cost centres
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EA
+> **GitHub issue:** #1482 · **Status:** 🟡 Open · **Parent epic:** #1466
 
 - **Problem Statement:** Finance charges back to cost centres, not to
   repositories. GitHub's cost centre is the primitive enterprises already
@@ -833,7 +835,7 @@ token_usage.budget_group_id stamped at write → chargeback by CC code (EF.5)
 
 ### Issue EA.10 — ouroboros-db: [EA.10] Spend governance dev seeds & CI probes
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EA
+> **GitHub issue:** #1520 · **Status:** 🟡 Open · **Parent epic:** #1466
 
 - **Problem Statement:** Every surface here must be reviewable from
   `yarn dev` and every invariant must have a probe, as in each earlier
@@ -870,19 +872,19 @@ probe: Σ token_usage.cost_cents (Oct, priced, metered) == budget_counters.spent
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EB.1 | — | ⚪ Planned | ouroboros-rest: [EB.1] BudgetGate — reserve, settle & verdicts | The gate service every spender calls; verdict records; sweep job | mvp, spend, rest | N (after EA.3, EA.4) | Y | L | ouroboros-rest, ouroboros-db, ouroboros-docs |
-| EB.2 | — | ⚪ Planned | ouroboros-rest: [EB.2] Enforcement against simulated & ingested runs | Gate wired to the simulated driver and ingest path; verdicts labelled simulated | mvp, spend, rest, runs | N (after EB.1) | Y | M | ouroboros-rest |
-| EB.3 | — | ⚪ Planned | ouroboros-rest: [EB.3] Executor pre-flight hook & output clamp | Gate called inside AF.2's pre-flight; `max_tokens` clamped to headroom; settle per hop | mvp, spend, rest, providers, routing | N (after EB.1, #235) | Y | M | ouroboros-rest |
-| EB.4 | — | ⚪ Planned | ouroboros-engine: [EB.4] Run stop on a budget verdict | Engine turns a refusal into a designed stopped state and a clean resume | mvp, spend, engine, rest, runs | N (after EB.3, #54) | Y | M | ouroboros-engine, ouroboros-rest |
-| EB.5 | — | ⚪ Planned | ouroboros-rest: [EB.5] Soft stop — finish the stage, start nothing new | Stage-boundary pause and queue hold when a soft budget is reached | v2, spend, rest, engine, runs | N (after EB.4) | N | M | ouroboros-rest, ouroboros-engine, ouroboros-ui, ouroboros-docs |
-| EB.6 | — | ⚪ Planned | ouroboros-rest: [EB.6] Ask in the inbox — spend approvals & grants | Activates `spend_approval`; approve grants a bounded top-up and resumes | v2, spend, rest, inbox, engine | N (after EB.4) | N | L | ouroboros-rest, ouroboros-engine, ouroboros-ui, ouroboros-docs |
-| EB.7 | — | ⚪ Planned | ouroboros-ui: [EB.7] Budget-stopped states across run, queue & dashboard | Banner, chips, Resources card, and removal of "warning only" where bound | mvp, spend, ui, runs | N (after EB.2, EA.6) | Y | M | ouroboros-ui, ouroboros-docs |
-| EB.8 | — | ⚪ Planned | ouroboros-rest: [EB.8] Free, seat-billed & unpriced usage rule | One rule for what counts against a money budget and what is refused | mvp, spend, rest, registry | Y (after EB.1) | Y | S | ouroboros-rest, ouroboros-docs |
-| EB.9 | — | ⚪ Planned | ouroboros-rest: [EB.9] Enforcement integration tests & failure modes | Concurrency, fail-closed, fallback hops, period turnover, sweep | mvp, spend, rest, ci | N (after EB.2; live half after EB.4) | Y | M | ouroboros-rest, ouroboros-engine |
+| EB.1 | #1480 | 🟡 Open | ouroboros-rest: [EB.1] BudgetGate — reserve, settle & verdicts | The gate service every spender calls; verdict records; sweep job | mvp, spend, rest | N (after EA.3, EA.4) | Y | L | ouroboros-rest, ouroboros-db, ouroboros-docs |
+| EB.2 | #1518 | 🟡 Open | ouroboros-rest: [EB.2] Enforcement against simulated & ingested runs | Gate wired to the simulated driver and ingest path; verdicts labelled simulated | mvp, spend, rest, runs | N (after EB.1) | Y | M | ouroboros-rest |
+| EB.3 | #1483 | 🟡 Open | ouroboros-rest: [EB.3] Executor pre-flight hook & output clamp | Gate called inside AF.2's pre-flight; `max_tokens` clamped to headroom; settle per hop | mvp, spend, rest, providers, routing | N (after EB.1, #235) | Y | M | ouroboros-rest |
+| EB.4 | #1484 | 🟡 Open | ouroboros-engine: [EB.4] Run stop on a budget verdict | Engine turns a refusal into a designed stopped state and a clean resume | mvp, spend, engine, rest, runs | N (after EB.3, #54) | Y | M | ouroboros-engine, ouroboros-rest |
+| EB.5 | #1485 | 🟡 Open | ouroboros-rest: [EB.5] Soft stop — finish the stage, start nothing new | Stage-boundary pause and queue hold when a soft budget is reached | v2, spend, rest, engine, runs | N (after EB.4) | N | M | ouroboros-rest, ouroboros-engine, ouroboros-ui, ouroboros-docs |
+| EB.6 | #1486 | 🟡 Open | ouroboros-rest: [EB.6] Ask in the inbox — spend approvals & grants | Activates `spend_approval`; approve grants a bounded top-up and resumes | v2, spend, rest, inbox, engine | N (after EB.4) | N | L | ouroboros-rest, ouroboros-engine, ouroboros-ui, ouroboros-docs |
+| EB.7 | #1487 | 🟡 Open | ouroboros-ui: [EB.7] Budget-stopped states across run, queue & dashboard | Banner, chips, Resources card, and removal of "warning only" where bound | mvp, spend, ui, runs | N (after EB.2, EA.6) | Y | M | ouroboros-ui, ouroboros-docs |
+| EB.8 | #1488 | 🟡 Open | ouroboros-rest: [EB.8] Free, seat-billed & unpriced usage rule | One rule for what counts against a money budget and what is refused | mvp, spend, rest, registry | Y (after EB.1) | Y | S | ouroboros-rest, ouroboros-docs |
+| EB.9 | #1489 | 🟡 Open | ouroboros-rest: [EB.9] Enforcement integration tests & failure modes | Concurrency, fail-closed, fallback hops, period turnover, sweep | mvp, spend, rest, ci | N (after EB.2; live half after EB.4) | Y | M | ouroboros-rest, ouroboros-engine |
 
 ### Issue EB.1 — ouroboros-rest: [EB.1] BudgetGate — reserve, settle & verdicts
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EB
+> **GitHub issue:** #1480 · **Status:** 🟡 Open · **Parent epic:** #1467
 
 - **Problem Statement:** Caps today are stored numbers. #235 says cost caps
   are *"checked pre-flight and while running"* but does not define the
@@ -949,7 +951,7 @@ sequenceDiagram
 
 ### Issue EB.2 — ouroboros-rest: [EB.2] Enforcement against simulated & ingested runs
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EB
+> **GitHub issue:** #1518 · **Status:** 🟡 Open · **Parent epic:** #1467
 
 - **Problem Statement:** The executor does not exist yet. Waiting for it
   would leave the gate untested against anything resembling a run, and
@@ -999,7 +1001,7 @@ ingest (already spent) ─▶ settleDirect ─▶ counters ─▶ next queue att
 
 ### Issue EB.3 — ouroboros-rest: [EB.3] Executor pre-flight hook & output clamp
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EB
+> **GitHub issue:** #1483 · **Status:** 🟡 Open · **Parent epic:** #1467
 
 - **Problem Statement:** This is the issue that turns the warning into a
   control for real spend. The gate must be called inside the chain
@@ -1061,7 +1063,7 @@ invoke(run 418, route implement)
 
 ### Issue EB.4 — ouroboros-engine: [EB.4] Run stop on a budget verdict
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EB
+> **GitHub issue:** #1484 · **Status:** 🟡 Open · **Parent epic:** #1467
 
 - **Problem Statement:** A refused call is not a failed run. If the engine
   treats `budget_exhausted` as an error it will retry, escalate to a more
@@ -1111,7 +1113,7 @@ running ──(budget_exhausted)──▶ stopped{reason: budget_exhausted, by: 
 
 ### Issue EB.5 — ouroboros-rest: [EB.5] Soft stop — finish the stage, start nothing new
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EB
+> **GitHub issue:** #1485 · **Status:** 🟡 Open · **Parent epic:** #1467
 
 - **Problem Statement:** A hard stop mid-stage can waste the tokens already
   spent on that stage. For some budgets the right behaviour is to let work
@@ -1149,7 +1151,7 @@ limit $600 ───────────────┐  grace 5% ($30) ─�
 
 ### Issue EB.6 — ouroboros-rest: [EB.6] Ask in the inbox — spend approvals & grants
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EB
+> **GitHub issue:** #1486 · **Status:** 🟡 Open · **Parent epic:** #1467
 
 - **Problem Statement:** The inbox has had a `spend_approval` decision kind
   since its MVP, registered and dormant, and the policy card's *"spend >
@@ -1204,7 +1206,7 @@ approve → budget_grants{run 418, +100¢, by ks} → resume → gate allows 100
 
 ### Issue EB.7 — ouroboros-ui: [EB.7] Budget-stopped states across run, queue & dashboard
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EB
+> **GitHub issue:** #1487 · **Status:** 🟡 Open · **Parent epic:** #1467
 
 - **Problem Statement:** A run that stopped for money must look different
   from one that failed, and the reason must be one click from the fix.
@@ -1244,7 +1246,7 @@ Resources   cost $1.96 ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▒
 
 ### Issue EB.8 — ouroboros-rest: [EB.8] Free, seat-billed & unpriced usage rule
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EB
+> **GitHub issue:** #1488 · **Status:** 🟡 Open · **Parent epic:** #1467
 
 - **Problem Statement:** A money budget has to decide what to do with usage
   that has no per-call price. #826 separates three states the product must
@@ -1290,7 +1292,7 @@ price resolution      money budget                 ledger / export
 
 ### Issue EB.9 — ouroboros-rest: [EB.9] Enforcement integration tests & failure modes
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EB
+> **GitHub issue:** #1489 · **Status:** 🟡 Open · **Parent epic:** #1467
 
 - **Problem Statement:** A spend control is only as good as its behaviour
   when things go wrong: races, crashes between reserve and settle, a
@@ -1339,17 +1341,17 @@ that history is seeded and simulated — decision V12 governs every figure.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EC.1 | — | ⚪ Planned | ouroboros-db: [EC.1] Cost estimate & outcome schema | Cost range, method and basis on estimates; predicted versus actual cost on outcomes | v2, spend, db, intake | Y | N | S | ouroboros-db |
-| EC.2 | — | ⚪ Planned | ouroboros-rest: [EC.2] Cost range service — history percentiles × route prices | Computes a priced range per issue with method, basis and sample size | v2, spend, rest, intake, routing | N (after EC.1, EA.1) | N | L | ouroboros-rest |
-| EC.3 | — | ⚪ Planned | ouroboros-engine: [EC.3] Token forecast in the `/v0/estimate` contract | Estimator returns tokens by stage; REST prices them | v2, spend, engine, intake | Y (∥ EC.2) | N | M | ouroboros-engine, ouroboros-rest, schemas |
-| EC.4 | — | ⚪ Planned | ouroboros-rest: [EC.4] Queue-time budget check | Estimate compared with remaining budgets before a run is queued | v2, spend, rest, intake | N (after EC.2, EA.4) | N | M | ouroboros-rest |
-| EC.5 | — | ⚪ Planned | ouroboros-ui: [EC.5] Estimate ranges on intake, queue & run console | Range chip with method, queue warning, estimate-against-actual on the run | v2, spend, ui, intake, runs | N (after EC.2, EC.4, EA.6) | N | M | ouroboros-ui, ouroboros-docs |
-| EC.6 | — | ⚪ Planned | ouroboros-rest: [EC.6] Cost calibration metric & Insights card | Share of runs inside their predicted band; bias; by workflow and effort | v2, spend, rest, ui, insights | N (after EC.1; real history) | N | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
-| EC.7 | — | ⚪ Planned | ouroboros-rest: [EC.7] Estimate integration tests & honesty probes | No dollar figure without prices; simulated basis always labelled | v2, spend, rest, ci | N (after EC.2–EC.5) | N | S | ouroboros-rest, ouroboros-ui |
+| EC.1 | #1490 | 🟡 Open | ouroboros-db: [EC.1] Cost estimate & outcome schema | Cost range, method and basis on estimates; predicted versus actual cost on outcomes | v2, spend, db, intake | Y | N | S | ouroboros-db |
+| EC.2 | #1491 | 🟡 Open | ouroboros-rest: [EC.2] Cost range service — history percentiles × route prices | Computes a priced range per issue with method, basis and sample size | v2, spend, rest, intake, routing | N (after EC.1, EA.1) | N | L | ouroboros-rest |
+| EC.3 | #1492 | 🟡 Open | ouroboros-engine: [EC.3] Token forecast in the `/v0/estimate` contract | Estimator returns tokens by stage; REST prices them | v2, spend, engine, intake | Y (∥ EC.2) | N | M | ouroboros-engine, ouroboros-rest, schemas |
+| EC.4 | #1493 | 🟡 Open | ouroboros-rest: [EC.4] Queue-time budget check | Estimate compared with remaining budgets before a run is queued | v2, spend, rest, intake | N (after EC.2, EA.4) | N | M | ouroboros-rest |
+| EC.5 | #1494 | 🟡 Open | ouroboros-ui: [EC.5] Estimate ranges on intake, queue & run console | Range chip with method, queue warning, estimate-against-actual on the run | v2, spend, ui, intake, runs | N (after EC.2, EC.4, EA.6) | N | M | ouroboros-ui, ouroboros-docs |
+| EC.6 | #1495 | 🟡 Open | ouroboros-rest: [EC.6] Cost calibration metric & Insights card | Share of runs inside their predicted band; bias; by workflow and effort | v2, spend, rest, ui, insights | N (after EC.1; real history) | N | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| EC.7 | #1496 | 🟡 Open | ouroboros-rest: [EC.7] Estimate integration tests & honesty probes | No dollar figure without prices; simulated basis always labelled | v2, spend, rest, ci | N (after EC.2–EC.5) | N | S | ouroboros-rest, ouroboros-ui |
 
 ### Issue EC.1 — ouroboros-db: [EC.1] Cost estimate & outcome schema
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EC
+> **GitHub issue:** #1490 · **Status:** 🟡 Open · **Parent epic:** #1468
 
 - **Problem Statement:** `issue_estimates` records effort, confidence, the
   suggested workflow and the routed model. `estimate_outcomes` grades a
@@ -1387,7 +1389,7 @@ estimate_outcomes: predicted 140–390¢ · actual 262¢ · within_band ✔ · d
 
 ### Issue EC.2 — ouroboros-rest: [EC.2] Cost range service — history percentiles × route prices
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EC
+> **GitHub issue:** #1491 · **Status:** 🟡 Open · **Parent epic:** #1468
 
 - **Problem Statement:** The run console shows cost against a cap after the
   fact. Before a run, a person sees an effort chip and nothing about money.
@@ -1441,7 +1443,7 @@ n < 10 → stage token_budget × {0.35, 0.85} → stage_budget_heuristic · basi
 
 ### Issue EC.3 — ouroboros-engine: [EC.3] Token forecast in the `/v0/estimate` contract
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EC
+> **GitHub issue:** #1492 · **Status:** 🟡 Open · **Parent epic:** #1468
 
 - **Problem Statement:** History answers "what did issues like this cost".
   The estimator, which reads the issue itself, can answer "what will this
@@ -1482,7 +1484,7 @@ POST /v0/estimate → {effort: M, confidence: 71, …,
 
 ### Issue EC.4 — ouroboros-rest: [EC.4] Queue-time budget check
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EC
+> **GitHub issue:** #1493 · **Status:** 🟡 Open · **Parent epic:** #1468
 
 - **Problem Statement:** The gate refuses at the call. That is correct and
   late: a run whose estimate already exceeds its run budget, or the
@@ -1524,7 +1526,7 @@ queue(#513)  est $4.20–9.00 (p50 6.10) → exceeds run budget → refused │ 
 
 ### Issue EC.5 — ouroboros-ui: [EC.5] Estimate ranges on intake, queue & run console
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EC
+> **GitHub issue:** #1494 · **Status:** 🟡 Open · **Parent epic:** #1468
 
 - **Problem Statement:** The estimate and the precheck need a place a
   person looks before clicking *Queue*, and the comparison with actuals
@@ -1560,7 +1562,7 @@ Run 418 · Resources: estimate $1.40–3.90 · actual $2.62 ✔ in band
 
 ### Issue EC.6 — ouroboros-rest: [EC.6] Cost calibration metric & Insights card
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EC
+> **GitHub issue:** #1495 · **Status:** 🟡 Open · **Parent epic:** #1468
 
 - **Problem Statement:** An estimate that is never graded drifts. Insights
   already grades the estimator's cycle-time bands; cost has no equivalent,
@@ -1596,7 +1598,7 @@ Cost calibration · 30d · real runs only
 
 ### Issue EC.7 — ouroboros-rest: [EC.7] Estimate integration tests & honesty probes
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EC
+> **GitHub issue:** #1496 · **Status:** 🟡 Open · **Parent epic:** #1468
 
 - **Problem Statement:** The failure mode of an estimate feature is a
   confident number with nothing behind it.
@@ -1630,18 +1632,18 @@ one alert path for every budget, and #237's three alerts become rules in it
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| ED.1 | — | ⚪ Planned | ouroboros-db: [ED.1] Alert firings & spend event types | Once-per-period firing ledger; webhook and notification event registrations | mvp, spend, db | N (after EA.2) | Y | S | ouroboros-db |
-| ED.2 | — | ⚪ Planned | ouroboros-rest: [ED.2] Threshold evaluator & alert events | Evaluates thresholds on every settle; emits each event once | mvp, spend, rest | N (after ED.1, EB.1) | Y | M | ouroboros-rest |
-| ED.3 | — | ⚪ Planned | ouroboros-rest: [ED.3] Alert delivery — inbox, email & webhooks | Notice cards, mail templates, signed webhook events, notification routes | mvp, spend, rest, inbox, settings | N (after ED.2) | Y | M | ouroboros-rest, ouroboros-docs, docs |
-| ED.4 | — | ⚪ Planned | ouroboros-ui: [ED.4] Alert settings & threshold markers | Per-budget thresholds, recipients, channel routes; alert history | mvp, spend, ui, settings | N (after ED.3, EA.6, EA.7) | Y | S | ouroboros-ui, ouroboros-docs |
-| ED.5 | — | ⚪ Planned | ouroboros-rest: [ED.5] Alert integration tests | Once-per-period, period turnover, delivery failure, storm control | mvp, spend, rest, ci | N (after ED.3) | Y | S | ouroboros-rest |
-| ED.6 | — | ⚪ Planned | ouroboros-rest: [ED.6] Slack, Teams & PagerDuty delivery | Spend alerts through ChatOps and the v2 connectors | v2, spend, rest, chatops, settings | N (after ED.3, BY–CB, #499) | N | S | ouroboros-rest, ouroboros-docs |
-| ED.7 | — | ⚪ Planned | ouroboros-rest: [ED.7] Burn-rate forecast & projected-exhaustion alerts | Projects period-end spend; alerts when exhaustion is projected early | v2, spend, rest, ui | N (after ED.2) | N | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
-| ED.8 | — | ⚪ Planned | ouroboros-rest: [ED.8] Spend anomaly detection | Deterministic outlier detection per run, repository and model | v2, spend, rest, insights | N (after ED.2, EA.1) | N | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| ED.1 | #1497 | 🟡 Open | ouroboros-db: [ED.1] Alert firings & spend event types | Once-per-period firing ledger; webhook and notification event registrations | mvp, spend, db | N (after EA.2) | Y | S | ouroboros-db |
+| ED.2 | #1498 | 🟡 Open | ouroboros-rest: [ED.2] Threshold evaluator & alert events | Evaluates thresholds on every settle; emits each event once | mvp, spend, rest | N (after ED.1, EB.1) | Y | M | ouroboros-rest |
+| ED.3 | #1499 | 🟡 Open | ouroboros-rest: [ED.3] Alert delivery — inbox, email & webhooks | Notice cards, mail templates, signed webhook events, notification routes | mvp, spend, rest, inbox, settings | N (after ED.2) | Y | M | ouroboros-rest, ouroboros-docs, docs |
+| ED.4 | #1500 | 🟡 Open | ouroboros-ui: [ED.4] Alert settings & threshold markers | Per-budget thresholds, recipients, channel routes; alert history | mvp, spend, ui, settings | N (after ED.3, EA.6, EA.7) | Y | S | ouroboros-ui, ouroboros-docs |
+| ED.5 | #1501 | 🟡 Open | ouroboros-rest: [ED.5] Alert integration tests | Once-per-period, period turnover, delivery failure, storm control | mvp, spend, rest, ci | N (after ED.3) | Y | S | ouroboros-rest |
+| ED.6 | #1502 | 🟡 Open | ouroboros-rest: [ED.6] Slack, Teams & PagerDuty delivery | Spend alerts through ChatOps and the v2 connectors | v2, spend, rest, chatops, settings | N (after ED.3, BY–CB, #499) | N | S | ouroboros-rest, ouroboros-docs |
+| ED.7 | #1503 | 🟡 Open | ouroboros-rest: [ED.7] Burn-rate forecast & projected-exhaustion alerts | Projects period-end spend; alerts when exhaustion is projected early | v2, spend, rest, ui | N (after ED.2) | N | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| ED.8 | #1504 | 🟡 Open | ouroboros-rest: [ED.8] Spend anomaly detection | Deterministic outlier detection per run, repository and model | v2, spend, rest, insights | N (after ED.2, EA.1) | N | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
 
 ### Issue ED.1 — ouroboros-db: [ED.1] Alert firings & spend event types
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** ED
+> **GitHub issue:** #1497 · **Status:** 🟡 Open · **Parent epic:** #1469
 
 - **Problem Statement:** "Once per period" needs a record of what has
   fired. The webhook and notification-route registries have no spend
@@ -1677,7 +1679,7 @@ budget_alert_firings  (workspace/month, 2026-10, 80)  fired 10-19 · $1,600.12 o
 
 ### Issue ED.2 — ouroboros-rest: [ED.2] Threshold evaluator & alert events
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** ED
+> **GitHub issue:** #1498 · **Status:** 🟡 Open · **Parent epic:** #1469
 
 - **Problem Statement:** Discovering a budget at 100% is discovering it too
   late (#237's own words). Thresholds must be evaluated as spend lands,
@@ -1725,7 +1727,7 @@ settle(+…)    → 80.6% → insert conflicts → nothing
 
 ### Issue ED.3 — ouroboros-rest: [ED.3] Alert delivery — inbox, email & webhooks
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** ED
+> **GitHub issue:** #1499 · **Status:** 🟡 Open · **Parent epic:** #1469
 
 - **Problem Statement:** An event nobody receives is a log line. The
   product already has an inbox, SMTP mail, notification routes and signed
@@ -1773,7 +1775,7 @@ budget.threshold_reached ─┬─▶ inbox notice "Workspace budget at 80% — 
 
 ### Issue ED.4 — ouroboros-ui: [ED.4] Alert settings & threshold markers
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** ED
+> **GitHub issue:** #1500 · **Status:** 🟡 Open · **Parent epic:** #1469
 
 - **Problem Statement:** Thresholds, recipients and channels need to be
   set by a person, and the history of what fired needs to be visible
@@ -1805,7 +1807,7 @@ Alerts this period:  80% · Oct 19 14:02 · $1,600.12 · inbox, 3 emails, 1 webh
 
 ### Issue ED.5 — ouroboros-rest: [ED.5] Alert integration tests
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** ED
+> **GitHub issue:** #1501 · **Status:** 🟡 Open · **Parent epic:** #1469
 
 - **Problem Statement:** Alert systems fail in two directions: silence and
   storms. Both need tests.
@@ -1833,7 +1835,7 @@ Oct→Nov → firing(…, 2026-11, 80) allowed again · budget.reset once
 
 ### Issue ED.6 — ouroboros-rest: [ED.6] Slack, Teams & PagerDuty delivery
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** ED
+> **GitHub issue:** #1502 · **Status:** 🟡 Open · **Parent epic:** #1469
 
 - **Problem Statement:** Teams that live in chat will not see an inbox
   notice; an exhausted workspace budget on a release day is a page.
@@ -1861,7 +1863,7 @@ Oct→Nov → firing(…, 2026-11, 80) allowed again · budget.reset once
 
 ### Issue ED.7 — ouroboros-rest: [ED.7] Burn-rate forecast & projected-exhaustion alerts
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** ED
+> **GitHub issue:** #1503 · **Status:** 🟡 Open · **Parent epic:** #1469
 
 - **Problem Statement:** A threshold says where spend is. A forecast says
   when the budget runs out, which is the question an owner asks on the
@@ -1893,7 +1895,7 @@ $2,000 ┤                              ╱· · projected $2,400–2,640
 
 ### Issue ED.8 — ouroboros-rest: [ED.8] Spend anomaly detection
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** ED
+> **GitHub issue:** #1504 · **Status:** 🟡 Open · **Parent epic:** #1469
 
 - **Problem Statement:** A run that costs ten times its peers, or a
   repository whose daily spend triples, should be noticed before a
@@ -1937,16 +1939,16 @@ credential and real provider traffic, so it waits for the Live Loop.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EE.1 | — | ⚪ Planned | ouroboros-db: [EE.1] Reconciliation runs, findings & provider usage snapshots | Tables for runs, per-bucket comparisons, drift findings | v2, spend, db | Y | N | M | ouroboros-db |
-| EE.2 | — | ⚪ Planned | ouroboros-rest: [EE.2] Catalogue reconciliation — metered cost against list price | Recomputes every row at list price; reports override delta and repricing drift | v2, spend, rest, registry | N (after EE.1, EA.1, #92) | N | M | ouroboros-rest |
-| EE.3 | — | ⚪ Planned | ouroboros-rest: [EE.3] Provider usage-report adapters | Optional `usageReport()` on the adapter SPI; Anthropic and OpenAI; admin credential | v2, spend, rest, providers | N (after EE.1; #235 for real data) | N | L | ouroboros-rest, ouroboros-ui, ouroboros-docs |
-| EE.4 | — | ⚪ Planned | ouroboros-rest: [EE.4] Ledger-versus-provider reconciliation & drift alerts | Scheduled comparison per day and model; tolerance; findings and alerts | v2, spend, rest | N (after EE.2, EE.3, ED.2) | N | M | ouroboros-rest |
-| EE.5 | — | ⚪ Planned | ouroboros-ui: [EE.5] Reconciliation surface | Status per provider, findings list, evidence, export | v2, spend, ui | N (after EE.4, EA.6) | N | M | ouroboros-ui, ouroboros-docs |
-| EE.6 | — | ⚪ Planned | ouroboros-rest: [EE.6] Reconciliation fixtures & tests | Recorded provider reports, drift cases, append-only guarantees | v2, spend, rest, ci | N (after EE.4) | N | S | ouroboros-rest |
+| EE.1 | #1505 | 🟡 Open | ouroboros-db: [EE.1] Reconciliation runs, findings & provider usage snapshots | Tables for runs, per-bucket comparisons, drift findings | v2, spend, db | Y | N | M | ouroboros-db |
+| EE.2 | #1506 | 🟡 Open | ouroboros-rest: [EE.2] Catalogue reconciliation — metered cost against list price | Recomputes every row at list price; reports override delta and repricing drift | v2, spend, rest, registry | N (after EE.1, EA.1, #92) | N | M | ouroboros-rest |
+| EE.3 | #1507 | 🟡 Open | ouroboros-rest: [EE.3] Provider usage-report adapters | Optional `usageReport()` on the adapter SPI; Anthropic and OpenAI; admin credential | v2, spend, rest, providers | N (after EE.1; #235 for real data) | N | L | ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| EE.4 | #1508 | 🟡 Open | ouroboros-rest: [EE.4] Ledger-versus-provider reconciliation & drift alerts | Scheduled comparison per day and model; tolerance; findings and alerts | v2, spend, rest | N (after EE.2, EE.3, ED.2) | N | M | ouroboros-rest |
+| EE.5 | #1514 | 🟡 Open | ouroboros-ui: [EE.5] Reconciliation surface | Status per provider, findings list, evidence, export | v2, spend, ui | N (after EE.4, EA.6) | N | M | ouroboros-ui, ouroboros-docs |
+| EE.6 | #1509 | 🟡 Open | ouroboros-rest: [EE.6] Reconciliation fixtures & tests | Recorded provider reports, drift cases, append-only guarantees | v2, spend, rest, ci | N (after EE.4) | N | S | ouroboros-rest |
 
 ### Issue EE.1 — ouroboros-db: [EE.1] Reconciliation runs, findings & provider usage snapshots
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EE
+> **GitHub issue:** #1505 · **Status:** 🟡 Open · **Parent epic:** #1470
 
 - **Problem Statement:** A reconciliation that leaves no record cannot be
   shown to an auditor, and one that edits the ledger destroys the thing it
@@ -1983,7 +1985,7 @@ reconciliation_runs(provider · anthropic · 2026-10-01..07 · tolerance 1%)
 
 ### Issue EE.2 — ouroboros-rest: [EE.2] Catalogue reconciliation — metered cost against list price
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EE
+> **GitHub issue:** #1506 · **Status:** 🟡 Open · **Parent epic:** #1470
 
 - **Problem Statement:** The ledger stores a cost computed at write time
   from whichever price row applied — bundled or a workspace override. A
@@ -2032,7 +2034,7 @@ window Oct 1–7 · catalogue 2026-09-28
 
 ### Issue EE.3 — ouroboros-rest: [EE.3] Provider usage-report adapters
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EE
+> **GitHub issue:** #1507 · **Status:** 🟡 Open · **Parent epic:** #1470
 
 - **Problem Statement:** The only independent witness to spend on a
   customer's key is the provider. Reading its usage report needs an
@@ -2089,7 +2091,7 @@ usageReport(Oct 1–7, 1d) → [{10-04, claude-opus-…, in 33.1M, out 8.8M, cac
 
 ### Issue EE.4 — ouroboros-rest: [EE.4] Ledger-versus-provider reconciliation & drift alerts
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EE
+> **GitHub issue:** #1508 · **Status:** 🟡 Open · **Parent epic:** #1470
 
 - **Problem Statement:** Usage the ledger never saw — a failed capture, a
   key used outside Ouroboros, a miscounted cache read — is invisible to
@@ -2131,7 +2133,7 @@ usageReport(Oct 1–7, 1d) → [{10-04, claude-opus-…, in 33.1M, out 8.8M, cac
 
 ### Issue EE.5 — ouroboros-ui: [EE.5] Reconciliation surface
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EE
+> **GitHub issue:** #1514 · **Status:** 🟡 Open · **Parent epic:** #1470
 
 - **Problem Statement:** Findings need a place where an owner can see
   whether the ledger is trusted, per provider, and act on what is not.
@@ -2164,7 +2166,7 @@ Reconciliation
 
 ### Issue EE.6 — ouroboros-rest: [EE.6] Reconciliation fixtures & tests
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EE
+> **GitHub issue:** #1509 · **Status:** 🟡 Open · **Parent epic:** #1470
 
 - **Problem Statement:** Reconciliation logic is arithmetic over two
   sources that disagree in small ways (bucket edges, model ids, cache
@@ -2193,18 +2195,18 @@ checksum(token_usage) before == after  ✔
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EF.1 | — | ⚪ Planned | ouroboros-rest: [EF.1] Usage query API — events & grouped summaries | `GET /api/v1/usage` with group-by, filters, windows; three cost states kept apart | mvp, spend, rest | N (after EA.1) | Y | M | ouroboros-rest, ouroboros-docs |
-| EF.2 | — | ⚪ Planned | ouroboros-rest: [EF.2] Usage CSV export | Streamed CSV of events and summaries; documented columns; audited | mvp, spend, rest | N (after EF.1) | Y | S | ouroboros-rest, ouroboros-docs |
-| EF.3 | — | ⚪ Planned | ouroboros-rest: [EF.3] `usage:read` scope, limits & OpenAPI | Service-token scope, pagination and rate limits, published contract | mvp, spend, rest, settings | Y (∥ EF.2) | Y | S | ouroboros-rest, ouroboros-docs |
-| EF.4 | — | ⚪ Planned | ouroboros-ui: [EF.4] Usage explorer & export surface | `/models/spend`: group, filter, range, table, export — over EF.1 (#210's surface) | mvp, spend, ui, routing | N (after EF.1, EF.2, EA.6) | Y | M | ouroboros-ui, ouroboros-docs |
-| EF.5 | — | ⚪ Planned | ouroboros-rest: [EF.5] Chargeback reports & scheduled exports | Per-group statements with cost-centre codes; monthly delivery | v2, spend, rest, ui | N (after EA.9, EF.2) | N | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
-| EF.6 | — | ⚪ Planned | ouroboros-rest: [EF.6] FOCUS-aligned export & OpenTelemetry metrics | Mapping ADR, FOCUS CSV, spend metrics for the customer's observability stack | v2, spend, rest, documentation | N (after EF.2, EG.1) | N | M | ouroboros-rest, ouroboros-docs, docs |
-| EF.7 | — | ⚪ Planned | ouroboros-docs: [EF.7] Spend governance documentation | Administration page, User Guide sections, API guide, screenshots | mvp, spend, docs-site, documentation | N (after EA.7, EB.7, ED.4, EF.4) | Y | M | ouroboros-docs |
-| EF.8 | — | ⚪ Planned | tests/e2e: [EF.8] Spend governance e2e leg | Budget → simulated run stopped → alert → export, in the nightly suite | mvp, spend, ci | N (after EA.7, EB.7, ED.4, EF.4) | Y | M | tests/e2e, .github |
+| EF.1 | #1510 | 🟡 Open | ouroboros-rest: [EF.1] Usage query API — events & grouped summaries | `GET /api/v1/usage` with group-by, filters, windows; three cost states kept apart | mvp, spend, rest | N (after EA.1) | Y | M | ouroboros-rest, ouroboros-docs |
+| EF.2 | #1511 | 🟡 Open | ouroboros-rest: [EF.2] Usage CSV export | Streamed CSV of events and summaries; documented columns; audited | mvp, spend, rest | N (after EF.1) | Y | S | ouroboros-rest, ouroboros-docs |
+| EF.3 | #1512 | 🟡 Open | ouroboros-rest: [EF.3] `usage:read` scope, limits & OpenAPI | Service-token scope, pagination and rate limits, published contract | mvp, spend, rest, settings | Y (∥ EF.2) | Y | S | ouroboros-rest, ouroboros-docs |
+| EF.4 | #1513 | 🟡 Open | ouroboros-ui: [EF.4] Usage explorer & export surface | `/models/spend`: group, filter, range, table, export — over EF.1 (#210's surface) | mvp, spend, ui, routing | N (after EF.1, EF.2, EA.6) | Y | M | ouroboros-ui, ouroboros-docs |
+| EF.5 | #1515 | 🟡 Open | ouroboros-rest: [EF.5] Chargeback reports & scheduled exports | Per-group statements with cost-centre codes; monthly delivery | v2, spend, rest, ui | N (after EA.9, EF.2) | N | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| EF.6 | #1521 | 🟡 Open | ouroboros-rest: [EF.6] FOCUS-aligned export & OpenTelemetry metrics | Mapping ADR, FOCUS CSV, spend metrics for the customer's observability stack | v2, spend, rest, documentation | N (after EF.2, EG.1) | N | M | ouroboros-rest, ouroboros-docs, docs |
+| EF.7 | #1516 | 🟡 Open | ouroboros-docs: [EF.7] Spend governance documentation | Administration page, User Guide sections, API guide, screenshots | mvp, spend, docs-site, documentation | N (after EA.7, EB.7, ED.4, EF.4) | Y | M | ouroboros-docs |
+| EF.8 | #1517 | 🟡 Open | tests/e2e: [EF.8] Spend governance e2e leg | Budget → simulated run stopped → alert → export, in the nightly suite | mvp, spend, ci | N (after EA.7, EB.7, ED.4, EF.4) | Y | M | tests/e2e, .github |
 
 ### Issue EF.1 — ouroboros-rest: [EF.1] Usage query API — events & grouped summaries
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EF
+> **GitHub issue:** #1510 · **Status:** 🟡 Open · **Parent epic:** #1471
 
 - **Problem Statement:** Spend can be read today only through
   purpose-built aggregates: the dashboard tile, route stats, the
@@ -2259,7 +2261,7 @@ GET /api/v1/usage/summary?from=2026-10-01&to=2026-10-31&group_by=repository,mode
 
 ### Issue EF.2 — ouroboros-rest: [EF.2] Usage CSV export
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EF
+> **GitHub issue:** #1511 · **Status:** 🟡 Open · **Parent epic:** #1471
 
 - **Problem Statement:** Finance wants a file. The only CSV the product
   produces today is the audit log's.
@@ -2302,7 +2304,7 @@ tokens_in,tokens_out,billing_state,cost_cents,cost,list_cost_cents,price_source,
 
 ### Issue EF.3 — ouroboros-rest: [EF.3] `usage:read` scope, limits & OpenAPI
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EF
+> **GitHub issue:** #1512 · **Status:** 🟡 Open · **Parent epic:** #1471
 
 - **Problem Statement:** A chargeback pipeline is a machine. It needs a
   credential that can read usage and nothing else, a contract it can
@@ -2339,7 +2341,7 @@ service account "finance-etl"  scopes: [usage:read]
 
 ### Issue EF.4 — ouroboros-ui: [EF.4] Usage explorer & export surface
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EF
+> **GitHub issue:** #1513 · **Status:** 🟡 Open · **Parent epic:** #1471
 
 - **Problem Statement:** The Models subnav's Spend tab and the spend
   card's *Full report →* have promised a drill-down since the routing
@@ -2387,7 +2389,7 @@ Spend · Oct 1–31 · group by [repository ▾] then [model ▾]      [exclude 
 
 ### Issue EF.5 — ouroboros-rest: [EF.5] Chargeback reports & scheduled exports
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EF
+> **GitHub issue:** #1515 · **Status:** 🟡 Open · **Parent epic:** #1471
 
 - **Problem Statement:** A monthly chargeback is a statement per cost
   centre, delivered on a schedule, that adds up to the whole. A raw
@@ -2423,7 +2425,7 @@ October 2026 statements
 
 ### Issue EF.6 — ouroboros-rest: [EF.6] FOCUS-aligned export & OpenTelemetry metrics
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EF
+> **GitHub issue:** #1521 · **Status:** 🟡 Open · **Parent epic:** #1471
 
 - **Problem Statement:** Enterprises already run FinOps and observability
   tools. A native CSV is readable by people; a standard format and a
@@ -2459,7 +2461,7 @@ ledger row ─▶ FOCUS: ChargePeriodStart/End · ServiceName=provider · SkuId=
 
 ### Issue EF.7 — ouroboros-docs: [EF.7] Spend governance documentation
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EF
+> **GitHub issue:** #1516 · **Status:** 🟡 Open · **Parent epic:** #1471
 
 - **Problem Statement:** Each issue here documents its own slice. Without
   an owner for the whole, the result is seven fragments and no page that
@@ -2500,7 +2502,7 @@ Administration ▸ Spend governance
 
 ### Issue EF.8 — tests/e2e: [EF.8] Spend governance e2e leg
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EF
+> **GitHub issue:** #1517 · **Status:** 🟡 Open · **Parent epic:** #1471
 
 - **Problem Statement:** The MVP's claim is a chain: set a budget, spend
   reaches it, the run stops, an alert arrives, the export shows it. Only
@@ -2543,18 +2545,18 @@ unit elsewhere. Only EG.1 is in the MVP (decision V17).
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EG.1 | — | ⚪ Planned | ouroboros-db: [EG.1] Usage unit registry & unit-aware ledger | `usage_units`; `unit` and `quantity` on the ledger; token rows unchanged | mvp, spend, db, studio | N (after EA.1) | Y | M | ouroboros-db |
-| EG.2 | — | ⚪ Planned | ouroboros-db: [EG.2] Unit price catalogue | `unit_prices` with bundled rows, overrides, effective dating and a lookup | v2, spend, db, rest, registry, studio | N (after EG.1) | N | M | ouroboros-db, ouroboros-rest, ouroboros-docs |
-| EG.3 | — | ⚪ Planned | ouroboros-rest: [EG.3] Farm compute metering | Compute seconds per build job and pool; optional internal rates; cloud runner cost | v2, spend, rest, build-farm | N (after EG.1, EG.2) | N | M | ouroboros-rest, ouroboros-runner, ouroboros-docs |
-| EG.4 | — | ⚪ Planned | ouroboros-rest: [EG.4] Usage recording contract for plug-ins — Studio speech & render units | The Studio's amendment: a writer contract and the two units | v2, spend, rest, studio | N (after EG.1, EG.2) | N | M | ouroboros-rest, ouroboros-docs |
-| EG.5 | — | ⚪ Planned | ouroboros-rest: [EG.5] Budgets & gate over non-token units | Money budgets count priced units; quantity budgets; a pre-spend check API | v2, spend, rest, studio | N (after EG.2, EB.1) | N | M | ouroboros-rest, ouroboros-docs |
-| EG.6 | — | ⚪ Planned | ouroboros-ui: [EG.6] Non-token units across spend surfaces | Units in the explorer, budgets, run Resources and the dashboard tile | v2, spend, ui | N (after EG.3–EG.5, EA.6) | N | M | ouroboros-ui, ouroboros-docs |
-| EG.7 | — | ⚪ Planned | ouroboros-rest: [EG.7] Rate cards for a hosted tier | Per-customer price lists applied over the ledger for operator billing | v2, spend, rest, db | N (after EG.2, #397) | N | L | ouroboros-db, ouroboros-rest, ouroboros-docs |
-| EG.8 | — | ⚪ Planned | ouroboros-rest: [EG.8] Non-token unit tests & seeds | Unit conformance, mixed-unit totals, seeds for compute, speech and render | v2, spend, rest, db, ci | N (after EG.3–EG.5) | N | S | ouroboros-rest, ouroboros-db |
+| EG.1 | #1519 | 🟡 Open | ouroboros-db: [EG.1] Usage unit registry & unit-aware ledger | `usage_units`; `unit` and `quantity` on the ledger; token rows unchanged | mvp, spend, db, studio | N (after EA.1) | Y | M | ouroboros-db |
+| EG.2 | #1522 | 🟡 Open | ouroboros-db: [EG.2] Unit price catalogue | `unit_prices` with bundled rows, overrides, effective dating and a lookup | v2, spend, db, rest, registry, studio | N (after EG.1) | N | M | ouroboros-db, ouroboros-rest, ouroboros-docs |
+| EG.3 | #1523 | 🟡 Open | ouroboros-rest: [EG.3] Farm compute metering | Compute seconds per build job and pool; optional internal rates; cloud runner cost | v2, spend, rest, build-farm | N (after EG.1, EG.2) | N | M | ouroboros-rest, ouroboros-runner, ouroboros-docs |
+| EG.4 | #1524 | 🟡 Open | ouroboros-rest: [EG.4] Usage recording contract for plug-ins — Studio speech & render units | The Studio's amendment: a writer contract and the two units | v2, spend, rest, studio | N (after EG.1, EG.2) | N | M | ouroboros-rest, ouroboros-docs |
+| EG.5 | #1525 | 🟡 Open | ouroboros-rest: [EG.5] Budgets & gate over non-token units | Money budgets count priced units; quantity budgets; a pre-spend check API | v2, spend, rest, studio | N (after EG.2, EB.1) | N | M | ouroboros-rest, ouroboros-docs |
+| EG.6 | #1526 | 🟡 Open | ouroboros-ui: [EG.6] Non-token units across spend surfaces | Units in the explorer, budgets, run Resources and the dashboard tile | v2, spend, ui | N (after EG.3–EG.5, EA.6) | N | M | ouroboros-ui, ouroboros-docs |
+| EG.7 | #1527 | 🟡 Open | ouroboros-rest: [EG.7] Rate cards for a hosted tier | Per-customer price lists applied over the ledger for operator billing | v2, spend, rest, db | N (after EG.2, #397) | N | L | ouroboros-db, ouroboros-rest, ouroboros-docs |
+| EG.8 | #1528 | 🟡 Open | ouroboros-rest: [EG.8] Non-token unit tests & seeds | Unit conformance, mixed-unit totals, seeds for compute, speech and render | v2, spend, rest, db, ci | N (after EG.3–EG.5) | N | S | ouroboros-rest, ouroboros-db |
 
 ### Issue EG.1 — ouroboros-db: [EG.1] Usage unit registry & unit-aware ledger
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EG
+> **GitHub issue:** #1519 · **Status:** 🟡 Open · **Parent epic:** #1472
 
 - **Problem Statement:** The ledger's shape is `tokens_in`, `tokens_out`.
   A build minute, a narrated character and a rendered second have no
@@ -2607,7 +2609,7 @@ token_usage: unit=tokens          tokens_in 90211 · tokens_out 18402 · quantit
 
 ### Issue EG.2 — ouroboros-db: [EG.2] Unit price catalogue
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EG
+> **GitHub issue:** #1522 · **Status:** 🟡 Open · **Parent epic:** #1472
 
 - **Problem Statement:** `model_prices` prices a (provider kind, model)
   pair per token. A runner pool or a voice is priced per second or per
@@ -2651,7 +2653,7 @@ unit_prices
 
 ### Issue EG.3 — ouroboros-rest: [EG.3] Farm compute metering
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EG
+> **GitHub issue:** #1523 · **Status:** 🟡 Open · **Parent epic:** #1472
 
 - **Problem Statement:** Builds and tests on the farm consume the
   customer's hardware, and cloud burst runners (#263) will consume the
@@ -2698,7 +2700,7 @@ build_jobs #479 (pool linux-arm64, attempt 1)  started 14:02:11 → finished 14:
 
 ### Issue EG.4 — ouroboros-rest: [EG.4] Usage recording contract for plug-ins — Studio speech & render units
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EG
+> **GitHub issue:** #1524 · **Status:** 🟡 Open · **Parent epic:** #1472
 
 - **Problem Statement:** The Studio runs inside `ouroboros-rest` as a
   module and must not write Ouroboros tables directly. Its issue 35.5
@@ -2749,7 +2751,7 @@ StudioModule ─▶ UsageLedgerService.record({unit: tts_characters, quantity: 2
 
 ### Issue EG.5 — ouroboros-rest: [EG.5] Budgets & gate over non-token units
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EG
+> **GitHub issue:** #1525 · **Status:** 🟡 Open · **Parent epic:** #1472
 
 - **Problem Statement:** Once non-token spend is in the ledger, a
   workspace budget that ignores it is wrong by exactly the amount it
@@ -2790,7 +2792,7 @@ dispatch job #481: reserve(timeout 1,800 s) → refused by run quantity budget �
 
 ### Issue EG.6 — ouroboros-ui: [EG.6] Non-token units across spend surfaces
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EG
+> **GitHub issue:** #1526 · **Status:** 🟡 Open · **Parent epic:** #1472
 
 - **Problem Statement:** Every spend surface speaks in tokens and dollars.
   Minutes, characters and seconds need to appear without turning each
@@ -2829,7 +2831,7 @@ Spend · group by [unit ▾]
 
 ### Issue EG.7 — ouroboros-rest: [EG.7] Rate cards for a hosted tier
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EG
+> **GitHub issue:** #1527 · **Status:** 🟡 Open · **Parent epic:** #1472
 
 - **Problem Statement:** A self-hosted customer pays providers directly
   and needs cost. A hosted operator (#397's managed keys, #500's
@@ -2868,7 +2870,7 @@ usage_charges: charge_cents 184.20 (tokens) · 0.00 (compute, within allowance)
 
 ### Issue EG.8 — ouroboros-rest: [EG.8] Non-token unit tests & seeds
 
-> **GitHub issue:** not filed · **Status:** ⚪ Planned · **Parent epic:** EG
+> **GitHub issue:** #1528 · **Status:** 🟡 Open · **Parent epic:** #1472
 
 - **Problem Statement:** Mixed units are where totals go wrong: a sum
   that silently includes seconds, a budget that double-counts a retried

@@ -432,20 +432,22 @@ and the bounty decision (DT.7).
 
 ## Epics, Labels & Milestones
 
+> **Filed 2026-10-10** by `create-issues` in `NobuData/ouroboros`: epic parents #1330–#1337, work issues #1338–#1407, numbered in dependency order. Each work issue is a sub-issue of its epic with blocked-by links, Priority, Effort and type set. Statements below that nothing is filed predate this; relabelling or amending *existing* issues described by this roadmap has **not** been done.
+
 Each epic is a parent tracking issue on GitHub; every roadmap issue below is
 filed as one of its sub-issues (GitHub Relationships). **Nothing is filed
 yet.**
 
 | Epic | GitHub | Status | Name | Goal | Modules | Milestone |
 |------|:------:|:------:|------|------|---------|-----------|
-| DM | — | ⚪ Not filed | Threat Model & Control Mapping | Loop threat model, CI-checked control catalogue mapped to OWASP's agentic list, incident register, adversarial harness, published docs | docs, tests, ouroboros-docs | Agent Security MVP |
-| DN | — | ⚪ Not filed | Trigger Trust | Author floor, untrusted-author policy, hidden-content stripping, trust tiers and envelopes, shared package for the Studio | ouroboros-db, ouroboros-rest, ouroboros-engine, ouroboros-ui | Agent Security MVP |
-| DO | — | ⚪ Not filed | Constrained Outputs | Declared output kinds, proposals, a non-model applier, staged mode, output threat detection | ouroboros-engine, ouroboros-rest, ouroboros-db, ouroboros-ui | Agent Security v2 |
-| DP | — | ⚪ Not filed | Credential Isolation | Git broker, run-scoped identities, single-branch push, sandbox secret hygiene | ouroboros-rest, ouroboros-runner, docs | Agent Security MVP |
-| DQ | — | ⚪ Not filed | Runner Sandbox & Egress | Hardened container profile, no-network sandbox, allow-listing proxy, per-workflow policy, dispatch enforcement, reference configuration | ouroboros-runner, ouroboros-rest, ouroboros-ui, ouroboros-docs | Agent Security MVP |
-| DR | — | ⚪ Not filed | Destructive-Action Gate | Taxonomy, authoriser, production-resource registry, runtime grants, policy authoring | ouroboros-engine, ouroboros-rest, ouroboros-runner, ouroboros-ui | Agent Security v2 |
-| DS | — | ⚪ Not filed | Provenance | Remote signing, commit ledger, attribution trailers, transcript link, provenance gate | ouroboros-rest, ouroboros-runner, ouroboros-db, ouroboros-ui | Agent Security MVP |
-| DT | — | ⚪ Not filed | Disclosure Process | Policy, private reporting, advisories, security.txt, operator runbook, emergency stop | repo root, ouroboros-web, ouroboros-docs, ouroboros-rest | Agent Security MVP |
+| DM | #1330 | 🟡 Open | Threat Model & Control Mapping | Loop threat model, CI-checked control catalogue mapped to OWASP's agentic list, incident register, adversarial harness, published docs | docs, tests, ouroboros-docs | Agent Security MVP |
+| DN | #1331 | 🟡 Open | Trigger Trust | Author floor, untrusted-author policy, hidden-content stripping, trust tiers and envelopes, shared package for the Studio | ouroboros-db, ouroboros-rest, ouroboros-engine, ouroboros-ui | Agent Security MVP |
+| DO | #1332 | 🟡 Open | Constrained Outputs | Declared output kinds, proposals, a non-model applier, staged mode, output threat detection | ouroboros-engine, ouroboros-rest, ouroboros-db, ouroboros-ui | Agent Security v2 |
+| DP | #1333 | 🟡 Open | Credential Isolation | Git broker, run-scoped identities, single-branch push, sandbox secret hygiene | ouroboros-rest, ouroboros-runner, docs | Agent Security MVP |
+| DQ | #1334 | 🟡 Open | Runner Sandbox & Egress | Hardened container profile, no-network sandbox, allow-listing proxy, per-workflow policy, dispatch enforcement, reference configuration | ouroboros-runner, ouroboros-rest, ouroboros-ui, ouroboros-docs | Agent Security MVP |
+| DR | #1335 | 🟡 Open | Destructive-Action Gate | Taxonomy, authoriser, production-resource registry, runtime grants, policy authoring | ouroboros-engine, ouroboros-rest, ouroboros-runner, ouroboros-ui | Agent Security v2 |
+| DS | #1336 | 🟡 Open | Provenance | Remote signing, commit ledger, attribution trailers, transcript link, provenance gate | ouroboros-rest, ouroboros-runner, ouroboros-db, ouroboros-ui | Agent Security MVP |
+| DT | #1337 | 🟡 Open | Disclosure Process | Policy, private reporting, advisories, security.txt, operator runbook, emergency stop | repo root, ouroboros-web, ouroboros-docs, ouroboros-rest | Agent Security MVP |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`; the project is the
 module that owns the change (`ouroboros-rest`, `ouroboros-engine`,
@@ -470,17 +472,17 @@ acceptance criteria run in.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| DM.1 | — | ⚪ Not filed | ouroboros: [DM.1] Agent-loop threat model | Assets, actors, trust boundaries, data flows and abuse cases for the issue-to-merge loop | mvp, security, documentation | Y | Y | L | docs |
-| DM.2 | — | ⚪ Not filed | ouroboros: [DM.2] Control catalogue & framework mapping | Machine-readable controls mapped to OWASP agentic entries, each with status, issue and test; CI-checked | mvp, security, documentation, ci | N (after DM.1) | Y | M | docs, scripts, .github |
-| DM.3 | — | ⚪ Not filed | ouroboros: [DM.3] Verified incident register | Each 2025–2026 incident with its primary source, confidence mark, control and test id | mvp, security, documentation | N (after DM.1) | Y | S | docs |
-| DM.4 | — | ⚪ Not filed | ouroboros: [DM.4] `SECURITY_MODEL.md` — runtime sections & approved copy | New sections for untrusted input, source credentials, the sandbox and provenance, under the document's own status marks | mvp, security, documentation | N (after DM.1; tracks DN–DS) | Y | M | docs |
-| DM.5 | — | ⚪ Not filed | ouroboros: [DM.5] Adversarial test harness & `ci/security` lane | Injection corpus, canary secrets, an egress sink and a scripted hostile agent; the MVP gate | mvp, security, ci, engine, build-farm | N (after DM.1) | Y | L | tests, ouroboros-engine, ouroboros-runner, .github |
-| DM.6 | — | ⚪ Not filed | ouroboros-docs: [DM.6] Security section — threat model, controls & shared responsibility | Publish the model, the control table and who is responsible for what | mvp, security, docs-site | N (after DM.2, DQ.9) | Y | M | ouroboros-docs |
-| DM.7 | — | ⚪ Not filed | ouroboros: [DM.7] Extended framework mappings & evidence export | Map to further guidance once read first-hand; export control evidence for questionnaires | v2, security, documentation, rest | N (after DM.2) | N | M | docs, ouroboros-rest, ouroboros-docs |
+| DM.1 | #1338 | 🟡 Open | ouroboros: [DM.1] Agent-loop threat model | Assets, actors, trust boundaries, data flows and abuse cases for the issue-to-merge loop | mvp, security, documentation | Y | Y | L | docs |
+| DM.2 | #1339 | 🟡 Open | ouroboros: [DM.2] Control catalogue & framework mapping | Machine-readable controls mapped to OWASP agentic entries, each with status, issue and test; CI-checked | mvp, security, documentation, ci | N (after DM.1) | Y | M | docs, scripts, .github |
+| DM.3 | #1340 | 🟡 Open | ouroboros: [DM.3] Verified incident register | Each 2025–2026 incident with its primary source, confidence mark, control and test id | mvp, security, documentation | N (after DM.1) | Y | S | docs |
+| DM.4 | #1389 | 🟡 Open | ouroboros: [DM.4] `SECURITY_MODEL.md` — runtime sections & approved copy | New sections for untrusted input, source credentials, the sandbox and provenance, under the document's own status marks | mvp, security, documentation | N (after DM.1; tracks DN–DS) | Y | M | docs |
+| DM.5 | #1396 | 🟡 Open | ouroboros: [DM.5] Adversarial test harness & `ci/security` lane | Injection corpus, canary secrets, an egress sink and a scripted hostile agent; the MVP gate | mvp, security, ci, engine, build-farm | N (after DM.1) | Y | L | tests, ouroboros-engine, ouroboros-runner, .github |
+| DM.6 | #1376 | 🟡 Open | ouroboros-docs: [DM.6] Security section — threat model, controls & shared responsibility | Publish the model, the control table and who is responsible for what | mvp, security, docs-site | N (after DM.2, DQ.9) | Y | M | ouroboros-docs |
+| DM.7 | #1341 | 🟡 Open | ouroboros: [DM.7] Extended framework mappings & evidence export | Map to further guidance once read first-hand; export control evidence for questionnaires | v2, security, documentation, rest | N (after DM.2) | N | M | docs, ouroboros-rest, ouroboros-docs |
 
 ### Issue DM.1 — ouroboros: [DM.1] Agent-loop threat model
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DM (not filed)
+> **GitHub issue:** #1338 · **Status:** 🟡 Open · **Parent epic:** #1330
 
 - **Problem Statement:** `SECURITY_MODEL.md` answers *who can read a key*. It
   does not answer *what can a stranger's issue make this system do* — and
@@ -538,7 +540,7 @@ flowchart LR
 
 ### Issue DM.2 — ouroboros: [DM.2] Control catalogue & framework mapping
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DM (not filed)
+> **GitHub issue:** #1339 · **Status:** 🟡 Open · **Parent epic:** #1330
 
 - **Problem Statement:** A mapping to a framework that lives in a slide is
   out of date the day after it is made. The gap analysis calls mapping the
@@ -584,7 +586,7 @@ flowchart LR
 
 ### Issue DM.3 — ouroboros: [DM.3] Verified incident register
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DM (not filed)
+> **GitHub issue:** #1340 · **Status:** 🟡 Open · **Parent epic:** #1330
 
 - **Problem Statement:** The incident record that justifies this work was
   assembled from secondary compilations; this roadmap's re-check already
@@ -620,7 +622,7 @@ incident I14 ─▶ secondary only ─────────▶ mark S ─▶ 
 
 ### Issue DM.4 — ouroboros: [DM.4] `SECURITY_MODEL.md` — runtime sections & approved copy
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DM (not filed)
+> **GitHub issue:** #1389 · **Status:** 🟡 Open · **Parent epic:** #1330
 
 - **Problem Statement:** `SECURITY_MODEL.md` § 10: *a security claim ships
   only after it appears here.* This roadmap creates claims — "untrusted text
@@ -665,7 +667,7 @@ SECURITY_MODEL.md   § 11 untrusted input      Planned → Specified (DN.5) → 
 
 ### Issue DM.5 — ouroboros: [DM.5] Adversarial test harness & `ci/security` lane
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DM (not filed)
+> **GitHub issue:** #1396 · **Status:** 🟡 Open · **Parent epic:** #1330
 
 - **Problem Statement:** Every epic below has acceptance criteria of the form
   *"a hijacked agent cannot …"*. Testing that with a real model is slow,
@@ -718,7 +720,7 @@ corpus case ─▶ carrier (issue / PR title / log line …) ─▶ real intake 
 
 ### Issue DM.6 — ouroboros-docs: [DM.6] Security section — threat model, controls & shared responsibility
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DM (not filed)
+> **GitHub issue:** #1376 · **Status:** 🟡 Open · **Parent epic:** #1330
 
 - **Problem Statement:** The description asks for a threat model *"published
   in the docs"*. The documentation site has no security section.
@@ -748,7 +750,7 @@ administration/security/
 
 ### Issue DM.7 — ouroboros: [DM.7] Extended framework mappings & evidence export
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DM (not filed)
+> **GitHub issue:** #1341 · **Status:** 🟡 Open · **Parent epic:** #1330
 
 - **Problem Statement:** Buyers ask about more than one framework, and the
   research behind this roadmap did not read all of them first-hand.
@@ -786,20 +788,20 @@ Studio as a package.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| DN.1 | — | ⚪ Not filed | ouroboros-db: [DN.1] Content origin & trigger-trust schema | Author-trust snapshots, origin records per text, trust policy fields, held-trigger rows | mvp, security, db | N (after DM.1) | Y | M | ouroboros-db |
-| DN.2 | — | ⚪ Not filed | ouroboros-rest: [DN.2] Author trust resolver | Repository permission + association → trust verdict, cached; a source-SPI capability | mvp, security, rest, sources | N (after DN.1) | Y | M | ouroboros-rest |
-| DN.3 | — | ⚪ Not filed | ouroboros-rest: [DN.3] Trigger-trust policy, gate & limiter | Untrusted-author policy at queue and dispatch; approval decision; per-author limits; self-trigger guard | mvp, security, rest, intake, inbox, settings | N (after DN.2) | Y | L | ouroboros-rest, ouroboros-docs |
-| DN.4 | — | ⚪ Not filed | ouroboros-rest: [DN.4] Untrusted-text sanitiser | Strip hidden and invisible content deterministically; removal report; golden fixtures | mvp, security, rest | Y | Y | M | ouroboros-rest (new package) |
-| DN.5 | — | ⚪ Not filed | ouroboros-rest: [DN.5] Trust tiers & data envelopes in context assembly | Every segment labelled; untrusted segments quoted as data; trust manifest per stage | mvp, security, rest, engine, knowledge | N (after DN.1, DN.4) | Y | L | ouroboros-rest, ouroboros-engine |
-| DN.6 | — | ⚪ Not filed | ouroboros-rest: [DN.6] Shared untrusted-input package & contract | `@ouroboros/untrusted-input` with a versioned contract and conformance kit for the Studio | mvp, security, rest, studio | N (after DN.2, DN.4, DN.5) | Y | M | ouroboros-rest, docs |
-| DN.7 | — | ⚪ Not filed | ouroboros-ui: [DN.7] Trigger-trust settings & trust surfaces | Policy rows, untrusted-author chips, removal reports, the run's trust manifest | mvp, security, ui, design, settings, runs | N (after DN.3, DN.5) | Y | M | ouroboros-ui, ouroboros-docs |
-| DN.8 | — | ⚪ Not filed | ouroboros-rest: [DN.8] Trigger-trust integration & adversarial tests | Permission matrix, corpus replays, red-when-removed pairs | mvp, security, rest, ci | N (after DN.3, DN.5, DM.5) | Y | M | ouroboros-rest, tests |
-| DN.9 | — | ⚪ Not filed | ouroboros-engine: [DN.9] Injection screening signal | Advisory detector over inbound untrusted text; never the sole control | v2, security, engine | N (after DN.5) | N | M | ouroboros-engine, ouroboros-rest, ouroboros-ui |
-| DN.10 | — | ⚪ Not filed | ouroboros-rest: [DN.10] Author trust for Jira, Linear & GitLab sources | The resolver capability implemented by the other source adapters | v2, security, rest, sources | N (after DN.2, WF-T.2–T.4) | N | M | ouroboros-rest |
+| DN.1 | #1342 | 🟡 Open | ouroboros-db: [DN.1] Content origin & trigger-trust schema | Author-trust snapshots, origin records per text, trust policy fields, held-trigger rows | mvp, security, db | N (after DM.1) | Y | M | ouroboros-db |
+| DN.2 | #1343 | 🟡 Open | ouroboros-rest: [DN.2] Author trust resolver | Repository permission + association → trust verdict, cached; a source-SPI capability | mvp, security, rest, sources | N (after DN.1) | Y | M | ouroboros-rest |
+| DN.3 | #1344 | 🟡 Open | ouroboros-rest: [DN.3] Trigger-trust policy, gate & limiter | Untrusted-author policy at queue and dispatch; approval decision; per-author limits; self-trigger guard | mvp, security, rest, intake, inbox, settings | N (after DN.2) | Y | L | ouroboros-rest, ouroboros-docs |
+| DN.4 | #1345 | 🟡 Open | ouroboros-rest: [DN.4] Untrusted-text sanitiser | Strip hidden and invisible content deterministically; removal report; golden fixtures | mvp, security, rest | Y | Y | M | ouroboros-rest (new package) |
+| DN.5 | #1346 | 🟡 Open | ouroboros-rest: [DN.5] Trust tiers & data envelopes in context assembly | Every segment labelled; untrusted segments quoted as data; trust manifest per stage | mvp, security, rest, engine, knowledge | N (after DN.1, DN.4) | Y | L | ouroboros-rest, ouroboros-engine |
+| DN.6 | #1397 | 🟡 Open | ouroboros-rest: [DN.6] Shared untrusted-input package & contract | `@ouroboros/untrusted-input` with a versioned contract and conformance kit for the Studio | mvp, security, rest, studio | N (after DN.2, DN.4, DN.5) | Y | M | ouroboros-rest, docs |
+| DN.7 | #1347 | 🟡 Open | ouroboros-ui: [DN.7] Trigger-trust settings & trust surfaces | Policy rows, untrusted-author chips, removal reports, the run's trust manifest | mvp, security, ui, design, settings, runs | N (after DN.3, DN.5) | Y | M | ouroboros-ui, ouroboros-docs |
+| DN.8 | #1348 | 🟡 Open | ouroboros-rest: [DN.8] Trigger-trust integration & adversarial tests | Permission matrix, corpus replays, red-when-removed pairs | mvp, security, rest, ci | N (after DN.3, DN.5, DM.5) | Y | M | ouroboros-rest, tests |
+| DN.9 | #1349 | 🟡 Open | ouroboros-engine: [DN.9] Injection screening signal | Advisory detector over inbound untrusted text; never the sole control | v2, security, engine | N (after DN.5) | N | M | ouroboros-engine, ouroboros-rest, ouroboros-ui |
+| DN.10 | #1350 | 🟡 Open | ouroboros-rest: [DN.10] Author trust for Jira, Linear & GitLab sources | The resolver capability implemented by the other source adapters | v2, security, rest, sources | N (after DN.2, WF-T.2–T.4) | N | M | ouroboros-rest |
 
 ### Issue DN.1 — ouroboros-db: [DN.1] Content origin & trigger-trust schema
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DN (not filed)
+> **GitHub issue:** #1342 · **Status:** 🟡 Open · **Parent epic:** #1331
 
 - **Problem Statement:** The product stores issues, comments and pull
   requests without recording *who wrote each piece and what that person was
@@ -842,7 +844,7 @@ content_origins{subject: comment #4411, author_snapshot: {login: drive-by, assoc
 
 ### Issue DN.2 — ouroboros-rest: [DN.2] Author trust resolver
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DN (not filed)
+> **GitHub issue:** #1343 · **Status:** 🟡 Open · **Parent epic:** #1331
 
 - **Problem Statement:** On a public repository anyone can open an issue or
   comment. GitHub documents that only users with write access can trigger its
@@ -882,7 +884,7 @@ author ─▶ authorTrust() ─▶ {association: MEMBER, permission: write} ─�
 
 ### Issue DN.3 — ouroboros-rest: [DN.3] Trigger-trust policy, gate & limiter
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DN (not filed)
+> **GitHub issue:** #1344 · **Status:** 🟡 Open · **Parent epic:** #1331
 
 - **Problem Statement:** Knowing an author is untrusted is useless unless
   something acts on it at the two points where a run can begin: when an item
@@ -939,7 +941,7 @@ flowchart LR
 
 ### Issue DN.4 — ouroboros-rest: [DN.4] Untrusted-text sanitiser
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DN (not filed)
+> **GitHub issue:** #1345 · **Status:** 🟡 Open · **Parent epic:** #1331
 
 - **Problem Statement:** In I2 and I11 the instruction sat in an HTML comment
   — present in the raw text a model receives, absent from the page a
@@ -990,7 +992,7 @@ report: [{kind: html_comment, count: 1}, {kind: invisible_unicode, count: 14}]
 
 ### Issue DN.5 — ouroboros-rest: [DN.5] Trust tiers & data envelopes in context assembly
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DN (not filed)
+> **GitHub issue:** #1346 · **Status:** 🟡 Open · **Parent epic:** #1331
 
 - **Problem Statement:** Context assembly (BF.5, #414) builds the manifest
   every consumer injects, and treats all text alike. I15 worked because an
@@ -1046,7 +1048,7 @@ trust manifest → AP.1 → run record
 
 ### Issue DN.6 — ouroboros-rest: [DN.6] Shared untrusted-input package & contract
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DN (not filed)
+> **GitHub issue:** #1397 · **Status:** 🟡 Open · **Parent epic:** #1331
 
 - **Problem Statement:** The Studio's Directives (roadmap 24) accept
   instructions from tracker comments and its Signals (roadmap 23) read
@@ -1088,7 +1090,7 @@ studio-engine* ──┘        (*via REST for Python callers)
 
 ### Issue DN.7 — ouroboros-ui: [DN.7] Trigger-trust settings & trust surfaces
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DN (not filed)
+> **GitHub issue:** #1347 · **Status:** 🟡 Open · **Parent epic:** #1331
 
 - **Problem Statement:** A control nobody can see is a control nobody can
   configure or trust — and a reviewer deciding on a pull request should know
@@ -1126,7 +1128,7 @@ Settings:    Untrusted authors  floor: write ▾  default: hold for approval ▾
 
 ### Issue DN.8 — ouroboros-rest: [DN.8] Trigger-trust integration & adversarial tests
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DN (not filed)
+> **GitHub issue:** #1348 · **Status:** 🟡 Open · **Parent epic:** #1331
 
 - **Problem Statement:** The failure mode of this epic is silent: a path
   nobody thought of through which a stranger's text arrives as an
@@ -1160,7 +1162,7 @@ payload P × carriers {issue title, issue body, PR title, comment, review, commi
 
 ### Issue DN.9 — ouroboros-engine: [DN.9] Injection screening signal
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DN (not filed)
+> **GitHub issue:** #1349 · **Status:** 🟡 Open · **Parent epic:** #1331
 
 - **Problem Statement:** Tiering handles strangers. It does not help when a
   *trusted* member pastes a hostile snippet, or when a trusted author's
@@ -1191,7 +1193,7 @@ inbound text ─▶ heuristics ─▶ (optional) classifier alias ─▶ score +
 
 ### Issue DN.10 — ouroboros-rest: [DN.10] Author trust for Jira, Linear & GitLab sources
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DN (not filed)
+> **GitHub issue:** #1350 · **Status:** 🟡 Open · **Parent epic:** #1331
 
 - **Problem Statement:** Ticket sources are pluggable (WF-Q); the author
   floor in the MVP exists only for GitHub. A deployment that later adds
@@ -1231,18 +1233,18 @@ MVP.**
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| DO.1 | — | ⚪ Not filed | ouroboros: [DO.1] Agent output contract — kinds, limits & schema | The closed list of output kinds, their fields and limits, as a specification with fixtures | v2, security, documentation, workflow | Y | N | M | docs, schemas |
-| DO.2 | — | ⚪ Not filed | ouroboros-db: [DO.2] Output proposals & application ledger | Proposal rows, screening verdicts, application results, idempotency keys | v2, security, db, runs | N (after DO.1) | N | M | ouroboros-db |
-| DO.3 | — | ⚪ Not filed | ouroboros-engine: [DO.3] Proposal emission at the tool boundary | The agent's write tools produce proposals; no write-capable tool exists in the sandbox | v2, security, engine, workflow | N (after DO.2, #160) | N | L | ouroboros-engine, ouroboros-rest |
-| DO.4 | — | ⚪ Not filed | ouroboros-rest: [DO.4] Output applier service | Validate against the declaration and limits, sanitise, apply through the SPI and broker, record | v2, security, rest, sources, pr | N (after DO.2, DP.2) | N | L | ouroboros-rest |
-| DO.5 | — | ⚪ Not filed | ouroboros-rest: [DO.5] Workflow `outputs:` declaration & validation | DSL field declaring kinds and limits per stage; defaults; publish-time checks | v2, security, rest, engine, workflow | N (after DO.1) | N | M | ouroboros-rest, ouroboros-engine, schemas, ouroboros-docs |
-| DO.6 | — | ⚪ Not filed | ouroboros-ui: [DO.6] Staged mode & proposed-outputs card | Preview without writing; per-proposal verdicts in the run console; apply or discard | v2, security, ui, rest, runs | N (after DO.4, DO.5) | N | M | ouroboros-ui, ouroboros-rest, ouroboros-docs |
-| DO.7 | — | ⚪ Not filed | ouroboros-engine: [DO.7] Output threat detection | Pre-apply screening for secrets, exfiltration shapes, carried-over instructions and suspicious patches | v2, security, engine, rest, runs | N (after DO.2) | N | L | ouroboros-engine, ouroboros-rest |
-| DO.8 | — | ⚪ Not filed | ouroboros-rest: [DO.8] Constrained-output adversarial tests | Undeclared kinds, limit evasion, mention and link smuggling, applier bypass | v2, security, rest, engine, ci | N (after DO.3–DO.7) | N | M | tests, ouroboros-rest, ouroboros-engine |
+| DO.1 | #1351 | 🟡 Open | ouroboros: [DO.1] Agent output contract — kinds, limits & schema | The closed list of output kinds, their fields and limits, as a specification with fixtures | v2, security, documentation, workflow | Y | N | M | docs, schemas |
+| DO.2 | #1352 | 🟡 Open | ouroboros-db: [DO.2] Output proposals & application ledger | Proposal rows, screening verdicts, application results, idempotency keys | v2, security, db, runs | N (after DO.1) | N | M | ouroboros-db |
+| DO.3 | #1353 | 🟡 Open | ouroboros-engine: [DO.3] Proposal emission at the tool boundary | The agent's write tools produce proposals; no write-capable tool exists in the sandbox | v2, security, engine, workflow | N (after DO.2, #160) | N | L | ouroboros-engine, ouroboros-rest |
+| DO.4 | #1358 | 🟡 Open | ouroboros-rest: [DO.4] Output applier service | Validate against the declaration and limits, sanitise, apply through the SPI and broker, record | v2, security, rest, sources, pr | N (after DO.2, DP.2) | N | L | ouroboros-rest |
+| DO.5 | #1354 | 🟡 Open | ouroboros-rest: [DO.5] Workflow `outputs:` declaration & validation | DSL field declaring kinds and limits per stage; defaults; publish-time checks | v2, security, rest, engine, workflow | N (after DO.1) | N | M | ouroboros-rest, ouroboros-engine, schemas, ouroboros-docs |
+| DO.6 | #1359 | 🟡 Open | ouroboros-ui: [DO.6] Staged mode & proposed-outputs card | Preview without writing; per-proposal verdicts in the run console; apply or discard | v2, security, ui, rest, runs | N (after DO.4, DO.5) | N | M | ouroboros-ui, ouroboros-rest, ouroboros-docs |
+| DO.7 | #1355 | 🟡 Open | ouroboros-engine: [DO.7] Output threat detection | Pre-apply screening for secrets, exfiltration shapes, carried-over instructions and suspicious patches | v2, security, engine, rest, runs | N (after DO.2) | N | L | ouroboros-engine, ouroboros-rest |
+| DO.8 | #1360 | 🟡 Open | ouroboros-rest: [DO.8] Constrained-output adversarial tests | Undeclared kinds, limit evasion, mention and link smuggling, applier bypass | v2, security, rest, engine, ci | N (after DO.3–DO.7) | N | M | tests, ouroboros-rest, ouroboros-engine |
 
 ### Issue DO.1 — ouroboros: [DO.1] Agent output contract — kinds, limits & schema
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DO (not filed)
+> **GitHub issue:** #1351 · **Status:** 🟡 Open · **Parent epic:** #1332
 
 - **Problem Statement:** GitHub Agentic Workflows documents the reference
   design: *"agents run read-only and request actions via structured
@@ -1289,7 +1291,7 @@ limits   = { max: 3 per run, 4 kB, mentions: requester only, links: allow-list }
 
 ### Issue DO.2 — ouroboros-db: [DO.2] Output proposals & application ledger
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DO (not filed)
+> **GitHub issue:** #1352 · **Status:** 🟡 Open · **Parent epic:** #1332
 
 - **Problem Statement:** For "applied outside the model" to be auditable,
   each proposal, its screening verdict and what was actually written must be
@@ -1320,7 +1322,7 @@ output_applications: one per proposal (unique idempotency key) ─▶ host objec
 
 ### Issue DO.3 — ouroboros-engine: [DO.3] Proposal emission at the tool boundary
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DO (not filed)
+> **GitHub issue:** #1353 · **Status:** 🟡 Open · **Parent epic:** #1332
 
 - **Problem Statement:** If an agent has a tool that writes to the source
   host, every other control in this epic is advisory. The toolset itself
@@ -1355,7 +1357,7 @@ agent toolset (agent stage):   read_file · search · run_tests · read_issue �
 
 ### Issue DO.4 — ouroboros-rest: [DO.4] Output applier service
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DO (not filed)
+> **GitHub issue:** #1358 · **Status:** 🟡 Open · **Parent epic:** #1332
 
 - **Problem Statement:** Something has to hold the write permission. It
   should be small, deterministic and the only thing that does.
@@ -1397,7 +1399,7 @@ flowchart LR
 
 ### Issue DO.5 — ouroboros-rest: [DO.5] Workflow `outputs:` declaration & validation
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DO (not filed)
+> **GitHub issue:** #1354 · **Status:** 🟡 Open · **Parent epic:** #1332
 
 - **Problem Statement:** "Only declared output kinds" needs a declaration.
 - **Solution/Scope:** A `outputs` object per stage in the workflow DSL
@@ -1429,7 +1431,7 @@ absent ─▶ defaults: branch_push; terminal stage: one draft_pull_request; not
 
 ### Issue DO.6 — ouroboros-ui: [DO.6] Staged mode & proposed-outputs card
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DO (not filed)
+> **GitHub issue:** #1359 · **Status:** 🟡 Open · **Parent epic:** #1332
 
 - **Problem Statement:** gh-aw's `staged: true` *"lets you preview what safe
   outputs a workflow would create without actually creating anything"*.
@@ -1465,7 +1467,7 @@ PROPOSED OUTPUTS — staged                                   [Apply all] [Disca
 
 ### Issue DO.7 — ouroboros-engine: [DO.7] Output threat detection
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DO (not filed)
+> **GitHub issue:** #1355 · **Status:** 🟡 Open · **Parent epic:** #1332
 
 - **Problem Statement:** A hijacked agent constrained to a branch and a
   draft pull request can still try to put a secret in a commit, a beacon in a
@@ -1508,7 +1510,7 @@ patch + proposals ─▶ deterministic detectors (secrets · encoded blobs · li
 
 ### Issue DO.8 — ouroboros-rest: [DO.8] Constrained-output adversarial tests
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DO (not filed)
+> **GitHub issue:** #1360 · **Status:** 🟡 Open · **Parent epic:** #1332
 
 - **Problem Statement:** The applier is a new privileged component; its
   bypasses are this epic's incidents-in-waiting.
@@ -1544,19 +1546,19 @@ starts with nothing worth stealing.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| DP.1 | — | ⚪ Not filed | ouroboros: [DP.1] Source-credential ADR & `SECURITY_MODEL.md` § 12 | Decide how a runner reaches a private repository; the decision #991 is waiting for | mvp, security, documentation, build-farm | Y | Y | S | docs |
-| DP.2 | — | ⚪ Not filed | ouroboros-rest: [DP.2] Git broker — credential-attaching smart-HTTP proxy | Clone and push through the control plane with a job-scoped token; credential opened in request scope | mvp, security, rest, sources, build-farm | N (after DP.1) | Y | L | ouroboros-rest, ouroboros-db, ouroboros-docs |
-| DP.3 | — | ⚪ Not filed | ouroboros-rest: [DP.3] Run-scoped source-host identities | Per-run upstream credential narrowed to one repository and minimal permissions; token-mode behaviour stated | mvp, security, rest, sources | N (after DP.2; App half after #122) | Y | M | ouroboros-rest, ouroboros-docs |
-| DP.4 | — | ⚪ Not filed | ouroboros-runner: [DP.4] Runner git transport through the broker | Checkout and push use the broker URL and a memory-only job token; nothing on disk, in env or in logs | mvp, security, build-farm | N (after DP.2, #991) | Y | M | ouroboros-runner, schemas, ouroboros-docs |
-| DP.5 | — | ⚪ Not filed | ouroboros-rest: [DP.5] Single-branch push policy | Parse pushed ref commands; one branch per run; no delete, tag or forced update; host-side ruleset guidance | mvp, security, rest, pr | N (after DP.2) | Y | M | ouroboros-rest, ouroboros-docs |
-| DP.6 | — | ⚪ Not filed | ouroboros-runner: [DP.6] Sandbox environment & secret hygiene | Environment built from an allow-list, clean home, workspace credential scan, registered-secret redaction | mvp, security, build-farm, rest | Y | Y | M | ouroboros-runner, ouroboros-rest, ouroboros-docs |
-| DP.7 | — | ⚪ Not filed | ouroboros-rest: [DP.7] Credential-isolation adversarial tests | Canary hunt, ref-policy attacks, token replay; red-when-removed | mvp, security, rest, build-farm, ci | N (after DP.2–DP.6, DM.5) | Y | M | tests, ouroboros-rest, ouroboros-runner |
-| DP.8 | — | ⚪ Not filed | ouroboros-rest: [DP.8] Agent identities in the customer's directory | A directory identity per agent workload with a sponsor and lifecycle | v2, security, rest, auth | N (after DP.3, E.1 #722) | N | L | ouroboros-rest, ouroboros-ui, ouroboros-docs |
-| DP.9 | — | ⚪ Not filed | ouroboros-runner: [DP.9] Registry & tool credential brokering | Private-registry tokens injected at the egress proxy, never present in the sandbox | v2, security, build-farm, rest | N (after DQ.4, DQ.12) | N | L | ouroboros-runner, ouroboros-rest, ouroboros-docs |
+| DP.1 | #1356 | 🟡 Open | ouroboros: [DP.1] Source-credential ADR & `SECURITY_MODEL.md` § 12 | Decide how a runner reaches a private repository; the decision #991 is waiting for | mvp, security, documentation, build-farm | Y | Y | S | docs |
+| DP.2 | #1357 | 🟡 Open | ouroboros-rest: [DP.2] Git broker — credential-attaching smart-HTTP proxy | Clone and push through the control plane with a job-scoped token; credential opened in request scope | mvp, security, rest, sources, build-farm | N (after DP.1) | Y | L | ouroboros-rest, ouroboros-db, ouroboros-docs |
+| DP.3 | #1361 | 🟡 Open | ouroboros-rest: [DP.3] Run-scoped source-host identities | Per-run upstream credential narrowed to one repository and minimal permissions; token-mode behaviour stated | mvp, security, rest, sources | N (after DP.2; App half after #122) | Y | M | ouroboros-rest, ouroboros-docs |
+| DP.4 | #1362 | 🟡 Open | ouroboros-runner: [DP.4] Runner git transport through the broker | Checkout and push use the broker URL and a memory-only job token; nothing on disk, in env or in logs | mvp, security, build-farm | N (after DP.2, #991) | Y | M | ouroboros-runner, schemas, ouroboros-docs |
+| DP.5 | #1363 | 🟡 Open | ouroboros-rest: [DP.5] Single-branch push policy | Parse pushed ref commands; one branch per run; no delete, tag or forced update; host-side ruleset guidance | mvp, security, rest, pr | N (after DP.2) | Y | M | ouroboros-rest, ouroboros-docs |
+| DP.6 | #1364 | 🟡 Open | ouroboros-runner: [DP.6] Sandbox environment & secret hygiene | Environment built from an allow-list, clean home, workspace credential scan, registered-secret redaction | mvp, security, build-farm, rest | Y | Y | M | ouroboros-runner, ouroboros-rest, ouroboros-docs |
+| DP.7 | #1365 | 🟡 Open | ouroboros-rest: [DP.7] Credential-isolation adversarial tests | Canary hunt, ref-policy attacks, token replay; red-when-removed | mvp, security, rest, build-farm, ci | N (after DP.2–DP.6, DM.5) | Y | M | tests, ouroboros-rest, ouroboros-runner |
+| DP.8 | #1366 | 🟡 Open | ouroboros-rest: [DP.8] Agent identities in the customer's directory | A directory identity per agent workload with a sponsor and lifecycle | v2, security, rest, auth | N (after DP.3, E.1 #722) | N | L | ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| DP.9 | #1380 | 🟡 Open | ouroboros-runner: [DP.9] Registry & tool credential brokering | Private-registry tokens injected at the egress proxy, never present in the sandbox | v2, security, build-farm, rest | N (after DQ.4, DQ.12) | N | L | ouroboros-runner, ouroboros-rest, ouroboros-docs |
 
 ### Issue DP.1 — ouroboros: [DP.1] Source-credential ADR & `SECURITY_MODEL.md` § 12
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DP (not filed)
+> **GitHub issue:** #1356 · **Status:** 🟡 Open · **Parent epic:** #1333
 
 - **Problem Statement:** AG.7 (#991) records that how a runner authenticates
   to a private repository is *"an undecided design question"* that *"belongs
@@ -1598,7 +1600,7 @@ option 4-C (rejected): token in job env  ← incidents I2, I11
 
 ### Issue DP.2 — ouroboros-rest: [DP.2] Git broker — credential-attaching smart-HTTP proxy
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DP (not filed)
+> **GitHub issue:** #1357 · **Status:** 🟡 Open · **Parent epic:** #1333
 
 - **Problem Statement:** Anthropic documents that for its cloud sessions
   *"GitHub credentials … never enter the session VM"* and that *"GitHub
@@ -1661,7 +1663,7 @@ sequenceDiagram
 
 ### Issue DP.3 — ouroboros-rest: [DP.3] Run-scoped source-host identities
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DP (not filed)
+> **GitHub issue:** #1361 · **Status:** 🟡 Open · **Parent epic:** #1333
 
 - **Problem Statement:** In I15 one broad token let an injected public issue
   reach private repositories; in I4 an account-scoped platform token turned a
@@ -1704,7 +1706,7 @@ token mode:  run R ─▶ workspace token (vault) ─ reach not narrowed ─ UI 
 
 ### Issue DP.4 — ouroboros-runner: [DP.4] Runner git transport through the broker
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DP (not filed)
+> **GitHub issue:** #1362 · **Status:** 🟡 Open · **Parent epic:** #1333
 
 - **Problem Statement:** #991 gives the agent a checkout step with anonymous
   clone. For private repositories and for push, the agent must use the broker
@@ -1750,7 +1752,7 @@ sandbox git push ─▶ credential helper (unix socket) ─▶ agent ─▶ brok
 
 ### Issue DP.5 — ouroboros-rest: [DP.5] Single-branch push policy
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DP (not filed)
+> **GitHub issue:** #1363 · **Status:** 🟡 Open · **Parent epic:** #1333
 
 - **Problem Statement:** GitHub's own agent *"can push to only one branch"*
   ([GitHub Docs](https://docs.github.com/en/copilot/concepts/agents/cloud-agent/risks-and-mitigations)).
@@ -1807,7 +1809,7 @@ update  …/ouro/run-01KE… (non-ff)        →  reject non_fast_forward
 
 ### Issue DP.6 — ouroboros-runner: [DP.6] Sandbox environment & secret hygiene
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DP (not filed)
+> **GitHub issue:** #1364 · **Status:** 🟡 Open · **Parent epic:** #1333
 
 - **Problem Statement:** In I4 the agent *found* a token in a local file; in
   I8 a package's install script asked local agent CLIs to inventory
@@ -1855,7 +1857,7 @@ workspace scan ─▶ "looks like a live credential: config/deploy.env" (path on
 
 ### Issue DP.7 — ouroboros-rest: [DP.7] Credential-isolation adversarial tests
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DP (not filed)
+> **GitHub issue:** #1365 · **Status:** 🟡 Open · **Parent epic:** #1333
 
 - **Problem Statement:** "No credential in the sandbox" is a universal claim;
   it needs a test that looks everywhere.
@@ -1890,7 +1892,7 @@ assert: no canary in pushed objects, logs, transcript, artifacts, PR fields, sin
 
 ### Issue DP.8 — ouroboros-rest: [DP.8] Agent identities in the customer's directory
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DP (not filed)
+> **GitHub issue:** #1366 · **Status:** 🟡 Open · **Parent epic:** #1333
 
 - **Problem Statement:** Enterprises increasingly want each agent workload to
   be a governed principal in their own directory — with an owner, a lifetime
@@ -1923,7 +1925,7 @@ directory disables identity ─▶ next sync ─▶ workflow stops
 
 ### Issue DP.9 — ouroboros-runner: [DP.9] Registry & tool credential brokering
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DP (not filed)
+> **GitHub issue:** #1380 · **Status:** 🟡 Open · **Parent epic:** #1333
 
 - **Problem Statement:** Real builds need private package registries and
   container registries. In the MVP the only way to give an agent stage such
@@ -1967,22 +1969,22 @@ responsible for what.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| DQ.1 | — | ⚪ Not filed | ouroboros-runner: [DQ.1] Isolation & egress ADR | Revise B4 for agent stages; choose sandbox profile and proxy mechanism; graduation triggers | mvp, security, documentation, build-farm | Y | Y | M | docs |
-| DQ.2 | — | ⚪ Not filed | ouroboros-runner: [DQ.2] Hardened container profile for agent stages | Non-root, no capabilities, read-only root, limits, no socket or host mounts; optional `runsc` | mvp, security, build-farm | N (after DQ.1) | Y | L | ouroboros-runner, ouroboros-docs |
-| DQ.3 | — | ⚪ Not filed | ouroboros-runner: [DQ.3] No-network sandbox & proxy socket | `--network none`; per-job Unix socket; loopback shim; no DNS in the sandbox | mvp, security, build-farm | N (after DQ.2) | Y | M | ouroboros-runner |
-| DQ.4 | — | ⚪ Not filed | ouroboros-runner: [DQ.4] Allow-listing egress proxy | Forward proxy in the agent: exact-host allow-list, address checks, decision log, fail closed | mvp, security, build-farm | N (after DQ.3) | Y | L | ouroboros-runner, ouroboros-docs |
-| DQ.5 | — | ⚪ Not filed | ouroboros-rest: [DQ.5] Network policy model — workflow request, pool ceiling, offer field | DSL `network:`; pool ceiling; resolution; `job.offer.network`; presets | mvp, security, rest, db, workflow, build-farm | N (after DQ.1) | Y | L | ouroboros-rest, ouroboros-db, ouroboros-engine, schemas, ouroboros-docs |
-| DQ.6 | — | ⚪ Not filed | ouroboros-runner: [DQ.6] Sandbox capability reporting & the shell executor's status | `hello` reports enforced isolation; shell and macOS report `none`, honestly | mvp, security, build-farm | N (after DQ.2, DQ.4) | Y | S | ouroboros-runner, schemas, ouroboros-docs |
-| DQ.7 | — | ⚪ Not filed | ouroboros-rest: [DQ.7] Dispatch enforcement for agent stages | Agent stages go only to runners with enforced sandbox and egress; audited opt-out | mvp, security, rest, build-farm, settings | N (after DQ.5, DQ.6) | Y | M | ouroboros-rest, ouroboros-docs |
-| DQ.8 | — | ⚪ Not filed | ouroboros-ui: [DQ.8] Network policy & sandbox surfaces | Pool ceiling editor, workflow network inspector, runner sandbox badge, egress log rows | mvp, security, ui, design, build-farm, workflow | N (after DQ.5, DQ.7) | Y | M | ouroboros-ui, ouroboros-docs |
-| DQ.9 | — | ⚪ Not filed | ouroboros-docs: [DQ.9] Hardened runner reference & shared-responsibility statement | Reference host configuration; who secures what on a self-hosted fleet | mvp, security, docs-site, build-farm | N (after DQ.2–DQ.4) | Y | M | ouroboros-docs, ouroboros-runner |
-| DQ.10 | — | ⚪ Not filed | ouroboros-runner: [DQ.10] Sandbox & egress adversarial tests | Escape and bypass probes, fail-open tests, red-when-removed | mvp, security, build-farm, ci | N (after DQ.2–DQ.7, DM.5) | Y | L | tests, ouroboros-runner |
-| DQ.11 | — | ⚪ Not filed | ouroboros-runner: [DQ.11] MicroVM executor | Per-job virtual machine isolation for untrusted or shared pools | v2, security, build-farm, infra | N (after DQ.2, #267) | N | L | ouroboros-runner, ouroboros-rest, ouroboros-docs |
-| DQ.12 | — | ⚪ Not filed | ouroboros-runner: [DQ.12] Request-level egress policy | TLS termination for named hosts; method and path rules; volume limits | v2, security, build-farm | N (after DQ.4) | N | L | ouroboros-runner, ouroboros-rest, ouroboros-docs |
+| DQ.1 | #1367 | 🟡 Open | ouroboros-runner: [DQ.1] Isolation & egress ADR | Revise B4 for agent stages; choose sandbox profile and proxy mechanism; graduation triggers | mvp, security, documentation, build-farm | Y | Y | M | docs |
+| DQ.2 | #1368 | 🟡 Open | ouroboros-runner: [DQ.2] Hardened container profile for agent stages | Non-root, no capabilities, read-only root, limits, no socket or host mounts; optional `runsc` | mvp, security, build-farm | N (after DQ.1) | Y | L | ouroboros-runner, ouroboros-docs |
+| DQ.3 | #1369 | 🟡 Open | ouroboros-runner: [DQ.3] No-network sandbox & proxy socket | `--network none`; per-job Unix socket; loopback shim; no DNS in the sandbox | mvp, security, build-farm | N (after DQ.2) | Y | M | ouroboros-runner |
+| DQ.4 | #1370 | 🟡 Open | ouroboros-runner: [DQ.4] Allow-listing egress proxy | Forward proxy in the agent: exact-host allow-list, address checks, decision log, fail closed | mvp, security, build-farm | N (after DQ.3) | Y | L | ouroboros-runner, ouroboros-docs |
+| DQ.5 | #1371 | 🟡 Open | ouroboros-rest: [DQ.5] Network policy model — workflow request, pool ceiling, offer field | DSL `network:`; pool ceiling; resolution; `job.offer.network`; presets | mvp, security, rest, db, workflow, build-farm | N (after DQ.1) | Y | L | ouroboros-rest, ouroboros-db, ouroboros-engine, schemas, ouroboros-docs |
+| DQ.6 | #1372 | 🟡 Open | ouroboros-runner: [DQ.6] Sandbox capability reporting & the shell executor's status | `hello` reports enforced isolation; shell and macOS report `none`, honestly | mvp, security, build-farm | N (after DQ.2, DQ.4) | Y | S | ouroboros-runner, schemas, ouroboros-docs |
+| DQ.7 | #1373 | 🟡 Open | ouroboros-rest: [DQ.7] Dispatch enforcement for agent stages | Agent stages go only to runners with enforced sandbox and egress; audited opt-out | mvp, security, rest, build-farm, settings | N (after DQ.5, DQ.6) | Y | M | ouroboros-rest, ouroboros-docs |
+| DQ.8 | #1374 | 🟡 Open | ouroboros-ui: [DQ.8] Network policy & sandbox surfaces | Pool ceiling editor, workflow network inspector, runner sandbox badge, egress log rows | mvp, security, ui, design, build-farm, workflow | N (after DQ.5, DQ.7) | Y | M | ouroboros-ui, ouroboros-docs |
+| DQ.9 | #1375 | 🟡 Open | ouroboros-docs: [DQ.9] Hardened runner reference & shared-responsibility statement | Reference host configuration; who secures what on a self-hosted fleet | mvp, security, docs-site, build-farm | N (after DQ.2–DQ.4) | Y | M | ouroboros-docs, ouroboros-runner |
+| DQ.10 | #1377 | 🟡 Open | ouroboros-runner: [DQ.10] Sandbox & egress adversarial tests | Escape and bypass probes, fail-open tests, red-when-removed | mvp, security, build-farm, ci | N (after DQ.2–DQ.7, DM.5) | Y | L | tests, ouroboros-runner |
+| DQ.11 | #1378 | 🟡 Open | ouroboros-runner: [DQ.11] MicroVM executor | Per-job virtual machine isolation for untrusted or shared pools | v2, security, build-farm, infra | N (after DQ.2, #267) | N | L | ouroboros-runner, ouroboros-rest, ouroboros-docs |
+| DQ.12 | #1379 | 🟡 Open | ouroboros-runner: [DQ.12] Request-level egress policy | TLS termination for named hosts; method and path rules; volume limits | v2, security, build-farm | N (after DQ.4) | N | L | ouroboros-runner, ouroboros-rest, ouroboros-docs |
 
 ### Issue DQ.1 — ouroboros-runner: [DQ.1] Isolation & egress ADR
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DQ (not filed)
+> **GitHub issue:** #1367 · **Status:** 🟡 Open · **Parent epic:** #1334
 
 - **Problem Statement:** AJ.5 (#267) scoped an isolation ADR *"as an
   evaluation rather than an implementation"* and asked it to write down the
@@ -2031,7 +2033,7 @@ B4 revised for agent stages:    model chooses command after reading untrusted te
 
 ### Issue DQ.2 — ouroboros-runner: [DQ.2] Hardened container profile for agent stages
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DQ (not filed)
+> **GitHub issue:** #1368 · **Status:** 🟡 Open · **Parent epic:** #1334
 
 - **Problem Statement:** A survey of `ouroboros-runner/internal/exec` found
   resource limits and an init process on container jobs and nothing else: no
@@ -2079,7 +2081,7 @@ profile agent-sandbox@1
 
 ### Issue DQ.3 — ouroboros-runner: [DQ.3] No-network sandbox & proxy socket
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DQ (not filed)
+> **GitHub issue:** #1369 · **Status:** 🟡 Open · **Parent epic:** #1334
 
 - **Problem Statement:** A filter in front of a network can be bypassed; a
   missing network cannot. Anthropic's sandbox documentation describes exactly
@@ -2122,7 +2124,7 @@ profile agent-sandbox@1
 
 ### Issue DQ.4 — ouroboros-runner: [DQ.4] Allow-listing egress proxy
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DQ (not filed)
+> **GitHub issue:** #1370 · **Status:** 🟡 Open · **Parent epic:** #1334
 
 - **Problem Statement:** Every exfiltration in the register needed somewhere
   to send data. Vendors document default-restricted egress; one of them
@@ -2180,7 +2182,7 @@ CONNECT registry.npmjs.org:443
 
 ### Issue DQ.5 — ouroboros-rest: [DQ.5] Network policy model — workflow request, pool ceiling, offer field
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DQ (not filed)
+> **GitHub issue:** #1371 · **Status:** 🟡 Open · **Parent epic:** #1334
 
 - **Problem Statement:** The description asks for *"an allow-list per
   workflow"*. A workflow author knows what a stage needs; an administrator
@@ -2231,7 +2233,7 @@ offer:   network: { mode: allowlist, allow: [registry.npmjs.org], ports: [443] }
 
 ### Issue DQ.6 — ouroboros-runner: [DQ.6] Sandbox capability reporting & the shell executor's status
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DQ (not filed)
+> **GitHub issue:** #1372 · **Status:** 🟡 Open · **Parent epic:** #1334
 
 - **Problem Statement:** The control plane cannot enforce what it cannot
   see. The shell executor — HIL rigs, macOS — runs commands *"directly on
@@ -2269,7 +2271,7 @@ hello.capabilities.sandbox
 
 ### Issue DQ.7 — ouroboros-rest: [DQ.7] Dispatch enforcement for agent stages
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DQ (not filed)
+> **GitHub issue:** #1373 · **Status:** 🟡 Open · **Parent epic:** #1334
 
 - **Problem Statement:** A hardened profile that the dispatcher does not
   require is a recommendation. The default must be that an agent stage does
@@ -2310,7 +2312,7 @@ opt-out allow_unsandboxed_agent_stages: Owner only · audited · warning chip on
 
 ### Issue DQ.8 — ouroboros-ui: [DQ.8] Network policy & sandbox surfaces
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DQ (not filed)
+> **GitHub issue:** #1374 · **Status:** 🟡 Open · **Parent epic:** #1334
 
 - **Problem Statement:** Operators need to set a ceiling, authors need to
   see why a host was refused, and reviewers need to see where a run talked.
@@ -2345,7 +2347,7 @@ Run ─ Resources ─ Egress:  registry.npmjs.org  allowed  41 req  18 MB in / 0
 
 ### Issue DQ.9 — ouroboros-docs: [DQ.9] Hardened runner reference & shared-responsibility statement
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DQ (not filed)
+> **GitHub issue:** #1375 · **Status:** 🟡 Open · **Parent epic:** #1334
 
 - **Problem Statement:** Anthropic states that in a self-hosted environment
   *"isolation, network egress, and git credentials are your deployment's
@@ -2391,7 +2393,7 @@ build jobs / shell   — (not sandboxed)             everything             whet
 
 ### Issue DQ.10 — ouroboros-runner: [DQ.10] Sandbox & egress adversarial tests
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DQ (not filed)
+> **GitHub issue:** #1377 · **Status:** 🟡 Open · **Parent epic:** #1334
 
 - **Problem Statement:** I10 is two bypasses of a shipped network sandbox
   found by one outside researcher. The same class of bug in this proxy would
@@ -2432,7 +2434,7 @@ assert: sink records nothing · host untouched · every case red-when-removed
 
 ### Issue DQ.11 — ouroboros-runner: [DQ.11] MicroVM executor
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DQ (not filed)
+> **GitHub issue:** #1378 · **Status:** 🟡 Open · **Parent epic:** #1334
 
 - **Problem Statement:** A container shares the host kernel. That is an
   acceptable boundary for one organisation's agent on its own machine; it is
@@ -2462,7 +2464,7 @@ required by policy for: shared pools · hosted tier (#397) · exploit-verify (#5
 
 ### Issue DQ.12 — ouroboros-runner: [DQ.12] Request-level egress policy
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DQ (not filed)
+> **GitHub issue:** #1379 · **Status:** 🟡 Open · **Parent epic:** #1334
 
 - **Problem Statement:** A host-name allow-list cannot tell a package
   download from an upload to the same host, and cannot see a mismatched
@@ -2509,17 +2511,17 @@ the gate for everything a team *deliberately* lets a run reach.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| DR.1 | — | ⚪ Not filed | ouroboros: [DR.1] Destructive-action taxonomy & gate specification | Six action classes, default verdict per class, where each is enforced | v2, security, documentation | N (after DM.1) | N | M | docs |
-| DR.2 | — | ⚪ Not filed | ouroboros-db: [DR.2] Action rules, authorisation decisions & grants schema | Rules in the policy document, decision rows, single-use scoped grants | v2, security, db | N (after DR.1) | N | M | ouroboros-db |
-| DR.3 | — | ⚪ Not filed | ouroboros-engine: [DR.3] Tool-boundary authoriser | Deterministic classifier over every tool call; allow / hold / deny before execution | v2, security, engine, workflow | N (after DR.2, #160, #315) | N | L | ouroboros-engine, ouroboros-rest |
-| DR.4 | — | ⚪ Not filed | ouroboros-rest: [DR.4] Production-resource registry & boundary enforcement | Declared production hosts and repositories; held at the egress proxy and git broker without a grant | v2, security, rest, build-farm | N (after DR.2, DQ.4, DQ.5) | N | L | ouroboros-rest, ouroboros-runner, ouroboros-docs |
-| DR.5 | — | ⚪ Not filed | ouroboros-rest: [DR.5] Runtime authorisation decisions & grants | A held action becomes a Needs-you decision showing the exact operation; allow-once grant delivered to the boundary | v2, security, rest, inbox, runs | N (after DR.3, DR.4) | N | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
-| DR.6 | — | ⚪ Not filed | ouroboros-ui: [DR.6] Destructive-action policy authoring | Settings card for classes, rules and production resources; run-console verdict rows | v2, security, ui, settings | N (after DR.2, DR.5) | N | M | ouroboros-ui, ouroboros-docs |
-| DR.7 | — | ⚪ Not filed | ouroboros-rest: [DR.7] Destructive-action adversarial tests | Replays of the two destructive incidents and bypass attempts, red-when-removed | v2, security, rest, engine, ci | N (after DR.3–DR.5) | N | M | ouroboros-rest, ouroboros-engine, tests |
+| DR.1 | #1381 | 🟡 Open | ouroboros: [DR.1] Destructive-action taxonomy & gate specification | Six action classes, default verdict per class, where each is enforced | v2, security, documentation | N (after DM.1) | N | M | docs |
+| DR.2 | #1382 | 🟡 Open | ouroboros-db: [DR.2] Action rules, authorisation decisions & grants schema | Rules in the policy document, decision rows, single-use scoped grants | v2, security, db | N (after DR.1) | N | M | ouroboros-db |
+| DR.3 | #1383 | 🟡 Open | ouroboros-engine: [DR.3] Tool-boundary authoriser | Deterministic classifier over every tool call; allow / hold / deny before execution | v2, security, engine, workflow | N (after DR.2, #160, #315) | N | L | ouroboros-engine, ouroboros-rest |
+| DR.4 | #1384 | 🟡 Open | ouroboros-rest: [DR.4] Production-resource registry & boundary enforcement | Declared production hosts and repositories; held at the egress proxy and git broker without a grant | v2, security, rest, build-farm | N (after DR.2, DQ.4, DQ.5) | N | L | ouroboros-rest, ouroboros-runner, ouroboros-docs |
+| DR.5 | #1385 | 🟡 Open | ouroboros-rest: [DR.5] Runtime authorisation decisions & grants | A held action becomes a Needs-you decision showing the exact operation; allow-once grant delivered to the boundary | v2, security, rest, inbox, runs | N (after DR.3, DR.4) | N | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| DR.6 | #1386 | 🟡 Open | ouroboros-ui: [DR.6] Destructive-action policy authoring | Settings card for classes, rules and production resources; run-console verdict rows | v2, security, ui, settings | N (after DR.2, DR.5) | N | M | ouroboros-ui, ouroboros-docs |
+| DR.7 | #1387 | 🟡 Open | ouroboros-rest: [DR.7] Destructive-action adversarial tests | Replays of the two destructive incidents and bypass attempts, red-when-removed | v2, security, rest, engine, ci | N (after DR.3–DR.5) | N | M | ouroboros-rest, ouroboros-engine, tests |
 
 ### Issue DR.1 — ouroboros: [DR.1] Destructive-action taxonomy & gate specification
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DR (not filed)
+> **GitHub issue:** #1381 · **Status:** 🟡 Open · **Parent epic:** #1335
 
 - **Problem Statement:** "Do not delete production data" written in a prompt
   is a request, not a control. In I4 a single API call removed a volume and,
@@ -2577,7 +2579,7 @@ credential_use   deny               sandbox (DP.6)         never
 
 ### Issue DR.2 — ouroboros-db: [DR.2] Action rules, authorisation decisions & grants schema
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DR (not filed)
+> **GitHub issue:** #1382 · **Status:** 🟡 Open · **Parent epic:** #1335
 
 - **Problem Statement:** A gate needs somewhere to keep its rules, a record
   of every verdict, and a grant that cannot be replayed. The product already
@@ -2612,7 +2614,7 @@ action_decisions{run, stage 3, class: infrastructure, op: "railway volume delete
 
 ### Issue DR.3 — ouroboros-engine: [DR.3] Tool-boundary authoriser
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DR (not filed)
+> **GitHub issue:** #1383 · **Status:** 🟡 Open · **Parent epic:** #1335
 
 - **Problem Statement:** #160 builds a tool boundary and #315 makes guardrail
   failures halt a stage at a safe point, but both act on what a run *has
@@ -2658,7 +2660,7 @@ flowchart LR
 
 ### Issue DR.4 — ouroboros-rest: [DR.4] Production-resource registry & boundary enforcement
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DR (not filed)
+> **GitHub issue:** #1384 · **Status:** 🟡 Open · **Parent epic:** #1335
 
 - **Problem Statement:** A classifier of command lines can be evaded; a
   network boundary cannot be talked out of its rules. The gate needs its
@@ -2702,7 +2704,7 @@ sandbox ──▶ egress proxy ──┬─ allow-listed, non-production ─▶ 
 
 ### Issue DR.5 — ouroboros-rest: [DR.5] Runtime authorisation decisions & grants
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DR (not filed)
+> **GitHub issue:** #1385 · **Status:** 🟡 Open · **Parent epic:** #1335
 
 - **Problem Statement:** A held action is only useful if a person can see
   *exactly* what is being asked and answer it once, quickly, without opening
@@ -2741,7 +2743,7 @@ ALLOW A DESTRUCTIVE ACTION ONCE?                       run #512 · stage deploy/
 
 ### Issue DR.6 — ouroboros-ui: [DR.6] Destructive-action policy authoring
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DR (not filed)
+> **GitHub issue:** #1386 · **Status:** 🟡 Open · **Parent epic:** #1335
 
 - **Problem Statement:** Defaults are right for most teams and wrong for
   some; a platform team that deploys from a loop needs to say so
@@ -2777,7 +2779,7 @@ Test a command: [ kubectl delete ns payments ]  ─▶ infrastructure · hold
 
 ### Issue DR.7 — ouroboros-rest: [DR.7] Destructive-action adversarial tests
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DR (not filed)
+> **GitHub issue:** #1387 · **Status:** 🟡 Open · **Parent epic:** #1335
 
 - **Problem Statement:** A gate that has only been tested with polite inputs
   has not been tested.
@@ -2816,20 +2818,20 @@ the product's own release pipeline, and signing for skills and snippets.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| DS.1 | — | ⚪ Not filed | ouroboros: [DS.1] Commit provenance ADR | Choose the signing mechanism per identity mode; define what a signature attests | mvp, security, documentation, pr | Y | Y | S | docs |
-| DS.2 | — | ⚪ Not filed | ouroboros-db: [DS.2] Signing keys & commit provenance ledger | Per-workspace signing keys in the vault; one ledger row per run commit | mvp, security, db, runs, pr | N (after DS.1) | Y | M | ouroboros-db |
-| DS.3 | — | ⚪ Not filed | ouroboros-rest: [DS.3] Remote commit signer (and App-mode API commits) | Sign through the broker with a vault-held key; in App mode create commits through the host API | mvp, security, rest, build-farm, sources | N (after DS.2, DP.2, DP.4) | Y | L | ouroboros-rest, ouroboros-runner, ouroboros-docs |
-| DS.4 | — | ⚪ Not filed | ouroboros-rest: [DS.4] Attribution trailers & transcript link | Honest author and co-author; run, workflow and model trailers; a stable transcript link and digest | mvp, security, rest, runs, pr | N (after DS.2) | Y | M | ouroboros-rest, ouroboros-runner, ouroboros-docs |
-| DS.5 | — | ⚪ Not filed | ouroboros-rest: [DS.5] Provenance gate on pull requests | Every commit on a run branch is in the ledger and verifies; foreign or unsigned commits fail the gate | mvp, security, rest, pr | N (after DS.3, DS.4) | Y | M | ouroboros-rest, ouroboros-docs |
-| DS.6 | — | ⚪ Not filed | ouroboros-ui: [DS.6] Provenance surfaces | Signature and run link on commit rows; the gate row; the workspace signing key card | mvp, security, ui, design, pr, runs, settings | N (after DS.5) | Y | S | ouroboros-ui, ouroboros-docs |
-| DS.7 | — | ⚪ Not filed | ouroboros-rest: [DS.7] Provenance tests & adversarial cases | Forged trailers, foreign commits, signer abuse, key rotation | mvp, security, rest, ci | N (after DS.3–DS.5, DM.5) | Y | M | tests, ouroboros-rest |
-| DS.8 | — | ⚪ Not filed | ouroboros-rest: [DS.8] Signed run attestations | An in-toto style statement per run: inputs, workflow version, models, runner, outputs | v2, security, rest, runs, pr | N (after DS.3) | N | M | ouroboros-rest, ouroboros-docs |
-| DS.9 | — | ⚪ Not filed | ouroboros: [DS.9] Release pipeline hardening & signed releases | The product's own CI and artefacts: pinned actions, isolated publish, attestations, SBOM | v2, security, ci, infra | Y | N | L | .github, ouroboros-runner, scripts, ouroboros-docs |
-| DS.10 | — | ⚪ Not filed | ouroboros-rest: [DS.10] Signing & revocation for skills and snippets | Origin, signature and revocation for knowledge skills and imported snippets outside the marketplace path | v2, security, rest, knowledge, marketplace | N (after DS.2) | N | L | ouroboros-rest, ouroboros-db, ouroboros-ui, ouroboros-docs |
+| DS.1 | #1388 | 🟡 Open | ouroboros: [DS.1] Commit provenance ADR | Choose the signing mechanism per identity mode; define what a signature attests | mvp, security, documentation, pr | Y | Y | S | docs |
+| DS.2 | #1390 | 🟡 Open | ouroboros-db: [DS.2] Signing keys & commit provenance ledger | Per-workspace signing keys in the vault; one ledger row per run commit | mvp, security, db, runs, pr | N (after DS.1) | Y | M | ouroboros-db |
+| DS.3 | #1391 | 🟡 Open | ouroboros-rest: [DS.3] Remote commit signer (and App-mode API commits) | Sign through the broker with a vault-held key; in App mode create commits through the host API | mvp, security, rest, build-farm, sources | N (after DS.2, DP.2, DP.4) | Y | L | ouroboros-rest, ouroboros-runner, ouroboros-docs |
+| DS.4 | #1392 | 🟡 Open | ouroboros-rest: [DS.4] Attribution trailers & transcript link | Honest author and co-author; run, workflow and model trailers; a stable transcript link and digest | mvp, security, rest, runs, pr | N (after DS.2) | Y | M | ouroboros-rest, ouroboros-runner, ouroboros-docs |
+| DS.5 | #1393 | 🟡 Open | ouroboros-rest: [DS.5] Provenance gate on pull requests | Every commit on a run branch is in the ledger and verifies; foreign or unsigned commits fail the gate | mvp, security, rest, pr | N (after DS.3, DS.4) | Y | M | ouroboros-rest, ouroboros-docs |
+| DS.6 | #1394 | 🟡 Open | ouroboros-ui: [DS.6] Provenance surfaces | Signature and run link on commit rows; the gate row; the workspace signing key card | mvp, security, ui, design, pr, runs, settings | N (after DS.5) | Y | S | ouroboros-ui, ouroboros-docs |
+| DS.7 | #1395 | 🟡 Open | ouroboros-rest: [DS.7] Provenance tests & adversarial cases | Forged trailers, foreign commits, signer abuse, key rotation | mvp, security, rest, ci | N (after DS.3–DS.5, DM.5) | Y | M | tests, ouroboros-rest |
+| DS.8 | #1398 | 🟡 Open | ouroboros-rest: [DS.8] Signed run attestations | An in-toto style statement per run: inputs, workflow version, models, runner, outputs | v2, security, rest, runs, pr | N (after DS.3) | N | M | ouroboros-rest, ouroboros-docs |
+| DS.9 | #1399 | 🟡 Open | ouroboros: [DS.9] Release pipeline hardening & signed releases | The product's own CI and artefacts: pinned actions, isolated publish, attestations, SBOM | v2, security, ci, infra | Y | N | L | .github, ouroboros-runner, scripts, ouroboros-docs |
+| DS.10 | #1400 | 🟡 Open | ouroboros-rest: [DS.10] Signing & revocation for skills and snippets | Origin, signature and revocation for knowledge skills and imported snippets outside the marketplace path | v2, security, rest, knowledge, marketplace | N (after DS.2) | N | L | ouroboros-rest, ouroboros-db, ouroboros-ui, ouroboros-docs |
 
 ### Issue DS.1 — ouroboros: [DS.1] Commit provenance ADR
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DS (not filed)
+> **GitHub issue:** #1388 · **Status:** 🟡 Open · **Parent epic:** #1336
 
 - **Problem Statement:** GitHub documents that its agent's commits *"are
   signed"*, appear as verified, are co-authored by the requesting developer
@@ -2882,7 +2884,7 @@ never       a key in the sandbox / on runner  —                      —
 
 ### Issue DS.2 — ouroboros-db: [DS.2] Signing keys & commit provenance ledger
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DS (not filed)
+> **GitHub issue:** #1390 · **Status:** 🟡 Open · **Parent epic:** #1336
 
 - **Problem Statement:** Verification needs a record that outlives the
   branch: which run made which commit, signed by which key, verified how.
@@ -2915,7 +2917,7 @@ commit_provenance{commit 9e7b…, run R, stage implement/2, mode remote_ssh, key
 
 ### Issue DS.3 — ouroboros-rest: [DS.3] Remote commit signer (and App-mode API commits)
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DS (not filed)
+> **GitHub issue:** #1391 · **Status:** 🟡 Open · **Parent epic:** #1336
 
 - **Problem Statement:** Anthropic's engineering account of its own sandbox
   says *"sensitive credentials (such as git credentials or signing keys) are
@@ -2978,7 +2980,7 @@ sequenceDiagram
 
 ### Issue DS.4 — ouroboros-rest: [DS.4] Attribution trailers & transcript link
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DS (not filed)
+> **GitHub issue:** #1392 · **Status:** 🟡 Open · **Parent epic:** #1336
 
 - **Problem Statement:** #374 records why attribution matters: *"a colleague
   reading `git log` in two years sees Ken merged something Ken never looked
@@ -3034,7 +3036,7 @@ Co-authored-by: Maria … <…>
 
 ### Issue DS.5 — ouroboros-rest: [DS.5] Provenance gate on pull requests
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DS (not filed)
+> **GitHub issue:** #1393 · **Status:** 🟡 Open · **Parent epic:** #1336
 
 - **Problem Statement:** A signature nobody checks is decoration. The PR
   page already has evidence gates and a transactional merge re-check (#360);
@@ -3072,7 +3074,7 @@ PR #514 revision 2 ─ gate "Provenance"
 
 ### Issue DS.6 — ouroboros-ui: [DS.6] Provenance surfaces
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DS (not filed)
+> **GitHub issue:** #1394 · **Status:** 🟡 Open · **Parent epic:** #1336
 
 - **Problem Statement:** Reviewers and administrators need to see the
   signature state and manage the key without reading git internals.
@@ -3106,7 +3108,7 @@ Commit signing                                   mode: token
 
 ### Issue DS.7 — ouroboros-rest: [DS.7] Provenance tests & adversarial cases
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DS (not filed)
+> **GitHub issue:** #1395 · **Status:** 🟡 Open · **Parent epic:** #1336
 
 - **Problem Statement:** Provenance fails quietly: a forged trailer or an
   unsigned commit looks fine in a list.
@@ -3138,7 +3140,7 @@ hostile agent ─▶ forged Ouroboros-Run / Co-authored-by ─▶ stripped + rew
 
 ### Issue DS.8 — ouroboros-rest: [DS.8] Signed run attestations
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DS (not filed)
+> **GitHub issue:** #1398 · **Status:** 🟡 Open · **Parent epic:** #1336
 
 - **Problem Statement:** A commit signature says where a commit came from.
   It does not say which workflow version, models, runner image or inputs
@@ -3174,7 +3176,7 @@ statement{ subject: head commit + tree,
 
 ### Issue DS.9 — ouroboros: [DS.9] Release pipeline hardening & signed releases
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DS (not filed)
+> **GitHub issue:** #1399 · **Status:** 🟡 Open · **Parent epic:** #1336
 
 - **Problem Statement:** Four register entries are compromises of an agent
   product's *own* release path: an issue-triggered agent workflow with shell
@@ -3218,7 +3220,7 @@ install.sh: verify signature + provenance ─▶ install   (tampered ─▶ refu
 
 ### Issue DS.10 — ouroboros-rest: [DS.10] Signing & revocation for skills and snippets
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DS (not filed)
+> **GitHub issue:** #1400 · **Status:** 🟡 Open · **Parent epic:** #1336
 
 - **Problem Statement:** Antiy CERT counted 1,184 malicious packages in one
   agent-skills marketplace (I6). Ouroboros's marketplace roadmap already
@@ -3266,17 +3268,17 @@ an emergency stop. None of it exists today.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| DT.1 | — | ⚪ Not filed | ouroboros: [DT.1] `SECURITY.md` & vulnerability disclosure policy | Scope, how to report, response targets, safe harbour, supported versions | mvp, security, documentation | Y | Y | S | repo root, .github |
-| DT.2 | — | ⚪ Not filed | ouroboros: [DT.2] Private reporting & advisory workflow | Private vulnerability reporting on, triage runbook, CVE requests, no-silent-fix rule | mvp, security, documentation, ci | N (after DT.1) | Y | M | .github, docs |
-| DT.3 | — | ⚪ Not filed | ouroboros-web: [DT.3] `security.txt` & security contact | RFC 9116 file, a real Security page, footer link fixed | mvp, security, ui | N (after DT.1) | Y | S | ouroboros-web, ouroboros-docs |
-| DT.4 | — | ⚪ Not filed | ouroboros-docs: [DT.4] Security advisories page & upgrade notices | Advisory index, release-note security section, runner version-floor procedure | mvp, security, docs-site, build-farm | N (after DT.2) | Y | S | ouroboros-docs, docs |
-| DT.5 | — | ⚪ Not filed | ouroboros-docs: [DT.5] Operator incident runbook | What to do when a run is suspected hijacked: stop, revoke, rotate, preserve, report | mvp, security, docs-site | N (after DP.2, DQ.4, DT.6) | Y | S | ouroboros-docs |
-| DT.6 | — | ⚪ Not filed | ouroboros-rest: [DT.6] Emergency stop for agent runs | One audited control that aborts running agent stages now and blocks new ones | mvp, security, rest, ui, runs, settings | Y | Y | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
-| DT.7 | — | ⚪ Not filed | ouroboros: [DT.7] Independent assessment & bounty decision | Third-party test of the runtime boundary; published summary; bounty go/no-go | v2, security, documentation | N (after MVP gate DM.5) | N | M | docs |
+| DT.1 | #1401 | 🟡 Open | ouroboros: [DT.1] `SECURITY.md` & vulnerability disclosure policy | Scope, how to report, response targets, safe harbour, supported versions | mvp, security, documentation | Y | Y | S | repo root, .github |
+| DT.2 | #1402 | 🟡 Open | ouroboros: [DT.2] Private reporting & advisory workflow | Private vulnerability reporting on, triage runbook, CVE requests, no-silent-fix rule | mvp, security, documentation, ci | N (after DT.1) | Y | M | .github, docs |
+| DT.3 | #1403 | 🟡 Open | ouroboros-web: [DT.3] `security.txt` & security contact | RFC 9116 file, a real Security page, footer link fixed | mvp, security, ui | N (after DT.1) | Y | S | ouroboros-web, ouroboros-docs |
+| DT.4 | #1404 | 🟡 Open | ouroboros-docs: [DT.4] Security advisories page & upgrade notices | Advisory index, release-note security section, runner version-floor procedure | mvp, security, docs-site, build-farm | N (after DT.2) | Y | S | ouroboros-docs, docs |
+| DT.5 | #1406 | 🟡 Open | ouroboros-docs: [DT.5] Operator incident runbook | What to do when a run is suspected hijacked: stop, revoke, rotate, preserve, report | mvp, security, docs-site | N (after DP.2, DQ.4, DT.6) | Y | S | ouroboros-docs |
+| DT.6 | #1405 | 🟡 Open | ouroboros-rest: [DT.6] Emergency stop for agent runs | One audited control that aborts running agent stages now and blocks new ones | mvp, security, rest, ui, runs, settings | Y | Y | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| DT.7 | #1407 | 🟡 Open | ouroboros: [DT.7] Independent assessment & bounty decision | Third-party test of the runtime boundary; published summary; bounty go/no-go | v2, security, documentation | N (after MVP gate DM.5) | N | M | docs |
 
 ### Issue DT.1 — ouroboros: [DT.1] `SECURITY.md` & vulnerability disclosure policy
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DT (not filed)
+> **GitHub issue:** #1401 · **Status:** 🟡 Open · **Parent epic:** #1337
 
 - **Problem Statement:** The repository has no `SECURITY.md`, the site has no
   security contact, and a researcher who finds a flaw in an Apache-2.0
@@ -3324,7 +3326,7 @@ finder ─▶ private report (PVR / mailbox) ─▶ ack ≤ 3 wd ─▶ assess �
 
 ### Issue DT.2 — ouroboros: [DT.2] Private reporting & advisory workflow
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DT (not filed)
+> **GitHub issue:** #1402 · **Status:** 🟡 Open · **Parent epic:** #1337
 
 - **Problem Statement:** A policy without a mechanism is a promise nobody
   can keep. The mechanism has to cover intake, triage, a private fix, a
@@ -3368,7 +3370,7 @@ rule: a boundary fix never ships without an advisory
 
 ### Issue DT.3 — ouroboros-web: [DT.3] `security.txt` & security contact
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DT (not filed)
+> **GitHub issue:** #1403 · **Status:** 🟡 Open · **Parent epic:** #1337
 
 - **Problem Statement:** The marketing site's *Security* footer link points
   to `#top`, and there is no machine-readable contact.
@@ -3400,7 +3402,7 @@ rule: a boundary fix never ships without an advisory
 
 ### Issue DT.4 — ouroboros-docs: [DT.4] Security advisories page & upgrade notices
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DT (not filed)
+> **GitHub issue:** #1404 · **Status:** 🟡 Open · **Parent epic:** #1337
 
 - **Problem Statement:** A self-hosted operator learns about a fix only if
   they are told where to look and what to do.
@@ -3429,7 +3431,7 @@ Advisories
 
 ### Issue DT.5 — ouroboros-docs: [DT.5] Operator incident runbook
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DT (not filed)
+> **GitHub issue:** #1406 · **Status:** 🟡 Open · **Parent epic:** #1337
 
 - **Problem Statement:** When a run does something it should not, the
   operator has minutes, and the steps span four subsystems.
@@ -3465,7 +3467,7 @@ Advisories
 
 ### Issue DT.6 — ouroboros-rest: [DT.6] Emergency stop for agent runs
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DT (not filed)
+> **GitHub issue:** #1405 · **Status:** 🟡 Open · **Parent epic:** #1337
 
 - **Problem Statement:** Workspace pause (BR.5, #489) lets *"running loops
   finish their stage"* — the right behaviour for maintenance and the wrong
@@ -3506,7 +3508,7 @@ Advisories
 
 ### Issue DT.7 — ouroboros: [DT.7] Independent assessment & bounty decision
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** DT (not filed)
+> **GitHub issue:** #1407 · **Status:** 🟡 Open · **Parent epic:** #1337
 
 - **Problem Statement:** Adversarial tests written by the people who built
   the controls find the bugs those people could imagine.

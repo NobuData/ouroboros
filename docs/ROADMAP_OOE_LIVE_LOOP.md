@@ -360,18 +360,20 @@ P0-2, and hosted or managed-key execution.
 
 ## Epics, Labels & Milestones
 
+> **Filed 2026-10-10** by `create-issues` in `NobuData/ouroboros`: epic parents #1293–#1298, work issues #1299–#1329, numbered in dependency order. Each work issue is a sub-issue of its epic with blocked-by links, Priority, Effort and type set. Statements below that nothing is filed predate this; relabelling or amending *existing* issues described by this roadmap has **not** been done.
+
 Each epic is a parent tracking issue on GitHub; every new issue below is filed
 as one of its sub-issues (GitHub Relationships). Promoted issues keep their
 existing parents.
 
 | Epic | GitHub | Status | Name | Goal | Modules | Milestone |
 |------|:------:|:------:|------|------|---------|-----------|
-| DG | — | 📝 Not filed | Promotion & Sequencing | Relabel and order the chain; report which loop stages are live; retire "simulated" wording as each one is | ouroboros (repo), ouroboros-rest, ouroboros-ui, ouroboros-docs | Live Loop MVP |
-| DH | — | 📝 Not filed | Engine Decision & Harness Adapter | The stage-executor SPI, the harness adapter and its gateway facade, the provider-terms guard | ouroboros-engine, ouroboros-rest, ouroboros-runner | Live Loop MVP / v2 |
-| DI | — | 📝 Not filed | Thin Vertical Slice | Working tree, branch and draft-PR publishing, admission, fixtures, the acceptance gate | ouroboros-engine, ouroboros-rest, ouroboros-db, tests/e2e | Live Loop MVP / v2 |
-| DJ | — | 📝 Not filed | Real-Run Ingestion | Data origin on runs and aggregates, labelled surfaces, the simulated driver out of the product path | ouroboros-db, ouroboros-rest, ouroboros-ui, ouroboros-engine | Live Loop MVP |
-| DK | — | 📝 Not filed | Live First Loop | Readiness preflight, wizard states, the operator's page for switching execution on | ouroboros-rest, ouroboros-ui, ouroboros-docs | Live Loop MVP |
-| DL | — | 📝 Not filed | Reference Demonstration | A public sample repository, a reproducible run, published evidence, truthful site numbers | ouroboros (repo), ouroboros-web, ouroboros-docs | Live Loop MVP / v2 |
+| DG | #1293 | 🟡 Open | Promotion & Sequencing | Relabel and order the chain; report which loop stages are live; retire "simulated" wording as each one is | ouroboros (repo), ouroboros-rest, ouroboros-ui, ouroboros-docs | Live Loop MVP |
+| DH | #1294 | 🟡 Open | Engine Decision & Harness Adapter | The stage-executor SPI, the harness adapter and its gateway facade, the provider-terms guard | ouroboros-engine, ouroboros-rest, ouroboros-runner | Live Loop MVP / v2 |
+| DI | #1295 | 🟡 Open | Thin Vertical Slice | Working tree, branch and draft-PR publishing, admission, fixtures, the acceptance gate | ouroboros-engine, ouroboros-rest, ouroboros-db, tests/e2e | Live Loop MVP / v2 |
+| DJ | #1296 | 🟡 Open | Real-Run Ingestion | Data origin on runs and aggregates, labelled surfaces, the simulated driver out of the product path | ouroboros-db, ouroboros-rest, ouroboros-ui, ouroboros-engine | Live Loop MVP |
+| DK | #1297 | 🟡 Open | Live First Loop | Readiness preflight, wizard states, the operator's page for switching execution on | ouroboros-rest, ouroboros-ui, ouroboros-docs | Live Loop MVP |
+| DL | #1298 | 🟡 Open | Reference Demonstration | A public sample repository, a reproducible run, published evidence, truthful site numbers | ouroboros (repo), ouroboros-web, ouroboros-docs | Live Loop MVP / v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`; repository-level work uses
 `ouroboros:` (the precedent is `ouroboros: [7.2]` and `ouroboros: [DE.1]`).
@@ -390,14 +392,14 @@ Complexity chips: **XS · S · M · L**.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| DG.1 | — | 📝 Not filed | ouroboros: [DG.1] Promote the execution chain — labels, milestones, amendments & roadmap write-back | Relabel ten issues, post thirteen amendments, close out the OOE open decisions, write status back into seven roadmaps | mvp, live-loop, documentation | Y | Y | S | .github, docs |
-| DG.2 | — | 📝 Not filed | ouroboros-rest: [DG.2] Loop capability report | One endpoint that says which loop stages are live in this deployment and workspace, and why not | mvp, live-loop, rest, runs | Y | Y | S | ouroboros-rest, ouroboros-docs |
-| DG.3 | — | 📝 Not filed | ouroboros-ui: [DG.3] Capability-driven loop copy — retire "simulated" in the product | Banners, chips, tooltips and empty states read the capability report instead of asserting simulation | mvp, live-loop, ui, runs, design | N (after DG.2) | Y | M | ouroboros-ui, ouroboros-docs |
-| DG.4 | — | 📝 Not filed | ouroboros-docs: [DG.4] Retire "simulated" in the documentation — sweep & wording guard | Every page and repository document that says the loop is simulated, corrected as its stage goes live; a check that keeps it so | mvp, live-loop, documentation, docs-site, ci | N (after DI.6) | Y | M | ouroboros-docs, docs, README.md, HOSTING.md |
+| DG.1 | #1299 | 🟡 Open | ouroboros: [DG.1] Promote the execution chain — labels, milestones, amendments & roadmap write-back | Relabel ten issues, post thirteen amendments, close out the OOE open decisions, write status back into seven roadmaps | mvp, live-loop, documentation | Y | Y | S | .github, docs |
+| DG.2 | #1300 | 🟡 Open | ouroboros-rest: [DG.2] Loop capability report | One endpoint that says which loop stages are live in this deployment and workspace, and why not | mvp, live-loop, rest, runs | Y | Y | S | ouroboros-rest, ouroboros-docs |
+| DG.3 | #1301 | 🟡 Open | ouroboros-ui: [DG.3] Capability-driven loop copy — retire "simulated" in the product | Banners, chips, tooltips and empty states read the capability report instead of asserting simulation | mvp, live-loop, ui, runs, design | N (after DG.2) | Y | M | ouroboros-ui, ouroboros-docs |
+| DG.4 | #1322 | 🟡 Open | ouroboros-docs: [DG.4] Retire "simulated" in the documentation — sweep & wording guard | Every page and repository document that says the loop is simulated, corrected as its stage goes live; a check that keeps it so | mvp, live-loop, documentation, docs-site, ci | N (after DI.6) | Y | M | ouroboros-docs, docs, README.md, HOSTING.md |
 
 ### Issue DG.1 — ouroboros: [DG.1] Promote the execution chain — labels, milestones, amendments & roadmap write-back
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DG
+> **GitHub issue:** #1299 · **Status:** 🟡 Open · **Parent epic:** #1293
 
 - **Problem Statement:** The execution chain is filed and labelled `v2` across
   seven roadmaps and seven parent epics. `ROADMAP_OOE_MVP.md` § *Open decisions*
@@ -456,7 +458,7 @@ Complexity chips: **XS · S · M · L**.
 
 ### Issue DG.2 — ouroboros-rest: [DG.2] Loop capability report
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DG
+> **GitHub issue:** #1300 · **Status:** 🟡 Open · **Parent epic:** #1293
 
 - **Problem Statement:** "Is the loop real here?" has no single answer the
   product can read. The UI asserts simulation in fixed copy; the docs assert it
@@ -518,7 +520,7 @@ GET /api/v1/loop/capabilities
 
 ### Issue DG.3 — ouroboros-ui: [DG.3] Capability-driven loop copy — retire "simulated" in the product
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DG
+> **GitHub issue:** #1301 · **Status:** 🟡 Open · **Parent epic:** #1293
 
 - **Problem Statement:** The product says "simulated" in places that are
   about to become wrong at different times: the run console's banner, the
@@ -573,7 +575,7 @@ GET /api/v1/loop/capabilities
 
 ### Issue DG.4 — ouroboros-docs: [DG.4] Retire "simulated" in the documentation — sweep & wording guard
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DG
+> **GitHub issue:** #1322 · **Status:** 🟡 Open · **Parent epic:** #1293
 
 - **Problem Statement:** The documentation site documents only what ships on
   `main` (docs roadmap decision D12), and what shipped was a simulation, so the
@@ -638,17 +640,17 @@ GET /api/v1/loop/capabilities
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| DH.1 | — | 📝 Not filed | ouroboros-engine: [DH.1] `StageExecutor` SPI & the harness option for the execution ADR | The second axis of #155: an interface for running a stage, a tool policy, and a measured native-versus-harness evaluation | mvp, live-loop, engine, workflow, documentation | Y | Y | M | ouroboros-engine, docs |
-| DH.2 | — | 📝 Not filed | ouroboros-rest: [DH.2] Anthropic Messages-format facade over the chain executor | `/v1/messages` on the internal network with a run-scoped credential, per-call usage and the cost cap | mvp, live-loop, rest, providers, routing | N (after #235) | Y | L | ouroboros-rest |
-| DH.3 | — | 📝 Not filed | ouroboros-engine: [DH.3] Claude Agent SDK stage executor | The harness adapter: file tools only, deny-by-hook, events into the run transcript | mvp, live-loop, engine, workflow, runs | N (after DH.1, DH.2, DI.1) | Y | L | ouroboros-engine, ouroboros-docs |
-| DH.4 | — | 📝 Not filed | ouroboros-rest: [DH.4] Provider-terms guard — invocation eligibility per adapter & credential kind | Which connections may serve invocation, recorded with sources; subscription credentials refused | mvp, live-loop, rest, providers, documentation | Y | Y | S | ouroboros-rest, ouroboros-ui, ouroboros-docs, docs |
-| DH.5 | — | 📝 Not filed | ouroboros-engine: [DH.5] Native tool-loop stage executor (provider-neutral) | #560's tool boundary on a real working tree, any provider, native tool use | v2, live-loop, engine, workflow, routing | Y | N | L | ouroboros-engine, ouroboros-rest |
-| DH.6 | — | 📝 Not filed | ouroboros-engine: [DH.6] CLI harness adapter kind | A subprocess adapter for vendor command-line agents, each behind its own terms record | v2, live-loop, engine, providers | Y | N | M | ouroboros-engine, ouroboros-rest, ouroboros-docs |
-| DH.7 | — | 📝 Not filed | ouroboros-runner: [DH.7] Agent stages on the runner | A shell-enabled stage as a farm job on the customer's machine | v2, live-loop, build-farm, engine, infra | N (after P0-2) | N | L | ouroboros-runner, ouroboros-rest, ouroboros-engine, ouroboros-docs |
+| DH.1 | #1302 | 🟡 Open | ouroboros-engine: [DH.1] `StageExecutor` SPI & the harness option for the execution ADR | The second axis of #155: an interface for running a stage, a tool policy, and a measured native-versus-harness evaluation | mvp, live-loop, engine, workflow, documentation | Y | Y | M | ouroboros-engine, docs |
+| DH.2 | #1303 | 🟡 Open | ouroboros-rest: [DH.2] Anthropic Messages-format facade over the chain executor | `/v1/messages` on the internal network with a run-scoped credential, per-call usage and the cost cap | mvp, live-loop, rest, providers, routing | N (after #235) | Y | L | ouroboros-rest |
+| DH.3 | #1308 | 🟡 Open | ouroboros-engine: [DH.3] Claude Agent SDK stage executor | The harness adapter: file tools only, deny-by-hook, events into the run transcript | mvp, live-loop, engine, workflow, runs | N (after DH.1, DH.2, DI.1) | Y | L | ouroboros-engine, ouroboros-docs |
+| DH.4 | #1304 | 🟡 Open | ouroboros-rest: [DH.4] Provider-terms guard — invocation eligibility per adapter & credential kind | Which connections may serve invocation, recorded with sources; subscription credentials refused | mvp, live-loop, rest, providers, documentation | Y | Y | S | ouroboros-rest, ouroboros-ui, ouroboros-docs, docs |
+| DH.5 | #1309 | 🟡 Open | ouroboros-engine: [DH.5] Native tool-loop stage executor (provider-neutral) | #560's tool boundary on a real working tree, any provider, native tool use | v2, live-loop, engine, workflow, routing | Y | N | L | ouroboros-engine, ouroboros-rest |
+| DH.6 | #1306 | 🟡 Open | ouroboros-engine: [DH.6] CLI harness adapter kind | A subprocess adapter for vendor command-line agents, each behind its own terms record | v2, live-loop, engine, providers | Y | N | M | ouroboros-engine, ouroboros-rest, ouroboros-docs |
+| DH.7 | #1305 | 🟡 Open | ouroboros-runner: [DH.7] Agent stages on the runner | A shell-enabled stage as a farm job on the customer's machine | v2, live-loop, build-farm, engine, infra | N (after P0-2) | N | L | ouroboros-runner, ouroboros-rest, ouroboros-engine, ouroboros-docs |
 
 ### Issue DH.1 — ouroboros-engine: [DH.1] `StageExecutor` SPI & the harness option for the execution ADR
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DH
+> **GitHub issue:** #1302 · **Status:** 🟡 Open · **Parent epic:** #1294
 
 - **Problem Statement:** #155 chooses between a custom interpreter, Temporal
   and Hatchet-class platforms. All three answer "how does a workflow survive a
@@ -719,7 +721,7 @@ flowchart TB
 
 ### Issue DH.2 — ouroboros-rest: [DH.2] Anthropic Messages-format facade over the chain executor
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DH
+> **GitHub issue:** #1303 · **Status:** 🟡 Open · **Parent epic:** #1294
 
 - **Problem Statement:** A harness makes its own model calls. If it is given
   the customer's key, `SECURITY_MODEL.md` § 4 ("a worker never holds a cloud
@@ -799,7 +801,7 @@ sequenceDiagram
 
 ### Issue DH.3 — ouroboros-engine: [DH.3] Claude Agent SDK stage executor
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DH
+> **GitHub issue:** #1308 · **Status:** 🟡 Open · **Parent epic:** #1294
 
 - **Problem Statement:** The slice needs one stage that reads a repository,
   edits files and iterates. Nothing in the engine does that against a real
@@ -876,7 +878,7 @@ sequenceDiagram
 
 ### Issue DH.4 — ouroboros-rest: [DH.4] Provider-terms guard — invocation eligibility per adapter & credential kind
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DH
+> **GitHub issue:** #1304 · **Status:** 🟡 Open · **Parent epic:** #1294
 
 - **Problem Statement:** Five adapters ship for validation and discovery;
   #235 as filed asks all five to implement `invoke()`. Two of them (GitHub
@@ -939,7 +941,7 @@ sequenceDiagram
 
 ### Issue DH.5 — ouroboros-engine: [DH.5] Native tool-loop stage executor (provider-neutral)
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DH
+> **GitHub issue:** #1309 · **Status:** 🟡 Open · **Parent epic:** #1294
 
 - **Problem Statement:** With DH.3 alone, a tool-using stage runs on Claude
   models only. Per-stage routing across customer-chosen providers is the
@@ -985,7 +987,7 @@ sequenceDiagram
 
 ### Issue DH.6 — ouroboros-engine: [DH.6] CLI harness adapter kind
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DH
+> **GitHub issue:** #1306 · **Status:** 🟡 Open · **Parent epic:** #1294
 
 - **Problem Statement:** Other vendors' agents are reachable only as
   command-line tools. Warp Oz and Tembo let a customer choose the agent per
@@ -1023,7 +1025,7 @@ sequenceDiagram
 
 ### Issue DH.7 — ouroboros-runner: [DH.7] Agent stages on the runner
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DH
+> **GitHub issue:** #1305 · **Status:** 🟡 Open · **Parent epic:** #1294
 
 - **Problem Statement:** Decision L5 keeps the slice safe by denying the agent
   a shell. An agent that cannot run a test while it writes converges slowly on
@@ -1070,18 +1072,18 @@ The issues here are what the chain assumes and nothing filed provides.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| DI.1 | — | 📝 Not filed | ouroboros-engine: [DI.1] Run workspace — a writable working tree per run | A confined tree from the clone cache on a branch named for the run; created, checkpointed, removed | mvp, live-loop, engine, workflow | Y | Y | M | ouroboros-engine, ouroboros-docs |
-| DI.2 | — | 📝 Not filed | ouroboros-engine: [DI.2] Branch publisher — attributed commits & single-branch push | Commit the tree's changes with honest authorship; push one branch with a one-call credential | mvp, live-loop, engine, rest, pr | N (after DI.1) | Y | M | ouroboros-engine, ouroboros-rest, ouroboros-docs |
-| DI.3 | — | 📝 Not filed | ouroboros-rest: [DI.3] Draft pull-request publisher under dry-run policy | `createPR` as a draft with the run summary and criteria; `run_id` linked; idempotent | mvp, live-loop, rest, pr, runs | N (after DI.2) | Y | M | ouroboros-rest, ouroboros-docs |
-| DI.4 | — | 📝 Not filed | ouroboros-rest: [DI.4] Live-run admission — dry-run required, pause honoured, concurrency ceiling | The one gate a queue item passes before the engine may claim it | mvp, live-loop, rest, runs, workflow | Y | Y | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
-| DI.5 | — | 📝 Not filed | ouroboros-db: [DI.5] Slice workflow, seeds & the e2e sandbox fixture | A published `live-slice` workflow, a fixture repository that accepts a push and a pull request, a recorded provider exchange | mvp, live-loop, db, ci, workflow | Y | Y | M | ouroboros-db, tests/e2e, docker-compose.e2e.yml |
-| DI.6 | — | 📝 Not filed | ouroboros: [DI.6] Live-slice acceptance — e2e leg & real-provider run | The MVP gate: issue to draft pull request from cold compose, plus a scripted run against a real provider | mvp, live-loop, ci, runs, pr | N (after all MVP) | Y | L | tests/e2e, .github, docs |
-| DI.7 | — | 📝 Not filed | ouroboros-engine: [DI.7] Best-of-n attempts | Several attempts at one stage in separate trees; the gate chooses | v2, live-loop, engine, workflow, routing | Y | N | L | ouroboros-engine, ouroboros-rest, ouroboros-ui, ouroboros-docs |
-| DI.8 | — | 📝 Not filed | ouroboros-engine: [DI.8] Coordinator & child runs | One run that plans and delegates to child runs with their own branches | v2, live-loop, engine, workflow, runs | N (after DI.7) | N | L | ouroboros-engine, ouroboros-rest, ouroboros-db, ouroboros-ui, ouroboros-docs |
+| DI.1 | #1307 | 🟡 Open | ouroboros-engine: [DI.1] Run workspace — a writable working tree per run | A confined tree from the clone cache on a branch named for the run; created, checkpointed, removed | mvp, live-loop, engine, workflow | Y | Y | M | ouroboros-engine, ouroboros-docs |
+| DI.2 | #1310 | 🟡 Open | ouroboros-engine: [DI.2] Branch publisher — attributed commits & single-branch push | Commit the tree's changes with honest authorship; push one branch with a one-call credential | mvp, live-loop, engine, rest, pr | N (after DI.1) | Y | M | ouroboros-engine, ouroboros-rest, ouroboros-docs |
+| DI.3 | #1311 | 🟡 Open | ouroboros-rest: [DI.3] Draft pull-request publisher under dry-run policy | `createPR` as a draft with the run summary and criteria; `run_id` linked; idempotent | mvp, live-loop, rest, pr, runs | N (after DI.2) | Y | M | ouroboros-rest, ouroboros-docs |
+| DI.4 | #1312 | 🟡 Open | ouroboros-rest: [DI.4] Live-run admission — dry-run required, pause honoured, concurrency ceiling | The one gate a queue item passes before the engine may claim it | mvp, live-loop, rest, runs, workflow | Y | Y | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| DI.5 | #1314 | 🟡 Open | ouroboros-db: [DI.5] Slice workflow, seeds & the e2e sandbox fixture | A published `live-slice` workflow, a fixture repository that accepts a push and a pull request, a recorded provider exchange | mvp, live-loop, db, ci, workflow | Y | Y | M | ouroboros-db, tests/e2e, docker-compose.e2e.yml |
+| DI.6 | #1321 | 🟡 Open | ouroboros: [DI.6] Live-slice acceptance — e2e leg & real-provider run | The MVP gate: issue to draft pull request from cold compose, plus a scripted run against a real provider | mvp, live-loop, ci, runs, pr | N (after all MVP) | Y | L | tests/e2e, .github, docs |
+| DI.7 | #1323 | 🟡 Open | ouroboros-engine: [DI.7] Best-of-n attempts | Several attempts at one stage in separate trees; the gate chooses | v2, live-loop, engine, workflow, routing | Y | N | L | ouroboros-engine, ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| DI.8 | #1324 | 🟡 Open | ouroboros-engine: [DI.8] Coordinator & child runs | One run that plans and delegates to child runs with their own branches | v2, live-loop, engine, workflow, runs | N (after DI.7) | N | L | ouroboros-engine, ouroboros-rest, ouroboros-db, ouroboros-ui, ouroboros-docs |
 
 ### Issue DI.1 — ouroboros-engine: [DI.1] Run workspace — a writable working tree per run
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DI
+> **GitHub issue:** #1307 · **Status:** 🟡 Open · **Parent epic:** #1295
 
 - **Problem Statement:** The engine can read a repository and cannot change
   one. Its clone cache (#617) holds bare mirrors and hands out a `ReadOnlyRepo`
@@ -1142,7 +1144,7 @@ The issues here are what the chain assumes and nothing filed provides.
 
 ### Issue DI.2 — ouroboros-engine: [DI.2] Branch publisher — attributed commits & single-branch push
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DI
+> **GitHub issue:** #1310 · **Status:** 🟡 Open · **Parent epic:** #1295
 
 - **Problem Statement:** A changed working tree is not a pull request. #375
   folds "push the branch" into one line of an issue whose subject is autonomous
@@ -1212,7 +1214,7 @@ sequenceDiagram
 
 ### Issue DI.3 — ouroboros-rest: [DI.3] Draft pull-request publisher under dry-run policy
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DI
+> **GitHub issue:** #1311 · **Status:** 🟡 Open · **Parent epic:** #1295
 
 - **Problem Statement:** The PR plane verifies pull requests that a person or a
   fixture opened. The slice's outcome is a draft pull request the *loop*
@@ -1281,7 +1283,7 @@ sequenceDiagram
 
 ### Issue DI.4 — ouroboros-rest: [DI.4] Live-run admission — dry-run required, pause honoured, concurrency ceiling
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DI
+> **GitHub issue:** #1312 · **Status:** 🟡 Open · **Parent epic:** #1295
 
 - **Problem Statement:** Today a queue item is a row nothing consumes. The day
   #91 gives the engine a claim operation, every queued item in every workspace
@@ -1352,7 +1354,7 @@ flowchart TB
 
 ### Issue DI.5 — ouroboros-db: [DI.5] Slice workflow, seeds & the e2e sandbox fixture
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DI
+> **GitHub issue:** #1314 · **Status:** 🟡 Open · **Parent epic:** #1295
 
 - **Problem Statement:** #160's and #315's criteria run "the seeded
   `docs-loop`" against "a sandbox repository" that each issue assumes someone
@@ -1410,7 +1412,7 @@ flowchart TB
 
 ### Issue DI.6 — ouroboros: [DI.6] Live-slice acceptance — e2e leg & real-provider run
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DI
+> **GitHub issue:** #1321 · **Status:** 🟡 Open · **Parent epic:** #1295
 
 - **Problem Statement:** Each promoted issue proves its own segment against a
   sandbox. No issue proves the segments compose, and the history of this
@@ -1473,7 +1475,7 @@ flowchart LR
 
 ### Issue DI.7 — ouroboros-engine: [DI.7] Best-of-n attempts
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DI
+> **GitHub issue:** #1323 · **Status:** 🟡 Open · **Parent epic:** #1295
 
 - **Problem Statement:** One attempt per stage means a weak first attempt
   costs a correction round. Competing executors run several attempts in
@@ -1510,7 +1512,7 @@ flowchart LR
 
 ### Issue DI.8 — ouroboros-engine: [DI.8] Coordinator & child runs
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DI
+> **GitHub issue:** #1324 · **Status:** 🟡 Open · **Parent epic:** #1295
 
 - **Problem Statement:** One issue, one run, one branch does not fit work that
   spans several changes. Devin's coordinator sessions and Cursor's "Projects"
@@ -1551,14 +1553,14 @@ the product able to say which of its data a real run produced.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| DJ.1 | — | 📝 Not filed | ouroboros-db: [DJ.1] Data origin on runs and what derives from them | `live` / `simulated` / `seeded`, set once by the path that created the row and inherited downstream | mvp, live-loop, db, rest, runs | Y | Y | M | ouroboros-db, ouroboros-rest |
-| DJ.2 | — | 📝 Not filed | ouroboros-rest: [DJ.2] Origin-aware aggregates — dashboard, Insights, analyzer | Rollups carry origin; live-only by default; mixed results say so | mvp, live-loop, rest, insights, dashboard | N (after DJ.1) | Y | M | ouroboros-rest, ouroboros-db |
-| DJ.3 | — | 📝 Not filed | ouroboros-ui: [DJ.3] Data-origin labelling & honest empty states | A label wherever non-live data is shown or counted; a fresh deployment shows nothing invented | mvp, live-loop, ui, design, dashboard, insights, runs | N (after DJ.2) | Y | M | ouroboros-ui, ouroboros-docs |
-| DJ.4 | — | 📝 Not filed | ouroboros-engine: [DJ.4] Simulated driver out of the product path | The driver becomes a named test and development tool; nothing a user reaches starts it | mvp, live-loop, engine, runs, onboarding, ci | N (after #315) | Y | S | ouroboros-engine, ouroboros-rest, ouroboros-ui, tests/e2e, ouroboros-docs |
+| DJ.1 | #1313 | 🟡 Open | ouroboros-db: [DJ.1] Data origin on runs and what derives from them | `live` / `simulated` / `seeded`, set once by the path that created the row and inherited downstream | mvp, live-loop, db, rest, runs | Y | Y | M | ouroboros-db, ouroboros-rest |
+| DJ.2 | #1315 | 🟡 Open | ouroboros-rest: [DJ.2] Origin-aware aggregates — dashboard, Insights, analyzer | Rollups carry origin; live-only by default; mixed results say so | mvp, live-loop, rest, insights, dashboard | N (after DJ.1) | Y | M | ouroboros-rest, ouroboros-db |
+| DJ.3 | #1316 | 🟡 Open | ouroboros-ui: [DJ.3] Data-origin labelling & honest empty states | A label wherever non-live data is shown or counted; a fresh deployment shows nothing invented | mvp, live-loop, ui, design, dashboard, insights, runs | N (after DJ.2) | Y | M | ouroboros-ui, ouroboros-docs |
+| DJ.4 | #1317 | 🟡 Open | ouroboros-engine: [DJ.4] Simulated driver out of the product path | The driver becomes a named test and development tool; nothing a user reaches starts it | mvp, live-loop, engine, runs, onboarding, ci | N (after #315) | Y | S | ouroboros-engine, ouroboros-rest, ouroboros-ui, tests/e2e, ouroboros-docs |
 
 ### Issue DJ.1 — ouroboros-db: [DJ.1] Data origin on runs and what derives from them
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DJ
+> **GitHub issue:** #1313 · **Status:** 🟡 Open · **Parent epic:** #1296
 
 - **Problem Statement:** A run today is either opened by the simulator's
   principal (watermarked `simulated`, decision R4) or inserted by a seed file.
@@ -1617,7 +1619,7 @@ the product able to say which of its data a real run produced.
 
 ### Issue DJ.2 — ouroboros-rest: [DJ.2] Origin-aware aggregates — dashboard, Insights, analyzer
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DJ
+> **GitHub issue:** #1315 · **Status:** 🟡 Open · **Parent epic:** #1296
 
 - **Problem Statement:** Insights is "shipped over seeded and simulated data"
   (gap analysis, capability matrix). Its headline numbers are sums over rows
@@ -1664,7 +1666,7 @@ the product able to say which of its data a real run produced.
 
 ### Issue DJ.3 — ouroboros-ui: [DJ.3] Data-origin labelling & honest empty states
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DJ
+> **GitHub issue:** #1316 · **Status:** 🟡 Open · **Parent epic:** #1296
 
 - **Problem Statement:** A person looking at the dashboard cannot tell whether
   the active loops in front of them are real. In development they are the demo
@@ -1723,7 +1725,7 @@ the product able to say which of its data a real run produced.
 
 ### Issue DJ.4 — ouroboros-engine: [DJ.4] Simulated driver out of the product path
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DJ
+> **GitHub issue:** #1317 · **Status:** 🟡 Open · **Parent epic:** #1296
 
 - **Problem Statement:** The simulated-run driver is what makes the product
   look alive: the wizard's first loop is walked by its `first_loop` scenario in
@@ -1792,13 +1794,13 @@ an operator has to do first.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| DK.1 | — | 📝 Not filed | ouroboros-rest: [DK.1] Live-loop readiness preflight | A per-repository check of everything a first loop needs, with a reason and a fix for each gap | mvp, live-loop, rest, onboarding, runs | N (after DG.2, DI.4) | Y | M | ouroboros-rest, ouroboros-docs |
-| DK.2 | — | 📝 Not filed | ouroboros-ui: [DK.2] Wizard readiness states — no simulated first loop | The wizard's last step shows the preflight and starts a real loop or says exactly why it cannot | mvp, live-loop, ui, design, onboarding | N (after DK.1) | Y | M | ouroboros-ui, ouroboros-docs |
-| DK.3 | — | 📝 Not filed | ouroboros-docs: [DK.3] Administration — enabling live execution | The operator's page: prerequisites, the switch, what the loop can and cannot do, how to stop it | mvp, live-loop, documentation, docs-site | N (after DI.6) | Y | S | ouroboros-docs, HOSTING.md |
+| DK.1 | #1318 | 🟡 Open | ouroboros-rest: [DK.1] Live-loop readiness preflight | A per-repository check of everything a first loop needs, with a reason and a fix for each gap | mvp, live-loop, rest, onboarding, runs | N (after DG.2, DI.4) | Y | M | ouroboros-rest, ouroboros-docs |
+| DK.2 | #1319 | 🟡 Open | ouroboros-ui: [DK.2] Wizard readiness states — no simulated first loop | The wizard's last step shows the preflight and starts a real loop or says exactly why it cannot | mvp, live-loop, ui, design, onboarding | N (after DK.1) | Y | M | ouroboros-ui, ouroboros-docs |
+| DK.3 | #1325 | 🟡 Open | ouroboros-docs: [DK.3] Administration — enabling live execution | The operator's page: prerequisites, the switch, what the loop can and cannot do, how to stop it | mvp, live-loop, documentation, docs-site | N (after DI.6) | Y | S | ouroboros-docs, HOSTING.md |
 
 ### Issue DK.1 — ouroboros-rest: [DK.1] Live-loop readiness preflight
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DK
+> **GitHub issue:** #1318 · **Status:** 🟡 Open · **Parent epic:** #1297
 
 - **Problem Statement:** A first loop has more prerequisites than any screen
   shows in one place: the deployment switch, a provider connection that may
@@ -1862,7 +1864,7 @@ an operator has to do first.
 
 ### Issue DK.2 — ouroboros-ui: [DK.2] Wizard readiness states — no simulated first loop
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DK
+> **GitHub issue:** #1319 · **Status:** 🟡 Open · **Parent epic:** #1297
 
 - **Problem Statement:** The wizard ends on a timeline of projections; in
   development and e2e the simulator walks it. #396 binds the timeline to a real
@@ -1921,7 +1923,7 @@ an operator has to do first.
 
 ### Issue DK.3 — ouroboros-docs: [DK.3] Administration — enabling live execution
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DK
+> **GitHub issue:** #1325 · **Status:** 🟡 Open · **Parent epic:** #1297
 
 - **Problem Statement:** Turning the loop on is an operator's decision with
   consequences no page explains: a model will be called on the workspace's key
@@ -1989,15 +1991,15 @@ an operator has to do first.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| DL.1 | — | 📝 Not filed | ouroboros: [DL.1] Public sample repository & issue set | A small real project with a build, tests and ten well-formed issues, owned and licensed for demonstration | mvp, live-loop, infra, documentation | Y | Y | M | new repository, docs |
-| DL.2 | — | 📝 Not filed | ouroboros: [DL.2] Reproducible reference run — script & demonstration document | One command from a clean checkout to a draft pull request on the sample repository, with pinned versions | mvp, live-loop, infra, documentation | N (after DI.6, DL.1) | Y | M | scripts, docs |
-| DL.3 | — | 📝 Not filed | ouroboros: [DL.3] Recorded reference run & evidence bundle | A recording, the exported transcript, the pull request and the cost — published with what they do not show | mvp, live-loop, documentation | N (after DL.2) | Y | S | docs, ouroboros-docs |
-| DL.4 | — | 📝 Not filed | ouroboros-web: [DL.4] Replace the fictional hero statistics with the reference run's facts | The marketing page states what one run measured, linked to its evidence, and no rate | mvp, live-loop, design | N (after DL.3) | Y | S | ouroboros-web |
-| DL.5 | — | 📝 Not filed | ouroboros: [DL.5] Reference benchmark — enough runs to state a rate | Thirty or more runs across the sample issues, with a published method, before any percentage is claimed | v2, live-loop, infra, insights, documentation | N (after DL.3) | N | M | scripts, docs, ouroboros-web |
+| DL.1 | #1320 | 🟡 Open | ouroboros: [DL.1] Public sample repository & issue set | A small real project with a build, tests and ten well-formed issues, owned and licensed for demonstration | mvp, live-loop, infra, documentation | Y | Y | M | new repository, docs |
+| DL.2 | #1326 | 🟡 Open | ouroboros: [DL.2] Reproducible reference run — script & demonstration document | One command from a clean checkout to a draft pull request on the sample repository, with pinned versions | mvp, live-loop, infra, documentation | N (after DI.6, DL.1) | Y | M | scripts, docs |
+| DL.3 | #1327 | 🟡 Open | ouroboros: [DL.3] Recorded reference run & evidence bundle | A recording, the exported transcript, the pull request and the cost — published with what they do not show | mvp, live-loop, documentation | N (after DL.2) | Y | S | docs, ouroboros-docs |
+| DL.4 | #1328 | 🟡 Open | ouroboros-web: [DL.4] Replace the fictional hero statistics with the reference run's facts | The marketing page states what one run measured, linked to its evidence, and no rate | mvp, live-loop, design | N (after DL.3) | Y | S | ouroboros-web |
+| DL.5 | #1329 | 🟡 Open | ouroboros: [DL.5] Reference benchmark — enough runs to state a rate | Thirty or more runs across the sample issues, with a published method, before any percentage is claimed | v2, live-loop, infra, insights, documentation | N (after DL.3) | N | M | scripts, docs, ouroboros-web |
 
 ### Issue DL.1 — ouroboros: [DL.1] Public sample repository & issue set
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DL
+> **GitHub issue:** #1320 · **Status:** 🟡 Open · **Parent epic:** #1298
 
 - **Problem Statement:** Every "sandbox repository" in the filed issues is a
   private test fixture. The demonstration data on the site and in the seeds is
@@ -2051,7 +2053,7 @@ an operator has to do first.
 
 ### Issue DL.2 — ouroboros: [DL.2] Reproducible reference run — script & demonstration document
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DL
+> **GitHub issue:** #1326 · **Status:** 🟡 Open · **Parent epic:** #1298
 
 - **Problem Statement:** The repository has seven demonstration documents
   (`DEMONSTRATION_P0`–`P6`) that walk the control plane phase by phase; the
@@ -2100,7 +2102,7 @@ an operator has to do first.
 
 ### Issue DL.3 — ouroboros: [DL.3] Recorded reference run & evidence bundle
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DL
+> **GitHub issue:** #1327 · **Status:** 🟡 Open · **Parent epic:** #1298
 
 - **Problem Statement:** Competitors attach recordings to pull requests as a
   matter of course (gap analysis, capability matrix: "recorded evidence on the
@@ -2153,7 +2155,7 @@ an operator has to do first.
 
 ### Issue DL.4 — ouroboros-web: [DL.4] Replace the fictional hero statistics with the reference run's facts
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DL
+> **GitHub issue:** #1328 · **Status:** 🟡 Open · **Parent epic:** #1298
 
 - **Problem Statement:** `ouroboros-web/app/page.tsx` leads with "92%
   autonomous merge rate · ~4 min to your first PR · $1.87 per merged PR · 31%
@@ -2202,7 +2204,7 @@ an operator has to do first.
 
 ### Issue DL.5 — ouroboros: [DL.5] Reference benchmark — enough runs to state a rate
 
-> **GitHub issue:** — · **Status:** 📝 Not filed · **Parent epic:** DL
+> **GitHub issue:** #1329 · **Status:** 🟡 Open · **Parent epic:** #1298
 
 - **Problem Statement:** Buyers compare on merge rate and cost per merged pull
   request; the gap analysis reports that public benchmarks have lost

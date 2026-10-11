@@ -423,14 +423,16 @@ in-app labels and operator guidance (DZ.4–DZ.6).
 
 ## Epics, Labels & Milestones
 
+> **Filed 2026-10-10** by `create-issues` in `NobuData/ouroboros`: epic parents #1408–#1413, work issues #1414–#1465, numbered in dependency order. Each work issue is a sub-issue of its epic with blocked-by links, Priority, Effort and type set. Statements below that nothing is filed predate this; relabelling or amending *existing* issues described by this roadmap has **not** been done.
+
 | Epic | GitHub | Status | Name | Goal | Modules | Milestone |
 |---|---|---|---|---|---|---|
-| DU | — | ⚪ Not filed | Claims Audit & Guard | Correct every public claim; keep withdrawn claims out by a required check | ouroboros-web, ouroboros-ui, ouroboros-docs, docs, scripts, .github | Trust Centre MVP |
-| DV | — | ⚪ Not filed | Feature-Status Page | A public shipped / planned / absent page generated from issue state | docs, scripts, ouroboros-web, .github | Trust Centre MVP |
-| DW | — | ⚪ Not filed | Security & Trust Page | Disclosure channel, shipped controls, shared responsibility, data flows | ouroboros-web, ouroboros-docs, docs, .github | Trust Centre MVP |
-| DX | — | ⚪ Not filed | Legal Baseline | Terms, privacy, DPA template, subprocessors, licence and trademark notes, counsel-reviewed | ouroboros-web, docs, repository root | Trust Centre MVP |
-| DY | — | ⚪ Not filed | Compliance Programme Decision | A dated decision on SOC 2 / ISO 27001 scope and timing; engagement later | docs, ouroboros-web | Trust Centre MVP |
-| DZ | — | ⚪ Not filed | AI-Output Disclosure | How AI-generated output is disclosed in pull requests, commits and narration | docs, ouroboros-web, ouroboros-rest, ouroboros-engine, ouroboros-ui | Trust Centre MVP |
+| DU | #1408 | 🟡 Open | Claims Audit & Guard | Correct every public claim; keep withdrawn claims out by a required check | ouroboros-web, ouroboros-ui, ouroboros-docs, docs, scripts, .github | Trust Centre MVP |
+| DV | #1409 | 🟡 Open | Feature-Status Page | A public shipped / planned / absent page generated from issue state | docs, scripts, ouroboros-web, .github | Trust Centre MVP |
+| DW | #1410 | 🟡 Open | Security & Trust Page | Disclosure channel, shipped controls, shared responsibility, data flows | ouroboros-web, ouroboros-docs, docs, .github | Trust Centre MVP |
+| DX | #1411 | 🟡 Open | Legal Baseline | Terms, privacy, DPA template, subprocessors, licence and trademark notes, counsel-reviewed | ouroboros-web, docs, repository root | Trust Centre MVP |
+| DY | #1412 | 🟡 Open | Compliance Programme Decision | A dated decision on SOC 2 / ISO 27001 scope and timing; engagement later | docs, ouroboros-web | Trust Centre MVP |
+| DZ | #1413 | 🟡 Open | AI-Output Disclosure | How AI-generated output is disclosed in pull requests, commits and narration | docs, ouroboros-web, ouroboros-rest, ouroboros-engine, ouroboros-ui | Trust Centre MVP |
 
 Every issue below carries this **standard acceptance block**, referred to as **[STD]**:
 
@@ -450,19 +452,21 @@ Every issue below carries this **standard acceptance block**, referred to as **[
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |---|---|---|---|---|---|---|---|---|---|
-| DU.1 | — | ⚪ Not filed | ouroboros: [DU.1] Claims register & withdrawn-claims list | `docs/CLAIMS.md` from the inventory; `docs/claims/withdrawn.yml` with patterns, reasons, lifting conditions | mvp, trust, documentation | N (first) | Y | S | docs |
-| DU.2 | — | ⚪ Not filed | ouroboros-web: [DU.2] Remove withdrawn certification, identity & residency claims | Enterprise section and badge row rewritten to what ships (C01–C02, C04–C11, C33) | mvp, trust, web | Y (after DU.1) | Y | S | ouroboros-web |
-| DU.3 | — | ⚪ Not filed | ouroboros-ui: [DU.3] Remove withdrawn claims from the login trust row | "SOC 2 Type II" and "SSO / SAML" leave the sign-in page; absence test; screenshot recaptured (C03) | mvp, trust, ui, auth | Y (after DU.1) | Y | S | ouroboros-ui, tests, ouroboros-docs |
-| DU.4 | — | ⚪ Not filed | ouroboros-web: [DU.4] Remove or label demo statistics & mockup imagery | Hero numbers out; demo-data labels beside every figure and image (C12–C16) | mvp, trust, web, design | Y (after DU.1) | Y | S | ouroboros-web |
-| DU.5 | — | ⚪ Not filed | ouroboros-web: [DU.5] Correct capability copy to shipped state | Lede, loop, tiles, deep dives and metadata say what ships and mark the rest Planned (C17–C42) | mvp, trust, web | N (after DU.1; ∥ DU.2, DU.4 by section) | Y | M | ouroboros-web |
-| DU.6 | — | ⚪ Not filed | ouroboros-web: [DU.6] Fix dead links, calls to action & footer | Docs, Security, Pricing, "Start free", YouTube, deployed-site read (C21–C22, C43, C45, C49) | mvp, trust, web | Y (after DU.1) | Y | XS | ouroboros-web |
-| DU.7 | — | ⚪ Not filed | ouroboros-docs: [DU.7] Correct SSO & GitHub App statements | User-guide sign-in page agrees with the administration page and with `main` (C46–C47) | mvp, trust, docs-site, documentation | Y (after DU.1) | Y | S | ouroboros-docs |
-| DU.8 | — | ⚪ Not filed | ouroboros: [DU.8] README status paragraph, repository metadata & mockup banners | "What works today" in README; banners on historical mockups; repo homepage set (C48, C50) | mvp, trust, documentation | Y (after DU.1) | Y | XS | README.md, docs/mockups, ouroboros-ui |
-| DU.9 | — | ⚪ Not filed | ouroboros: [DU.9] Withdrawn-claims CI guard | Required check scanning sources and built HTML for withdrawn patterns | mvp, trust, ci | N (after DU.2–DU.8) | Y | M | scripts, .github, ouroboros-web, ouroboros-docs |
-| DU.10 | — | ⚪ Not filed | ouroboros: [DU.10] Claims-change process — conventions, PR template, CODEOWNERS | A claim is a reviewed change: CONVENTIONS section, checkbox, owners for claims files | mvp, trust, documentation | Y (after DU.1) | Y | XS | docs, .github |
-| DU.11 | — | ⚪ Not filed | ouroboros-web: [DU.11] Deployed-site claims monitor | Scheduled read of the live sites against the withdrawn list and the TLS certificate | v2, trust, ci, web | Y | N | S | .github, scripts |
+| DU.1 | #1414 | 🟡 Open | ouroboros: [DU.1] Claims register & withdrawn-claims list | `docs/CLAIMS.md` from the inventory; `docs/claims/withdrawn.yml` with patterns, reasons, lifting conditions | mvp, trust, documentation | N (first) | Y | S | docs |
+| DU.2 | #1415 | 🟡 Open | ouroboros-web: [DU.2] Remove withdrawn certification, identity & residency claims | Enterprise section and badge row rewritten to what ships (C01–C02, C04–C11, C33) | mvp, trust, web | Y (after DU.1) | Y | S | ouroboros-web |
+| DU.3 | #1416 | 🟡 Open | ouroboros-ui: [DU.3] Remove withdrawn claims from the login trust row | "SOC 2 Type II" and "SSO / SAML" leave the sign-in page; absence test; screenshot recaptured (C03) | mvp, trust, ui, auth | Y (after DU.1) | Y | S | ouroboros-ui, tests, ouroboros-docs |
+| DU.4 | #1417 | 🟡 Open | ouroboros-web: [DU.4] Remove or label demo statistics & mockup imagery | Hero numbers out; demo-data labels beside every figure and image (C12–C16) | mvp, trust, web, design | Y (after DU.1) | Y | S | ouroboros-web |
+| DU.5 | #1418 | 🟡 Open | ouroboros-web: [DU.5] Correct capability copy to shipped state | Lede, loop, tiles, deep dives and metadata say what ships and mark the rest Planned (C17–C42) | mvp, trust, web | N (after DU.1; ∥ DU.2, DU.4 by section) | Y | M | ouroboros-web |
+| DU.6 | #1419 | 🟡 Open | ouroboros-web: [DU.6] Fix dead links, calls to action & footer | Docs, Security, Pricing, "Start free", YouTube, deployed-site read (C21–C22, C43, C45, C49) | mvp, trust, web | Y (after DU.1) | Y | XS | ouroboros-web |
+| DU.7 | #1420 | 🟡 Open | ouroboros-docs: [DU.7] Correct SSO & GitHub App statements | User-guide sign-in page agrees with the administration page and with `main` (C46–C47) | mvp, trust, docs-site, documentation | Y (after DU.1) | Y | S | ouroboros-docs |
+| DU.8 | #1421 | 🟡 Open | ouroboros: [DU.8] README status paragraph, repository metadata & mockup banners | "What works today" in README; banners on historical mockups; repo homepage set (C48, C50) | mvp, trust, documentation | Y (after DU.1) | Y | XS | README.md, docs/mockups, ouroboros-ui |
+| DU.9 | #1422 | 🟡 Open | ouroboros: [DU.9] Withdrawn-claims CI guard | Required check scanning sources and built HTML for withdrawn patterns | mvp, trust, ci | N (after DU.2–DU.8) | Y | M | scripts, .github, ouroboros-web, ouroboros-docs |
+| DU.10 | #1423 | 🟡 Open | ouroboros: [DU.10] Claims-change process — conventions, PR template, CODEOWNERS | A claim is a reviewed change: CONVENTIONS section, checkbox, owners for claims files | mvp, trust, documentation | Y (after DU.1) | Y | XS | docs, .github |
+| DU.11 | #1432 | 🟡 Open | ouroboros-web: [DU.11] Deployed-site claims monitor | Scheduled read of the live sites against the withdrawn list and the TLS certificate | v2, trust, ci, web | Y | N | S | .github, scripts |
 
 ### Issue DU.1 — ouroboros: [DU.1] Claims register & withdrawn-claims list
+
+> **GitHub issue:** #1414 · **Status:** 🟡 Open · **Parent epic:** #1408
 
 **Problem Statement.** `SECURITY_MODEL.md` § 10 says a security claim ships only after it
 appears in that document, but the rule covers only that document's surfaces. No file lists
@@ -509,6 +513,8 @@ docs/claims/withdrawn.schema.json
 
 ### Issue DU.2 — ouroboros-web: [DU.2] Remove withdrawn certification, identity & residency claims
 
+> **GitHub issue:** #1415 · **Status:** 🟡 Open · **Parent epic:** #1408
+
 **Problem Statement.** The Enterprise section of the marketing page (`page.tsx:471-504`)
 shows "SOC 2 Type II" and "ISO 27001" chips that `SECURITY_MODEL.md` § 8.3 calls "a false
 compliance claim", and asserts SSO, SCIM, group-synced roles, a GitHub App, EU data
@@ -553,6 +559,8 @@ AFTER   [self-hosted][Apache-2.0][Self-hostable runners]
 
 ### Issue DU.3 — ouroboros-ui: [DU.3] Remove withdrawn claims from the login trust row
 
+> **GitHub issue:** #1416 · **Status:** 🟡 Open · **Parent epic:** #1408
+
 **Problem Statement.** `ouroboros-ui/app/login/brand-panel.tsx:35` renders
 `["SOC 2 Type II", "SSO / SAML", "Self-hostable"]` on the sign-in page of **every
 deployment**, copied "verbatim" from mockup 01. The Providers page had the same badges
@@ -595,6 +603,8 @@ tests/e2e ── expect(page).not.toContainText(WITHDRAWN_BADGES)  on /login and
 ```
 
 ### Issue DU.4 — ouroboros-web: [DU.4] Remove or label demo statistics & mockup imagery
+
+> **GitHub issue:** #1417 · **Status:** 🟡 Open · **Parent epic:** #1408
 
 **Problem Statement.** The hero presents "92% autonomous merge rate", "~4 min to your first
 PR", "$1.87 per merged PR" and "31% tokens served locally" as "measured on the acme-robotics
@@ -639,6 +649,8 @@ HERO  before:  92% · ~4 min · $1.87 · 31%   "measured on the acme-robotics de
 ```
 
 ### Issue DU.5 — ouroboros-web: [DU.5] Correct capability copy to shipped state
+
+> **GitHub issue:** #1418 · **Status:** 🟡 Open · **Parent epic:** #1408
 
 **Problem Statement.** The lede, the loop section, nine feature tiles, six deep dives and
 the page metadata describe an executor that writes code, runs builds and merges, plus Chat
@@ -687,6 +699,8 @@ PULL ─ SIZE ─ PLAN ─ CODE ─ BUILD ─ TEST ─ VERIFY ─ MERGE         
 
 ### Issue DU.6 — ouroboros-web: [DU.6] Fix dead links, calls to action & footer
 
+> **GitHub issue:** #1419 · **Status:** 🟡 Open · **Parent epic:** #1408
+
 **Problem Statement.** "Pricing" links to the call-to-action anchor, "Docs" and "Security"
 to the page top, "Start free — no card" to the page top; "Run your first loop" promises a
 loop that cannot run. The docs site is live and unlinked. Whether the deployed site matches
@@ -732,6 +746,8 @@ CTA  "Start free — no card" → #top      ⇒   "Self-host Ouroboros" → docs
 
 ### Issue DU.7 — ouroboros-docs: [DU.7] Correct SSO & GitHub App statements
 
+> **GitHub issue:** #1420 · **Status:** 🟡 Open · **Parent epic:** #1408
+
 **Problem Statement.** The user guide tells a reader to "Continue with SSO … (SAML 2.0 or
 OIDC — Okta, Entra ID, Google Workspace)" and that "Ouroboros works through a GitHub App
 with least-privilege scopes" (`sign-in.mdx:5`, `:19-21`, `:30`, `:44-46`;
@@ -775,6 +791,8 @@ administration/sign-in-and-workspace.mdx "Enterprise SSO is not available"  ✓ 
 
 ### Issue DU.8 — ouroboros: [DU.8] README status paragraph, repository metadata & mockup banners
 
+> **GitHub issue:** #1421 · **Status:** 🟡 Open · **Parent epic:** #1408
+
 **Problem Statement.** `README.md:3-4` describes "an autonomous software delivery loop …
 continuously" with no statement of what works. The repository has no homepage URL set. The
 mockups under `docs/mockups/` are public on GitHub and still draw the withdrawn badges
@@ -814,6 +832,8 @@ README.md
 ```
 
 ### Issue DU.9 — ouroboros: [DU.9] Withdrawn-claims CI guard
+
+> **GitHub issue:** #1422 · **Status:** 🟡 Open · **Parent epic:** #1408
 
 **Problem Statement.** Withdrawn claims come back. The badges were removed from the
 Providers page in August and guarded there by one end-to-end assertion; they remained on the
@@ -868,6 +888,8 @@ flowchart LR
 
 ### Issue DU.10 — ouroboros: [DU.10] Claims-change process — conventions, PR template, CODEOWNERS
 
+> **GitHub issue:** #1423 · **Status:** 🟡 Open · **Parent epic:** #1408
+
 **Problem Statement.** Nothing tells a contributor that a public claim is a reviewed change.
 There is no `CODEOWNERS`, and the pull-request template has no claims line.
 
@@ -907,6 +929,8 @@ evidence (closed issue / Shipped § in SECURITY_MODEL.md)
 
 ### Issue DU.11 — ouroboros-web: [DU.11] Deployed-site claims monitor
 
+> **GitHub issue:** #1432 · **Status:** 🟡 Open · **Parent epic:** #1408
+
 **Problem Statement.** The guard checks the repository; it cannot see a stale deployment, a
 manual hot-fix or a certificate fault. On 2026-10-10 the survey could not read the live
 marketing site at all because its TLS certificate did not match the host name.
@@ -941,15 +965,17 @@ cron ─▶ curl --fail https://ouroboros.build  ─▶ verify-claims.sh --html
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |---|---|---|---|---|---|---|---|---|---|
-| DV.1 | — | ⚪ Not filed | ouroboros: [DV.1] Feature-status manifest | `docs/status/features.yml`: buyer-visible features mapped to the issues that make them true | mvp, trust, documentation | Y (after DU.1) | Y | M | docs |
-| DV.2 | — | ⚪ Not filed | ouroboros: [DV.2] Feature-status generator | Script resolving the manifest against GitHub issue state into `status.json` | mvp, trust, infra | N (after DV.1) | Y | M | scripts |
-| DV.3 | — | ⚪ Not filed | ouroboros-web: [DV.3] `/status` page | Public page of Shipped / In progress / Planned / Not planned, dated, with limits | mvp, trust, web, design | N (after DV.2) | Y | M | ouroboros-web |
-| DV.4 | — | ⚪ Not filed | ouroboros: [DV.4] Scheduled regeneration & staleness check | Daily workflow opens a PR when status changes; build fails on stale data | mvp, trust, ci | Y (after DV.2) | Y | S | .github, scripts |
-| DV.5 | — | ⚪ Not filed | ouroboros-web: [DV.5] Landing feature tiles read the status data | A tile cannot say more than `/status` does | mvp, trust, web | N (after DV.3, DU.5) | Y | S | ouroboros-web |
-| DV.6 | — | ⚪ Not filed | ouroboros-web: [DV.6] Public changelog | `/changelog` generated from merged, user-visible pull requests | v2, trust, web, ci | Y | N | M | ouroboros-web, scripts, .github |
-| DV.7 | — | ⚪ Not filed | ouroboros: [DV.7] Uptime status page for a hosted tier | Service-availability page; held until a hosted service exists | v2, trust, infra | N (after #397 / #500) | N | M | infra |
+| DV.1 | #1424 | 🟡 Open | ouroboros: [DV.1] Feature-status manifest | `docs/status/features.yml`: buyer-visible features mapped to the issues that make them true | mvp, trust, documentation | Y (after DU.1) | Y | M | docs |
+| DV.2 | #1425 | 🟡 Open | ouroboros: [DV.2] Feature-status generator | Script resolving the manifest against GitHub issue state into `status.json` | mvp, trust, infra | N (after DV.1) | Y | M | scripts |
+| DV.3 | #1426 | 🟡 Open | ouroboros-web: [DV.3] `/status` page | Public page of Shipped / In progress / Planned / Not planned, dated, with limits | mvp, trust, web, design | N (after DV.2) | Y | M | ouroboros-web |
+| DV.4 | #1427 | 🟡 Open | ouroboros: [DV.4] Scheduled regeneration & staleness check | Daily workflow opens a PR when status changes; build fails on stale data | mvp, trust, ci | Y (after DV.2) | Y | S | .github, scripts |
+| DV.5 | #1428 | 🟡 Open | ouroboros-web: [DV.5] Landing feature tiles read the status data | A tile cannot say more than `/status` does | mvp, trust, web | N (after DV.3, DU.5) | Y | S | ouroboros-web |
+| DV.6 | #1439 | 🟡 Open | ouroboros-web: [DV.6] Public changelog | `/changelog` generated from merged, user-visible pull requests | v2, trust, web, ci | Y | N | M | ouroboros-web, scripts, .github |
+| DV.7 | #1429 | 🟡 Open | ouroboros: [DV.7] Uptime status page for a hosted tier | Service-availability page; held until a hosted service exists | v2, trust, infra | N (after #397 / #500) | N | M | infra |
 
 ### Issue DV.1 — ouroboros: [DV.1] Feature-status manifest
+
+> **GitHub issue:** #1424 · **Status:** 🟡 Open · **Parent epic:** #1409
 
 **Problem Statement.** GitHub holds the truth about what is built, but in engineering
 units: 581 specified issues across 24 roadmaps (the gap analysis's count), grouped by area labels. An area can be
@@ -1004,6 +1030,8 @@ entirely closed while the capability a buyer means is not there — Routing is c
 
 ### Issue DV.2 — ouroboros: [DV.2] Feature-status generator
 
+> **GitHub issue:** #1425 · **Status:** 🟡 Open · **Parent epic:** #1409
+
 **Problem Statement.** The description asks for a status page "generated from issue state".
 Hand-edited status drifts in the same way the marketing page did.
 
@@ -1048,6 +1076,8 @@ flowchart LR
 ```
 
 ### Issue DV.3 — ouroboros-web: [DV.3] `/status` page
+
+> **GitHub issue:** #1426 · **Status:** 🟡 Open · **Parent epic:** #1409
 
 **Problem Statement.** A buyer cannot tell what Ouroboros does today from any public page.
 Competitors answer with a product; an honest self-hosted project answers with a dated list.
@@ -1101,6 +1131,8 @@ Compliance
 
 ### Issue DV.4 — ouroboros: [DV.4] Scheduled regeneration & staleness check
 
+> **GitHub issue:** #1427 · **Status:** 🟡 Open · **Parent epic:** #1409
+
 **Problem Statement.** Issue state changes many times a day; a committed JSON goes stale
 unless something regenerates it, and a stale status page is a new false claim.
 
@@ -1138,6 +1170,8 @@ daily ─▶ gen-feature-status ─▶ diff? ─ no ─▶ done
 
 ### Issue DV.5 — ouroboros-web: [DV.5] Landing feature tiles read the status data
 
+> **GitHub issue:** #1428 · **Status:** 🟡 Open · **Parent epic:** #1409
+
 **Problem Statement.** After DU.5 the landing copy is correct on the day it merges. It
 will drift again the first time an issue closes or slips, unless the tiles and the status
 page share one source.
@@ -1171,6 +1205,8 @@ content/status.json ───────────────┘──▶  t
 
 ### Issue DV.6 — ouroboros-web: [DV.6] Public changelog
 
+> **GitHub issue:** #1439 · **Status:** 🟡 Open · **Parent epic:** #1409
+
 **Problem Statement.** A changelog is part of the baseline collateral competitors publish;
 the repository has none, and silent fixes are a documented criticism in this market
 (commercial-readiness notes § 4).
@@ -1200,6 +1236,8 @@ merged PRs (label: user-visible) ─▶ gen-changelog ─▶ CHANGELOG.md ─▶
 ```
 
 ### Issue DV.7 — ouroboros: [DV.7] Uptime status page for a hosted tier
+
+> **GitHub issue:** #1429 · **Status:** 🟡 Open · **Parent epic:** #1409
 
 **Problem Statement.** A status page reports the availability of a service the vendor
 operates. Ouroboros operates none today, so an uptime page now would itself be a
@@ -1234,20 +1272,22 @@ later:   hosted tier ─▶ probes ─▶ status.<domain> ─▶ incidents · hi
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |---|---|---|---|---|---|---|---|---|---|
-| DW.1 | — | ⚪ Not filed | ouroboros: [DW.1] SECURITY.md, disclosure policy & private reporting | A reporting channel, scope, what to expect; GitHub private reporting switched on | mvp, trust, documentation | Y | Y | S | repository root, .github |
-| DW.2 | — | ⚪ Not filed | ouroboros-web: [DW.2] `security.txt` (RFC 9116) | `/.well-known/security.txt` with Contact, Expires, Policy; expiry check | mvp, trust, web, ci | Y (after DW.1) | Y | XS | ouroboros-web, scripts |
-| DW.3 | — | ⚪ Not filed | ouroboros-web: [DW.3] `/security` page — shipped controls | Each control traced to a Shipped section of `SECURITY_MODEL.md`; planned controls marked | mvp, trust, web | N (after DW.7) | Y | M | ouroboros-web |
-| DW.4 | — | ⚪ Not filed | ouroboros-web: [DW.4] Shared-responsibility model for self-hosting | Who is responsible for what: NobuData, the operator, the model provider | mvp, trust, web, documentation | Y (after DW.3 scaffold) | Y | M | ouroboros-web, docs |
-| DW.5 | — | ⚪ Not filed | ouroboros-web: [DW.5] "What leaves your deployment" data-flow statement | Every outbound flow, verified against code; "none" where none | mvp, trust, web | Y | Y | M | ouroboros-web, docs |
-| DW.6 | — | ⚪ Not filed | ouroboros-docs: [DW.6] Operator security responsibilities page | Administration page turning the model into an operator checklist | mvp, trust, docs-site, documentation | Y (after DW.4) | Y | S | ouroboros-docs |
-| DW.7 | — | ⚪ Not filed | ouroboros: [DW.7] SECURITY_MODEL.md § 8.4 — public surfaces under the badge policy | Extends § 8.3 and § 10 to the marketing site, docs site and login page | mvp, trust, documentation | Y (after DU.1) | Y | S | docs |
-| DW.8 | — | ⚪ Not filed | ouroboros: [DW.8] Vulnerability handling runbook & advisories | Triage, fix, advisory, credit; supported versions; no silent fixes | mvp, trust, documentation | Y (after DW.1) | Y | S | docs |
-| DW.9 | — | ⚪ Not filed | ouroboros-web: [DW.9] Control mapping to agent-security frameworks | Map shipped controls to the P0-2 control set and a public framework | v2, trust, web | N (after P0-2 roadmap) | N | M | ouroboros-web, docs |
-| DW.10 | — | ⚪ Not filed | ouroboros: [DW.10] Penetration test & published summary | Scope, vendor, test, remediation, a dated summary | v2, trust | N (after DY.2) | N | L | docs, ouroboros-web |
-| DW.11 | — | ⚪ Not filed | ouroboros-web: [DW.11] Trust portal with documents under NDA | Gated access to reports once reports exist | v2, trust, web | N (after DW.10 or DY.5) | N | M | ouroboros-web |
-| DW.12 | — | ⚪ Not filed | ouroboros: [DW.12] Security self-assessment questionnaire | Pre-answered buyer questionnaire, each answer cited | v2, trust, documentation | Y (after DW.3–DW.5) | N | M | docs, ouroboros-web |
+| DW.1 | #1430 | 🟡 Open | ouroboros: [DW.1] SECURITY.md, disclosure policy & private reporting | A reporting channel, scope, what to expect; GitHub private reporting switched on | mvp, trust, documentation | Y | Y | S | repository root, .github |
+| DW.2 | #1431 | 🟡 Open | ouroboros-web: [DW.2] `security.txt` (RFC 9116) | `/.well-known/security.txt` with Contact, Expires, Policy; expiry check | mvp, trust, web, ci | Y (after DW.1) | Y | XS | ouroboros-web, scripts |
+| DW.3 | #1435 | 🟡 Open | ouroboros-web: [DW.3] `/security` page — shipped controls | Each control traced to a Shipped section of `SECURITY_MODEL.md`; planned controls marked | mvp, trust, web | N (after DW.7) | Y | M | ouroboros-web |
+| DW.4 | #1436 | 🟡 Open | ouroboros-web: [DW.4] Shared-responsibility model for self-hosting | Who is responsible for what: NobuData, the operator, the model provider | mvp, trust, web, documentation | Y (after DW.3 scaffold) | Y | M | ouroboros-web, docs |
+| DW.5 | #1433 | 🟡 Open | ouroboros-web: [DW.5] "What leaves your deployment" data-flow statement | Every outbound flow, verified against code; "none" where none | mvp, trust, web | Y | Y | M | ouroboros-web, docs |
+| DW.6 | #1437 | 🟡 Open | ouroboros-docs: [DW.6] Operator security responsibilities page | Administration page turning the model into an operator checklist | mvp, trust, docs-site, documentation | Y (after DW.4) | Y | S | ouroboros-docs |
+| DW.7 | #1434 | 🟡 Open | ouroboros: [DW.7] SECURITY_MODEL.md § 8.4 — public surfaces under the badge policy | Extends § 8.3 and § 10 to the marketing site, docs site and login page | mvp, trust, documentation | Y (after DU.1) | Y | S | docs |
+| DW.8 | #1438 | 🟡 Open | ouroboros: [DW.8] Vulnerability handling runbook & advisories | Triage, fix, advisory, credit; supported versions; no silent fixes | mvp, trust, documentation | Y (after DW.1) | Y | S | docs |
+| DW.9 | #1440 | 🟡 Open | ouroboros-web: [DW.9] Control mapping to agent-security frameworks | Map shipped controls to the P0-2 control set and a public framework | v2, trust, web | N (after P0-2 roadmap) | N | M | ouroboros-web, docs |
+| DW.10 | #1454 | 🟡 Open | ouroboros: [DW.10] Penetration test & published summary | Scope, vendor, test, remediation, a dated summary | v2, trust | N (after DY.2) | N | L | docs, ouroboros-web |
+| DW.11 | #1458 | 🟡 Open | ouroboros-web: [DW.11] Trust portal with documents under NDA | Gated access to reports once reports exist | v2, trust, web | N (after DW.10 or DY.5) | N | M | ouroboros-web |
+| DW.12 | #1441 | 🟡 Open | ouroboros: [DW.12] Security self-assessment questionnaire | Pre-answered buyer questionnaire, each answer cited | v2, trust, documentation | Y (after DW.3–DW.5) | N | M | docs, ouroboros-web |
 
 ### Issue DW.1 — ouroboros: [DW.1] SECURITY.md, disclosure policy & private reporting
+
+> **GitHub issue:** #1430 · **Status:** 🟡 Open · **Parent epic:** #1410
 
 **Problem Statement.** There is no way to report a vulnerability. No `SECURITY.md`; GitHub
 reports the security policy as not enabled and private vulnerability reporting as off
@@ -1295,6 +1335,8 @@ reporter ─▶ GitHub "Report a vulnerability" (private) ──┐
 
 ### Issue DW.2 — ouroboros-web: [DW.2] `security.txt` (RFC 9116)
 
+> **GitHub issue:** #1431 · **Status:** 🟡 Open · **Parent epic:** #1410
+
 **Problem Statement.** Scanners and researchers look for `/.well-known/security.txt`; the
 marketing site has none.
 
@@ -1331,6 +1373,8 @@ Canonical: https://ouroboros.build/.well-known/security.txt
 ```
 
 ### Issue DW.3 — ouroboros-web: [DW.3] `/security` page — shipped controls
+
+> **GitHub issue:** #1435 · **Status:** 🟡 Open · **Parent epic:** #1410
 
 **Problem Statement.** Ouroboros has real, shipped security controls and no public page
 that states them. The only detailed account is an 80 KB engineering document on GitHub;
@@ -1388,6 +1432,8 @@ flowchart LR
 
 ### Issue DW.4 — ouroboros-web: [DW.4] Shared-responsibility model for self-hosting
 
+> **GitHub issue:** #1436 · **Status:** 🟡 Open · **Parent epic:** #1410
+
 **Problem Statement.** Self-hosting moves residency, retention, key custody, patching and
 network exposure to the customer. That is a selling point only if it is written down;
 unwritten, a buyer assumes the vendor covers it — or that nobody does.
@@ -1438,6 +1484,8 @@ Runner machines                                ●
 ```
 
 ### Issue DW.5 — ouroboros-web: [DW.5] "What leaves your deployment" data-flow statement
+
+> **GitHub issue:** #1433 · **Status:** 🟡 Open · **Parent epic:** #1410
 
 **Problem Statement.** The marketing page offered "EU data residency" and a "zero data
 retention option". The true and stronger statement — nothing leaves a deployment except
@@ -1493,6 +1541,8 @@ flowchart LR
 
 ### Issue DW.6 — ouroboros-docs: [DW.6] Operator security responsibilities page
 
+> **GitHub issue:** #1437 · **Status:** 🟡 Open · **Parent epic:** #1410
+
 **Problem Statement.** The shared-responsibility model is a buyer document; an operator
 needs the same content as tasks. The docs site has a short "security model, in brief"
 section and no checklist of what the operator must do.
@@ -1536,6 +1586,8 @@ Administration
 
 ### Issue DW.7 — ouroboros: [DW.7] SECURITY_MODEL.md § 8.4 — public surfaces under the badge policy
 
+> **GitHub issue:** #1434 · **Status:** 🟡 Open · **Parent epic:** #1410
+
 **Problem Statement.** § 8.3 and § 10 are written for the Providers page's strip and
 subline. The marketing site, the docs site and the login page were outside their stated
 reach, which is how all three kept claims the document withdraws.
@@ -1576,6 +1628,8 @@ in brief" gains one sentence on public claims.
 
 ### Issue DW.8 — ouroboros: [DW.8] Vulnerability handling runbook & advisories
 
+> **GitHub issue:** #1438 · **Status:** 🟡 Open · **Parent epic:** #1410
+
 **Problem Statement.** A reporting channel without a handling process produces unanswered
 reports. The market's criticism is specific: silent security fixes
 (commercial-readiness notes § 4).
@@ -1613,6 +1667,8 @@ report ─▶ ack ─▶ triage/severity ─▶ draft advisory (private fork) �
 
 ### Issue DW.9 — ouroboros-web: [DW.9] Control mapping to agent-security frameworks
 
+> **GitHub issue:** #1440 · **Status:** 🟡 Open · **Parent epic:** #1410
+
 **Problem Statement.** Buyers compare agent products control by control (sandbox, egress,
 credential isolation, untrusted input). The gap analysis recommends mapping shipped
 controls to a public framework as "a low-cost credibility item", and assigns the control
@@ -1640,6 +1696,8 @@ Framework item     Ouroboros control                 Status      Evidence
 ```
 
 ### Issue DW.10 — ouroboros: [DW.10] Penetration test & published summary
+
+> **GitHub issue:** #1454 · **Status:** 🟡 Open · **Parent epic:** #1410
 
 **Problem Statement.** A penetration-test summary is standard collateral; none exists, and
 commissioning one before the executor is built would test a product that is about to
@@ -1669,6 +1727,8 @@ scope ─▶ quotes ─▶ test ─▶ findings ─▶ remediate ─▶ retest �
 
 ### Issue DW.11 — ouroboros-web: [DW.11] Trust portal with documents under NDA
 
+> **GitHub issue:** #1458 · **Status:** 🟡 Open · **Parent epic:** #1410
+
 **Problem Statement.** Comparable vendors gate their audit reports and test summaries
 behind a request or an NDA. Ouroboros has no document to gate.
 
@@ -1693,6 +1753,8 @@ documents that exist, each dated.
 ```
 
 ### Issue DW.12 — ouroboros: [DW.12] Security self-assessment questionnaire
+
+> **GitHub issue:** #1441 · **Status:** 🟡 Open · **Parent epic:** #1410
 
 **Problem Statement.** Procurement sends questionnaires. Answering each by hand invites
 the optimistic answers this roadmap exists to remove.
@@ -1728,18 +1790,20 @@ proposals for counsel to confirm, change or reject.**
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |---|---|---|---|---|---|---|---|---|---|
-| DX.1 | — | ⚪ Not filed | ouroboros: [DX.1] Legal entity, counsel engagement & document inventory | Confirm the entity, engage counsel, list the documents, open the review log | mvp, trust, documentation | N (first in DX) | Y | S | docs |
-| DX.2 | — | ⚪ Not filed | ouroboros-web: [DX.2] `/legal` pages scaffold — versions, dates, history | Index and document template with version, effective date and change history | mvp, trust, web | Y (∥ DX.1) | Y | S | ouroboros-web |
-| DX.3 | — | ⚪ Not filed | ouroboros-web: [DX.3] Website terms of use | Terms for the public sites; states that the software is licensed separately | mvp, trust, web | Y (after DX.1, DX.2) | Y | S | ouroboros-web, docs |
-| DX.4 | — | ⚪ Not filed | ouroboros-web: [DX.4] Privacy policy & site data audit | What the two public sites collect, verified; the self-hosted product's position | mvp, trust, web | Y (after DX.1, DX.2) | Y | M | ouroboros-web, ouroboros-docs, docs |
-| DX.5 | — | ⚪ Not filed | ouroboros-web: [DX.5] DPA template & self-hosted processing position | A statement that self-hosted use involves no processing by NobuData, and a template for when it does | mvp, trust, web | Y (after DX.1, DX.2, DW.5) | Y | M | ouroboros-web, docs |
-| DX.6 | — | ⚪ Not filed | ouroboros-web: [DX.6] Subprocessors page | None for self-hosted use; the vendors behind the public sites; change notice | mvp, trust, web | Y (after DX.4) | Y | XS | ouroboros-web, docs |
-| DX.7 | — | ⚪ Not filed | ouroboros: [DX.7] Licence notes — copyright, NOTICE & third-party inventory | Copyright holder, `NOTICE`, per-module licence fields, dependency licence report | mvp, trust, documentation, ci | Y (after DX.1) | Y | M | repository root, all modules, scripts |
-| DX.8 | — | ⚪ Not filed | ouroboros-web: [DX.8] Trademark notes & brand-use guidelines | What the licence does not grant; how the name and logo may be used | mvp, trust, web, design | Y (after DX.1, DX.2) | Y | S | ouroboros-web, docs |
-| DX.9 | — | ⚪ Not filed | ouroboros: [DX.9] Contributor terms — DCO or CLA decision | How inbound contributions are licensed; CONTRIBUTING and conduct documents | v2, trust, documentation | Y | N | S | repository root, .github |
-| DX.10 | — | ⚪ Not filed | ouroboros-web: [DX.10] Hosted-tier terms pack | Service terms, acceptable use, service levels, support — when a hosted tier exists | v2, trust, web | N (after #397 / #500, P1-5) | N | L | ouroboros-web, docs |
+| DX.1 | #1442 | 🟡 Open | ouroboros: [DX.1] Legal entity, counsel engagement & document inventory | Confirm the entity, engage counsel, list the documents, open the review log | mvp, trust, documentation | N (first in DX) | Y | S | docs |
+| DX.2 | #1443 | 🟡 Open | ouroboros-web: [DX.2] `/legal` pages scaffold — versions, dates, history | Index and document template with version, effective date and change history | mvp, trust, web | Y (∥ DX.1) | Y | S | ouroboros-web |
+| DX.3 | #1444 | 🟡 Open | ouroboros-web: [DX.3] Website terms of use | Terms for the public sites; states that the software is licensed separately | mvp, trust, web | Y (after DX.1, DX.2) | Y | S | ouroboros-web, docs |
+| DX.4 | #1445 | 🟡 Open | ouroboros-web: [DX.4] Privacy policy & site data audit | What the two public sites collect, verified; the self-hosted product's position | mvp, trust, web | Y (after DX.1, DX.2) | Y | M | ouroboros-web, ouroboros-docs, docs |
+| DX.5 | #1446 | 🟡 Open | ouroboros-web: [DX.5] DPA template & self-hosted processing position | A statement that self-hosted use involves no processing by NobuData, and a template for when it does | mvp, trust, web | Y (after DX.1, DX.2, DW.5) | Y | M | ouroboros-web, docs |
+| DX.6 | #1447 | 🟡 Open | ouroboros-web: [DX.6] Subprocessors page | None for self-hosted use; the vendors behind the public sites; change notice | mvp, trust, web | Y (after DX.4) | Y | XS | ouroboros-web, docs |
+| DX.7 | #1448 | 🟡 Open | ouroboros: [DX.7] Licence notes — copyright, NOTICE & third-party inventory | Copyright holder, `NOTICE`, per-module licence fields, dependency licence report | mvp, trust, documentation, ci | Y (after DX.1) | Y | M | repository root, all modules, scripts |
+| DX.8 | #1449 | 🟡 Open | ouroboros-web: [DX.8] Trademark notes & brand-use guidelines | What the licence does not grant; how the name and logo may be used | mvp, trust, web, design | Y (after DX.1, DX.2) | Y | S | ouroboros-web, docs |
+| DX.9 | #1450 | 🟡 Open | ouroboros: [DX.9] Contributor terms — DCO or CLA decision | How inbound contributions are licensed; CONTRIBUTING and conduct documents | v2, trust, documentation | Y | N | S | repository root, .github |
+| DX.10 | #1451 | 🟡 Open | ouroboros-web: [DX.10] Hosted-tier terms pack | Service terms, acceptable use, service levels, support — when a hosted tier exists | v2, trust, web | N (after #397 / #500, P1-5) | N | L | ouroboros-web, docs |
 
 ### Issue DX.1 — ouroboros: [DX.1] Legal entity, counsel engagement & document inventory
+
+> **GitHub issue:** #1442 · **Status:** 🟡 Open · **Parent epic:** #1411
 
 **Problem Statement.** There are no legal terms of any kind, and the public surfaces name
 two different owners: "© 2026 Ouroboros" on the marketing site and "Copyright © 2025-2026
@@ -1782,6 +1846,8 @@ factual brief (this roadmap) ──────┘   docs/legal/REVIEW_LOG.md (v
 
 ### Issue DX.2 — ouroboros-web: [DX.2] `/legal` pages scaffold — versions, dates, history
 
+> **GitHub issue:** #1443 · **Status:** 🟡 Open · **Parent epic:** #1411
+
 **Problem Statement.** The marketing site is a single page with no route for a legal
 document, and a legal page without a version and an effective date cannot be relied on.
 
@@ -1823,6 +1889,8 @@ reviewed_on: 2026-MM-DD
 
 ### Issue DX.3 — ouroboros-web: [DX.3] Website terms of use
 
+> **GitHub issue:** #1444 · **Status:** 🟡 Open · **Parent epic:** #1411
+
 **Problem Statement.** The public sites have no terms. A visitor cannot tell what governs
 their use of the site, or that the software itself is governed by the Apache-2.0 licence
 and not by any service agreement.
@@ -1860,6 +1928,8 @@ What governs what
 ```
 
 ### Issue DX.4 — ouroboros-web: [DX.4] Privacy policy & site data audit
+
+> **GitHub issue:** #1445 · **Status:** 🟡 Open · **Parent epic:** #1411
 
 **Problem Statement.** There is no privacy policy, and nobody has written down what the
 two public sites collect. A policy drafted without that audit would be another unverified
@@ -1904,6 +1974,8 @@ host / CDN operator ────▶ what is logged, how long ──┘          
 ```
 
 ### Issue DX.5 — ouroboros-web: [DX.5] DPA template & self-hosted processing position
+
+> **GitHub issue:** #1446 · **Status:** 🟡 Open · **Parent epic:** #1411
 
 **Problem Statement.** Buyers ask for a data processing agreement by reflex. For a
 self-hosted product the honest first answer may be that the vendor processes nothing — but
@@ -1950,6 +2022,8 @@ Self-hosted deployment                      NobuData
 
 ### Issue DX.6 — ouroboros-web: [DX.6] Subprocessors page
 
+> **GitHub issue:** #1447 · **Status:** 🟡 Open · **Parent epic:** #1411
+
 **Problem Statement.** A subprocessor list is baseline collateral. For self-hosted use the
 list is empty, which is worth saying; for the public sites it is not empty, and nobody has
 written it down.
@@ -1986,6 +2060,8 @@ Subprocessors
 ```
 
 ### Issue DX.7 — ouroboros: [DX.7] Licence notes — copyright, NOTICE & third-party inventory
+
+> **GitHub issue:** #1448 · **Status:** 🟡 Open · **Parent epic:** #1411
 
 **Problem Statement.** `LICENSE` is the bare Apache-2.0 text with no copyright line; there
 is no `NOTICE`; the marketing site's footer names "Ouroboros" as owner while the docs site
@@ -2035,6 +2111,8 @@ deps ──▶ licence report ──▶ allowed list? ── no ──▶ ✗ CI
 
 ### Issue DX.8 — ouroboros-web: [DX.8] Trademark notes & brand-use guidelines
 
+> **GitHub issue:** #1449 · **Status:** 🟡 Open · **Parent epic:** #1411
+
 **Problem Statement.** Apache-2.0 § 6 grants no trademark rights, and nothing tells a
 contributor, a redistributor or a company running a fork how the name "Ouroboros" and the
 snake mark may be used. The name is also a common word used by many projects; whether
@@ -2075,6 +2153,8 @@ Name & logo . NOT granted by the licence (§ 6)
 
 ### Issue DX.9 — ouroboros: [DX.9] Contributor terms — DCO or CLA decision
 
+> **GitHub issue:** #1450 · **Status:** 🟡 Open · **Parent epic:** #1411
+
 **Problem Statement.** The repository is public and has no `CONTRIBUTING.md`. Apache-2.0
 § 5 covers inbound contributions by default, but an open-core or dual-licensing decision
 (gap-analysis item P1-5) may need more than that, and the choice is hard to reverse once
@@ -2102,6 +2182,8 @@ contribution ─▶ { § 5 default | DCO sign-off | CLA } ─▶ merged under Ap
 ```
 
 ### Issue DX.10 — ouroboros-web: [DX.10] Hosted-tier terms pack
+
+> **GitHub issue:** #1451 · **Status:** 🟡 Open · **Parent epic:** #1411
 
 **Problem Statement.** A hosted tier (#397, #500) would turn NobuData into a service
 provider and a processor. None of the MVP documents covers that, by design.
@@ -2134,14 +2216,16 @@ self-hosted (today)          hosted tier (later)
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |---|---|---|---|---|---|---|---|---|---|
-| DY.1 | — | ⚪ Not filed | ouroboros: [DY.1] Compliance scope options paper | Scope options for a self-hosted vendor, with quoted cost and timeline | mvp, trust, documentation | Y | Y | M | docs |
-| DY.2 | — | ⚪ Not filed | ouroboros: [DY.2] Dated compliance programme decision record | The owner's decision: scope, timing, budget, review date | mvp, trust, documentation | N (after DY.1) | Y | S | docs |
-| DY.3 | — | ⚪ Not filed | ouroboros-web: [DY.3] Public compliance position on `/security` | A dated statement of fact; no hedge, no badge | mvp, trust, web | N (after DY.2, DW.3) | Y | XS | ouroboros-web |
-| DY.4 | — | ⚪ Not filed | ouroboros: [DY.4] Build & release controls gap assessment | What a build-and-release audit would examine, against what exists | v2, trust, ci, infra | Y (after DY.2) | N | M | docs, .github |
-| DY.5 | — | ⚪ Not filed | ouroboros: [DY.5] Audit engagement | Auditor, readiness, observation window, report — if DY.2 says go | v2, trust | N (after DY.2, DY.4) | N | L | docs |
-| DY.6 | — | ⚪ Not filed | ouroboros-web: [DY.6] Dated certification badge mechanism | § 8.3's four rules as code: record-backed, dated, expiring, no flag | v2, trust, web, ui, ci | N (after DY.5) | N | M | ouroboros-web, ouroboros-ui, docs, scripts |
+| DY.1 | #1452 | 🟡 Open | ouroboros: [DY.1] Compliance scope options paper | Scope options for a self-hosted vendor, with quoted cost and timeline | mvp, trust, documentation | Y | Y | M | docs |
+| DY.2 | #1453 | 🟡 Open | ouroboros: [DY.2] Dated compliance programme decision record | The owner's decision: scope, timing, budget, review date | mvp, trust, documentation | N (after DY.1) | Y | S | docs |
+| DY.3 | #1455 | 🟡 Open | ouroboros-web: [DY.3] Public compliance position on `/security` | A dated statement of fact; no hedge, no badge | mvp, trust, web | N (after DY.2, DW.3) | Y | XS | ouroboros-web |
+| DY.4 | #1456 | 🟡 Open | ouroboros: [DY.4] Build & release controls gap assessment | What a build-and-release audit would examine, against what exists | v2, trust, ci, infra | Y (after DY.2) | N | M | docs, .github |
+| DY.5 | #1457 | 🟡 Open | ouroboros: [DY.5] Audit engagement | Auditor, readiness, observation window, report — if DY.2 says go | v2, trust | N (after DY.2, DY.4) | N | L | docs |
+| DY.6 | #1459 | 🟡 Open | ouroboros-web: [DY.6] Dated certification badge mechanism | § 8.3's four rules as code: record-backed, dated, expiring, no flag | v2, trust, web, ui, ci | N (after DY.5) | N | M | ouroboros-web, ouroboros-ui, docs, scripts |
 
 ### Issue DY.1 — ouroboros: [DY.1] Compliance scope options paper
+
+> **GitHub issue:** #1452 · **Status:** 🟡 Open · **Parent epic:** #1412
 
 **Problem Statement.** The marketing site claimed two certifications that do not exist.
 Removing the claim leaves the real question unanswered: should NobuData pursue an audit,
@@ -2201,6 +2285,8 @@ replacing this roadmap's estimates**:
 
 ### Issue DY.2 — ouroboros: [DY.2] Dated compliance programme decision record
 
+> **GitHub issue:** #1453 · **Status:** 🟡 Open · **Parent epic:** #1412
+
 **Problem Statement.** The description requires "a dated decision on a compliance
 programme". Without one, the question is re-argued in every sales conversation and the
 temptation to hedge on the website returns.
@@ -2236,6 +2322,8 @@ docs/DECISION_COMPLIANCE_PROGRAMME.md
 ```
 
 ### Issue DY.3 — ouroboros-web: [DY.3] Public compliance position on `/security`
+
+> **GitHub issue:** #1455 · **Status:** 🟡 Open · **Parent epic:** #1412
 
 **Problem Statement.** After the badges go, silence about certifications invites the
 question. A hedge ("working towards SOC 2") is what § 8.3 rule 5 forbids. A dated fact is
@@ -2273,6 +2361,8 @@ neither.
 
 ### Issue DY.4 — ouroboros: [DY.4] Build & release controls gap assessment
 
+> **GitHub issue:** #1456 · **Status:** 🟡 Open · **Parent epic:** #1412
+
 **Problem Statement.** If the decision is to audit the build and release process, nobody
 knows how far the repository is from being auditable.
 
@@ -2304,6 +2394,8 @@ access                registry secrets in Actions  access review cadence
 
 ### Issue DY.5 — ouroboros: [DY.5] Audit engagement
 
+> **GitHub issue:** #1457 · **Status:** 🟡 Open · **Parent epic:** #1412
+
 **Problem Statement.** The audit itself — if decided — is a months-long engagement with an
 external firm, not a ticket; it needs a plan and an owner.
 
@@ -2330,6 +2422,8 @@ select auditor ─▶ readiness ─▶ [ observation window: months ] ─▶ fie
 ```
 
 ### Issue DY.6 — ouroboros-web: [DY.6] Dated certification badge mechanism
+
+> **GitHub issue:** #1459 · **Status:** 🟡 Open · **Parent epic:** #1412
 
 **Problem Statement.** § 8.3 states four rules for a badge added later. They are prose
 today; the next badge will be pasted in by hand unless the rules are executable.
@@ -2370,14 +2464,16 @@ counsel.**
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |---|---|---|---|---|---|---|---|---|---|
-| DZ.1 | — | ⚪ Not filed | ouroboros: [DZ.1] Inventory of AI-generated outputs | Every place model output leaves the product or is shown to a person, with its state today | mvp, trust, documentation | Y | Y | S | docs |
-| DZ.2 | — | ⚪ Not filed | ouroboros: [DZ.2] AI-output disclosure note | Position on disclosure in pull requests, commits and narration; counsel-reviewed; dated | mvp, trust, documentation | N (after DZ.1) | Y | M | docs, ouroboros-web |
-| DZ.3 | — | ⚪ Not filed | ouroboros: [DZ.3] Disclosure convention specification | Human-readable and machine-readable markers; posted as amendments | mvp, trust, documentation | N (after DZ.2) | Y | S | docs |
-| DZ.4 | — | ⚪ Not filed | ouroboros-rest: [DZ.4] Disclosure markers in loop-authored pull requests & commits | Implement the convention where the loop writes to the code host | v2, trust, rest, engine, pr | N (after #375) | N | M | ouroboros-rest, ouroboros-engine, ouroboros-docs |
-| DZ.5 | — | ⚪ Not filed | ouroboros-ui: [DZ.5] In-application AI labels | Consistent "AI-generated" marking on model-written content in the UI | v2, trust, ui, design | Y (after DZ.3) | N | M | ouroboros-ui, ouroboros-docs |
-| DZ.6 | — | ⚪ Not filed | ouroboros-docs: [DZ.6] Operator guidance on AI-output disclosure | What the product marks, what the operator decides | v2, trust, docs-site, documentation | N (after DZ.4) | N | S | ouroboros-docs |
+| DZ.1 | #1460 | 🟡 Open | ouroboros: [DZ.1] Inventory of AI-generated outputs | Every place model output leaves the product or is shown to a person, with its state today | mvp, trust, documentation | Y | Y | S | docs |
+| DZ.2 | #1461 | 🟡 Open | ouroboros: [DZ.2] AI-output disclosure note | Position on disclosure in pull requests, commits and narration; counsel-reviewed; dated | mvp, trust, documentation | N (after DZ.1) | Y | M | docs, ouroboros-web |
+| DZ.3 | #1462 | 🟡 Open | ouroboros: [DZ.3] Disclosure convention specification | Human-readable and machine-readable markers; posted as amendments | mvp, trust, documentation | N (after DZ.2) | Y | S | docs |
+| DZ.4 | #1463 | 🟡 Open | ouroboros-rest: [DZ.4] Disclosure markers in loop-authored pull requests & commits | Implement the convention where the loop writes to the code host | v2, trust, rest, engine, pr | N (after #375) | N | M | ouroboros-rest, ouroboros-engine, ouroboros-docs |
+| DZ.5 | #1464 | 🟡 Open | ouroboros-ui: [DZ.5] In-application AI labels | Consistent "AI-generated" marking on model-written content in the UI | v2, trust, ui, design | Y (after DZ.3) | N | M | ouroboros-ui, ouroboros-docs |
+| DZ.6 | #1465 | 🟡 Open | ouroboros-docs: [DZ.6] Operator guidance on AI-output disclosure | What the product marks, what the operator decides | v2, trust, docs-site, documentation | N (after DZ.4) | N | S | ouroboros-docs |
 
 ### Issue DZ.1 — ouroboros: [DZ.1] Inventory of AI-generated outputs
+
+> **GitHub issue:** #1460 · **Status:** 🟡 Open · **Parent epic:** #1413
 
 **Problem Statement.** Article 50 of the EU AI Act has applied since 2 August 2026, with
 the machine-readable marking duty for systems already on the market reported as deferred
@@ -2429,6 +2525,8 @@ demo-film narration       the public           yes                  Studio, plan
 ```
 
 ### Issue DZ.2 — ouroboros: [DZ.2] AI-output disclosure note
+
+> **GitHub issue:** #1461 · **Status:** 🟡 Open · **Parent epic:** #1413
 
 **Problem Statement.** The description asks for "a note on AI-output disclosure". The
 gap analysis records the EU AI Act as "not addressed", and found no competitor's published
@@ -2482,6 +2580,8 @@ EU AI Act Art. 50 timeline (secondary sources — verify)
 
 ### Issue DZ.3 — ouroboros: [DZ.3] Disclosure convention specification
 
+> **GitHub issue:** #1462 · **Status:** 🟡 Open · **Parent epic:** #1413
+
 **Problem Statement.** When the loop starts opening pull requests (#375), each
 implementer will otherwise invent a marker — a footer here, a label there — and the result
 will be neither consistent nor machine-readable.
@@ -2529,6 +2629,8 @@ PR label:         ai-generated
 
 ### Issue DZ.4 — ouroboros-rest: [DZ.4] Disclosure markers in loop-authored pull requests & commits
 
+> **GitHub issue:** #1463 · **Status:** 🟡 Open · **Parent epic:** #1413
+
 **Problem Statement.** The convention has no effect until the code that writes to the code
 host applies it — and that code does not exist yet.
 
@@ -2558,6 +2660,8 @@ loop ─▶ commit(+trailer) ─▶ push ─▶ createPR(body notice, label, blo
 
 ### Issue DZ.5 — ouroboros-ui: [DZ.5] In-application AI labels
 
+> **GitHub issue:** #1464 · **Status:** 🟡 Open · **Parent epic:** #1413
+
 **Problem Statement.** Model-written content appears, or will appear, in several screens
 (Copilot, Research briefs, planner drafts, analyzer suggestions, triage) with no shared
 way of saying so.
@@ -2584,6 +2688,8 @@ content" entry) and the glossary; screenshot ids to be named at implementation.
 ```
 
 ### Issue DZ.6 — ouroboros-docs: [DZ.6] Operator guidance on AI-output disclosure
+
+> **GitHub issue:** #1465 · **Status:** 🟡 Open · **Parent epic:** #1413
 
 **Problem Statement.** An operator running Ouroboros against repositories that other
 people read decides how its output is presented to them, and needs to know what the

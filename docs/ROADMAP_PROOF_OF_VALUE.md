@@ -295,16 +295,18 @@ per-person views behind the opt-in (FD.6).
 
 ## Epics, Labels & Milestones
 
+> **Filed 2026-10-10** by `create-issues` in `NobuData/ouroboros`: epic parents #1699–#1703, work issues #1704–#1735, numbered in dependency order. Each work issue is a sub-issue of its epic with blocked-by links, Priority, Effort and type set. Statements below that nothing is filed predate this; relabelling or amending *existing* issues described by this roadmap has **not** been done.
+
 Each epic becomes a parent tracking issue on GitHub; every roadmap issue below is filed as
 one of its sub-issues (GitHub Relationships). **Nothing is filed yet.**
 
 | Epic | GitHub | Status | Name | Goal | Modules | Milestone |
 |------|:------:|:------:|------|------|---------|-----------|
-| EZ | — | ⚪ Not filed | Baseline Import | Read GitHub history; compute and freeze pre-adoption time to merge, review iterations and revert rate | ouroboros-db, ouroboros-rest, ouroboros-ui, ouroboros-docs | Proof of Value MVP |
-| FA | — | ⚪ Not filed | Pilot Definition | A pilot object with duration, repository scope, named success metrics and one red-line metric | ouroboros-db, ouroboros-rest, ouroboros-ui, ouroboros-docs | Proof of Value MVP |
-| FB | — | ⚪ Not filed | Before-and-After Report | A dated, immutable, exportable comparison in which every figure lists its rows | ouroboros-db, ouroboros-rest, ouroboros-ui, ouroboros-engine, ouroboros-docs | Proof of Value MVP |
-| FC | — | ⚪ Not filed | Rework & Survival | Whether merged loop pull requests were reverted, fixed afterwards or still stand | ouroboros-db, ouroboros-rest, ouroboros-ui, ouroboros-docs | Proof of Value MVP (FC.1–FC.2) / v2 |
-| FD | — | ⚪ Not filed | Policy Fit | Analytics at workspace and repository level unless an Owner opts in to per-person views | ouroboros-db, ouroboros-rest, ouroboros-ui, ouroboros-docs, docs | Proof of Value MVP |
+| EZ | #1699 | 🟡 Open | Baseline Import | Read GitHub history; compute and freeze pre-adoption time to merge, review iterations and revert rate | ouroboros-db, ouroboros-rest, ouroboros-ui, ouroboros-docs | Proof of Value MVP |
+| FA | #1700 | 🟡 Open | Pilot Definition | A pilot object with duration, repository scope, named success metrics and one red-line metric | ouroboros-db, ouroboros-rest, ouroboros-ui, ouroboros-docs | Proof of Value MVP |
+| FB | #1701 | 🟡 Open | Before-and-After Report | A dated, immutable, exportable comparison in which every figure lists its rows | ouroboros-db, ouroboros-rest, ouroboros-ui, ouroboros-engine, ouroboros-docs | Proof of Value MVP |
+| FC | #1702 | 🟡 Open | Rework & Survival | Whether merged loop pull requests were reverted, fixed afterwards or still stand | ouroboros-db, ouroboros-rest, ouroboros-ui, ouroboros-docs | Proof of Value MVP (FC.1–FC.2) / v2 |
+| FD | #1703 | 🟡 Open | Policy Fit | Analytics at workspace and repository level unless an Owner opts in to per-person views | ouroboros-db, ouroboros-rest, ouroboros-ui, ouroboros-docs, docs | Proof of Value MVP |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`, `v2`,
 `rest`, `db`, `ui`, `engine`, `ci`, `design`, `documentation`, `insights`, `settings`,
@@ -325,17 +327,17 @@ Loop roadmap lands.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EZ.1 | — | ⚪ Not filed | ouroboros-db: [EZ.1] Baseline facts & snapshot schema | `baseline_imports`, `baseline_prs` (no person identifiers), `baseline_snapshots` | mvp, proof-of-value, insights, db | N (first) | Y | M | ouroboros-db |
-| EZ.2 | — | ⚪ Not filed | ouroboros-rest: [EZ.2] GitHub history reader | Resumable, rate-limit-aware read of pull requests, reviews and timeline | mvp, proof-of-value, rest, sources | N (after EZ.1) | Y | L | ouroboros-rest |
-| EZ.3 | — | ⚪ Not filed | ouroboros-rest: [EZ.3] Baseline metric definitions & computation | Time to merge, review iterations, revert rate as versioned registry formulas with exclusions | mvp, proof-of-value, insights, rest, db | Y (after EZ.1, beside EZ.2) | Y | L | ouroboros-rest, ouroboros-db |
-| EZ.4 | — | ⚪ Not filed | ouroboros-rest: [EZ.4] Baseline import API & job lifecycle | Start, progress, cancel, resume, freeze; hashed snapshot | mvp, proof-of-value, rest | N (after EZ.2, EZ.3) | Y | M | ouroboros-rest, ouroboros-docs |
-| EZ.5 | — | ⚪ Not filed | ouroboros-ui: [EZ.5] Baseline import flow & baseline page | Mockup, repository and window picker, progress, baseline figures with exclusions | mvp, proof-of-value, insights, ui, design | N (after EZ.4, FD.2) | Y | M | ouroboros-ui, ouroboros-docs, docs |
-| EZ.6 | — | ⚪ Not filed | ouroboros-rest: [EZ.6] Baseline fixtures, oracle & integration tests | Recorded GitHub fixtures, hand-computed oracle, resumption and isolation tests, seeds | mvp, proof-of-value, rest, db, ci | N (after EZ.4) | Y | M | ouroboros-rest, ouroboros-db |
-| EZ.7 | — | ⚪ Not filed | ouroboros-rest: [EZ.7] Baselines beyond GitHub & ticket-start lead time | History capability on the source SPI for other hosts; lead time from canonical tickets | v2, proof-of-value, rest, sources | Y (after EZ.4) | N | L | ouroboros-rest, ouroboros-db, ouroboros-docs |
+| EZ.1 | #1704 | 🟡 Open | ouroboros-db: [EZ.1] Baseline facts & snapshot schema | `baseline_imports`, `baseline_prs` (no person identifiers), `baseline_snapshots` | mvp, proof-of-value, insights, db | N (first) | Y | M | ouroboros-db |
+| EZ.2 | #1705 | 🟡 Open | ouroboros-rest: [EZ.2] GitHub history reader | Resumable, rate-limit-aware read of pull requests, reviews and timeline | mvp, proof-of-value, rest, sources | N (after EZ.1) | Y | L | ouroboros-rest |
+| EZ.3 | #1706 | 🟡 Open | ouroboros-rest: [EZ.3] Baseline metric definitions & computation | Time to merge, review iterations, revert rate as versioned registry formulas with exclusions | mvp, proof-of-value, insights, rest, db | Y (after EZ.1, beside EZ.2) | Y | L | ouroboros-rest, ouroboros-db |
+| EZ.4 | #1716 | 🟡 Open | ouroboros-rest: [EZ.4] Baseline import API & job lifecycle | Start, progress, cancel, resume, freeze; hashed snapshot | mvp, proof-of-value, rest | N (after EZ.2, EZ.3) | Y | M | ouroboros-rest, ouroboros-docs |
+| EZ.5 | #1717 | 🟡 Open | ouroboros-ui: [EZ.5] Baseline import flow & baseline page | Mockup, repository and window picker, progress, baseline figures with exclusions | mvp, proof-of-value, insights, ui, design | N (after EZ.4, FD.2) | Y | M | ouroboros-ui, ouroboros-docs, docs |
+| EZ.6 | #1718 | 🟡 Open | ouroboros-rest: [EZ.6] Baseline fixtures, oracle & integration tests | Recorded GitHub fixtures, hand-computed oracle, resumption and isolation tests, seeds | mvp, proof-of-value, rest, db, ci | N (after EZ.4) | Y | M | ouroboros-rest, ouroboros-db |
+| EZ.7 | #1719 | 🟡 Open | ouroboros-rest: [EZ.7] Baselines beyond GitHub & ticket-start lead time | History capability on the source SPI for other hosts; lead time from canonical tickets | v2, proof-of-value, rest, sources | Y (after EZ.4) | N | L | ouroboros-rest, ouroboros-db, ouroboros-docs |
 
 ### Issue EZ.1 — ouroboros-db: [EZ.1] Baseline facts & snapshot schema
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** EZ
+> **GitHub issue:** #1704 · **Status:** 🟡 Open · **Parent epic:** #1699
 
 - **Problem Statement:** A baseline must be recomputable, traceable to individual pull
   requests and free of names. The pull request mirror (`V052__pull_requests.sql`) holds
@@ -414,7 +416,7 @@ erDiagram
 
 ### Issue EZ.2 — ouroboros-rest: [EZ.2] GitHub history reader
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** EZ
+> **GitHub issue:** #1705 · **Status:** 🟡 Open · **Parent epic:** #1699
 
 - **Problem Statement:** Computing a baseline means reading every pull request closed in a
   window, with its reviews and the events that mark it ready and merged. The live pull request
@@ -491,7 +493,7 @@ sequenceDiagram
 
 ### Issue EZ.3 — ouroboros-rest: [EZ.3] Baseline metric definitions & computation
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** EZ
+> **GitHub issue:** #1706 · **Status:** 🟡 Open · **Parent epic:** #1699
 
 - **Problem Statement:** "Time to merge", "review iterations" and "revert rate" each have
   several defensible definitions, and vendor reports disagree on them (Research Notes:
@@ -551,7 +553,7 @@ sequenceDiagram
 
 ### Issue EZ.4 — ouroboros-rest: [EZ.4] Baseline import API & job lifecycle
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** EZ
+> **GitHub issue:** #1716 · **Status:** 🟡 Open · **Parent epic:** #1699
 
 - **Problem Statement:** An import runs for minutes to hours, can hit rate limits, and ends
   in a result that must not change afterwards. It needs a job with visible progress and a
@@ -603,7 +605,7 @@ stateDiagram-v2
 
 ### Issue EZ.5 — ouroboros-ui: [EZ.5] Baseline import flow & baseline page
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** EZ
+> **GitHub issue:** #1717 · **Status:** 🟡 Open · **Parent epic:** #1699
 
 - **Problem Statement:** A baseline has to be something a person can start, watch and read,
   and the page has to say what was left out as plainly as what was counted. There is no
@@ -665,7 +667,7 @@ stateDiagram-v2
 
 ### Issue EZ.6 — ouroboros-rest: [EZ.6] Baseline fixtures, oracle & integration tests
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** EZ
+> **GitHub issue:** #1718 · **Status:** 🟡 Open · **Parent epic:** #1699
 
 - **Problem Statement:** The baseline is the number a buyer will check against their own
   tools. It needs a fixture history with known answers, and seeds so the UI and the later
@@ -704,7 +706,7 @@ flowchart LR
 
 ### Issue EZ.7 — ouroboros-rest: [EZ.7] Baselines beyond GitHub & ticket-start lead time
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** EZ
+> **GitHub issue:** #1719 · **Status:** 🟡 Open · **Parent epic:** #1699
 
 - **Problem Statement:** The description names GitHub history, and the product's source SPI
   is pluggable. Buyers on GitLab or another host need the same baseline, and the pilot
@@ -747,16 +749,16 @@ seeded or simulated work and is marked as such (PV3).
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| FA.1 | — | ⚪ Not filed | ouroboros-db: [FA.1] Pilot schema & state machine | `pilots`, scope, metrics (one red line), amendments, event log | mvp, proof-of-value, db | Y (after EZ.1) | Y | M | ouroboros-db |
-| FA.2 | — | ⚪ Not filed | ouroboros-rest: [FA.2] Pilot service & API | Create, start (freeze terms), amend, close; pilot-window import scheduling | mvp, proof-of-value, rest | N (after FA.1, EZ.4) | Y | L | ouroboros-rest, ouroboros-docs |
-| FA.3 | — | ⚪ Not filed | ouroboros-rest: [FA.3] Success-metric catalogue & red-line evaluator | Named metrics, targets, running status, breach → decision item | mvp, proof-of-value, rest, inbox | N (after FA.2, EZ.3) | Y | M | ouroboros-rest, ouroboros-db, ouroboros-docs |
-| FA.4 | — | ⚪ Not filed | ouroboros-ui: [FA.4] Pilot setup & pilot overview | Create form, terms summary, running status, amendments, event log | mvp, proof-of-value, insights, ui, design | N (after FA.2, FA.3, FD.2) | Y | L | ouroboros-ui, ouroboros-docs |
-| FA.5 | — | ⚪ Not filed | ouroboros-rest: [FA.5] Pilot integration tests & seeds | Lifecycle, freeze, amendment, red-line and isolation tests; seeded pilot | mvp, proof-of-value, rest, db, ci | N (after FA.3) | Y | M | ouroboros-rest, ouroboros-db |
-| FA.6 | — | ⚪ Not filed | ouroboros-rest: [FA.6] Integrator pilot templates | Portable pilot definitions: export, import, a starter set | v2, proof-of-value, rest, ui | Y (after FA.2) | N | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| FA.1 | #1707 | 🟡 Open | ouroboros-db: [FA.1] Pilot schema & state machine | `pilots`, scope, metrics (one red line), amendments, event log | mvp, proof-of-value, db | Y (after EZ.1) | Y | M | ouroboros-db |
+| FA.2 | #1720 | 🟡 Open | ouroboros-rest: [FA.2] Pilot service & API | Create, start (freeze terms), amend, close; pilot-window import scheduling | mvp, proof-of-value, rest | N (after FA.1, EZ.4) | Y | L | ouroboros-rest, ouroboros-docs |
+| FA.3 | #1721 | 🟡 Open | ouroboros-rest: [FA.3] Success-metric catalogue & red-line evaluator | Named metrics, targets, running status, breach → decision item | mvp, proof-of-value, rest, inbox | N (after FA.2, EZ.3) | Y | M | ouroboros-rest, ouroboros-db, ouroboros-docs |
+| FA.4 | #1722 | 🟡 Open | ouroboros-ui: [FA.4] Pilot setup & pilot overview | Create form, terms summary, running status, amendments, event log | mvp, proof-of-value, insights, ui, design | N (after FA.2, FA.3, FD.2) | Y | L | ouroboros-ui, ouroboros-docs |
+| FA.5 | #1723 | 🟡 Open | ouroboros-rest: [FA.5] Pilot integration tests & seeds | Lifecycle, freeze, amendment, red-line and isolation tests; seeded pilot | mvp, proof-of-value, rest, db, ci | N (after FA.3) | Y | M | ouroboros-rest, ouroboros-db |
+| FA.6 | #1724 | 🟡 Open | ouroboros-rest: [FA.6] Integrator pilot templates | Portable pilot definitions: export, import, a starter set | v2, proof-of-value, rest, ui | Y (after FA.2) | N | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
 
 ### Issue FA.1 — ouroboros-db: [FA.1] Pilot schema & state machine
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FA
+> **GitHub issue:** #1707 · **Status:** 🟡 Open · **Parent epic:** #1700
 
 - **Problem Statement:** The description asks for "a pilot object with duration, repository
   scope, named success metrics and a red-line risk metric". Without stored, frozen terms a
@@ -828,7 +830,7 @@ erDiagram
 
 ### Issue FA.2 — ouroboros-rest: [FA.2] Pilot service & API
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FA
+> **GitHub issue:** #1720 · **Status:** 🟡 Open · **Parent epic:** #1700
 
 - **Problem Statement:** The pilot's lifecycle has consequences at each step: starting
   freezes terms and formula versions, running needs the pilot window read from GitHub by the
@@ -880,7 +882,7 @@ stateDiagram-v2
 
 ### Issue FA.3 — ouroboros-rest: [FA.3] Success-metric catalogue & red-line evaluator
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FA
+> **GitHub issue:** #1721 · **Status:** 🟡 Open · **Parent epic:** #1700
 
 - **Problem Statement:** "Named success metrics" must be names with one meaning, and "a
   red-line risk metric" must be watched while the pilot runs, not discovered in the final
@@ -949,7 +951,7 @@ flowchart TB
 
 ### Issue FA.4 — ouroboros-ui: [FA.4] Pilot setup & pilot overview
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FA
+> **GitHub issue:** #1722 · **Status:** 🟡 Open · **Parent epic:** #1700
 
 - **Problem Statement:** Defining a pilot is where its honesty is decided. The form must
   make the terms explicit, explain that they freeze, and keep showing the running position
@@ -1008,7 +1010,7 @@ flowchart TB
 
 ### Issue FA.5 — ouroboros-rest: [FA.5] Pilot integration tests & seeds
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FA
+> **GitHub issue:** #1723 · **Status:** 🟡 Open · **Parent epic:** #1700
 
 - **Problem Statement:** The pilot's guarantees — frozen terms, logged amendments, one red
   line, no overlap — are database and service rules that need proving, and the UI and report
@@ -1041,7 +1043,7 @@ flowchart LR
 
 ### Issue FA.6 — ouroboros-rest: [FA.6] Integrator pilot templates
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FA
+> **GitHub issue:** #1724 · **Status:** 🟡 Open · **Parent epic:** #1700
 
 - **Problem Statement:** The gap analysis notes that sales-led vendors embed engineers for
   project selection and "ROI measurement" through systems integrators. An integrator running
@@ -1081,18 +1083,18 @@ real runs.** Until then every report this epic produces carries the "simulated d
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| FB.1 | — | ⚪ Not filed | ouroboros-db: [FB.1] Report snapshot & figure-row schema | Immutable numbered reports; every figure stored with the rows behind it | mvp, proof-of-value, db | Y (after FA.1) | Y | M | ouroboros-db |
-| FB.2 | — | ⚪ Not filed | ouroboros-rest: [FB.2] Comparison engine | Three cohorts, size bands, intervals, minimum sample, censoring, provenance | mvp, proof-of-value, insights, rest | N (after EZ.3, FA.2, FC.2) | Y | L | ouroboros-rest |
-| FB.3 | — | ⚪ Not filed | ouroboros-rest: [FB.3] Report generation & traceability API | Generate, list, read; figure → rows → run or pull request | mvp, proof-of-value, rest | N (after FB.1, FB.2) | Y | M | ouroboros-rest, ouroboros-docs |
-| FB.4 | — | ⚪ Not filed | ouroboros-rest: [FB.4] Report export — HTML, CSV & evidence bundle | Self-contained printable HTML, figure CSV, hashed JSON bundle | mvp, proof-of-value, rest | N (after FB.3, FD.2) | Y | M | ouroboros-rest, ouroboros-docs |
-| FB.5 | — | ⚪ Not filed | ouroboros-ui: [FB.5] Report page, drill-down & export controls | Funnel, cohort tables, bands, limitations, events, row drill-down | mvp, proof-of-value, insights, ui, design | N (after FB.3, FB.4) | Y | L | ouroboros-ui, ouroboros-docs |
-| FB.6 | — | ⚪ Not filed | ouroboros-rest: [FB.6] Report tests, seeded pilot report & e2e leg | Figure-equals-rows, determinism, provenance, export and e2e walk | mvp, proof-of-value, rest, ui, ci | N (after FB.5, EZ.6, FA.5) | Y | M | ouroboros-rest, ouroboros-ui, tests, .github |
-| FB.7 | — | ⚪ Not filed | ouroboros-engine: [FB.7] Narrative report summary | A cited, labelled summary composed over the report's figures | v2, proof-of-value, insights, engine | Y (after FB.3, BL.5) | N | M | ouroboros-engine, ouroboros-rest, ouroboros-ui, ouroboros-docs |
-| FB.8 | — | ⚪ Not filed | ouroboros-rest: [FB.8] Organisation-level pilot analytics | Roll-up across repositories and pilots over BL.4's organisation rollups | v2, proof-of-value, insights, rest, ui | Y (after FB.3, BL.4) | N | L | ouroboros-rest, ouroboros-db, ouroboros-ui, ouroboros-docs |
+| FB.1 | #1708 | 🟡 Open | ouroboros-db: [FB.1] Report snapshot & figure-row schema | Immutable numbered reports; every figure stored with the rows behind it | mvp, proof-of-value, db | Y (after FA.1) | Y | M | ouroboros-db |
+| FB.2 | #1725 | 🟡 Open | ouroboros-rest: [FB.2] Comparison engine | Three cohorts, size bands, intervals, minimum sample, censoring, provenance | mvp, proof-of-value, insights, rest | N (after EZ.3, FA.2, FC.2) | Y | L | ouroboros-rest |
+| FB.3 | #1726 | 🟡 Open | ouroboros-rest: [FB.3] Report generation & traceability API | Generate, list, read; figure → rows → run or pull request | mvp, proof-of-value, rest | N (after FB.1, FB.2) | Y | M | ouroboros-rest, ouroboros-docs |
+| FB.4 | #1727 | 🟡 Open | ouroboros-rest: [FB.4] Report export — HTML, CSV & evidence bundle | Self-contained printable HTML, figure CSV, hashed JSON bundle | mvp, proof-of-value, rest | N (after FB.3, FD.2) | Y | M | ouroboros-rest, ouroboros-docs |
+| FB.5 | #1728 | 🟡 Open | ouroboros-ui: [FB.5] Report page, drill-down & export controls | Funnel, cohort tables, bands, limitations, events, row drill-down | mvp, proof-of-value, insights, ui, design | N (after FB.3, FB.4) | Y | L | ouroboros-ui, ouroboros-docs |
+| FB.6 | #1733 | 🟡 Open | ouroboros-rest: [FB.6] Report tests, seeded pilot report & e2e leg | Figure-equals-rows, determinism, provenance, export and e2e walk | mvp, proof-of-value, rest, ui, ci | N (after FB.5, EZ.6, FA.5) | Y | M | ouroboros-rest, ouroboros-ui, tests, .github |
+| FB.7 | #1729 | 🟡 Open | ouroboros-engine: [FB.7] Narrative report summary | A cited, labelled summary composed over the report's figures | v2, proof-of-value, insights, engine | Y (after FB.3, BL.5) | N | M | ouroboros-engine, ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| FB.8 | #1730 | 🟡 Open | ouroboros-rest: [FB.8] Organisation-level pilot analytics | Roll-up across repositories and pilots over BL.4's organisation rollups | v2, proof-of-value, insights, rest, ui | Y (after FB.3, BL.4) | N | L | ouroboros-rest, ouroboros-db, ouroboros-ui, ouroboros-docs |
 
 ### Issue FB.1 — ouroboros-db: [FB.1] Report snapshot & figure-row schema
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FB
+> **GitHub issue:** #1708 · **Status:** 🟡 Open · **Parent epic:** #1701
 
 - **Problem Statement:** The description requires a report that is "dated" and in which
   "every number is traceable to runs". A report recomputed on every view is neither: the
@@ -1159,7 +1161,7 @@ erDiagram
 
 ### Issue FB.2 — ouroboros-rest: [FB.2] Comparison engine
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FB
+> **GitHub issue:** #1725 · **Status:** 🟡 Open · **Parent epic:** #1701
 
 - **Problem Statement:** This is where the methodology risks are either handled or hidden.
   A two-column before/after on a selected, small, partly matured sample misleads in every
@@ -1243,7 +1245,7 @@ flowchart TB
 
 ### Issue FB.3 — ouroboros-rest: [FB.3] Report generation & traceability API
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FB
+> **GitHub issue:** #1726 · **Status:** 🟡 Open · **Parent epic:** #1701
 
 - **Problem Statement:** The engine's output has to become a stored, numbered, dated report
   and an API from which any figure can be opened onto the pull requests and runs behind it.
@@ -1295,7 +1297,7 @@ sequenceDiagram
 
 ### Issue FB.4 — ouroboros-rest: [FB.4] Report export — HTML, CSV & evidence bundle
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FB
+> **GitHub issue:** #1727 · **Status:** 🟡 Open · **Parent epic:** #1701
 
 - **Problem Statement:** "Exportable" means a file a buyer can forward to a steering
   committee and an auditor can check without access to the product. Insights has no export
@@ -1357,7 +1359,7 @@ sequenceDiagram
 
 ### Issue FB.5 — ouroboros-ui: [FB.5] Report page, drill-down & export controls
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FB
+> **GitHub issue:** #1728 · **Status:** 🟡 Open · **Parent epic:** #1701
 
 - **Problem Statement:** The report is the artefact a design partner judges the product by.
   It has to lead with what happened to all the work the loop took, show the comparison with
@@ -1424,7 +1426,7 @@ sequenceDiagram
 
 ### Issue FB.6 — ouroboros-rest: [FB.6] Report tests, seeded pilot report & e2e leg
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FB
+> **GitHub issue:** #1733 · **Status:** 🟡 Open · **Parent epic:** #1701
 
 - **Problem Statement:** The MVP gate is a walk from baseline to exported file with the
   guarantees checked by machine: figures equal their rows, exports are deterministic, the
@@ -1464,7 +1466,7 @@ flowchart LR
 
 ### Issue FB.7 — ouroboros-engine: [FB.7] Narrative report summary
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FB
+> **GitHub issue:** #1729 · **Status:** 🟡 Open · **Parent epic:** #1701
 
 - **Problem Statement:** A steering committee reads a paragraph before a table. A generated
   paragraph is also the easiest place for a causal claim or an unsupported number to enter
@@ -1497,7 +1499,7 @@ flowchart LR
 
 ### Issue FB.8 — ouroboros-rest: [FB.8] Organisation-level pilot analytics
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FB
+> **GitHub issue:** #1730 · **Status:** 🟡 Open · **Parent epic:** #1701
 
 - **Problem Statement:** An enterprise pilot usually spans several repositories and is
   followed by a second pilot. The MVP reports one pilot, with per-repository baselines, and
@@ -1539,15 +1541,15 @@ history alone; the loop side has nothing real to track until the Live Loop roadm
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| FC.1 | — | ⚪ Not filed | ouroboros-db: [FC.1] Pull request outcome schema | One outcome row per merged pull request: reverted, reworked, standing, observation state | mvp, proof-of-value, pr, db | Y (after EZ.1) | Y | S | ouroboros-db |
-| FC.2 | — | ⚪ Not filed | ouroboros-rest: [FC.2] Revert linkage & observation windows | Link each revert to what it reverted, on every cohort; matured and pending counts | mvp, proof-of-value, pr, insights, rest | N (after FC.1, EZ.2) | Y | M | ouroboros-rest |
-| FC.3 | — | ⚪ Not filed | ouroboros-rest: [FC.3] Follow-up fix detection | Fixes that touch a merged pull request's files soon after, as a labelled proxy | v2, proof-of-value, pr, rest | Y (after FC.2) | N | L | ouroboros-rest, ouroboros-db |
-| FC.4 | — | ⚪ Not filed | ouroboros-rest: [FC.4] Line survival sampling | Share of a merged pull request's added lines still present at 30 and 90 days | v2, proof-of-value, pr, rest, build-farm | Y (after FC.2) | N | L | ouroboros-rest, ouroboros-runner, ouroboros-db, docs |
-| FC.5 | — | ⚪ Not filed | ouroboros-ui: [FC.5] Rework & survival on Insights and in the report | An Insights card and a report section for outcomes of merged loop work | v2, proof-of-value, insights, ui, design | N (after FC.3 or FC.4) | N | M | ouroboros-ui, ouroboros-rest, ouroboros-docs |
+| FC.1 | #1709 | 🟡 Open | ouroboros-db: [FC.1] Pull request outcome schema | One outcome row per merged pull request: reverted, reworked, standing, observation state | mvp, proof-of-value, pr, db | Y (after EZ.1) | Y | S | ouroboros-db |
+| FC.2 | #1710 | 🟡 Open | ouroboros-rest: [FC.2] Revert linkage & observation windows | Link each revert to what it reverted, on every cohort; matured and pending counts | mvp, proof-of-value, pr, insights, rest | N (after FC.1, EZ.2) | Y | M | ouroboros-rest |
+| FC.3 | #1711 | 🟡 Open | ouroboros-rest: [FC.3] Follow-up fix detection | Fixes that touch a merged pull request's files soon after, as a labelled proxy | v2, proof-of-value, pr, rest | Y (after FC.2) | N | L | ouroboros-rest, ouroboros-db |
+| FC.4 | #1712 | 🟡 Open | ouroboros-rest: [FC.4] Line survival sampling | Share of a merged pull request's added lines still present at 30 and 90 days | v2, proof-of-value, pr, rest, build-farm | Y (after FC.2) | N | L | ouroboros-rest, ouroboros-runner, ouroboros-db, docs |
+| FC.5 | #1713 | 🟡 Open | ouroboros-ui: [FC.5] Rework & survival on Insights and in the report | An Insights card and a report section for outcomes of merged loop work | v2, proof-of-value, insights, ui, design | N (after FC.3 or FC.4) | N | M | ouroboros-ui, ouroboros-rest, ouroboros-docs |
 
 ### Issue FC.1 — ouroboros-db: [FC.1] Pull request outcome schema
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FC
+> **GitHub issue:** #1709 · **Status:** 🟡 Open · **Parent epic:** #1702
 
 - **Problem Statement:** The product records that a loop pull request merged and nothing
   about what happened to it next. The DORA strip's change failure rate counts reverts in a
@@ -1582,7 +1584,7 @@ stateDiagram-v2
 
 ### Issue FC.2 — ouroboros-rest: [FC.2] Revert linkage & observation windows
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FC
+> **GitHub issue:** #1710 · **Status:** 🟡 Open · **Parent epic:** #1702
 
 - **Problem Statement:** The shipped detector recognises that a title is a revert. A
   revert *rate* per cohort needs to know which pull request each revert undid, when, and
@@ -1642,7 +1644,7 @@ stateDiagram-v2
 
 ### Issue FC.3 — ouroboros-rest: [FC.3] Follow-up fix detection
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FC
+> **GitHub issue:** #1711 · **Status:** 🟡 Open · **Parent epic:** #1702
 
 - **Problem Statement:** Most failures are fixed forward, not reverted — the shipped
   detector's own header says a fix-forward "is not seen". A revert-only rate therefore
@@ -1681,7 +1683,7 @@ flowchart LR
 
 ### Issue FC.4 — ouroboros-rest: [FC.4] Line survival sampling
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FC
+> **GitHub issue:** #1712 · **Status:** 🟡 Open · **Parent epic:** #1702
 
 - **Problem Statement:** "Survival" in the description means more than not being reverted:
   whether the code the loop wrote is still in the codebase. DX warns that generated code may
@@ -1723,7 +1725,7 @@ sequenceDiagram
 
 ### Issue FC.5 — ouroboros-ui: [FC.5] Rework & survival on Insights and in the report
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FC
+> **GitHub issue:** #1713 · **Status:** 🟡 Open · **Parent epic:** #1702
 
 - **Problem Statement:** Outcomes of merged loop work have no surface outside a pilot
   report, and after a pilot ends the question "is what the loop merged still standing" keeps
@@ -1768,16 +1770,16 @@ counsel a default, a switch, a record and a description to review.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| FD.1 | — | ⚪ Not filed | ouroboros-db: [FD.1] `analytics_granularity` policy rule & person-data inventory | A sixth rule in the versioned policy document; a catalogue of person-bearing columns | mvp, proof-of-value, settings, db | Y (first) | Y | M | ouroboros-db, schemas |
-| FD.2 | — | ⚪ Not filed | ouroboros-rest: [FD.2] Analytics granularity guard | One enforcement point on every analytics response and export; audit | mvp, proof-of-value, settings, insights, rest | N (after FD.1) | Y | M | ouroboros-rest |
-| FD.3 | — | ⚪ Not filed | ouroboros-ui: [FD.3] Analytics privacy card & Owner opt-in | Settings card, acknowledgement, member-visible notice | mvp, proof-of-value, settings, ui, design | N (after FD.2) | Y | M | ouroboros-ui, ouroboros-docs |
-| FD.4 | — | ⚪ Not filed | ouroboros-rest: [FD.4] Policy-fit checks — schema lint & response scan | CI checks that no analytics schema or response carries a person field by default | mvp, proof-of-value, rest, ci | Y (after FD.1) | Y | M | ouroboros-rest, scripts, .github |
-| FD.5 | — | ⚪ Not filed | ouroboros: [FD.5] Analytics privacy statement & legal-review checklist | `docs/ANALYTICS_PRIVACY.md` and the Administration page; not legal advice | mvp, proof-of-value, documentation, settings | Y | Y | S | docs, ouroboros-docs |
-| FD.6 | — | ⚪ Not filed | ouroboros-ui: [FD.6] Per-person views behind the opt-in | Reviewer-load and intervention views by person, only when opted in | v2, proof-of-value, insights, ui, rest | N (after FD.3) | N | L | ouroboros-ui, ouroboros-rest, ouroboros-db, ouroboros-docs |
+| FD.1 | #1714 | 🟡 Open | ouroboros-db: [FD.1] `analytics_granularity` policy rule & person-data inventory | A sixth rule in the versioned policy document; a catalogue of person-bearing columns | mvp, proof-of-value, settings, db | Y (first) | Y | M | ouroboros-db, schemas |
+| FD.2 | #1715 | 🟡 Open | ouroboros-rest: [FD.2] Analytics granularity guard | One enforcement point on every analytics response and export; audit | mvp, proof-of-value, settings, insights, rest | N (after FD.1) | Y | M | ouroboros-rest |
+| FD.3 | #1731 | 🟡 Open | ouroboros-ui: [FD.3] Analytics privacy card & Owner opt-in | Settings card, acknowledgement, member-visible notice | mvp, proof-of-value, settings, ui, design | N (after FD.2) | Y | M | ouroboros-ui, ouroboros-docs |
+| FD.4 | #1732 | 🟡 Open | ouroboros-rest: [FD.4] Policy-fit checks — schema lint & response scan | CI checks that no analytics schema or response carries a person field by default | mvp, proof-of-value, rest, ci | Y (after FD.1) | Y | M | ouroboros-rest, scripts, .github |
+| FD.5 | #1734 | 🟡 Open | ouroboros: [FD.5] Analytics privacy statement & legal-review checklist | `docs/ANALYTICS_PRIVACY.md` and the Administration page; not legal advice | mvp, proof-of-value, documentation, settings | Y | Y | S | docs, ouroboros-docs |
+| FD.6 | #1735 | 🟡 Open | ouroboros-ui: [FD.6] Per-person views behind the opt-in | Reviewer-load and intervention views by person, only when opted in | v2, proof-of-value, insights, ui, rest | N (after FD.3) | N | L | ouroboros-ui, ouroboros-rest, ouroboros-db, ouroboros-docs |
 
 ### Issue FD.1 — ouroboros-db: [FD.1] `analytics_granularity` policy rule & person-data inventory
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FD
+> **GitHub issue:** #1714 · **Status:** 🟡 Open · **Parent epic:** #1703
 
 - **Problem Statement:** The description requires "policy checks that keep analytics at
   team and repository level unless an administrator opts in to per-person views". The
@@ -1838,7 +1840,7 @@ erDiagram
 
 ### Issue FD.2 — ouroboros-rest: [FD.2] Analytics granularity guard
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FD
+> **GitHub issue:** #1715 · **Status:** 🟡 Open · **Parent epic:** #1703
 
 - **Problem Statement:** A rule in a document changes nothing until one piece of code
   enforces it everywhere analytics leave the service. Filtering in each controller is how a
@@ -1889,7 +1891,7 @@ flowchart LR
 
 ### Issue FD.3 — ouroboros-ui: [FD.3] Analytics privacy card & Owner opt-in
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FD
+> **GitHub issue:** #1731 · **Status:** 🟡 Open · **Parent epic:** #1703
 
 - **Problem Statement:** The opt-in has to be a deliberate act by someone accountable, and
   the people it affects have to be able to see that it was made. A silent switch is the
@@ -1951,7 +1953,7 @@ flowchart LR
 
 ### Issue FD.4 — ouroboros-rest: [FD.4] Policy-fit checks — schema lint & response scan
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FD
+> **GitHub issue:** #1732 · **Status:** 🟡 Open · **Parent epic:** #1703
 
 - **Problem Statement:** The guard protects annotated fields. The failure that matters is
   the field nobody annotated — a `mergedBy` added to a DTO next year. "Policy checks" in the
@@ -1998,7 +2000,7 @@ flowchart TB
 
 ### Issue FD.5 — ouroboros: [FD.5] Analytics privacy statement & legal-review checklist
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FD
+> **GitHub issue:** #1734 · **Status:** 🟡 Open · **Parent epic:** #1703
 
 - **Problem Statement:** A buyer's works council, data-protection officer or counsel will
   ask what the analytics collect about people. Today there is nothing to hand them, and the
@@ -2048,7 +2050,7 @@ flowchart LR
 
 ### Issue FD.6 — ouroboros-ui: [FD.6] Per-person views behind the opt-in
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** FD
+> **GitHub issue:** #1735 · **Status:** 🟡 Open · **Parent epic:** #1703
 
 - **Problem Statement:** The description allows per-person views after an administrator
   opts in. Some customers have an agreed, lawful use — most plausibly balancing review load,

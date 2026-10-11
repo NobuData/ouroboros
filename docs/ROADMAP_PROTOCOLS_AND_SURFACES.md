@@ -375,18 +375,20 @@ BT.3 #499) and **editor take-over links** (AR.2 #316). **Not planned:** A2A (PS1
 
 ## Epics, Labels & Milestones
 
+> **Filed 2026-10-10** by `create-issues` in `NobuData/ouroboros`: epic parents #1628–#1634, work issues #1635–#1698, numbered in dependency order. Each work issue is a sub-issue of its epic with blocked-by links, Priority, Effort and type set. Statements below that nothing is filed predate this; relabelling or amending *existing* issues described by this roadmap has **not** been done.
+
 Each epic would be a parent tracking issue on GitHub with its issues filed as sub-issues
 (GitHub Relationships). **None is filed.**
 
 | Epic | GitHub | Status | Name | Goal | Modules | Milestone |
 |------|:------:|:------:|------|------|---------|-----------|
-| ES | — | ⚪ Not filed | GitHub App & Webhook-First Intake | App per deployment, verified deliveries, fan-out, PR and check events, reconciliation | ouroboros-rest, ouroboros-db, ouroboros-ui | Protocols & Surfaces MVP |
-| ET | — | ⚪ Not filed | MCP Client | Approved servers and tools, OAuth client, gateway, stage grants, research adapter | ouroboros-rest, ouroboros-engine, ouroboros-db, ouroboros-ui, ouroboros-runner | Protocols & Surfaces MVP |
-| EU | — | ⚪ Not filed | MCP Server | Runs, gates, evidence and inbox to external agents; actions through `/ouro` | ouroboros-rest, ouroboros-ui | Protocols & Surfaces v2 |
-| EV | — | ⚪ Not filed | Assignable Agent in Linear & Jira | Linear install, receiver, session transport and router, delegation; Jira later | ouroboros-rest, ouroboros-db, ouroboros-ui | Protocols & Surfaces MVP |
-| EW | — | ⚪ Not filed | Event & Schedule Triggers | Trigger vocabulary; schedules, events, webhooks, alerts; authoring in the builder | ouroboros-rest, ouroboros-engine, ouroboros-db, ouroboros-ui | Protocols & Surfaces v2 (EW.1: MVP) |
-| EX | — | ⚪ Not filed | Telemetry Export | OTLP traces and metrics for runs, stable own namespace, capture policy | ouroboros-rest, ouroboros-engine, ouroboros-ui, ouroboros-runner | Protocols & Surfaces MVP |
-| EY | — | ⚪ Not filed | Repository Conventions | Nested AGENTS.md, Agent Skills import, live reading, re-sync | ouroboros-rest, ouroboros-ui | Protocols & Surfaces v2 |
+| ES | #1628 | 🟡 Open | GitHub App & Webhook-First Intake | App per deployment, verified deliveries, fan-out, PR and check events, reconciliation | ouroboros-rest, ouroboros-db, ouroboros-ui | Protocols & Surfaces MVP |
+| ET | #1629 | 🟡 Open | MCP Client | Approved servers and tools, OAuth client, gateway, stage grants, research adapter | ouroboros-rest, ouroboros-engine, ouroboros-db, ouroboros-ui, ouroboros-runner | Protocols & Surfaces MVP |
+| EU | #1630 | 🟡 Open | MCP Server | Runs, gates, evidence and inbox to external agents; actions through `/ouro` | ouroboros-rest, ouroboros-ui | Protocols & Surfaces v2 |
+| EV | #1631 | 🟡 Open | Assignable Agent in Linear & Jira | Linear install, receiver, session transport and router, delegation; Jira later | ouroboros-rest, ouroboros-db, ouroboros-ui | Protocols & Surfaces MVP |
+| EW | #1632 | 🟡 Open | Event & Schedule Triggers | Trigger vocabulary; schedules, events, webhooks, alerts; authoring in the builder | ouroboros-rest, ouroboros-engine, ouroboros-db, ouroboros-ui | Protocols & Surfaces v2 (EW.1: MVP) |
+| EX | #1633 | 🟡 Open | Telemetry Export | OTLP traces and metrics for runs, stable own namespace, capture policy | ouroboros-rest, ouroboros-engine, ouroboros-ui, ouroboros-runner | Protocols & Surfaces MVP |
+| EY | #1634 | 🟡 Open | Repository Conventions | Nested AGENTS.md, Agent Skills import, live reading, re-sync | ouroboros-rest, ouroboros-ui | Protocols & Surfaces v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`, with `ouroboros` as the project for
 repository-level documents (ADRs). Labels: the existing set (`mvp`, `v2`, `rest`, `db`,
@@ -420,19 +422,19 @@ App, its receiver and the fan-out exist; decision PS2.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| ES.1 | — | ⚪ Not filed | ouroboros-db: [ES.1] App installations, inbound deliveries & consumer outbox schema | Installations with accepted permissions, a delivery ledger keyed by delivery id, per-consumer outbox rows | mvp, protocols, intake, db | N (first) | Y | M | ouroboros-db |
-| ES.2 | — | ⚪ Not filed | ouroboros-rest: [ES.2] App registration by manifest & installation lifecycle | Each deployment registers its own App; key and webhook secret sealed; installation events tracked | mvp, protocols, intake, rest | N (after ES.1, #122) | Y | L | ouroboros-rest, ouroboros-docs |
-| ES.3 | — | ⚪ Not filed | ouroboros-rest: [ES.3] Permission set, event subscriptions & degraded modes | The permissions and events both products need, a capability snapshot, and honest behaviour when one is missing | mvp, protocols, intake, rest | N (after ES.2) | Y | M | ouroboros-rest, ouroboros-docs |
-| ES.4 | — | ⚪ Not filed | ouroboros-rest: [ES.4] Delivery ledger, dedupe & in-process fan-out | Verify, record, dedupe, then hand each delivery to registered consumers at least once | mvp, protocols, intake, rest | N (after ES.1, #122) | Y | L | ouroboros-rest |
-| ES.5 | — | ⚪ Not filed | ouroboros-rest: [ES.5] Pull request, review & check events replace PR polling | PR sync fed by `pull_request`, `pull_request_review`, `check_run`, `check_suite` deliveries | mvp, protocols, pr, rest | Y (after ES.4) | Y | M | ouroboros-rest, ouroboros-docs |
-| ES.6 | — | ⚪ Not filed | ouroboros-rest: [ES.6] Reconciliation sweep & redelivery | Polling demoted to a sweep; failed deliveries re-requested from GitHub | mvp, protocols, intake, rest | Y (after ES.4) | Y | M | ouroboros-rest, ouroboros-docs |
-| ES.7 | — | ⚪ Not filed | ouroboros-ui: [ES.7] GitHub App connection card, permission upgrade & delivery health | Register, install, see what was accepted, upgrade, and read delivery health | mvp, protocols, settings, ui, design | N (after ES.2, ES.3) | Y | M | ouroboros-ui, ouroboros-docs |
-| ES.8 | — | ⚪ Not filed | ouroboros-rest: [ES.8] GitHub simulator & webhook intake integration tests | A signed-delivery simulator and the suite that proves ES.2–ES.6 | mvp, protocols, intake, rest, ci | N (after ES.2–ES.6) | Y | M | ouroboros-rest, .github |
-| ES.9 | — | ⚪ Not filed | ouroboros-rest: [ES.9] Unreachable deployments & GitHub Enterprise Server | A relay option for deployments GitHub cannot reach, and a configurable host | v2, protocols, intake, rest, infra | Y | N | M | ouroboros-rest, ouroboros-docs |
+| ES.1 | #1635 | 🟡 Open | ouroboros-db: [ES.1] App installations, inbound deliveries & consumer outbox schema | Installations with accepted permissions, a delivery ledger keyed by delivery id, per-consumer outbox rows | mvp, protocols, intake, db | N (first) | Y | M | ouroboros-db |
+| ES.2 | #1636 | 🟡 Open | ouroboros-rest: [ES.2] App registration by manifest & installation lifecycle | Each deployment registers its own App; key and webhook secret sealed; installation events tracked | mvp, protocols, intake, rest | N (after ES.1, #122) | Y | L | ouroboros-rest, ouroboros-docs |
+| ES.3 | #1637 | 🟡 Open | ouroboros-rest: [ES.3] Permission set, event subscriptions & degraded modes | The permissions and events both products need, a capability snapshot, and honest behaviour when one is missing | mvp, protocols, intake, rest | N (after ES.2) | Y | M | ouroboros-rest, ouroboros-docs |
+| ES.4 | #1638 | 🟡 Open | ouroboros-rest: [ES.4] Delivery ledger, dedupe & in-process fan-out | Verify, record, dedupe, then hand each delivery to registered consumers at least once | mvp, protocols, intake, rest | N (after ES.1, #122) | Y | L | ouroboros-rest |
+| ES.5 | #1639 | 🟡 Open | ouroboros-rest: [ES.5] Pull request, review & check events replace PR polling | PR sync fed by `pull_request`, `pull_request_review`, `check_run`, `check_suite` deliveries | mvp, protocols, pr, rest | Y (after ES.4) | Y | M | ouroboros-rest, ouroboros-docs |
+| ES.6 | #1640 | 🟡 Open | ouroboros-rest: [ES.6] Reconciliation sweep & redelivery | Polling demoted to a sweep; failed deliveries re-requested from GitHub | mvp, protocols, intake, rest | Y (after ES.4) | Y | M | ouroboros-rest, ouroboros-docs |
+| ES.7 | #1641 | 🟡 Open | ouroboros-ui: [ES.7] GitHub App connection card, permission upgrade & delivery health | Register, install, see what was accepted, upgrade, and read delivery health | mvp, protocols, settings, ui, design | N (after ES.2, ES.3) | Y | M | ouroboros-ui, ouroboros-docs |
+| ES.8 | #1642 | 🟡 Open | ouroboros-rest: [ES.8] GitHub simulator & webhook intake integration tests | A signed-delivery simulator and the suite that proves ES.2–ES.6 | mvp, protocols, intake, rest, ci | N (after ES.2–ES.6) | Y | M | ouroboros-rest, .github |
+| ES.9 | #1643 | 🟡 Open | ouroboros-rest: [ES.9] Unreachable deployments & GitHub Enterprise Server | A relay option for deployments GitHub cannot reach, and a configurable host | v2, protocols, intake, rest, infra | Y | N | M | ouroboros-rest, ouroboros-docs |
 
 ### Issue ES.1 — ouroboros-db: [ES.1] App installations, inbound deliveries & consumer outbox schema
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ES (not filed)
+> **GitHub issue:** #1635 · **Status:** 🟡 Open · **Parent epic:** #1628
 
 - **Problem Statement:** O.1 (#122) describes a receiver but no storage for what it receives.
   Without a record of deliveries there is nothing to dedupe against, nothing to replay after
@@ -468,7 +470,7 @@ inbound_deliveries{provider, delivery_id ◀ unique, event, signature_ok, digest
 
 ### Issue ES.2 — ouroboros-rest: [ES.2] App registration by manifest & installation lifecycle
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ES (not filed)
+> **GitHub issue:** #1636 · **Status:** 🟡 Open · **Parent epic:** #1628
 
 - **Problem Statement:** Ouroboros is self-hosted, so there is no single vendor-owned App to
   install: every deployment needs its own App, with its own webhook URL, key and secret.
@@ -508,7 +510,7 @@ installation.created / deleted / suspend / new_permissions_accepted ─▶ githu
 
 ### Issue ES.3 — ouroboros-rest: [ES.3] Permission set, event subscriptions & degraded modes
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ES (not filed)
+> **GitHub issue:** #1637 · **Status:** 🟡 Open · **Parent epic:** #1628
 
 - **Problem Statement:** O.1 names three permissions and one event. The Studio's roadmap 24
   asks for more of both (49.1), Ouroboros's own pull-request and trigger work needs others,
@@ -547,7 +549,7 @@ permissions_accepted ─▶ capability snapshot ─▶ ticket sync ✓ · PR syn
 
 ### Issue ES.4 — ouroboros-rest: [ES.4] Delivery ledger, dedupe & in-process fan-out
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ES (not filed)
+> **GitHub issue:** #1638 · **Status:** 🟡 Open · **Parent epic:** #1628
 
 - **Problem Statement:** A webhook endpoint that does its work before answering loses
   deliveries when the work fails, and GitHub does not send a failed delivery again on its own.
@@ -585,7 +587,7 @@ outbox worker ─▶ ticket-sync │ pr-sync │ trigger-router │ studio (if e
 
 ### Issue ES.5 — ouroboros-rest: [ES.5] Pull request, review & check events replace PR polling
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ES (not filed)
+> **GitHub issue:** #1639 · **Status:** 🟡 Open · **Parent epic:** #1628
 
 - **Problem Statement:** O.1 covers `issues` only. Pull requests, reviews and check results
   are still read by the PR sync on an interval, so the PR verification page and the merge gate
@@ -616,7 +618,7 @@ check_run.completed      ─┘
 
 ### Issue ES.6 — ouroboros-rest: [ES.6] Reconciliation sweep & redelivery
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ES (not filed)
+> **GitHub issue:** #1640 · **Status:** 🟡 Open · **Parent epic:** #1628
 
 - **Problem Statement:** Webhooks are lost: the deployment restarts, a proxy times out, a
   secret is rotated mid-flight. GitHub records the failure but does not retry. A product that
@@ -650,7 +652,7 @@ healthy: sweep every N h      silent / suspended / no App: sweep at the poll int
 
 ### Issue ES.7 — ouroboros-ui: [ES.7] GitHub App connection card, permission upgrade & delivery health
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ES (not filed)
+> **GitHub issue:** #1641 · **Status:** 🟡 Open · **Parent epic:** #1628
 
 - **Problem Statement:** An administrator has to be able to tell, without reading logs,
   whether the App is registered, where it is installed, which permissions were accepted and
@@ -687,7 +689,7 @@ healthy: sweep every N h      silent / suspended / no App: sweep at the poll int
 
 ### Issue ES.8 — ouroboros-rest: [ES.8] GitHub simulator & webhook intake integration tests
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ES (not filed)
+> **GitHub issue:** #1642 · **Status:** 🟡 Open · **Parent epic:** #1628
 
 - **Problem Statement:** Nothing in this epic can be proven against GitHub itself in CI, and
   the Studio's roadmap 24 plans tracker simulators of its own (47.9). Two simulators of the
@@ -715,7 +717,7 @@ assert: 1 ledger row / delivery id · ≥1 handle / consumer · rows == sweep ro
 
 ### Issue ES.9 — ouroboros-rest: [ES.9] Unreachable deployments & GitHub Enterprise Server
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ES (not filed)
+> **GitHub issue:** #1643 · **Status:** 🟡 Open · **Parent epic:** #1628
 
 - **Problem Statement:** A self-hosted deployment is often not reachable from the internet,
   and some customers run GitHub Enterprise Server. Webhook-first intake assumes GitHub can
@@ -756,23 +758,23 @@ accepted before it exists.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| ET.1 | — | ⚪ Not filed | ouroboros: [ET.1] MCP client ADR — placement, SDK & protocol revisions | Where the client runs, which SDK, which revisions are spoken | mvp, protocols, documentation | N (first) | Y | S | docs |
-| ET.2 | — | ⚪ Not filed | ouroboros-db: [ET.2] MCP servers, tool snapshots, grants & call ledger schema | Registered servers, hashed tool definitions, approvals, one row per call | mvp, protocols, db | N (after ET.1) | Y | M | ouroboros-db |
-| ET.3 | — | ⚪ Not filed | ouroboros-rest: [ET.3] MCP server registry API & allow-list policy | Default-deny registration under the policy document | mvp, protocols, settings, rest | N (after ET.2) | Y | M | ouroboros-rest, ouroboros-docs |
-| ET.4 | — | ⚪ Not filed | ouroboros-rest: [ET.4] Connection manager — Streamable HTTP & OAuth client | Connect, authorise and keep credentials in the vault | mvp, protocols, rest | N (after ET.3) | Y | L | ouroboros-rest, ouroboros-docs |
-| ET.5 | — | ⚪ Not filed | ouroboros-rest: [ET.5] Tool discovery, pinning & drift re-approval | Approve tools by definition hash; a changed definition is unapproved | mvp, protocols, rest | N (after ET.4) | Y | M | ouroboros-rest, ouroboros-docs |
-| ET.6 | — | ⚪ Not filed | ouroboros-rest: [ET.6] Tool-call gateway — limits, ledger & result handling | The one path a call takes; results are data, never instruction | mvp, protocols, rest | N (after ET.5) | Y | L | ouroboros-rest |
-| ET.7 | — | ⚪ Not filed | ouroboros-engine: [ET.7] Workflow DSL tool grants & stage tool binding | A stage names the servers and tools it may call; both validators agree | mvp, protocols, workflow, engine, rest | N (after ET.6, #160, #235) | Y | L | ouroboros-engine, ouroboros-rest, ouroboros-docs |
-| ET.8 | — | ⚪ Not filed | ouroboros-ui: [ET.8] MCP servers settings card & tool approval sheet | Register, connect, review and approve tools | mvp, protocols, settings, ui, design | Y (after ET.3–ET.5) | Y | M | ouroboros-ui, ouroboros-docs |
-| ET.9 | — | ⚪ Not filed | ouroboros-ui: [ET.9] Inspector tool grants & run-console tool events | Grant tools on a stage; see each call in a run | mvp, protocols, workflow, runs, ui | N (after ET.7, ET.8) | Y | M | ouroboros-ui, ouroboros-docs |
-| ET.10 | — | ⚪ Not filed | ouroboros-rest: [ET.10] Fixture server, conformance & security tests | A hostile fixture server and the suite that proves the controls | mvp, protocols, rest, ci | N (after ET.4–ET.6) | Y | M | ouroboros-rest, .github |
-| ET.11 | — | ⚪ Not filed | ouroboros-rest: [ET.11] MCP-backed research tool adapter | An approved server's read-only tools as a research tool | mvp, protocols, research, rest | Y (after ET.6, CL.1) | Y | S | ouroboros-rest, ouroboros-docs |
-| ET.12 | — | ⚪ Not filed | ouroboros-runner: [ET.12] stdio servers in the job sandbox | Local servers run inside a farm job, never on the control plane | v2, protocols, build-farm, infra | Y | N | L | ouroboros-runner, ouroboros-rest, ouroboros-docs |
-| ET.13 | — | ⚪ Not filed | ouroboros-rest: [ET.13] Registry browsing, enterprise-managed authorization & tasks | Discover servers from a registry; IdP-brokered tokens; long-running tools | v2, protocols, rest, ui | Y | N | L | ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| ET.1 | #1644 | 🟡 Open | ouroboros: [ET.1] MCP client ADR — placement, SDK & protocol revisions | Where the client runs, which SDK, which revisions are spoken | mvp, protocols, documentation | N (first) | Y | S | docs |
+| ET.2 | #1645 | 🟡 Open | ouroboros-db: [ET.2] MCP servers, tool snapshots, grants & call ledger schema | Registered servers, hashed tool definitions, approvals, one row per call | mvp, protocols, db | N (after ET.1) | Y | M | ouroboros-db |
+| ET.3 | #1646 | 🟡 Open | ouroboros-rest: [ET.3] MCP server registry API & allow-list policy | Default-deny registration under the policy document | mvp, protocols, settings, rest | N (after ET.2) | Y | M | ouroboros-rest, ouroboros-docs |
+| ET.4 | #1647 | 🟡 Open | ouroboros-rest: [ET.4] Connection manager — Streamable HTTP & OAuth client | Connect, authorise and keep credentials in the vault | mvp, protocols, rest | N (after ET.3) | Y | L | ouroboros-rest, ouroboros-docs |
+| ET.5 | #1648 | 🟡 Open | ouroboros-rest: [ET.5] Tool discovery, pinning & drift re-approval | Approve tools by definition hash; a changed definition is unapproved | mvp, protocols, rest | N (after ET.4) | Y | M | ouroboros-rest, ouroboros-docs |
+| ET.6 | #1649 | 🟡 Open | ouroboros-rest: [ET.6] Tool-call gateway — limits, ledger & result handling | The one path a call takes; results are data, never instruction | mvp, protocols, rest | N (after ET.5) | Y | L | ouroboros-rest |
+| ET.7 | #1650 | 🟡 Open | ouroboros-engine: [ET.7] Workflow DSL tool grants & stage tool binding | A stage names the servers and tools it may call; both validators agree | mvp, protocols, workflow, engine, rest | N (after ET.6, #160, #235) | Y | L | ouroboros-engine, ouroboros-rest, ouroboros-docs |
+| ET.8 | #1651 | 🟡 Open | ouroboros-ui: [ET.8] MCP servers settings card & tool approval sheet | Register, connect, review and approve tools | mvp, protocols, settings, ui, design | Y (after ET.3–ET.5) | Y | M | ouroboros-ui, ouroboros-docs |
+| ET.9 | #1652 | 🟡 Open | ouroboros-ui: [ET.9] Inspector tool grants & run-console tool events | Grant tools on a stage; see each call in a run | mvp, protocols, workflow, runs, ui | N (after ET.7, ET.8) | Y | M | ouroboros-ui, ouroboros-docs |
+| ET.10 | #1653 | 🟡 Open | ouroboros-rest: [ET.10] Fixture server, conformance & security tests | A hostile fixture server and the suite that proves the controls | mvp, protocols, rest, ci | N (after ET.4–ET.6) | Y | M | ouroboros-rest, .github |
+| ET.11 | #1654 | 🟡 Open | ouroboros-rest: [ET.11] MCP-backed research tool adapter | An approved server's read-only tools as a research tool | mvp, protocols, research, rest | Y (after ET.6, CL.1) | Y | S | ouroboros-rest, ouroboros-docs |
+| ET.12 | #1655 | 🟡 Open | ouroboros-runner: [ET.12] stdio servers in the job sandbox | Local servers run inside a farm job, never on the control plane | v2, protocols, build-farm, infra | Y | N | L | ouroboros-runner, ouroboros-rest, ouroboros-docs |
+| ET.13 | #1656 | 🟡 Open | ouroboros-rest: [ET.13] Registry browsing, enterprise-managed authorization & tasks | Discover servers from a registry; IdP-brokered tokens; long-running tools | v2, protocols, rest, ui | Y | N | L | ouroboros-rest, ouroboros-ui, ouroboros-docs |
 
 ### Issue ET.1 — ouroboros: [ET.1] MCP client ADR — placement, SDK & protocol revisions
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ET (not filed)
+> **GitHub issue:** #1644 · **Status:** 🟡 Open · **Parent epic:** #1629
 
 - **Problem Statement:** Three choices shape everything after them and are expensive to
   reverse: which process holds MCP credentials, which SDK is used, and which protocol
@@ -805,7 +807,7 @@ engine worker ──(no MCP credential)──▶ ouroboros-rest /internal/mcp/ca
 
 ### Issue ET.2 — ouroboros-db: [ET.2] MCP servers, tool snapshots, grants & call ledger schema
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ET (not filed)
+> **GitHub issue:** #1645 · **Status:** 🟡 Open · **Parent epic:** #1629
 
 - **Problem Statement:** An allow-list needs something to list; an audit needs something to
   read. Neither exists.
@@ -837,7 +839,7 @@ mcp_servers ─▶ mcp_tool_snapshots{definition_hash} ─▶ mcp_tool_approvals
 
 ### Issue ET.3 — ouroboros-rest: [ET.3] MCP server registry API & allow-list policy
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ET (not filed)
+> **GitHub issue:** #1646 · **Status:** 🟡 Open · **Parent epic:** #1629
 
 - **Problem Statement:** The description asks for *customer-approved* servers *under an
   allow-list*. The allow-list itself is the business of `ROADMAP_ENTERPRISE_READINESS.md`
@@ -871,7 +873,7 @@ permits(ws, server, tool) = server.approved ∧ tool.snapshot.approved ∧ ¬sus
 
 ### Issue ET.4 — ouroboros-rest: [ET.4] Connection manager — Streamable HTTP & OAuth client
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ET (not filed)
+> **GitHub issue:** #1647 · **Status:** 🟡 Open · **Parent epic:** #1629
 
 - **Problem Statement:** Remote MCP servers authorise with OAuth 2.1 and the specification is
   strict about how a client finds the authorisation server and binds a token to one resource.
@@ -907,7 +909,7 @@ client id = https://<deployment>/.well-known/…/client.json  (CIMD; DCR only as
 
 ### Issue ET.5 — ouroboros-rest: [ET.5] Tool discovery, pinning & drift re-approval
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ET (not filed)
+> **GitHub issue:** #1648 · **Status:** 🟡 Open · **Parent epic:** #1629
 
 - **Problem Statement:** A tool's description is text the model reads, so it is an injection
   surface, and a server can change it after it was reviewed. The specification says tool
@@ -942,7 +944,7 @@ tools/list ─▶ hash(name, description, schemas, annotations) ─▶ snapshot
 
 ### Issue ET.6 — ouroboros-rest: [ET.6] Tool-call gateway — limits, ledger & result handling
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ET (not filed)
+> **GitHub issue:** #1649 · **Status:** 🟡 Open · **Parent epic:** #1629
 
 - **Problem Statement:** Every MCP call needs the same checks in the same order, and what
   comes back is attacker-influenced text arriving in the middle of a run.
@@ -979,7 +981,7 @@ lease ─▶ stage grant ─▶ policy ─▶ args vs pinned schema ─▶ limit
 
 ### Issue ET.7 — ouroboros-engine: [ET.7] Workflow DSL tool grants & stage tool binding
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ET (not filed)
+> **GitHub issue:** #1650 · **Status:** 🟡 Open · **Parent epic:** #1629
 
 - **Problem Statement:** The workflow document has no way to say which tools a stage may
   call. `permissions` on an `llm` node holds two booleans and is, by the document's own
@@ -1015,7 +1017,7 @@ lease ─▶ stage grant ─▶ policy ─▶ args vs pinned schema ─▶ limit
 
 ### Issue ET.8 — ouroboros-ui: [ET.8] MCP servers settings card & tool approval sheet
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ET (not filed)
+> **GitHub issue:** #1651 · **Status:** 🟡 Open · **Parent epic:** #1629
 
 - **Problem Statement:** Approval is a human act and needs a surface where the thing being
   approved can be read in full.
@@ -1048,7 +1050,7 @@ lease ─▶ stage grant ─▶ policy ─▶ args vs pinned schema ─▶ limit
 
 ### Issue ET.9 — ouroboros-ui: [ET.9] Inspector tool grants & run-console tool events
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ET (not filed)
+> **GitHub issue:** #1652 · **Status:** 🟡 Open · **Parent epic:** #1629
 
 - **Problem Statement:** A grant in the document needs an editor in the builder, and a call
   in a run needs to be visible where the rest of the run is.
@@ -1078,7 +1080,7 @@ Inspector ▸ Tools            Run console
 
 ### Issue ET.10 — ouroboros-rest: [ET.10] Fixture server, conformance & security tests
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ET (not filed)
+> **GitHub issue:** #1653 · **Status:** 🟡 Open · **Parent epic:** #1629
 
 - **Problem Statement:** The controls in this epic are only real if a hostile server cannot
   get round them, and that has to be shown in CI without calling the internet.
@@ -1106,7 +1108,7 @@ expected:            stop     truncate  labelled   approver wins        refuse  
 
 ### Issue ET.11 — ouroboros-rest: [ET.11] MCP-backed research tool adapter
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ET (not filed)
+> **GitHub issue:** #1654 · **Status:** 🟡 Open · **Parent epic:** #1629
 
 - **Problem Statement:** Until stages execute, the MCP client has no user. Research is the one
   shipped subsystem that already calls tools through an SPI (CL.1 #614) and records what
@@ -1137,7 +1139,7 @@ investigation ─▶ ResearchToolAdapter(mcp) ─▶ ET.6 gateway ─▶ approve
 
 ### Issue ET.12 — ouroboros-runner: [ET.12] stdio servers in the job sandbox
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ET (not filed)
+> **GitHub issue:** #1655 · **Status:** 🟡 Open · **Parent epic:** #1629
 
 - **Problem Statement:** Many MCP servers are local programs started over stdio. Running a
   customer-named command on the control plane is the local-server compromise the MCP security
@@ -1164,7 +1166,7 @@ gateway ◀── agent protocol ── runner ── stdio ── server proces
 
 ### Issue ET.13 — ouroboros-rest: [ET.13] Registry browsing, enterprise-managed authorization & tasks
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** ET (not filed)
+> **GitHub issue:** #1656 · **Status:** 🟡 Open · **Parent epic:** #1629
 
 - **Problem Statement:** Three parts of the MCP ecosystem are useful and not ready to depend
   on: the official registry is in preview, enterprise-managed authorisation is an extension,
@@ -1203,17 +1205,17 @@ Studio adds tools to one server instead of running a second.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EU.1 | — | ⚪ Not filed | ouroboros: [EU.1] MCP server ADR — endpoint shape & authorisation server | Stateless endpoint, who issues tokens, what is exposed | v2, protocols, documentation | N (first) | N | S | docs |
-| EU.2 | — | ⚪ Not filed | ouroboros-rest: [EU.2] MCP endpoint, discovery & tool registration seam | One Streamable HTTP endpoint and an in-process registry of tools | v2, protocols, rest | N (after EU.1) | N | L | ouroboros-rest |
-| EU.3 | — | ⚪ Not filed | ouroboros-rest: [EU.3] Authorisation — resource server, audience-bound tokens & scopes | OAuth resource-server role, member and service-account access | v2, protocols, auth, rest | N (after EU.2) | N | L | ouroboros-rest, ouroboros-docs |
-| EU.4 | — | ⚪ Not filed | ouroboros-rest: [EU.4] Read tools — runs, gates, evidence & inbox | Read-only tools over existing read APIs | v2, protocols, runs, pr, inbox, rest | Y (after EU.3) | N | M | ouroboros-rest, ouroboros-docs |
-| EU.5 | — | ⚪ Not filed | ouroboros-rest: [EU.5] Action tools through the `/ouro` registry | Queue, answer, pause and resume, with the registry's permission and confirm rules | v2, protocols, chatops, rest | Y (after EU.3, #537) | N | M | ouroboros-rest, ouroboros-docs |
-| EU.6 | — | ⚪ Not filed | ouroboros-ui: [EU.6] MCP access settings — clients, scopes & exposure | Turn the server on, see who is connected, choose what is exposed | v2, protocols, settings, ui | Y (after EU.3) | N | M | ouroboros-ui, ouroboros-docs |
-| EU.7 | — | ⚪ Not filed | ouroboros-rest: [EU.7] Server conformance tests & client recipes | Protocol conformance, authorisation abuse cases, setup guides | v2, protocols, rest, ci | N (after EU.4, EU.5) | N | M | ouroboros-rest, ouroboros-docs, .github |
+| EU.1 | #1657 | 🟡 Open | ouroboros: [EU.1] MCP server ADR — endpoint shape & authorisation server | Stateless endpoint, who issues tokens, what is exposed | v2, protocols, documentation | N (first) | N | S | docs |
+| EU.2 | #1658 | 🟡 Open | ouroboros-rest: [EU.2] MCP endpoint, discovery & tool registration seam | One Streamable HTTP endpoint and an in-process registry of tools | v2, protocols, rest | N (after EU.1) | N | L | ouroboros-rest |
+| EU.3 | #1659 | 🟡 Open | ouroboros-rest: [EU.3] Authorisation — resource server, audience-bound tokens & scopes | OAuth resource-server role, member and service-account access | v2, protocols, auth, rest | N (after EU.2) | N | L | ouroboros-rest, ouroboros-docs |
+| EU.4 | #1660 | 🟡 Open | ouroboros-rest: [EU.4] Read tools — runs, gates, evidence & inbox | Read-only tools over existing read APIs | v2, protocols, runs, pr, inbox, rest | Y (after EU.3) | N | M | ouroboros-rest, ouroboros-docs |
+| EU.5 | #1661 | 🟡 Open | ouroboros-rest: [EU.5] Action tools through the `/ouro` registry | Queue, answer, pause and resume, with the registry's permission and confirm rules | v2, protocols, chatops, rest | Y (after EU.3, #537) | N | M | ouroboros-rest, ouroboros-docs |
+| EU.6 | #1662 | 🟡 Open | ouroboros-ui: [EU.6] MCP access settings — clients, scopes & exposure | Turn the server on, see who is connected, choose what is exposed | v2, protocols, settings, ui | Y (after EU.3) | N | M | ouroboros-ui, ouroboros-docs |
+| EU.7 | #1663 | 🟡 Open | ouroboros-rest: [EU.7] Server conformance tests & client recipes | Protocol conformance, authorisation abuse cases, setup guides | v2, protocols, rest, ci | N (after EU.4, EU.5) | N | M | ouroboros-rest, ouroboros-docs, .github |
 
 ### Issue EU.1 — ouroboros: [EU.1] MCP server ADR — endpoint shape & authorisation server
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EU (not filed)
+> **GitHub issue:** #1657 · **Status:** 🟡 Open · **Parent epic:** #1630
 
 - **Problem Statement:** An MCP server must be an OAuth 2.1 resource server and must publish
   where its authorisation server is. Ouroboros authenticates people with BetterAuth and
@@ -1239,7 +1241,7 @@ MCP client ─▶ /mcp (resource server) ─401 + PRM─▶ authorisation server
 
 ### Issue EU.2 — ouroboros-rest: [EU.2] MCP endpoint, discovery & tool registration seam
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EU (not filed)
+> **GitHub issue:** #1658 · **Status:** 🟡 Open · **Parent epic:** #1630
 
 - **Problem Statement:** There is no endpoint. Two products want to expose tools from the same
   deployment, and a client should configure one URL.
@@ -1267,7 +1269,7 @@ registry: ouro.runs.get · ouro.inbox.list · ouro.queue …    studio.ledger.ge
 
 ### Issue EU.3 — ouroboros-rest: [EU.3] Authorisation — resource server, audience-bound tokens & scopes
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EU (not filed)
+> **GitHub issue:** #1659 · **Status:** 🟡 Open · **Parent epic:** #1630
 
 - **Problem Statement:** An external agent acting on Ouroboros must act as someone, with no
   more than that person or service account may do, and with a token that is useless anywhere else.
@@ -1296,7 +1298,7 @@ token{aud: https://<deployment>/mcp, sub: member│service, scope: runs:read inb
 
 ### Issue EU.4 — ouroboros-rest: [EU.4] Read tools — runs, gates, evidence & inbox
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EU (not filed)
+> **GitHub issue:** #1660 · **Status:** 🟡 Open · **Parent epic:** #1630
 
 - **Problem Statement:** The description names four things to expose: runs, gates, evidence
   and the inbox. Each already has a read API; none is reachable by an agent.
@@ -1324,7 +1326,7 @@ ouro.runs.list / .get     ouro.gates.get     ouro.evidence.get(pr)     ouro.inbo
 
 ### Issue EU.5 — ouroboros-rest: [EU.5] Action tools through the `/ouro` registry
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EU (not filed)
+> **GitHub issue:** #1661 · **Status:** 🟡 Open · **Parent epic:** #1630
 
 - **Problem Statement:** Actions already have one definition each in the `/ouro` grammar
   registry (BZ.3 #537), with capability checks and a confirm rule. A second set of handlers
@@ -1353,7 +1355,7 @@ ouro.abort_loop ─▶ pending: confirm in app ↗            merge-class ─▶
 
 ### Issue EU.6 — ouroboros-ui: [EU.6] MCP access settings — clients, scopes & exposure
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EU (not filed)
+> **GitHub issue:** #1662 · **Status:** 🟡 Open · **Parent epic:** #1630
 
 - **Problem Statement:** Exposing a control plane to outside agents is a decision an
   administrator makes knowingly and can undo.
@@ -1377,7 +1379,7 @@ ouro.abort_loop ─▶ pending: confirm in app ↗            merge-class ─▶
 
 ### Issue EU.7 — ouroboros-rest: [EU.7] Server conformance tests & client recipes
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EU (not filed)
+> **GitHub issue:** #1663 · **Status:** 🟡 Open · **Parent epic:** #1630
 
 - **Problem Statement:** A server that works with one client and not another is a support
   burden, and the abuse cases are specific.
@@ -1425,20 +1427,20 @@ says "amendment to T.3" or "amendment to the handler", the amended code is speci
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EV.1 | — | ⚪ Not filed | ouroboros-db: [EV.1] Tracker agent installs, identity links & agent sessions schema | The app's identity per workspace, people linked to members, sessions and their owner | mvp, protocols, sources, db | N (after ES.1) | Y | M | ouroboros-db |
-| EV.2 | — | ⚪ Not filed | ouroboros-rest: [EV.2] Linear OAuth install with `actor=app` & token custody | Install as an application; token in the vault; revocation handled | mvp, protocols, sources, rest | N (after EV.1, #157) | Y | M | ouroboros-rest, ouroboros-docs |
-| EV.3 | — | ⚪ Not filed | ouroboros-rest: [EV.3] Linear webhook receiver & fan-out | Verify, window, dedupe, answer fast, fan out | mvp, protocols, sources, rest | Y (after ES.4, EV.2) | Y | M | ouroboros-rest |
-| EV.4 | — | ⚪ Not filed | ouroboros-rest: [EV.4] Agent session transport & router — one identity, two products | First activity inside the deadline; route each session to its owner | mvp, protocols, sources, rest | N (after EV.3) | Y | L | ouroboros-rest |
-| EV.5 | — | ⚪ Not filed | ouroboros-rest: [EV.5] Delegation to a loop — queue, progress & state reflection | Delegating an issue queues it; the session shows what happens | mvp, protocols, sources, chatops, rest | N (after EV.4, #537) | Y | L | ouroboros-rest, ouroboros-docs |
-| EV.6 | — | ⚪ Not filed | ouroboros-rest: [EV.6] Identity linking & decisions as elicitations | Tracker users resolve to members; blocking questions asked in the session | mvp, protocols, inbox, rest | Y (after EV.4) | Y | M | ouroboros-rest, ouroboros-docs |
-| EV.7 | — | ⚪ Not filed | ouroboros-ui: [EV.7] Linear agent install, team binding & sessions list | Install, bind teams, see health and recent sessions | mvp, protocols, settings, ui, design | Y (after EV.2) | Y | M | ouroboros-ui, ouroboros-docs |
-| EV.8 | — | ⚪ Not filed | ouroboros-rest: [EV.8] Linear simulator, contract tests & preview-drift canary | A shared simulator and a canary on a preview API | mvp, protocols, sources, rest, ci | N (after EV.2–EV.6) | Y | M | ouroboros-rest, .github |
-| EV.9 | — | ⚪ Not filed | ouroboros-rest: [EV.9] Jira agent surface — investigation & adapter | Find the supported way in, then build it | v2, protocols, sources, rest | Y | N | L | ouroboros-rest, ouroboros-docs |
-| EV.10 | — | ⚪ Not filed | ouroboros-rest: [EV.10] GitHub mention & assignment surface for `/ouro` | `/ouro` in issue comments through the App; assignment only if GitHub allows it | v2, protocols, intake, chatops, rest | Y | N | M | ouroboros-rest, ouroboros-docs |
+| EV.1 | #1664 | 🟡 Open | ouroboros-db: [EV.1] Tracker agent installs, identity links & agent sessions schema | The app's identity per workspace, people linked to members, sessions and their owner | mvp, protocols, sources, db | N (after ES.1) | Y | M | ouroboros-db |
+| EV.2 | #1665 | 🟡 Open | ouroboros-rest: [EV.2] Linear OAuth install with `actor=app` & token custody | Install as an application; token in the vault; revocation handled | mvp, protocols, sources, rest | N (after EV.1, #157) | Y | M | ouroboros-rest, ouroboros-docs |
+| EV.3 | #1666 | 🟡 Open | ouroboros-rest: [EV.3] Linear webhook receiver & fan-out | Verify, window, dedupe, answer fast, fan out | mvp, protocols, sources, rest | Y (after ES.4, EV.2) | Y | M | ouroboros-rest |
+| EV.4 | #1667 | 🟡 Open | ouroboros-rest: [EV.4] Agent session transport & router — one identity, two products | First activity inside the deadline; route each session to its owner | mvp, protocols, sources, rest | N (after EV.3) | Y | L | ouroboros-rest |
+| EV.5 | #1673 | 🟡 Open | ouroboros-rest: [EV.5] Delegation to a loop — queue, progress & state reflection | Delegating an issue queues it; the session shows what happens | mvp, protocols, sources, chatops, rest | N (after EV.4, #537) | Y | L | ouroboros-rest, ouroboros-docs |
+| EV.6 | #1668 | 🟡 Open | ouroboros-rest: [EV.6] Identity linking & decisions as elicitations | Tracker users resolve to members; blocking questions asked in the session | mvp, protocols, inbox, rest | Y (after EV.4) | Y | M | ouroboros-rest, ouroboros-docs |
+| EV.7 | #1669 | 🟡 Open | ouroboros-ui: [EV.7] Linear agent install, team binding & sessions list | Install, bind teams, see health and recent sessions | mvp, protocols, settings, ui, design | Y (after EV.2) | Y | M | ouroboros-ui, ouroboros-docs |
+| EV.8 | #1674 | 🟡 Open | ouroboros-rest: [EV.8] Linear simulator, contract tests & preview-drift canary | A shared simulator and a canary on a preview API | mvp, protocols, sources, rest, ci | N (after EV.2–EV.6) | Y | M | ouroboros-rest, .github |
+| EV.9 | #1670 | 🟡 Open | ouroboros-rest: [EV.9] Jira agent surface — investigation & adapter | Find the supported way in, then build it | v2, protocols, sources, rest | Y | N | L | ouroboros-rest, ouroboros-docs |
+| EV.10 | #1671 | 🟡 Open | ouroboros-rest: [EV.10] GitHub mention & assignment surface for `/ouro` | `/ouro` in issue comments through the App; assignment only if GitHub allows it | v2, protocols, intake, chatops, rest | Y | N | M | ouroboros-rest, ouroboros-docs |
 
 ### Issue EV.1 — ouroboros-db: [EV.1] Tracker agent installs, identity links & agent sessions schema
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EV (not filed)
+> **GitHub issue:** #1664 · **Status:** 🟡 Open · **Parent epic:** #1631
 
 - **Problem Statement:** An installed agent has its own user id in each tracker workspace, a
   person who delegates to it has a tracker identity that is not an Ouroboros member, and a
@@ -1470,7 +1472,7 @@ external_identity_links{linear user ─▶ member}        agent_sessions{owner: 
 
 ### Issue EV.2 — ouroboros-rest: [EV.2] Linear OAuth install with `actor=app` & token custody
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EV (not filed)
+> **GitHub issue:** #1665 · **Status:** 🟡 Open · **Parent epic:** #1631
 
 - **Problem Statement:** T.3 (#157) authenticates with an API key, which acts as a person. An
   agent has to be installed as an application to be mentionable or assignable at all, and both
@@ -1506,7 +1508,7 @@ viewer { id } ─▶ app_user_id          capability snapshot ─▶ Ouroboros s
 
 ### Issue EV.3 — ouroboros-rest: [EV.3] Linear webhook receiver & fan-out
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EV (not filed)
+> **GitHub issue:** #1666 · **Status:** 🟡 Open · **Parent epic:** #1631
 
 - **Problem Statement:** Linear expects an answer within five seconds and may disable an
   endpoint that keeps failing. Two products consuming the same webhook must not each verify it.
@@ -1536,7 +1538,7 @@ Linear ─▶ verify signature · timestamp ≤ 60 s · dedupe ─▶ outbox ─
 
 ### Issue EV.4 — ouroboros-rest: [EV.4] Agent session transport & router — one identity, two products
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EV (not filed)
+> **GitHub issue:** #1667 · **Status:** 🟡 Open · **Parent epic:** #1631
 
 - **Problem Statement:** A Linear workspace sees one agent. When someone mentions it or
   delegates an issue to it, something must answer within ten seconds, and exactly one of
@@ -1576,7 +1578,7 @@ AgentSessionEvent.created ─▶ router: thought "On it" (< 10 s) ─▶ own?
 
 ### Issue EV.5 — ouroboros-rest: [EV.5] Delegation to a loop — queue, progress & state reflection
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EV (not filed)
+> **GitHub issue:** #1673 · **Status:** 🟡 Open · **Parent epic:** #1631
 
 - **Problem Statement:** The point of being assignable is that delegating an issue starts
   work on it. Today nothing connects a Linear delegation to the queue.
@@ -1613,7 +1615,7 @@ delegate ENG-142 ─▶ queue(ENG-142, origin: delegation) ─▶ pin feature-lo
 
 ### Issue EV.6 — ouroboros-rest: [EV.6] Identity linking & decisions as elicitations
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EV (not filed)
+> **GitHub issue:** #1668 · **Status:** 🟡 Open · **Parent epic:** #1631
 
 - **Problem Statement:** Anyone in a Linear workspace can mention the agent. What happens
   must depend on what that person may do in Ouroboros, and a run that blocks on a question
@@ -1647,7 +1649,7 @@ actor ─▶ link? ── no ─▶ "Link your account ↗"   (nothing runs)
 
 ### Issue EV.7 — ouroboros-ui: [EV.7] Linear agent install, team binding & sessions list
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EV (not filed)
+> **GitHub issue:** #1669 · **Status:** 🟡 Open · **Parent epic:** #1631
 
 - **Problem Statement:** Installing an application into someone's Linear workspace, and
   choosing which teams it acts in, is an administrator's decision with a visible state.
@@ -1675,7 +1677,7 @@ actor ─▶ link? ── no ─▶ "Link your account ↗"   (nothing runs)
 
 ### Issue EV.8 — ouroboros-rest: [EV.8] Linear simulator, contract tests & preview-drift canary
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EV (not filed)
+> **GitHub issue:** #1674 · **Status:** 🟡 Open · **Parent epic:** #1631
 
 - **Problem Statement:** The agent API is a preview that may change, and both repositories
   plan tests against it (Studio 47.9, 50.9).
@@ -1699,7 +1701,7 @@ canary (weekly): introspect ─▶ agentActivityCreate? agentSessionUpdate? dele
 
 ### Issue EV.9 — ouroboros-rest: [EV.9] Jira agent surface — investigation & adapter
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EV (not filed)
+> **GitHub issue:** #1670 · **Status:** 🟡 Open · **Parent epic:** #1631
 
 - **Problem Statement:** Atlassian lets agents be assigned to Jira work items, but this
   roadmap could not establish how a third party that is not a launch partner registers one.
@@ -1736,7 +1738,7 @@ investigate: forge rovo:agent? │ marketplace partner? │ MCP agent? │ none
 
 ### Issue EV.10 — ouroboros-rest: [EV.10] GitHub mention & assignment surface for `/ouro`
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EV (not filed)
+> **GitHub issue:** #1671 · **Status:** 🟡 Open · **Parent epic:** #1631
 
 - **Problem Statement:** GitHub is the shipped tracker, and after ES the App can hear issue
   comments. The Studio will accept `/studio` there (its Epic 49); Ouroboros has no equivalent.
@@ -1779,20 +1781,20 @@ issue_comment "/ouro queue" ─▶ collaborator floor ─▶ link ─▶ capabil
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EW.1 | — | ⚪ Not filed | ouroboros-rest: [EW.1] Trigger vocabulary — provenance conditions & new events | A schema minor: `origin` conditions now, new event names reserved and validated | mvp, protocols, workflow, rest, engine | N (first) | Y | M | ouroboros-rest, ouroboros-engine, ouroboros-docs |
-| EW.2 | — | ⚪ Not filed | ouroboros-db: [EW.2] Trigger subscriptions, firings & schedule state schema | What is armed, what fired, what it produced | v2, protocols, workflow, db | N (after EW.1) | N | M | ouroboros-db |
-| EW.3 | — | ⚪ Not filed | ouroboros-rest: [EW.3] Schedule trigger service | Cron with a timezone, missed-fire policy, one firing per tick | v2, protocols, workflow, rest | Y (after EW.2) | N | M | ouroboros-rest, ouroboros-docs |
-| EW.4 | — | ⚪ Not filed | ouroboros-rest: [EW.4] Event trigger router | Tracker and repository deliveries matched to armed triggers, with author trust | v2, protocols, workflow, rest | Y (after EW.2, ES.4) | N | M | ouroboros-rest, ouroboros-docs |
-| EW.5 | — | ⚪ Not filed | ouroboros-rest: [EW.5] Inbound webhook trigger endpoint | A signed, replay-safe endpoint per trigger | v2, protocols, workflow, rest | Y (after EW.2, ES.4) | N | M | ouroboros-rest, ouroboros-docs |
-| EW.6 | — | ⚪ Not filed | ouroboros-rest: [EW.6] Firing to work — work items, concurrency & budgets | What a trigger without a ticket runs on, and what stops a storm | v2, protocols, workflow, rest | N (after EW.3–EW.5) | N | L | ouroboros-rest, ouroboros-docs |
-| EW.7 | — | ⚪ Not filed | ouroboros-ui: [EW.7] Trigger authoring in the workflow builder & code view | The trigger node's inspector for every event kind; lossless projection | v2, protocols, workflow, code-view, ui, design | Y (after EW.1) | N | L | ouroboros-ui, ouroboros-rest, ouroboros-docs |
-| EW.8 | — | ⚪ Not filed | ouroboros-ui: [EW.8] Trigger activity & firing history | What fired, why it matched, what it started | v2, protocols, workflow, ui | Y (after EW.6) | N | M | ouroboros-ui, ouroboros-docs |
-| EW.9 | — | ⚪ Not filed | ouroboros-rest: [EW.9] Trigger integration tests | Clock, storm, replay and trust suites | v2, protocols, workflow, rest, ci | N (after EW.3–EW.6) | N | M | ouroboros-rest, .github |
-| EW.10 | — | ⚪ Not filed | ouroboros-rest: [EW.10] Alert triggers — Sentry, PagerDuty & Datadog | Alerts as trigger events through provider adapters | v2, protocols, workflow, rest | Y (after EW.5, EW.6) | N | L | ouroboros-rest, ouroboros-docs |
+| EW.1 | #1672 | 🟡 Open | ouroboros-rest: [EW.1] Trigger vocabulary — provenance conditions & new events | A schema minor: `origin` conditions now, new event names reserved and validated | mvp, protocols, workflow, rest, engine | N (first) | Y | M | ouroboros-rest, ouroboros-engine, ouroboros-docs |
+| EW.2 | #1675 | 🟡 Open | ouroboros-db: [EW.2] Trigger subscriptions, firings & schedule state schema | What is armed, what fired, what it produced | v2, protocols, workflow, db | N (after EW.1) | N | M | ouroboros-db |
+| EW.3 | #1676 | 🟡 Open | ouroboros-rest: [EW.3] Schedule trigger service | Cron with a timezone, missed-fire policy, one firing per tick | v2, protocols, workflow, rest | Y (after EW.2) | N | M | ouroboros-rest, ouroboros-docs |
+| EW.4 | #1677 | 🟡 Open | ouroboros-rest: [EW.4] Event trigger router | Tracker and repository deliveries matched to armed triggers, with author trust | v2, protocols, workflow, rest | Y (after EW.2, ES.4) | N | M | ouroboros-rest, ouroboros-docs |
+| EW.5 | #1678 | 🟡 Open | ouroboros-rest: [EW.5] Inbound webhook trigger endpoint | A signed, replay-safe endpoint per trigger | v2, protocols, workflow, rest | Y (after EW.2, ES.4) | N | M | ouroboros-rest, ouroboros-docs |
+| EW.6 | #1679 | 🟡 Open | ouroboros-rest: [EW.6] Firing to work — work items, concurrency & budgets | What a trigger without a ticket runs on, and what stops a storm | v2, protocols, workflow, rest | N (after EW.3–EW.5) | N | L | ouroboros-rest, ouroboros-docs |
+| EW.7 | #1680 | 🟡 Open | ouroboros-ui: [EW.7] Trigger authoring in the workflow builder & code view | The trigger node's inspector for every event kind; lossless projection | v2, protocols, workflow, code-view, ui, design | Y (after EW.1) | N | L | ouroboros-ui, ouroboros-rest, ouroboros-docs |
+| EW.8 | #1681 | 🟡 Open | ouroboros-ui: [EW.8] Trigger activity & firing history | What fired, why it matched, what it started | v2, protocols, workflow, ui | Y (after EW.6) | N | M | ouroboros-ui, ouroboros-docs |
+| EW.9 | #1682 | 🟡 Open | ouroboros-rest: [EW.9] Trigger integration tests | Clock, storm, replay and trust suites | v2, protocols, workflow, rest, ci | N (after EW.3–EW.6) | N | M | ouroboros-rest, .github |
+| EW.10 | #1683 | 🟡 Open | ouroboros-rest: [EW.10] Alert triggers — Sentry, PagerDuty & Datadog | Alerts as trigger events through provider adapters | v2, protocols, workflow, rest | Y (after EW.5, EW.6) | N | L | ouroboros-rest, ouroboros-docs |
 
 ### Issue EW.1 — ouroboros-rest: [EW.1] Trigger vocabulary — provenance conditions & new events
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EW (not filed)
+> **GitHub issue:** #1672 · **Status:** 🟡 Open · **Parent epic:** #1632
 
 - **Problem Statement:** `docs/WORKFLOW_DSL.md` § 3 says of `ticket_queued`: "The only event
   there is. A second one is a schema minor." The Studio's build-fix flow needs a queued ticket
@@ -1828,7 +1830,7 @@ issue_comment "/ouro queue" ─▶ collaborator floor ─▶ link ─▶ capabil
 
 ### Issue EW.2 — ouroboros-db: [EW.2] Trigger subscriptions, firings & schedule state schema
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EW (not filed)
+> **GitHub issue:** #1675 · **Status:** 🟡 Open · **Parent epic:** #1632
 
 - **Problem Statement:** A trigger that is not `ticket_queued` has no queue write to hang
   from: something must record that it is armed, that it fired and what came of it.
@@ -1855,7 +1857,7 @@ workflow@v7.trigger ─▶ trigger_subscriptions{armed, caps, run_as} ─▶ tri
 
 ### Issue EW.3 — ouroboros-rest: [EW.3] Schedule trigger service
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EW (not filed)
+> **GitHub issue:** #1676 · **Status:** 🟡 Open · **Parent epic:** #1632
 
 - **Problem Statement:** Recurring work (a nightly dependency check, a weekly clean-up) is a
   trigger kind several competitors offer and Ouroboros has no way to express.
@@ -1884,7 +1886,7 @@ downtime 5 ticks ─▶ fire_once: 1 firing │ skip: 0
 
 ### Issue EW.4 — ouroboros-rest: [EW.4] Event trigger router
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EW (not filed)
+> **GitHub issue:** #1677 · **Status:** 🟡 Open · **Parent epic:** #1632
 
 - **Problem Statement:** After ES and EV the product hears labels, pull requests, check
   results and tracker changes. An event on a public repository is something anyone can cause.
@@ -1913,7 +1915,7 @@ delivery ─▶ normalise ─▶ match armed subscriptions ─▶ trust verdict 
 
 ### Issue EW.5 — ouroboros-rest: [EW.5] Inbound webhook trigger endpoint
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EW (not filed)
+> **GitHub issue:** #1678 · **Status:** 🟡 Open · **Parent epic:** #1632
 
 - **Problem Statement:** A team's own systems (a deploy pipeline, an internal tool) should be
   able to start a workflow without a tracker in between.
@@ -1943,7 +1945,7 @@ POST /api/v1/triggers/in/<id>   X-Ouro-Timestamp · X-Ouro-Signature · Idempote
 
 ### Issue EW.6 — ouroboros-rest: [EW.6] Firing to work — work items, concurrency & budgets
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EW (not filed)
+> **GitHub issue:** #1679 · **Status:** 🟡 Open · **Parent epic:** #1632
 
 - **Problem Statement:** Every run today begins from a queued ticket: sizing, pinning,
   the inbox and the pull request all assume one. A schedule has no ticket. And a trigger that
@@ -1978,7 +1980,7 @@ firing ─▶ mode: ticket (existing │ filed via AL.2) │ internal ─▶ que
 
 ### Issue EW.7 — ouroboros-ui: [EW.7] Trigger authoring in the workflow builder & code view
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EW (not filed)
+> **GitHub issue:** #1680 · **Status:** 🟡 Open · **Parent epic:** #1632
 
 - **Problem Statement:** The description asks for triggers "authored in the workflow
   builder". The trigger node today renders one chip for one event.
@@ -2009,7 +2011,7 @@ Trigger ▸ Event  ( ticket queued │ schedule ● │ tracker event │ webhoo
 
 ### Issue EW.8 — ouroboros-ui: [EW.8] Trigger activity & firing history
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EW (not filed)
+> **GitHub issue:** #1681 · **Status:** 🟡 Open · **Parent epic:** #1632
 
 - **Problem Statement:** When a trigger does not fire, or fires too often, the author needs
   to see why without asking an administrator.
@@ -2033,7 +2035,7 @@ nightly-deps · armed · next 06:00 · 3/20 today
 
 ### Issue EW.9 — ouroboros-rest: [EW.9] Trigger integration tests
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EW (not filed)
+> **GitHub issue:** #1682 · **Status:** 🟡 Open · **Parent epic:** #1632
 
 - **Problem Statement:** Scheduling and event storms fail in ways unit tests do not reach.
 - **Solution/Scope:** Suites with an injected clock (daylight saving, downtime, two
@@ -2053,7 +2055,7 @@ clock ─▶ ticks          storm ×100 ─▶ ≤ concurrency, rest skipped    
 
 ### Issue EW.10 — ouroboros-rest: [EW.10] Alert triggers — Sentry, PagerDuty & Datadog
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EW (not filed)
+> **GitHub issue:** #1683 · **Status:** 🟡 Open · **Parent epic:** #1632
 
 - **Problem Statement:** Competitors start agents from Sentry issues and PagerDuty incidents.
   Alert text is written by whatever raised the error, which makes it attacker-reachable input.
@@ -2093,18 +2095,18 @@ simulated driver and are marked as simulated on every span.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EX.1 | — | ⚪ Not filed | ouroboros: [EX.1] Telemetry export ADR & run-to-trace mapping | How a run becomes a trace; which names are ours and which are borrowed | mvp, protocols, documentation | N (first) | Y | S | docs |
-| EX.2 | — | ⚪ Not filed | ouroboros-rest: [EX.2] OTLP exporter & run-event span projector | Spans built from the run event store and sent over OTLP | mvp, protocols, runs, rest | N (after EX.1) | Y | L | ouroboros-rest, ouroboros-docs |
-| EX.3 | — | ⚪ Not filed | ouroboros-rest: [EX.3] Run metrics | Counts, durations, tokens, cost and gate outcomes as metrics | mvp, protocols, insights, rest | Y (after EX.1) | Y | M | ouroboros-rest, ouroboros-docs |
-| EX.4 | — | ⚪ Not filed | ouroboros-rest: [EX.4] Content capture policy & redaction | Prompts and tool payloads off by default; redaction when on | mvp, protocols, settings, rest | Y (after EX.2) | Y | S | ouroboros-rest, ouroboros-docs |
-| EX.5 | — | ⚪ Not filed | ouroboros-ui: [EX.5] Telemetry export settings card | Endpoint, sealed headers, signals, test export, health | mvp, protocols, settings, ui, design | Y (after EX.2) | Y | M | ouroboros-ui, ouroboros-docs |
-| EX.6 | — | ⚪ Not filed | ouroboros-rest: [EX.6] Collector fixture, export tests & convention-drift canary | A collector in the test stack and a watch on unstable conventions | mvp, protocols, rest, ci | N (after EX.2–EX.4) | Y | M | ouroboros-rest, .github |
-| EX.7 | — | ⚪ Not filed | ouroboros-engine: [EX.7] Model-call spans & trace context across services | GenAI spans at the invocation gateway; one trace from REST to engine | v2, protocols, engine, routing | N (after EX.2, #235) | N | M | ouroboros-engine, ouroboros-rest |
-| EX.8 | — | ⚪ Not filed | ouroboros-runner: [EX.8] Runner job spans & log signal | Farm jobs as child spans; logs as an optional signal | v2, protocols, build-farm, infra | Y | N | M | ouroboros-runner, ouroboros-rest, ouroboros-docs |
+| EX.1 | #1684 | 🟡 Open | ouroboros: [EX.1] Telemetry export ADR & run-to-trace mapping | How a run becomes a trace; which names are ours and which are borrowed | mvp, protocols, documentation | N (first) | Y | S | docs |
+| EX.2 | #1685 | 🟡 Open | ouroboros-rest: [EX.2] OTLP exporter & run-event span projector | Spans built from the run event store and sent over OTLP | mvp, protocols, runs, rest | N (after EX.1) | Y | L | ouroboros-rest, ouroboros-docs |
+| EX.3 | #1686 | 🟡 Open | ouroboros-rest: [EX.3] Run metrics | Counts, durations, tokens, cost and gate outcomes as metrics | mvp, protocols, insights, rest | Y (after EX.1) | Y | M | ouroboros-rest, ouroboros-docs |
+| EX.4 | #1687 | 🟡 Open | ouroboros-rest: [EX.4] Content capture policy & redaction | Prompts and tool payloads off by default; redaction when on | mvp, protocols, settings, rest | Y (after EX.2) | Y | S | ouroboros-rest, ouroboros-docs |
+| EX.5 | #1688 | 🟡 Open | ouroboros-ui: [EX.5] Telemetry export settings card | Endpoint, sealed headers, signals, test export, health | mvp, protocols, settings, ui, design | Y (after EX.2) | Y | M | ouroboros-ui, ouroboros-docs |
+| EX.6 | #1689 | 🟡 Open | ouroboros-rest: [EX.6] Collector fixture, export tests & convention-drift canary | A collector in the test stack and a watch on unstable conventions | mvp, protocols, rest, ci | N (after EX.2–EX.4) | Y | M | ouroboros-rest, .github |
+| EX.7 | #1690 | 🟡 Open | ouroboros-engine: [EX.7] Model-call spans & trace context across services | GenAI spans at the invocation gateway; one trace from REST to engine | v2, protocols, engine, routing | N (after EX.2, #235) | N | M | ouroboros-engine, ouroboros-rest |
+| EX.8 | #1691 | 🟡 Open | ouroboros-runner: [EX.8] Runner job spans & log signal | Farm jobs as child spans; logs as an optional signal | v2, protocols, build-farm, infra | Y | N | M | ouroboros-runner, ouroboros-rest, ouroboros-docs |
 
 ### Issue EX.1 — ouroboros: [EX.1] Telemetry export ADR & run-to-trace mapping
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EX (not filed)
+> **GitHub issue:** #1684 · **Status:** 🟡 Open · **Parent epic:** #1633
 
 - **Problem Statement:** The OpenTelemetry conventions for generative AI are unstable: every
   page read on 2026-10-10 is marked Development, they were moved out of the main conventions
@@ -2148,7 +2150,7 @@ trace = run #1851   ouroboros.run.simulated=true
 
 ### Issue EX.2 — ouroboros-rest: [EX.2] OTLP exporter & run-event span projector
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EX (not filed)
+> **GitHub issue:** #1685 · **Status:** 🟡 Open · **Parent epic:** #1633
 
 - **Problem Statement:** Run history already exists as an append-only event store (AO.2 #299)
   and stage history (#298). Instrumenting the executor instead would export nothing today,
@@ -2183,7 +2185,7 @@ run_events + run_stages ─▶ projector (ids = hash(run, stage, attempt)) ─�
 
 ### Issue EX.3 — ouroboros-rest: [EX.3] Run metrics
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EX (not filed)
+> **GitHub issue:** #1686 · **Status:** 🟡 Open · **Parent epic:** #1633
 
 - **Problem Statement:** Operations teams watch metrics and alert on them; traces are for
   looking into one run. The numbers already exist in the insights metric registry (BI.2 #433)
@@ -2212,7 +2214,7 @@ insights metric registry ─▶ ouroboros.runs{workflow, outcome} · ouroboros.s
 
 ### Issue EX.4 — ouroboros-rest: [EX.4] Content capture policy & redaction
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EX (not filed)
+> **GitHub issue:** #1687 · **Status:** 🟡 Open · **Parent epic:** #1633
 
 - **Problem Statement:** Prompts, completions and tool results contain source code and
   sometimes secrets. Sending them to an observability vendor by default would undo the
@@ -2243,7 +2245,7 @@ capture: none ─▶ {names, timings, counts}      metadata ─▶ + {tool, size
 
 ### Issue EX.5 — ouroboros-ui: [EX.5] Telemetry export settings card
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EX (not filed)
+> **GitHub issue:** #1688 · **Status:** 🟡 Open · **Parent epic:** #1633
 
 - **Problem Statement:** An administrator needs to point the export at a collector, prove it
   works and see when it stops.
@@ -2271,7 +2273,7 @@ capture: none ─▶ {names, timings, counts}      metadata ─▶ + {tool, size
 
 ### Issue EX.6 — ouroboros-rest: [EX.6] Collector fixture, export tests & convention-drift canary
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EX (not filed)
+> **GitHub issue:** #1689 · **Status:** 🟡 Open · **Parent epic:** #1633
 
 - **Problem Statement:** "Tolerant of convention changes" has to be something a test can
   fail, and an upstream rename has to be noticed before a customer notices it.
@@ -2296,7 +2298,7 @@ canary: mapping table @ pinned commit  vs  upstream main ─▶ issue: "gen_ai.x
 
 ### Issue EX.7 — ouroboros-engine: [EX.7] Model-call spans & trace context across services
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EX (not filed)
+> **GitHub issue:** #1690 · **Status:** 🟡 Open · **Parent epic:** #1633
 
 - **Problem Statement:** The most asked-about spans are the model calls, and they do not
   exist until the invocation gateway does (AF.2 #235; the route answers 501 today).
@@ -2320,7 +2322,7 @@ rest ──traceparent──▶ engine ──▶ /internal/llm/invoke ─▶ spa
 
 ### Issue EX.8 — ouroboros-runner: [EX.8] Runner job spans & log signal
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EX (not filed)
+> **GitHub issue:** #1691 · **Status:** 🟡 Open · **Parent epic:** #1633
 
 - **Problem Statement:** A stage that waits on a farm job shows as one opaque span, and some
   customers want logs in the same pipeline as traces.
@@ -2359,17 +2361,17 @@ span stage build ─┬ span farm.job queued 4 s ─ assigned ─ span step conf
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EY.1 | — | ⚪ Not filed | ouroboros-rest: [EY.1] Convention discovery — nested AGENTS.md & skill directories | Find every convention file in a repository, not only four at the root | v2, protocols, knowledge, rest | N (first) | N | M | ouroboros-rest, ouroboros-docs |
-| EY.2 | — | ⚪ Not filed | ouroboros-rest: [EY.2] Agent Skills format import & mapping | `SKILL.md` directories become skill drafts, with their files, never executed | v2, protocols, knowledge, rest | Y (after EY.1) | N | M | ouroboros-rest, ouroboros-docs |
-| EY.3 | — | ⚪ Not filed | ouroboros-rest: [EY.3] Path-scoped instructions in context assembly | The nearest AGENTS.md for the files a stage touches, read from a trusted ref | v2, protocols, knowledge, rest | Y (after EY.1) | N | M | ouroboros-rest, ouroboros-docs |
-| EY.4 | — | ⚪ Not filed | ouroboros-rest: [EY.4] Re-sync on push & drift preview | A changed convention file is noticed and offered, never applied silently | v2, protocols, knowledge, rest | Y (after EY.1, ES.5) | N | S | ouroboros-rest, ouroboros-docs |
-| EY.5 | — | ⚪ Not filed | ouroboros-ui: [EY.5] Repository conventions panel & import flow update | What was found, what is in force, what changed | v2, protocols, knowledge, ui | Y (after EY.1–EY.4) | N | M | ouroboros-ui, ouroboros-docs |
-| EY.6 | — | ⚪ Not filed | ouroboros-rest: [EY.6] Convention fixtures & trust tests | Monorepo fixtures and the cases where repository text must not be trusted | v2, protocols, knowledge, rest, ci | N (after EY.1–EY.4) | N | S | ouroboros-rest |
-| EY.7 | — | ⚪ Not filed | ouroboros-rest: [EY.7] Agent Skills export & AGENTS.md write-back | Ouroboros skills written to the repository in the open layout, by pull request | v2, protocols, knowledge, code-view, rest | Y | N | M | ouroboros-rest, ouroboros-docs |
+| EY.1 | #1692 | 🟡 Open | ouroboros-rest: [EY.1] Convention discovery — nested AGENTS.md & skill directories | Find every convention file in a repository, not only four at the root | v2, protocols, knowledge, rest | N (first) | N | M | ouroboros-rest, ouroboros-docs |
+| EY.2 | #1693 | 🟡 Open | ouroboros-rest: [EY.2] Agent Skills format import & mapping | `SKILL.md` directories become skill drafts, with their files, never executed | v2, protocols, knowledge, rest | Y (after EY.1) | N | M | ouroboros-rest, ouroboros-docs |
+| EY.3 | #1694 | 🟡 Open | ouroboros-rest: [EY.3] Path-scoped instructions in context assembly | The nearest AGENTS.md for the files a stage touches, read from a trusted ref | v2, protocols, knowledge, rest | Y (after EY.1) | N | M | ouroboros-rest, ouroboros-docs |
+| EY.4 | #1695 | 🟡 Open | ouroboros-rest: [EY.4] Re-sync on push & drift preview | A changed convention file is noticed and offered, never applied silently | v2, protocols, knowledge, rest | Y (after EY.1, ES.5) | N | S | ouroboros-rest, ouroboros-docs |
+| EY.5 | #1696 | 🟡 Open | ouroboros-ui: [EY.5] Repository conventions panel & import flow update | What was found, what is in force, what changed | v2, protocols, knowledge, ui | Y (after EY.1–EY.4) | N | M | ouroboros-ui, ouroboros-docs |
+| EY.6 | #1697 | 🟡 Open | ouroboros-rest: [EY.6] Convention fixtures & trust tests | Monorepo fixtures and the cases where repository text must not be trusted | v2, protocols, knowledge, rest, ci | N (after EY.1–EY.4) | N | S | ouroboros-rest |
+| EY.7 | #1698 | 🟡 Open | ouroboros-rest: [EY.7] Agent Skills export & AGENTS.md write-back | Ouroboros skills written to the repository in the open layout, by pull request | v2, protocols, knowledge, code-view, rest | Y | N | M | ouroboros-rest, ouroboros-docs |
 
 ### Issue EY.1 — ouroboros-rest: [EY.1] Convention discovery — nested AGENTS.md & skill directories
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EY (not filed)
+> **GitHub issue:** #1692 · **Status:** 🟡 Open · **Parent epic:** #1634
 
 - **Problem Statement:** The shipped probe looks for four files at the root. AGENTS.md is
   designed to be nested ("the closest AGENTS.md to the edited file wins"), and skills live in
@@ -2405,7 +2407,7 @@ repo@default ─▶ AGENTS.md · apps/web/AGENTS.md · fw/drivers/AGENTS.md
 
 ### Issue EY.2 — ouroboros-rest: [EY.2] Agent Skills format import & mapping
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EY (not filed)
+> **GitHub issue:** #1693 · **Status:** 🟡 Open · **Parent epic:** #1634
 
 - **Problem Statement:** Teams already keep skills in their repositories in the Agent Skills
   format, which many tools read. Ouroboros has its own skill frontmatter and cannot take theirs in.
@@ -2441,7 +2443,7 @@ repo@default ─▶ AGENTS.md · apps/web/AGENTS.md · fw/drivers/AGENTS.md
 
 ### Issue EY.3 — ouroboros-rest: [EY.3] Path-scoped instructions in context assembly
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EY (not filed)
+> **GitHub issue:** #1694 · **Status:** 🟡 Open · **Parent epic:** #1634
 
 - **Problem Statement:** An imported draft is a copy that a person had to approve. The
   description asks for AGENTS.md to be read "alongside" the imports: a stage working in
@@ -2473,7 +2475,7 @@ manifest entry{kind: repo_convention, path, blob, bytes, precedence}     PR-bran
 
 ### Issue EY.4 — ouroboros-rest: [EY.4] Re-sync on push & drift preview
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EY (not filed)
+> **GitHub issue:** #1695 · **Status:** 🟡 Open · **Parent epic:** #1634
 
 - **Problem Statement:** An import is a snapshot. When the team edits AGENTS.md, Ouroboros's
   drafts go stale and nobody is told.
@@ -2496,7 +2498,7 @@ push(default) ─▶ index diff by blob hash ─▶ preview ─▶ inbox: "3 con
 
 ### Issue EY.5 — ouroboros-ui: [EY.5] Repository conventions panel & import flow update
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EY (not filed)
+> **GitHub issue:** #1696 · **Status:** 🟡 Open · **Parent epic:** #1634
 
 - **Problem Statement:** A person should be able to see which repository files shape a run
   and whether Ouroboros has their current content.
@@ -2522,7 +2524,7 @@ Repository conventions · helios-firmware
 
 ### Issue EY.6 — ouroboros-rest: [EY.6] Convention fixtures & trust tests
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EY (not filed)
+> **GitHub issue:** #1697 · **Status:** 🟡 Open · **Parent epic:** #1634
 
 - **Problem Statement:** Repository text is written by whoever can merge, and in a fork by
   anyone. The trust rules in this epic are the part most likely to be weakened by accident.
@@ -2544,7 +2546,7 @@ fixture: PR edits AGENTS.md "ignore previous instructions…" ─▶ manifest un
 
 ### Issue EY.7 — ouroboros-rest: [EY.7] Agent Skills export & AGENTS.md write-back
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EY (not filed)
+> **GitHub issue:** #1698 · **Status:** 🟡 Open · **Parent epic:** #1634
 
 - **Problem Statement:** Skills refined in Ouroboros are invisible to the other agents a team
   uses, and BH.3 (#425) plans to write them to a path only Ouroboros reads.

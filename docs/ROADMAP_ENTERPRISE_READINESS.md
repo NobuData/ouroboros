@@ -371,17 +371,19 @@ pass).
 
 ## Epics, Labels & Milestones
 
+> **Filed 2026-10-10** by `create-issues` in `NobuData/ouroboros`: epic parents #1588–#1592, work issues #1593–#1627, numbered in dependency order. Each work issue is a sub-issue of its epic with blocked-by links, Priority, Effort and type set. Statements below that nothing is filed predate this; relabelling or amending *existing* issues described by this roadmap has **not** been done.
+
 Each epic becomes a parent tracking issue on GitHub at filing; every new
 issue below is filed as one of its sub-issues. **Nothing in this table is
 filed yet.**
 
 | Epic | GitHub | Status | Name | Goal | Modules | Milestone |
 |------|:------:|:------:|------|------|---------|-----------|
-| EN | — | ⚪ Not filed | Pilot Identity & Custody | Promote and order the filed identity and custody issues; fill the gaps between them (SSO enforcement, IdP fixtures, custody operations, pilot checklist) | ouroboros-rest, ouroboros-ui, ouroboros-docs | Enterprise Pilot |
-| EO | — | ⚪ Not filed | Access Lists & Admin Policy | Model, provider and repository allow and deny lists in the policy document, enforced; MCP slot reserved | ouroboros-db, ouroboros-rest, ouroboros-ui | Enterprise v2 |
-| EP | — | ⚪ Not filed | Custom Roles | A permission catalogue, a permission guard, and roles beyond the built-in set | ouroboros-db, ouroboros-rest, ouroboros-ui | Enterprise v2 |
-| EQ | — | ⚪ Not filed | Production Deployment Kit | Release versions, preflight, a real reference deployment, the runbook derived from it, backup and upgrade drills; then Helm, signing, air-gap | ouroboros, ouroboros-rest, ouroboros-docs, .github | Enterprise Pilot (EQ.1–EQ.6) · Enterprise v2 (EQ.7–EQ.10) |
-| ER | — | ⚪ Not filed | High Availability & Scale Notes | Supported topologies and limits, stated from measurement; then the work that would make HA true | ouroboros-rest, ouroboros, ouroboros-docs | Enterprise Pilot (ER.1) · Enterprise v2 (ER.2–ER.7) |
+| EN | #1588 | 🟡 Open | Pilot Identity & Custody | Promote and order the filed identity and custody issues; fill the gaps between them (SSO enforcement, IdP fixtures, custody operations, pilot checklist) | ouroboros-rest, ouroboros-ui, ouroboros-docs | Enterprise Pilot |
+| EO | #1589 | 🟡 Open | Access Lists & Admin Policy | Model, provider and repository allow and deny lists in the policy document, enforced; MCP slot reserved | ouroboros-db, ouroboros-rest, ouroboros-ui | Enterprise v2 |
+| EP | #1590 | 🟡 Open | Custom Roles | A permission catalogue, a permission guard, and roles beyond the built-in set | ouroboros-db, ouroboros-rest, ouroboros-ui | Enterprise v2 |
+| EQ | #1591 | 🟡 Open | Production Deployment Kit | Release versions, preflight, a real reference deployment, the runbook derived from it, backup and upgrade drills; then Helm, signing, air-gap | ouroboros, ouroboros-rest, ouroboros-docs, .github | Enterprise Pilot (EQ.1–EQ.6) · Enterprise v2 (EQ.7–EQ.10) |
+| ER | #1592 | 🟡 Open | High Availability & Scale Notes | Supported topologies and limits, stated from measurement; then the work that would make HA true | ouroboros-rest, ouroboros, ouroboros-docs | Enterprise Pilot (ER.1) · Enterprise v2 (ER.2–ER.7) |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. `ouroboros` is the
 repository-wide project name, as in #57 and #58. Labels: the existing set
@@ -399,16 +401,16 @@ are the work **nothing filed covers**.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EN.1 | — | ⚪ Not filed | ouroboros: [EN.1] Promotion pass — relabel, milestone & amend the filed identity and custody issues | Apply the promotion table: labels, milestones, the #236 split, ten amendment comments | mvp, enterprise, documentation | N (first) | Y | S | docs (this roadmap), GitHub metadata |
-| EN.2 | — | ⚪ Not filed | ouroboros-rest: [EN.2] Sign-in policy — SSO enforcement, allowed methods & break-glass | A workspace can require SSO; named owners keep an audited GitHub sign-in | mvp, enterprise, rest, ui, auth | N (after #722) | Y | M | ouroboros-rest, ouroboros-db, ouroboros-ui, ouroboros-docs |
-| EN.3 | — | ⚪ Not filed | ouroboros-rest: [EN.3] IdP conformance fixtures & manual matrix | Keycloak in CI for SAML and OIDC; a recorded manual pass against commercial IdPs | mvp, enterprise, rest, ci, auth | Y (with #723) | Y | M | ouroboros-rest, .github, ouroboros-docs |
-| EN.4 | — | ⚪ Not filed | ouroboros-rest: [EN.4] Custody operations — status, re-wrap command & KMS outage behaviour | The operating surface around #236's wrappers | mvp, enterprise, rest, providers | N (after #236 wrappers) | Y | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
-| EN.5 | — | ⚪ Not filed | ouroboros-docs: [EN.5] Enterprise pilot checklist & shared-responsibility document | The procurement answers, each pointing at evidence | mvp, enterprise, documentation, docs-site | N (last in pilot) | Y | M | ouroboros-docs, docs |
-| EN.6 | — | ⚪ Not filed | ouroboros-rest: [EN.6] Access-review export | Members, roles, capability, last sign-in and token inventory as a dated export | v2, enterprise, rest, ui, settings | Y | N | S | ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| EN.1 | #1593 | 🟡 Open | ouroboros: [EN.1] Promotion pass — relabel, milestone & amend the filed identity and custody issues | Apply the promotion table: labels, milestones, the #236 split, ten amendment comments | mvp, enterprise, documentation | N (first) | Y | S | docs (this roadmap), GitHub metadata |
+| EN.2 | #1594 | 🟡 Open | ouroboros-rest: [EN.2] Sign-in policy — SSO enforcement, allowed methods & break-glass | A workspace can require SSO; named owners keep an audited GitHub sign-in | mvp, enterprise, rest, ui, auth | N (after #722) | Y | M | ouroboros-rest, ouroboros-db, ouroboros-ui, ouroboros-docs |
+| EN.3 | #1595 | 🟡 Open | ouroboros-rest: [EN.3] IdP conformance fixtures & manual matrix | Keycloak in CI for SAML and OIDC; a recorded manual pass against commercial IdPs | mvp, enterprise, rest, ci, auth | Y (with #723) | Y | M | ouroboros-rest, .github, ouroboros-docs |
+| EN.4 | #1596 | 🟡 Open | ouroboros-rest: [EN.4] Custody operations — status, re-wrap command & KMS outage behaviour | The operating surface around #236's wrappers | mvp, enterprise, rest, providers | N (after #236 wrappers) | Y | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| EN.5 | #1621 | 🟡 Open | ouroboros-docs: [EN.5] Enterprise pilot checklist & shared-responsibility document | The procurement answers, each pointing at evidence | mvp, enterprise, documentation, docs-site | N (last in pilot) | Y | M | ouroboros-docs, docs |
+| EN.6 | #1607 | 🟡 Open | ouroboros-rest: [EN.6] Access-review export | Members, roles, capability, last sign-in and token inventory as a dated export | v2, enterprise, rest, ui, settings | Y | N | S | ouroboros-rest, ouroboros-ui, ouroboros-docs |
 
 ### Issue EN.1 — ouroboros: [EN.1] Promotion pass — relabel, milestone & amend the filed identity and custody issues
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EN (not filed)
+> **GitHub issue:** #1593 · **Status:** 🟡 Open · **Parent epic:** #1588
 
 - **Problem Statement:** Ten filed issues carry the pilot's identity and
   custody work. All are labelled `v2`, six have no milestone, one (#236)
@@ -454,7 +456,7 @@ before                                    after
 
 ### Issue EN.2 — ouroboros-rest: [EN.2] Sign-in policy — SSO enforcement, allowed methods & break-glass
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EN (not filed)
+> **GitHub issue:** #1594 · **Status:** 🟡 Open · **Parent epic:** #1588
 
 - **Problem Statement:** #722 makes SSO *possible* for a registered domain.
   Nothing filed makes it *required*. Until it is, a member who leaves the
@@ -521,7 +523,7 @@ flowchart TD
 
 ### Issue EN.3 — ouroboros-rest: [EN.3] IdP conformance fixtures & manual matrix
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EN (not filed)
+> **GitHub issue:** #1595 · **Status:** 🟡 Open · **Parent epic:** #1588
 
 - **Problem Statement:** #722's acceptance is one working redirect. A pilot
   customer brings Okta, Entra ID or Google Workspace, each with its own
@@ -570,7 +572,7 @@ Google         ·      ·     not run      —         NOT TESTED
 
 ### Issue EN.4 — ouroboros-rest: [EN.4] Custody operations — status, re-wrap command & KMS outage behaviour
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EN (not filed)
+> **GitHub issue:** #1596 · **Status:** 🟡 Open · **Parent epic:** #1588
 
 - **Problem Statement:** #236 delivers the wrappers and per-backend re-wrap
   runbooks. It does not say how an operator *invokes* a re-wrap, how anyone
@@ -647,7 +649,7 @@ sequenceDiagram
 
 ### Issue EN.5 — ouroboros-docs: [EN.5] Enterprise pilot checklist & shared-responsibility document
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EN (not filed)
+> **GitHub issue:** #1621 · **Status:** 🟡 Open · **Parent epic:** #1588
 
 - **Problem Statement:** A pilot begins with a security questionnaire. Today
   the answers are spread across `SECURITY_MODEL.md`, `HOSTING.md` and the
@@ -703,7 +705,7 @@ SOC 2 / ISO 27001           none                           Not offered     SECUR
 
 ### Issue EN.6 — ouroboros-rest: [EN.6] Access-review export
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EN (not filed)
+> **GitHub issue:** #1607 · **Status:** 🟡 Open · **Parent epic:** #1588
 
 - **Problem Statement:** #497's own problem statement names the access
   review as *"the finding every enterprise security questionnaire asks
@@ -747,16 +749,16 @@ is an access list.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EO.1 | — | ⚪ Not filed | ouroboros-db: [EO.1] Policy document v2 — access-list rules | `model_access`, `provider_access`, `repository_access` in `schemas/org-policy/v2.json` | v2, enterprise, db, settings | N (first) | N | M | ouroboros-db, schemas |
-| EO.2 | — | ⚪ Not filed | ouroboros-rest: [EO.2] Access-list resolution & enforcement points | The resolver answers "is this allowed"; six call sites ask it | v2, enterprise, rest, settings, routing, providers | N (after EO.1) | N | L | ouroboros-rest |
-| EO.3 | — | ⚪ Not filed | ouroboros-rest: [EO.3] Impact preview & violation report | What a draft list would block before it is published; what the live list blocked | v2, enterprise, rest, settings | Y (after EO.2) | N | M | ouroboros-rest |
-| EO.4 | — | ⚪ Not filed | ouroboros-ui: [EO.4] Access lists card & denial states | The editing surface, and an honest refusal wherever a list bites | v2, enterprise, ui, design, settings | N (after EO.2, EO.3) | N | M | ouroboros-ui, ouroboros-docs |
-| EO.5 | — | ⚪ Not filed | ouroboros-rest: [EO.5] Deployment policy ceiling | Operator-set bounds no workspace can loosen | v2, enterprise, rest, settings | Y (after EO.2) | N | M | ouroboros-rest, ouroboros-docs |
-| EO.6 | — | ⚪ Not filed | ouroboros-rest: [EO.6] MCP server access list | The reserved `mcp_access` rule, enforced where ES–EY call MCP servers | v2, enterprise, rest, settings | N (after ES–EY) | N | S | ouroboros-rest, ouroboros-ui |
+| EO.1 | #1597 | 🟡 Open | ouroboros-db: [EO.1] Policy document v2 — access-list rules | `model_access`, `provider_access`, `repository_access` in `schemas/org-policy/v2.json` | v2, enterprise, db, settings | N (first) | N | M | ouroboros-db, schemas |
+| EO.2 | #1598 | 🟡 Open | ouroboros-rest: [EO.2] Access-list resolution & enforcement points | The resolver answers "is this allowed"; six call sites ask it | v2, enterprise, rest, settings, routing, providers | N (after EO.1) | N | L | ouroboros-rest |
+| EO.3 | #1599 | 🟡 Open | ouroboros-rest: [EO.3] Impact preview & violation report | What a draft list would block before it is published; what the live list blocked | v2, enterprise, rest, settings | Y (after EO.2) | N | M | ouroboros-rest |
+| EO.4 | #1600 | 🟡 Open | ouroboros-ui: [EO.4] Access lists card & denial states | The editing surface, and an honest refusal wherever a list bites | v2, enterprise, ui, design, settings | N (after EO.2, EO.3) | N | M | ouroboros-ui, ouroboros-docs |
+| EO.5 | #1601 | 🟡 Open | ouroboros-rest: [EO.5] Deployment policy ceiling | Operator-set bounds no workspace can loosen | v2, enterprise, rest, settings | Y (after EO.2) | N | M | ouroboros-rest, ouroboros-docs |
+| EO.6 | #1602 | 🟡 Open | ouroboros-rest: [EO.6] MCP server access list | The reserved `mcp_access` rule, enforced where ES–EY call MCP servers | v2, enterprise, rest, settings | N (after ES–EY) | N | S | ouroboros-rest, ouroboros-ui |
 
 ### Issue EO.1 — ouroboros-db: [EO.1] Policy document v2 — access-list rules
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EO (not filed)
+> **GitHub issue:** #1597 · **Status:** 🟡 Open · **Parent epic:** #1589
 
 - **Problem Statement:** An administrator cannot say "this workspace may use
   only these providers and models" or "agents may never run against this
@@ -807,7 +809,7 @@ document (schema_version 2)
 
 ### Issue EO.2 — ouroboros-rest: [EO.2] Access-list resolution & enforcement points
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EO (not filed)
+> **GitHub issue:** #1598 · **Status:** 🟡 Open · **Parent epic:** #1589
 
 - **Problem Statement:** Roadmap 17's lesson, in its own words: *"A document
   nobody reads is decoration."* A list is real only when every path that
@@ -873,7 +875,7 @@ flowchart LR
 
 ### Issue EO.3 — ouroboros-rest: [EO.3] Impact preview & violation report
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EO (not filed)
+> **GitHub issue:** #1599 · **Status:** 🟡 Open · **Parent epic:** #1589
 
 - **Problem Statement:** An administrator tightening a model list on a
   Friday needs to know which aliases, workflows and queued runs stop
@@ -910,7 +912,7 @@ preview(draft: model_access deny "*-preview")
 
 ### Issue EO.4 — ouroboros-ui: [EO.4] Access lists card & denial states
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EO (not filed)
+> **GitHub issue:** #1600 · **Status:** 🟡 Open · **Parent epic:** #1589
 
 - **Problem Statement:** The lists need an editing surface in the Policies
   section, and every screen where a list bites needs to say so — a model
@@ -957,7 +959,7 @@ preview(draft: model_access deny "*-preview")
 
 ### Issue EO.5 — ouroboros-rest: [EO.5] Deployment policy ceiling
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EO (not filed)
+> **GitHub issue:** #1601 · **Status:** 🟡 Open · **Parent epic:** #1589
 
 - **Problem Statement:** A self-hosted deployment can hold several
   workspaces. The party running it — a platform or security team — may need
@@ -1001,7 +1003,7 @@ effective:        [anthropic]        openai-compatible → refused by: deploymen
 
 ### Issue EO.6 — ouroboros-rest: [EO.6] MCP server access list
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EO (not filed)
+> **GitHub issue:** #1602 · **Status:** 🟡 Open · **Parent epic:** #1589
 
 - **Problem Statement:** The gap analysis's P2-9 has workflow stages calling
   *"customer-approved MCP servers under the allow-list from P1-6"*. Ouroboros
@@ -1048,16 +1050,16 @@ administrator.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EP.1 | — | ⚪ Not filed | ouroboros-rest: [EP.1] Permission catalogue & built-in role mapping | Name every permission; express the four roles as fixed sets | v2, enterprise, rest, auth, settings | N (first) | N | M | ouroboros-rest, docs |
-| EP.2 | — | ⚪ Not filed | ouroboros-rest: [EP.2] Permission guard — migrate the `@Roles()` sites | 279 sites move from role names to permissions with no behaviour change | v2, enterprise, rest, auth | N (after EP.1) | N | L | ouroboros-rest |
-| EP.3 | — | ⚪ Not filed | ouroboros-db: [EP.3] Custom role schema | Roles as rows; assignment; constraints | v2, enterprise, db, auth | Y (with EP.2) | N | S | ouroboros-db |
-| EP.4 | — | ⚪ Not filed | ouroboros-rest: [EP.4] Custom role management, assignment & escalation guard | Create, edit, assign, delete — without letting anyone grant what they lack | v2, enterprise, rest, auth, settings | N (after EP.2, EP.3) | N | M | ouroboros-rest |
-| EP.5 | — | ⚪ Not filed | ouroboros-ui: [EP.5] Roles editor & member assignment | A roles tab; the Members card assigns custom roles | v2, enterprise, ui, design, settings | N (after EP.4) | N | M | ouroboros-ui, ouroboros-docs |
-| EP.6 | — | ⚪ Not filed | ouroboros-rest: [EP.6] Service-account scopes from the catalogue | Token scopes become catalogue permissions | v2, enterprise, rest, settings | Y (after EP.2) | N | S | ouroboros-rest, ouroboros-db, ouroboros-ui |
+| EP.1 | #1603 | 🟡 Open | ouroboros-rest: [EP.1] Permission catalogue & built-in role mapping | Name every permission; express the four roles as fixed sets | v2, enterprise, rest, auth, settings | N (first) | N | M | ouroboros-rest, docs |
+| EP.2 | #1604 | 🟡 Open | ouroboros-rest: [EP.2] Permission guard — migrate the `@Roles()` sites | 279 sites move from role names to permissions with no behaviour change | v2, enterprise, rest, auth | N (after EP.1) | N | L | ouroboros-rest |
+| EP.3 | #1605 | 🟡 Open | ouroboros-db: [EP.3] Custom role schema | Roles as rows; assignment; constraints | v2, enterprise, db, auth | Y (with EP.2) | N | S | ouroboros-db |
+| EP.4 | #1606 | 🟡 Open | ouroboros-rest: [EP.4] Custom role management, assignment & escalation guard | Create, edit, assign, delete — without letting anyone grant what they lack | v2, enterprise, rest, auth, settings | N (after EP.2, EP.3) | N | M | ouroboros-rest |
+| EP.5 | #1608 | 🟡 Open | ouroboros-ui: [EP.5] Roles editor & member assignment | A roles tab; the Members card assigns custom roles | v2, enterprise, ui, design, settings | N (after EP.4) | N | M | ouroboros-ui, ouroboros-docs |
+| EP.6 | #1609 | 🟡 Open | ouroboros-rest: [EP.6] Service-account scopes from the catalogue | Token scopes become catalogue permissions | v2, enterprise, rest, settings | Y (after EP.2) | N | S | ouroboros-rest, ouroboros-db, ouroboros-ui |
 
 ### Issue EP.1 — ouroboros-rest: [EP.1] Permission catalogue & built-in role mapping
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EP (not filed)
+> **GitHub issue:** #1603 · **Status:** 🟡 Open · **Parent epic:** #1590
 
 - **Problem Statement:** Authorization is written as role names on 279
   controller sites. A custom role cannot be defined against that, because
@@ -1110,7 +1112,7 @@ sensitivity   standard        standard         privileged     privileged   owner
 
 ### Issue EP.2 — ouroboros-rest: [EP.2] Permission guard — migrate the `@Roles()` sites
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EP (not filed)
+> **GitHub issue:** #1604 · **Status:** 🟡 Open · **Parent epic:** #1590
 
 - **Problem Statement:** Until routes check permissions, a custom role is a
   label. The migration touches every controller, and its only acceptable
@@ -1156,7 +1158,7 @@ flowchart LR
 
 ### Issue EP.3 — ouroboros-db: [EP.3] Custom role schema
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EP (not filed)
+> **GitHub issue:** #1605 · **Status:** 🟡 Open · **Parent epic:** #1590
 
 - **Problem Statement:** A custom role needs somewhere to live that the
   BetterAuth organization plugin's `member.role` column — a word the plugin
@@ -1206,7 +1208,7 @@ erDiagram
 
 ### Issue EP.4 — ouroboros-rest: [EP.4] Custom role management, assignment & escalation guard
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EP (not filed)
+> **GitHub issue:** #1606 · **Status:** 🟡 Open · **Parent epic:** #1590
 
 - **Problem Statement:** Role management is the classic privilege-escalation
   surface: whoever can edit a role can grant themselves anything it can
@@ -1257,7 +1259,7 @@ PUT  /members/<self>/role {role: "release-manager"}                           �
 
 ### Issue EP.5 — ouroboros-ui: [EP.5] Roles editor & member assignment
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EP (not filed)
+> **GitHub issue:** #1608 · **Status:** 🟡 Open · **Parent epic:** #1590
 
 - **Problem Statement:** Roles need a place to be read and edited by
   someone who did not write them, and the Members card's Role column must
@@ -1306,7 +1308,7 @@ PUT  /members/<self>/role {role: "release-manager"}                           �
 
 ### Issue EP.6 — ouroboros-rest: [EP.6] Service-account scopes from the catalogue
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EP (not filed)
+> **GitHub issue:** #1609 · **Status:** 🟡 Open · **Parent epic:** #1590
 
 - **Problem Statement:** Service accounts have two scopes (`api.read`,
   `farm.submit`), fixed by a database CHECK. Once people have a permission
@@ -1352,20 +1354,20 @@ no deployment that has run, no drill, no chart.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EQ.1 | — | ⚪ Not filed | ouroboros: [EQ.1] Release train — stack versions & image tags | One `vX.Y.Z` names a tested set of four images | mvp, enterprise, infra, ci | N (after #57) | Y | M | .github, all modules, ouroboros-docs |
-| EQ.2 | — | ⚪ Not filed | ouroboros-rest: [EQ.2] Deployment preflight | The "things to verify" list as a command | mvp, enterprise, rest, infra | Y | Y | M | ouroboros-rest, scripts, ouroboros-docs |
-| EQ.3 | — | ⚪ Not filed | ouroboros: [EQ.3] Reference deployment | One real installation, run for 30 days, with an evidence log | mvp, enterprise, infra | N (after #58, EQ.1, EQ.2) | Y | L | docs, ouroboros-docs |
-| EQ.4 | — | ⚪ Not filed | ouroboros-docs: [EQ.4] Runbook derived from the reference deployment | Reconcile #58, `HOSTING.md` and the docs site against what happened | mvp, enterprise, documentation, docs-site, infra | N (after EQ.3, EQ.5, EQ.6) | Y | M | ouroboros-docs, HOSTING.md, docs |
-| EQ.5 | — | ⚪ Not filed | ouroboros: [EQ.5] Backup & restore drill | Scripted backup; restore into a clean environment; times measured | mvp, enterprise, infra, ci | Y (during EQ.3) | Y | M | scripts, .github, ouroboros-docs |
-| EQ.6 | — | ⚪ Not filed | ouroboros: [EQ.6] Upgrade drill & upgrade policy | Release-to-release upgrade tested with data; the policy written down | mvp, enterprise, infra, ci | Y (during EQ.3) | Y | M | .github, scripts, ouroboros-docs |
-| EQ.7 | — | ⚪ Not filed | ouroboros: [EQ.7] Helm chart for Kubernetes | A chart, installed on `kind` in CI and once on a real cluster | v2, enterprise, infra, ci | Y (after EQ.1) | N | L | deploy/helm, .github, ouroboros-docs |
-| EQ.8 | — | ⚪ Not filed | ouroboros: [EQ.8] Signed images, SBOM & provenance | Verifiable origin for every release image | v2, enterprise, infra, ci | Y (after EQ.1) | N | S | .github, ouroboros-docs |
-| EQ.9 | — | ⚪ Not filed | ouroboros: [EQ.9] Air-gapped install bundle & outbound-call inventory | Everything a release needs, as files; a list of what calls out | v2, enterprise, infra | N (after EQ.1, EQ.7) | N | M | scripts, ouroboros-rest, ouroboros-docs |
-| EQ.10 | — | ⚪ Not filed | ouroboros-rest: [EQ.10] Secrets from files & external secret stores | `*_FILE` variants for every secret variable | v2, enterprise, rest, infra | Y | N | S | ouroboros-rest, ouroboros-engine, ouroboros-docs |
+| EQ.1 | #1610 | 🟡 Open | ouroboros: [EQ.1] Release train — stack versions & image tags | One `vX.Y.Z` names a tested set of four images | mvp, enterprise, infra, ci | N (after #57) | Y | M | .github, all modules, ouroboros-docs |
+| EQ.2 | #1611 | 🟡 Open | ouroboros-rest: [EQ.2] Deployment preflight | The "things to verify" list as a command | mvp, enterprise, rest, infra | Y | Y | M | ouroboros-rest, scripts, ouroboros-docs |
+| EQ.3 | #1612 | 🟡 Open | ouroboros: [EQ.3] Reference deployment | One real installation, run for 30 days, with an evidence log | mvp, enterprise, infra | N (after #58, EQ.1, EQ.2) | Y | L | docs, ouroboros-docs |
+| EQ.4 | #1615 | 🟡 Open | ouroboros-docs: [EQ.4] Runbook derived from the reference deployment | Reconcile #58, `HOSTING.md` and the docs site against what happened | mvp, enterprise, documentation, docs-site, infra | N (after EQ.3, EQ.5, EQ.6) | Y | M | ouroboros-docs, HOSTING.md, docs |
+| EQ.5 | #1613 | 🟡 Open | ouroboros: [EQ.5] Backup & restore drill | Scripted backup; restore into a clean environment; times measured | mvp, enterprise, infra, ci | Y (during EQ.3) | Y | M | scripts, .github, ouroboros-docs |
+| EQ.6 | #1614 | 🟡 Open | ouroboros: [EQ.6] Upgrade drill & upgrade policy | Release-to-release upgrade tested with data; the policy written down | mvp, enterprise, infra, ci | Y (during EQ.3) | Y | M | .github, scripts, ouroboros-docs |
+| EQ.7 | #1616 | 🟡 Open | ouroboros: [EQ.7] Helm chart for Kubernetes | A chart, installed on `kind` in CI and once on a real cluster | v2, enterprise, infra, ci | Y (after EQ.1) | N | L | deploy/helm, .github, ouroboros-docs |
+| EQ.8 | #1617 | 🟡 Open | ouroboros: [EQ.8] Signed images, SBOM & provenance | Verifiable origin for every release image | v2, enterprise, infra, ci | Y (after EQ.1) | N | S | .github, ouroboros-docs |
+| EQ.9 | #1618 | 🟡 Open | ouroboros: [EQ.9] Air-gapped install bundle & outbound-call inventory | Everything a release needs, as files; a list of what calls out | v2, enterprise, infra | N (after EQ.1, EQ.7) | N | M | scripts, ouroboros-rest, ouroboros-docs |
+| EQ.10 | #1619 | 🟡 Open | ouroboros-rest: [EQ.10] Secrets from files & external secret stores | `*_FILE` variants for every secret variable | v2, enterprise, rest, infra | Y | N | S | ouroboros-rest, ouroboros-engine, ouroboros-docs |
 
 ### Issue EQ.1 — ouroboros: [EQ.1] Release train — stack versions & image tags
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EQ (not filed)
+> **GitHub issue:** #1610 · **Status:** 🟡 Open · **Parent epic:** #1591
 
 - **Problem Statement:** The four images are tagged `latest` and with their
   own commit hash, and the operations page says *"the four images usually
@@ -1423,7 +1425,7 @@ flowchart LR
 
 ### Issue EQ.2 — ouroboros-rest: [EQ.2] Deployment preflight
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EQ (not filed)
+> **GitHub issue:** #1611 · **Status:** 🟡 Open · **Parent epic:** #1591
 
 - **Problem Statement:** `HOSTING.md` ends with five *"Things to verify
   before going live"* and the docs site has a go-live checklist. Every item
@@ -1480,7 +1482,7 @@ $ docker run --env-file .env ouroboros-rest:v0.4.0 preflight --app-url https://a
 
 ### Issue EQ.3 — ouroboros: [EQ.3] Reference deployment
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EQ (not filed)
+> **GitHub issue:** #1612 · **Status:** 🟡 Open · **Parent epic:** #1591
 
 - **Problem Statement:** `HOSTING.md`: *"not from a deployment that has been
   run in production."* The gap analysis: a self-hosted product *"that has
@@ -1542,7 +1544,7 @@ day   0    2         8        12        16   18        22            28  30
 
 ### Issue EQ.4 — ouroboros-docs: [EQ.4] Runbook derived from the reference deployment
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EQ (not filed)
+> **GitHub issue:** #1615 · **Status:** 🟡 Open · **Parent epic:** #1591
 
 - **Problem Statement:** #58 asks for a runbook and accepts it when a clean
   VM reaches a login. Three documents already describe deployment —
@@ -1594,7 +1596,7 @@ HOSTING.md  (today)                                   HOSTING.md  (after EQ.4)
 
 ### Issue EQ.5 — ouroboros: [EQ.5] Backup & restore drill
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EQ (not filed)
+> **GitHub issue:** #1613 · **Status:** 🟡 Open · **Parent epic:** #1591
 
 - **Problem Statement:** The operations page lists three things a backup
   needs — the database, the master key, the artifact store — and says of
@@ -1661,7 +1663,7 @@ flowchart LR
 
 ### Issue EQ.6 — ouroboros: [EQ.6] Upgrade drill & upgrade policy
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EQ (not filed)
+> **GitHub issue:** #1614 · **Status:** 🟡 Open · **Parent epic:** #1591
 
 - **Problem Statement:** The operations page gives an upgrade order and
   says there is no down migration. It gives no policy: which versions
@@ -1720,7 +1722,7 @@ rollback = restore backup + run previous release          (no down migrations)
 
 ### Issue EQ.7 — ouroboros: [EQ.7] Helm chart for Kubernetes
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EQ (not filed)
+> **GitHub issue:** #1616 · **Status:** 🟡 Open · **Parent epic:** #1591
 
 - **Problem Statement:** The repository has no Kubernetes artefact of any
   kind. Peers that sell self-hosting ship a Helm chart, and an enterprise
@@ -1796,7 +1798,7 @@ flowchart TB
 
 ### Issue EQ.8 — ouroboros: [EQ.8] Signed images, SBOM & provenance
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EQ (not filed)
+> **GitHub issue:** #1617 · **Status:** 🟡 Open · **Parent epic:** #1591
 
 - **Problem Statement:** An operator pulling an Ouroboros image cannot
   verify it was built by this repository's CI, and cannot answer "what is
@@ -1837,7 +1839,7 @@ operator:  gh attestation verify oci://ghcr.io/nobudata/ouroboros-rest@sha256:�
 
 ### Issue EQ.9 — ouroboros: [EQ.9] Air-gapped install bundle & outbound-call inventory
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EQ (not filed)
+> **GitHub issue:** #1618 · **Status:** 🟡 Open · **Parent epic:** #1591
 
 - **Problem Statement:** "Runs with no control plane that holds a copy" is
   the product's strongest claim, and its strict form is running with no
@@ -1891,7 +1893,7 @@ release manifest ─▶ bundle.tar ────────┼──────
 
 ### Issue EQ.10 — ouroboros-rest: [EQ.10] Secrets from files & external secret stores
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** EQ (not filed)
+> **GitHub issue:** #1619 · **Status:** 🟡 Open · **Parent epic:** #1591
 
 - **Problem Statement:** Every secret is an environment variable. KMS
   custody (#236) removes the most sensitive one from the environment, but
@@ -1943,17 +1945,17 @@ otherwise.**
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| ER.1 | — | ⚪ Not filed | ouroboros-docs: [ER.1] Supported topologies & limits statement | One topology, the size it was run at, and a list of what is not supported | mvp, enterprise, documentation, docs-site, infra | N (after EQ.3, EQ.5, EQ.6) | Y | S | ouroboros-docs, HOSTING.md |
-| ER.2 | — | ⚪ Not filed | ouroboros-rest: [ER.2] Multi-replica safety audit | Find everything that assumes one REST process | v2, enterprise, rest, infra | Y | N | M | ouroboros-rest, ouroboros-engine, docs |
-| ER.3 | — | ⚪ Not filed | ouroboros-rest: [ER.3] Replica-safe schedulers & shared state | Fix what ER.2 finds | v2, enterprise, rest, infra | N (after ER.2) | N | L | ouroboros-rest, ouroboros-db |
-| ER.4 | — | ⚪ Not filed | ouroboros: [ER.4] Load & soak baseline | Measured limits on stated hardware | v2, enterprise, infra, ci | Y (after EQ.3) | N | M | tests, scripts, ouroboros-docs |
-| ER.5 | — | ⚪ Not filed | ouroboros: [ER.5] High-availability reference topology & failover drill | Two replicas, an HA database, failures injected and timed | v2, enterprise, infra | N (after ER.3, ER.4, EQ.7) | N | L | deploy/helm, ouroboros-docs |
-| ER.6 | — | ⚪ Not filed | ouroboros-rest: [ER.6] Operational metrics & alert rules | A metrics endpoint and a starter alert set | v2, enterprise, rest, infra | Y | N | M | ouroboros-rest, ouroboros-engine, ouroboros-docs |
-| ER.7 | — | ⚪ Not filed | ouroboros: [ER.7] Region tooling ADR — moving a workspace between deployments | Decide whether and how a workspace moves; build nothing yet | v2, enterprise, documentation | Y | N | S | docs |
+| ER.1 | #1620 | 🟡 Open | ouroboros-docs: [ER.1] Supported topologies & limits statement | One topology, the size it was run at, and a list of what is not supported | mvp, enterprise, documentation, docs-site, infra | N (after EQ.3, EQ.5, EQ.6) | Y | S | ouroboros-docs, HOSTING.md |
+| ER.2 | #1622 | 🟡 Open | ouroboros-rest: [ER.2] Multi-replica safety audit | Find everything that assumes one REST process | v2, enterprise, rest, infra | Y | N | M | ouroboros-rest, ouroboros-engine, docs |
+| ER.3 | #1623 | 🟡 Open | ouroboros-rest: [ER.3] Replica-safe schedulers & shared state | Fix what ER.2 finds | v2, enterprise, rest, infra | N (after ER.2) | N | L | ouroboros-rest, ouroboros-db |
+| ER.4 | #1624 | 🟡 Open | ouroboros: [ER.4] Load & soak baseline | Measured limits on stated hardware | v2, enterprise, infra, ci | Y (after EQ.3) | N | M | tests, scripts, ouroboros-docs |
+| ER.5 | #1625 | 🟡 Open | ouroboros: [ER.5] High-availability reference topology & failover drill | Two replicas, an HA database, failures injected and timed | v2, enterprise, infra | N (after ER.3, ER.4, EQ.7) | N | L | deploy/helm, ouroboros-docs |
+| ER.6 | #1626 | 🟡 Open | ouroboros-rest: [ER.6] Operational metrics & alert rules | A metrics endpoint and a starter alert set | v2, enterprise, rest, infra | Y | N | M | ouroboros-rest, ouroboros-engine, ouroboros-docs |
+| ER.7 | #1627 | 🟡 Open | ouroboros: [ER.7] Region tooling ADR — moving a workspace between deployments | Decide whether and how a workspace moves; build nothing yet | v2, enterprise, documentation | Y | N | S | docs |
 
 ### Issue ER.1 — ouroboros-docs: [ER.1] Supported topologies & limits statement
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** ER (not filed)
+> **GitHub issue:** #1620 · **Status:** 🟡 Open · **Parent epic:** #1592
 
 - **Problem Statement:** A pilot customer will ask how many users,
   repositories and concurrent runs the product supports, whether it is
@@ -2004,7 +2006,7 @@ Not supported      >1 REST replica (ER.2) · HA / failover (ER.5) · Kubernetes 
 
 ### Issue ER.2 — ouroboros-rest: [ER.2] Multi-replica safety audit
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** ER (not filed)
+> **GitHub issue:** #1622 · **Status:** 🟡 Open · **Parent epic:** #1592
 
 - **Problem Statement:** Whether two `ouroboros-rest` processes can run
   against one database is unknown. The code has in-process schedulers and
@@ -2062,7 +2064,7 @@ artifact store = local                local file            split brain         
 
 ### Issue ER.3 — ouroboros-rest: [ER.3] Replica-safe schedulers & shared state
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** ER (not filed)
+> **GitHub issue:** #1623 · **Status:** 🟡 Open · **Parent epic:** #1592
 
 - **Problem Statement:** ER.2 will produce a list of things that break
   under a second replica. This issue fixes them. Its scope cannot be fully
@@ -2124,7 +2126,7 @@ sequenceDiagram
 
 ### Issue ER.4 — ouroboros: [ER.4] Load & soak baseline
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** ER (not filed)
+> **GitHub issue:** #1624 · **Status:** 🟡 Open · **Parent epic:** #1592
 
 - **Problem Statement:** ER.1 can report only what the reference deployment
   happened to carry. A buyer sizing a deployment for 300 engineers needs
@@ -2175,7 +2177,7 @@ host: (named)   release: vX.Y.Z   date: (dated)        every cell is a measureme
 
 ### Issue ER.5 — ouroboros: [ER.5] High-availability reference topology & failover drill
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** ER (not filed)
+> **GitHub issue:** #1625 · **Status:** 🟡 Open · **Parent epic:** #1592
 
 - **Problem Statement:** After ER.3 the software may tolerate replicas.
   That is not high availability. HA is a topology plus the evidence that it
@@ -2236,7 +2238,7 @@ flowchart TB
 
 ### Issue ER.6 — ouroboros-rest: [ER.6] Operational metrics & alert rules
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** ER (not filed)
+> **GitHub issue:** #1626 · **Status:** 🟡 Open · **Parent epic:** #1592
 
 - **Problem Statement:** The services expose health and readiness probes
   and logs. An operator has no numeric view of the deployment: queue
@@ -2285,7 +2287,7 @@ ouro_runner_connections                                ouro_http_request_duratio
 
 ### Issue ER.7 — ouroboros: [ER.7] Region tooling ADR — moving a workspace between deployments
 
-> **GitHub issue:** not filed · **Status:** ⚪ Proposed · **Parent epic:** ER (not filed)
+> **GitHub issue:** #1627 · **Status:** 🟡 Open · **Parent epic:** #1592
 
 - **Problem Statement:** For a self-hosted deployment, data residency is
   where the operator deployed (`SECURITY_MODEL.md` § 6.7), and the region

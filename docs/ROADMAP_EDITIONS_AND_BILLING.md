@@ -402,18 +402,20 @@ hosted trial with managed credit (EM.6), conversion without re-onboarding
 
 ## Epics, Labels & Milestones
 
+> **Filed 2026-10-10** by `create-issues` in `NobuData/ouroboros`: epic parents #1529–#1534, work issues #1535–#1587, numbered in dependency order. Each work issue is a sub-issue of its epic with blocked-by links, Priority, Effort and type set. Statements below that nothing is filed predate this; relabelling or amending *existing* issues described by this roadmap has **not** been done.
+
 Each epic becomes a parent tracking issue on GitHub at filing; every roadmap
 issue below is filed as one of its sub-issues (GitHub Relationships). **None
 is filed.**
 
 | Epic | GitHub | Status | Name | Goal | Modules | Milestone |
 |------|:------:|:------:|------|------|---------|-----------|
-| EH | — | ⚪ Not filed | Business-Model Decision Record | Boundary, licence, metric, token stance, pricing study, legal review, the catalogue as data | ouroboros (docs, schemas) | Editions MVP |
-| EI | — | ⚪ Not filed | Entitlements Framework | One resolver, the API and error contract, honest locked states, the Studio entitlement | ouroboros-db, ouroboros-rest, ouroboros-ui, ouroboros-docs | Editions MVP |
-| EJ | — | ⚪ Not filed | Self-Hosted Licensing | Signed licence tokens, offline verification, install paths, expiry semantics, the `ee/` build boundary | ouroboros-rest, ouroboros-ui, ouroboros (docs, tools, .github), ouroboros-docs | Editions MVP (EJ.10 v2) |
-| EK | — | ⚪ Not filed | Pricing Page & Commercial Statements | `/pricing`, the customer-keys line, the published self-hosted price, the truth check | ouroboros-web, ouroboros-docs | Editions MVP |
-| EL | — | ⚪ Not filed | Billing Integration & Channels (v2) | Subscriptions, metered invoices, tax, marketplace listing, reseller terms | ouroboros-db, ouroboros-rest, ouroboros-ui, ouroboros (docs) | Editions v2 |
-| EM | — | ⚪ Not filed | Trial Path | Self-starting offline trial, local funnel, evaluation guide; hosted trial and conversion later | ouroboros-rest, ouroboros-ui, ouroboros-web, ouroboros-docs | Editions MVP (EM.2, EM.6–EM.8 v2) |
+| EH | #1529 | 🟡 Open | Business-Model Decision Record | Boundary, licence, metric, token stance, pricing study, legal review, the catalogue as data | ouroboros (docs, schemas) | Editions MVP |
+| EI | #1530 | 🟡 Open | Entitlements Framework | One resolver, the API and error contract, honest locked states, the Studio entitlement | ouroboros-db, ouroboros-rest, ouroboros-ui, ouroboros-docs | Editions MVP |
+| EJ | #1531 | 🟡 Open | Self-Hosted Licensing | Signed licence tokens, offline verification, install paths, expiry semantics, the `ee/` build boundary | ouroboros-rest, ouroboros-ui, ouroboros (docs, tools, .github), ouroboros-docs | Editions MVP (EJ.10 v2) |
+| EK | #1532 | 🟡 Open | Pricing Page & Commercial Statements | `/pricing`, the customer-keys line, the published self-hosted price, the truth check | ouroboros-web, ouroboros-docs | Editions MVP |
+| EL | #1533 | 🟡 Open | Billing Integration & Channels (v2) | Subscriptions, metered invoices, tax, marketplace listing, reseller terms | ouroboros-db, ouroboros-rest, ouroboros-ui, ouroboros (docs) | Editions v2 |
+| EM | #1534 | 🟡 Open | Trial Path | Self-starting offline trial, local funnel, evaluation guide; hosted trial and conversion later | ouroboros-rest, ouroboros-ui, ouroboros-web, ouroboros-docs | Editions MVP (EM.2, EM.6–EM.8 v2) |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: the existing set
 (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`, `infra`, `documentation`,
@@ -435,17 +437,17 @@ produce the record, not the answer.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EH.1 | — | ⚪ Not filed | ouroboros: [EH.1] Decision record — business model and the open and paid boundary | Choose the model and the boundary rule; list every feature by edition | mvp, editions, documentation | Y | Y | M | docs |
-| EH.2 | — | ⚪ Not filed | ouroboros: [EH.2] Decision record — licence strategy, contributor terms and trademark | Apache core + commercial `ee/`, or an alternative; CLA or DCO; name use | mvp, editions, documentation | Y | Y | M | docs, repository root |
-| EH.3 | — | ⚪ Not filed | ouroboros: [EH.3] Decision record — licence metric and the over-band rule | Concurrent runs, seats or another unit; how it is measured; what happens above it | mvp, editions, documentation | N (after EH.1) | Y | S | docs |
-| EH.4 | — | ⚪ Not filed | ouroboros: [EH.4] Decision record — token resale and the customer-keys statement | Whether tokens are ever resold; the public sentence about customer keys | mvp, editions, documentation | Y | Y | S | docs |
-| EH.5 | — | ⚪ Not filed | ouroboros: [EH.5] Pricing study — proposed ranges tested with buyers | Interviews and a willingness-to-pay test; a recommended price list | mvp, editions, documentation | N (after EH.1, EH.3) | Y | M | docs |
-| EH.6 | — | ⚪ Not filed | ouroboros: [EH.6] Legal and tax review pack | Commercial licence text, order form, tax position, export — reviewed by professionals | mvp, editions, documentation | N (after EH.1, EH.2) | Y | M | docs, repository root |
-| EH.7 | — | ⚪ Not filed | ouroboros: [EH.7] Edition catalogue — the decision as data | `schemas/editions/v1.json`: editions, feature keys, status, prices; CI-validated | mvp, editions, ci | N (after EH.1, EH.3) | Y | M | schemas, scripts, .github |
+| EH.1 | #1535 | 🟡 Open | ouroboros: [EH.1] Decision record — business model and the open and paid boundary | Choose the model and the boundary rule; list every feature by edition | mvp, editions, documentation | Y | Y | M | docs |
+| EH.2 | #1536 | 🟡 Open | ouroboros: [EH.2] Decision record — licence strategy, contributor terms and trademark | Apache core + commercial `ee/`, or an alternative; CLA or DCO; name use | mvp, editions, documentation | Y | Y | M | docs, repository root |
+| EH.3 | #1537 | 🟡 Open | ouroboros: [EH.3] Decision record — licence metric and the over-band rule | Concurrent runs, seats or another unit; how it is measured; what happens above it | mvp, editions, documentation | N (after EH.1) | Y | S | docs |
+| EH.4 | #1538 | 🟡 Open | ouroboros: [EH.4] Decision record — token resale and the customer-keys statement | Whether tokens are ever resold; the public sentence about customer keys | mvp, editions, documentation | Y | Y | S | docs |
+| EH.5 | #1539 | 🟡 Open | ouroboros: [EH.5] Pricing study — proposed ranges tested with buyers | Interviews and a willingness-to-pay test; a recommended price list | mvp, editions, documentation | N (after EH.1, EH.3) | Y | M | docs |
+| EH.6 | #1540 | 🟡 Open | ouroboros: [EH.6] Legal and tax review pack | Commercial licence text, order form, tax position, export — reviewed by professionals | mvp, editions, documentation | N (after EH.1, EH.2) | Y | M | docs, repository root |
+| EH.7 | #1541 | 🟡 Open | ouroboros: [EH.7] Edition catalogue — the decision as data | `schemas/editions/v1.json`: editions, feature keys, status, prices; CI-validated | mvp, editions, ci | N (after EH.1, EH.3) | Y | M | schemas, scripts, .github |
 
 ### Issue EH.1 — ouroboros: [EH.1] Decision record — business model and the open and paid boundary
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EH
+> **GitHub issue:** #1535 · **Status:** 🟡 Open · **Parent epic:** #1529
 
 - **Problem Statement:** "The business model is undecided: an open core, a
   possible SaaS tier sketched in two open issues (#397, #500), and a
@@ -493,7 +495,7 @@ unbuilt, asked for by security / finance / platform owner ──▶ Enterprise (
 
 ### Issue EH.2 — ouroboros: [EH.2] Decision record — licence strategy, contributor terms and trademark
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EH
+> **GitHub issue:** #1536 · **Status:** 🟡 Open · **Parent epic:** #1529
 
 - **Problem Statement:** A paid edition needs code the Apache-2.0 licence
   does not cover, and the repository has no contributor terms at all (no
@@ -531,7 +533,7 @@ ouroboros-engine/ee/**       commercial                        ─┘
 
 ### Issue EH.3 — ouroboros: [EH.3] Decision record — licence metric and the over-band rule
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EH
+> **GitHub issue:** #1537 · **Status:** 🟡 Open · **Parent epic:** #1529
 
 - **Problem Statement:** A licence has to count something. The report names
   seats, runners and concurrent runs; the market shows all three and
@@ -564,7 +566,7 @@ licence band = 5  ─▶  "above your band" warning + usage-report line
 
 ### Issue EH.4 — ouroboros: [EH.4] Decision record — token resale and the customer-keys statement
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EH
+> **GitHub issue:** #1538 · **Status:** 🟡 Open · **Parent epic:** #1529
 
 - **Problem Statement:** Keys-only is shipped as architecture but there is
   "no commercial statement" about it. Tembo, Amp, Factory and OpenHands each
@@ -600,7 +602,7 @@ managed key (trial, #397) ─▶ provider list price × tokens, shown line by li
 
 ### Issue EH.5 — ouroboros: [EH.5] Pricing study — proposed ranges tested with buyers
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EH
+> **GitHub issue:** #1539 · **Status:** 🟡 Open · **Parent epic:** #1529
 
 - **Problem Statement:** No comparable self-hosted licence price is public,
   so a price cannot be derived from the market; it has to be tested. The
@@ -640,7 +642,7 @@ metric A vs metric B     ─┘
 
 ### Issue EH.6 — ouroboros: [EH.6] Legal and tax review pack
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EH
+> **GitHub issue:** #1540 · **Status:** 🟡 Open · **Parent epic:** #1529
 
 - **Problem Statement:** A paid licence is a contract. The commercial
   licence text, the order form, tax registration and export classification
@@ -679,7 +681,7 @@ gate: unreviewed ⇒ no published price · no paid licence issued
 
 ### Issue EH.7 — ouroboros: [EH.7] Edition catalogue — the decision as data
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EH
+> **GitHub issue:** #1541 · **Status:** 🟡 Open · **Parent epic:** #1529
 
 - **Problem Statement:** A decision kept only in prose drifts: the product,
   the pricing page and the documentation would each restate it. The
@@ -728,19 +730,19 @@ schemas/editions/v1.json ─┬─▶ ouroboros-rest  EntitlementService (EI.2)
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EI.1 | — | ⚪ Not filed | ouroboros-db: [EI.1] Entitlement schema — deployment edition, grants and usage samples | Tables for the installed licence state, grants and metric samples | mvp, editions, db | N (after EH.7) | Y | S | ouroboros-db |
-| EI.2 | — | ⚪ Not filed | ouroboros-rest: [EI.2] Entitlement resolver — one evaluation point | `EntitlementService` + `@RequiresFeature`; default Community | mvp, editions, rest | N (after EI.1) | Y | M | ouroboros-rest |
-| EI.3 | — | ⚪ Not filed | ouroboros-rest: [EI.3] Entitlements API and the `feature_not_in_edition` contract | Read API for the UI; one error shape for a gated route | mvp, editions, rest | N (after EI.2) | Y | S | ouroboros-rest, ouroboros-docs |
-| EI.4 | — | ⚪ Not filed | ouroboros-rest: [EI.4] Usage against the licensed band — measured, never enforced as a stop | Sample the metric, compute the window peak, warn above band | mvp, editions, rest, runs | N (after EI.2, EH.3) | Y | M | ouroboros-rest, ouroboros-docs |
-| EI.5 | — | ⚪ Not filed | ouroboros-ui: [EI.5] Locked-state primitive with four honest reasons | One component for every lock; nothing planned is rendered | mvp, editions, ui, design | N (after EI.3) | Y | M | ouroboros-ui, ouroboros-docs |
-| EI.6 | — | ⚪ Not filed | ouroboros-ui: [EI.6] Edition card in Settings | Current edition, what it includes, band usage, expiry | mvp, editions, ui, settings | N (after EI.3, EI.4, EI.5) | Y | M | ouroboros-ui, ouroboros-docs |
-| EI.7 | — | ⚪ Not filed | ouroboros-rest: [EI.7] Studio plug-in entitlement and mount gate | The `studio` key gates the mount beside `OURO_STUDIO_ENABLED` | mvp, editions, rest, studio | N (after EI.2, #919) | Y | S | ouroboros-rest, ouroboros-ui, ouroboros-engine, ouroboros-docs |
-| EI.8 | — | ⚪ Not filed | ouroboros-rest: [EI.8] Re-point deployment capability flags at the resolver | Pool flags and deployment-truth reads go through one service | mvp, editions, rest, onboarding, settings | Y (after EI.2) | Y | S | ouroboros-rest |
-| EI.9 | — | ⚪ Not filed | ouroboros-rest: [EI.9] Entitlement integration tests and the lock-honesty lint | Community-unchanged proof; a lint against false locks | mvp, editions, rest, ui, ci | N (after EI.2–EI.8) | Y | M | ouroboros-rest, ouroboros-ui, .github |
+| EI.1 | #1542 | 🟡 Open | ouroboros-db: [EI.1] Entitlement schema — deployment edition, grants and usage samples | Tables for the installed licence state, grants and metric samples | mvp, editions, db | N (after EH.7) | Y | S | ouroboros-db |
+| EI.2 | #1543 | 🟡 Open | ouroboros-rest: [EI.2] Entitlement resolver — one evaluation point | `EntitlementService` + `@RequiresFeature`; default Community | mvp, editions, rest | N (after EI.1) | Y | M | ouroboros-rest |
+| EI.3 | #1544 | 🟡 Open | ouroboros-rest: [EI.3] Entitlements API and the `feature_not_in_edition` contract | Read API for the UI; one error shape for a gated route | mvp, editions, rest | N (after EI.2) | Y | S | ouroboros-rest, ouroboros-docs |
+| EI.4 | #1545 | 🟡 Open | ouroboros-rest: [EI.4] Usage against the licensed band — measured, never enforced as a stop | Sample the metric, compute the window peak, warn above band | mvp, editions, rest, runs | N (after EI.2, EH.3) | Y | M | ouroboros-rest, ouroboros-docs |
+| EI.5 | #1546 | 🟡 Open | ouroboros-ui: [EI.5] Locked-state primitive with four honest reasons | One component for every lock; nothing planned is rendered | mvp, editions, ui, design | N (after EI.3) | Y | M | ouroboros-ui, ouroboros-docs |
+| EI.6 | #1547 | 🟡 Open | ouroboros-ui: [EI.6] Edition card in Settings | Current edition, what it includes, band usage, expiry | mvp, editions, ui, settings | N (after EI.3, EI.4, EI.5) | Y | M | ouroboros-ui, ouroboros-docs |
+| EI.7 | #1548 | 🟡 Open | ouroboros-rest: [EI.7] Studio plug-in entitlement and mount gate | The `studio` key gates the mount beside `OURO_STUDIO_ENABLED` | mvp, editions, rest, studio | N (after EI.2, #919) | Y | S | ouroboros-rest, ouroboros-ui, ouroboros-engine, ouroboros-docs |
+| EI.8 | #1549 | 🟡 Open | ouroboros-rest: [EI.8] Re-point deployment capability flags at the resolver | Pool flags and deployment-truth reads go through one service | mvp, editions, rest, onboarding, settings | Y (after EI.2) | Y | S | ouroboros-rest |
+| EI.9 | #1550 | 🟡 Open | ouroboros-rest: [EI.9] Entitlement integration tests and the lock-honesty lint | Community-unchanged proof; a lint against false locks | mvp, editions, rest, ui, ci | N (after EI.2–EI.8) | Y | M | ouroboros-rest, ouroboros-ui, .github |
 
 ### Issue EI.1 — ouroboros-db: [EI.1] Entitlement schema — deployment edition, grants and usage samples
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EI
+> **GitHub issue:** #1542 · **Status:** 🟡 Open · **Parent epic:** #1530
 
 - **Problem Statement:** There is nowhere to record which edition a
   deployment runs, what a workspace has been granted, or how usage compares
@@ -787,7 +789,7 @@ erDiagram
 
 ### Issue EI.2 — ouroboros-rest: [EI.2] Entitlement resolver — one evaluation point
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EI
+> **GitHub issue:** #1543 · **Status:** 🟡 Open · **Parent epic:** #1530
 
 - **Problem Statement:** The report asks for "edition and feature flags
   evaluated in one place". Today the nearest thing is two environment flags
@@ -827,7 +829,7 @@ has('roles.custom') ─▶ hidden · reason not_shipped (catalogue: planned — 
 
 ### Issue EI.3 — ouroboros-rest: [EI.3] Entitlements API and the `feature_not_in_edition` contract
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EI
+> **GitHub issue:** #1544 · **Status:** 🟡 Open · **Parent epic:** #1530
 
 - **Problem Statement:** The UI needs to know what is available before it
   draws, and an API client that calls a gated route needs an error it can
@@ -868,7 +870,7 @@ POST /api/v1/<gated>  ─▶ 403 { "code": "feature_not_in_edition",
 
 ### Issue EI.4 — ouroboros-rest: [EI.4] Usage against the licensed band — measured, never enforced as a stop
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EI
+> **GitHub issue:** #1545 · **Status:** 🟡 Open · **Parent epic:** #1530
 
 - **Problem Statement:** A licence that states a band needs a measurement
   the customer can see and trust, and the product must never interrupt a
@@ -909,7 +911,7 @@ POST /api/v1/<gated>  ─▶ 403 { "code": "feature_not_in_edition",
 
 ### Issue EI.5 — ouroboros-ui: [EI.5] Locked-state primitive with four honest reasons
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EI
+> **GitHub issue:** #1546 · **Status:** 🟡 Open · **Parent epic:** #1530
 
 - **Problem Statement:** The report asks for "honest locked states in the
   UI". The product has one locked-row pattern (a missing prerequisite) and a
@@ -955,7 +957,7 @@ POST /api/v1/<gated>  ─▶ 403 { "code": "feature_not_in_edition",
 
 ### Issue EI.6 — ouroboros-ui: [EI.6] Edition card in Settings
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EI
+> **GitHub issue:** #1547 · **Status:** 🟡 Open · **Parent epic:** #1530
 
 - **Problem Statement:** An administrator cannot see which edition the
   deployment runs, what it includes, when a licence expires or how usage
@@ -992,7 +994,7 @@ Settings ▸ Edition
 
 ### Issue EI.7 — ouroboros-rest: [EI.7] Studio plug-in entitlement and mount gate
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EI
+> **GitHub issue:** #1548 · **Status:** 🟡 Open · **Parent epic:** #1530
 
 - **Problem Statement:** The description makes the Studio plug-in an
   entitlement. Its mount is specified behind one environment flag
@@ -1034,7 +1036,7 @@ package present │ OURO_STUDIO_ENABLED │ has('studio') │ result
 
 ### Issue EI.8 — ouroboros-rest: [EI.8] Re-point deployment capability flags at the resolver
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EI
+> **GitHub issue:** #1549 · **Status:** 🟡 Open · **Parent epic:** #1530
 
 - **Problem Statement:** `OURO_MANAGED_KEY_POOL` and
   `OURO_HOSTED_RUNNER_POOL` (BB.5, #388 ✅) are read directly by the
@@ -1068,7 +1070,7 @@ after:   onboarding/defaults.service ──▶ EntitlementService.has('pool.mana
 
 ### Issue EI.9 — ouroboros-rest: [EI.9] Entitlement integration tests and the lock-honesty lint
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EI
+> **GitHub issue:** #1550 · **Status:** 🟡 Open · **Parent epic:** #1530
 
 - **Problem Statement:** Two failures would undo the framework: a Community
   install that loses something it had, and a lock drawn for a feature that
@@ -1111,20 +1113,20 @@ is rewritten and the rest stands.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EJ.1 | — | ⚪ Not filed | ouroboros: [EJ.1] Licence token format and key-ceremony specification | `docs/LICENSING.md`: claims, signature, key ids, rotation, threat model | mvp, editions, documentation | Y (after EH.3) | Y | M | docs, schemas |
-| EJ.2 | — | ⚪ Not filed | ouroboros-rest: [EJ.2] Offline licence verifier | Verify signature and dates locally; grant features to the resolver | mvp, editions, rest | N (after EJ.1, EI.2) | Y | M | ouroboros-rest |
-| EJ.3 | — | ⚪ Not filed | ouroboros-rest: [EJ.3] Licence install paths — file, variable and upload | Three ways in, none needing a network; sealed at rest; audited | mvp, editions, rest, infra | N (after EJ.2) | Y | M | ouroboros-rest, .env.example, ouroboros-docs |
-| EJ.4 | — | ⚪ Not filed | ouroboros: [EJ.4] Licence issuer tool and signing-key custody | An owner-side CLI that signs tokens; issuance register | mvp, editions, infra | Y (after EJ.1) | Y | M | tools (new, not shipped in images) |
-| EJ.5 | — | ⚪ Not filed | ouroboros-rest: [EJ.5] Expiry, grace and downgrade semantics | Warn, grace, lock Enterprise only; never read-only, export always works | mvp, editions, rest | N (after EJ.2) | Y | M | ouroboros-rest, ouroboros-docs |
-| EJ.6 | — | ⚪ Not filed | ouroboros: [EJ.6] Edition build boundary — `ee/` layout, boundary lint and image variants | Where paid code lives; Community images contain none of it | mvp, editions, ci, infra | N (after EH.2) | Y | L | all modules, .github, scripts |
-| EJ.7 | — | ⚪ Not filed | ouroboros-ui: [EJ.7] Licence install and status UI | Paste or upload, verification result, expiry banners | mvp, editions, ui, settings | N (after EJ.3, EJ.5, EI.6) | Y | M | ouroboros-ui, ouroboros-docs |
-| EJ.8 | — | ⚪ Not filed | ouroboros-rest: [EJ.8] Offline usage report for renewal | A readable, signed-by-nobody file the customer chooses to send | mvp, editions, rest | N (after EI.4, EJ.2) | Y | S | ouroboros-rest, ouroboros-ui, ouroboros-docs |
-| EJ.9 | — | ⚪ Not filed | ouroboros-rest: [EJ.9] Licensing integration tests and tamper suite | Air-gap proof, forged and edited tokens, clock set back, rotation | mvp, editions, rest, ci | N (after EJ.2–EJ.8) | Y | M | ouroboros-rest, tests, .github |
-| EJ.10 | — | ⚪ Not filed | ouroboros-rest: [EJ.10] Revocation list and optional online refresh | Opt-in connected renewal; offline revocation file | v2, editions, rest | N (after EJ.9) | N | M | ouroboros-rest, ouroboros-docs |
+| EJ.1 | #1551 | 🟡 Open | ouroboros: [EJ.1] Licence token format and key-ceremony specification | `docs/LICENSING.md`: claims, signature, key ids, rotation, threat model | mvp, editions, documentation | Y (after EH.3) | Y | M | docs, schemas |
+| EJ.2 | #1552 | 🟡 Open | ouroboros-rest: [EJ.2] Offline licence verifier | Verify signature and dates locally; grant features to the resolver | mvp, editions, rest | N (after EJ.1, EI.2) | Y | M | ouroboros-rest |
+| EJ.3 | #1553 | 🟡 Open | ouroboros-rest: [EJ.3] Licence install paths — file, variable and upload | Three ways in, none needing a network; sealed at rest; audited | mvp, editions, rest, infra | N (after EJ.2) | Y | M | ouroboros-rest, .env.example, ouroboros-docs |
+| EJ.4 | #1554 | 🟡 Open | ouroboros: [EJ.4] Licence issuer tool and signing-key custody | An owner-side CLI that signs tokens; issuance register | mvp, editions, infra | Y (after EJ.1) | Y | M | tools (new, not shipped in images) |
+| EJ.5 | #1555 | 🟡 Open | ouroboros-rest: [EJ.5] Expiry, grace and downgrade semantics | Warn, grace, lock Enterprise only; never read-only, export always works | mvp, editions, rest | N (after EJ.2) | Y | M | ouroboros-rest, ouroboros-docs |
+| EJ.6 | #1556 | 🟡 Open | ouroboros: [EJ.6] Edition build boundary — `ee/` layout, boundary lint and image variants | Where paid code lives; Community images contain none of it | mvp, editions, ci, infra | N (after EH.2) | Y | L | all modules, .github, scripts |
+| EJ.7 | #1557 | 🟡 Open | ouroboros-ui: [EJ.7] Licence install and status UI | Paste or upload, verification result, expiry banners | mvp, editions, ui, settings | N (after EJ.3, EJ.5, EI.6) | Y | M | ouroboros-ui, ouroboros-docs |
+| EJ.8 | #1558 | 🟡 Open | ouroboros-rest: [EJ.8] Offline usage report for renewal | A readable, signed-by-nobody file the customer chooses to send | mvp, editions, rest | N (after EI.4, EJ.2) | Y | S | ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| EJ.9 | #1559 | 🟡 Open | ouroboros-rest: [EJ.9] Licensing integration tests and tamper suite | Air-gap proof, forged and edited tokens, clock set back, rotation | mvp, editions, rest, ci | N (after EJ.2–EJ.8) | Y | M | ouroboros-rest, tests, .github |
+| EJ.10 | #1576 | 🟡 Open | ouroboros-rest: [EJ.10] Revocation list and optional online refresh | Opt-in connected renewal; offline revocation file | v2, editions, rest | N (after EJ.9) | N | M | ouroboros-rest, ouroboros-docs |
 
 ### Issue EJ.1 — ouroboros: [EJ.1] Licence token format and key-ceremony specification
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EJ
+> **GitHub issue:** #1551 · **Status:** 🟡 Open · **Parent epic:** #1531
 
 - **Problem Statement:** A licence token is a security artefact and a
   contract summary at once. Its format, its signing-key custody and its
@@ -1170,7 +1172,7 @@ signature  Ed25519(header.claims)   ── verified with a public key compiled i
 
 ### Issue EJ.2 — ouroboros-rest: [EJ.2] Offline licence verifier
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EJ
+> **GitHub issue:** #1552 · **Status:** 🟡 Open · **Parent epic:** #1531
 
 - **Problem Statement:** The description requires "signed licence keys with
   offline validation for self-hosted and air-gapped installs". Verification
@@ -1215,7 +1217,7 @@ flowchart LR
 
 ### Issue EJ.3 — ouroboros-rest: [EJ.3] Licence install paths — file, variable and upload
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EJ
+> **GitHub issue:** #1553 · **Status:** 🟡 Open · **Parent epic:** #1531
 
 - **Problem Statement:** Operators install configuration three ways in this
   product — a mounted file, an environment variable, the UI — and an
@@ -1260,7 +1262,7 @@ air-gapped host                       connected host
 
 ### Issue EJ.4 — ouroboros: [EJ.4] Licence issuer tool and signing-key custody
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EJ
+> **GitHub issue:** #1554 · **Status:** 🟡 Open · **Parent epic:** #1531
 
 - **Problem Statement:** Someone has to produce tokens. In the MVP there is
   no billing system (decision C16), so issuance is an owner-side tool run by
@@ -1298,7 +1300,7 @@ signed order form ─▶ ouro-license issue --customer … --edition enterprise 
 
 ### Issue EJ.5 — ouroboros-rest: [EJ.5] Expiry, grace and downgrade semantics
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EJ
+> **GitHub issue:** #1555 · **Status:** 🟡 Open · **Parent epic:** #1531
 
 - **Problem Statement:** What happens when a licence lapses is the moment a
   customer learns whether the vendor can hold their system hostage. GitLab's
@@ -1340,7 +1342,7 @@ signed order form ─▶ ouro-license issue --customer … --edition enterprise 
 
 ### Issue EJ.6 — ouroboros: [EJ.6] Edition build boundary — `ee/` layout, boundary lint and image variants
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EJ
+> **GitHub issue:** #1556 · **Status:** 🟡 Open · **Parent epic:** #1531
 
 - **Problem Statement:** If paid code and its licence check sit in
   Apache-2.0 files, anyone may lawfully delete the check. The boundary has
@@ -1386,7 +1388,7 @@ lint: src/** ✗ import ee/**      ee/** ✓ import src/**
 
 ### Issue EJ.7 — ouroboros-ui: [EJ.7] Licence install and status UI
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EJ
+> **GitHub issue:** #1557 · **Status:** 🟡 Open · **Parent epic:** #1531
 
 - **Problem Statement:** An owner on a connected install should not need a
   shell to install or renew a licence, and every administrator should see
@@ -1427,7 +1429,7 @@ lint: src/** ✗ import ee/**      ee/** ✓ import src/**
 
 ### Issue EJ.8 — ouroboros-rest: [EJ.8] Offline usage report for renewal
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EJ
+> **GitHub issue:** #1558 · **Status:** 🟡 Open · **Parent epic:** #1531
 
 - **Problem Statement:** With no phone-home, the vendor cannot see usage,
   and a band-based licence is renewed on trust. GitLab solves this with a
@@ -1461,7 +1463,7 @@ month     p95   max
 
 ### Issue EJ.9 — ouroboros-rest: [EJ.9] Licensing integration tests and tamper suite
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EJ
+> **GitHub issue:** #1559 · **Status:** 🟡 Open · **Parent epic:** #1531
 
 - **Problem Statement:** "Works air-gapped" and "cannot be forged" are
   claims the pricing page will make; each needs a test that fails when it
@@ -1493,7 +1495,7 @@ clock:  −30d → warn, status kept      rotation: old kid ✓ new kid ✓
 
 ### Issue EJ.10 — ouroboros-rest: [EJ.10] Revocation list and optional online refresh
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EJ
+> **GitHub issue:** #1576 · **Status:** 🟡 Open · **Parent epic:** #1531
 
 - **Problem Statement:** An offline token cannot be revoked or renewed
   without someone copying a file. Connected customers may prefer automatic
@@ -1535,18 +1537,18 @@ compliance chips and hero statistics on the same page belong to
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EK.1 | — | ⚪ Not filed | ouroboros-web: [EK.1] `/pricing` route rendered from the edition catalogue | Editions and a comparison table generated from data | mvp, editions, web, design | N (after EH.7) | Y | M | ouroboros-web |
-| EK.2 | — | ⚪ Not filed | ouroboros-web: [EK.2] The customer-keys line and "what we charge for" | The approved sentence, placed where a buyer looks first | mvp, editions, web | N (after EH.4, EK.1) | Y | S | ouroboros-web |
-| EK.3 | — | ⚪ Not filed | ouroboros-web: [EK.3] Published self-hosted price and metric explainer | The price, the bands, how the metric is counted | mvp, editions, web | N (after EH.5, EH.6, EK.1) | Y | M | ouroboros-web |
-| EK.4 | — | ⚪ Not filed | ouroboros-web: [EK.4] Repair the Pricing link and the call to action | Footer link and "Start free" go somewhere real | mvp, editions, web | N (after EK.1) | Y | XS | ouroboros-web |
-| EK.5 | — | ⚪ Not filed | ouroboros-docs: [EK.5] Editions and licensing documentation | Editions page generated from the catalogue; licensing guide | mvp, editions, docs-site, documentation | N (after EH.7, EI.3, EJ.3) | Y | M | ouroboros-docs |
-| EK.6 | — | ⚪ Not filed | ouroboros-web: [EK.6] Pricing-page truth check in CI | Every claim maps to a shipped catalogue key; prices come from data | mvp, editions, web, ci | N (after EK.1) | Y | S | ouroboros-web, .github, scripts |
-| EK.7 | — | ⚪ Not filed | ouroboros-web: [EK.7] Buy and quote path without a sales call | A purchase request that ends in an order form, not a meeting | mvp, editions, web | N (after EH.6, EK.3) | Y | M | ouroboros-web |
-| EK.8 | — | ⚪ Not filed | ouroboros-web: [EK.8] Price-change policy and price history | A published promise about how prices change | mvp, editions, web | N (after EH.6, EK.1) | Y | S | ouroboros-web, schemas |
+| EK.1 | #1560 | 🟡 Open | ouroboros-web: [EK.1] `/pricing` route rendered from the edition catalogue | Editions and a comparison table generated from data | mvp, editions, web, design | N (after EH.7) | Y | M | ouroboros-web |
+| EK.2 | #1561 | 🟡 Open | ouroboros-web: [EK.2] The customer-keys line and "what we charge for" | The approved sentence, placed where a buyer looks first | mvp, editions, web | N (after EH.4, EK.1) | Y | S | ouroboros-web |
+| EK.3 | #1562 | 🟡 Open | ouroboros-web: [EK.3] Published self-hosted price and metric explainer | The price, the bands, how the metric is counted | mvp, editions, web | N (after EH.5, EH.6, EK.1) | Y | M | ouroboros-web |
+| EK.4 | #1563 | 🟡 Open | ouroboros-web: [EK.4] Repair the Pricing link and the call to action | Footer link and "Start free" go somewhere real | mvp, editions, web | N (after EK.1) | Y | XS | ouroboros-web |
+| EK.5 | #1564 | 🟡 Open | ouroboros-docs: [EK.5] Editions and licensing documentation | Editions page generated from the catalogue; licensing guide | mvp, editions, docs-site, documentation | N (after EH.7, EI.3, EJ.3) | Y | M | ouroboros-docs |
+| EK.6 | #1565 | 🟡 Open | ouroboros-web: [EK.6] Pricing-page truth check in CI | Every claim maps to a shipped catalogue key; prices come from data | mvp, editions, web, ci | N (after EK.1) | Y | S | ouroboros-web, .github, scripts |
+| EK.7 | #1566 | 🟡 Open | ouroboros-web: [EK.7] Buy and quote path without a sales call | A purchase request that ends in an order form, not a meeting | mvp, editions, web | N (after EH.6, EK.3) | Y | M | ouroboros-web |
+| EK.8 | #1567 | 🟡 Open | ouroboros-web: [EK.8] Price-change policy and price history | A published promise about how prices change | mvp, editions, web | N (after EH.6, EK.1) | Y | S | ouroboros-web, schemas |
 
 ### Issue EK.1 — ouroboros-web: [EK.1] `/pricing` route rendered from the edition catalogue
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EK
+> **GitHub issue:** #1560 · **Status:** 🟡 Open · **Parent epic:** #1532
 
 - **Problem Statement:** There is no pricing page. The footer's Pricing
   link points at the call-to-action anchor. "A credible 2026 pricing page"
@@ -1590,7 +1592,7 @@ Compare ─ rows = catalogue.features where status = shipped
 
 ### Issue EK.2 — ouroboros-web: [EK.2] The customer-keys line and "what we charge for"
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EK
+> **GitHub issue:** #1561 · **Status:** 🟡 Open · **Parent epic:** #1532
 
 - **Problem Statement:** Tembo, Amp, Factory and OpenHands each state what
   is still charged when the customer brings model keys. Ouroboros, whose
@@ -1622,7 +1624,7 @@ Ouroboros never charges ───── a fee or margin on your tokens
 
 ### Issue EK.3 — ouroboros-web: [EK.3] Published self-hosted price and metric explainer
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EK
+> **GitHub issue:** #1562 · **Status:** 🟡 Open · **Parent epic:** #1532
 
 - **Problem Statement:** "No vendor publishes a self-hosted licence price,
   which makes a transparent one a differentiator." A published price is
@@ -1659,7 +1661,7 @@ Above your band: nothing stops. We settle at renewal.
 
 ### Issue EK.4 — ouroboros-web: [EK.4] Repair the Pricing link and the call to action
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EK
+> **GitHub issue:** #1563 · **Status:** 🟡 Open · **Parent epic:** #1532
 
 - **Problem Statement:** `page.tsx` line 559 links **Pricing** to `#cta`
   and line 515 links *"Start free — no card"* to `#top`. Both are promises
@@ -1687,7 +1689,7 @@ CTA     Start free ─ before: #top    after: docs ▸ Deploying Ouroboros (quic
 
 ### Issue EK.5 — ouroboros-docs: [EK.5] Editions and licensing documentation
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EK
+> **GitHub issue:** #1564 · **Status:** 🟡 Open · **Parent epic:** #1532
 
 - **Problem Statement:** An administrator evaluating or operating a
   licensed install needs a reference that is not a marketing page: what
@@ -1724,7 +1726,7 @@ schemas/editions/v1.json ─▶ yarn gen:editions ─▶ editions.mdx (table)
 
 ### Issue EK.6 — ouroboros-web: [EK.6] Pricing-page truth check in CI
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EK
+> **GitHub issue:** #1565 · **Status:** 🟡 Open · **Parent epic:** #1532
 
 - **Problem Statement:** The marketing site already shows chips for things
   the product withdrew in writing (`SECURITY_MODEL.md` § 8.3). A pricing
@@ -1755,7 +1757,7 @@ schemas/editions/v1.json ─▶ yarn gen:editions ─▶ editions.mdx (table)
 
 ### Issue EK.7 — ouroboros-web: [EK.7] Buy and quote path without a sales call
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EK
+> **GitHub issue:** #1566 · **Status:** 🟡 Open · **Parent epic:** #1532
 
 - **Problem Statement:** In the MVP there is no checkout (decision C16).
   Without a designed path, "contact sales" becomes the only way to buy —
@@ -1792,7 +1794,7 @@ no meeting on the path · "talk to us" optional
 
 ### Issue EK.8 — ouroboros-web: [EK.8] Price-change policy and price history
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EK
+> **GitHub issue:** #1567 · **Status:** 🟡 Open · **Parent epic:** #1532
 
 - **Problem Statement:** Cursor (June 2025), Replit (mid-2025) and GitHub
   Copilot (June 2026) each repriced and each met a backlash "centred on
@@ -1833,21 +1835,21 @@ choice is reversible.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EL.1 | — | ⚪ Not filed | ouroboros-rest: [EL.1] `BillingProvider` SPI and provider decision record | The seam, a conformance kit, the provider ADR | v2, editions, rest | Y | N | M | ouroboros-rest, docs |
-| EL.2 | — | ⚪ Not filed | ouroboros-db: [EL.2] Billing domain schema | Customers, subscriptions, invoice mirror, provider events | v2, editions, db | N (after EL.1) | N | M | ouroboros-db |
-| EL.3 | — | ⚪ Not filed | ouroboros-rest: [EL.3] Subscriptions and checkout — Stripe adapter | Plan purchase and change; subscription state becomes grants | v2, editions, rest | N (after EL.1, EL.2, EI.2) | N | L | ouroboros-rest, ouroboros-docs |
-| EL.4 | — | ⚪ Not filed | ouroboros-rest: [EL.4] Metered line items — usage ledger to invoice | Rate billable units from the ledger; never bill customer-key tokens | v2, editions, rest | N (after EL.3, spend ledger) | N | L | ouroboros-rest, ouroboros-docs |
-| EL.5 | — | ⚪ Not filed | ouroboros-rest: [EL.5] Tax, invoices and receipts | Tax calculation, compliant invoices, customer tax ids | v2, editions, rest | N (after EL.3, EH.6) | N | M | ouroboros-rest, ouroboros-docs |
-| EL.6 | — | ⚪ Not filed | ouroboros-rest: [EL.6] Billing webhooks, dunning and suspension semantics | Idempotent event intake; failed payment never deletes or hides data | v2, editions, rest | N (after EL.3) | N | M | ouroboros-rest, ouroboros-docs |
-| EL.7 | — | ⚪ Not filed | ouroboros-ui: [EL.7] Billing surface in Settings | Plan, usage this period, invoices, payment method via the provider portal | v2, editions, ui, settings | N (after EL.3–EL.6) | N | M | ouroboros-ui, ouroboros-docs |
-| EL.8 | — | ⚪ Not filed | ouroboros-rest: [EL.8] Self-serve licence purchase and automated issuance | Pay online, receive a self-hosted licence without a person in the loop | v2, editions, rest, web | N (after EL.3, EJ.4) | N | M | vendor service (new), ouroboros-web |
-| EL.9 | — | ⚪ Not filed | ouroboros: [EL.9] Cloud-marketplace listing as a contract product | List the licence where the 3% fee applies, not the 20% one | v2, editions, infra, documentation | N (after EL.8, EH.6) | N | M | docs, vendor service |
-| EL.10 | — | ⚪ Not filed | ouroboros: [EL.10] Reseller and integrator terms | Partner agreement, partner-issued licences, the `issued_via` claim | v2, editions, documentation | N (after EH.6, EJ.4) | N | M | docs, tools |
-| EL.11 | — | ⚪ Not filed | ouroboros-rest: [EL.11] Billing integration tests and invoice reconciliation | Every invoice line traceable to ledger rows, checked nightly | v2, editions, rest, ci | N (after EL.3–EL.6) | N | M | ouroboros-rest, tests |
+| EL.1 | #1568 | 🟡 Open | ouroboros-rest: [EL.1] `BillingProvider` SPI and provider decision record | The seam, a conformance kit, the provider ADR | v2, editions, rest | Y | N | M | ouroboros-rest, docs |
+| EL.2 | #1569 | 🟡 Open | ouroboros-db: [EL.2] Billing domain schema | Customers, subscriptions, invoice mirror, provider events | v2, editions, db | N (after EL.1) | N | M | ouroboros-db |
+| EL.3 | #1570 | 🟡 Open | ouroboros-rest: [EL.3] Subscriptions and checkout — Stripe adapter | Plan purchase and change; subscription state becomes grants | v2, editions, rest | N (after EL.1, EL.2, EI.2) | N | L | ouroboros-rest, ouroboros-docs |
+| EL.4 | #1571 | 🟡 Open | ouroboros-rest: [EL.4] Metered line items — usage ledger to invoice | Rate billable units from the ledger; never bill customer-key tokens | v2, editions, rest | N (after EL.3, spend ledger) | N | L | ouroboros-rest, ouroboros-docs |
+| EL.5 | #1572 | 🟡 Open | ouroboros-rest: [EL.5] Tax, invoices and receipts | Tax calculation, compliant invoices, customer tax ids | v2, editions, rest | N (after EL.3, EH.6) | N | M | ouroboros-rest, ouroboros-docs |
+| EL.6 | #1573 | 🟡 Open | ouroboros-rest: [EL.6] Billing webhooks, dunning and suspension semantics | Idempotent event intake; failed payment never deletes or hides data | v2, editions, rest | N (after EL.3) | N | M | ouroboros-rest, ouroboros-docs |
+| EL.7 | #1574 | 🟡 Open | ouroboros-ui: [EL.7] Billing surface in Settings | Plan, usage this period, invoices, payment method via the provider portal | v2, editions, ui, settings | N (after EL.3–EL.6) | N | M | ouroboros-ui, ouroboros-docs |
+| EL.8 | #1575 | 🟡 Open | ouroboros-rest: [EL.8] Self-serve licence purchase and automated issuance | Pay online, receive a self-hosted licence without a person in the loop | v2, editions, rest, web | N (after EL.3, EJ.4) | N | M | vendor service (new), ouroboros-web |
+| EL.9 | #1577 | 🟡 Open | ouroboros: [EL.9] Cloud-marketplace listing as a contract product | List the licence where the 3% fee applies, not the 20% one | v2, editions, infra, documentation | N (after EL.8, EH.6) | N | M | docs, vendor service |
+| EL.10 | #1578 | 🟡 Open | ouroboros: [EL.10] Reseller and integrator terms | Partner agreement, partner-issued licences, the `issued_via` claim | v2, editions, documentation | N (after EH.6, EJ.4) | N | M | docs, tools |
+| EL.11 | #1579 | 🟡 Open | ouroboros-rest: [EL.11] Billing integration tests and invoice reconciliation | Every invoice line traceable to ledger rows, checked nightly | v2, editions, rest, ci | N (after EL.3–EL.6) | N | M | ouroboros-rest, tests |
 
 ### Issue EL.1 — ouroboros-rest: [EL.1] `BillingProvider` SPI and provider decision record
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EL
+> **GitHub issue:** #1568 · **Status:** 🟡 Open · **Parent epic:** #1533
 
 - **Problem Statement:** The provider choice (seller of record with Stripe,
   or a merchant of record) depends on tax advice that does not exist yet,
@@ -1893,7 +1895,7 @@ classDiagram
 
 ### Issue EL.2 — ouroboros-db: [EL.2] Billing domain schema
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EL
+> **GitHub issue:** #1569 · **Status:** 🟡 Open · **Parent epic:** #1533
 
 - **Problem Statement:** A hosted tier needs local records of who is
   billed, on what plan and what the provider has said, without becoming a
@@ -1932,7 +1934,7 @@ erDiagram
 
 ### Issue EL.3 — ouroboros-rest: [EL.3] Subscriptions and checkout — Stripe adapter
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EL
+> **GitHub issue:** #1570 · **Status:** 🟡 Open · **Parent epic:** #1533
 
 - **Problem Statement:** A hosted workspace needs to choose a plan, pay for
   it and have the product reflect that choice, with one source of truth
@@ -1969,7 +1971,7 @@ workspace ─▶ checkout (provider-hosted) ─▶ subscription.active
 
 ### Issue EL.4 — ouroboros-rest: [EL.4] Metered line items — usage ledger to invoice
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EL
+> **GitHub issue:** #1571 · **Status:** 🟡 Open · **Parent epic:** #1533
 
 - **Problem Statement:** A hosted tier's variable revenue is compute (and,
   only if decision C6's exception is adopted, managed tokens at list
@@ -2012,7 +2014,7 @@ ledger rows (period P)
 
 ### Issue EL.5 — ouroboros-rest: [EL.5] Tax, invoices and receipts
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EL
+> **GitHub issue:** #1572 · **Status:** 🟡 Open · **Parent epic:** #1533
 
 - **Problem Statement:** Selling software subscriptions across borders
   creates sales-tax and VAT obligations that vary by jurisdiction and by
@@ -2048,7 +2050,7 @@ checkout ─▶ country + tax id ─▶ provider tax calculation ─▶ invoice 
 
 ### Issue EL.6 — ouroboros-rest: [EL.6] Billing webhooks, dunning and suspension semantics
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EL
+> **GitHub issue:** #1573 · **Status:** 🟡 Open · **Parent epic:** #1533
 
 - **Problem Statement:** Payment state arrives asynchronously, out of
   order and sometimes twice. And a failed card is the hosted equivalent of
@@ -2087,7 +2089,7 @@ payment_failed ─▶ retry 1 ─▶ retry 2 ─▶ final failure
 
 ### Issue EL.7 — ouroboros-ui: [EL.7] Billing surface in Settings
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EL
+> **GitHub issue:** #1574 · **Status:** 🟡 Open · **Parent epic:** #1533
 
 - **Problem Statement:** A hosted workspace owner needs to see the plan,
   what the current period is costing, and past invoices — and the screen
@@ -2124,7 +2126,7 @@ Invoices  INV-0007 · paid · ⬇        └────────────
 
 ### Issue EL.8 — ouroboros-rest: [EL.8] Self-serve licence purchase and automated issuance
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EL
+> **GitHub issue:** #1575 · **Status:** 🟡 Open · **Parent epic:** #1533
 
 - **Problem Statement:** In the MVP a self-hosted licence is bought by
   order form and issued by hand (EK.7, EJ.4). That does not scale past the
@@ -2157,7 +2159,7 @@ Invoices  INV-0007 · paid · ⬇        └────────────
 
 ### Issue EL.9 — ouroboros: [EL.9] Cloud-marketplace listing as a contract product
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EL
+> **GitHub issue:** #1577 · **Status:** 🟡 Open · **Parent epic:** #1533
 
 - **Problem Statement:** Large buyers spend through committed cloud
   budgets. How a self-hostable product is listed decides the fee: AWS
@@ -2196,7 +2198,7 @@ buyer ─▶ marketplace contract ─▶ fulfilment hand-off ─▶ vendor servi
 
 ### Issue EL.10 — ouroboros: [EL.10] Reseller and integrator terms
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EL
+> **GitHub issue:** #1578 · **Status:** 🟡 Open · **Parent epic:** #1533
 
 - **Problem Statement:** "A partner story … is now expected by large
   buyers"; Cognition's arrangement with Infosys, in which the integrator
@@ -2230,7 +2232,7 @@ licence claims: { kind: "paid", issued_via: "partner:<name>" }   register: by pa
 
 ### Issue EL.11 — ouroboros-rest: [EL.11] Billing integration tests and invoice reconciliation
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EL
+> **GitHub issue:** #1579 · **Status:** 🟡 Open · **Parent epic:** #1533
 
 - **Problem Statement:** A product whose pitch is cost you can trace cannot
   send an invoice that does not add up from its own ledger.
@@ -2268,18 +2270,18 @@ build.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| EM.1 | — | ⚪ Not filed | ouroboros-rest: [EM.1] Self-starting offline Enterprise trial | One time-boxed trial grant, started in the product, no network | mvp, editions, rest | N (after EI.2, EJ.6) | Y | M | ouroboros-rest, ouroboros-docs |
-| EM.2 | — | ⚪ Not filed | ouroboros-web: [EM.2] Trial extension key without a sales call | An email-verified form that issues a short trial licence | v2, editions, web | N (after EL.8) | N | S | ouroboros-web, vendor service |
-| EM.3 | — | ⚪ Not filed | ouroboros-ui: [EM.3] Trial surfaces — start, remaining time, what happens at the end | Start action, an unhurried countdown, the end-of-trial preview | mvp, editions, ui, settings | N (after EM.1, EI.6) | Y | M | ouroboros-ui, ouroboros-docs |
-| EM.4 | — | ⚪ Not filed | ouroboros-rest: [EM.4] Time to first pull request — a local funnel | Record install → source → first run → first PR, in the deployment only | mvp, editions, rest, onboarding | Y | Y | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
-| EM.5 | — | ⚪ Not filed | ouroboros-docs: [EM.5] Evaluation guide — from install to a first pull request | The honest path as it exists on `main` | mvp, editions, docs-site, documentation | N (after EM.1, EM.3) | Y | M | ouroboros-docs |
-| EM.6 | — | ⚪ Not filed | ouroboros-rest: [EM.6] Hosted trial — managed credit and hosted runner as an entitlement | Bind #397's trial budget to a trial grant; no card | v2, editions, rest, onboarding, providers | N (after #397, EI.2) | N | M | ouroboros-rest, ouroboros-docs |
-| EM.7 | — | ⚪ Not filed | ouroboros-rest: [EM.7] Trial-to-paid conversion without re-onboarding | Trial becomes licence or subscription with everything kept | v2, editions, rest | N (after EM.1, EL.3) | N | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
-| EM.8 | — | ⚪ Not filed | ouroboros-ui: [EM.8] First pull request checklist on a live loop | The trial's guided path once a loop can open a PR | v2, editions, ui, onboarding, runs | N (after #396, EM.4) | N | M | ouroboros-ui, ouroboros-docs |
+| EM.1 | #1580 | 🟡 Open | ouroboros-rest: [EM.1] Self-starting offline Enterprise trial | One time-boxed trial grant, started in the product, no network | mvp, editions, rest | N (after EI.2, EJ.6) | Y | M | ouroboros-rest, ouroboros-docs |
+| EM.2 | #1581 | 🟡 Open | ouroboros-web: [EM.2] Trial extension key without a sales call | An email-verified form that issues a short trial licence | v2, editions, web | N (after EL.8) | N | S | ouroboros-web, vendor service |
+| EM.3 | #1582 | 🟡 Open | ouroboros-ui: [EM.3] Trial surfaces — start, remaining time, what happens at the end | Start action, an unhurried countdown, the end-of-trial preview | mvp, editions, ui, settings | N (after EM.1, EI.6) | Y | M | ouroboros-ui, ouroboros-docs |
+| EM.4 | #1583 | 🟡 Open | ouroboros-rest: [EM.4] Time to first pull request — a local funnel | Record install → source → first run → first PR, in the deployment only | mvp, editions, rest, onboarding | Y | Y | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| EM.5 | #1584 | 🟡 Open | ouroboros-docs: [EM.5] Evaluation guide — from install to a first pull request | The honest path as it exists on `main` | mvp, editions, docs-site, documentation | N (after EM.1, EM.3) | Y | M | ouroboros-docs |
+| EM.6 | #1585 | 🟡 Open | ouroboros-rest: [EM.6] Hosted trial — managed credit and hosted runner as an entitlement | Bind #397's trial budget to a trial grant; no card | v2, editions, rest, onboarding, providers | N (after #397, EI.2) | N | M | ouroboros-rest, ouroboros-docs |
+| EM.7 | #1586 | 🟡 Open | ouroboros-rest: [EM.7] Trial-to-paid conversion without re-onboarding | Trial becomes licence or subscription with everything kept | v2, editions, rest | N (after EM.1, EL.3) | N | M | ouroboros-rest, ouroboros-ui, ouroboros-docs |
+| EM.8 | #1587 | 🟡 Open | ouroboros-ui: [EM.8] First pull request checklist on a live loop | The trial's guided path once a loop can open a PR | v2, editions, ui, onboarding, runs | N (after #396, EM.4) | N | M | ouroboros-ui, ouroboros-docs |
 
 ### Issue EM.1 — ouroboros-rest: [EM.1] Self-starting offline Enterprise trial
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EM
+> **GitHub issue:** #1580 · **Status:** 🟡 Open · **Parent epic:** #1534
 
 - **Problem Statement:** The description requires a trial "without a sales
   call", and decision O6 records that there are "no trial keys" today. An
@@ -2320,7 +2322,7 @@ licence installed any time ─▶ replaces trial grants, no gap
 
 ### Issue EM.2 — ouroboros-web: [EM.2] Trial extension key without a sales call
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EM
+> **GitHub issue:** #1581 · **Status:** 🟡 Open · **Parent epic:** #1534
 
 - **Problem Statement:** Thirty days is sometimes not enough for a
   procurement cycle. In the MVP an extension is a trial-kind licence
@@ -2347,7 +2349,7 @@ limits: per verified domain per period · no call · no marketing opt-in
 
 ### Issue EM.3 — ouroboros-ui: [EM.3] Trial surfaces — start, remaining time, what happens at the end
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EM
+> **GitHub issue:** #1582 · **Status:** 🟡 Open · **Parent epic:** #1534
 
 - **Problem Statement:** A trial the administrator cannot find, or one
   that ends by surprise, fails both the evaluator and the honesty rule.
@@ -2385,7 +2387,7 @@ limits: per verified domain per period · no call · no marketing opt-in
 
 ### Issue EM.4 — ouroboros-rest: [EM.4] Time to first pull request — a local funnel
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EM
+> **GitHub issue:** #1583 · **Status:** 🟡 Open · **Parent epic:** #1534
 
 - **Problem Statement:** "Time-to-first-PR is the implicit benchmark even
   though no vendor publishes a number" (research note). The owner of a
@@ -2425,7 +2427,7 @@ stored locally · simulated ≠ first PR · nothing leaves the deployment
 
 ### Issue EM.5 — ouroboros-docs: [EM.5] Evaluation guide — from install to a first pull request
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EM
+> **GitHub issue:** #1584 · **Status:** 🟡 Open · **Parent epic:** #1534
 
 - **Problem Statement:** "A credible onboarding path … mirrors the
   incumbents: install GitHub App → select repos → run a template task →
@@ -2465,7 +2467,7 @@ prerequisites ─▶ compose up ─▶ sign in ─▶ wizard ─▶ first loop  
 
 ### Issue EM.6 — ouroboros-rest: [EM.6] Hosted trial — managed credit and hosted runner as an entitlement
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EM
+> **GitHub issue:** #1585 · **Status:** 🟡 Open · **Parent epic:** #1534
 
 - **Problem Statement:** On a hosted deployment the zero-configuration
   trial is #397's managed key pool and first-loop runner pool. #397 builds
@@ -2501,7 +2503,7 @@ new hosted workspace ─▶ grants{trial: pool.managed_keys, pool.hosted_runners
 
 ### Issue EM.7 — ouroboros-rest: [EM.7] Trial-to-paid conversion without re-onboarding
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EM
+> **GitHub issue:** #1586 · **Status:** 🟡 Open · **Parent epic:** #1534
 
 - **Problem Statement:** #397 states the principle: "the trial exists to
   be outgrown", and the migration "must be clean — no re-onboarding, no
@@ -2537,7 +2539,7 @@ lapsed, then converted ⇒ retained configuration restored
 
 ### Issue EM.8 — ouroboros-ui: [EM.8] First pull request checklist on a live loop
 
-> **GitHub issue:** not filed · **Status:** ⚪ Not filed · **Parent epic:** EM
+> **GitHub issue:** #1587 · **Status:** 🟡 Open · **Parent epic:** #1534
 
 - **Problem Statement:** The description's target — a trial that reaches a
   first pull request — becomes achievable only when a loop opens a real
