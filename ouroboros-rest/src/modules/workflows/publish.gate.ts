@@ -70,6 +70,7 @@
 import { Injectable } from "@nestjs/common";
 
 import { EngineClient } from "../engine/engine.client";
+import type { EngineFinding } from "../engine/engine.contract";
 import type { RegistryAlias } from "./alias.suggestion";
 import { rawModelMessage, suggestAlias, unknownAliasMessage } from "./alias.suggestion";
 import { WorkflowCatalogRepository } from "./catalog.repository";
@@ -183,18 +184,28 @@ export class WorkflowPublishGate {
 
     const second = await this.engine.validateWorkflow(definition);
 
-    return {
-      findings: second.findings.map((finding) => ({
-        source: "engine" as const,
-        code: finding.code,
-        message: finding.message,
-        ...(finding.path === undefined ? {} : { path: finding.path }),
-        ...(finding.node === undefined ? {} : { node: finding.node }),
-        ...(finding.edge === undefined ? {} : { edge: finding.edge }),
-      })),
-      engineConsulted: true,
-    };
+    return { findings: second.findings.map(fromEngineFinding), engineConsulted: true };
   }
+}
+
+/**
+ * One of the engine's findings, in the gate's shape.
+ *
+ * Exported for the dry run's structural pre-check (CD.4, #562), which asks the same two
+ * validators and anchors what they say the same way.
+ *
+ * @param finding - The finding, as `EngineClient` parsed it.
+ * @returns The finding, `source: "engine"`.
+ */
+export function fromEngineFinding(finding: EngineFinding): PublishFinding {
+  return {
+    source: "engine",
+    code: finding.code,
+    message: finding.message,
+    ...(finding.path === undefined ? {} : { path: finding.path }),
+    ...(finding.node === undefined ? {} : { node: finding.node }),
+    ...(finding.edge === undefined ? {} : { edge: finding.edge }),
+  };
 }
 
 /**
@@ -206,7 +217,7 @@ export class WorkflowPublishGate {
  *   anchors are copied only when the diagnostic carries them, so a finding never claims to be
  *   about a node it is not about.
  */
-function fromDiagnostic(diagnostic: DslDiagnostic): PublishFinding {
+export function fromDiagnostic(diagnostic: DslDiagnostic): PublishFinding {
   return {
     source: "dsl",
     code: diagnostic.code,

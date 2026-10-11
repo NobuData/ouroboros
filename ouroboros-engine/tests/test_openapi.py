@@ -216,6 +216,9 @@ _DOCUMENTED_MODELS: dict[str, type[BaseModel]] = {
     "DryRunStageFinished": dry_run_contract.StageFinished,
     "DryRunGuardBlocked": dry_run_contract.GuardBlocked,
     "DryRunDone": dry_run_contract.DryRunDone,
+    "DryRunHarnessTool": dry_run_contract.HarnessTool,
+    "DryRunHarnessGuard": dry_run_contract.HarnessGuard,
+    "DryRunHarnessDescription": dry_run_contract.HarnessDescription,
 }
 
 

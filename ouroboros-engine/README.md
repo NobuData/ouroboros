@@ -94,6 +94,7 @@ That is the command the image runs, minus the `uv` — see [Container](#containe
 | `POST /v0/code/blame` · `/history` · `/changed-between` · `/dep-graph` · `/bisect-commits` | yes | The code & git mining tool over the engine's repository clones — each answer names the commit it was read at; see [Code & git mining](#code--git-mining) — #617 |
 | `POST /v0/investigate` | yes | Accept an investigation and run the investigation loop in the background — `202`; see [The investigation loop](#the-investigation-loop) |
 | `POST /v0/dry-runs` | yes | Run a deep dry run of a workflow draft, streaming stage rows as NDJSON — real models, virtual writes, replayed infra; see [The deep dry-run harness](#the-deep-dry-run-harness) |
+| `GET /v0/dry-runs/harness` | yes | What the dry-run harness can and cannot do — its tools with their effect, its guards, the capabilities no tool provides — read from the tables that enforce them (#562); see [The deep dry-run harness](#the-deep-dry-run-harness) |
 | `POST /v0/skills/run` | yes | Follow a registry skill over an input and answer the validated result — a roadmap, or one issue body per item; see [Running a skill](#running-a-skill) |
 | `POST /v0/learn` | yes | Learn candidate facts: a source bundle in, candidates with confidence and typed provenance out — committed for #423; today `unavailable-v0` answers none and says why |
 | `/openapi.json`, `/docs` | yes | The committed specification, served verbatim. A map of the internal surface is not something a misrouted port should hand out |
@@ -618,6 +619,13 @@ mockup 20's safety strip as mechanism — `ouroboros_engine/dryrun/`:
   `list_dir`, `edit_file`, and the replay stubs `build` and `run_tests`. Any other name is not
   run: it is recorded in the guard audit, streamed as `guard_blocked`, and **the run ends
   `failed`**. A path outside the repository is refused and audited the same way.
+- `describe.py` — **the harness, described from its own tables** (CD.4,
+  [#562](https://github.com/NobuData/ouroboros/issues/562)). `GET /v0/dry-runs/harness` answers
+  the `TOOL_SPECS` that dispatch a call (each with its `effect`: `read`, `simulated_write` or
+  `replay`), the `GUARDS` that refuse one, the `FORBIDDEN_CAPABILITIES`, and the two
+  control-plane paths the harness asks. `ouroboros-rest` builds the dry-run page's safety strip
+  from this answer, so the page claims only what the mechanism enforces — change a tool or a
+  guard and the description changes with it.
 - `protocol.py` — tool calls are fenced `tool` blocks in the reply, as the copilot's are, and a
   stage finishes with one fenced `result` block: a summary, a plan's steps, a review's verdict
   and nits.
@@ -963,7 +971,7 @@ ouroboros-engine/
 │   │   ├── analysis.py #   /v0/analysis — the analyzer set, the streamed run    · #510
 │   │   ├── code.py     #   /v0/code — blame, history, changed-between, deps     · #617
 │   │   ├── investigate.py #   /v0/investigate — accept, run in the background    · #620
-│   │   ├── dryruns.py  #   /v0/dry-runs — walk a draft, stream the rows               · #560
+│   │   ├── dryruns.py  #   /v0/dry-runs — walk a draft, stream the rows; /harness — describe it · #560, #562
 │   │   ├── skills.py   #   /v0/skills/run — follow a registry skill over an input · #624
 │   │   └── v0.py       #   the versioned prefix and the rule that governs it
 │   ├── core/           # process-wide concerns, not routes

@@ -9,6 +9,10 @@ The request is held open for the length of the run, as a copilot turn is: the ca
 dry-run orchestrator (CD.4, #562), which relays progress and persists the result. **This
 service writes nothing and dispatches nothing.**
 
+``GET /v0/dry-runs/harness`` (CD.4, #562) answers what the installed harness can do: its
+tools with their effect, its guards and the capabilities it lacks — read from the tables that
+enforce them, so the dry-run page's safety claims are served as data.
+
 The log line names the dry run, its repository and how it ended — never the ticket's text,
 a prompt, or the repository token.
 """
@@ -22,11 +26,19 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from ouroboros_engine.api.v0 import V0_PREFIX, V0_TAG
-from ouroboros_engine.dryrun.contract import DryRunDone, DryRunRequest
+from ouroboros_engine.dryrun.contract import (
+    DryRunDone,
+    DryRunRequest,
+    HarnessDescription,
+)
+from ouroboros_engine.dryrun.describe import describe_harness
 from ouroboros_engine.dryrun.harness import DryRunHarness
 
 #: Where the operation lives under the versioned prefix.
 DRY_RUNS_ROUTE = "/dry-runs"
+
+#: Where the harness describes itself (CD.4, #562).
+DRY_RUN_HARNESS_ROUTE = "/dry-runs/harness"
 
 #: How the answer is framed — one JSON event per line.
 NDJSON_MEDIA_TYPE = "application/x-ndjson"
@@ -93,3 +105,17 @@ async def dry_run(request: Request, payload: DryRunRequest) -> StreamingResponse
     return StreamingResponse(
         _lines(_harness(request), payload), media_type=NDJSON_MEDIA_TYPE
     )
+
+
+@router.get(
+    DRY_RUN_HARNESS_ROUTE,
+    summary="Describe the dry-run harness: its tools, guards and absent capabilities",
+)
+async def harness_description() -> HarnessDescription:
+    """Describe the installed harness.
+
+    Returns:
+        A ``200`` with the harness version, every tool on the allow-list and its effect,
+        every guard, and the capabilities no tool provides.
+    """
+    return describe_harness()

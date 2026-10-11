@@ -1547,7 +1547,7 @@ anything that talks HTTP.
 **The boundary is a build failure.** `.dependency-cruiser.cjs`, run by `yarn lint`:
 
 ```bash
-yarn lint      # eslint, then depcruise src
+yarn lint      # eslint (with a 6 GB heap — type-aware linting of the whole module needs more than Node's default), then depcruise src
 ```
 
 | Rule | Refuses |
@@ -5426,6 +5426,61 @@ What it refuses is a request with no class to sample — `dry_run_not_found` (40
 | `replay.internal.controller.ts` | The engine-facing route |
 | `replay.integration-spec.ts` | The mockup's figure reproduced from a farm history whose answer is known by inspection; the floor; suite sets; isolation |
 
+## Dry-run orchestration
+
+`/api/v1/workflows/{id}/dry-runs` is the lifecycle around the engine's dry-run harness (CD.4,
+[#562](https://github.com/NobuData/ouroboros/issues/562)) — mockup 20's dry-run card, its
+footer and its safety strip. The harness (CD.2, #560) executes and writes nothing; everything
+that has to be true around it is here, in `src/modules/dry-runs/`.
+
+```
+POST …/dry-runs {ticketId, draftRev, sessionId?}
+  ├─ workflow · draft at draftRev · ticket · its repository      404 / 409 / 422, nothing recorded
+  ├─ pin the default branch's head commit                        GitHub, the workspace's token
+  ├─ record the dry run (precheck)
+  ├─ structural pre-check: DSL validator, then the engine's R.2  findings ─▶ failed, NOTHING invoked
+  ├─ budget = min(workspace cap, the draft's spend guard)
+  ├─ each model stage: alias (Z.1) · manifest (BF.5) · skill     unresolved ─▶ skipped honestly (W7)
+  └─ dispatch ─▶ 201; the run goes on in the background
+                  ├─ stage_started / stage_finished / guard_blocked ─▶ GET …/{id}/events (SSE)
+                  └─ done ─▶ rows · artifacts · totals · guard audit ─▶ dry_runs ends
+```
+
+| Route | Who | What |
+| --- | --- | --- |
+| `POST …/dry-runs` | contributors | Start one; `201` `running` with its `budget`, or `201` `failed` with `precheckFindings` |
+| `GET …/dry-runs` | members | The history line: count, draft label, copilot edits, the workflow's dry-run spend, runs newest first |
+| `GET …/dry-runs/candidates` | members | The edge-case picker (decision **W8**) |
+| `GET …/dry-runs/safety` | members | The safety strip, derived from the engine's `GET /v0/dry-runs/harness` |
+| `GET …/dry-runs/{dryRunId}` | members | One dry run, whole |
+| `GET …/dry-runs/{dryRunId}/events` | members | Progress as `text/event-stream`, replayed from the top for a late subscriber |
+| `POST …/dry-runs/{dryRunId}/cancel` | contributors | Stop it; ends `cancelled`, rows so far kept |
+| `POST …/dry-runs/{dryRunId}/rerun` | contributors | The same ticket, the draft's **current** revision |
+
+| Rule | Where it is enforced |
+| --- | --- |
+| A structurally invalid draft invokes nothing | `dry-runs.service.ts` — the pre-check runs before the budget, the plans and the dispatch; `dry-runs.service.spec.ts` asserts no engine dry run, no engine validation and no stage resolution happened |
+| The budget is the tighter of two caps | `dry-runs.budget.ts` — `workspace_settings.dry_run_cap_cents` (V126, default `$10.00`) and the draft's spend guard, which is the copilot's newest `proposed` `set_guard` on the conversation (DSL v1 has no guard construct) |
+| A populated guard audit fails the run | `dry-runs.runner.ts` `endingOf()` — whatever status the harness reported; the audit is stored either way |
+| Partial results are retained | Each row is recorded as its `stage_finished` arrives, so a `budget_stopped`, `cancelled` or broken run keeps what it reached |
+| `cancelled` is its own end | V126's fourth terminal status, with no `failure_reason`; an abort closes the engine's stream |
+| One dry run per workflow at a time | `409 dry_run_in_progress`; a run left open by a process that died is ended `failed` once it has outlived the harness's 30-minute deadline |
+| A re-run tests the current draft | `rerun()` names no revision and reads the draft as it stands |
+| The strip claims only what holds | `dry-runs.safety.ts` — each column's `holds` is computed from the harness description; `dry-runs.safety.spec.ts` removes a guard, a capability and a path in turn |
+| Dry-run spend is its own accounting | `dry_runs.cost_cents`, summed by `spend()`; nothing writes a run, stage or `token_usage` row (decision **W4**, V111's `dry_run_isolation_violations`) |
+
+**The picker.** `dry-runs.picker.ts` scores each open, sized canonical ticket by how many of the
+draft's ticket-testing dimensions it **mismatches** — one per trigger label, `effort_lte`,
+`source`, and each `labels`/`effort`/`source` predicate on a fork or a branch — highest first,
+ties to the most recently updated ticket, each with its reason in words. `DryRunPickerService`
+is the module's one export: the copilot's `lookup_tickets` ranks with it, so the copilot's
+proposal and the **Dry-run another issue ▾** menu name the same ticket for the same reason.
+
+**The run outlives its request.** `DryRunRunner` holds a run in the process with every event it
+has produced. That is a single-process registry: a run started on one instance is followed live
+only on that instance; any other reads it from the record (its rows, and `done` once it has
+ended) and can still cancel it there.
+
 ## BetterAuth
 
 **The library is installed, configured, mounted, and doing the work.** `/api/auth/*`
@@ -7648,6 +7703,7 @@ ouroboros-rest/
 │       │                   #   simulate.*  — POST /routing/simulate, one dependency · #197
 │       │                   #   stats.*     — $/run avg, p50, the 30d spend card · #198
 │       │                   #   {matrix,persistence,isolation,honesty}.integration-spec · #199
+│       ├── dry-runs/       # /workflows/:id/dry-runs — the deep dry run's lifecycle: pre-check, budget, dispatch + SSE progress, records + guard audit, cancel, re-run, history, edge-case picker, safety strip · #562
 │       ├── replay-estimates/ # POST /internal/dry-runs/:id/replay-estimates — infra estimates from farm and test history · #561
 │       ├── research/       # POST /research/estimates — sources & cost, researcher pill · #622
 │       │   ├── briefs/     # a brief, read: GET /research/investigations/:id/{brief,sources,brief/export}, the matrix builder, severity rule, proposed-from-gaps, Markdown export · #621

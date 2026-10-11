@@ -2415,6 +2415,11 @@ export interface WorkspaceSettingsTable {
    * [#625](https://github.com/NobuData/ouroboros/issues/625)) — default `member`.
    */
   research_start_role: Generated<ResearchStartRole>;
+  /**
+   * The most one deep dry run may spend, in integer cents (V126,
+   * [#562](https://github.com/NobuData/ouroboros/issues/562)) — default 1000, 1 to 100000.
+   */
+  dry_run_cap_cents: Generated<number>;
   /** Who last changed a setting here, or null. `on delete set null`, never cascade. */
   updated_by: string | null;
   created_at: Stamped;
@@ -3819,6 +3824,135 @@ export type DraftEditor = "visual" | "code";
 /** The two, in the order the CHECK declares them. */
 export const DRAFT_EDITORS = ["visual", "code"] as const satisfies readonly DraftEditor[];
 
+/** `dry_runs.status` (V111; `cancelled` since V126, #562). */
+export type DryRunStatus =
+  "precheck" | "running" | "complete" | "failed" | "budget_stopped" | "cancelled";
+
+/** The statuses a dry run ends in — each terminal and distinct. */
+export const DRY_RUN_TERMINAL_STATUSES = [
+  "complete",
+  "failed",
+  "budget_stopped",
+  "cancelled",
+] as const satisfies readonly DryRunStatus[];
+
+/** `dry_runs.mode` — `deep_build` is reserved until CF.3 (#572). */
+export type DryRunMode = "deep" | "deep_build";
+
+/** `dry_run_stages.verdict`. */
+export type DryRunStageVerdict = "ok" | "skipped" | "failed" | "not_reached";
+
+/** `dry_run_stages.how` — how a row's result was produced. */
+export type DryRunStageHow = "llm" | "replayed" | "deterministic" | "skipped";
+
+/** `dry_run_artifacts.kind`. */
+export type DryRunArtifactKind = "overlay_diff" | "plan_excerpt" | "review_excerpt";
+
+/** One entry of `dry_runs.guard_audit` — a call the tool boundary refused. */
+export interface DryRunGuardAuditEntry {
+  /** Which guard held — `allow_list`, `workspace_boundary`. */
+  readonly guard: string;
+  /** What was attempted. */
+  readonly call: string;
+  /** How many times. */
+  readonly count: number;
+  /** The stage that attempted it. */
+  readonly stage_key?: string;
+}
+
+/** One entry of `dry_run_artifacts.path_summary`. */
+export interface DryRunPathChange {
+  readonly path: string;
+  readonly added: number;
+  readonly removed: number;
+}
+
+/**
+ * `ouroboros.dry_runs` — one deep dry run of a draft revision against a canonical ticket (V111,
+ * [#557](https://github.com/NobuData/ouroboros/issues/557), CC.3), in a domain of its own
+ * (decision **W4**): nothing here reaches the run read-model. Written by the orchestrator
+ * ([#562](https://github.com/NobuData/ouroboros/issues/562)).
+ */
+export interface DryRunsTable {
+  id: Generated<string>;
+  organization_id: string;
+  workflow_id: string;
+  /** The published version the tested draft was based on; null before the first publish. */
+  base_version: number | null;
+  /** The draft revision tested. */
+  draft_rev: number;
+  /** The copilot session that proposed it, or null. */
+  session_id: string | null;
+  /** The canonical ticket it ran against. */
+  ticket_id: string;
+  /** The full commit sha the virtual workspace read at. */
+  pinned_sha: string;
+  mode: Generated<DryRunMode>;
+  status: Generated<DryRunStatus>;
+  /** Wall time; set exactly when finished. A `bigint`, so a `string` when read. */
+  duration_ms: ColumnType<string | null, number | null | undefined, number | null>;
+  /** Cents; null when unpriced — never a fabricated 0. */
+  cost_cents: number | null;
+  /** Tokens metered; null when nothing was. A `bigint`, so a `string` when read. */
+  tokens: ColumnType<string | null, number | null | undefined, number | null>;
+  /** `[{guard, call, count, stage_key?}]`; `[]` on a clean run. Written as a JSON string. */
+  guard_audit: ColumnType<DryRunGuardAuditEntry[], string | undefined, string>;
+  /** Generated from {@link guard_audit}: whether it is empty. */
+  guards_clean: ColumnType<boolean, never, never>;
+  /** The R.2 pre-check's findings; null until it has run. Written as a JSON string. */
+  precheck_findings: ColumnType<
+    Record<string, unknown>[] | null,
+    string | null | undefined,
+    string | null
+  >;
+  /** Why it stopped — set exactly for `failed` and `budget_stopped`. */
+  failure_reason: string | null;
+  started_at: Generated<Date>;
+  finished_at: Date | null;
+}
+
+/**
+ * `ouroboros.dry_run_stages` — a dry run's per-stage result rows in card order (V111). Writable
+ * only while the run is open (`dry_run_stages_open`).
+ */
+export interface DryRunStagesTable {
+  id: Generated<string>;
+  organization_id: string;
+  dry_run_id: string;
+  /** The row's place on the card, from 1. */
+  seq: number;
+  stage_key: string;
+  display_name: string;
+  verdict: DryRunStageVerdict;
+  how: DryRunStageHow;
+  /** The composed result line; blank only for a stage never reached. */
+  note: Generated<string>;
+  /** See `dry_run_stage_metrics_valid()`. Written as a JSON string. */
+  metrics: ColumnType<Record<string, unknown>, string | undefined, string>;
+  /** Present exactly when the verdict is `skipped`. */
+  skip_reason: string | null;
+  started_at: Date | null;
+  finished_at: Date | null;
+}
+
+/**
+ * `ouroboros.dry_run_artifacts` — the overlay diff and the plan/review excerpts, at most 64 KiB
+ * each with an explicit truncation flag (V111).
+ */
+export interface DryRunArtifactsTable {
+  id: Generated<string>;
+  organization_id: string;
+  dry_run_id: string;
+  kind: DryRunArtifactKind;
+  content: string;
+  truncated: boolean;
+  /** The size before truncation. A `bigint`, so a `string` when read. */
+  original_bytes: ColumnType<string, number, never>;
+  /** `[{path, added, removed}]` on an overlay diff; null on an excerpt. Written as a JSON string. */
+  path_summary: ColumnType<DryRunPathChange[] | null, string | null | undefined, never>;
+  created_at: Stamped;
+}
+
 /** `copilot_sessions.status` (V107, #555). */
 export type CopilotSessionStatus = "active" | "promoted" | "discarded";
 
@@ -4669,6 +4803,8 @@ export interface WorkspaceSettingsEffectiveView {
   action_token_ttl_minutes: number;
   /** The lowest role that may start an investigation, `member` unless set (V123). */
   research_start_role: ResearchStartRole;
+  /** The most one deep dry run may spend, in cents — 1000 unless set (V126). */
+  dry_run_cap_cents: number;
 }
 
 /**
@@ -7492,6 +7628,9 @@ export interface Database {
   copilot_sessions: CopilotSessionsTable;
   copilot_messages: CopilotMessagesTable;
   draft_operations: DraftOperationsTable;
+  dry_runs: DryRunsTable;
+  dry_run_stages: DryRunStagesTable;
+  dry_run_artifacts: DryRunArtifactsTable;
   ticket_sources: TicketSourcesTable;
   tickets: TicketsTable;
   draft_batches: DraftBatchesTable;
@@ -7989,6 +8128,7 @@ export const TABLE_COLUMNS = {
     "guardrail_exception_max_ttl_minutes",
     "action_token_ttl_minutes",
     "research_start_role",
+    "dry_run_cap_cents",
   ],
   tenant_keys: [
     "organization_id",
@@ -8203,6 +8343,53 @@ export const TABLE_COLUMNS = {
     "session_id",
     "suggestion_id",
     "applied_at",
+  ],
+  dry_runs: [
+    "id",
+    "organization_id",
+    "workflow_id",
+    "base_version",
+    "draft_rev",
+    "session_id",
+    "ticket_id",
+    "pinned_sha",
+    "mode",
+    "status",
+    "duration_ms",
+    "cost_cents",
+    "tokens",
+    "guard_audit",
+    "guards_clean",
+    "precheck_findings",
+    "failure_reason",
+    "started_at",
+    "finished_at",
+  ],
+  dry_run_stages: [
+    "id",
+    "organization_id",
+    "dry_run_id",
+    "seq",
+    "stage_key",
+    "display_name",
+    "verdict",
+    "how",
+    "note",
+    "metrics",
+    "skip_reason",
+    "started_at",
+    "finished_at",
+  ],
+  dry_run_artifacts: [
+    "id",
+    "organization_id",
+    "dry_run_id",
+    "kind",
+    "content",
+    "truncated",
+    "original_bytes",
+    "path_summary",
+    "created_at",
   ],
   ticket_sources: [
     "id",
@@ -9477,6 +9664,7 @@ export const TABLE_COLUMNS = {
     "guardrail_exception_max_ttl_minutes",
     "action_token_ttl_minutes",
     "research_start_role",
+    "dry_run_cap_cents",
   ],
   alias_references: [
     "organization_id",
@@ -9928,6 +10116,12 @@ export type CopilotSession = Selectable<CopilotSessionsTable>;
 export type CopilotMessage = Selectable<CopilotMessagesTable>;
 /** A row of `ouroboros.draft_operations`, as a `select` returns it. */
 export type DraftOperation = Selectable<DraftOperationsTable>;
+/** A row of `ouroboros.dry_runs`, as a `select` returns it. */
+export type DryRun = Selectable<DryRunsTable>;
+/** A row of `ouroboros.dry_run_stages`, as a `select` returns it. */
+export type DryRunStage = Selectable<DryRunStagesTable>;
+/** A row of `ouroboros.dry_run_artifacts`, as a `select` returns it. */
+export type DryRunArtifact = Selectable<DryRunArtifactsTable>;
 /**
  * The columns an `insert` into `ouroboros.workflow_versions` may carry.
  *

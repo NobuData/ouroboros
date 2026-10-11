@@ -1,6 +1,6 @@
 /**
  * The copilot's statements — sessions, messages, the draft and its operation log, and the
- * tickets a dry-run proposal is drawn from.
+ * guarded apply. (The tickets a dry-run proposal is drawn from are the picker's — CD.4, #562.)
  *
  * Every read is org-scoped by its leading column, and the two writes that touch the draft go
  * through the database's own functions: `apply_draft_batch()` is the **only** writer of
@@ -46,16 +46,6 @@ export interface AppliedBatch {
   readonly draft_rev: number;
   readonly batch_id: string;
 }
-
-/** An open ticket, as a dry-run proposal names one. */
-export interface TicketCandidate {
-  readonly key: string;
-  readonly title: string;
-  readonly labels: readonly string[];
-}
-
-/** How many tickets a lookup may answer with, at most. */
-export const MAX_TICKET_CANDIDATES = 10;
 
 @Injectable()
 export class CopilotRepository {
@@ -360,45 +350,5 @@ export class CopilotRepository {
     const [row] = result.rows;
     if (row === undefined) throw new Error("apply_draft_batch returned no row");
     return row;
-  }
-
-  /**
-   * Open tickets matching a query, newest first — what `lookup_tickets` answers with.
-   *
-   * Plain recency, deliberately: the edge-case scorer that ranks them for a dry run is CD.4's
-   * (#562), and ranking by anything less would be a ranking nobody designed.
-   *
-   * @param organizationId - The workspace.
-   * @param query - A substring of the title, or of a label; empty for any.
-   * @param limit - How many, at most {@link MAX_TICKET_CANDIDATES}.
-   * @returns The candidates.
-   */
-  async openTickets(
-    organizationId: string,
-    query: string,
-    limit: number,
-  ): Promise<TicketCandidate[]> {
-    const pattern = `%${query.replace(/[\\%_]/g, (character) => `\\${character}`)}%`;
-    let statement = this.database.db
-      .selectFrom("tickets")
-      .select(["external_key", "title", "labels"])
-      .where("organization_id", "=", organizationId)
-      .where("state", "=", "open");
-
-    if (query.trim() !== "") {
-      statement = statement.where((eb) =>
-        eb.or([
-          eb("title", "ilike", pattern),
-          sql<boolean>`exists (select 1 from jsonb_array_elements_text(${sql.ref("labels")}) label where label ilike ${pattern})`,
-        ]),
-      );
-    }
-
-    const rows = await statement
-      .orderBy("source_updated_at", "desc")
-      .limit(Math.min(limit, MAX_TICKET_CANDIDATES))
-      .execute();
-
-    return rows.map((row) => ({ key: row.external_key, title: row.title, labels: row.labels }));
   }
 }

@@ -101,6 +101,28 @@ a protected path?** appears in the [Needs-you inbox](../user-guide/inbox.mdx). S
 
 Leave a field empty for no cap of that kind.
 
+### The dry-run cap
+
+A [dry run of a workflow draft](../user-guide/workflows/copilot.mdx#dry-runs) calls real
+models, so each workspace has a cap on what one dry run may spend. It is separate from the
+spend guard above, which governs loops.
+
+| Limit | Default | Range |
+| --- | --- | --- |
+| The most one dry run of a workflow draft may spend | $10.00 (1000 cents) | $0.01 to $1,000.00 |
+
+A dry run stops at the lower of this cap and the draft's own spend guard — see
+[The budget](../user-guide/workflows/copilot.mdx#the-budget).
+
+There is no screen for it. If you must change it, the deployment administrator does so in the
+database, in cents — for example, a cap of $25.00:
+
+```sql
+insert into ouroboros.workspace_settings (organization_id, dry_run_cap_cents)
+select id, 2500 from ouroboros.organization where slug = 'acme-robotics'
+on conflict (organization_id) do update set dry_run_cap_cents = 2500;
+```
+
 ## Dry-run mode for new repos
 
 **Loops that open draft PRs on a new repository** — for example `10` — sets how many loops a new

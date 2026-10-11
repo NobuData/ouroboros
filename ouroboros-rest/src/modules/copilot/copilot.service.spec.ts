@@ -1,5 +1,6 @@
 import type { DatabaseService } from "../db/db.service";
 import type { CopilotMessage, CopilotSession, Workflow, WorkflowVersion } from "../db/schema";
+import type { DryRunPickerService } from "../dry-runs/dry-runs.picker.service";
 import type { EngineClient } from "../engine/engine.client";
 import type { EngineCopilotEvent, EngineCopilotTurnRequest } from "../engine/engine.copilot";
 import { NotFoundError } from "../errors/error.envelope";
@@ -11,6 +12,7 @@ import {
   COPILOT_TASK_KIND,
   COPILOT_UNROUTED,
   CopilotService,
+  MAX_TICKET_CANDIDATES,
   transcriptOf,
 } from "./copilot.service";
 import type { CopilotStreamEvent } from "./copilot.stream";
@@ -133,6 +135,7 @@ function harness(
     resolution?: unknown;
     routeError?: Error;
     messages?: CopilotMessage[];
+    ranked?: unknown[];
   } = {},
 ) {
   let seq = (options.messages ?? []).length;
@@ -195,7 +198,6 @@ function harness(
           return { draft_rev: rev, batch_id: `batch-${rev}` };
         },
       ),
-    openTickets: jest.fn().mockResolvedValue([]),
   };
 
   const grounding = {
@@ -224,6 +226,8 @@ function harness(
     }),
   };
 
+  const picker = { rank: jest.fn().mockResolvedValue(options.ranked ?? []) };
+
   const trx = { transaction: "fake" };
   const database = {
     transaction: jest
@@ -237,11 +241,13 @@ function harness(
     routing as unknown as ResolutionService,
     engine as unknown as EngineClient,
     database as unknown as DatabaseService,
+    picker as unknown as DryRunPickerService,
   );
 
   return {
     service,
     copilots,
+    picker,
     routing,
     engine,
     sent,
@@ -417,6 +423,48 @@ describe("an exchange", () => {
       tool_trace: { operations: [{ outcome: "applied" }] },
     });
     expect(events[4]).toMatchObject({ kind: "done", draft: { label: "v0.2" } });
+  });
+
+  it("draws its dry-run candidates from the edge-case picker, ranked against the draft as it stands", async () => {
+    const { service, picker, sent } = harness({
+      ranked: [
+        {
+          ticket: { key: "#489", title: "CAN arbitration storm", labels: ["bug", "can-bus"] },
+          reason: "no `security` label (trigger) — outside the trigger.",
+        },
+      ],
+      turns: [
+        [
+          {
+            kind: "tool_call",
+            id: "call-1",
+            tool: "lookup_tickets",
+            arguments: { query: "can", limit: 99 },
+            error: null,
+          },
+          { kind: "done", finishReason: "tool_calls" },
+        ],
+        [{ kind: "done", finishReason: "stop" }],
+      ],
+    });
+
+    await collect(service.send(WORKSPACE, WORKFLOW, SESSION, "user-1", "which issue?"));
+
+    // The scorer the dry-run menu uses (CD.4, #562), over the stored draft, bounded.
+    expect(picker.rank).toHaveBeenCalledWith(WORKSPACE, DRAFT_DOCUMENT, {
+      limit: MAX_TICKET_CANDIDATES,
+      query: "can",
+    });
+    const second = sent[1] as EngineCopilotTurnRequest;
+    const result = second.transcript.find((entry) => entry.role === "tool");
+    expect(result).toMatchObject({
+      content: expect.stringContaining(
+        '"key":"#489","title":"CAN arbitration storm","labels":["bug","can-bus"],"reason":"no `security` label',
+      ) as string,
+    });
+    expect(result).toMatchObject({
+      content: expect.stringContaining("ranked for edge cases") as string,
+    });
   });
 
   it("answers the unrouted workspace honestly: an interrupted reply, no invocation, no cost", async () => {

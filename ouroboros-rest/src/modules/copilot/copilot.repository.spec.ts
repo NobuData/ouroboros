@@ -1,5 +1,5 @@
 import { recordingDatabase, type RecordingDatabase } from "../db/database.fixture";
-import { CopilotRepository, EMPTY_TRACE, MAX_TICKET_CANDIDATES } from "./copilot.repository";
+import { CopilotRepository, EMPTY_TRACE } from "./copilot.repository";
 
 const WORKSPACE = "acme-robotics-id";
 const WORKFLOW = "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94";
@@ -127,35 +127,5 @@ describe("the copilot repository", () => {
       SESSION,
       JSON.stringify(operations),
     ]);
-  });
-
-  it("looks open tickets up newest first, by title or label, bounded", async () => {
-    database.answers({
-      rows: [{ external_key: "#489", title: "CAN arbitration storm", labels: ["bug"] }],
-    });
-
-    const found = await copilots.openTickets(WORKSPACE, "security_%", 50);
-
-    expect(found).toEqual([{ key: "#489", title: "CAN arbitration storm", labels: ["bug"] }]);
-    const [statement] = database.statements;
-    expect(statement.sql).toContain('"state" = $2');
-    expect(statement.sql).toContain('"title" ilike $3');
-    expect(statement.sql).toContain("jsonb_array_elements_text");
-    expect(statement.sql).toContain('order by "source_updated_at" desc');
-    expect(statement.parameters).toEqual([
-      WORKSPACE,
-      "open",
-      "%security\\_\\%%",
-      "%security\\_\\%%",
-      MAX_TICKET_CANDIDATES,
-    ]);
-  });
-
-  it("looks every open ticket up when the query is blank", async () => {
-    await copilots.openTickets(WORKSPACE, "  ", 3);
-
-    const [statement] = database.statements;
-    expect(statement.sql).not.toContain("ilike");
-    expect(statement.parameters).toEqual([WORKSPACE, "open", 3]);
   });
 });

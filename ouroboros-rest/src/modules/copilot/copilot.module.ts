@@ -15,13 +15,15 @@
  * copilot.errors.ts       the codes
  *
  * Imports `WorkflowsModule` for the catalog and P7's catalogue, `RoutingModule` for Z.1's
- * resolution of the `copilot-workflow` kind, and `EngineModule` for the turn. It exports nothing:
+ * resolution of the `copilot-workflow` kind, `EngineModule` for the turn, and `DryRunsModule` for
+ * the edge-case picker `lookup_tickets` ranks with (CD.4, #562). It exports nothing:
  * the conversation is reached through its routes.
  */
 
 import { Module } from "@nestjs/common";
 
 import { DbModule } from "../db/db.module";
+import { DryRunsModule } from "../dry-runs/dry-runs.module";
 import { EngineModule } from "../engine/engine.module";
 import { RoutingModule } from "../routing/routing.module";
 import { WorkflowsModule } from "../workflows/workflows.module";
@@ -31,7 +33,7 @@ import { CopilotRepository } from "./copilot.repository";
 import { CopilotService } from "./copilot.service";
 
 @Module({
-  imports: [DbModule, EngineModule, RoutingModule, WorkflowsModule],
+  imports: [DbModule, EngineModule, RoutingModule, WorkflowsModule, DryRunsModule],
   controllers: [CopilotController],
   providers: [CopilotService, CopilotRepository, CopilotContextService],
 })

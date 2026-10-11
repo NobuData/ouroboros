@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-engine",
-    "version": "0.7.26",
+    "version": "0.7.27",
     "summary": "Internal backend for Ouroboros — executes the work ouroboros-rest brokers.",
     "description": "The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the\nservice that executes the work `ouroboros-rest` brokers.\n\nIt is **internal only**. Every request arrives from `ouroboros-rest`, inside the\ncluster, carrying a shared secret on the `X-Ouro-Internal-Key` header; a browser\nnever reaches it. That is a deployment claim, so the service enforces it itself\nrather than trusting it — **every path but `/healthz` requires the key**, the\ncomparison is constant time, and a request without one is refused before routing.\n\nA rejection is therefore one constant body whether the path exists or not: status\ncodes are how a surface gets mapped from outside, and an unauthenticated caller cannot\ntell `/v0/status` from `/v0/anything-else`. Read the `401` documented on each operation\nbelow as the answer to *anything* unauthenticated, including paths this document does\nnot list.\n\n**Every error has one shape** — `{code, message, details}`, the same envelope\n`ouroboros-rest` answers a browser with (`docs/ARCHITECTURE.md` § 5.3), so a failure\ncrossing the gateway does not change form on the way out. `code` is stable and\nmachine-readable and is what a caller branches on; `message` is written for a person\nand is a constant for anything `5xx`, because the real diagnosis names the inside of\nthis process and belongs in a log; `details` carries what is specific to the failure,\nwhich for a `422` is one entry per field that was refused. That covers the answers no\nroute produced too — a path nothing claims, a method a path does not allow, a body\nthat could not be parsed.\n\n`/v0` is the versioned internal prefix. It is unstable by definition — it changes\nwith the two services that share it, which deploy together — and a stable `/v1` is a\nlater promise, not this one. A field may be added to a response and a route may be\nadded to the prefix; a field that disappears, changes type or changes meaning is a\n`/v1` served alongside this one, not an edit to it.",
     "license": {
@@ -1463,6 +1463,74 @@
           },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntity"
+          }
+        }
+      }
+    },
+    "/v0/dry-runs/harness": {
+      "get": {
+        "tags": [
+          "v0"
+        ],
+        "summary": "Describe the dry-run harness: its tools, guards and absent capabilities",
+        "description": "What the installed dry-run harness can and cannot do — CD.4\n([#562](https://github.com/NobuData/ouroboros/issues/562)). `ouroboros-rest` builds the\ndry-run page's safety strip from this answer, so the page claims only what the\nmechanism enforces.\n\nNothing here is written by hand: `tools` is the table that dispatches a call (each with\nits `effect` — `read` the pinned commit, `simulated_write` to the in-memory overlay, or\n`replay` an estimate from history), `guards` are the guards that refuse one, and\n`forbidden_capabilities` names what no tool provides. `replay_estimates_path` and\n`invoke_path` are the two control-plane paths the harness asks. Change a tool or a\nguard and this answer changes with it.",
+        "operationId": "describeDryRunHarness",
+        "responses": {
+          "200": {
+            "description": "The harness, as it is installed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DryRunHarnessDescription"
+                },
+                "example": {
+                  "harness": "dry-run-v1",
+                  "tools": [
+                    {
+                      "name": "read_file",
+                      "effect": "read",
+                      "does": "Read a file as it stands in this dry run."
+                    },
+                    {
+                      "name": "edit_file",
+                      "effect": "simulated_write",
+                      "does": "Draft a change. It is held in memory as a simulated diff; the repository is never written."
+                    },
+                    {
+                      "name": "build",
+                      "effect": "replay",
+                      "does": "Estimate the build from the farm's history. Nothing is built."
+                    }
+                  ],
+                  "guards": [
+                    {
+                      "name": "allow_list",
+                      "refuses": "Refuses any tool that is not on the allow-list; the call is never run."
+                    },
+                    {
+                      "name": "workspace_boundary",
+                      "refuses": "Refuses a path outside the repository's own tree."
+                    }
+                  ],
+                  "forbidden_capabilities": [
+                    "network_egress",
+                    "shell",
+                    "repository_write",
+                    "farm_dispatch",
+                    "pull_request",
+                    "ticket_source_write",
+                    "credential_access"
+                  ],
+                  "writes": "memory_overlay",
+                  "reads": "provider_api_at_pinned_sha",
+                  "replay_estimates_path": "/internal/dry-runs/{id}/replay-estimates",
+                  "invoke_path": "/internal/llm/invoke"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
@@ -6449,6 +6517,121 @@
           },
           "result": {
             "$ref": "#/components/schemas/DryRunResult"
+          }
+        }
+      },
+      "DryRunHarnessTool": {
+        "type": "object",
+        "title": "DryRunHarnessTool",
+        "description": "One tool a dry-run stage has.",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "effect",
+          "does"
+        ],
+        "properties": {
+          "name": {
+            "description": "What a model calls it.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "effect": {
+            "description": "`read` (the pinned commit), `simulated_write` (the in-memory overlay) or `replay` (an estimate from history — nothing is run).",
+            "enum": [
+              "read",
+              "simulated_write",
+              "replay"
+            ],
+            "type": "string"
+          },
+          "does": {
+            "description": "One sentence, as the model is told.",
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      },
+      "DryRunHarnessGuard": {
+        "type": "object",
+        "title": "DryRunHarnessGuard",
+        "description": "One guard at the tool boundary.",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "refuses"
+        ],
+        "properties": {
+          "name": {
+            "description": "The name an audit entry carries in `guard`.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "refuses": {
+            "description": "What it refuses, as a sentence.",
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      },
+      "DryRunHarnessDescription": {
+        "type": "object",
+        "title": "DryRunHarnessDescription",
+        "description": "What the installed harness can and cannot do — read from its own tables.",
+        "additionalProperties": false,
+        "required": [
+          "harness",
+          "tools",
+          "guards",
+          "forbidden_capabilities",
+          "writes",
+          "reads",
+          "replay_estimates_path",
+          "invoke_path"
+        ],
+        "properties": {
+          "harness": {
+            "description": "The harness version a result names.",
+            "type": "string"
+          },
+          "tools": {
+            "description": "Every tool a stage has, in manifest order. There is no other way to act.",
+            "items": {
+              "$ref": "#/components/schemas/DryRunHarnessTool"
+            },
+            "type": "array"
+          },
+          "guards": {
+            "description": "Every guard that can refuse a call.",
+            "items": {
+              "$ref": "#/components/schemas/DryRunHarnessGuard"
+            },
+            "type": "array"
+          },
+          "forbidden_capabilities": {
+            "description": "The capabilities no tool provides.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "writes": {
+            "description": "Where a stage's writes go — always `memory_overlay`.",
+            "const": "memory_overlay",
+            "type": "string"
+          },
+          "reads": {
+            "description": "Where a stage's reads come from — the provider's API at the pinned commit.",
+            "const": "provider_api_at_pinned_sha",
+            "type": "string"
+          },
+          "replay_estimates_path": {
+            "description": "The control-plane path an infrastructure stage asks.",
+            "type": "string"
+          },
+          "invoke_path": {
+            "description": "The control-plane path every model call goes through.",
+            "type": "string"
           }
         }
       },

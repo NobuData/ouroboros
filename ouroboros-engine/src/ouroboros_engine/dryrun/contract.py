@@ -353,3 +353,60 @@ class DryRunDone(BaseModel):
 
 
 DryRunEvent = StageStarted | StageFinished | GuardBlocked | DryRunDone
+
+
+class HarnessTool(BaseModel):
+    """One tool a dry-run stage has.
+
+    Attributes:
+        name: What a model calls it.
+        effect: ``read`` (the pinned commit), ``simulated_write`` (the in-memory overlay) or
+            ``replay`` (an estimate from history — nothing is run).
+        does: One sentence, as the model is told.
+    """
+
+    model_config = _CLOSED
+
+    name: str = Field(min_length=1)
+    effect: Literal["read", "simulated_write", "replay"]
+    does: str = Field(min_length=1)
+
+
+class HarnessGuard(BaseModel):
+    """One guard at the tool boundary.
+
+    Attributes:
+        name: The name an audit entry carries in ``guard``.
+        refuses: What it refuses, as a sentence.
+    """
+
+    model_config = _CLOSED
+
+    name: str = Field(min_length=1)
+    refuses: str = Field(min_length=1)
+
+
+class HarnessDescription(BaseModel):
+    """What the installed harness can and cannot do — read from its own tables.
+
+    Attributes:
+        harness: The harness version a result names.
+        tools: Every tool a stage has, in manifest order. There is no other way to act.
+        guards: Every guard that can refuse a call.
+        forbidden_capabilities: The capabilities no tool provides.
+        writes: Where a stage's writes go — always ``memory_overlay``.
+        reads: Where a stage's reads come from — the provider's API at the pinned commit.
+        replay_estimates_path: The control-plane path an infrastructure stage asks.
+        invoke_path: The control-plane path every model call goes through.
+    """
+
+    model_config = _CLOSED
+
+    harness: str
+    tools: list[HarnessTool]
+    guards: list[HarnessGuard]
+    forbidden_capabilities: list[str]
+    writes: Literal["memory_overlay"]
+    reads: Literal["provider_api_at_pinned_sha"]
+    replay_estimates_path: str
+    invoke_path: str
