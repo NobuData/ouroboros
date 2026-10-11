@@ -10,7 +10,9 @@ import {
   TOOLS_SEAT_HREF,
   chipState,
   idleChipTip,
+  usableTool,
 } from "./composer";
+import { COMPOSER_NO_TOOLS_LINK, COMPOSER_NO_TOOLS_PREFIX } from "./states";
 
 /** What the chips take. */
 export interface ToolChipsProps {
@@ -35,49 +37,65 @@ export interface ToolChipsProps {
  * where to connect it. A connected chip is a button with `aria-pressed`, the tick its pressed
  * mark and the dot its released one, so the two states differ by more than hue.
  *
+ * **With nothing connected, every chip is idle and the row says where that changes** (CN.7,
+ * [#633](https://github.com/NobuData/ouroboros/issues/633)): one line under the chips links to
+ * the tools card, so a fresh workspace is told the first step rather than left with a start
+ * button that explains only that it is off.
+ *
  * @param props See {@link ToolChipsProps}.
  * @returns The group.
  */
 export function ToolChips({ tools, on, onToggle, disabled = false }: ToolChipsProps) {
   return (
-    <div aria-label={TOOLS_LABEL} className="research__tools" role="group">
-      <span className="research__tools-label">{TOOLS_PREFIX}</span>
-      {tools.map((tool) => {
-        const state = chipState(tool, on);
-        const glyph = (
-          <span aria-hidden="true" className="research__chip-glyph">
-            {CHIP_GLYPH[state]}
-          </span>
-        );
+    <>
+      <div aria-label={TOOLS_LABEL} className="research__tools" role="group">
+        <span className="research__tools-label">{TOOLS_PREFIX}</span>
+        {tools.map((tool) => {
+          const state = chipState(tool, on);
+          const glyph = (
+            <span aria-hidden="true" className="research__chip-glyph">
+              {CHIP_GLYPH[state]}
+            </span>
+          );
 
-        if (state === "idle") {
+          if (state === "idle") {
+            return (
+              <a
+                className="research__chip research__chip--idle"
+                href={TOOLS_SEAT_HREF}
+                key={tool.slug}
+                title={idleChipTip(tool)}
+              >
+                {glyph}
+                {tool.name}
+              </a>
+            );
+          }
+
           return (
-            <a
-              className="research__chip research__chip--idle"
-              href={TOOLS_SEAT_HREF}
+            <button
+              aria-disabled={disabled || undefined}
+              aria-pressed={state === "on"}
+              className={cx("research__chip", state === "on" && "research__chip--on")}
               key={tool.slug}
-              title={idleChipTip(tool)}
+              onClick={disabled ? undefined : () => onToggle(tool.slug)}
+              type="button"
             >
               {glyph}
               {tool.name}
-            </a>
+            </button>
           );
-        }
-
-        return (
-          <button
-            aria-disabled={disabled || undefined}
-            aria-pressed={state === "on"}
-            className={cx("research__chip", state === "on" && "research__chip--on")}
-            key={tool.slug}
-            onClick={disabled ? undefined : () => onToggle(tool.slug)}
-            type="button"
-          >
-            {glyph}
-            {tool.name}
-          </button>
-        );
-      })}
-    </div>
+        })}
+      </div>
+      {tools.length > 0 && !tools.some(usableTool) && (
+        <p className="research__tools-pointer">
+          {COMPOSER_NO_TOOLS_PREFIX}{" "}
+          <a className="research__deliverable-link" href={TOOLS_SEAT_HREF}>
+            {COMPOSER_NO_TOOLS_LINK}
+          </a>
+          .
+        </p>
+      )}
+    </>
   );
 }

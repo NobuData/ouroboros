@@ -1,16 +1,33 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { COMPOSER_TITLE, QUESTION_LABEL, START_LABEL, runOf } from "@/app/research/composer";
+import { COMPOSER_TITLE, QUESTION_LABEL, START_LABEL, TOOLS_LABEL, runOf } from "@/app/research/composer";
 import type { ResearchScreenProps } from "@/app/research/research-screen";
+import { CAPTURE_LABEL, CAPTURE_READ_ONLY, DISMISS_READ_ONLY, ENABLE_READ_ONLY } from "@/app/research/side";
+import { SUGGESTION_READ_ONLY } from "@/app/research/pipeline";
+import { DRAFT_EPIC_LABEL } from "@/app/research/brief";
+import {
+  COMPOSER_NO_TOOLS_LINK,
+  FIRST_QUESTION_ACTION,
+  FIRST_QUESTION_TITLE,
+  GATEWAY_NOTICE_LINK,
+  GATEWAY_NOTICE_TITLE,
+  GATEWAY_START_REASON,
+  NO_TOOL_CONNECTED_NOTE,
+  NO_TOOL_CONNECTED_READ_ONLY,
+  SIDE_STALE_HEADLINE,
+} from "@/app/research/states";
 import { NO_FILTERS, RESEARCH_REGIONS, VIEWER_START_REASON } from "@/app/research/view";
+import { PROVIDERS_PATH } from "@/app/paths";
 import { paneLandingClaimed } from "@/app/shell/pane-anchor";
 
+import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 import {
   FakeProgressSource,
   SEEDED_LABEL,
   composerReadings,
   depthEstimates,
+  emptyWatch,
   featuredBrief,
   featuredPipeline,
   investigationList,
@@ -512,5 +529,257 @@ describe("the side column (#629)", () => {
       "title",
       "Dismissing a watch item is for workspace owners and admins.",
     );
+  });
+});
+
+/**
+ * #633 — the page's states and guards. The acceptance criteria this block holds, in the ticket's
+ * words: **a gateway-off fixture shows the honest degraded page**, the watch, the tools and the
+ * briefs still live; **the guidance path** of a workspace with nothing yet; **a read-only session
+ * across every write affordance, each with its reason, nothing hidden**; **a single failing
+ * subsystem degrades only its region**; and **an error preserves what already loaded**.
+ */
+
+/** The settings of a deployment without the invocation gateway. */
+const GATEWAY_OFF = composerReadings({
+  settings: { ok: true, value: { startRole: "member", gateway: { available: false } } },
+});
+
+/** Every tool as a workspace that has enabled nothing has it: adapter present, idle, unconfigured. */
+function nothingEnabled() {
+  const tools = seededTools().map((entry) => ({
+    ...entry,
+    configured: false,
+    health: { state: "not_configured" as const, dot: "idle" as const, detail: "not configured" },
+  }));
+
+  return { ...seededCatalog(tools), connectedCount: 0 };
+}
+
+describe("a deployment without the invocation gateway (#633)", () => {
+  it("says so once, above the grid, with the way to Providers", () => {
+    render(<Screen composer={GATEWAY_OFF} startReason={GATEWAY_START_REASON} />);
+
+    const notices = screen.getAllByText(GATEWAY_NOTICE_TITLE);
+    expect(notices).toHaveLength(1);
+
+    const notice = notices[0]!.closest(".research__notice") as HTMLElement;
+    expect(notice).toHaveAttribute("role", "status");
+    expect(notice).toHaveTextContent("still detects and bisects");
+    expect(within(notice).getByRole("link", { name: GATEWAY_NOTICE_LINK })).toHaveAttribute("href", PROVIDERS_PATH);
+    // Above the grid, not inside any region.
+    expect(notice.closest(".research__grid")).toBeNull();
+    expect(notice.compareDocumentPosition(seat("composer")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("switches both start controls off with the designed explanation", () => {
+    render(<Screen composer={GATEWAY_OFF} startReason={GATEWAY_START_REASON} />);
+
+    for (const name of ["New investigation", START_LABEL]) {
+      const control = screen.getByRole("button", { name });
+
+      expect(control).toHaveAttribute("aria-disabled", "true");
+      expect(control).toHaveAttribute("title", GATEWAY_START_REASON);
+    }
+
+    fireEvent.change(within(seat("composer")).getByLabelText(QUESTION_LABEL), { target: { value: "Why?" } });
+    fireEvent.click(screen.getByRole("button", { name: START_LABEL }));
+    expect(startInvestigation).not.toHaveBeenCalled();
+  });
+
+  it("keeps the watch, the tools card, the brief and the pipeline live", () => {
+    render(<Screen composer={GATEWAY_OFF} startReason={GATEWAY_START_REASON} />);
+
+    expect(within(seat("watch")).getAllByRole("listitem")).toHaveLength(3);
+    expect(seat("watch")).toHaveTextContent("bisected → a41f2c9");
+    expect(within(seat("tools")).getByText("5 connected")).toBeInTheDocument();
+    expect(within(seat("brief")).getByRole("region", { name: /RS-127/ })).toBeInTheDocument();
+    expect(within(seat("pipeline")).getByRole("region", { name: /RS-124/ })).toBeInTheDocument();
+    expect(within(seat("investigations")).getAllByRole("listitem")).toHaveLength(4);
+    // The dismiss, the draft and the suggestions are not the gateway's to switch off.
+    expect(screen.getByRole("button", { name: "Dismiss Hover drift +14% since v2.0.4" })).not.toHaveAttribute(
+      "aria-disabled",
+    );
+    expect(screen.getByRole("button", { name: DRAFT_EPIC_LABEL })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("renders the degraded page with the same markup under both palettes", () => {
+    const [light, dark] = renderInBothPalettes(<Screen composer={GATEWAY_OFF} startReason={GATEWAY_START_REASON} />);
+
+    expect(light).toContain("research__notice");
+    expect(maskIds(light)).toBe(maskIds(dark));
+  });
+
+  it("says nothing when the gateway is there, or when the settings could not be read", () => {
+    const { unmount } = render(<Screen />);
+    expect(screen.queryByText(GATEWAY_NOTICE_TITLE)).toBeNull();
+    unmount();
+
+    render(<Screen composer={composerReadings({ settings: { ok: false, reason: "The service failed." } })} />);
+    expect(screen.queryByText(GATEWAY_NOTICE_TITLE)).toBeNull();
+  });
+});
+
+describe("a workspace with nothing yet (#633)", () => {
+  /** The page as a fresh workspace reads it. */
+  function Fresh(over: Partial<ResearchScreenProps> = {}) {
+    return (
+      <Screen
+        brief={{ ok: true, value: null }}
+        composer={composerReadings({ tools: { ok: true, value: nothingEnabled() } })}
+        investigations={{ ok: true, value: investigationList({ items: [], counts: { active: 0, thisQuarter: 0 } }) }}
+        pipeline={{ ok: true, value: null }}
+        watch={{ ok: true, value: emptyWatch() }}
+        {...over}
+      />
+    );
+  }
+
+  it("starts at the tools: the card leads with the step and every row offers enable", () => {
+    render(<Fresh />);
+
+    expect(within(seat("tools")).getByText("0 connected")).toBeInTheDocument();
+    expect(within(seat("tools")).getByText(NO_TOOL_CONNECTED_NOTE)).toBeInTheDocument();
+    expect(within(seat("tools")).getAllByRole("button", { name: /^Enable / })).toHaveLength(6);
+  });
+
+  it("turns every composer chip into a pointer at the enable flow, and says so under them", () => {
+    render(<Fresh />);
+    const tools = within(seat("composer")).getByRole("group", { name: TOOLS_LABEL });
+
+    expect(within(tools).queryAllByRole("button")).toHaveLength(0);
+    for (const chip of within(tools).getAllByRole("link")) expect(chip).toHaveAttribute("href", "#tools");
+    expect(within(tools).getAllByRole("link")).toHaveLength(6);
+    expect(within(seat("composer")).getByRole("link", { name: COMPOSER_NO_TOOLS_LINK })).toHaveAttribute(
+      "href",
+      "#tools",
+    );
+    expect(screen.getByRole("button", { name: START_LABEL })).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("asks for the first question, and the action lands in the composer", () => {
+    render(<Fresh />);
+
+    expect(within(seat("investigations")).getByText(FIRST_QUESTION_TITLE)).toBeInTheDocument();
+    fireEvent.click(within(seat("investigations")).getByRole("button", { name: FIRST_QUESTION_ACTION }));
+
+    expect(document.activeElement).toBe(seat("composer"));
+    expect(seat("composer")).toHaveClass("research__seat--highlight");
+  });
+
+  it("offers the first baseline's capture in the watch card", () => {
+    render(<Fresh />);
+
+    expect(within(seat("watch")).getByText("No release baseline yet")).toBeInTheDocument();
+    expect(within(seat("watch")).getByRole("button", { name: CAPTURE_LABEL })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("drops the pointer and the lead once a tool is connected", () => {
+    render(<Fresh composer={composerReadings()} />);
+
+    expect(within(seat("tools")).queryByText(NO_TOOL_CONNECTED_NOTE)).toBeNull();
+    expect(within(seat("composer")).queryByRole("link", { name: COMPOSER_NO_TOOLS_LINK })).toBeNull();
+    expect(
+      within(within(seat("composer")).getByRole("group", { name: TOOLS_LABEL })).getAllByRole("button"),
+    ).toHaveLength(5);
+  });
+
+  it("shows a reader who cannot enable or capture the same steps, inert, with who can", () => {
+    render(<Fresh mayAdminister={false} />);
+
+    expect(within(seat("tools")).getByText(NO_TOOL_CONNECTED_READ_ONLY)).toBeInTheDocument();
+
+    const capture = within(seat("watch")).getByRole("button", { name: CAPTURE_LABEL });
+    expect(capture).toHaveAttribute("aria-disabled", "true");
+    expect(capture).toHaveAttribute("title", CAPTURE_READ_ONLY);
+    expect(within(seat("watch")).getByText(CAPTURE_READ_ONLY)).toBeInTheDocument();
+  });
+});
+
+describe("a read-only session (#633)", () => {
+  it("keeps every write affordance on the page, inert, each with its reason", () => {
+    const tools = seededTools();
+    tools[2] = { ...tools[2]!, configured: false, health: { state: "not_configured", dot: "idle", detail: "not configured" } };
+
+    render(
+      <Screen
+        composer={composerReadings({ tools: { ok: true, value: seededCatalog(tools) } })}
+        mayAdminister={false}
+        mayDraft={false}
+        startReason={VIEWER_START_REASON}
+      />,
+    );
+
+    const gated: [HTMLElement, string | null][] = [
+      [screen.getByRole("button", { name: "New investigation" }), VIEWER_START_REASON],
+      [screen.getByRole("button", { name: START_LABEL }), VIEWER_START_REASON],
+      [screen.getByRole("button", { name: "Enable Codebase & git mining" }), ENABLE_READ_ONLY],
+      [screen.getByRole("button", { name: "Dismiss Hover drift +14% since v2.0.4" }), DISMISS_READ_ONLY],
+      [screen.getByRole("button", { name: DRAFT_EPIC_LABEL }), null],
+      [within(seat("pipeline")).getAllByRole("button", { name: /^Apply ⟳: / })[0]!, SUGGESTION_READ_ONLY],
+      [within(seat("pipeline")).getAllByRole("button", { name: /^Dismiss: / })[0]!, SUGGESTION_READ_ONLY],
+    ];
+
+    for (const [control, reason] of gated) {
+      expect(control).toHaveAttribute("aria-disabled", "true");
+      if (reason === null) expect(control.getAttribute("title")).toMatch(/\S/);
+      else expect(control).toHaveAttribute("title", reason);
+    }
+  });
+
+  it("leaves the whole page readable", () => {
+    render(<Screen mayAdminister={false} mayDraft={false} startReason={VIEWER_START_REASON} />);
+
+    for (const region of RESEARCH_REGIONS) expect(within(seat(region.id)).getByRole("region")).toBeInTheDocument();
+    expect(within(seat("investigations")).getAllByRole("listitem")).toHaveLength(4);
+    expect(screen.getByRole("link", { name: "Research library" })).toBeInTheDocument();
+  });
+});
+
+describe("a failing subsystem (#633)", () => {
+  it("degrades its own region and leaves the other five drawn", () => {
+    render(<Screen pipeline={{ ok: false, reason: "The tracker did not answer." }} />);
+
+    expect(within(seat("pipeline")).getByText("The tracker did not answer.")).toBeInTheDocument();
+    expect(within(seat("pipeline")).getByRole("button", { name: "Reload" })).toBeInTheDocument();
+
+    expect(within(seat("composer")).getByLabelText(QUESTION_LABEL)).toBeInTheDocument();
+    expect(within(seat("tools")).getByText("5 connected")).toBeInTheDocument();
+    expect(within(seat("watch")).getAllByRole("listitem")).toHaveLength(3);
+    expect(within(seat("brief")).getByRole("region", { name: /RS-127/ })).toBeInTheDocument();
+    expect(within(seat("investigations")).getAllByRole("listitem")).toHaveLength(4);
+  });
+
+  it("raises a retry banner over the side column as last read when its re-read fails", async () => {
+    const read = vi.fn().mockResolvedValue({ state: "failed", reason: "The service did not answer.", pollAfterSeconds: 30 });
+
+    render(<Screen sidePoll={{ read, visible: () => true }} />);
+
+    const banner = (await screen.findByText(SIDE_STALE_HEADLINE)).closest("[role='status']") as HTMLElement;
+    expect(banner).toHaveTextContent("The service did not answer.");
+    // What the page read on the server is still drawn under it.
+    expect(within(seat("tools")).getByText("5 connected")).toBeInTheDocument();
+    expect(within(seat("watch")).getAllByRole("listitem")).toHaveLength(3);
+
+    const asked = read.mock.calls.length;
+    fireEvent.click(within(banner).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(read.mock.calls.length).toBeGreaterThan(asked));
+  });
+
+  it("takes the banner down once a re-read answers", async () => {
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({ state: "failed", reason: "The service did not answer.", pollAfterSeconds: 30 })
+      .mockResolvedValue({
+        state: "fresh",
+        payload: { tools: seededCatalog(), watch: seededWatch() },
+        etag: null,
+        pollAfterSeconds: 30,
+      });
+
+    render(<Screen sidePoll={{ read, visible: () => true }} />);
+
+    fireEvent.click(within((await screen.findByText(SIDE_STALE_HEADLINE)).closest("[role='status']") as HTMLElement).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByText(SIDE_STALE_HEADLINE)).toBeNull());
   });
 });

@@ -7,11 +7,13 @@ import type { Reading } from "@/app/api/reading";
 import type { InvestigationList, RegressionWatchCard } from "@/app/api/research";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
 import { claimPaneLanding, landOn } from "@/app/shell/pane-anchor";
+import { RetryBanner } from "@/app/ui";
 
 import type { FeaturedBrief } from "./brief";
 import { FeaturedBriefSeat } from "./brief-card";
 import type { ComposerReadings } from "./composer";
 import { ComposerCard } from "./composer-card";
+import { GatewayNotice } from "./gateway-notice";
 import type { OpenedInvestigation } from "./investigations";
 import { InvestigationsCard } from "./investigations-card";
 import type { FeaturedPipeline } from "./pipeline";
@@ -21,6 +23,7 @@ import { ResearchHead } from "./research-head";
 import { ResearchSeat } from "./research-seat";
 import { RESEARCH_SIDE_ENDPOINT, sideReadings } from "./side";
 import { type SidePollOptions, createSidePoll } from "./side-poll";
+import { SIDE_STALE_HEADLINE, gatewayAbsent } from "./states";
 import { ToolsCard } from "./tools-card";
 import {
   BRIEF_REGION,
@@ -121,6 +124,13 @@ function enterRegion(id: ResearchRegionId): boolean {
  * or — at the library's address — every investigation with its facets, and a row opened
  * full-width; its links land on the brief's and the pipeline's seats through the same landing.
  *
+ * **Its states** (CN.7, [#633](https://github.com/NobuData/ouroboros/issues/633),
+ * `app/research/states.ts`): a deployment without the invocation gateway says so once, in a
+ * notice between the head and the grid, and only the two start controls change; a side-column
+ * re-read that fails raises a retry banner over the tools and the watch **as last read**, never
+ * in their place; and each region's own failed read degrades that card alone, because every
+ * reading reaches its card separately.
+ *
  * @param props See {@link ResearchScreenProps}.
  * @returns The screen.
  */
@@ -199,9 +209,11 @@ export function ResearchScreen({
         initial={investigations}
         kinds={kinds}
         mayDraft={mayDraft}
+        onAsk={() => enter(COMPOSER_REGION)}
         onLand={onLand}
         openSource={openProgress}
         opened={opened}
+        startReason={startReason}
         view={view}
       />
     ),
@@ -228,6 +240,15 @@ export function ResearchScreen({
   return (
     <main className="research">
       <ResearchHead onNewInvestigation={() => enter(COMPOSER_REGION)} startReason={startReason} />
+      {gatewayAbsent(composer.settings) && <GatewayNotice />}
+      {beside.error !== null && (
+        <RetryBanner
+          className="research__stale"
+          headline={SIDE_STALE_HEADLINE}
+          onRetry={refreshSide}
+          reason={beside.error}
+        />
+      )}
       <div className="research__grid">
         {seats("main")}
         <div className="research__side">{seats("side")}</div>

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Reading } from "@/app/api/reading";
-import type { Investigation, InvestigationList } from "@/app/api/research";
+import type { Investigation, InvestigationDetail, InvestigationList } from "@/app/api/research";
 import { Button, Card, CardHead, Chip, EmptyState, Tag, cx } from "@/app/ui";
 
 import { BriefCard } from "./brief-card";
@@ -36,7 +36,15 @@ import {
 } from "./investigations";
 import { openInvestigation, readInvestigations } from "./investigations-actions";
 import { InvestigationRow, LibraryFacets } from "./investigations-row";
+import { StoppedInvestigation } from "./investigations-stopped";
 import { type ProgressSourceFactory, watchInvestigation } from "./progress";
+import {
+  FIRST_QUESTION_ACTION,
+  FIRST_QUESTION_NOTE,
+  FIRST_QUESTION_TITLE,
+  isStopped,
+  neverAsked,
+} from "./states";
 import {
   BRIEF_REGION,
   type LibraryFilters,
@@ -65,6 +73,10 @@ export interface InvestigationsCardProps {
   readonly mayDraft: boolean;
   /** Land on a seat of this page. */
   readonly onLand: (seat: typeof BRIEF_REGION | typeof PIPELINE_REGION) => void;
+  /** Put the reader in the composer — the empty card's **Ask a question**. */
+  readonly onAsk: () => void;
+  /** Why this reader may not start an investigation here, or null when they may. */
+  readonly startReason: string | null;
   /** How a live row's stream is opened. A test hands in a fake. */
   readonly openSource?: ProgressSourceFactory;
 }
@@ -130,6 +142,8 @@ export function InvestigationsCard({
   featuredId,
   mayDraft,
   onLand,
+  onAsk,
+  startReason,
   openSource,
 }: InvestigationsCardProps) {
   const router = useRouter();
@@ -288,7 +302,14 @@ export function InvestigationsCard({
             </p>
           )}
 
-          {list !== null && rows.length === 0 && (
+          {list !== null && rows.length === 0 && !library && neverAsked(list) && (
+            <EmptyState note={FIRST_QUESTION_NOTE} title={FIRST_QUESTION_TITLE} variant="flush">
+              <Button onClick={onAsk} reason={startReason ?? undefined} size="sm" tone="primary">
+                {FIRST_QUESTION_ACTION}
+              </Button>
+            </EmptyState>
+          )}
+          {list !== null && rows.length === 0 && (library || !neverAsked(list)) && (
             <EmptyState note={library ? NO_MATCHES : NO_INVESTIGATIONS} variant="flush" />
           )}
           {rows.length > 0 && (
@@ -317,8 +338,25 @@ export function InvestigationsCard({
 }
 
 /**
+ * The question an opened investigation asked, under its kind and its number.
+ *
+ * @param props.detail The investigation.
+ * @returns The line.
+ */
+function QuestionEcho({ detail }: Readonly<{ detail: InvestigationDetail }>) {
+  return (
+    <p className="research__question-echo">
+      <span className={cx("research__kind-chip", TINT_CLASS[detail.kind.tint])}>{detail.kind.name}</span>
+      <span className="research__progress-id">{detail.displayId}</span>
+      {detail.question}
+    </p>
+  );
+}
+
+/**
  * An investigation, opened full-width in the card: the brief card for one that delivered a
- * brief, its progress for one that has not, and the way back to the rows.
+ * brief, its progress for one that has not, **the reason and the partial ledger for one that
+ * stopped** (`failed` or `cancelled` — CN.7, #633), and the way back to the rows.
  *
  * @param props.open The open state.
  * @param props.row The row, for what the detail is not yet read from.
@@ -361,15 +399,15 @@ function OpenedView({
           onLandPipeline={() => onLand(PIPELINE_REGION)}
         />
       )}
-      {open.state === "ready" && open.opened.brief === null && (
+      {open.state === "ready" && open.opened.brief === null && isStopped(open.opened.detail) && (
         <div className="research__inv-detail">
-          <p className="research__question-echo">
-            <span className={cx("research__kind-chip", TINT_CLASS[open.opened.detail.kind.tint])}>
-              {open.opened.detail.kind.name}
-            </span>
-            <span className="research__progress-id">{open.opened.detail.displayId}</span>
-            {open.opened.detail.question}
-          </p>
+          <QuestionEcho detail={open.opened.detail} />
+          <StoppedInvestigation detail={open.opened.detail} />
+        </div>
+      )}
+      {open.state === "ready" && open.opened.brief === null && !isStopped(open.opened.detail) && (
+        <div className="research__inv-detail">
+          <QuestionEcho detail={open.opened.detail} />
           <p className="research__progress-line">
             <Chip dot={open.opened.detail.pill.live ? "pulse" : "filled"} tone={PILL_TONES[open.opened.detail.pill.tone]}>
               {open.opened.detail.pill.label}

@@ -1750,8 +1750,8 @@ the blockquote above that records what it did and what it did differently.
 | 427 | **CN.6** | ✅ [#632](https://github.com/NobuData/ouroboros/issues/632) | Investigations list, history & library | ouroboros-ui | M | CM.6, CN.1 |
 | 428 | **CD.4** | ✅ [#562](https://github.com/NobuData/ouroboros/issues/562) | Dry-run orchestration & guards | ouroboros-rest | M | R.2, CD.2, CD.3 |
 | 429 | **CN.3** | ✅ [#629](https://github.com/NobuData/ouroboros/issues/629) | Research tools & regression watch cards | ouroboros-ui | M | CL.1, CM.4, CN.1 |
-| 430 | **CN.5** | [#631](https://github.com/NobuData/ouroboros/issues/631) | Roadmap pipeline card | ouroboros-ui | L | CM.5, CN.1 |
-| 431 | **CN.7** | [#633](https://github.com/NobuData/ouroboros/issues/633) | Research states & guards | ouroboros-ui | S | CN.2, CN.6 |
+| 430 | **CN.5** | ✅ [#631](https://github.com/NobuData/ouroboros/issues/631) | Roadmap pipeline card | ouroboros-ui | L | CM.5, CN.1 |
+| 431 | **CN.7** | ✅ [#633](https://github.com/NobuData/ouroboros/issues/633) | Research states & guards | ouroboros-ui | S | CN.2, CN.6 |
 | 432 | **CD.5** | [#563](https://github.com/NobuData/ouroboros/issues/563) | Suggestion rules & apply flow | ouroboros-rest | M | CC.4, CD.4 |
 | 433 | **CE.1** | [#565](https://github.com/NobuData/ouroboros/issues/565) | Copilot route, head & promote/discard | ouroboros-ui | M | D.5, S.1, CD.4 |
 | 434 | **CN.8** | [#634](https://github.com/NobuData/ouroboros/issues/634) | Research e2e leg | ouroboros-ui, .github | M | CN.1, CN.7 |

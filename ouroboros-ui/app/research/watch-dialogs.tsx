@@ -158,16 +158,19 @@ export function DismissItem({ item, mayAdminister, onDismissed }: DismissItemPro
 export interface CaptureBaselineProps {
   /** Called once a capture answered, so the card re-reads. */
   readonly onCaptured: () => void;
+  /** Why this reader may not capture one; the control is then inert and says so. */
+  readonly reason?: string;
 }
 
 /**
- * The empty state's **Capture a baseline** and its dialog. Mounted for administrators only —
- * everyone else reads why not.
+ * The empty state's **Capture a baseline** and its dialog. Drawn for every reader (CN.7,
+ * [#633](https://github.com/NobuData/ouroboros/issues/633)): for one who is not an owner or an
+ * admin it is inert and carries the reason, so the step is visible to whoever has to ask for it.
  *
  * @param props See {@link CaptureBaselineProps}.
  * @returns The control.
  */
-export function CaptureBaseline({ onCaptured }: CaptureBaselineProps) {
+export function CaptureBaseline({ onCaptured, reason }: CaptureBaselineProps) {
   const [open, setOpen] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
@@ -220,7 +223,7 @@ export function CaptureBaseline({ onCaptured }: CaptureBaselineProps) {
 
   return (
     <>
-      <Button onClick={() => setOpen(true)} size="sm" tone="primary" type="button">
+      <Button onClick={() => setOpen(true)} reason={reason} size="sm" tone="primary" type="button">
         {CAPTURE_LABEL}
       </Button>
 

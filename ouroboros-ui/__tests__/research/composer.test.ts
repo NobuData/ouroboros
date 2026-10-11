@@ -224,8 +224,8 @@ describe("why Start is inert", () => {
 });
 
 describe("the gate", () => {
-  const member = { ok: true as const, value: { startRole: "member" as const } };
-  const admin = { ok: true as const, value: { startRole: "admin" as const } };
+  const member = { ok: true as const, value: { startRole: "member" as const, gateway: { available: true } } };
+  const admin = { ok: true as const, value: { startRole: "admin" as const, gateway: { available: true } } };
   const unread = { ok: false as const, reason: "The setting could not be read." };
 
   it("stops a viewer whatever the workspace says", () => {

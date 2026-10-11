@@ -12,6 +12,7 @@ import type {
 } from "@/app/api/research";
 import type { Reading } from "@/app/api/reading";
 
+import { GATEWAY_START_REASON, gatewayAbsent } from "./states";
 import { VIEWER_START_REASON } from "./view";
 
 /**
@@ -204,6 +205,19 @@ export function depthBudget(depth: InvestigationDepth, estimates: DepthEstimates
 
 /* ---------- tools ---------- */
 
+/**
+ * Whether an investigation can use a tool in this workspace: this build has its adapter, and the
+ * workspace enabled it (CN.7, [#633](https://github.com/NobuData/ouroboros/issues/633)). A
+ * workspace that has enabled nothing therefore has no chip to press — every one points at the
+ * tools card instead.
+ *
+ * @param tool The tool.
+ * @returns Whether its chip is a toggle.
+ */
+export function usableTool(tool: ResearchToolCatalogEntry): boolean {
+  return tool.connected && tool.configured;
+}
+
 /** What a chip is: pressed, released, or not a toggle at all. */
 export type ChipState = "on" | "off" | "idle";
 
@@ -212,10 +226,10 @@ export type ChipState = "on" | "off" | "idle";
  *
  * @param tool The tool.
  * @param on The slugs that are on.
- * @returns `idle` for a tool with no adapter, whatever the selection says.
+ * @returns `idle` for a tool an investigation cannot use here, whatever the selection says.
  */
 export function chipState(tool: ResearchToolCatalogEntry, on: ReadonlySet<string>): ChipState {
-  if (!tool.connected) return "idle";
+  if (!usableTool(tool)) return "idle";
   return on.has(tool.slug) ? "on" : "off";
 }
 
@@ -248,7 +262,7 @@ export function defaultSelection(
   tools: readonly ResearchToolCatalogEntry[],
 ): string[] {
   const defaults = new Set(kind.playbook.defaultTools);
-  return tools.filter((tool) => tool.connected && defaults.has(tool.slug)).map((tool) => tool.slug);
+  return tools.filter((tool) => usableTool(tool) && defaults.has(tool.slug)).map((tool) => tool.slug);
 }
 
 /**
@@ -420,7 +434,10 @@ export function startReason(inputs: StartInputs): string | null {
 }
 
 /**
- * Why the workspace, or the reader's role in it, forbids a start — or null.
+ * Why the deployment, the workspace, or the reader's role in it, forbids a start — or null.
+ *
+ * The deployment's reason comes first: without the invocation gateway nobody can start one,
+ * whatever their role, and the page's notice says the same thing (`states.ts`).
  *
  * @param mayContribute Whether the reader holds `owner`, `admin` or `member`.
  * @param mayAdminister Whether the reader holds `owner` or `admin`.
@@ -433,6 +450,7 @@ export function startGate(
   mayAdminister: boolean,
   settings: Reading<ResearchSettings>,
 ): string | null {
+  if (gatewayAbsent(settings)) return GATEWAY_START_REASON;
   if (!mayContribute) return VIEWER_START_REASON;
   if (settings.ok && settings.value.startRole === "admin" && !mayAdminister) {
     return ADMIN_ONLY_START_REASON;

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Role } from "@/app/api/membership";
 import { ADMIN_ONLY_START_REASON, START_LABEL } from "@/app/research/composer";
+import { GATEWAY_NOTICE_TITLE, GATEWAY_START_REASON } from "@/app/research/states";
 import { VIEWER_START_REASON } from "@/app/research/view";
 
 import { membership, sessionUser } from "../helpers/login";
@@ -201,7 +202,7 @@ describe("the research route", () => {
 
   it("holds a member back where the workspace lets only admins start, in both places", async () => {
     requireWorkspace.mockResolvedValue(access(["member"]));
-    readComposer.mockResolvedValue(composerReadings({ settings: { ok: true, value: { startRole: "admin" } } }));
+    readComposer.mockResolvedValue(composerReadings({ settings: { ok: true, value: { startRole: "admin", gateway: { available: true } } } }));
     render(await page());
 
     expect(newInvestigation()).toHaveAttribute("title", ADMIN_ONLY_START_REASON);
@@ -210,11 +211,26 @@ describe("the research route", () => {
 
   it("lets an admin start where the workspace lets only admins start", async () => {
     requireWorkspace.mockResolvedValue(access(["admin"]));
-    readComposer.mockResolvedValue(composerReadings({ settings: { ok: true, value: { startRole: "admin" } } }));
+    readComposer.mockResolvedValue(composerReadings({ settings: { ok: true, value: { startRole: "admin", gateway: { available: true } } } }));
     render(await page());
 
     expect(newInvestigation()).not.toHaveAttribute("aria-disabled");
   });
+
+  it.each<Role>(["owner", "member", "viewer"])(
+    "tells a %s the deployment has no invocation gateway, once, and switches both starts off (#633)",
+    async (role) => {
+      requireWorkspace.mockResolvedValue(access([role]));
+      readComposer.mockResolvedValue(
+        composerReadings({ settings: { ok: true, value: { startRole: "member", gateway: { available: false } } } }),
+      );
+      render(await page());
+
+      expect(screen.getAllByText(GATEWAY_NOTICE_TITLE)).toHaveLength(1);
+      expect(newInvestigation()).toHaveAttribute("title", GATEWAY_START_REASON);
+      expect(screen.getByRole("button", { name: START_LABEL })).toHaveAttribute("title", GATEWAY_START_REASON);
+    },
+  );
 
   it("leaves the gate to the service when the setting could not be read", async () => {
     requireWorkspace.mockResolvedValue(access(["member"]));
@@ -245,7 +261,8 @@ describe("the side column's standing (#629)", () => {
 
     render(await page());
 
-    expect(screen.queryByRole("button", { name: "Capture a baseline" }) !== null).toBe(may);
+    // #633: the step is on the page for everyone, inert with its reason for who may not take it.
+    expect(screen.getByRole("button", { name: "Capture a baseline" }).hasAttribute("aria-disabled")).toBe(!may);
     cleanup();
 
     readWatch.mockResolvedValue({ ok: true, value: seededWatch() });

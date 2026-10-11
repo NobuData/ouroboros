@@ -1618,3 +1618,176 @@
   font-size: var(--t-xs);
   white-space: nowrap;
 }
+
+/* ---------- states & guards (#633) ---------- */
+
+/*
+ * The gateway-absent notice: one block between the head and the grid, the warning hue on its
+ * leading edge and in its title so the state is not a hue alone. It wraps like prose.
+ */
+.research__notice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-8);
+  padding: var(--sp-6) var(--sp-8);
+  border: 1px solid var(--line);
+  border-left: var(--sp-2) solid var(--warn);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.research__notice-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+.research__notice-text {
+  max-width: 80ch;
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.research__notice-link {
+  color: var(--accent);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+/* The retry banner over a side column drawn from its last good read. */
+.research__stale {
+  margin-bottom: var(--sp-8);
+}
+
+/* The composer's pointer under its chips while no tool is connected. */
+.research__tools-pointer {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The tools card's lead while no tool is connected, over the rows that offer enable. */
+.research__side-lead {
+  margin: 0 0 var(--sp-4);
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* A stopped investigation, opened: the pill and count, the reason, then its partial ledger. */
+.research__stopped {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+
+.research__stopped-reason {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.research__stopped-label {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/*
+ * The loading skeleton (`research-skeleton.tsx`): the page's own grid and cards, with bars at the
+ * heights the regions draw so nothing moves when the reads land. Heights are rem, so the 125%
+ * step grows the skeleton with the page it stands in for.
+ */
+.research__sk-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+
+.research__sk-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.research__sk-row--end {
+  justify-content: space-between;
+}
+
+.research__sk-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: var(--sp-8);
+}
+
+.research__sk-bar {
+  display: block;
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/* The question field: four rows of body text. */
+.research__sk-bar--field {
+  height: 7rem;
+}
+
+.research__sk-bar--seg {
+  width: 9rem;
+  height: 2rem;
+}
+
+.research__sk-bar--chip {
+  width: 8rem;
+  height: 1.75rem;
+}
+
+.research__sk-bar--line {
+  flex: 1;
+  min-width: 10rem;
+  height: 1.25rem;
+}
+
+.research__sk-bar--action {
+  width: 9rem;
+  height: 2.25rem;
+}
+
+/* A tool, a watch item, a source or an issue: a name over its sub-line. */
+.research__sk-bar--side-row {
+  height: 2.75rem;
+}
+
+.research__sk-bar--para {
+  height: 4.5rem;
+}
+
+.research__sk-bar--doc {
+  height: 18rem;
+}
+
+.research__sk-bar--list-row {
+  height: 3.25rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .research__sk-bar {
+    animation: research-sk-pulse 0.8s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes research-sk-pulse {
+  to {
+    opacity: 0.55;
+  }
+}

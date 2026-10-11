@@ -317,7 +317,7 @@ export function composerReadings(over: Partial<ComposerReadings> = {}): Composer
   return {
     kinds: { ok: true, value: { kinds: seededKinds() } },
     tools: { ok: true, value: seededCatalog() },
-    settings: { ok: true, value: { startRole: "member" } },
+    settings: { ok: true, value: { startRole: "member", gateway: { available: true } } },
     ...over,
   };
 }

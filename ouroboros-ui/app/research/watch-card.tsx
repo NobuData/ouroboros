@@ -94,11 +94,11 @@ export function WatchCard({ reading, mayAdminister, onChanged }: WatchCardProps)
 
       {reading.ok && reading.value.baselines === 0 && (
         <EmptyState note={NO_BASELINES_NOTE} title={NO_BASELINES_TITLE} variant="flush">
-          {mayAdminister ? (
-            <CaptureBaseline onCaptured={onChanged} />
-          ) : (
-            <p className="research__side-sub">{CAPTURE_READ_ONLY}</p>
-          )}
+          <CaptureBaseline
+            onCaptured={onChanged}
+            reason={mayAdminister ? undefined : CAPTURE_READ_ONLY}
+          />
+          {!mayAdminister && <p className="research__side-sub">{CAPTURE_READ_ONLY}</p>}
         </EmptyState>
       )}
 

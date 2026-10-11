@@ -707,8 +707,9 @@ through the REST API, signed in as themselves — a
      -d '{"startRole": "admin"}'
    ```
 
-   `Origin` is the UI's public address. The answer is the setting as it now stands:
-   `{"startRole":"admin"}`.
+   `Origin` is the UI's public address. The answer is the setting as it now stands, beside
+   [whether the deployment has the invocation gateway](#the-invocation-gateway):
+   `{"startRole":"admin","gateway":{"available":false}}`.
 
 The setting is changed for the workspace your session is in. `GET` on the same address reads it
 back, and everyone in the workspace may read it.
@@ -716,6 +717,35 @@ back, and everyone in the workspace may read it.
 :::
 
 The change applies to the next start. Investigations already started carry on.
+
+## The invocation gateway
+
+Research is model-backed: an investigation plans, digests what it reads and writes its brief
+through the **invocation gateway**, the service-side path that makes a model call on a
+[provider](./providers.mdx)'s behalf. A deployment without the gateway cannot write a brief.
+<Since version="0.41.16" module="ouroboros-rest" />
+
+The REST service reports which it is. `GET /api/v1/research/settings` answers
+`gateway.available` beside the starter role, and everyone in the workspace may read it:
+
+```json
+{ "startRole": "member", "gateway": { "available": false } }
+```
+
+| `gateway.available` | What the Research page does |
+| --- | --- |
+| `true` | Nothing different. |
+| `false` | Says so once, above its cards, and switches **New investigation** and **Start investigation ⟳** off — see [When research cannot run](../user-guide/research.mdx#when-research-cannot-run). |
+
+It is a fact about the build you deployed, not a setting: there is no variable to turn it on.
+In this release the gateway is not built, so every deployment answers `false`.
+
+What needs no model is unaffected. The [regression watch](#regression-watch) still compares each
+night, opens items and bisects; the tools still report their health; briefs and roadmaps already
+written still read and export.
+
+The API does not refuse a start on its own account. A client that posts one anyway gets an
+investigation that ends **failed**, with whatever it read before then kept.
 
 ## Investigations after a restart
 
