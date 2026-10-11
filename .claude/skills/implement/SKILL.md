@@ -24,6 +24,7 @@ gh issue view <number> --repo <owner>/<repo>
 ```
 
 - Summarize issue clearly in conversation so full intent in context.
+- **Read narrowly.** Search first, then read only the ranges needed; do not read a large file end to end to find one fact. Ask every open question in one round, as soon as the gaps are known.
 - **NEVER invent requirements.**  If issue **ambiguous, underspecified, or contradicts the codebase**, SWITCH TO PLAN MODE, clarify, and stop.
 
 ## Phase 2: Branch setup
@@ -59,7 +60,8 @@ git checkout -b ticket-<number>
   - A new or changed `OURO_*` variable: edit `.env.example` (and the top-level one), then `yarn gen:config-reference`. A new CLI flag: add it to the command page's `flags:` front matter (`yarn check:cli-flags`).
   - A new or moved UI route (`page.tsx`): add its entry to `ouroboros-docs/docs-coverage.json` — the page id that documents it, or `{"undocumented": "<reason>"}` — and run `yarn check:coverage`, which `ci/docs` runs too.
   - An **internal-only change** needs no docs — say so in the PR's Documentation section.
-- Lint the code.
+- Lint the code. Run each touched module's **whole** lint (`yarn lint` in the module, `uv run ruff check .` in the engine) once as soon as the first new files compile, not only on the files changed — a whole-module failure found at the end costs several reruns.
+- While iterating, run only the specs for the files being changed.
 - DO NOT RUN END TO END TESTS
 
 ## Phase 4: Internal Audit
@@ -74,27 +76,27 @@ git checkout -b ticket-<number>
 
 ## Phase 5: Verify and Test
 
-From **repository root**, run project's standard checks:
+Verify **each module the ticket touched**, from that module's directory — never the root `yarn test` or `yarn build` (the root run exhausts the machine):
 
-- Build project:
+| Module | Checks |
+| --- | --- |
+| `ouroboros-rest` | `yarn lint`, `yarn typecheck`, `yarn build`, `npx jest -w 3` |
+| `ouroboros-ui` | `yarn lint`, `yarn typecheck`, `yarn test`; `yarn api:sync` after a REST OpenAPI change |
+| `ouroboros-engine` | `uv run ruff check .`, `uv run ruff format --check .`, `uv run pytest` |
+| `ouroboros-db` | `tests/constraints.sql` on a freshly migrated throwaway `postgres:17-alpine`, `scripts/run-tests.sh ouroboros-db/tests` |
+| `ouroboros-runner` | `make lint`, `make test` |
 
-```bash
-yarn build
-```
+Keep it to one pass:
 
-Run package-specific builds required by workspace rules.
-
-- Run tests WITHOUT END TO END TESTS:
-
-```bash
-yarn test
-```
-
-Run package-specific tests the issue touches, per READMEs.
+- Run each module's full suite **once**, when the work is done. Start the slow ones (the REST unit suite, the docs build) in the background and carry on with the next step meanwhile.
+- After a small late edit, rerun the specs it touches plus lint and typecheck — not the whole suite again.
+- Run `scripts/run-tests.sh scripts/tests` only when the ticket changes CI workflows, `.env.example` or `scripts/`. It takes over ten minutes.
+- A failure in a module the ticket did not touch: check it against `main` once, note it in the PR, move on.
+- Check that a command really ran: a wrong flag can print usage and still exit 0.
 
 - When `ouroboros-docs/**` changed, run from `ouroboros-docs/` (it is outside the turbo graph): `yarn lint`, `yarn typecheck`, `yarn test`, every `yarn check:*` (`check:brand`, `check:screenshots`, `check:config-reference`, `check:cli-flags`, `check:coverage`) and `yarn build` — a broken link or anchor fails the build.
 - DO NOT RUN END TO END TESTS
-- Test all code, not just changes, so regressions are checked.  Tests should limit the number of threads run at the same time to 1/2 the threads available on the CPU.
+- Test the whole of each touched module, not just the changed files, so regressions are checked.  Tests should limit the number of threads run at the same time to 1/2 the threads available on the CPU.
 - Fix **any failures introduced that block ticket** and **any tests or build issues** before proceeding.
 
 ## Phase 6: Note Work
