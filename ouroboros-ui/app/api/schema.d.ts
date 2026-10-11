@@ -21074,6 +21074,16 @@ export interface components {
              * @enum {string}
              */
             startRole: "member" | "admin";
+            /**
+             * @description The invocation gateway as this deployment has it. Research is model-backed: with
+             *     `available` false an investigation cannot synthesise a brief, so a client should
+             *     not offer to start one. The regression watch, the tools' health and the briefs
+             *     already written need no model.
+             */
+            gateway: {
+                /** @description Whether this deployment can make a model call for an investigation. */
+                available: boolean;
+            };
         };
         /**
          * ResearchSettingsPatch
@@ -86450,7 +86460,10 @@ export interface operations {
                 content: {
                     /**
                      * @example {
-                     *       "startRole": "member"
+                     *       "startRole": "member",
+                     *       "gateway": {
+                     *         "available": false
+                     *       }
                      *     }
                      */
                     "application/json": components["schemas"]["ResearchSettings"];
@@ -86569,7 +86582,10 @@ export interface operations {
                 content: {
                     /**
                      * @example {
-                     *       "startRole": "admin"
+                     *       "startRole": "admin",
+                     *       "gateway": {
+                     *         "available": false
+                     *       }
                      *     }
                      */
                     "application/json": components["schemas"]["ResearchSettings"];

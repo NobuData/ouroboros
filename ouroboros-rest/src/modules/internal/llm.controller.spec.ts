@@ -5,6 +5,7 @@ import { ALLOW_ANONYMOUS } from "../auth/anonymous";
 import { INTERNAL_ONLY } from "./internal.decorators";
 import { INTERNAL_ERRORS } from "./internal.errors";
 import { INVOKE_ROUTE, LLM_PATH } from "./internal.paths";
+import { INVOCATION_GATEWAY_AVAILABLE } from "./invoke.contract";
 import { LlmController } from "./llm.controller";
 
 /**
@@ -25,6 +26,13 @@ describe("what it answers today", () => {
     expect(() => controller.invoke()).toThrow(
       expect.objectContaining({ code: INTERNAL_ERRORS.invocationNotImplemented }) as Error,
     );
+  });
+
+  it("is reported absent for as long as it refuses", () => {
+    // What Research's page reads (`GET /research/settings` § `gateway`, #633). The flag and
+    // the method body change in one commit — AF.2's — or the page offers a start that fails.
+    expect(() => new LlmController().invoke()).toThrow();
+    expect(INVOCATION_GATEWAY_AVAILABLE).toBe(false);
   });
 
   it("is a 501 rather than a 404, so a caller can tell the path was right", () => {

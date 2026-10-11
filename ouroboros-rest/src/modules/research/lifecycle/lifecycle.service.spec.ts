@@ -564,7 +564,10 @@ describe("the starter setting", () => {
   it("reads `member` for a workspace that never chose", async () => {
     const { service } = harness();
 
-    expect(await service.settings(WORKSPACE)).toEqual({ startRole: "member" });
+    expect(await service.settings(WORKSPACE)).toEqual({
+      startRole: "member",
+      gateway: { available: false },
+    });
   });
 
   it("stores a change, per workspace", async () => {
@@ -573,10 +576,17 @@ describe("the starter setting", () => {
 
     expect(await service.updateSettings(WORKSPACE, KEN, { startRole: "admin" })).toEqual({
       startRole: "admin",
+      gateway: { available: false },
     });
     expect(saved).toHaveBeenCalledWith(WORKSPACE, "admin", KEN);
-    expect(await service.settings(WORKSPACE)).toEqual({ startRole: "admin" });
-    expect(await service.settings("org-other")).toEqual({ startRole: "member" });
+    expect(await service.settings(WORKSPACE)).toEqual({
+      startRole: "admin",
+      gateway: { available: false },
+    });
+    expect(await service.settings("org-other")).toEqual({
+      startRole: "member",
+      gateway: { available: false },
+    });
   });
 
   it("changes nothing for an empty patch", async () => {
@@ -584,7 +594,10 @@ describe("the starter setting", () => {
     store.roles.set(WORKSPACE, "admin");
     const saved = jest.spyOn(store, "saveStartRole");
 
-    expect(await service.updateSettings(WORKSPACE, KEN, {})).toEqual({ startRole: "admin" });
+    expect(await service.updateSettings(WORKSPACE, KEN, {})).toEqual({
+      startRole: "admin",
+      gateway: { available: false },
+    });
     expect(saved).not.toHaveBeenCalled();
   });
 });

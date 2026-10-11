@@ -38,6 +38,6 @@ export function emptyComposerReadings(): ComposerReadings {
   return {
     kinds: empty({ kinds: [] }),
     tools: empty({ tools: [], connectedCount: 0 }),
-    settings: empty({ startRole: "member" }),
+    settings: empty({ startRole: "member", gateway: { available: true } }),
   };
 }

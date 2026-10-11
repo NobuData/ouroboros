@@ -24,6 +24,7 @@ import { Injectable, Logger } from "@nestjs/common";
 
 import type { OrganizationRole, ResearchStartRole } from "../../db/schema";
 import { describeForLog } from "../../errors/failure";
+import { INVOCATION_GATEWAY_AVAILABLE } from "../../internal/invoke.contract";
 import { type Page, type PageWindow, pageOf } from "../../tenancy/pagination";
 import { ADMINISTRATORS, CONTRIBUTORS } from "../../tenancy/roles.guard";
 import { forbidden } from "../../tenancy/tenancy.errors";
@@ -44,6 +45,7 @@ import {
   type InvestigationProgressResource,
   type InvestigationResource,
   type ResearchSettingsResource,
+  settingsResource,
   type StartedInvestigationResource,
   type Viewer,
   investigationDetailResource,
@@ -288,10 +290,14 @@ export class InvestigationLifecycleService {
    * Who may start an investigation in a workspace.
    *
    * @param organizationId - The workspace.
-   * @returns The setting; `member` for a workspace that never chose.
+   * @returns The setting — `member` for a workspace that never chose — and whether this
+   *   deployment has the invocation gateway an investigation needs.
    */
   async settings(organizationId: string): Promise<ResearchSettingsResource> {
-    return { startRole: await this.store.startRole(organizationId) };
+    return settingsResource(
+      await this.store.startRole(organizationId),
+      INVOCATION_GATEWAY_AVAILABLE,
+    );
   }
 
   /**
@@ -309,7 +315,10 @@ export class InvestigationLifecycleService {
   ): Promise<ResearchSettingsResource> {
     if (patch.startRole === undefined) return this.settings(organizationId);
 
-    return { startRole: await this.store.saveStartRole(organizationId, patch.startRole, userId) };
+    return settingsResource(
+      await this.store.saveStartRole(organizationId, patch.startRole, userId),
+      INVOCATION_GATEWAY_AVAILABLE,
+    );
   }
 
   /**

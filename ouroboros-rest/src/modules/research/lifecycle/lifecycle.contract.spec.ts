@@ -203,7 +203,10 @@ describe("the lifecycle contract", () => {
     const patch = validator("ResearchSettingsPatch");
 
     expect(settings(await service().settings(WORKSPACE))).toBe(true);
-    expect(settings({ startRole: "viewer" })).toBe(false);
+    expect(settings({ startRole: "viewer", gateway: { available: true } })).toBe(false);
+    expect(settings({ startRole: "member" })).toBe(false);
+    expect(settings({ startRole: "member", gateway: { available: true } })).toBe(true);
+    expect(settings({ startRole: "member", gateway: {} })).toBe(false);
     expect(patch({})).toBe(true);
     expect(patch({ startRole: "admin" })).toBe(true);
     expect(patch({ startRole: "owner" })).toBe(false);

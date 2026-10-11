@@ -245,11 +245,17 @@ describe("a workspace with no baseline", () => {
     expect(within(region()).queryByRole("list")).toBeNull();
   });
 
-  it("tells everyone else who may, and offers no button", () => {
+  it("shows everyone else the same step, inert, and says who may take it (#633)", () => {
     render(card({ mayAdminister: false, reading: { ok: true, value: emptyWatch() } }));
 
+    const capture = within(region()).getByRole("button", { name: "Capture a baseline" });
+
     expect(within(region()).getByText(CAPTURE_READ_ONLY)).toBeInTheDocument();
-    expect(within(region()).queryByRole("button")).toBeNull();
+    expect(capture).toHaveAttribute("aria-disabled", "true");
+    expect(capture).toHaveAttribute("title", CAPTURE_READ_ONLY);
+
+    fireEvent.click(capture);
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("captures the named release, says what was stored, and re-reads on close", async () => {

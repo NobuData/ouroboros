@@ -14,6 +14,9 @@ tickets for the loop to pick up.
 
 <Screenshot id="user-guide.research" />
 
+The notice in the picture, and the switched-off **New investigation**, are what a deployment
+without the invocation gateway shows — see [When research cannot run](#when-research-cannot-run).
+
 ## The page
 
 The head states what the page is for:
@@ -147,9 +150,10 @@ The page opens on **Deep dive**.
 The **Tools:** row has one chip per [research tool](#research-tools). A chip with a ✓ is on; a
 chip with a · is off; press a chip to switch it. At least one tool must be on.
 
-A tool this deployment has no adapter for yet — **Docs, standards & papers**, whose adapter is a
-later release — is drawn faded and cannot be switched on. Hover it to read why, and press it to
-go to **Research tools**, where tools are enabled. Whether a tool that *is* available is healthy
+A tool an investigation cannot use here is drawn faded and cannot be switched on: one your
+workspace has not enabled, or one this deployment has no adapter for yet — **Docs, standards &
+papers**, whose adapter is a later release. Hover it to read why, and press it to go to
+**Research tools**, where tools are enabled. <Since version="0.151.0" module="ouroboros-ui" /> Whether a tool that *is* available is healthy
 is shown in **Research tools**, not here.
 
 ### The estimate line and the researcher
@@ -180,6 +184,7 @@ cannot be read at all the line says *estimate unavailable* and nothing can be st
 
 | Reason | What to do |
 | --- | --- |
+| *Research needs the invocation gateway — see Providers.* | Nothing on this page — see [When research cannot run](#when-research-cannot-run) |
 | *Starting an investigation is for workspace owners, admins and members — a viewer can read the research.* | Ask for the `member` role — see [Who can start an investigation](#who-can-start-an-investigation) |
 | *This workspace lets only owners and admins start an investigation.* | Ask an owner or admin to start it, or to change the setting |
 | *Write the question first.* | Type the question |
@@ -188,7 +193,7 @@ cannot be read at all the line says *estimate unavailable* and nothing can be st
 | *The estimate is still being read.* | Wait a moment |
 | *The estimate could not be read, so nothing can be started.* | Reload; if it persists, the research service is unavailable |
 
-**New investigation** in the page head is switched off for the first two reasons too, with the
+**New investigation** in the page head is switched off for the first three reasons too, with the
 same words.
 
 ### While it runs
@@ -562,8 +567,9 @@ else the button is off and says *Dismissing a watch item is for workspace owners
 A workspace with no baseline has nothing to compare, so the card says **No release baseline
 yet** and offers an Owner or a Maintainer **Capture a baseline**. Enter the **Repository** as
 `owner/name` and the **Release tag**, and press **Capture baseline**. The dialog then says how
-many baselines were captured, and names any metric it skipped and why. Everyone else reads
-*Capturing a baseline is for workspace owners and admins.*
+many baselines were captured, and names any metric it skipped and why. For everyone else the
+button is there but off, and the card says *Capturing a baseline is for workspace owners and
+admins.*
 
 Capturing needs watched metrics first — an Owner or a Maintainer chooses them, see
 [Regression watch](../administration/research.mdx#regression-watch). Once a baseline exists and
@@ -1231,7 +1237,8 @@ without a reload.
 
 **Click a row's question** to open the investigation in place of the rows: a finished one shows
 [its brief](#reading-a-brief), the same card as the featured brief; one that has not finished
-shows its status and progress. **← All investigations** returns to the rows. The address carries
+shows its status and progress; one that failed or was cancelled shows
+[why it stopped and what it read](#an-investigation-that-stopped). **← All investigations** returns to the rows. The address carries
 the open investigation (`?open=…`), so it can be shared.
 
 ### History and the library
@@ -1252,3 +1259,105 @@ next page.
 
 The card closes with the page's promise: *Every investigation ends the same way the build loop
 does: with evidence — and, when you approve, with tickets the loop picks up next.*
+
+## What can go wrong
+
+The page is never blank. While it loads, each of the six cards is drawn at its own shape with
+grey bars where its content will be. If one card's read fails, that card says so and offers
+**Reload**; the other five are drawn as usual. <Since version="0.151.0" module="ouroboros-ui" />
+
+### A workspace with nothing yet
+
+A new workspace has no tools enabled, no investigations and no baselines. The page says what to
+do, in order.
+
+<Screenshot id="user-guide.research.empty" />
+
+1. **Connect a tool.** **Research tools** is tagged **0 connected** and reads *No research tool
+   is connected yet. Enable one below — an investigation reads only through connected tools.*
+   Every row has an **enable** button — see [Enabling a tool](#enabling-a-tool). Until one is
+   enabled every chip in the composer's **Tools:** row is faded, and the line under them reads
+   *No research tool is connected yet — enable one in Research tools.*
+2. **Ask a question.** The **Investigations** card reads **Ask your first question**. Press
+   **Ask a question** to go to the composer — see
+   [Starting an investigation](#starting-an-investigation). The button is switched off, with
+   the reason as its tooltip, whenever **New investigation** is — as it is in the picture above,
+   taken on a deployment [without the invocation gateway](#when-research-cannot-run).
+3. **Capture a baseline.** **Regression watch** reads **No release baseline yet** and offers
+   **Capture a baseline** — see [Before the first baseline](#before-the-first-baseline).
+
+**Featured brief** reads **No brief yet** and **Roadmap pipeline** reads **No roadmap yet** until
+an investigation delivers one.
+
+Enabling a tool and capturing a baseline are for an Owner or a Maintainer. Anyone else sees the
+same buttons switched off, each with its reason, and the tools card reads *No research tool is
+connected yet. A workspace owner or admin enables them here.*
+
+### When research cannot run
+
+Research needs a model to plan an investigation and write its brief. Ouroboros reaches models
+through its **invocation gateway**. On a deployment without it, the page says so once, above the
+cards:
+
+> **Research needs the invocation gateway**
+>
+> This deployment has no invocation gateway, so a new investigation cannot be started: there is
+> nothing to write its brief. The regression watch still detects and bisects, the tools card
+> still reports health, and the briefs and roadmap already written still read.
+
+**See Providers** under it opens [Providers](./models.mdx), where model access is set up.
+
+Two buttons are switched off, and say *Research needs the invocation gateway — see Providers.*:
+**New investigation** in the page head and **Start investigation ⟳** in the composer. Nothing
+else changes:
+
+| Still works | What it does |
+| --- | --- |
+| **Regression watch** | Compares each night, opens items, bisects and shows the culprit |
+| **Research tools** | Shows each tool's health; an Owner or a Maintainer can still enable one |
+| **Featured brief** and the library | Every brief already written reads, cites and exports |
+| **Roadmap pipeline** | The roadmap and its issues read; suggestions can still be dismissed |
+
+This is a property of the deployment, not of your role or your workspace. Whoever runs the
+deployment can read more in
+[The invocation gateway](../administration/research.mdx#the-invocation-gateway).
+
+### What your role can do
+
+Everyone in the workspace can read every card. A button you cannot use is still shown, switched
+off, and its tooltip says why.
+
+| Action | Who can |
+| --- | --- |
+| **New investigation**, **Start investigation ⟳** | Owners, Maintainers and people holding the `member` role — or Owners and Maintainers only, [where the workspace says so](#who-can-start-an-investigation) |
+| **Draft epic from gaps →** | Owners, Maintainers and people holding the `member` role |
+| **enable** a research tool | Owners and Maintainers |
+| **dismiss** a watch item, **Capture a baseline** | Owners and Maintainers |
+| **Apply ⟳** or **Dismiss** a roadmap suggestion | Owners and Maintainers |
+
+### An investigation that stopped
+
+An investigation that **failed** or was **cancelled** keeps everything it read. Click its
+question in the [library](#history-and-the-library) to open it. It shows:
+
+- its status and how far it got, for example **31 sources reached**;
+- **Stopped:** and the reason, followed by the detail the investigation recorded;
+- every source it read before it stopped, each with its excerpt and when it was retrieved.
+
+| Reason | Means |
+| --- | --- |
+| *tools exhausted* | Its tools had nothing more to give before it could answer |
+| *budget reached* | It reached the spend ceiling it started under |
+| *synthesis failed* | It gathered sources but the brief could not be written |
+| *engine error* | The engine failed and could not resume it |
+| *cancelled before it finished* | Someone [cancelled it](#who-can-cancel-an-investigation) |
+
+A failed or cancelled investigation is not counted as active, so it is listed in the library,
+not on the page's active list. If its sources cannot be read the view says *Its sources could
+not be read.* and keeps the reason and the count.
+
+### When the side cards cannot refresh
+
+**Research tools** and **Regression watch** re-read every 30 seconds. If a re-read fails, a
+banner above the cards says *The tools and the watch could not be refreshed.* with the reason and
+a **Retry** button. The two cards keep showing what they last read; they are not emptied.

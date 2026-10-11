@@ -8,6 +8,7 @@ import {
   linksOf,
   mayCancel,
   pillOf,
+  settingsResource,
   primaryLink,
   progressResource,
   quarterResource,
@@ -49,6 +50,19 @@ describe("the investigations card's rows", () => {
       startedBy: { id: KEN, name: "Ken Suenobu" },
       createdAt: "2026-10-08T09:00:00.000Z",
       updatedAt: "2026-10-08T09:42:00.000Z",
+    });
+  });
+});
+
+describe("settingsResource", () => {
+  it("reports the starter role beside the gateway's presence", () => {
+    expect(settingsResource("member", false)).toEqual({
+      startRole: "member",
+      gateway: { available: false },
+    });
+    expect(settingsResource("admin", true)).toEqual({
+      startRole: "admin",
+      gateway: { available: true },
     });
   });
 });

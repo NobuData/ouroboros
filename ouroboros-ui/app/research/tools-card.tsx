@@ -5,6 +5,7 @@ import type { ResearchToolCatalog, ResearchToolCatalogEntry } from "@/app/api/re
 import { Card, CardHead, EmptyState, Tag } from "@/app/ui";
 
 import { NO_TOOLS, TOOLS_TITLE, TOOLS_UNREADABLE, connectedTag, dotLabel, offersEnable } from "./side";
+import { NO_TOOL_CONNECTED_NOTE, NO_TOOL_CONNECTED_READ_ONLY, noToolConnected } from "./states";
 import { ToolEnable } from "./tools-enable";
 import { regionTitleId } from "./view";
 
@@ -58,6 +59,11 @@ export function ToolsCard({ reading, mayAdminister, onChanged }: ToolsCardProps)
 
       {!reading.ok && <EmptyState note={reading.reason} title={TOOLS_UNREADABLE} variant="flush" />}
       {reading.ok && reading.value.tools.length === 0 && <EmptyState note={NO_TOOLS} variant="flush" />}
+      {reading.ok && noToolConnected(reading.value) && (
+        <p className="research__side-lead">
+          {mayAdminister ? NO_TOOL_CONNECTED_NOTE : NO_TOOL_CONNECTED_READ_ONLY}
+        </p>
+      )}
       {reading.ok && reading.value.tools.length > 0 && (
         <ul className="research__side-list">
           {reading.value.tools.map((tool) => (

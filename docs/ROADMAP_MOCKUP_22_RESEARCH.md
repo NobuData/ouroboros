@@ -1092,7 +1092,7 @@ anatomy, kind-chip hues, capability/`gap-sev` treatments, `cite` rows,
 | CN.4 | #630 ✅ | 🟢 Done | ouroboros-ui: [CN.4] Investigation brief view | Matrix, cited brief, sources panel, export, draft-epic action | mvp, research, ui, design | N (after CN.1, CM.2) | Y | L | ouroboros-ui |
 | CN.5 | #631 ✅ | 🟢 Done | ouroboros-ui: [CN.5] Roadmap pipeline card | Rendered/raw doc, suggestions apply/dismiss, milestone-grouped issues | mvp, research, ui, design | N (after CN.1, CM.5) | Y | L | ouroboros-ui |
 | CN.6 | #632 ✅ | 🟢 Done | ouroboros-ui: [CN.6] Investigations list, history & library | Active rows, kind chips, links; filterable history/library view | mvp, research, ui | N (after CN.1, CM.6) | Y | M | ouroboros-ui |
-| CN.7 | #633 | 🟡 Open | ouroboros-ui: [CN.7] Research states & guards | Empty org, AF.2-absent honesty, member gates, load/error | mvp, research, ui, design | N (after CN.2–CN.6) | Y | S | ouroboros-ui |
+| CN.7 | #633 ✅ | 🟢 Done | ouroboros-ui: [CN.7] Research states & guards | Empty org, AF.2-absent honesty, member gates, load/error | mvp, research, ui, design | N (after CN.2–CN.6) | Y | S | ouroboros-ui |
 | CN.8 | #634 | 🟡 Open | ouroboros-ui: [CN.8] Research e2e leg | Parity, run-to-brief, watch chain, pipeline, gaps→planning, themes | mvp, research, ui, ci | N (after CN.1–CN.7) | Y | M | ouroboros-ui, .github |
 
 ### Issue CN.1 — ouroboros-ui: [CN.1] Research route, head & page frame
@@ -1296,7 +1296,9 @@ SOURCES — 44 CITED: [07][12][19][31][git] · all ↗       [Export ↗][Draft 
 
 ### Issue CN.7 — ouroboros-ui: [CN.7] Research states & guards
 
-> **GitHub issue:** #633 · **Status:** 🟡 Open · **Parent epic:** #606
+> **GitHub issue:** #633 ✅ · **Status:** 🟢 Done · **Parent epic:** #606
+
+> **Delivered (#633 — `ouroboros-ui` 0.151.0, `ouroboros-rest` 0.41.16, `ouroboros-docs` 0.3.3; no DB change):** the page's states, in `app/research/states.ts` and the cards. **Gateway:** `GET /research/settings` gained `gateway.available`, read from `INVOCATION_GATEWAY_AVAILABLE` beside the `501` invoke route (`internal/invoke.contract.ts`) — `false` until AF.2 (#235) flips it in the commit that builds the route, so **every deployment shows the degraded page until then**: one notice above the grid (`gateway-notice.tsx`), **New investigation** and **Start investigation ⟳** inert with *Research needs the invocation gateway — see Providers.*, everything else untouched. REST's start route is unchanged. **Empty states:** *Ask your first question* (no active investigation and none this quarter) lands on the composer; a tool the workspace has not enabled is an idle chip (`usableTool` = adapter **and** a settings row), with a pointer line under the chips and a lead on the tools card at `0 connected`; **Capture a baseline** is drawn for everyone, inert with its reason for a non-admin. **Role gates:** the existing rules, unchanged (viewer read-only; `member` starts and drafts unless `research_start_role = admin`; owner/admin for tools, baselines and suggestions) — no per-action org settings, which stay with the unfiled BA-D.5. **Loading:** `research-skeleton.tsx` behind `app/(app)/research/loading.tsx`. **Error:** each region's failed read degrades that card alone (already true; now tested), and a failed side-column re-read raises a `RetryBanner` over the cards as last read. **Stopped investigations:** an opened `failed` or `cancelled` one shows the reason in words, `N sources reached` and its partial ledger from `GET …/sources` (`investigations-stopped.tsx`). The e2e leg stays with CN.8 (#634). Docs: `user-guide/research.mdx` § What can go wrong, `administration/research.mdx` § The invocation gateway; screenshots `user-guide.research.empty` (new), `user-guide.research` and `user-guide.research.composer` (recaptured).
 
 - **Problem Statement:** A fresh org has no tools configured, no
   investigations, no baselines — and a deployment without the invocation

@@ -260,6 +260,26 @@ export interface CancelledInvestigationResource {
 export interface ResearchSettingsResource {
   /** The lowest role that may start an investigation. */
   readonly startRole: ResearchStartRole;
+  /**
+   * The invocation gateway (AF.2, #235) as this deployment has it. Research is model-backed, so
+   * with `available` false an investigation cannot synthesise a brief; the regression watch,
+   * the tools' health and the briefs already written need no model and are unaffected.
+   */
+  readonly gateway: { readonly available: boolean };
+}
+
+/**
+ * The settings resource of a workspace.
+ *
+ * @param startRole - The workspace's starter role.
+ * @param gatewayAvailable - Whether this build answers the invocation gateway.
+ * @returns The resource.
+ */
+export function settingsResource(
+  startRole: ResearchStartRole,
+  gatewayAvailable: boolean,
+): ResearchSettingsResource {
+  return { startRole, gateway: { available: gatewayAvailable } };
 }
 
 /** The pill of each status, when nothing more specific applies. */

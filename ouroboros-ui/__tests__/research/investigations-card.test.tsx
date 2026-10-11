@@ -14,6 +14,17 @@ import {
 } from "@/app/research/investigations";
 import type { InvestigationsCardProps } from "@/app/research/investigations-card";
 import { RELOAD_LABEL } from "@/app/research/composer";
+import {
+  CANCELLED_REASON,
+  FAILURE_UNRECORDED,
+  FIRST_QUESTION_ACTION,
+  FIRST_QUESTION_NOTE,
+  FIRST_QUESTION_TITLE,
+  GATEWAY_START_REASON,
+  PARTIAL_LEDGER_EMPTY,
+  PARTIAL_LEDGER_UNAVAILABLE,
+  STOPPED_KEPT_NOTE,
+} from "@/app/research/states";
 import { NO_FILTERS } from "@/app/research/view";
 
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
@@ -24,6 +35,7 @@ import {
   investigationDetail,
   investigationList,
   investigationRow,
+  ledgerSource,
   openFakeSource,
   progress,
   seededBrief,
@@ -46,13 +58,16 @@ const openInvestigation = vi.fn();
 const refresh = vi.fn();
 const push = vi.fn();
 const onLand = vi.fn();
+const onAsk = vi.fn();
 
 vi.mock("@/app/research/investigations-actions", () => ({
   readInvestigations: (filters: unknown, offset: unknown) => readInvestigations(filters, offset),
   openInvestigation: (id: unknown) => openInvestigation(id),
 }));
+const readBriefLedger = vi.fn();
+
 vi.mock("@/app/research/brief-actions", () => ({
-  readBriefLedger: () => Promise.resolve({ ok: true, total: 0, items: [] }),
+  readBriefLedger: (id: unknown) => readBriefLedger(id),
   readTrackers: () => Promise.resolve({ ok: true, trackers: [] }),
   draftEpicFromGaps: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "x" } }),
 }));
@@ -71,9 +86,11 @@ function card(over: Partial<InvestigationsCardProps> = {}) {
       initial={{ ok: true, value: investigationList() }}
       kinds={seededKinds()}
       mayDraft
+      onAsk={onAsk}
       onLand={onLand}
       openSource={openFakeSource}
       opened={null}
+      startReason={null}
       view="page"
       {...over}
     />
@@ -98,6 +115,8 @@ beforeEach(() => {
   refresh.mockReset();
   push.mockReset();
   onLand.mockReset();
+  onAsk.mockReset();
+  readBriefLedger.mockReset().mockResolvedValue({ ok: true, total: 0, items: [] });
   replaceState.mockReset();
   window.history.replaceState = replaceState;
   FakeProgressSource.reset();
@@ -401,10 +420,152 @@ describe("a card that could not be read", () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
-  it("says when the workspace has started nothing", () => {
-    render(card({ initial: { ok: true, value: investigationList({ items: [], counts: { active: 0, thisQuarter: 0 } }) } }));
+  it("says when every investigation the workspace started has stopped", () => {
+    render(card({ initial: { ok: true, value: investigationList({ items: [], counts: { active: 0, thisQuarter: 3 } }) } }));
 
     expect(screen.getByText(NO_INVESTIGATIONS)).toBeInTheDocument();
+    expect(screen.queryByText(FIRST_QUESTION_TITLE)).toBeNull();
+    expect(screen.getByText("0 active · 3 this quarter")).toBeInTheDocument();
+  });
+});
+
+/**
+ * #633 — the card before the workspace has asked anything, and an investigation that stopped.
+ */
+describe("a workspace that has asked nothing", () => {
+  const nothing = { ok: true as const, value: investigationList({ items: [], counts: { active: 0, thisQuarter: 0 } }) };
+
+  it("invites the first question and puts the reader in the composer", () => {
+    render(card({ initial: nothing }));
+
+    expect(screen.getByText(FIRST_QUESTION_TITLE)).toBeInTheDocument();
+    expect(screen.getByText(FIRST_QUESTION_NOTE)).toBeInTheDocument();
     expect(screen.getByText("0 active · 0 this quarter")).toBeInTheDocument();
+    expect(screen.queryByText(NO_INVESTIGATIONS)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: FIRST_QUESTION_ACTION }));
+    expect(onAsk).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the action on the page, inert and saying why, for a reader who may not start one", () => {
+    render(card({ initial: nothing, startReason: GATEWAY_START_REASON }));
+
+    const ask = screen.getByRole("button", { name: FIRST_QUESTION_ACTION });
+    expect(ask).toHaveAttribute("aria-disabled", "true");
+    expect(ask).toHaveAttribute("title", GATEWAY_START_REASON);
+
+    fireEvent.click(ask);
+    expect(onAsk).not.toHaveBeenCalled();
+  });
+
+  it("is the library's no-match line in the library, whatever the counts", () => {
+    render(card({ view: "library", initial: nothing }));
+
+    expect(screen.getByText(NO_MATCHES)).toBeInTheDocument();
+    expect(screen.queryByText(FIRST_QUESTION_TITLE)).toBeNull();
+  });
+});
+
+describe("a stopped investigation, opened", () => {
+  /** A stopped investigation's detail, 31 sources in. */
+  function stopped(over: Parameters<typeof investigationDetail>[0]) {
+    return investigationDetail({
+      id: RS121!.id,
+      displayId: "RS-121",
+      kind: RS121!.kind,
+      question: RS121!.question,
+      ledger: { total: 31, byTool: [{ tool: "web", count: 31 }] },
+      progress: progress({ status: "failed", iteration: 4, sources: 31 }),
+      ...over,
+    });
+  }
+
+  const failed = stopped({
+    status: "failed",
+    pill: { state: "failed", label: "failed", tone: "err", live: false },
+    failure: { reason: "budget_breach", detail: "The spend ceiling of $9.00 was reached." },
+  });
+
+  it("renders a failed one's reason, the sources it reached and its partial ledger", async () => {
+    const items = Array.from({ length: 31 }, (_, index) => ledgerSource(index + 1));
+    readBriefLedger.mockResolvedValue({ ok: true, total: 31, items });
+    openInvestigation.mockResolvedValue({ ok: true, opened: { detail: failed, brief: null } });
+    render(card());
+
+    fireEvent.click(screen.getByRole("button", { name: "Open RS-121" }));
+
+    expect(await screen.findByText("31 sources reached")).toBeInTheDocument();
+    expect(screen.getByText(/budget reached — The spend ceiling of \$9\.00 was reached\./)).toBeInTheDocument();
+    expect(screen.getByText(STOPPED_KEPT_NOTE)).toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(NO_BRIEF_YET))).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    await waitFor(() => expect(document.querySelectorAll(".research__ledger-row")).toHaveLength(31));
+    expect(readBriefLedger).toHaveBeenCalledWith(RS121!.id);
+    expect(screen.getByText(items[30]!.excerpt, { exact: false })).toBeInTheDocument();
+  });
+
+  it("renders a cancelled one likewise, with the cancel as its reason", async () => {
+    readBriefLedger.mockResolvedValue({ ok: true, total: 2, items: [ledgerSource(1), ledgerSource(2)] });
+    openInvestigation.mockResolvedValue({
+      ok: true,
+      opened: {
+        detail: stopped({
+          status: "cancelled",
+          pill: { state: "cancelled", label: "cancelled", tone: "idle", live: false },
+          ledger: { total: 2, byTool: [{ tool: "code", count: 2 }] },
+        }),
+        brief: null,
+      },
+    });
+    render(card());
+
+    fireEvent.click(screen.getByRole("button", { name: "Open RS-121" }));
+
+    expect(await screen.findByText("2 sources reached")).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(CANCELLED_REASON))).toBeInTheDocument();
+    await waitFor(() => expect(document.querySelectorAll(".research__ledger-row")).toHaveLength(2));
+  });
+
+  it("keeps the reason and the count when the ledger itself cannot be read", async () => {
+    readBriefLedger.mockResolvedValue({ ok: false, refusal: { code: "internal_error", message: "Try again." } });
+    openInvestigation.mockResolvedValue({ ok: true, opened: { detail: failed, brief: null } });
+    render(card());
+
+    fireEvent.click(screen.getByRole("button", { name: "Open RS-121" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(`${PARTIAL_LEDGER_UNAVAILABLE} Try again.`);
+    expect(screen.getByText("31 sources reached")).toBeInTheDocument();
+    expect(screen.getByText(/budget reached/)).toBeInTheDocument();
+  });
+
+  it("says so when it stopped before reading anything", async () => {
+    openInvestigation.mockResolvedValue({
+      ok: true,
+      opened: {
+        detail: stopped({
+          status: "failed",
+          pill: { state: "failed", label: "failed", tone: "err", live: false },
+          ledger: { total: 0, byTool: [] },
+          failure: null,
+        }),
+        brief: null,
+      },
+    });
+    render(card());
+
+    fireEvent.click(screen.getByRole("button", { name: "Open RS-121" }));
+
+    expect(await screen.findByText(PARTIAL_LEDGER_EMPTY)).toBeInTheDocument();
+    expect(screen.getByText("0 sources reached")).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(FAILURE_UNRECORDED))).toBeInTheDocument();
+  });
+
+  it("renders the same markup under both palettes", async () => {
+    const opened = { id: RS121!.id, reading: { ok: true as const, value: { detail: failed, brief: null } } };
+    const [light, dark] = renderInBothPalettes(card({ opened }));
+
+    expect(maskIds(light)).toBe(maskIds(dark));
+    await waitFor(() => expect(readBriefLedger).toHaveBeenCalled());
   });
 });

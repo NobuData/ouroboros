@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-import type { BriefSource } from "@/app/api/research";
+import type { BriefLedgerSource, BriefSource } from "@/app/api/research";
 import { ShellOverlay } from "@/app/shell/overlay";
 import { cx } from "@/app/ui";
 
@@ -89,6 +89,55 @@ export function SourcesPanel({ cited, panel, lit, onAll }: SourcesPanelProps) {
   );
 }
 
+/** What the ledger's rows take. */
+export interface LedgerRowsProps {
+  /** The records, in cite-number order. */
+  readonly items: readonly BriefLedgerSource[];
+  /** The panel, so a record the claims cite is drawn apart from one only read. */
+  readonly panel: readonly BriefSource[];
+  /** The record drawn lit; null for none. */
+  readonly focus: string | null;
+}
+
+/**
+ * A ledger's records as rows — the excerpt archived from each and when it was retrieved. The
+ * ledger sheet draws them, and so does a stopped investigation's opened view (CN.7,
+ * [#633](https://github.com/NobuData/ouroboros/issues/633)), whose partial ledger is the same
+ * records with no brief citing them.
+ *
+ * @param props See {@link LedgerRowsProps}.
+ * @returns The list.
+ */
+export function LedgerRows({ items, panel, focus }: LedgerRowsProps) {
+  return (
+    <ol className="research__ledger">
+      {items.map((item) => (
+        <li
+          className={cx(
+            "research__ledger-row",
+            isCited(item, panel) && "research__ledger-row--cited",
+            focus === item.sourceId && "research__ledger-row--lit",
+          )}
+          id={ledgerRowId(item)}
+          key={item.sourceId}
+        >
+          <span className="research__ledger-n">{item.label}</span>
+          <span className="research__ledger-body">
+            <span className="research__ledger-title">{item.title}</span>
+            <Locator className="research__ledger-u" source={item} />
+            <span className="research__ledger-excerpt">
+              <span className="research__ledger-meta">{EXCERPT_LABEL}</span> {item.excerpt}
+            </span>
+            <span className="research__ledger-meta">
+              {RETRIEVED_LABEL} {retrievedWords(item.retrievedAt)} · {item.tool}
+            </span>
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 /** What the ledger sheet takes. */
 export interface LedgerSheetProps {
   /** Whether it is open. */
@@ -146,33 +195,7 @@ export function LedgerSheet({ open, onClose, displayId, panel, ledger, focus }: 
           {LEDGER_UNAVAILABLE} {ledger.refusal.message}
         </p>
       )}
-      {ledger?.ok === true && (
-        <ol className="research__ledger">
-          {ledger.items.map((item) => (
-            <li
-              className={cx(
-                "research__ledger-row",
-                isCited(item, panel) && "research__ledger-row--cited",
-                focus === item.sourceId && "research__ledger-row--lit",
-              )}
-              id={ledgerRowId(item)}
-              key={item.sourceId}
-            >
-              <span className="research__ledger-n">{item.label}</span>
-              <span className="research__ledger-body">
-                <span className="research__ledger-title">{item.title}</span>
-                <Locator className="research__ledger-u" source={item} />
-                <span className="research__ledger-excerpt">
-                  <span className="research__ledger-meta">{EXCERPT_LABEL}</span> {item.excerpt}
-                </span>
-                <span className="research__ledger-meta">
-                  {RETRIEVED_LABEL} {retrievedWords(item.retrievedAt)} · {item.tool}
-                </span>
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
+      {ledger?.ok === true && <LedgerRows focus={focus} items={ledger.items} panel={panel} />}
     </ShellOverlay>
   );
 }

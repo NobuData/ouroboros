@@ -62,6 +62,19 @@
  * ignored one.
  */
 
+/**
+ * Whether this build answers `POST /internal/llm/invoke` — the one fact a surface that needs a
+ * model asks before it offers to start one.
+ *
+ * `false` while the route is the `501` in `llm.controller.ts`; AF.2
+ * ([#235](https://github.com/NobuData/ouroboros/issues/235)) sets it `true` in the commit that
+ * replaces that method's body. Research reports it to its page
+ * (`GET /research/settings` § `gateway`, [#633](https://github.com/NobuData/ouroboros/issues/633))
+ * so the page can say plainly that a brief cannot be synthesised, rather than offer a button
+ * that fails.
+ */
+export const INVOCATION_GATEWAY_AVAILABLE: boolean = false;
+
 /** The media type the answer is streamed as — one JSON object per line. */
 export const INVOKE_MEDIA_TYPE = "application/x-ndjson";
 

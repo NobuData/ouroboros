@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.15"
+  version: "0.41.16"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -37893,6 +37893,8 @@ paths:
                 $ref: "#/components/schemas/ResearchSettings"
               example:
                 startRole: member
+                gateway:
+                  available: false
         "400":
           description: |-
             `organization_required` — this session is not acting in any workspace and this
@@ -37956,6 +37958,8 @@ paths:
                 $ref: "#/components/schemas/ResearchSettings"
               example:
                 startRole: admin
+                gateway:
+                  available: false
         "400":
           description: |-
             `organization_required` — this session is not acting in any workspace and this
@@ -53924,7 +53928,7 @@ components:
       title: ResearchSettings
       description: A workspace's research settings.
       additionalProperties: false
-      required: [startRole]
+      required: [startRole, gateway]
       properties:
         startRole:
           type: string
@@ -53932,6 +53936,19 @@ components:
           description: |-
             The lowest role that may start an investigation: `member` is owner, admin and
             member; `admin` is owner and admin.
+        gateway:
+          type: object
+          additionalProperties: false
+          required: [available]
+          description: |-
+            The invocation gateway as this deployment has it. Research is model-backed: with
+            `available` false an investigation cannot synthesise a brief, so a client should
+            not offer to start one. The regression watch, the tools' health and the briefs
+            already written need no model.
+          properties:
+            available:
+              type: boolean
+              description: Whether this deployment can make a model call for an investigation.
     ResearchSettingsPatch:
       type: object
       title: ResearchSettingsPatch
