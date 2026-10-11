@@ -14,6 +14,8 @@ import {
   toolFailed,
   toolNotConfigured,
   toolNotEnabled,
+  toolConfigInvalid,
+  toolNotFound,
   toolNotRegistered,
 } from "./research-tool.errors";
 
@@ -72,6 +74,12 @@ describe("the research tool error taxonomy", () => {
 
   it("answers each refusal with its own status and code", () => {
     const cases = [
+      [toolNotFound("oracle"), HttpStatus.NOT_FOUND, RESEARCH_TOOL_ERRORS.toolNotFound],
+      [
+        toolConfigInvalid("web", { provider: ["must be one of searxng, brave"] }),
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        RESEARCH_TOOL_ERRORS.toolConfigInvalid,
+      ],
       [
         toolNotRegistered("web", []),
         HttpStatus.NOT_IMPLEMENTED,

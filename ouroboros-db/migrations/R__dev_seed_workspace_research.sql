@@ -595,6 +595,22 @@ select m.investigation_id, brief.id, 'matrix',
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
+-- The tools card: the five MVP tools enabled (#629, CN.3). A row is what "enabled" means, so
+-- the card's dots are the adapters' own health answers; `docs` has no row and no adapter, and
+-- stays the idle sixth row. The web tool searches through the deployment's SearXNG, keyless.
+-- ---------------------------------------------------------------------------
+insert into ouroboros.research_tool_settings (organization_id, tool_slug, config)
+select org."id", tool.slug, tool.config::jsonb
+  from (values ('web',        '{"provider": "searxng"}'),
+               ('competitor', '{}'),
+               ('code',       '{}'),
+               ('tickets',    '{}'),
+               ('telemetry',  '{}')) as tool (slug, config)
+  join ouroboros.organization org on org."slug" = 'acme-robotics'
+ where ${ouro_dev_seed}
+on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
 -- The regression watch: release baselines over HIL case metrics, and the card's three items.
 -- ---------------------------------------------------------------------------
 insert into ouroboros.regression_baselines (id, organization_id, repo_ref, release_tag, metric_source,

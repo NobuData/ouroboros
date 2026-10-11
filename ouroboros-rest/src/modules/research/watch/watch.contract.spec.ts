@@ -114,10 +114,21 @@ describe("the regression watch contract", () => {
       item({ id: "17e00000-0000-4000-8000-000000000005", status: "dismissed" }),
     ];
 
+    store.links.set("71c4e700-0000-4000-8000-000000000517", {
+      runId: "4a000000-0000-4000-8000-000000000517",
+      url: "https://github.com/acme-robotics/helios-firmware/issues/517",
+    });
+
     const card = await service.card(ORG);
 
     expect(valid(card)).toBe(true);
     expect(valid.errors).toBeNull();
+    expect(card.items[3]).toMatchObject({
+      fixRun: { id: "4a000000-0000-4000-8000-000000000517" },
+      fixTicketUrl: "https://github.com/acme-robotics/helios-firmware/issues/517",
+      bisect: { commitUrl: `https://github.com/${REPO}/commit/${BISECT_RESULT.culprit_sha}` },
+    });
+    expect(card.items[0].fixRun).toBeNull();
     expect(valid({ ...card, extra: true })).toBe(false);
     expect(valid(await service.card("org-empty"))).toBe(true);
   });

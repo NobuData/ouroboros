@@ -40481,6 +40481,84 @@ select pg_temp.must_reject(
     values ('org-v126', 'a1260000-0000-0000-0000-000000000301', 2, 'plan', 'plan', 'ok', 'llm', 'late')$$,
   'a cancelled dry run takes no new result rows', 'dry_run_stages_open');
 
+-- ===========================================================================
+-- V127 — a workspace's research-tool settings (#629, CN.3)
+-- ===========================================================================
+--
+-- One row per workspace per tool; a row is what "enabled" means. The credential is the vault's
+-- envelope or nothing, and the read view does not carry it.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v127',  'Tool Works', 'tool-works-v127', now()),
+  ('org-v127b', 'Tool Two',   'tool-two-v127',   now());
+
+insert into ouroboros.research_tool_settings (organization_id, tool_slug, created_at, updated_at) values
+  ('org-v127', 'code', now() - interval '1 hour', now() - interval '1 hour');
+insert into ouroboros.research_tool_settings (organization_id, tool_slug, config, credentials_encrypted) values
+  ('org-v127', 'web', '{"provider": "brave"}', 'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA');
+
+select pg_temp.must_hold(
+  (select config = '{}'::jsonb and credentials_encrypted is null
+     from ouroboros.research_tool_settings
+    where organization_id = 'org-v127' and tool_slug = 'code'),
+  'a tool is enabled by a row: config defaults to {} and no credential is needed');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.research_tool_settings (organization_id, tool_slug) values ('org-v127', 'code')$$,
+  'a workspace configures a tool once', 'research_tool_settings_pkey');
+
+insert into ouroboros.research_tool_settings (organization_id, tool_slug) values ('org-v127b', 'code');
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.research_tool_settings where tool_slug = 'code'
+      and organization_id in ('org-v127', 'org-v127b')),
+  'and two workspaces each configure the same tool');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.research_tool_settings (organization_id, tool_slug) values ('org-v127', 'crystal-ball')$$,
+  'a slug no adapter answers to cannot be configured', 'research_tool_settings_tool_slug_fkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.research_tool_settings (organization_id, tool_slug, config) values ('org-v127', 'tickets', '[]')$$,
+  'a tool''s config is an object', 'research_tool_settings_config_object');
+
+select pg_temp.must_reject(
+  $$update ouroboros.research_tool_settings set credentials_encrypted = 'BSA-plaintext-key'
+     where organization_id = 'org-v127' and tool_slug = 'web'$$,
+  'a tool''s credential is never stored in the clear', 'research_tool_settings_credentials_sealed');
+
+select pg_temp.must_hold(
+  (select array_agg(column_name::text order by ordinal_position)
+            = array['organization_id', 'tool_slug', 'config', 'has_credential', 'updated_by',
+                    'created_at', 'updated_at']
+     from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'research_tool_settings_public'),
+  'research_tool_settings_public carries every column but the credential, and has_credential in its place');
+
+select pg_temp.must_hold(
+  (select array_agg(tool_slug || ':' || has_credential order by tool_slug) = array['code:false', 'web:true']
+     from ouroboros.research_tool_settings_public where organization_id = 'org-v127'),
+  'the view says only whether a credential is stored');
+
+update ouroboros.research_tool_settings set config = '{"windowDays": 30}'
+ where organization_id = 'org-v127' and tool_slug = 'code';
+select pg_temp.must_hold(
+  (select updated_at > created_at from ouroboros.research_tool_settings
+    where organization_id = 'org-v127' and tool_slug = 'code'),
+  'storing a tool''s settings again moves updated_at');
+
+set local role ouroboros_app;
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.research_tool_settings_public where organization_id = 'org-v127'),
+  'the app role reads the tool settings view');
+select pg_temp.must_raise(
+  $$delete from ouroboros.research_tool_settings where organization_id = 'org-v127'$$,
+  '42501', 'the app role cannot delete a tool''s settings — nothing switches a tool off yet');
+reset role;
+
+delete from ouroboros.organization where "id" = 'org-v127b';
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.research_tool_settings where organization_id = 'org-v127b'),
+  'a workspace takes its tool settings with it');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

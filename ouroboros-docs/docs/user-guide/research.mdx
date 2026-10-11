@@ -16,11 +16,9 @@ tickets for the loop to pick up.
 
 :::info[The page is arriving in parts]
 
-The page's frame is here, and so is its composer: you can
-[start an investigation](#starting-an-investigation) and follow it as it runs. The other five
-regions say what they will hold and are filled in by later releases — until the brief view
-arrives, a finished investigation's **View brief ↑** lands on the **Featured brief** region's
-placeholder.
+Five of the page's six regions are here: the composer, the research tools, the regression
+watch, the featured brief and the investigations list. **Roadmap pipeline** still says what it
+will hold, and is filled in by a later release.
 
 :::
 
@@ -42,11 +40,11 @@ Two buttons sit beside it:
 
 Below the head, the page has six regions:
 
-| Region | What it will hold |
+| Region | What it holds |
 | --- | --- |
 | **Start an investigation** | The composer: your question, its kind, how deep to go and which tools to use, with an estimate before you start — see [Starting an investigation](#starting-an-investigation) |
-| **Research tools** | Each [research tool](#research-tools), with its health and how to enable it |
-| **Regression watch** | Drift against each release's baseline, from detection to a merged fix |
+| **Research tools** | Each [research tool](#research-tools), with its health and how to enable it — see [The Research tools card](#the-research-tools-card) |
+| **Regression watch** | Drift against each release's baseline, from detection to a merged fix — see [The Regression watch card](#the-regression-watch-card) |
 | **Featured brief** | A cited brief, with its capability matrix and numbered sources |
 | **Roadmap pipeline** | A brief's roadmap document, and the issues filed from it |
 | **Investigations** | Every investigation, and the library: the same list filtered by kind, status and quarter — see [Investigations and the library](#investigations-and-the-library) |
@@ -244,6 +242,49 @@ the repositories it reads, for example *blame, bisect, dependency graph over hel
 The history index's row counts what it holds, for example *389 issues · 12 pull requests ·
 Support churn interviews Q2*. The telemetry tool's row counts what there is to read, for
 example *8 HIL measurements · 24 insights metrics · 63 test cases*.
+
+### The Research tools card
+
+The **Research tools** card lists every tool, one row each: its glyph, its name, a line saying
+what it holds for your workspace, and a dot for its health. The tag in the card's head counts
+the tools that are answering, for example **5 connected**.
+<Since version="0.149.0" module="ouroboros-ui" />
+
+<Screenshot id="user-guide.research.tools" />
+
+The line under each name is counted, not written: add a rival and the competitor tracker's line
+reads one more. A count that cannot be read shows as **—**, never as zero.
+
+The dot is the tool's own health check for your workspace. Hover it to read the detail.
+
+| Dot | Means |
+| --- | --- |
+| Green | **Healthy.** The tool answers. |
+| Amber | **Degraded.** The tool answers, but slowly or only in part. |
+| Red | **Down.** The tool is set up but does not answer — the detail says why, for example *unreachable: SearXNG did not answer*. |
+| Grey ring | **Not enabled.** The workspace has not set the tool up, or it has nothing to read yet. |
+
+Only green and amber tools count toward **connected**. The card checks every tool again every
+30 seconds, so a tool that stops answering turns red without a reload.
+
+### Enabling a tool
+
+A row with a grey ring has an **enable** button. An Owner or a Maintainer presses it; for anyone
+else the button is off and says *Enabling a research tool is for workspace owners and admins.*
+
+**enable** opens the tool's own settings form. The fields differ from tool to tool — a search
+provider and its key for the web tool, nothing required for most others — and are described in
+[Research tools](../administration/research.mdx#enabling-a-tool). Fill in what the tool needs
+and press **Enable tool**. The row's dot then shows whether the settings work.
+
+- A field the tool refuses is marked with the reason, and nothing is stored.
+- A key or token is stored sealed and is never shown again. Open the form later and the field is
+  empty; leave it empty to keep the stored one.
+- Saving the form does not test a paid provider's key. A wrong key shows on the first search.
+
+**Docs, standards & papers** is not available yet. Its **enable** opens a note instead of a
+form: the tool arrives in v2, with a link to the issue that tracks it. Anyone can read the note.
+Until then PDFs are skipped, as the next section describes.
 
 ### Pages the web tool does not read
 
@@ -483,14 +524,58 @@ The **regression watch** compares each night's measurements with the last releas
 when a metric has got worse. It involves no model: it reads numbers, builds commits on the
 build farm, and writes down what it found. <Since version="0.41.9" module="ouroboros-rest" />
 
-:::info[Read the watch through the API for now]
+### The Regression watch card
 
-The **Regression watch** card arrives in a later release. Until then the watch is read from the
-[REST API](../cli/rest-api.mdx) at `/api/v1/research/regression-watch`, which everyone in the
-workspace may read. An Owner or a Maintainer sets it up — see
-[Regression watch](../administration/research.mdx#regression-watch).
+The **Regression watch** card on the Research page lists what has drifted. The tag in its head
+names what the nightly runs are compared to — **nightly vs. v2.0.4 baseline**, or **nightly vs.
+2 release baselines** when your repositories are on different releases.
+<Since version="0.149.0" module="ouroboros-ui" />
 
-:::
+<Screenshot id="user-guide.research.watch" />
+
+Each row is one drifted metric. The worst open drift is on top; merged fixes are at the bottom.
+
+- **The dot** is the severity: red past the error threshold, amber past the warning threshold,
+  green once the metric is back within thresholds.
+- **The title** is the metric, how far it moved, and the release it is measured against, for
+  example **Hover drift +14% since v2.0.4**.
+- **The line under it** says where the item stands, and each reference in it is a link:
+
+  | In the line | Opens |
+  | --- | --- |
+  | `bisected → a41f2c9` | The culprit commit, on GitHub |
+  | `#512` | The fix's run in the [run console](./runs/console.mdx). Until a loop has started on the ticket, it opens the ticket on its tracker. A draft that is not filed yet, such as `FIX-1`, is not a link — find it in [Planning](./planning.mdx). |
+  | `PR #641` | The [pull request](./pull-requests.mdx) that merged the fix |
+
+- **The pill** is the status, from the table in
+  [From a culprit to a merged fix](#from-a-culprit-to-a-merged-fix). It pulses while a bisect,
+  an investigation or a fix loop is running.
+
+An item the watch could not bisect stays on the card as **detected**, and its line says why —
+for example *needs repro: no replayable test is configured for this metric, so it cannot be
+bisected*. See [What a bisect does and shows](#what-a-bisect-does-and-shows).
+
+Under the rows the card reads: *Watch compares every nightly HIL run to the last release
+baseline; any drift opens a forensics investigation automatically.*
+
+#### Dismissing an item
+
+Every open row has a **dismiss** button. An Owner or a Maintainer presses it, types a
+**Reason**, and presses **Dismiss item**. The row leaves the card and the reason is written to
+the audit log. If a later night reads the drift again, the watch opens a new item. For anyone
+else the button is off and says *Dismissing a watch item is for workspace owners and admins.*
+
+#### Before the first baseline
+
+A workspace with no baseline has nothing to compare, so the card says **No release baseline
+yet** and offers an Owner or a Maintainer **Capture a baseline**. Enter the **Repository** as
+`owner/name` and the **Release tag**, and press **Capture baseline**. The dialog then says how
+many baselines were captured, and names any metric it skipped and why. Everyone else reads
+*Capturing a baseline is for workspace owners and admins.*
+
+Capturing needs watched metrics first — an Owner or a Maintainer chooses them, see
+[Regression watch](../administration/research.mdx#regression-watch). Once a baseline exists and
+nothing has drifted, the card reads *Nothing has drifted from the baseline.*
 
 ### Baselines
 
@@ -503,7 +588,8 @@ Baselines are captured in two ways:
 - **On a release tag.** When a release is announced to Ouroboros, every watched metric of that
   repository is captured for it. Your deployment administrator connects the announcement — see
   [Announcing a release](../administration/research.mdx#announcing-a-release).
-- **By hand.** An Owner or a Maintainer captures a release's baselines at any time.
+- **By hand.** An Owner or a Maintainer captures a release's baselines — from the card
+  [before the first baseline](#before-the-first-baseline), or at any time through the API.
 
 A metric that had no measurements in its window gets no baseline: an empty window is not a
 baseline of zero.
@@ -584,7 +670,8 @@ From there the item follows the fix, and its status says where it is:
 
 The watch files a decision in [Needs You](./inbox.mdx) twice for each item: once when it
 detects the drift, and once when the bisect names a culprit. Each links to the watch, and an
-Owner or a Maintainer can **Dismiss drift** from it with a reason. A decision closes by itself
+Owner or a Maintainer can **Dismiss drift** from it with a reason — the same dismissal as the
+card's [**dismiss**](#dismissing-an-item). A decision closes by itself
 once the item has moved on.
 
 Dismissing an item cancels a bisect that is still running. The investigation and the draft it

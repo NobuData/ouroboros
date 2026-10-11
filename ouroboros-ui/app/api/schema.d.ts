@@ -10956,23 +10956,71 @@ export interface paths {
         };
         /**
          * The research tools this installation answers to
-         * @description The composer's tool chips ([#628](https://github.com/NobuData/ouroboros/issues/628)):
-         *     every slug of V106's `research_tools`, in mockup 22's order, each saying whether it is
-         *     **connected** — an adapter is registered for it in this build (CL.1's registry,
-         *     [#614](https://github.com/NobuData/ouroboros/issues/614)), so an investigation can
-         *     call it. A connected tool is named and glyphed by its adapter; a slug with no adapter
-         *     (`docs`, until its v2 adapter ships) keeps the table's title, has no glyph, and is the
-         *     composer's idle chip.
+         * @description The research tools as the session's workspace sees them — what the composer's chips
+         *     ([#628](https://github.com/NobuData/ouroboros/issues/628)) and the tools card
+         *     ([#629](https://github.com/NobuData/ouroboros/issues/629)) are drawn from. Every slug of
+         *     V106's `research_tools`, in mockup 22's order.
          *
-         *     **Connected is not healthy.** Whether *this workspace's* configuration of a tool works
-         *     is the tools card's dot ([#629](https://github.com/NobuData/ouroboros/issues/629)),
-         *     answered by each adapter's health check. This read makes no network call and names no
-         *     workspace: it is the installation's catalog.
+         *     **`connected`** says an adapter is registered for the slug in this build (CL.1's
+         *     registry, [#614](https://github.com/NobuData/ouroboros/issues/614)), so an
+         *     investigation can call it. **`health`** is the other question — whether *this
+         *     workspace's* configuration of the tool works — answered by the adapter's health check
+         *     under the workspace's stored settings, and mapped one to one onto the card's four dots.
+         *     A workspace that has stored nothing for a tool reads `not_configured`, the idle dot.
+         *     `connectedCount` counts the tools whose health is `healthy` or `degraded`.
+         *
+         *     **`subLine` is computed**: the adapter's template with this workspace's live counts
+         *     (`4 rivals watched · …`); a count that cannot be read is an em dash, never a zero.
+         *
+         *     **`enable`** is what the row's button opens: `form` — the fields of the adapter's
+         *     configuration schema, with the stored non-secret settings — or `planned`, for a tool
+         *     this build has no adapter for (`docs`, until its v2 adapter ships), naming the release
+         *     and the tracking issue. A credential is never returned; `hasCredential` says only that
+         *     one is stored.
+         *
+         *     A tool that is unwell never fails this read: a health check that breaks is drawn
+         *     `down`. The web tool's check asks its search provider, so the read can take as long as
+         *     that provider's timeout.
          *
          *     Any member may read.
          */
         get: operations["listResearchTools"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/research/tools/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Enable a research tool, or change its settings
+         * @description Stores the workspace's settings for a tool
+         *     ([#629](https://github.com/NobuData/ouroboros/issues/629)) — the save behind the tools
+         *     card's **enable**. `config` is the tool's form as submitted, in the vocabulary of the
+         *     `enable.fields` that `GET /api/v1/research/tools` answered; the service judges it
+         *     against the adapter's configuration schema and refuses
+         *     `422 research_tool_config_invalid`, naming every field at once.
+         *
+         *     **A stored row is what "enabled" means**, so a tool whose form requires nothing is
+         *     enabled by `{"config": {}}`. The field whose widget is `secret` is routed to the vault
+         *     and stored sealed; it is never returned, and a save that leaves it out keeps the
+         *     stored one.
+         *
+         *     Answers the tool's row as it now reads, its health re-asked under the new settings —
+         *     a wrong address or a refused key shows as the dot, not as a refusal to save.
+         *
+         *     Owners and admins only, and a person.
+         */
+        put: operations["enableResearchTool"];
         post?: never;
         delete?: never;
         options?: never;
@@ -20040,9 +20088,11 @@ export interface components {
         };
         /**
          * ResearchToolCatalogEntry
-         * @description One research tool the installation answers to ([#628](https://github.com/NobuData/ouroboros/issues/628)).
-         *     `connected` says an adapter is registered for the slug in this build — not that any
-         *     workspace's configuration of it is healthy, which is the tools card's dot (#629).
+         * @description One research tool, as the session's workspace sees it
+         *     ([#628](https://github.com/NobuData/ouroboros/issues/628),
+         *     [#629](https://github.com/NobuData/ouroboros/issues/629)). `connected` says an adapter
+         *     is registered for the slug in this build; `health` says whether this workspace's
+         *     configuration of it works.
          */
         ResearchToolCatalogEntry: {
             /** @example competitor */
@@ -20053,11 +20103,82 @@ export interface components {
              */
             name: string;
             /**
-             * @description The adapter's one-character glyph; null when no adapter exists.
+             * @description The adapter's one-character glyph, or a planned tool's; null for a tool with
+             *     neither an adapter nor a plan.
              * @example ⌖
              */
             glyph: string | null;
             connected: boolean;
+            /**
+             * @description The card's second line with this workspace's counts filled in. Null only for a
+             *     tool with neither an adapter nor a plan.
+             * @example 4 rivals watched · release notes, changelogs, filings
+             */
+            subLine: string | null;
+            health: components["schemas"]["ResearchToolHealth"];
+            /** @description Whether the workspace has stored settings for the tool — what *enabled* means. */
+            configured: boolean;
+            /** @description Whether a credential is stored. The credential itself is never returned. */
+            hasCredential: boolean;
+            /** @description What the row's **enable** opens; null when nothing can be said. */
+            enable: components["schemas"]["ResearchToolEnableForm"] | components["schemas"]["ResearchToolEnablePlanned"] | null;
+        };
+        /**
+         * ResearchToolHealth
+         * @description A tool's health under this workspace's settings. Four states, each owning one dot:
+         *     `healthy` → `ok`, `degraded` → `warn`, `down` → `err`, `not_configured` → `idle`.
+         */
+        ResearchToolHealth: {
+            /** @enum {string} */
+            state: "healthy" | "degraded" | "down" | "not_configured";
+            /** @enum {string} */
+            dot: "ok" | "warn" | "err" | "idle";
+            /**
+             * @description A short note for the dot's tooltip. Never empty, never a credential.
+             * @example SearXNG · 200 · 41ms
+             */
+            detail: string;
+        };
+        /**
+         * ResearchToolEnableForm
+         * @description The configuration form of a tool that has an adapter — its schema's fields, in order,
+         *     in the dialect the ticket-source form uses, so one form primitive draws both.
+         */
+        ResearchToolEnableForm: {
+            /** @constant */
+            kind: "form";
+            /** @description The form's heading — the schema's title. */
+            title: string;
+            fields: components["schemas"]["TicketSourceFormField"][];
+            /** @description The stored non-secret settings; empty before the first save. */
+            values: {
+                [key: string]: string | string[];
+            };
+        };
+        /**
+         * ResearchToolEnablePlanned
+         * @description A tool this build has no adapter for yet, and when it arrives.
+         */
+        ResearchToolEnablePlanned: {
+            /** @constant */
+            kind: "planned";
+            /** @example v2 */
+            release: string;
+            /** @description The issue that tracks it. */
+            issue: number;
+        };
+        /**
+         * ResearchToolEnable
+         * @description The body of `PUT /api/v1/research/tools/{slug}`.
+         */
+        ResearchToolEnable: {
+            /**
+             * @description The tool's settings, whole — the credential field included when one is being
+             *     set. At most 20 fields, each a string or a list of strings.
+             */
+            config: {
+                [key: string]: string | string[];
+            };
         };
         /**
          * ResearchToolCatalog
@@ -20065,6 +20186,8 @@ export interface components {
          */
         ResearchToolCatalog: {
             tools: components["schemas"]["ResearchToolCatalogEntry"][];
+            /** @description How many tools answer for this workspace — `healthy` or `degraded`. */
+            connectedCount: number;
         };
         /**
          * IntRange
@@ -21114,6 +21237,11 @@ export interface components {
                 culpritSha: string;
                 /** @description The first seven characters. */
                 culprit: string;
+                /**
+                 * Format: uri
+                 * @description The culprit commit's page on GitHub.
+                 */
+                commitUrl: string;
                 steps: number;
                 farmJobIds: string[];
             } | null;
@@ -21132,6 +21260,20 @@ export interface components {
                 /** @description `#512`, or a draft's `FIX-1`. */
                 key: string;
             } | null;
+            /**
+             * @description The newest run on the fix ticket — what the row's `#512` opens. Null before any
+             *     run exists, and on an answer that did not look (a dismissal's).
+             */
+            fixRun: {
+                /** Format: uuid */
+                id: string;
+            } | null;
+            /**
+             * Format: uri
+             * @description The filed fix ticket's page on its tracker — what `#512` opens while no run
+             *     exists. Null for a draft, and on an answer that did not look.
+             */
+            fixTicketUrl: string | null;
             /** @description The pull request that merged the fix. */
             pullRequest: {
                 /** Format: uuid */
@@ -83118,7 +83260,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The installation's tools. */
+            /** @description The tools, as this workspace sees them. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -83126,42 +83268,69 @@ export interface operations {
                 content: {
                     /**
                      * @example {
+                     *       "connectedCount": 5,
                      *       "tools": [
                      *         {
                      *           "slug": "web",
                      *           "name": "Web search & page reader",
                      *           "glyph": "◍",
-                     *           "connected": true
-                     *         },
-                     *         {
-                     *           "slug": "competitor",
-                     *           "name": "Competitor tracker",
-                     *           "glyph": "⌖",
-                     *           "connected": true
-                     *         },
-                     *         {
-                     *           "slug": "code",
-                     *           "name": "Codebase & git mining",
-                     *           "glyph": "⌥",
-                     *           "connected": true
-                     *         },
-                     *         {
-                     *           "slug": "tickets",
-                     *           "name": "Issue & PR history index",
-                     *           "glyph": "▤",
-                     *           "connected": true
-                     *         },
-                     *         {
-                     *           "slug": "telemetry",
-                     *           "name": "Build & test telemetry",
-                     *           "glyph": "∿",
-                     *           "connected": true
+                     *           "connected": true,
+                     *           "subLine": "SearXNG · full-page extraction, robots-aware",
+                     *           "health": {
+                     *             "state": "healthy",
+                     *             "dot": "ok",
+                     *             "detail": "SearXNG · 200 · 41ms"
+                     *           },
+                     *           "configured": true,
+                     *           "hasCredential": false,
+                     *           "enable": {
+                     *             "kind": "form",
+                     *             "title": "Web search & page reader",
+                     *             "values": {
+                     *               "provider": "searxng"
+                     *             },
+                     *             "fields": [
+                     *               {
+                     *                 "name": "provider",
+                     *                 "label": "Search provider",
+                     *                 "widget": "select",
+                     *                 "required": false,
+                     *                 "help": null,
+                     *                 "placeholder": null,
+                     *                 "defaultValue": "searxng",
+                     *                 "choices": [
+                     *                   "searxng",
+                     *                   "brave",
+                     *                   "tavily",
+                     *                   "firecrawl"
+                     *                 ],
+                     *                 "minLength": null,
+                     *                 "maxLength": null,
+                     *                 "pattern": null,
+                     *                 "minItems": null,
+                     *                 "maxItems": null
+                     *               }
+                     *             ]
+                     *           }
                      *         },
                      *         {
                      *           "slug": "docs",
                      *           "name": "Docs, standards & papers",
-                     *           "glyph": null,
-                     *           "connected": false
+                     *           "glyph": "§",
+                     *           "connected": false,
+                     *           "subLine": "datasheets, RFCs, arXiv — PDF reader with citations",
+                     *           "health": {
+                     *             "state": "not_configured",
+                     *             "dot": "idle",
+                     *             "detail": "not configured"
+                     *           },
+                     *           "configured": false,
+                     *           "hasCredential": false,
+                     *           "enable": {
+                     *             "kind": "planned",
+                     *             "release": "v2",
+                     *             "issue": 635
+                     *           }
                      *         }
                      *       ]
                      *     }
@@ -83211,6 +83380,166 @@ export interface operations {
              *     `details` is empty, deliberately.
              */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    enableResearchTool: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The tool — a slug `GET /api/v1/research/tools` listed.
+                 * @example web
+                 */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "config": {
+                 *         "provider": "searxng"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ResearchToolEnable"];
+            };
+        };
+        responses: {
+            /** @description The tool's row, as it now reads. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchToolCatalogEntry"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — this is for `owner` and `admin`; `details.required` lists them. Nothing
+             *     changes. Also the answer for a service account, which may not change the watch.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `research_tool_not_found` — the installation has no research tool with that slug;
+             *     or `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `research_tool_config_invalid` — the tool's schema refused the submission;
+             *     `details.fields` maps each field to the sentences about it. Or `validation_failed`
+             *     — the body is not `{config: {…}}`, or `slug` is not a tool slug.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `research_tool_not_registered` — this build has no adapter for that tool (the
+             *     planned `docs` tool), so there is nothing to configure.
+             */
+            501: {
                 headers: {
                     [name: string]: unknown;
                 };

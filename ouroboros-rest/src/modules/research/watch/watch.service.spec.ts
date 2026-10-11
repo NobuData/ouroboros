@@ -392,6 +392,48 @@ describe("the card and the settings", () => {
     });
   });
 
+  it("links a filed fix to its newest run and its tracker page, and a draft to neither", async () => {
+    const { service, store } = harness();
+    const filed = {
+      kind: "ticket" as const,
+      id: "71c4e700-0000-4000-8000-000000000512",
+      key: "#512",
+    };
+    const queued = "71c4e700-0000-4000-8000-000000000517";
+    const draft = "d4af7000-0000-4000-8000-000000000001";
+    store.baselines = [baseline()];
+    store.rows = [
+      item({ status: "fix_running", fixTicketRef: filed }),
+      item({
+        id: "17e00000-0000-4000-8000-000000000002",
+        status: "fix_drafted",
+        fixTicketRef: { kind: "draft", id: draft, key: "FIX-1" },
+      }),
+      item({
+        id: "17e00000-0000-4000-8000-000000000003",
+        status: "fix_drafted",
+        fixTicketRef: { kind: "ticket", id: queued, key: "#517" },
+      }),
+    ];
+    store.links.set(filed.id, {
+      runId: "4a000000-0000-4000-8000-000000000512",
+      url: "https://tracker.example/512",
+    });
+    store.links.set(queued, { runId: null, url: "https://tracker.example/517" });
+    // A draft's id is never a ticket's: links filed under it must not be picked up.
+    store.links.set(draft, { runId: "4a000000-0000-4000-8000-00000000dead", url: "https://x" });
+    const asked = jest.spyOn(store, "fixLinks");
+
+    const { items } = await service.card(ORG);
+
+    expect(items.map((row) => [row.fixRun, row.fixTicketUrl])).toEqual([
+      [{ id: "4a000000-0000-4000-8000-000000000512" }, "https://tracker.example/512"],
+      [null, null],
+      [null, "https://tracker.example/517"],
+    ]);
+    expect(asked).toHaveBeenCalledWith(ORG, [filed.id, queued]);
+  });
+
   it("reads the defaults for a workspace that stored nothing", async () => {
     const { service } = harness();
 

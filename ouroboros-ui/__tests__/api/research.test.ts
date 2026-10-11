@@ -8,7 +8,7 @@ import {
   ledgerSource,
   seededBrief,
   seededKinds,
-  seededTools,
+  seededCatalog,
   startedInvestigation,
 } from "../helpers/research";
 
@@ -34,8 +34,8 @@ describe("the catalogs", () => {
     expect(kinds.requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/research/kinds`);
     expect(kinds.requests[0]?.method).toBe("GET");
 
-    const tools = clientAnswering({ tools: seededTools() });
-    expect(await research.tools(tools.client)).toEqual({ tools: seededTools() });
+    const tools = clientAnswering(seededCatalog());
+    expect(await research.tools(tools.client)).toEqual(seededCatalog());
     expect(tools.requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/research/tools`);
   });
 

@@ -11,6 +11,8 @@
 import type { InvestigationDepth, InvestigationEstimateOutcome } from "../db/schema";
 import type { Range, ScopeEstimate, ToolOperations } from "./estimate";
 import { renderEstimateLabel } from "./estimate";
+import type { ResearchToolConfig, ResearchToolFormField } from "./tools/research-tool.config";
+import type { ToolHealthDot, ToolHealthState } from "./tools/research-tool.health";
 
 /** The task kind the researcher's alias is resolved for — routing's `route.task("research")`. */
 export const RESEARCH_TASK_KIND = "research";
@@ -103,12 +105,84 @@ export interface ResearchToolCatalogEntryResource {
   readonly glyph: string | null;
   /** Whether an adapter is registered for the slug in this build. */
   readonly connected: boolean;
+  /**
+   * The tools card's second line, its counts filled in for this workspace — `4 rivals watched ·
+   * release notes, changelogs, filings`. Null only for a tool with neither an adapter nor a
+   * planned entry.
+   */
+  readonly subLine: string | null;
+  /** What `healthCheck()` answered for this workspace's configuration — the card's dot. */
+  readonly health: ResearchToolHealthResource;
+  /** Whether the workspace has stored settings for the tool — what *enabled* means. */
+  readonly configured: boolean;
+  /** Whether a credential is stored. Never the credential. */
+  readonly hasCredential: boolean;
+  /** What the row's **enable** opens; null for a tool nothing can be said about. */
+  readonly enable: ResearchToolEnableResource | null;
 }
+
+/** A tool's health as the card draws it (CN.3, #629). */
+export interface ResearchToolHealthResource {
+  readonly state: ToolHealthState;
+  /** The dot class — `ok`, `warn`, `err` or `idle`. */
+  readonly dot: ToolHealthDot;
+  /** The dot's tooltip — `SearXNG · 200 · 41ms`, `not configured`. */
+  readonly detail: string;
+}
+
+/**
+ * What **enable** opens: the configuration form `configSchema()` describes, or — for a tool this
+ * build has no adapter for — the honest note saying when it arrives.
+ */
+export type ResearchToolEnableResource =
+  | {
+      readonly kind: "form";
+      /** The schema's title — the sheet's heading. */
+      readonly title: string;
+      /** The form's fields, in schema order. */
+      readonly fields: readonly ResearchToolFormField[];
+      /** The stored non-secret settings, to start the form from; `{}` before the first save. */
+      readonly values: ResearchToolConfig;
+    }
+  | {
+      readonly kind: "planned";
+      /** The release the tool arrives in — `v2`. */
+      readonly release: string;
+      /** The issue that tracks it. */
+      readonly issue: number;
+    };
 
 /** `GET /research/tools` — every tool the installation answers to, in the composer's order. */
 export interface ResearchToolCatalogResource {
   readonly tools: readonly ResearchToolCatalogEntryResource[];
+  /** How many tools answer for this workspace — a `healthy` or `degraded` dot. */
+  readonly connectedCount: number;
 }
+
+/**
+ * A tool the mockup draws and no adapter answers to yet — the idle sixth row. Its glyph and
+ * sub-line are the mockup's, because there is no adapter to ask; its **enable** says when it
+ * arrives instead of opening a form that could not save.
+ */
+export interface PlannedTool {
+  readonly glyph: string;
+  readonly subLine: string;
+  readonly release: string;
+  readonly issue: number;
+}
+
+/** The planned tools, by slug. `docs` is CO.1's (#635). */
+export const PLANNED_TOOLS: Readonly<Record<string, PlannedTool>> = {
+  docs: {
+    glyph: "§",
+    subLine: "datasheets, RFCs, arXiv — PDF reader with citations",
+    release: "v2",
+    issue: 635,
+  },
+};
+
+/** The health states that count toward `connectedCount`. */
+export const ANSWERING_STATES: readonly ToolHealthState[] = ["healthy", "degraded"];
 
 /**
  * The built-in kinds in mockup 22's order — the segmented control reads left to right from

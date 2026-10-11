@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { COMPOSER_TITLE, QUESTION_LABEL, START_LABEL, runOf } from "@/app/research/composer";
@@ -15,13 +15,18 @@ import {
   investigationList,
   openFakeSource,
   progress,
+  seededCatalog,
+  seededTools,
+  seededWatch,
   startedInvestigation,
+  tool,
 } from "../helpers/research";
 
 /**
  * The Research frame (#627): the head verbatim, two actions that land on a seat, six labelled
  * seats in the mockup's order, and no navigation chrome of the page's own — and, since #628, the
- * composer's card in its seat, whose finished run lands the reader on the brief's.
+ * composer's card in its seat, whose finished run lands the reader on the brief's; and, since
+ * #629, the side column's two cards on one poll.
  */
 
 const estimateComposer = vi.fn();
@@ -42,6 +47,12 @@ vi.mock("@/app/research/brief-actions", () => ({
   readBriefLedger: () => Promise.resolve({ ok: true, total: 0, items: [] }),
   readTrackers: () => Promise.resolve({ ok: true, trackers: [] }),
   draftEpicFromGaps: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "x" } }),
+}));
+const enableTool = vi.fn();
+vi.mock("@/app/research/side-actions", () => ({
+  enableTool: (slug: unknown, config: unknown) => enableTool(slug, config),
+  dismissWatchItem: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "x", details: {} } }),
+  captureBaselines: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "x", details: {} } }),
 }));
 const refresh = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => refresh(), push: () => {} }) }));
@@ -73,11 +84,14 @@ function Screen(over: Partial<ResearchScreenProps>) {
       composer={composerReadings()}
       filters={NO_FILTERS}
       investigations={{ ok: true, value: investigationList() }}
+      mayAdminister
       mayDraft
       opened={null}
       openProgress={openFakeSource}
+      sidePoll={{ read: () => new Promise(() => undefined) }}
       startReason={null}
       view="page"
+      watch={{ ok: true, value: seededWatch() }}
       {...over}
     />
   );
@@ -290,7 +304,7 @@ describe("the grid frame", () => {
       const card = screen.getByRole("region", { name: region.id === "brief" ? /RS-127/ : region.title });
 
       expect(seat(region.id)).toContainElement(card);
-      if (region.id === "composer" || region.id === "brief" || region.id === "investigations") {
+      if (region.id !== "pipeline") {
         expect(card).not.toHaveTextContent(region.arrives);
       } else {
         expect(card).toHaveTextContent(region.arrives);
@@ -403,5 +417,71 @@ describe("the investigations in their seat (#632)", () => {
     expect(screen.getByRole("region", { name: "Research library" })).toBeInTheDocument();
     expect(screen.getByLabelText("Kind")).toHaveValue("gap_analysis");
     expect(seat("investigations")).toHaveFocus();
+  });
+});
+
+describe("the side column (#629)", () => {
+  it("seats the tools card over the regression watch, each under its region's heading", () => {
+    render(<Screen />);
+
+    const tools = within(seat("tools")).getByRole("region", { name: "Research tools" });
+    const watch = within(seat("watch")).getByRole("region", { name: "Regression watch" });
+
+    expect(within(tools).getAllByRole("listitem")).toHaveLength(6);
+    expect(tools).toHaveTextContent("5 connected");
+    expect(within(watch).getAllByRole("listitem")).toHaveLength(3);
+    expect(tools.compareDocumentPosition(watch) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("draws the tools card from the composer's reading of the catalog — one read, two surfaces", () => {
+    render(<Screen composer={composerReadings({ tools: { ok: false, reason: "The service failed." } })} />);
+
+    expect(within(seat("tools")).getByText("The service failed.")).toBeInTheDocument();
+  });
+
+  it("flips a stopped tool's dot when the health cycle's poll answers, without a reload", async () => {
+    const tools = seededTools();
+    tools[0] = { ...tools[0], health: { state: "down", dot: "err", detail: "unreachable: SearXNG did not answer" } };
+    const read = vi.fn().mockResolvedValue({
+      state: "fresh",
+      payload: { tools: seededCatalog(tools), watch: seededWatch({ items: [] }) },
+      etag: null,
+      pollAfterSeconds: 30,
+    });
+
+    render(<Screen sidePoll={{ read, visible: () => true }} />);
+
+    expect(await within(seat("tools")).findByRole("img", { name: /^Down — unreachable/ })).toBeInTheDocument();
+    expect(within(seat("tools")).getByText("4 connected")).toBeInTheDocument();
+    expect(within(seat("watch")).queryAllByRole("listitem")).toHaveLength(0);
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("asks the poll again as soon as a tool is enabled", async () => {
+    const idle = tool("code", "Codebase & git mining", "⌥", "no repositories", {
+      health: { state: "not_configured", dot: "idle", detail: "not configured" },
+      configured: false,
+    });
+    const side = { tools: seededCatalog([idle]), watch: seededWatch() };
+    const read = vi.fn().mockResolvedValue({ state: "fresh", payload: side, etag: null, pollAfterSeconds: 30 });
+    enableTool.mockResolvedValue({ ok: true, value: idle });
+
+    render(<Screen sidePoll={{ read, visible: () => true }} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Enable Codebase & git mining" }));
+    const asked = read.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Enable tool" }));
+
+    await waitFor(() => expect(read.mock.calls.length).toBeGreaterThan(asked));
+    expect(enableTool).toHaveBeenCalledWith("code", {});
+  });
+
+  it("hands the reader's standing to both cards", () => {
+    render(<Screen mayAdminister={false} />);
+
+    expect(screen.getByRole("button", { name: "Dismiss Hover drift +14% since v2.0.4" })).toHaveAttribute(
+      "title",
+      "Dismissing a watch item is for workspace owners and admins.",
+    );
   });
 });

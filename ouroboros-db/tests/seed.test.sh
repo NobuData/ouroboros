@@ -1894,9 +1894,9 @@ done
 
 workspace_research_tables=$(grep -Eo '^(insert into|update) ouroboros\.[a-z_]+' "$WORKSPACE_RESEARCH_BODY" |
   sed -E 's/^(insert into|update) ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
-check_equals 'brief_claim_sources brief_claims briefs capability_matrices competitor_snapshots competitor_watches competitors doc_suggestions document_import_items document_imports draft_batches investigation_deliverable_inputs investigations issue_estimates matrix_cell_sources matrix_cells matrix_rows pull_requests regression_baselines regression_watch_items roadmap_doc_versions roadmap_docs skill_versions skills source_records ticket_drafts ticket_sources tickets ' \
+check_equals 'brief_claim_sources brief_claims briefs capability_matrices competitor_snapshots competitor_watches competitors doc_suggestions document_import_items document_imports draft_batches investigation_deliverable_inputs investigations issue_estimates matrix_cell_sources matrix_cells matrix_rows pull_requests regression_baselines regression_watch_items research_tool_settings roadmap_doc_versions roadmap_docs skill_versions skills source_records ticket_drafts ticket_sources tickets ' \
   "$workspace_research_tables" \
-  'the research workspace seed writes the research domain, the tickets, drafts and PR it points at, the history index''s Support source and churn import (#618), RS-127''s matrix input (#621) and the pipeline''s two skills (#624) — and nothing else'
+  'the research workspace seed writes the research domain, the tickets, drafts and PR it points at, the history index''s Support source and churn import (#618), RS-127''s matrix input (#621), the pipeline''s two skills (#624) and the five enabled research tools (#629) — and nothing else'
 
 # Rows whose BEFORE INSERT triggers allocate or check a sequence are written only where none exist.
 check_contains "$WORKSPACE_RESEARCH_BODY" 'not exists \(select 1 from ouroboros\.investigations x' \

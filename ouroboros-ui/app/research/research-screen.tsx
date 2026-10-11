@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 
 import type { Reading } from "@/app/api/reading";
-import type { InvestigationList } from "@/app/api/research";
+import type { InvestigationList, RegressionWatchCard } from "@/app/api/research";
+import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
 import { claimPaneLanding, landOn } from "@/app/shell/pane-anchor";
 
 import type { FeaturedBrief } from "./brief";
@@ -16,6 +17,9 @@ import { InvestigationsCard } from "./investigations-card";
 import type { ProgressSourceFactory } from "./progress";
 import { ResearchHead } from "./research-head";
 import { ResearchSeat } from "./research-seat";
+import { RESEARCH_SIDE_ENDPOINT, sideReadings } from "./side";
+import { type SidePollOptions, createSidePoll } from "./side-poll";
+import { ToolsCard } from "./tools-card";
 import {
   BRIEF_REGION,
   COMPOSER_REGION,
@@ -27,6 +31,7 @@ import {
   landingRegion,
   regionsAt,
 } from "./view";
+import { WatchCard } from "./watch-card";
 
 import "./research.css";
 
@@ -43,8 +48,12 @@ export interface ResearchScreenProps {
   readonly composer: ComposerReadings;
   /** The featured brief — the newest finished investigation's — read on the server (#630). */
   readonly brief: Reading<FeaturedBrief | null>;
+  /** The regression watch card, read on the server (#629). */
+  readonly watch: Reading<RegressionWatchCard>;
   /** Whether this reader may draft work from a brief — `owner`, `admin` or `member`. */
   readonly mayDraft: boolean;
+  /** Whether this reader may enable a tool, dismiss a watch item and capture a baseline. */
+  readonly mayAdminister: boolean;
   /** The investigations the address asked for — the active rows, or the library's page (#632). */
   readonly investigations: Reading<InvestigationList>;
   /** The library's facets, from the address. */
@@ -53,6 +62,8 @@ export interface ResearchScreenProps {
   readonly opened: { readonly id: string; readonly reading: Reading<OpenedInvestigation> } | null;
   /** How the composer and the live rows open their progress streams. A test hands in a fake. */
   readonly openProgress?: ProgressSourceFactory;
+  /** Test seams for the side column's poll. */
+  readonly sidePoll?: SidePollOptions;
 }
 
 /**
@@ -92,7 +103,11 @@ function enterRegion(id: ResearchRegionId): boolean {
  *
  * **The head's actions land on a seat.** *New investigation* scrolls to the composer's, focuses
  * it and rings it; the library's address (`?view=library`) does the same for the investigations
- * seat when the page opens. The ring lasts until focus moves on. **The investigations card** (CN.6,
+ * seat when the page opens. The ring lasts until focus moves on. **The side column's two cards**
+ * (CN.3, [#629](https://github.com/NobuData/ouroboros/issues/629)) — the research tools over the
+ * regression watch — share one poll, so a tool that goes down or a drift that moves on shows
+ * within a health cycle; the tools card's first paint is the composer's own reading of the
+ * catalog. **The investigations card** (CN.6,
  * [#632](https://github.com/NobuData/ouroboros/issues/632)) fills the last seat: the active rows,
  * or — at the library's address — every investigation with its facets, and a row opened
  * full-width; its links land on the brief's and the pipeline's seats through the same landing.
@@ -105,11 +120,14 @@ export function ResearchScreen({
   startReason,
   composer,
   brief,
+  watch,
   mayDraft,
+  mayAdminister,
   investigations,
   filters,
   opened,
   openProgress,
+  sidePoll,
 }: ResearchScreenProps) {
   const router = useRouter();
   const landing = landingRegion(view);
@@ -138,6 +156,13 @@ export function ResearchScreen({
     router.refresh();
   }, [enter, router]);
 
+  // The side column's own loop: both cards re-read every health cycle, and at once after a
+  // write made from either. Until its first answer the cards draw the page's own readings.
+  const { snapshot: beside, refresh: refreshSide } = useKeyedPoll(RESEARCH_SIDE_ENDPOINT, () =>
+    createSidePoll(sidePoll),
+  );
+  const besideNow = sideReadings({ tools: composer.tools, watch }, beside.data);
+
   const onLandPipeline = useCallback(() => enter(PIPELINE_REGION), [enter]);
   const onLand = useCallback((seat: typeof BRIEF_REGION | typeof PIPELINE_REGION) => enter(seat), [enter]);
   const featuredId = brief.ok && brief.value !== null ? brief.value.brief.investigation.id : null;
@@ -153,6 +178,8 @@ export function ResearchScreen({
         readings={composer}
       />
     ),
+    tools: <ToolsCard mayAdminister={mayAdminister} onChanged={refreshSide} reading={besideNow.tools} />,
+    watch: <WatchCard mayAdminister={mayAdminister} onChanged={refreshSide} reading={besideNow.watch} />,
     brief: <FeaturedBriefSeat mayDraft={mayDraft} onLandPipeline={onLandPipeline} reading={brief} />,
     investigations: (
       <InvestigationsCard

@@ -6,6 +6,7 @@ description: "Choosing the web search provider, how the page reader stays polite
 ---
 
 Research investigations read the outside world through **research tools**. This page covers
+[enabling a tool](#enabling-a-tool) for a workspace, and then each tool in turn. It covers
 **Web search & page reader**: where its searches go, how it reads a page, what it keeps, and the
 variables that bound it. It also covers the **competitor tracker**: who manages it, what it
 needs, and how it is scheduled. And it covers **Codebase & git mining**: what it reads, where its
@@ -13,12 +14,39 @@ repository clones live, and how a bisect keeps going. It covers the **Issue & PR
 index**: what it reads, and how an owner imports a document set. Last, it covers **Build & test
 telemetry**, which needs no setup.
 
-:::info[Not available yet]
+## Enabling a tool
 
-Workspace settings for research tools arrive with the research settings screen. Until then
-every workspace's web tool uses the deployment's SearXNG with the defaults below.
+A workspace uses a research tool once it is **enabled**: an Owner or a Maintainer presses
+**enable** on the tool's row of the **Research tools** card on <UiPath path="Research" />, fills
+in the tool's form and presses **Enable tool**. See
+[Enabling a tool](../user-guide/research.mdx#enabling-a-tool) for the card.
+<Since version="0.41.14" module="ouroboros-rest" />
 
-:::
+Until a tool is enabled its dot is a grey ring and investigations cannot use what it needs
+settings for. Everyone in the workspace can read the card; only an Owner or a Maintainer, signed
+in as themselves, can enable a tool. A
+[service account's token](./members-and-tokens.mdx#api-tokens-and-service-accounts) cannot.
+
+| Tool | What its form asks for | What else it needs |
+| --- | --- | --- |
+| **Web search & page reader** | The **Search provider**, an optional **SearXNG URL**, and an **API key** for Brave, Tavily or Firecrawl. Nothing is required: with every field left alone it uses the deployment's SearXNG. See [Search providers](#search-providers). | A reachable SearXNG, or a hosted provider's key |
+| **Competitor tracker** | Nothing required | At least one rival with an enabled watch — see [Competitor tracker](#competitor-tracker) |
+| **Codebase & git mining** | Nothing required | An enabled repository, and the engine running — see [Code & git mining](#code--git-mining) |
+| **Issue & PR history index** | Nothing required | A connected ticket source, or an imported document set — see [Issue & PR history index](#issue--pr-history-index) |
+| **Build & test telemetry** | Nothing required | Builds and tests that have run |
+| **Docs, standards & papers** | Not available yet. Its **enable** says it arrives in v2. | — |
+
+A tool that is enabled but has nothing to read yet — no rivals, no repositories, nothing
+indexed — keeps the grey ring, and its dot's detail says what is missing.
+
+A key or token typed into a form is sealed with the workspace's encryption key before it is
+stored. It is never returned by the API or shown again in the form; saving the form with the
+field empty keeps the stored one. Saving is not audited in this release.
+
+The card reads `GET /api/v1/research/tools`, which runs every tool's health check for the
+workspace, and saves with `PUT /api/v1/research/tools/<tool>` and a body of
+`{"config": {…}}` holding the form's fields. A field the tool's schema refuses is answered
+`422 research_tool_config_invalid`, naming each field.
 
 ## Search providers
 
@@ -47,7 +75,7 @@ The tool's health tells a broken configuration from a broken provider:
 
 | Health | Means | Fix |
 | --- | --- | --- |
-| **not configured** | The workspace has not set the tool up | Enable it in the workspace's research settings |
+| **not configured** | The workspace has not set the tool up | [Enable it](#enabling-a-tool) from the Research tools card |
 | **misconfigured: …** | The settings cannot work, for example a hosted provider with no key | Correct the settings it names |
 | **unreachable: …** | The settings are fine, but the provider did not answer | Check the SearXNG container or the provider's status |
 | **slow: …** | The provider answered, but took more than 2 seconds | Usually transient |
@@ -417,8 +445,11 @@ sensitive it is, and how much it does without asking.
 
 :::info[Set it up through the API for now]
 
-<UiPath path="Settings" /> has no card for the watch yet. An Owner or a Maintainer configures it
-through the REST API, signed in as themselves — a
+<UiPath path="Settings" /> has no card for the watch yet. The
+[Regression watch card](../user-guide/research.mdx#the-regression-watch-card) on
+<UiPath path="Research" /> shows what drifted, dismisses an item and captures a first baseline;
+everything else an Owner or a Maintainer configures through the REST API, signed in as
+themselves — a
 [service account's token](./members-and-tokens.mdx#api-tokens-and-service-accounts) can read
 the watch but not change it. Send the session cookie as
 [Who may start an investigation](#who-may-start-an-investigation) shows.

@@ -42,6 +42,27 @@ export type ResearchToolCatalogEntry = components["schemas"]["ResearchToolCatalo
 /** Every tool the installation answers to, in the composer's order. */
 export type ResearchToolCatalog = components["schemas"]["ResearchToolCatalog"];
 
+/** A tool's health under this workspace's settings — the tools card's dot. */
+export type ResearchToolHealth = components["schemas"]["ResearchToolHealth"];
+
+/** What a tool's **enable** opens: its configuration form. */
+export type ResearchToolEnableForm = components["schemas"]["ResearchToolEnableForm"];
+
+/** The enable form as submitted — settings by field name. */
+export type ResearchToolConfigSubmission = components["schemas"]["ResearchToolEnable"]["config"];
+
+/** The regression watch card — `openapi.yaml` § `RegressionWatchCard`. */
+export type RegressionWatchCard = components["schemas"]["RegressionWatchCard"];
+
+/** One regression watch item — a row of the card. */
+export type RegressionWatchItem = components["schemas"]["RegressionWatchItem"];
+
+/** What a baseline capture names: the repository and the release tag. */
+export type RegressionBaselineCapture = components["schemas"]["RegressionBaselineCapture"];
+
+/** What a capture answers: the baselines captured and the metrics skipped. */
+export type RegressionBaselinesCaptured = components["schemas"]["RegressionBaselinesCaptured"];
+
 /** Who may start an investigation — `member` or `admin`. */
 export type ResearchSettings = components["schemas"]["ResearchSettings"];
 
@@ -138,13 +159,82 @@ export const research = {
   },
 
   /**
-   * The research tools this installation answers to.
+   * The research tools, as the session's workspace sees them.
    *
    * @param client The client to call through.
-   * @returns Every tool, connected or idle, in the composer's order.
+   * @param signal Aborts the read.
+   * @returns Every tool in the composer's order, each with its live sub-line, its health and
+   *   what its **enable** opens.
    */
-  async tools(client: ApiClient = api()): Promise<ResearchToolCatalog> {
-    return unwrap(await client.GET("/api/v1/research/tools"));
+  async tools(client: ApiClient = api(), signal?: AbortSignal): Promise<ResearchToolCatalog> {
+    return unwrap(await client.GET("/api/v1/research/tools", { signal }));
+  },
+
+  /**
+   * Store the workspace's settings for a tool — the enable flow's save.
+   *
+   * @param slug The tool.
+   * @param config The form as submitted, the credential field included when one is being set.
+   * @param client The client to call through.
+   * @returns The tool's row as it now reads, its health re-asked.
+   */
+  async enableTool(
+    slug: string,
+    config: ResearchToolConfigSubmission,
+    client: ApiClient = api(),
+  ): Promise<ResearchToolCatalogEntry> {
+    return unwrap(
+      await client.PUT("/api/v1/research/tools/{slug}", {
+        params: { path: { slug } },
+        body: { config },
+      }),
+    );
+  },
+
+  /**
+   * The regression watch card.
+   *
+   * @param client The client to call through.
+   * @param signal Aborts the read.
+   * @returns The baseline headline and the watch items, open ones first.
+   */
+  async watch(client: ApiClient = api(), signal?: AbortSignal): Promise<RegressionWatchCard> {
+    return unwrap(await client.GET("/api/v1/research/regression-watch", { signal }));
+  },
+
+  /**
+   * Dismiss a watch item, with the reason that is audited.
+   *
+   * @param itemId The item.
+   * @param reason Why it is dismissed.
+   * @param client The client to call through.
+   * @returns The item, dismissed.
+   */
+  async dismissWatchItem(
+    itemId: string,
+    reason: string,
+    client: ApiClient = api(),
+  ): Promise<RegressionWatchItem> {
+    return unwrap(
+      await client.POST("/api/v1/research/regression-watch/items/{itemId}/dismiss", {
+        params: { path: { itemId } },
+        body: { reason },
+      }),
+    );
+  },
+
+  /**
+   * Capture a release's baselines by hand.
+   *
+   * @param body The repository and the release tag.
+   * @param client The client to call through.
+   * @returns What was captured, and what was skipped and why.
+   */
+  async captureBaselines(
+    body: RegressionBaselineCapture,
+    client: ApiClient = api(),
+  ): Promise<RegressionBaselinesCaptured> {
+    return unwrap(await client.POST("/api/v1/research/regression-watch/baselines", { body }));
   },
 
   /**

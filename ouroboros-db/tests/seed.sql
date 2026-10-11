@@ -7482,6 +7482,14 @@ select pg_temp.must_hold(
         where s.diff is not null),
   'the tracker reads 4 rivals watched · release notes, changelogs, filings, and one archived pair carries the 6.2 diff');
 
+-- The tools card: five tools enabled, the sixth (docs) idle, and none holding a credential.
+select pg_temp.must_hold(
+  (select array_agg(s.tool_slug || ':' || s.has_credential order by s.tool_slug)
+          = array['code:false', 'competitor:false', 'telemetry:false', 'tickets:false', 'web:false']
+     from ouroboros.research_tool_settings_public s
+     join ouroboros.organization org on org."id" = s.organization_id and org."slug" = 'acme-robotics'),
+  'the five MVP research tools are enabled in acme-robotics and docs is not — the idle sixth row');
+
 -- The regression watch card, row by row.
 select pg_temp.must_hold(
   (select array_agg(i.severity || ' | ' || i.drift_display || ' | ' || b.release_tag || ' | '

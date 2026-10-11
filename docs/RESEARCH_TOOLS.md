@@ -80,8 +80,13 @@ Throw `ResearchToolError(errorClass, detail, retryAfterSeconds?)` — nothing el
 `configSchema()` uses the ticket-source dialect (flat strings, one `x-ouroboros-secret` field, and
 string lists), so the enable flow (#629) renders it with the same components as a source form.
 The credential is split off for the vault and handed to an operation only as
-`ToolCallContext.secret`, for one call. Settings are read through `ResearchToolSettings`, which
-answers "nothing configured" until #629 binds the real store.
+`ToolCallContext.secret`, for one call. Settings are read through `ResearchToolSettings`; the
+module binds `StoredToolSettings`, which reads V127's `research_tool_settings` — one row per
+workspace per tool, and **a row is what "enabled" means**: no row, and every adapter answers the
+idle dot. `PUT /api/v1/research/tools/{slug}` stores a row (owner or admin); the credential is
+sealed for the vault record `research-tool:<slug>` and is never returned. `GET
+/api/v1/research/tools` is the tools card's read: each tool's rendered sub-line, health and
+enable form for the session's workspace.
 
 ## Budgets
 

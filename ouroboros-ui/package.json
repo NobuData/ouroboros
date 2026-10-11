@@ -1,6 +1,6 @@
 {
   "name": "ouroboros-ui",
-  "version": "0.148.1",
+  "version": "0.149.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
