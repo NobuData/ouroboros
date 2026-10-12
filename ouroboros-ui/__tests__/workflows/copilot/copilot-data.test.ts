@@ -4,6 +4,7 @@ import type { Workspace } from "@/app/api/access";
 import { ApiError } from "@/app/api/errors";
 
 import { TENANT_ID, membership, sessionUser } from "../../helpers/login";
+import { connectionPage, seededConnections } from "../../helpers/providers";
 import {
   NO_GATEWAY,
   SECURITY_PATCH_ID,
@@ -12,6 +13,7 @@ import {
   copilotPromotion,
   copilotRail,
   copilotReadiness,
+  drySafety,
   securityPatchDetail,
   securityPatchEntry,
   DRY_RUN_ID,
@@ -77,13 +79,21 @@ const dryRunRead = vi.fn();
 /** What the suggestions endpoint answers, by workflow and run id. */
 const dryRunSuggestions = vi.fn();
 
+/** What the safety-strip endpoint answers, by workflow id. */
+const dryRunSafety = vi.fn();
+
+/** What the providers listing answers. */
+const providerList = vi.fn();
+
 vi.mock("@/app/api/workflow-dry-runs", () => ({
   workflowDryRuns: {
     history: (id: string) => dryRunHistory(id),
     read: (id: string, dryRunId: string) => dryRunRead(id, dryRunId),
     suggestions: (id: string, dryRunId: string) => dryRunSuggestions(id, dryRunId),
+    safety: (id: string) => dryRunSafety(id),
   },
 }));
+vi.mock("@/app/api/providers", () => ({ providers: { list: () => providerList() } }));
 
 const { readStudioCopilot } = await import("@/app/workflows/copilot/copilot-data");
 
@@ -113,6 +123,59 @@ beforeEach(() => {
   dryRunHistory.mockReset().mockResolvedValue(seededHistory());
   dryRunRead.mockReset().mockResolvedValue(seededDryRun());
   dryRunSuggestions.mockReset().mockResolvedValue({ dryRunId: DRY_RUN_ID, suggestions: seededSuggestions() });
+  dryRunSafety.mockReset().mockResolvedValue(drySafety());
+  providerList.mockReset().mockResolvedValue(connectionPage(seededConnections()));
+});
+
+describe("the safety strip's reads (#569)", () => {
+  it("reads the strip by the id the rail gave, and hands it to the page as served", async () => {
+    const readings = await readStudioCopilot(ACCESS, "security-patch");
+
+    expect(dryRunSafety).toHaveBeenCalledExactlyOnceWith(SECURITY_PATCH_ID);
+    expect(readings.selected?.safety).toEqual({ ok: true, value: drySafety() });
+  });
+
+  it("keeps a refused strip as its own degraded reading, and every other read as it was", async () => {
+    dryRunSafety.mockRejectedValue(REFUSED);
+
+    const readings = await readStudioCopilot(ACCESS, "security-patch");
+
+    expect(readings.selected?.safety).toEqual({ ok: false, reason: "The service could not answer." });
+    expect(readings.selected?.dryRun).toMatchObject({ ok: true });
+    expect(readings.selected?.conversation).toMatchObject({ ok: true });
+  });
+
+  it("reads the workspace's provider connections, for the gateway notice's status", async () => {
+    const readings = await readStudioCopilot(ACCESS, "security-patch");
+
+    expect(providerList).toHaveBeenCalledOnce();
+    expect(readings.selected?.providers).toEqual({ ok: true, value: seededConnections() });
+  });
+
+  it("keeps refused providers as their own degraded reading — the readiness still reads", async () => {
+    providerList.mockRejectedValue(REFUSED);
+
+    const readings = await readStudioCopilot(ACCESS, "security-patch");
+
+    expect(readings.selected?.providers).toEqual({ ok: false, reason: "The service could not answer." });
+    expect(readings.selected?.readiness).toMatchObject({ ok: true });
+  });
+
+  it("lets what is not a refusal from either read keep travelling", async () => {
+    dryRunSafety.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
+    await expect(readStudioCopilot(ACCESS, "security-patch")).rejects.toThrow("NEXT_REDIRECT /login");
+
+    dryRunSafety.mockResolvedValue(drySafety());
+    providerList.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
+    await expect(readStudioCopilot(ACCESS, "security-patch")).rejects.toThrow("NEXT_REDIRECT /login");
+  });
+
+  it("asks for neither when the slug is not on the rail", async () => {
+    await readStudioCopilot(ACCESS, "no-such-workflow");
+
+    expect(dryRunSafety).not.toHaveBeenCalled();
+    expect(providerList).not.toHaveBeenCalled();
+  });
 });
 
 describe("the dry-run card's reads (#568)", () => {

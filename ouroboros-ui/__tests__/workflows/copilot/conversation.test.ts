@@ -3,6 +3,11 @@ import { describe, expect, it } from "vitest";
 import type { CopilotStreamEvent } from "@/app/api/workflow-copilot";
 import { MODELS_PATH, PROVIDERS_PATH, ROUTING_MATRIX_HASH } from "@/app/paths";
 import {
+  COPILOT_WILL,
+  COPILOT_WILL_NOT,
+  NO_PROVIDERS_STATUS,
+  WILL_LABEL,
+  WILL_NOT_LABEL,
   ANNOUNCE_LIMIT,
   BOUNCE_UNEXPLAINED,
   CLOSED_MID_REPLY_NOTE,
@@ -63,6 +68,7 @@ import {
   parseReply,
   prerequisiteNotice,
   proposalLine,
+  providerStatusLine,
   readLine,
   readStreamEvent,
   replyFailure,
@@ -76,6 +82,8 @@ import {
   warningLine,
 } from "@/app/workflows/copilot/conversation";
 import { ROLE_TRANSCRIPT_NOTE } from "@/app/workflows/copilot/copilot-view";
+
+import { connection } from "../../helpers/providers";
 
 import {
   DRY_RUNNING,
@@ -834,6 +842,17 @@ describe("prerequisiteNotice", () => {
     });
   });
 
+  it("reports the current provider status under the gateway notice, when it could be read (#569)", () => {
+    expect(prerequisiteNotice(NO_GATEWAY)?.status).toBeNull();
+    expect(prerequisiteNotice(NO_GATEWAY, null)?.status).toBeNull();
+    expect(prerequisiteNotice(NO_GATEWAY, [])?.status).toBe(NO_PROVIDERS_STATUS);
+    expect(prerequisiteNotice(NO_GATEWAY, [connection()])?.status).toBe(providerStatusLine([connection()]));
+  });
+
+  it("reports no provider status on the unrouted notice — a route is not a provider", () => {
+    expect(prerequisiteNotice(UNROUTED, [connection()])?.status).toBeNull();
+  });
+
   it("says the missing route in the service's words, and links to Model routing", () => {
     const notice = prerequisiteNotice(UNROUTED);
 
@@ -850,6 +869,53 @@ describe("prerequisiteNotice", () => {
     const silent = copilotReadiness({ route: { ...UNROUTED.route, reason: null } });
 
     expect(prerequisiteNotice(silent)?.text).toBe(`${UNROUTED_NOTICE_FALLBACK} ${UNROUTED_NOTICE_STILL}`);
+  });
+});
+
+describe("providerStatusLine (#569)", () => {
+  it("is nothing when the connections could not be read", () => {
+    expect(providerStatusLine(null)).toBeNull();
+  });
+
+  it("says a workspace has connected nothing", () => {
+    expect(providerStatusLine([])).toBe(NO_PROVIDERS_STATUS);
+  });
+
+  it("counts the connections by what their health checks measured", () => {
+    expect(
+      providerStatusLine([
+        connection({ status: "active" }),
+        connection({ status: "active" }),
+        connection({ status: "error" }),
+        connection({ status: "paused" }),
+        connection({ status: "unknown" }),
+      ]),
+    ).toBe("Provider status: 5 connected — 2 active, 1 failing, 1 paused, 1 not yet checked.");
+  });
+
+  it("never calls an unchecked connection healthy, and leaves out a status nobody has", () => {
+    const line = providerStatusLine([connection({ status: "unknown" })]);
+
+    expect(line).toBe("Provider status: 1 connected — 1 not yet checked.");
+    expect(line).not.toMatch(/active|failing|paused/);
+  });
+
+  it("counts a connection a person switched off apart from what was measured", () => {
+    expect(providerStatusLine([connection({ status: "active", enabled: false }), connection({ status: "active" })])).toBe(
+      "Provider status: 2 connected — 2 active; 1 switched off.",
+    );
+  });
+});
+
+describe("what the copilot will and will not do (#569)", () => {
+  it("states both plainly, with what it costs and that nothing runs or publishes by itself", () => {
+    expect(COPILOT_WILL.length).toBeGreaterThanOrEqual(2);
+    expect(COPILOT_WILL_NOT.length).toBeGreaterThanOrEqual(2);
+    expect(COPILOT_WILL.join(" ")).toMatch(/cost/);
+    expect(COPILOT_WILL.join(" ")).toMatch(/only this workflow's draft/);
+    expect(COPILOT_WILL_NOT.join(" ")).toMatch(/write to a repository/);
+    expect(COPILOT_WILL_NOT.join(" ")).toMatch(/Promote draft/);
+    expect(WILL_LABEL).not.toBe(WILL_NOT_LABEL);
   });
 });
 

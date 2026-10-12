@@ -52,6 +52,8 @@ import {
   estimateButtonName,
   proposalMissing,
   startLabel,
+  budgetAdvice,
+  budgetSpentLine,
 } from "@/app/workflows/copilot/dry-run";
 import type { DryRunCardProps } from "@/app/workflows/copilot/dry-run-card";
 import type { FollowMessage, FollowSource } from "@/app/workflows/copilot/dry-run-transport";
@@ -672,6 +674,9 @@ describe("how a run ended", () => {
 
     expect(state).toHaveTextContent("The run reached its $5.00 cap during review.");
     expect(state).toHaveTextContent("Its cap was $5.00 — the draft's own spend guard.");
+    // What was spent, and what to change (#569).
+    expect(state).toHaveTextContent(budgetSpentLine(run.totals)!);
+    expect(state).toHaveTextContent(budgetAdvice(run.budget));
     expect(rows()).toHaveLength(5);
   });
 

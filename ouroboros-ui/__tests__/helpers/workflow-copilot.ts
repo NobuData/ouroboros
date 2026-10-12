@@ -11,6 +11,7 @@ import type {
   CopilotWarning,
 } from "@/app/api/workflow-copilot";
 import type { RoutingAlias } from "@/app/api/routing";
+import type { DryRunSafety, DryRunSafetyColumn } from "@/app/api/workflow-dry-runs";
 import { EMPTY_POLL_SNAPSHOT, type Poll, type PollAnswer } from "@/app/poll";
 import type { WorkflowDefinition, WorkflowDetail, WorkflowRailEntry } from "@/app/api/workflows";
 import type { CopilotReadings, SelectedCopilot } from "@/app/workflows/copilot/copilot-view";
@@ -27,6 +28,7 @@ import type {
 } from "@/app/workflows/copilot/dry-run";
 import type { DryRunTransport } from "@/app/workflows/copilot/dry-run-transport";
 
+import { seededConnections } from "./providers";
 import { READ_AT, railEntry, seededRail, workflowDetail } from "./workflows";
 
 /**
@@ -502,6 +504,85 @@ export function securityPatchDetail(): WorkflowDetail {
 }
 
 /**
+ * One column of the safety strip, as the service composes it from the harness (CE.5, #569).
+ *
+ * @param id Which claim.
+ * @param overrides What this case is about — `holds: false` for a mechanism that is gone.
+ * @returns The column.
+ */
+export function safetyColumn(
+  id: DryRunSafetyColumn["id"],
+  overrides: Partial<DryRunSafetyColumn> = {},
+): DryRunSafetyColumn {
+  const columns: Record<DryRunSafetyColumn["id"], DryRunSafetyColumn> = {
+    simulated_writes: {
+      id: "simulated_writes",
+      holds: true,
+      mechanism: {
+        kind: "overlay",
+        tools: ["write_file", "apply_patch"],
+        path: null,
+        detail:
+          "A stage's edits are held in an in-memory overlay that later stages read through; the overlay becomes the simulated diff and is never written to the repository.",
+      },
+      facts: { writes: "memory_overlay", reads: "pinned_commit" },
+    },
+    replayed_infra: {
+      id: "replayed_infra",
+      holds: true,
+      mechanism: {
+        kind: "estimator_service",
+        tools: ["run_build", "run_tests"],
+        path: "/internal/dry-runs/{id}/replay-estimates",
+        detail:
+          "Build and test stages are answered by the replay estimator from farm and test history — a median with its sample count and spread, or insufficient history; nothing is built or run.",
+      },
+      facts: {
+        formulas: [
+          { id: "build_duration_replay", version: 1, dispersion: "mad" },
+          { id: "test_duration_replay", version: 1, dispersion: "mad" },
+        ],
+      },
+    },
+    real_models: {
+      id: "real_models",
+      holds: true,
+      mechanism: {
+        kind: "gateway_routing",
+        tools: [],
+        path: "/internal/llm/invoke",
+        detail:
+          "Model stages run their own prompts through the invocation gateway with the alias routing resolved for each, attributed to the dry run and stopped at its budget; the harness holds no provider credential.",
+      },
+      facts: {},
+    },
+  };
+
+  return { ...columns[id], ...overrides };
+}
+
+/**
+ * The safety strip with all three claims backed.
+ *
+ * @param overrides What this case is about — `columns` with one removed, above all.
+ * @returns The strip.
+ */
+export function drySafety(overrides: Partial<DryRunSafety> = {}): DryRunSafety {
+  return {
+    harness: "deep_simulated",
+    columns: [safetyColumn("simulated_writes"), safetyColumn("replayed_infra"), safetyColumn("real_models")],
+    absent: [
+      { claim: "no writes", capability: "repository_write" },
+      { claim: "no PRs", capability: "pull_request" },
+      { claim: "no merges", capability: "pull_request" },
+    ],
+    guards: [{ name: "allow_list", refuses: "a tool the harness does not provide" }],
+    blockedCallFailsRun: true,
+    ...overrides,
+  };
+}
+
+/**
  * The open workflow's reads, all answered — with no dry run yet, so the frame's suites draw the
  * dry-run card's empty state.
  *
@@ -518,6 +599,8 @@ export function selectedCopilot(overrides: Partial<SelectedCopilot> = {}): Selec
     draft: { ok: true, value: copilotStageDraft() },
     aliases: { ok: true, value: seededAliases() },
     dryRun: { ok: true, value: emptyBoard() },
+    safety: { ok: true, value: drySafety() },
+    providers: { ok: true, value: seededConnections() },
     ...overrides,
   };
 }

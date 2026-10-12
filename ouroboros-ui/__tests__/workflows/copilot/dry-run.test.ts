@@ -21,7 +21,12 @@ import {
   applyPreview,
   applyReason,
   basisFacts,
+  BUDGET_ADVICE_DRAFT_GUARD,
+  BUDGET_ADVICE_FALLBACK,
+  BUDGET_ADVICE_WORKSPACE_CAP,
+  budgetAdvice,
   budgetLine,
+  budgetSpentLine,
   bytesOf,
   cancelReason,
   cardReducer,
@@ -256,6 +261,26 @@ describe("which end a run reached", () => {
       "Its cap was $10.00 — the workspace's dry-run cap.",
     );
     expect(budgetLine(undefined)).toBeNull();
+  });
+
+  it("says what a budget-stopped run had spent, and nothing for an unpriced one (#569)", () => {
+    expect(budgetSpentLine({ ...seededDryRun().totals, costCents: 498 })).toBe("It had spent $4.98 when it was stopped.");
+    expect(budgetSpentLine({ ...seededDryRun().totals, costCents: null })).toBeNull();
+  });
+
+  it("says what to change, for the cap that stopped it (#569)", () => {
+    expect(budgetAdvice({ capCents: 500, source: "draft_guard", workspaceCapCents: 1000, draftGuardCents: 500 })).toBe(
+      BUDGET_ADVICE_DRAFT_GUARD,
+    );
+    expect(budgetAdvice({ capCents: 1000, source: "workspace_cap", workspaceCapCents: 1000, draftGuardCents: null })).toBe(
+      BUDGET_ADVICE_WORKSPACE_CAP,
+    );
+    expect(budgetAdvice(undefined)).toBe(BUDGET_ADVICE_FALLBACK);
+    expect(BUDGET_ADVICE_DRAFT_GUARD).toMatch(/spend cap/);
+    expect(BUDGET_ADVICE_WORKSPACE_CAP).toMatch(/workspace owner/);
+    for (const advice of [BUDGET_ADVICE_DRAFT_GUARD, BUDGET_ADVICE_WORKSPACE_CAP, BUDGET_ADVICE_FALLBACK]) {
+      expect(advice).toMatch(/then re-run\.$/);
+    }
   });
 
   it("announces a run's start and each of its ends in one sentence", () => {

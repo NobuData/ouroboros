@@ -281,13 +281,73 @@
 
 /* ---------- the loading skeleton ---------- */
 
-/* The body's two columns, on the body's own rule, with a block where each seat will be. */
+/*
+ * A card's skeleton (CE.5, #569): the card's box, with bars in the card's own shape. The bars
+ * are sized in rem, so they scale with the type they stand in for.
+ */
 .copilot-view__skeleton-seat {
-  display: block;
-  min-height: 12rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  min-width: 0;
+  padding: var(--sp-7);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+/* The conversation is the tall card of the page. */
+.copilot-view__skeleton-seat--conversation {
+  min-height: 24rem;
+}
+
+.copilot-view__skeleton-title,
+.copilot-view__skeleton-row,
+.copilot-view__skeleton-bubble,
+.copilot-view__skeleton-composer,
+.copilot-view__skeleton-column {
+  display: block;
+  border-radius: var(--r-sm);
   background: var(--inset);
+}
+
+.copilot-view__skeleton-title {
+  width: 9rem;
+  min-height: 0.875rem;
+}
+
+.copilot-view__skeleton-row {
+  min-height: 1.75rem;
+}
+
+/* The copilot's bubble on the leading side, the reader's on the trailing one. */
+.copilot-view__skeleton-bubble {
+  width: 78%;
+  min-height: 4.5rem;
+  border-radius: var(--r-md);
+}
+
+.copilot-view__skeleton-bubble--user {
+  align-self: flex-end;
+  width: 62%;
+  min-height: 3rem;
+}
+
+/* Pushed to the card's foot, where the composer is. */
+.copilot-view__skeleton-composer {
+  min-height: 3.5rem;
+  margin-top: auto;
+}
+
+.copilot-view__skeleton-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+}
+
+.copilot-view__skeleton-column {
+  flex: 1 1 8.5rem;
+  min-height: 3rem;
 }
 
 /* ---------- one column, at the studio's own break ---------- */

@@ -1,3 +1,5 @@
+import { cx } from "@/app/ui";
+
 import { StudioFrame } from "../studio-frame";
 import { SKELETON_WORKFLOWS } from "../studio-skeleton";
 import { COPILOT_EYEBROW, COPILOT_SUBLINE, COPILOT_TITLE } from "./copilot-view";
@@ -17,7 +19,9 @@ import "./copilot.css";
  * and whether they can act are what the reads decide.
  *
  * Below the row: the rail's bars, in the studio skeleton's own classes, beside the body's two
- * columns with a block where each seat will be.
+ * columns with **a skeleton for each card** (CE.5, #569) in the card's own shape — the
+ * conversation's bubbles and composer, the stage list's and the dry run's rows, the safety
+ * strip's three columns — so the page does not rearrange itself when the reads land.
  *
  * **It says one thing to a screen reader.** The bars are `aria-hidden`, and the frame's `<main>`
  * is `aria-busy` and labelled once.
@@ -31,6 +35,15 @@ export const COPILOT_LOADING_LABEL = "Loading the workflow copilot";
 
 /** How many head actions the skeleton reserves — mockup 20's two. */
 export const COPILOT_SKELETON_ACTIONS = 2;
+
+/** How many columns the safety strip's skeleton reserves — mockup 20's three claims. */
+export const COPILOT_SKELETON_CLAIMS = 3;
+
+/** The two cards that are a heading over rows, and how many rows each skeleton draws. */
+export const SKELETON_ROW_CARDS: readonly { readonly id: "stages" | "dry-run"; readonly rows: number }[] = [
+  { id: "stages", rows: 5 },
+  { id: "dry-run", rows: 4 },
+];
 
 /**
  * The skeleton.
@@ -65,10 +78,32 @@ export function CopilotSkeleton({ slug }: Readonly<{ slug: string | null }>) {
         </div>
 
         <div className="copilot-view__body">
-          <span className="copilot-view__skeleton-seat" />
+          {/* The conversation: two bubbles, one from each side, over the composer. */}
+          <div className={cx("copilot-view__skeleton-seat", "copilot-view__skeleton-seat--conversation")}>
+            <span className="copilot-view__skeleton-title" />
+            <span className={cx("copilot-view__skeleton-bubble", "copilot-view__skeleton-bubble--user")} />
+            <span className="copilot-view__skeleton-bubble" />
+            <span className="copilot-view__skeleton-composer" />
+          </div>
           <div className="copilot-view__side">
-            <span className="copilot-view__skeleton-seat" />
-            <span className="copilot-view__skeleton-seat" />
+            {/* The stage list and the dry run: a heading over rows. */}
+            {SKELETON_ROW_CARDS.map((card) => (
+              <div className="copilot-view__skeleton-seat" key={card.id}>
+                <span className="copilot-view__skeleton-title" />
+                {Array.from({ length: card.rows }, (_, index) => (
+                  <span className="copilot-view__skeleton-row" key={index} />
+                ))}
+              </div>
+            ))}
+            {/* The safety strip: a heading over its three columns. */}
+            <div className="copilot-view__skeleton-seat">
+              <span className="copilot-view__skeleton-title" />
+              <div className="copilot-view__skeleton-columns">
+                {Array.from({ length: COPILOT_SKELETON_CLAIMS }, (_, index) => (
+                  <span className="copilot-view__skeleton-column" key={index} />
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>

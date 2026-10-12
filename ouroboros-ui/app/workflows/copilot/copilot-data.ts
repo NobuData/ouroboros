@@ -4,7 +4,7 @@ import "server-only";
  * Everything the copilot route reads (CE.1,
  * [#565](https://github.com/NobuData/ouroboros/issues/565)).
  *
- * The rail, then seven reads of the workflow the URL names — composed the way
+ * The rail, then nine reads of the workflow the URL names — composed the way
  * `app/workflows/code/code-data.ts` composes the code view's: the route stays three lines, and
  * **one failed read is one degraded region**. The rail first, for that module's two reasons: a
  * slug the workspace does not have is answered from the listing and costs no further request,
@@ -17,7 +17,7 @@ import "server-only";
  * after a save, shows the draft as it now is and the conversation where it was left. There is
  * no client state to carry across a switch and so none to lose.
  *
- * ### The seven reads
+ * ### The nine reads
  *
  * - **the workflow** (`GET /api/v1/workflows/{id}`), as the visual editor reads it — its draft's
  *   document is what a refused promote's findings are anchored in;
@@ -41,6 +41,11 @@ import "server-only";
  *   and the draft as it stands; then that run in full and its suggestions. A workflow that has
  *   never been dry-run reads as a board with no run. The suggestions are their own attempt: a
  *   run whose callouts could not be read still draws its rows and its diff.
+ * - **the safety strip** (`GET …/dry-runs/safety`, CE.5, #569) — the claims the installed
+ *   harness backs, each with its mechanism. A failed read costs the strip, which then makes no
+ *   claim rather than falling back to copy;
+ * - **the providers** (`GET /api/v1/providers`, CE.5, #569) — the workspace's connections, whose
+ *   status the gateway notice reports. A failed read costs only that line.
  *
  * They are made in parallel, and each is kept as its own reading. Anything that is not an
  * `ApiError` keeps travelling — Next.js's redirect signal above all, which is how a session that
@@ -48,6 +53,7 @@ import "server-only";
  */
 
 import type { Workspace } from "@/app/api/access";
+import { providers } from "@/app/api/providers";
 import { attempt } from "@/app/api/reading";
 import { routing } from "@/app/api/routing";
 import { workflowCopilot } from "@/app/api/workflow-copilot";
@@ -81,8 +87,8 @@ async function readDryRunBoard(workflowId: string): Promise<DryRunBoard> {
 
 /**
  * Read the copilot route: the rail, and for the workflow the URL names, the workflow, its
- * promotion summary, its conversation, its readiness, its draft, the workspace's aliases and the
- * dry-run card's board.
+ * promotion summary, its conversation, its readiness, its draft, the workspace's aliases, the
+ * dry-run card's board, the safety strip and the workspace's provider connections.
  *
  * @param access The workspace the gate returned — a precondition made visible in the type, for
  *   the reason `readStudio` gives, and not read.
@@ -103,7 +109,7 @@ export async function readStudioCopilot(access: Workspace, slug: string): Promis
   const entry = rail.value.find((candidate) => candidate.slug === slug);
   if (entry === undefined) return { rail, requested: slug, selected: null, now };
 
-  const [detail, promotion, conversation, readiness, draft, aliases, dryRun] = await Promise.all([
+  const [detail, promotion, conversation, readiness, draft, aliases, dryRun, safety, connections] = await Promise.all([
     attempt(async () => workflows.read(entry.id)),
     attempt(async () => workflowCopilot.promotion(entry.id)),
     attempt(async () => workflowCopilot.conversation(entry.id)),
@@ -111,12 +117,25 @@ export async function readStudioCopilot(access: Workspace, slug: string): Promis
     attempt(async () => workflowCopilot.draft(entry.id)),
     attempt(async () => routing.aliases()),
     attempt(async () => readDryRunBoard(entry.id)),
+    attempt(async () => workflowDryRuns.safety(entry.id)),
+    attempt(async () => (await providers.list()).items),
   ]);
 
   return {
     rail,
     requested: slug,
-    selected: { entry, detail, promotion, conversation, readiness, draft, aliases, dryRun },
+    selected: {
+      entry,
+      detail,
+      promotion,
+      conversation,
+      readiness,
+      draft,
+      aliases,
+      dryRun,
+      safety,
+      providers: connections,
+    },
     now,
   };
 }

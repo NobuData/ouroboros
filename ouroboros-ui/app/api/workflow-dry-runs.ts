@@ -29,7 +29,13 @@ export type DryRun = components["schemas"]["DryRun"];
 /** A dry run's suggestions. */
 export type DryRunSuggestions = components["schemas"]["DryRunSuggestions"];
 
-/** The three reads behind the card. */
+/** The safety strip, as data — three claims, each with the mechanism that backs it. */
+export type DryRunSafety = components["schemas"]["DryRunSafety"];
+
+/** One column of the safety strip. */
+export type DryRunSafetyColumn = components["schemas"]["DryRunSafetyColumn"];
+
+/** The reads behind the card, and the safety strip's. */
 export const workflowDryRuns = {
   /**
    * Read a workflow's dry-run history.
@@ -70,5 +76,17 @@ export const workflowDryRuns = {
         params: { path: { id, dryRunId } },
       }),
     );
+  },
+
+  /**
+   * Read the safety strip (CE.5, [#569](https://github.com/NobuData/ouroboros/issues/569)) —
+   * the three claims, each derived by the service from the harness's own configuration.
+   *
+   * @param id The workflow.
+   * @param client The API client; the request's own by default.
+   * @returns The columns, each saying whether its mechanism is in place.
+   */
+  async safety(id: string, client: ApiClient = api()): Promise<DryRunSafety> {
+    return unwrap(await client.GET("/api/v1/workflows/{id}/dry-runs/safety", { params: { path: { id } } }));
   },
 };

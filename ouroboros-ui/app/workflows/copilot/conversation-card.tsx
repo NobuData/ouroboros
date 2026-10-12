@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { type KeyboardEvent, useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 
+import type { ProviderConnection } from "@/app/api/providers";
 import type { CopilotConversation, CopilotReadiness } from "@/app/api/workflow-copilot";
 import { Button, Card, CardHead, Chip, Tag, cx } from "@/app/ui";
 
@@ -18,6 +19,8 @@ import {
   EMPTY_READER_NOTE,
   EMPTY_READER_TITLE,
   EMPTY_TITLE,
+  COPILOT_WILL,
+  COPILOT_WILL_NOT,
   EXAMPLES_LABEL,
   EXAMPLES_NOTE,
   EXAMPLE_BRIEFS,
@@ -34,6 +37,8 @@ import {
   SEND_LABEL,
   SHOW_EARLIER_LABEL,
   THINKING,
+  WILL_LABEL,
+  WILL_NOT_LABEL,
   anchoredScrollTop,
   announcement,
   answerableId,
@@ -133,6 +138,12 @@ export interface ConversationCardProps {
   readonly conversation: CopilotConversation | null;
   /** The service's readiness — `null` when it could not be read, which gates nothing. */
   readonly readiness: CopilotReadiness | null;
+  /**
+   * The workspace's provider connections (CE.5, #569) — what the gateway notice reports the
+   * status of. `null`, the default, when they could not be read: the notice then says nothing
+   * about them.
+   */
+  readonly providers?: readonly ProviderConnection[] | null;
   /** Whether the reader's role may write — decided at the gate. */
   readonly mayAdminister: boolean;
   /** How to reach the service. Defaults to this origin's routes; a test hands in a fake. */
@@ -169,6 +180,27 @@ function placedMessages(scroller: HTMLElement): Placed[] {
 }
 
 /**
+ * One half of the invitation's plain statement (CE.5, #569): what the copilot will do, or what
+ * it will not.
+ *
+ * @param props.label The list's heading, and its accessible name.
+ * @param props.items The statements.
+ * @returns The labelled list.
+ */
+function ScopeList({ label, items }: Readonly<{ label: string; items: readonly string[] }>) {
+  return (
+    <div className="copilot-chat__scope-half">
+      <p className="copilot-chat__scope-label">{label}</p>
+      <ul aria-label={label} className="copilot-chat__scope-list">
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
  * The conversation card.
  *
  * @param props See {@link ConversationCardProps}.
@@ -180,6 +212,7 @@ export function ConversationCard({
   name,
   conversation,
   readiness,
+  providers = null,
   mayAdminister,
   transport = browserTransport,
 }: ConversationCardProps) {
@@ -211,7 +244,7 @@ export function ConversationCard({
     closedNote: closed === null ? "" : transcriptNote(closed, name),
   });
   const absent = composerAbsent(gate);
-  const notice = closed === null ? prerequisiteNotice(readiness) : null;
+  const notice = closed === null ? prerequisiteNotice(readiness, providers) : null;
   const pill = modelPill(session);
   const answerable = answerableId(messages);
 
@@ -444,6 +477,7 @@ export function ConversationCard({
           <div className="copilot-chat__notice" role="status">
             <p className="copilot-chat__notice-title">{notice.title}</p>
             <p className="copilot-chat__notice-text">{notice.text}</p>
+            {notice.status !== null && <p className="copilot-chat__notice-status">{notice.status}</p>}
             <a className="copilot-chat__notice-link" href={notice.href}>
               {notice.linkLabel}
             </a>
@@ -490,6 +524,10 @@ export function ConversationCard({
                 ))}
               </ul>
               <p className="copilot-chat__empty-note">{EXAMPLES_NOTE}</p>
+              <div className="copilot-chat__scope">
+                <ScopeList items={COPILOT_WILL} label={WILL_LABEL} />
+                <ScopeList items={COPILOT_WILL_NOT} label={WILL_NOT_LABEL} />
+              </div>
             </div>
           )}
 

@@ -427,6 +427,40 @@ export function budgetLine(budget: DryRun["budget"] | undefined): string | null 
 }
 
 /**
+ * What a budget-stopped run had spent (CE.5, #569).
+ *
+ * @param totals The run's totals.
+ * @returns *It had spent $4.98 when it was stopped.*, or `null` for an unpriced run — an absent
+ *   price is never a zero.
+ */
+export function budgetSpentLine(totals: DryRun["totals"]): string | null {
+  return totals.costCents === null ? null : `It had spent ${moneyOfCents(totals.costCents)} when it was stopped.`;
+}
+
+/** What to change after the draft's own spend guard stopped a run. */
+export const BUDGET_ADVICE_DRAFT_GUARD =
+  "To let it finish, ask the copilot to raise the draft's per-run spend cap, or make the model stages cheaper, then re-run.";
+
+/** What to change after the workspace's dry-run cap stopped a run. */
+export const BUDGET_ADVICE_WORKSPACE_CAP =
+  "To let it finish, make the draft's model stages cheaper, or ask a workspace owner to raise the workspace's dry-run cap, then re-run.";
+
+/** What to change when the service did not say which cap it was. */
+export const BUDGET_ADVICE_FALLBACK = "To let it finish, make the draft's model stages cheaper, then re-run.";
+
+/**
+ * What to change so the next run is not stopped at its budget (CE.5, #569).
+ *
+ * @param budget The budget the run was started under, when the service sent one.
+ * @returns The advice for the cap that stopped it.
+ */
+export function budgetAdvice(budget: DryRun["budget"] | undefined): string {
+  if (budget === undefined) return BUDGET_ADVICE_FALLBACK;
+
+  return budget.source === "draft_guard" ? BUDGET_ADVICE_DRAFT_GUARD : BUDGET_ADVICE_WORKSPACE_CAP;
+}
+
+/**
  * One blocked call, as the alert lists it.
  *
  * @param entry The audit's entry.

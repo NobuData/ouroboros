@@ -27,6 +27,7 @@
  * path: a reply spelling a tag is a reply whose text has angle brackets in it.
  */
 
+import type { ProviderConnection } from "@/app/api/providers";
 import type {
   CopilotChoice,
   CopilotConversation,
@@ -115,6 +116,26 @@ export const EXAMPLE_BRIEFS: readonly string[] = [
   "Create a workflow for security patches: always get a second model's review, never auto-merge, and prove the CVE is actually fixed.",
   "Build a docs-only workflow: skip the build and test stages, and open the pull request as a draft.",
   "Start from the default loop, and require a person's approval before anything merges.",
+];
+
+/** The heading over what the copilot does (CE.5, #569). */
+export const WILL_LABEL = "The copilot will";
+
+/** What the copilot does, said plainly before the first message. */
+export const COPILOT_WILL: readonly string[] = [
+  "Draft the stages from your brief, and ask when a choice is yours to make.",
+  "Change only this workflow's draft — you can see every change in the stage list.",
+  "Show what each reply cost, when the model is priced.",
+];
+
+/** The heading over what the copilot does not do. */
+export const WILL_NOT_LABEL = "It will not";
+
+/** What the copilot does not do. */
+export const COPILOT_WILL_NOT: readonly string[] = [
+  "Run anything, write to a repository or open a pull request.",
+  "Publish the workflow — that is Promote draft, and yours to press.",
+  "Start a dry run by itself; you start one from the dry-run card.",
 ];
 
 /** The empty state's title for a reader who may not start a conversation. */
@@ -1266,6 +1287,8 @@ export interface PrerequisiteNotice {
   readonly kind: "gateway" | "unrouted";
   readonly title: string;
   readonly text: string;
+  /** The current provider status, under the text — the gateway notice's, when it could be read. */
+  readonly status: string | null;
   readonly linkLabel: string;
   readonly href: string;
 }
@@ -1279,6 +1302,41 @@ export const GATEWAY_NOTICE_TEXT =
 
 /** …and its link. */
 export const GATEWAY_NOTICE_LINK = "See Providers";
+
+/** What the gateway notice reports for a workspace with no provider connected. */
+export const NO_PROVIDERS_STATUS = "Provider status: no provider is connected in this workspace.";
+
+/** The order the provider statuses are counted in, and what each is called. */
+const PROVIDER_STATUS_WORDS: readonly (readonly [ProviderConnection["status"], string])[] = [
+  ["active", "active"],
+  ["error", "failing"],
+  ["paused", "paused"],
+  ["unknown", "not yet checked"],
+];
+
+/**
+ * The workspace's providers, as the gateway notice reports them (CE.5, #569).
+ *
+ * The statuses are what the health checks measured; a connection a person switched off is
+ * counted apart, because *connected* beside a switch that is off is a real state.
+ *
+ * @param connections The workspace's provider connections, or `null` when they could not be read.
+ * @returns *Provider status: 3 connected — 2 active, 1 failing; 1 switched off.*, or `null` when
+ *   there is nothing to report from.
+ */
+export function providerStatusLine(connections: readonly ProviderConnection[] | null): string | null {
+  if (connections === null) return null;
+  if (connections.length === 0) return NO_PROVIDERS_STATUS;
+
+  const counts = PROVIDER_STATUS_WORDS.flatMap(([status, word]) => {
+    const count = connections.filter((connection) => connection.status === status).length;
+
+    return count === 0 ? [] : [`${count} ${word}`];
+  });
+  const off = connections.filter((connection) => !connection.enabled).length;
+
+  return `Provider status: ${connections.length} connected — ${counts.join(", ")}${off === 0 ? "" : `; ${off} switched off`}.`;
+}
 
 /** The unrouted notice's title. */
 export const UNROUTED_NOTICE_TITLE = "The copilot has no model route";
@@ -1309,10 +1367,15 @@ function sentence(text: string): string {
  * The notice the card wears when the copilot cannot reply at all.
  *
  * @param readiness The service's readiness, or `null` when it could not be read.
+ * @param providers The workspace's provider connections, or `null` when they could not be read —
+ *   what the gateway notice reports the current status of.
  * @returns Which prerequisite is missing, said precisely — the gateway first, because without
  *   it a route would change nothing — or `null`.
  */
-export function prerequisiteNotice(readiness: CopilotReadiness | null): PrerequisiteNotice | null {
+export function prerequisiteNotice(
+  readiness: CopilotReadiness | null,
+  providers: readonly ProviderConnection[] | null = null,
+): PrerequisiteNotice | null {
   if (readiness === null) return null;
 
   if (!readiness.gateway.available) {
@@ -1320,6 +1383,7 @@ export function prerequisiteNotice(readiness: CopilotReadiness | null): Prerequi
       kind: "gateway",
       title: GATEWAY_NOTICE_TITLE,
       text: GATEWAY_NOTICE_TEXT,
+      status: providerStatusLine(providers),
       linkLabel: GATEWAY_NOTICE_LINK,
       href: PROVIDERS_PATH,
     };
@@ -1329,6 +1393,7 @@ export function prerequisiteNotice(readiness: CopilotReadiness | null): Prerequi
       kind: "unrouted",
       title: UNROUTED_NOTICE_TITLE,
       text: `${sentence(readiness.route.reason ?? UNROUTED_NOTICE_FALLBACK)} ${UNROUTED_NOTICE_STILL}`,
+      status: null,
       linkLabel: UNROUTED_NOTICE_LINK,
       href: MODEL_ROUTING_HREF,
     };

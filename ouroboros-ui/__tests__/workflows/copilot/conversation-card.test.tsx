@@ -14,8 +14,11 @@ import {
   DRY_RUN_REASON,
   EMPTY_READER_TITLE,
   EMPTY_TITLE,
+  COPILOT_WILL,
+  COPILOT_WILL_NOT,
   EXAMPLES_LABEL,
   EXAMPLE_BRIEFS,
+  GATEWAY_NOTICE_LINK,
   GATEWAY_NOTICE_TITLE,
   GATEWAY_REASON,
   INTERRUPTED_REPLY,
@@ -35,6 +38,8 @@ import {
   UNROUTED_NOTICE_TITLE,
   UNROUTED_REASON,
   clockOf,
+  WILL_LABEL,
+  WILL_NOT_LABEL,
 } from "@/app/workflows/copilot/conversation";
 import type { CopilotTransport, TransportStream } from "@/app/workflows/copilot/conversation-transport";
 import { readCopilotLive, resetCopilotLive } from "@/app/workflows/copilot/copilot-live";
@@ -46,6 +51,7 @@ import {
   promotedTranscriptNote,
 } from "@/app/workflows/copilot/copilot-view";
 
+import { connection } from "../../helpers/providers";
 import { maskIds, renderInBothPalettes } from "../../helpers/palettes";
 import { settle } from "../../helpers/settle";
 import {
@@ -990,11 +996,42 @@ describe("the empty state", () => {
     expect(transport.startSession).not.toHaveBeenCalled();
   });
 
+  it("states plainly what the copilot will and will not do (#569)", () => {
+    renderCard({ conversation: null });
+
+    const will = within(card()).getByRole("list", { name: WILL_LABEL });
+    const willNot = within(card()).getByRole("list", { name: WILL_NOT_LABEL });
+
+    expect(within(will).getAllByRole("listitem").map((item) => item.textContent)).toEqual([...COPILOT_WILL]);
+    expect(within(willNot).getAllByRole("listitem").map((item) => item.textContent)).toEqual([...COPILOT_WILL_NOT]);
+  });
+
+  it("keeps that statement from a reader who cannot start a conversation, and from one under way", () => {
+    renderCard({ conversation: null, mayAdminister: false });
+    expect(within(card()).queryByRole("list", { name: WILL_LABEL })).toBeNull();
+  });
+
   it("is drawn for an open conversation nobody has said anything in yet", () => {
     renderCard({ conversation: copilotConversation({ messages: [] }) });
 
     expect(card()).toHaveTextContent(EMPTY_TITLE);
     expect(within(card()).queryByRole("list", { name: EXAMPLES_LABEL })).not.toBeNull();
+  });
+
+  it("reports the current provider status under the gateway notice, and links to Providers (#569)", () => {
+    renderCard({ conversation: null, readiness: NO_GATEWAY, providers: [connection(), connection({ status: "error" })] });
+
+    const notice = within(card()).getByRole("status");
+
+    expect(notice).toHaveTextContent(GATEWAY_NOTICE_TITLE);
+    expect(notice).toHaveTextContent("Provider status: 2 connected — 1 active, 1 failing.");
+    expect(within(notice).getByRole("link", { name: GATEWAY_NOTICE_LINK })).toHaveAttribute("href", PROVIDERS_PATH);
+  });
+
+  it("says nothing about providers when they could not be read", () => {
+    renderCard({ conversation: null, readiness: NO_GATEWAY });
+
+    expect(within(card()).getByRole("status")).not.toHaveTextContent(/Provider status/);
   });
 
   it("switches the examples off while a message could not be sent", () => {

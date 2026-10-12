@@ -12,6 +12,8 @@ import { WorkflowRail } from "../workflow-rail";
 import { ConversationCard } from "./conversation-card";
 import { DryRunCard } from "./dry-run-card";
 import { DRY_RUN_FAILED_HEADLINE } from "./dry-run";
+import { SafetyStrip } from "./safety-strip";
+import { SAFETY_FAILED_HEADLINE } from "./safety";
 import { StagesCard } from "./stages-card";
 import { DRAFT_FAILED_HEADLINE, stageOrder } from "./stages";
 import { CopilotFlows, CopilotHeadActions, CopilotNotice } from "./copilot-flows";
@@ -79,11 +81,17 @@ import "./copilot.css";
  * members** (`mayContribute`), wider than the conversation's; a viewer reads it with its controls
  * inert. A board that could not be read keeps a labelled seat under the banner that says so.
  *
+ * The safety strip is CE.5's card (#569, `safety-strip.tsx`), under the dry run: it draws the
+ * claims the service derived from the installed harness — only the ones that hold — and is the
+ * same strip for every reader. A strip that could not be read keeps a labelled seat under the
+ * banner that says so, and makes no claim.
+ *
  * ### The role, and the states
  *
  * The same `mayAdminister` and the same read-only note as the other two surfaces. A refused rail
- * and an empty workspace draw one seat in place of the three; a refused promotion summary,
- * conversation, draft or dry run wears the studio's banner and takes only its own region with it.
+ * and an empty workspace draw one seat in place of the four; a refused promotion summary,
+ * conversation, draft, dry run or safety strip wears the studio's banner and takes only its own
+ * region with it.
  */
 
 /** What the screen takes. */
@@ -156,6 +164,10 @@ export function CopilotScreen({
         <StudioFailedBanner headline={DRY_RUN_FAILED_HEADLINE} reason={open.dryRun.reason} />
       )}
 
+      {open !== null && !open.safety.ok && (
+        <StudioFailedBanner headline={SAFETY_FAILED_HEADLINE} reason={open.safety.reason} />
+      )}
+
       <div className="studio__grid">
         <WorkflowRail
           activeSlug={open === null ? null : open.entry.slug}
@@ -175,6 +187,8 @@ export function CopilotScreen({
                 conversation={open.conversation.value}
                 mayAdminister={mayAdminister}
                 name={open.entry.name}
+                // Providers that could not be read cost the gateway notice its status line only.
+                providers={open.providers.ok ? open.providers.value : null}
                 // Readiness that could not be read gates nothing: the service still refuses what it must.
                 readiness={open.readiness.ok ? open.readiness.value : null}
                 slug={open.entry.slug}
@@ -217,6 +231,8 @@ export function CopilotScreen({
               ) : (
                 <Seat id="dry-run" />
               )}
+              {/* A strip that could not be read claims nothing — the seat says so, never the copy. */}
+              {open.safety.ok ? <SafetyStrip safety={open.safety.value} /> : <Seat id="safety" />}
             </div>
           </div>
         )}

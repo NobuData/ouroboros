@@ -5,7 +5,9 @@ import { WORKFLOWS_PATH, workflowCodePath, workflowCopilotPath, workflowPath } f
 import {
   COPILOT_LOADING_LABEL,
   COPILOT_SKELETON_ACTIONS,
+  COPILOT_SKELETON_CLAIMS,
   CopilotSkeleton,
+  SKELETON_ROW_CARDS,
 } from "@/app/workflows/copilot/copilot-skeleton";
 import {
   COPILOT_EYEBROW,
@@ -249,14 +251,36 @@ describe("the skeleton", () => {
     expect(screen.getByText(COPILOT_SUBLINE, { selector: ".studio__sub" })).toBeInTheDocument();
   });
 
-  it("reserves the two actions, the rail and the three seats, in the page's own layout classes", () => {
+  it("reserves the two actions, the rail and a skeleton for each of the four cards, in the page's own layout classes", () => {
     const { container } = render(<CopilotSkeleton slug="security-patch" />);
 
     expect(container.querySelectorAll(".studio-skeleton__action")).toHaveLength(COPILOT_SKELETON_ACTIONS);
     expect(COPILOT_SKELETON_ACTIONS).toBe(2);
     expect(container.querySelectorAll(".studio-skeleton__item")).toHaveLength(SKELETON_WORKFLOWS);
     expect(container.querySelectorAll(".copilot-view__body > .copilot-view__skeleton-seat")).toHaveLength(1);
-    expect(container.querySelectorAll(".copilot-view__side > .copilot-view__skeleton-seat")).toHaveLength(2);
+    expect(container.querySelectorAll(".copilot-view__side > .copilot-view__skeleton-seat")).toHaveLength(3);
+  });
+
+  it("draws each card's skeleton in the card's own shape (#569)", () => {
+    const { container } = render(<CopilotSkeleton slug="security-patch" />);
+    const [stages, dryRun, safety] = container.querySelectorAll(".copilot-view__side > .copilot-view__skeleton-seat");
+
+    // The conversation: a heading, two bubbles — one from each side — and the composer.
+    const conversation = container.querySelector(".copilot-view__skeleton-seat--conversation");
+    expect(conversation?.querySelectorAll(".copilot-view__skeleton-bubble")).toHaveLength(2);
+    expect(conversation?.querySelectorAll(".copilot-view__skeleton-bubble--user")).toHaveLength(1);
+    expect(conversation?.querySelectorAll(".copilot-view__skeleton-composer")).toHaveLength(1);
+
+    // The stage list and the dry run: a heading over rows.
+    expect(stages?.querySelectorAll(".copilot-view__skeleton-row")).toHaveLength(SKELETON_ROW_CARDS[0]!.rows);
+    expect(dryRun?.querySelectorAll(".copilot-view__skeleton-row")).toHaveLength(SKELETON_ROW_CARDS[1]!.rows);
+
+    // The safety strip: a heading over mockup 20's three columns.
+    expect(safety?.querySelectorAll(".copilot-view__skeleton-column")).toHaveLength(COPILOT_SKELETON_CLAIMS);
+    expect(COPILOT_SKELETON_CLAIMS).toBe(3);
+
+    // Every card has its heading's bar.
+    expect(container.querySelectorAll(".copilot-view__skeleton-title")).toHaveLength(4);
   });
 
   it("says one thing to a screen reader: the bars are hidden and no button is drawn", () => {

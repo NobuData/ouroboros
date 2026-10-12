@@ -818,6 +818,18 @@ parked research.spec.ts engine "cancel"
 parked research.spec.ts engine "pipeline: apply"
 parked research.spec.ts runner "the watch chain"
 
+# The Copilot leg (#569, CE.5 — the Workflow Copilot roadmap's MVP gate). Its first touch of the
+# database is the sign-in. The safety strip is derived by the service from the engine's own
+# description of its dry-run harness: with `engine` stopped there is nothing to derive it from,
+# the page draws the seat that makes no claim, and the leg says the read did not answer.
+expect_red db copilot.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+expect_red engine copilot.spec.ts "reading the dry run's safety strip answered 5[0-9][0-9]" "the safety strip"
+
+# Its parked chain, registered so that it does not ship without a failure mode: every reply and
+# every model stage waits on the invocation gateway (AF.2, #235), the copilot's route on #1748
+# and a publishable blank draft on #1744. The spec's header says what is asserted meanwhile.
+parked copilot.spec.ts engine "the chain"
+
 printf '\n'
 if check_summary; then
   rm -rf "$LOG_DIR"

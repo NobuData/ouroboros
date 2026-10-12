@@ -1759,7 +1759,7 @@ the blockquote above that records what it did and what it did differently.
 | 436 | **CE.2** | ✅ [#566](https://github.com/NobuData/ouroboros/issues/566) | Conversation card | ouroboros-ui | L | CD.1, CE.1 |
 | 437 | **CE.3** | ✅ [#567](https://github.com/NobuData/ouroboros/issues/567) | Draft stage list | ouroboros-ui | M | CC.2, CE.1 |
 | 438 | **CE.4** | ✅ [#568](https://github.com/NobuData/ouroboros/issues/568) | Dry-run card | ouroboros-ui | L | CD.4, CD.5, CE.1 |
-| 439 | **CE.5** | [#569](https://github.com/NobuData/ouroboros/issues/569) | Safety strip, states & e2e leg | ouroboros-ui, .github | M | CE.2, CE.4 |
+| 439 | **CE.5** | ✅ [#569](https://github.com/NobuData/ouroboros/issues/569) | Safety strip, states & e2e leg | ouroboros-ui, .github | M | CE.2, CE.4 |
 
 ## P17 — ChatOps — Slack Integration
 
