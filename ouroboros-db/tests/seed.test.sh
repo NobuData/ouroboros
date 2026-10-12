@@ -1901,8 +1901,8 @@ check_contains "$CHAT_BODY" "'5eed009c-0000-4000-8000-" 'the chat seed builds it
 
 chat_tables=$(grep -Eo '^(insert into|update) ouroboros\.[a-z_]+' "$CHAT_BODY" |
   sed -E 's/^(insert into|update) ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
-check_equals 'chat_channels chat_commands chat_connections chat_messages ' "$chat_tables" \
-  'the chat seed writes the connection, its channels, the messages and the command — and nothing else'
+check_equals 'chat_channels chat_commands chat_connections chat_identity_links chat_messages on_call_assignments ' "$chat_tables" \
+  'the chat seed writes the connection, its channels, the identities, the on-call designee, the messages and the command — and nothing else'
 
 # **The cards are about rows other seeds hold.** No loop, pull request, issue, decision or audit
 # event is written here, and every ref is built from the row it names.
@@ -1916,6 +1916,14 @@ check_contains "$CHAT_BODY" 'answer\.action_id' 'and its outcome is that resolut
 check_contains "$CHAT_BODY" "r\.status in \('coding', 'building', 'review'\)" 'loops live is counted from runs'
 check_contains "$CHAT_BODY" 'from ouroboros\.queue_items q' 'queued is counted from the queue'
 check_absent "$CHAT_BODY" "'loops_live', [0-9]" 'no loop count is typed'
+
+# **Identities are confirmed, and on-call is someone linked (#533).** Members are found by person
+# and workspace, never by a typed id, and the designee is read off a linked identity.
+check_contains "$CHAT_BODY" "'linked', 'oauth_session'" 'each seeded identity says how it was verified'
+check_contains "$CHAT_BODY" 'member\."userId" = person\."id"' 'a link'"'"'s member is found by the person and the workspace'
+check_contains "$CHAT_BODY" "and link\.state = 'linked'" 'the on-call designee is read off a linked identity'
+check_absent "$CHAT_BODY" 'link_token_hash' 'no handshake token, hashed or otherwise, is seeded'
+check_contains "$CHAT_BODY" 'and cmd\.invoker_link_id is null' 'the command'"'"'s link is filled in only where it is missing, so a second apply writes nothing'
 
 # **Every digest is computed**, so a second apply collides instead of duplicating.
 check_equals "$(count_lines '^insert into ouroboros\.chat_messages' "$CHAT_BODY")" \

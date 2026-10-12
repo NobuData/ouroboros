@@ -233,7 +233,7 @@ v2`** created at filing; every issue assigned. Complexity chips:
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BY.1 | #531 ✅ | 🟢 Done | ouroboros-db: [BY.1] Chat connections & channel bindings | Workspace installs (sealed tokens), channels, route targets | mvp, chatops, db | N (after AD.1, BR.4) | Y | M | ouroboros-db |
 | BY.2 | #532 ✅ | 🟢 Done | ouroboros-db: [BY.2] Message & command records | Published cards (for edits + mirror), command invocations, links | mvp, chatops, db | N (after BY.1, BM.1) | Y | M | ouroboros-db |
-| BY.3 | #533 | 🟡 Open | ouroboros-db: [BY.3] Identity links & on-call | Slack↔member mappings, link states, designated on-call | mvp, chatops, db | N (after BY.1, BR.1) | Y | S | ouroboros-db |
+| BY.3 | #533 ✅ | 🟢 Done | ouroboros-db: [BY.3] Identity links & on-call | Slack↔member mappings, link states, designated on-call | mvp, chatops, db | N (after BY.1, BR.1) | Y | S | ouroboros-db |
 | BY.4 | #534 | 🟡 Open | ouroboros-db: [BY.4] Chat seeds — mockup-19 parity + probes | The six-message stream, bindings, links; ci checks | mvp, chatops, db, ci | N (after BY.2/BY.3, #24) | Y | S | ouroboros-db, .github |
 
 ### Issue BY.1 — ouroboros-db: [BY.1] Chat connections & channel bindings
@@ -306,7 +306,9 @@ chat_commands{/ouro status, invoker: ken-link, outcome: ok}
 
 ### Issue BY.3 — ouroboros-db: [BY.3] Identity links & on-call
 
-> **GitHub issue:** #533 · **Status:** 🟡 Open · **Parent epic:** #527
+> **GitHub issue:** #533 ✅ · **Status:** 🟢 Done · **Parent epic:** #527
+>
+> **Delivered (#533 — `V132__chat_identity_links_on_call.sql`, the chat seed extended; no REST, API or UI change):** **`chat_identity_links`** — `platform_user_id` ↔ `member_id` on a connection; `state` `linked | pending | revoked`; `verified_via` `oauth_session | email_match_confirmed | admin_assigned`, and a CHECK that no linked row exists without it, a member and a `linked_at`; `display_name_cache`; unique per connection in both directions among non-revoked rows, the platform-user one being the single indexed read behind every interaction (asserted over a 4,000-row corpus with sequential scans left on). **Pending** holds `link_token_hash` (SHA-256 by CHECK, unique) and `expires_at`, both cleared on leaving pending — so the token is single-use — and an expired handshake cannot be confirmed; it may not know its member yet, because the handshake starts on the platform. **Revoked is kept and final**: linking again is a new row. **`on_call_assignments`** — one active row per (workspace, `scope`), `scope` an open slug defaulting to `decisions` for #548. **`chat_commands.invoker_link_id` got its foreign key** (to a link of the command's own connection; deferred, no action), as #532 left it. **Four choices were the user's (2026-10-12):** (1) the live-link rule is a **trigger**, and a designee who becomes unreachable is **stood down automatically** — activation requires a `linked` identity on the workspace's active Slack connection; a revoked link or a removed member switches the assignment off, leaving on-call empty; a connection going to `error`/`revoked` touches no assignment; (2) **a member who leaves is revoked by the database and the row kept**, with a `user_id` column (copied from the member, not in the issue's list) so old commands still name a person; (3) **audit entries are the services'** — the vocabulary is fixed here: `chat.identity_linked`, `chat.identity_unlinked`, `chat.on_call_assigned`; (4) **the dev seed gains** Ken's and Maya's linked identities, Ken as the decisions designee, and Ken's link on the seeded `/ouro status` (an `update` fills it in on databases seeded before this). **Found while building:** BetterAuth deletes the `member` row, and a workspace delete removes members, links and assignments by different cascade paths — so the two `member_id` keys are deferred with no action, the trigger on `member` clears the pointer itself, and it steps aside when the whole workspace is going. **Not done:** no concurrency script for the one-active-designee index (the issue asks for it enforced, not raced); no mutation probes; a console command still records no person on its row.
 
 - **Problem Statement:** "Same permissions" needs the Slack-user↔member
   mapping (C4), and DM-on-call needs a designee (C6).
@@ -869,7 +871,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    #488), BR.1 (#485), AD.1/AD.4 (#222, #225), AP.4 (#306), INTAKE-M.3/R.1
    (#112, #143), WF-R.2 (#144), Z.2 (#195), BR.5 (#489), BJ.4 (#440), H.3
    (#79), #41/#46/#16, driver + sandbox + test Slack workspace.
-2. **Phase 1 — Domain:** BY.1 (#531) ✅ → { BY.2 (#532) ✅ ⊕ BY.3 (#533) } →
+2. **Phase 1 — Domain:** BY.1 (#531) ✅ → { BY.2 (#532) ✅ ⊕ BY.3 (#533) ✅ } →
    BY.4 (#534)
 3. **Phase 2 — App & services:** BZ.1 (#535) → { BZ.2 (#536) ⊕ BZ.3 (#537) }
    → { BZ.4 (#538) ⊕ BZ.5 (#539) } → BZ.6 (#540)

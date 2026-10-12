@@ -1,6 +1,6 @@
 -- R__dev_seed_workspace_triage_slack.sql — acme-robotics' Slack workspace, its channels, and
 -- mockup 19's six-message stream as published records. A development database and nowhere else
--- (#532, BY.2; the tables are #531's V130 and this ticket's V131).
+-- (#532, BY.2, with #533's identities and on-call; the tables are V130, V131 and V132).
 --
 -- [`docs/mockups/19-chatops.html`](../../docs/mockups/19-chatops.html) draws `#ouroboros-loops`
 -- with six messages. Those are six rows, and this file writes them **about rows the other seeds
@@ -30,9 +30,13 @@
 --
 -- **Nothing here is a credential.** `bot_token_sealed` is held by a CHECK to a sealed
 -- `ouro.v1.1.<nonce>.<body>` envelope; this one's body decodes to
--- `dev-seed-value-not-a-real-bot-token`. No identity link is seeded — they are BY.3's (#533) —
--- so the command's `invoker_link_id` is null, and no audit event is written: the audit seeds'
--- counts are other tests' to keep.
+-- `dev-seed-value-not-a-real-bot-token`. No audit event is written: the audit seeds' counts are
+-- other tests' to keep.
+--
+-- **Who is who (#533, BY.3).** Ken and Maya have linked Slack identities — both confirmed in an
+-- app session — so the seeded command is Ken's by link, and Ken is the on-call designee for
+-- decisions: mockup 19's `+ DM on-call` has someone to reach. Jorge has no link, which is the
+-- page's *link your account* state.
 --
 -- Every statement carries `${ouro_dev_seed}`; every insert ends `on conflict do nothing`. Ids
 -- are `5eed009c`.
@@ -71,6 +75,40 @@ select ('5eed009c-0000-4000-8000-0000000000' || seed.n)::uuid, conn.organization
        ) as seed (n, channel_id, channel_name, is_private, member_count, purpose_tag)
   join ouroboros.chat_connections conn on conn.id = '5eed009c-0000-4000-8000-000000000001'
  where ${ouro_dev_seed}
+on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
+-- Who is who — Ken's and Maya's Slack identities, each confirmed in an app session (#533).
+-- ---------------------------------------------------------------------------
+insert into ouroboros.chat_identity_links (id, organization_id, connection_id, platform_user_id,
+                                           member_id, state, verified_via, display_name_cache,
+                                           linked_at)
+select ('5eed009c-0000-4000-8000-0000000003' || seed.n)::uuid, conn.organization_id, conn.id,
+       seed.platform_user_id, member."id", 'linked', 'oauth_session', person."name",
+       conn.installed_at + seed.after
+  from (values
+         ('01', 'U07KEN',  'ken@acme-robotics.dev',  interval '5 minutes'),
+         ('02', 'U07MAYA', 'maya@acme-robotics.dev', interval '1 day')
+       ) as seed (n, platform_user_id, email, after)
+  join ouroboros.chat_connections conn on conn.id = '5eed009c-0000-4000-8000-000000000001'
+  join ouroboros."user" person         on person."email" = seed.email
+  join ouroboros.member member         on member."userId" = person."id"
+                                      and member."organizationId" = conn.organization_id
+ where ${ouro_dev_seed}
+on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
+-- On call for decisions — Ken, whom Maya designated. Mockup 19's `+ DM on-call` reaches him.
+-- ---------------------------------------------------------------------------
+insert into ouroboros.on_call_assignments (id, organization_id, member_id, scope, active,
+                                           assigned_by, assigned_at)
+select '5eed009c-0000-4000-8000-000000000401'::uuid, link.organization_id, link.member_id,
+       'decisions', true, maya."id", link.linked_at + interval '2 days'
+  from ouroboros.chat_identity_links link
+  join ouroboros."user" maya on maya."email" = 'maya@acme-robotics.dev'
+ where link.id = '5eed009c-0000-4000-8000-000000000301'
+   and link.state = 'linked'
+   and ${ouro_dev_seed}
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
@@ -156,21 +194,32 @@ select '5eed009c-0000-4000-8000-000000000104'::uuid, card.organization_id, card.
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
--- 5. `/ouro status`, typed in the channel…
---
--- No identity link exists to name (BY.3, #533), so the invoker is the platform's user id alone.
+-- 5. `/ouro status`, typed in the channel by Ken — the invoker is his identity link.
 -- ---------------------------------------------------------------------------
-insert into ouroboros.chat_commands (id, organization_id, connection_id, channel_id, platform_user_id,
-                                     surface, command, args, raw_text, outcome, result_ref,
-                                     invoked_at, completed_at)
+insert into ouroboros.chat_commands (id, organization_id, connection_id, channel_id, invoker_link_id,
+                                     platform_user_id, surface, command, args, raw_text, outcome,
+                                     result_ref, invoked_at, completed_at)
 select '5eed009c-0000-4000-8000-000000000201'::uuid, ch.organization_id, ch.connection_id, ch.id,
-       'U07KEN', 'slack', 'status', '{}', '/ouro status', 'ok',
+       link.id, link.platform_user_id, 'slack', 'status', '{}', '/ouro status', 'ok',
        jsonb_build_object('message', '5eed009c-0000-4000-8000-000000000105'),
        now() - interval '12 minutes', now() - interval '12 minutes' + interval '1 second'
   from ouroboros.chat_channels ch
+  join ouroboros.chat_identity_links link on link.id = '5eed009c-0000-4000-8000-000000000301'
+                                         and link.connection_id = ch.connection_id
  where ch.id = '5eed009c-0000-4000-8000-0000000000a1'
    and ${ouro_dev_seed}
 on conflict do nothing;
+
+-- A database seeded before #533 holds that command with no link. Named now that there is one —
+-- and only then, so applying this twice writes nothing.
+update ouroboros.chat_commands cmd
+   set invoker_link_id = link.id
+  from ouroboros.chat_identity_links link
+ where cmd.id = '5eed009c-0000-4000-8000-000000000201'
+   and cmd.invoker_link_id is null
+   and link.id = '5eed009c-0000-4000-8000-000000000301'
+   and link.connection_id = cmd.connection_id
+   and ${ouro_dev_seed};
 
 -- ---------------------------------------------------------------------------
 -- 6. …and its reply: loops live, issues queued and questions open, counted when it was sent.
