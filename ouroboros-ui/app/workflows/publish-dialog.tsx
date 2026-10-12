@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, type ReactNode, useId, useState } from "react";
 
 import type { WorkflowDefinition } from "@/app/api/workflows";
 import { ShellOverlay } from "@/app/shell/overlay";
@@ -31,6 +31,16 @@ export interface PublishDialogProps {
   readonly onSelect: (stageId: string) => void;
   /** Close without publishing. */
   readonly onClose: () => void;
+  /**
+   * What is being published, stated before the form — the copilot's promote confirmation (CE.1,
+   * [#565](https://github.com/NobuData/ouroboros/issues/565)) names the version, the draft, each guard
+   * with where it is enforced, and the unresolved references here. Left out, the dialog is S.6's.
+   */
+  readonly summary?: ReactNode;
+  /** Where a stage is, for a page whose findings are links — see `FindingList`'s `stageHref`. */
+  readonly stageHref?: (stageId: string) => string;
+  /** What an anchored finding says it does — see `FindingList`'s `target`. */
+  readonly findingTarget?: (stageTitle: string) => string;
 }
 
 /**
@@ -40,12 +50,25 @@ export interface PublishDialogProps {
  * validator refused, every finding as a control that closes the dialog and selects the stage it is about.
  * A success closes it; the session moves the head and leaves the toast.
  *
+ * The copilot's **Promote draft → security-patch v1** is this dialog too (CE.1, #565) — one publish path,
+ * one dialog — with what is being published stated above the form (`summary`) and its findings as links to
+ * their stages' rows (`stageHref`).
+ *
  * Mounted only while open, so every opening starts from an empty note and no stale refusal.
  *
  * @param props See {@link PublishDialogProps}.
  * @returns The dialog.
  */
-export function PublishDialog({ label, definition, onPublish, onSelect, onClose }: PublishDialogProps) {
+export function PublishDialog({
+  label,
+  definition,
+  onPublish,
+  onSelect,
+  onClose,
+  summary,
+  stageHref,
+  findingTarget,
+}: PublishDialogProps) {
   const fields = useId();
   const [note, setNote] = useState("");
   const [pending, setPending] = useState(false);
@@ -76,6 +99,8 @@ export function PublishDialog({ label, definition, onPublish, onSelect, onClose 
       <h2 className="shell-overlay__title">{label}</h2>
       <p className="shell-overlay__note">{PUBLISH_NOTE}</p>
 
+      {summary}
+
       <form className="studio-dialog" onSubmit={(event) => void submit(event)}>
         <TextAreaField
           error={problem}
@@ -96,7 +121,13 @@ export function PublishDialog({ label, definition, onPublish, onSelect, onClose 
           </p>
         )}
         {failure !== null && failure.findings.length > 0 && (
-          <FindingList definition={definition} findings={failure.findings} onSelect={onSelect} />
+          <FindingList
+            definition={definition}
+            findings={failure.findings}
+            onSelect={onSelect}
+            stageHref={stageHref}
+            target={findingTarget}
+          />
         )}
 
         {pending && (

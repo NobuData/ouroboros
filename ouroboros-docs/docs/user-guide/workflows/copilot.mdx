@@ -2,23 +2,99 @@
 title: "Workflow Copilot"
 sidebar_label: "Copilot"
 sidebar_position: 3
-description: "The deep dry run of a workflow draft: the pre-check, the budget, how a run ends, cancel, re-run, history, choosing an issue to test against, and the suggestions a run produces."
+description: "The Copilot page: the Visual, Code and Copilot views of one draft, starting a workflow from a conversation, promoting and discarding a draft, and the deep dry run with its budget, history and suggestions."
 ---
 
 The **Workflow Copilot** drafts a workflow with you in conversation and then proves the draft
 on one of your own issues with a **dry run**, before anything is published. It edits the same
 draft the [Workflow Studio](./studio.mdx) and the [code view](./code.mdx) edit.
 
+## The Copilot page
+
+Open a workflow and choose **Copilot** in the **Visual** · **Code** · **Copilot** row, or go to
+`/workflows/<slug>/copilot`. **Workflows** stays selected in the sidebar: the three are views
+of one workflow, not three places.
+
+<Screenshot id="user-guide.workflows.copilot" />
+
+The three views show the **same draft**. Change a stage on the canvas, switch to **Copilot**,
+and the page is working from the changed draft. Nothing is lost by switching, with one
+exception that asks you first: leaving **Code** while the file does not parse — see
+[Workflows as code](./code.mdx#saving-and-the-round-trip-with-the-canvas).
+
+The page head has two actions, **Discard draft** and **Promote draft → `<slug>` vN**.
+
 :::info[The page is arriving in parts]
 
-The Copilot's own page — the conversation, the draft's stage list and the dry-run card — is
-not in the app yet. What is delivered is the dry run behind that card and the suggestions it
-produces, which this page describes. Until the page arrives, a dry run and its suggestions are
-started and read through the
+The conversation, the list of draft stages and the dry-run card are not on the page yet. Their
+places are marked, each saying which piece is still to come. Until they arrive, a conversation,
+a dry run and its suggestions are started and read through the
 [REST API](../../cli/rest-api.mdx#the-api-description) from a signed-in session; an API token
 cannot start one.
 
 :::
+
+### Starting a workflow from a conversation
+
+Choose **+ New workflow** in the rail. Under **Start with**, pick **Copilot** instead of
+**Canvas**, then give the workflow its **Name** and **Slug** as usual. The new, empty workflow
+opens on its Copilot page rather than on the canvas. Opened from a Copilot page, the dialog
+already has **Copilot** selected.
+
+### Promoting a draft
+
+**Promote draft → `<slug>` vN** publishes the draft as the workflow's next version, for
+example **Promote draft → security-patch v1**. It is the same publish the
+[Studio](./studio.mdx#publishing-a-version) does, with the same checks.
+
+Before anything is published, a confirmation says **What is being published**: the version,
+the draft it comes from, and each **guard** — a promise made about the workflow — with where
+that promise is actually enforced:
+
+| Guard | Comes from | Enforced |
+| --- | --- | --- |
+| **never auto-merge** | The workflow itself: no stage ends by merging on its own. | **Enforced on real runs.** |
+| **spend cap $5.00/run** | Something you asked for in the conversation. | **Not enforced on real runs yet.** It limits [dry runs](#the-budget) of the workflow only. |
+
+A guard marked **Not enforced on real runs yet** is not a protection once published, and the
+confirmation says so. To cap what real runs spend, use the
+[spend guard](../../administration/policies.mdx) in the workspace's policies.
+
+If the checks find problems, nothing is published. Each finding names the stage it is about.
+
+When a promote succeeds, runs queued from then on use the new version, and the conversation
+that produced it is closed and kept **read-only**.
+
+### Unresolved references
+
+A draft can name things the workspace does not have yet — a skill, a task route or a model
+alias. The page says so **before** you press Promote, under the buttons:
+
+- **This draft cannot be promoted yet** — the draft names a **model alias** the workspace does
+  not have. **Promote** is unavailable, each reference is listed as
+  `stage <stage> · <name>`, and **Resolve them on the Visual surface** takes you to the canvas.
+- **N unresolved references are flagged** — the draft names a **skill** or a **task route**
+  that does not exist yet. These do not stop a promote; they are published as they are, and a
+  stage that depends on one will not do its work until it exists.
+
+A workflow with no draft has nothing to promote, and the button says that too.
+
+### Discarding a draft
+
+**Discard draft** asks **Discard this draft?** and, if you confirm, throws the draft away. It
+cannot be brought back.
+
+- The **workflow stays**. It returns to its published version; a workflow that was never
+  published is left empty.
+- The **conversation is kept, read-only**, so what was tried can still be read on the page.
+
+A draft cannot be discarded while a dry run of it is still running. Wait for the dry run to
+finish, or cancel it, and discard again.
+
+### Who can promote and discard
+
+Owners and admins. Everyone else sees the page read-only, with a note saying so: the buttons
+are shown but unavailable, and a conversation can be read but not continued.
 
 ## Dry runs
 

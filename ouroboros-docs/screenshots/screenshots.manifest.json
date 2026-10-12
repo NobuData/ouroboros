@@ -279,6 +279,19 @@
       "seedRef": "3ec63a74c0d952aaa15b01a3a180d40eb12b9caa"
     },
     {
+      "id": "user-guide.workflows.copilot",
+      "route": "/workflows/security-patch/copilot",
+      "workspace": "acme-robotics",
+      "ready": "#copilot-conversation",
+      "clip": "page",
+      "masks": [],
+      "caption": "The Copilot page of a workflow: the Visual, Code and Copilot views, Discard draft and Promote draft, and the unresolved references flagged under them.",
+      "alt": "The Workflow Studio's Copilot page open on security-patch, headed Describe the workflow. Watch it build. Test it before it touches anything. The Visual, Code and Copilot tabs have Copilot selected, and Discard draft and Promote draft → security-patch v1 buttons sit above a note that 2 unresolved references are flagged. Below are marked places for the conversation, the draft stages and the dry run.",
+      "capturedAt": "2026-10-11T21:38:12.842Z",
+      "uiVersion": "0.152.0",
+      "seedRef": "3b4298bb6536c1b9d3da5e387a6e63903691fa33"
+    },
+    {
       "id": "user-guide.workflows",
       "route": "/workflows",
       "workspace": "acme-robotics",
@@ -288,10 +301,10 @@
         ".studio__sub"
       ],
       "caption": "The Workflow Studio: every workflow in the rail, the selected one on the canvas, and the inspector beside it.",
-      "alt": "The Workflow Studio open on standard-fix, with Browse templates, Dry run and Publish v15 buttons, Visual, Code and Copilot (soon) tabs, a rail listing standard-fix, feature-loop, deps-refresh, docs-loop, hotfix-p0 (paused) and security-patch (not published) above + New workflow, the canvas with the first stages, and an empty inspector asking you to select a stage or an edge.",
-      "capturedAt": "2026-10-08T23:45:50.543Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "05111ae944803270844598a92960dce6fb331961"
+      "alt": "The Workflow Studio open on standard-fix, with Browse templates, Dry run and Publish v15 buttons, Visual, Code and Copilot tabs, a rail listing standard-fix, feature-loop, deps-refresh, docs-loop, hotfix-p0 (paused) and security-patch (not published) above + New workflow, the canvas with the first stages, and an empty inspector asking you to select a stage or an edge.",
+      "capturedAt": "2026-10-11T21:38:18.389Z",
+      "uiVersion": "0.152.0",
+      "seedRef": "3b4298bb6536c1b9d3da5e387a6e63903691fa33"
     },
     {
       "id": "user-guide.workflow.canvas",

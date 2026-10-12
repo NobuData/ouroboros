@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.17"
+  version: "0.41.18"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -556,6 +556,12 @@ tags:
       operation on the same draft the canvas and the code editor edit (decision **W2**), validated
       before it is applied and recorded with `copilot` provenance; questions are chip rows the
       person answers; a reply streams as server-sent events so the draft is seen being built.
+
+      A conversation ends one of two ways. **Promote to workflow** is the workflow's own
+      `POST /api/v1/workflows/{id}/publish`, which closes the active session as `promoted`;
+      `GET …/copilot/promotion` says beforehand what it would publish, naming each guard with
+      where it is really enforced. **Discard draft** is `POST …/copilot/discard`: the draft
+      goes, the session closes as `discarded`, the workflow and the transcript stay.
 
   - name: dry-runs
     description: |-
@@ -21281,6 +21287,12 @@ paths:
         back through `GET /api/v1/workflows/{id}?version=15`, which is the same resource the
         workflow already had, so a `201` would owe a `Location` that names nothing new.
 
+        **Publishing promotes the conversation.** When the workflow has an active copilot
+        session, it moves to `promoted` with its `closedAt` in the same transaction as the
+        publish (CE.1, [#565](https://github.com/NobuData/ouroboros/issues/565)); its transcript
+        stays readable through `GET …/copilot/conversation`. A workflow with no active session
+        publishes exactly as before.
+
         **`owner` or `admin`.**
       operationId: publishWorkflow
       parameters:
@@ -22444,13 +22456,20 @@ paths:
   /api/v1/workflows/{id}/copilot/conversation:
     get:
       tags: [copilot]
-      summary: Read the active conversation and the draft as it stands
+      summary: Read the conversation and the draft as it stands
       description: |-
         Decision **W9**: switching to the canvas or the code view and back preserves the
         conversation. This is what a surface reads when it comes back — the active session, its
         messages in order (chips with their answers, tool traces, per-exchange cost), and the
         shared draft: its `etag` (the same one the canvas sends as `If-Match`), its `v0.N` label,
         the provenance summary and the W7 unresolved-reference warnings.
+
+        **A closed conversation stays readable.** When no session is active, this answers the
+        workflow's **most recently closed** session — `promoted` or `discarded`, newest
+        `closedAt`; `session.status` says which — with its messages, read-only: every route
+        that writes to a session still answers `409 copilot_session_closed`. The `draft` beside
+        it is the workflow's draft *now* (after a discard, `definition` is `null`). A workflow
+        that never had a conversation is `404 copilot_session_not_found`.
 
         Every member may read it, like the draft.
       operationId: readCopilotConversation
@@ -22537,11 +22556,247 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "404":
-          description: "`workflow_not_found`, or `copilot_session_not_found` when no session is active."
+          description: "`workflow_not_found`, or `copilot_session_not_found` when the workflow never had a session — active or closed."
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "422":
+          description: "`validation_failed` — the id is not a uuid."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/workflows/{id}/copilot/promotion:
+    get:
+      tags: [copilot]
+      summary: Read what Promote to workflow would publish
+      description: |-
+        The promote dialog's content (mockup 20; CE.1,
+        [#565](https://github.com/NobuData/ouroboros/issues/565)): the version a publish would
+        create (`security-patch v1`), the draft it would publish, the conversation it would
+        close, and — said honestly — the **guards** and the **unresolved references**.
+
+        **Guards are named with their real enforcement; none is compiled into configuration.**
+
+        | `id` | listed when | `source` | `enforcement` |
+        |---|---|---|---|
+        | `never_auto_merge` | the draft has at least one `term` node and none of them is `open_pr_automerge` | `definition` | `enforced` — the graph itself cannot merge |
+        | `spend_guard` | the conversation proposed a per-run spend cap (the copilot's `set_guard`) | `conversation` | `dry_run_only` — dry runs are held to it; **real runs are not yet**, because the workflow language has no guard construct |
+
+        `enforcedBy` is one sentence saying where, for a person to read.
+
+        **References** are the draft's W7 warnings with `blocking`: `true` exactly for
+        `reference.unknown_alias`, which the publish gate refuses; an unknown skill or task
+        route is advisory and publishes.
+
+        **`blocked` is what is known without validating** — no draft, or a blocking reference —
+        with a sentence each in `blockedReasons`. This read does **not** run the engine's
+        validation: `POST …/publish` does, and its `422 workflow_definition_invalid` findings
+        remain the authority. A promotion that is not `blocked` may still be refused there.
+
+        Promoting is `POST /api/v1/workflows/{id}/publish`; `draft.etag` is the draft slot's
+        etag as every save uses it.
+
+        Every member may read it, like the draft.
+      operationId: readCopilotPromotion
+      parameters:
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The promotion as it stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CopilotPromotion"
+              examples:
+                ready:
+                  summary: The seeded security-patch draft — two guards, two advisory references
+                  value:
+                    workflow:
+                      id: 5eed0089-0000-4000-8000-000000000001
+                      slug: security-patch
+                      name: security-patch
+                    publishes: {version: 1, label: security-patch v1}
+                    draft:
+                      present: true
+                      label: v0.3
+                      etag: 2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0
+                    session:
+                      id: 5eed008a-0000-4000-8000-000000000001
+                      status: active
+                    guards:
+                      - id: never_auto_merge
+                        label: never auto-merge
+                        source: definition
+                        enforcement: enforced
+                        enforcedBy: "Enforced by the workflow itself: every run ends at human review (`needs_review`), and no ending of this workflow merges on its own (`open_pr_automerge`)."
+                      - id: spend_guard
+                        label: spend cap $5.00/run
+                        source: conversation
+                        enforcement: dry_run_only
+                        enforcedBy: Honoured by dry runs of this workflow. Not enforced on real runs yet — the workflow language has no guard construct.
+                    references:
+                      - code: reference.unknown_skill
+                        node: analyze
+                        name: advisory-db
+                        path: /nodes/1/config/skill
+                        message: No skill named `advisory-db` is defined in this workspace yet.
+                        blocking: false
+                      - code: reference.unknown_task
+                        node: exploit-verify
+                        name: exploit-verify
+                        path: /nodes/9/config/routing/inherit_task
+                        message: No task route named `exploit-verify` exists in this workspace yet.
+                        blocking: false
+                    blocked: false
+                    blockedReasons: []
+                noDraft:
+                  summary: After a discard — nothing to promote
+                  value:
+                    workflow:
+                      id: 5eed0089-0000-4000-8000-000000000001
+                      slug: security-patch
+                      name: security-patch
+                    publishes: {version: 1, label: security-patch v1}
+                    draft:
+                      present: false
+                      label: v0.0
+                      etag: 9a3c5e7f1b2d4f6a8c0e2a4c6e8f0b1d3f5a7c9e1b3d5f7a9c1e3a5c7e9f1b3d
+                    session:
+                      id: 5eed008a-0000-4000-8000-000000000001
+                      status: discarded
+                    guards: []
+                    references: []
+                    blocked: true
+                    blockedReasons: [There is no draft to promote.]
+        "400":
+          description: "`organization_required`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "`unauthenticated`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "`workflow_not_found` — no such workflow for this caller."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "`validation_failed` — the id is not a uuid."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/workflows/{id}/copilot/discard:
+    post:
+      tags: [copilot]
+      summary: Discard the draft and close the conversation
+      description: |-
+        **Discard draft** (mockup 20's head; CE.1,
+        [#565](https://github.com/NobuData/ouroboros/issues/565)). Atomically:
+
+        * **the draft is dropped** — the draft row, the operation log of that draft and its
+          `v0.N` counters. The workflow **stays**: it is its published version again, or, never
+          published, an empty unpublished workflow that is still listed. The next edit starts a
+          new draft at revision 1;
+        * **the active copilot session, if any, moves to `discarded`** with its `closedAt`. Its
+          messages are kept and stay readable through `GET …/copilot/conversation`.
+
+        Either half alone is enough: a draft nobody was talking about is discarded
+        (`session` is `null`), and a conversation that never produced a draft is closed
+        (`draftDiscarded` is `false`). With neither there is nothing to do, and the answer is
+        `409 copilot_nothing_to_discard`.
+
+        **Refused while a dry run of the workflow is in progress** — `409 dry_run_in_progress`,
+        `details.dryRunId` naming the run to follow or cancel: it was started on the draft
+        being discarded and would go on spending against it. Published versions are never
+        touched.
+
+        No request body. **`owner` or `admin`.**
+      operationId: discardCopilotDraft
+      parameters:
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: What was discarded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CopilotDiscard"
+              example:
+                workflowId: 5eed0089-0000-4000-8000-000000000001
+                draftDiscarded: true
+                session:
+                  id: 5eed008a-0000-4000-8000-000000000001
+                  workflowId: 5eed0089-0000-4000-8000-000000000001
+                  status: discarded
+                  draftName: security-patch
+                  modelProvenance:
+                    - seq: 2
+                      alias: coder-max
+                      modelId: claude-fable-5
+                  createdAt: "2026-10-08T15:02:00.000Z"
+                  closedAt: "2026-10-11T09:30:00.000Z"
+                  lastSeq: 6
+        "400":
+          description: "`organization_required` — this session is not acting in any workspace."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "`unauthenticated`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`forbidden` — a member below `admin`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "`workflow_not_found` — no such workflow for this caller."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `copilot_nothing_to_discard` — the workflow has neither a draft nor an active
+            session; `dry_run_in_progress` — a dry run of this workflow has not ended
+            (`details.dryRunId`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                nothing:
+                  summary: Nothing to discard
+                  value:
+                    code: copilot_nothing_to_discard
+                    message: This workflow has no draft and no active copilot session — there is nothing to discard.
+                    details:
+                      workflowId: 5eed0089-0000-4000-8000-000000000001
+                dryRun:
+                  summary: A dry run is still going
+                  value:
+                    code: dry_run_in_progress
+                    message: This workflow already has a dry run in progress. Follow it, or cancel it first.
+                    details:
+                      dryRunId: 5eed008b-0000-4000-8000-000000000001
         "422":
           description: "`validation_failed` — the id is not a uuid."
           content:
@@ -60109,6 +60364,155 @@ components:
             $ref: "#/components/schemas/CopilotMessage"
         draft:
           $ref: "#/components/schemas/CopilotDraft"
+
+    CopilotPromotionGuard:
+      type: object
+      title: CopilotPromotionGuard
+      description: |-
+        One guard a promotion carries, with where it is really enforced (CE.1, #565). A guard is
+        never compiled into new configuration on promote: it is named, and `enforcement` says
+        whether real runs are held to it.
+      additionalProperties: false
+      required: [id, label, source, enforcement, enforcedBy]
+      properties:
+        id:
+          type: string
+          enum: [never_auto_merge, spend_guard]
+        label:
+          type: string
+          description: The chip — `never auto-merge`, or `spend cap $5.00/run`.
+          examples: [never auto-merge, spend cap $5.00/run]
+        source:
+          type: string
+          enum: [definition, conversation]
+          description: "`definition` — the document itself says it; `conversation` — the copilot proposed it and it is not in the document."
+        enforcement:
+          type: string
+          enum: [enforced, dry_run_only]
+          description: "`enforced` on every real run, or `dry_run_only` — honoured by dry runs and not yet by real ones."
+        enforcedBy:
+          type: string
+          description: One sentence naming where the guard is enforced — or is not yet.
+
+    CopilotPromotionReference:
+      type: object
+      title: CopilotPromotionReference
+      description: |-
+        An unresolved reference of the draft — a `CopilotWarning` — with whether the publish
+        gate refuses it.
+      additionalProperties: false
+      required: [code, node, name, path, message, blocking]
+      properties:
+        code:
+          type: string
+          enum: [reference.unknown_skill, reference.unknown_alias, reference.unknown_task]
+        node:
+          type: string
+          description: The stage that names it.
+        name:
+          type: string
+          description: The name that resolved to nothing.
+        path:
+          type: string
+          description: An RFC 6901 pointer to the value.
+        message:
+          type: string
+        blocking:
+          type: boolean
+          description: "`true` exactly for `reference.unknown_alias`, which publishing refuses; an unknown skill or task route is advisory."
+
+    CopilotPromotion:
+      type: object
+      title: CopilotPromotion
+      description: What **Promote to workflow** would publish (CE.1, #565).
+      additionalProperties: false
+      required: [workflow, publishes, draft, session, guards, references, blocked, blockedReasons]
+      properties:
+        workflow:
+          type: object
+          additionalProperties: false
+          required: [id, slug, name]
+          properties:
+            id: {type: string, format: uuid}
+            slug: {type: string}
+            name: {type: string}
+        publishes:
+          type: object
+          description: The version a publish would create.
+          additionalProperties: false
+          required: [version, label]
+          properties:
+            version:
+              type: integer
+              minimum: 1
+              description: One above the workflow's highest published version — `1` for a workflow never published.
+            label:
+              type: string
+              description: "`<slug> v<version>`."
+              examples: [security-patch v1]
+        draft:
+          type: object
+          additionalProperties: false
+          required: [present, label, etag]
+          properties:
+            present:
+              type: boolean
+              description: "`false` when the workflow has no draft — nothing to promote."
+            label:
+              type: string
+              description: "`v{published}.{rev}`."
+              examples: [v0.3]
+            etag:
+              type: string
+              description: The draft slot's etag — what a save sends as `If-Match`.
+        session:
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [id, status]
+              properties:
+                id: {type: string, format: uuid}
+                status:
+                  type: string
+                  enum: [active, promoted, discarded]
+            - type: "null"
+          description: The active session, else the most recently closed one, else `null` — a workflow nobody talked to the copilot about.
+        guards:
+          type: array
+          items:
+            $ref: "#/components/schemas/CopilotPromotionGuard"
+        references:
+          type: array
+          description: The draft's unresolved references, in document order.
+          items:
+            $ref: "#/components/schemas/CopilotPromotionReference"
+        blocked:
+          type: boolean
+          description: Whether something already known stands in the way — no draft, or a blocking reference. Publishing still validates; this is not its verdict.
+        blockedReasons:
+          type: array
+          description: A sentence per reason. Empty when `blocked` is `false`.
+          items:
+            type: string
+
+    CopilotDiscard:
+      type: object
+      title: CopilotDiscard
+      description: What **Discard draft** did (CE.1, #565).
+      additionalProperties: false
+      required: [workflowId, draftDiscarded, session]
+      properties:
+        workflowId:
+          type: string
+          format: uuid
+        draftDiscarded:
+          type: boolean
+          description: Whether a draft was removed — `false` when only a conversation was closed.
+        session:
+          oneOf:
+            - $ref: "#/components/schemas/CopilotSession"
+            - type: "null"
+          description: The session just closed as `discarded`, or `null` when none was active.
 
     StartDryRunRequest:
       type: object

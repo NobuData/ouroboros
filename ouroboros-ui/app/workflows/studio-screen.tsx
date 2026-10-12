@@ -68,7 +68,8 @@ import "./workflows.css";
  *
  * ### What this page does not pretend
  *
- * **Code** and **Copilot** are labelled *soon* rather than linked to a `404`; **Browse templates**
+ * **Code** and **Copilot** link to this workflow's own surfaces and, with no workflow selected,
+ * are inert and say why rather than linking to a `404`; **Browse templates**
  * is drawn where the mockup draws it and is inert with the issue it waits for as its reason (§ 3.5).
  * **Dry run** and **Publish** act on an open workflow and, on a page whose workflow could not be read,
  * are inert with that reason — a control that cannot act says what is missing, never quietly does

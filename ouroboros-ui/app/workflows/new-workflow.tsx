@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
 
-import { workflowPath } from "@/app/paths";
+import { workflowCopilotPath, workflowPath } from "@/app/paths";
 import { ShellOverlay } from "@/app/shell/overlay";
 import { Button, type ButtonTone, TextField } from "@/app/ui";
 
@@ -11,16 +11,20 @@ import { type CreateOutcome, createWorkflow } from "./create-actions";
 import {
   CREATE_CANCEL,
   CREATE_NOTE,
+  CREATE_STARTS,
   CREATE_SUBMIT,
   CREATE_TITLE,
   CREATING,
   type CreateFailure,
+  type CreateStart,
   MAX_NAME_LENGTH,
   MAX_SLUG_LENGTH,
   NAME_HINT,
   NAME_LABEL,
   SLUG_HINT,
   SLUG_LABEL,
+  START_LABEL,
+  START_OPTIONS,
   createBody,
   createFailure,
   deriveSlug,
@@ -59,11 +63,19 @@ import "./workflows.css";
  * `createFailure` puts it under the same box. A reader never learns about a taken slug from
  * anywhere but the slug field.
  *
+ * ### Start with the canvas, or with the copilot
+ *
+ * CE.1 ([#565](https://github.com/NobuData/ouroboros/issues/565)) adds one choice under the two
+ * boxes: **Start with** *Canvas* or *Copilot*. It decides only where the new workflow opens — the
+ * `POST` and the blank draft it makes are the same — and it starts no conversation: the copilot's
+ * first message does that. *Canvas* is the default everywhere but on the copilot's own rail,
+ * where creating a workflow and being sent to another surface would be a surprise.
+ *
  * ### On success the workflow is on the rail, selected
  *
  * The dialog closes and the route is navigated to `/workflows/<slug>` — `app/paths.ts`'s
- * `workflowPath` — so the server re-reads the rail, the new entry is on it, and the head is
- * already open on it. The refresh after the navigation is for the one case the navigation is
+ * `workflowPath` — or to `/workflows/<slug>/copilot` when the copilot was chosen, so the server
+ * re-reads the rail, the new entry is on it, and the head is already open on it. The refresh after the navigation is for the one case the navigation is
  * a no-op: a reader who linked to `/workflows/hotfix-p1` before `hotfix-p1` existed and then
  * created it.
  */
@@ -91,6 +103,11 @@ export interface NewWorkflowProps {
    * pass another where the control is not the rail's tile, so it does not wear the tile's shape.
    */
   readonly className?: string;
+  /**
+   * Which **Start with** choice the dialog opens on. Defaults to `canvas` — the dialog's
+   * behaviour before CE.1 (#565); the copilot's rail passes `copilot`.
+   */
+  readonly start?: CreateStart;
 }
 
 /**
@@ -105,6 +122,7 @@ export function NewWorkflow({
   label = NEW_WORKFLOW_LABEL,
   tone = "ghost",
   className = "studio-rail__new",
+  start = "canvas",
 }: NewWorkflowProps) {
   const router = useRouter();
   const fields = useId();
@@ -114,6 +132,8 @@ export function NewWorkflow({
   const [slug, setSlug] = useState("");
   /** Whether the slug box still shows what the name derives to, or what the reader typed. */
   const [slugFollows, setSlugFollows] = useState(true);
+  /** Where the workflow opens once it is created. */
+  const [startWith, setStartWith] = useState<CreateStart>(start);
   const [failure, setFailure] = useState<CreateFailure | null>(null);
 
   const [saving, startSaving] = useTransition();
@@ -129,6 +149,7 @@ export function NewWorkflow({
     setName("");
     setSlug("");
     setSlugFollows(true);
+    setStartWith(start);
     setFailure(null);
   }
 
@@ -187,7 +208,7 @@ export function NewWorkflow({
       // re-reads the rail — a different slug is a different URL and cannot be answered from
       // the router's cache — and the refresh after it is for the one case the navigation is a
       // no-op.
-      router.push(workflowPath(outcome.slug));
+      router.push(startWith === "copilot" ? workflowCopilotPath(outcome.slug) : workflowPath(outcome.slug));
       router.refresh();
     });
   }
@@ -236,6 +257,30 @@ export function NewWorkflow({
             spellCheck={false}
             value={slug}
           />
+
+          <fieldset className="studio-create__start">
+            <legend className="studio-create__start-legend">{START_LABEL}</legend>
+            {CREATE_STARTS.map((option) => (
+              // The label names the radio and the hint describes it, so the name is one word.
+              <div className="studio-create__option" key={option}>
+                <input
+                  aria-describedby={`${fields}-start-${option}-hint`}
+                  checked={startWith === option}
+                  id={`${fields}-start-${option}`}
+                  name="start"
+                  onChange={() => { setStartWith(option); }}
+                  type="radio"
+                  value={option}
+                />
+                <label className="studio-create__option-label" htmlFor={`${fields}-start-${option}`}>
+                  {START_OPTIONS[option].label}
+                </label>
+                <span className="studio-create__option-hint" id={`${fields}-start-${option}-hint`}>
+                  {START_OPTIONS[option].hint}
+                </span>
+              </div>
+            ))}
+          </fieldset>
 
           {failure !== null && (
             <p className="studio-create__failure" role="alert">

@@ -393,4 +393,38 @@ describe("the workflows repository", () => {
       ).toBe(false);
     });
   });
+
+  describe("promoting the conversation", () => {
+    it("closes the workflow's active copilot session as promoted, in the publish's transaction", async () => {
+      database.answers({ rows: [{ id: "5eed008a-0000-4000-8000-000000000001" }] });
+
+      await expect(
+        workflows.promoteCopilotSession("acme-robotics-id", WORKFLOW, asTransaction(database)),
+      ).resolves.toBe("5eed008a-0000-4000-8000-000000000001");
+
+      const [statement] = database.statements;
+      expect(statement.sql).toContain('update "ouroboros"."copilot_sessions"');
+      expect(statement.sql).toContain('"status" = $1');
+      // The database's clock, so a session cannot close before it was created.
+      expect(statement.sql).toContain('"closed_at" = clock_timestamp()');
+      expect(statement.sql).toContain('"organization_id" = $2');
+      expect(statement.sql).toContain('"workflow_id" = $3');
+      expect(statement.sql).toContain('"status" = $4');
+      expect(statement.parameters).toEqual(["promoted", "acme-robotics-id", WORKFLOW, "active"]);
+    });
+
+    it("answers undefined for a workflow nobody was talking to the copilot about", async () => {
+      await expect(
+        workflows.promoteCopilotSession("acme-robotics-id", WORKFLOW, asTransaction(database)),
+      ).resolves.toBeUndefined();
+    });
+
+    it("never touches the transcript", async () => {
+      await workflows.promoteCopilotSession("acme-robotics-id", WORKFLOW, asTransaction(database));
+
+      expect(database.sql().some((statement) => statement.includes("copilot_messages"))).toBe(
+        false,
+      );
+    });
+  });
 });

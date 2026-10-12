@@ -1,4 +1,4 @@
-import { PageSubnav, SubnavInert, SubnavSoon } from "@/app/ui";
+import { PageSubnav, SubnavInert } from "@/app/ui";
 
 import { ModeLink } from "./mode-guard";
 import { STUDIO_EYEBROW, type StudioSurface, isLiveTab, studioTabs } from "./view";
@@ -6,31 +6,32 @@ import { STUDIO_EYEBROW, type StudioSurface, isLiveTab, studioTabs } from "./vie
 import "./workflows.css";
 
 /**
- * Mockups 04 and 05's segmented control — Visual · Code · Copilot — as the CP.4 `PageSubnav`
+ * Mockups 04, 05 and 20's segmented control — Visual · Code · Copilot — as the CP.4 `PageSubnav`
  * (S.1, [#147](https://github.com/NobuData/ouroboros/issues/147); Code live since V.1,
- * [#169](https://github.com/NobuData/ouroboros/issues/169)).
+ * [#169](https://github.com/NobuData/ouroboros/issues/169); Copilot live since CE.1,
+ * [#565](https://github.com/NobuData/ouroboros/issues/565)).
  *
  * The mockups draw it as a `.seg` pill beside the actions. The shell compliance addendum
  * (`docs/ROADMAP_MOCKUP_04_WORKFLOW_BUILDER.md` § UI/UX Shell Compliance) renders it as the
  * section's tab row instead — the same primitive Models' Routing / Registry / Providers row
  * is, sticky inside the pane's own scroll — because the three segments *are* sub-surfaces of
- * one sidebar entry (design system § 1.2): the code view is a tab of this surface, not a
- * sidebar entry of its own, and **Workflows** stays lit on all three.
+ * one sidebar entry (design system § 1.2): the code view and the copilot are tabs of this
+ * surface, not sidebar entries of their own, and **Workflows** stays lit on all three.
  *
- * ### Visual and Code are one workflow's two URLs
+ * ### Three segments are one workflow's three URLs
  *
  * Each links to the selected workflow's own surface, and each is a `ModeLink`
  * (`app/workflows/mode-guard.tsx`): a plain client-side link, unless pressing it would discard
- * code that has not parsed yet (decision **C4**), in which case the reader is asked first.
- * Nothing else about a switch needs guarding — both editors read the one draft (**C3**).
+ * code that has not parsed yet (decision **C4**), in which case the reader is asked first —
+ * leaving Code for Copilot is guarded exactly as leaving it for Visual is. Nothing else about a
+ * switch needs guarding: all three read the one draft (**C3**), and the copilot's conversation
+ * is the service's and is read again on arrival (**W9**).
  *
- * ### Two kinds of segment lead nowhere, and say so
+ * ### A segment with nothing to open leads nowhere, and says so
  *
- * **Copilot** is not built: it is `SubnavSoon`, a `<span>` out of the tab order with its note as
- * the tooltip and the word *soon* in the text, naming CE.1
- * ([#565](https://github.com/NobuData/ouroboros/issues/565)). **Code** on a page with no workflow
- * selected is built but has nothing to open, so it is `SubnavInert` — the same span without the
- * mark, because *soon* would be untrue.
+ * **Code** and **Copilot** on a page with no workflow selected are built but have nothing to
+ * open, so each is `SubnavInert` — a `<span>` out of the tab order with its note as the tooltip,
+ * and no *soon* mark, which would be untrue.
  *
  * A Server Component: it reads nothing. `PageSubnav` and `ModeLink` are Client Components, and
  * rendering them from here is the ordinary direction.
@@ -59,11 +60,7 @@ export function StudioSubnav({
           );
         }
 
-        return tab.soon ? (
-          <SubnavSoon key={tab.id} label={tab.label} note={tab.note} />
-        ) : (
-          <SubnavInert key={tab.id} label={tab.label} note={tab.note} />
-        );
+        return <SubnavInert key={tab.id} label={tab.label} note={tab.note} />;
       })}
     </PageSubnav>
   );

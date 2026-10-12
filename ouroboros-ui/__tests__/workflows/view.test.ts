@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { WORKFLOWS_PATH, workflowCodePath, workflowPath } from "@/app/paths";
+import { WORKFLOWS_PATH, workflowCodePath, workflowCopilotPath, workflowPath } from "@/app/paths";
 import {
   ANY_ISSUE,
   BROWSE_TEMPLATES_SOON,
   CODE_NEEDS_WORKFLOW_NOTE,
-  COPILOT_SOON_NOTE,
+  COPILOT_NEEDS_WORKFLOW_NOTE,
   DRY_RUN_NEEDS_WORKFLOW,
   NEW_WORKFLOW_MEMBER_REASON,
   NOT_PUBLISHED,
@@ -362,39 +362,44 @@ describe("the segmented control", () => {
     ]);
   });
 
-  it("links the two live segments to this workflow's own surfaces", () => {
-    // V.1 (#169) turns Code on: Visual and Code are one workflow's two URLs.
-    const [visual, code] = studioTabs("standard-fix");
+  it("links all three segments to this workflow's own surfaces", () => {
+    // V.1 (#169) turned Code on and CE.1 (#565) turns Copilot on: one workflow's three URLs.
+    const [visual, code, copilot] = studioTabs("standard-fix");
 
     expect(isLiveTab(visual!) && visual.href).toBe(workflowPath("standard-fix"));
     expect(isLiveTab(code!) && code.href).toBe(workflowCodePath("standard-fix"));
+    expect(isLiveTab(copilot!) && copilot.href).toBe(workflowCopilotPath("standard-fix"));
     expect(workflowCodePath("standard-fix")).toBe("/workflows/standard-fix/code");
+    expect(workflowCopilotPath("standard-fix")).toBe("/workflows/standard-fix/copilot");
+  });
+
+  it("encodes the slug in the copilot path, as the other two paths do", () => {
+    expect(workflowCopilotPath("a b")).toBe("/workflows/a%20b/copilot");
   });
 
   it("encodes the slug in the code path, as the visual path does", () => {
     expect(workflowCodePath("a b")).toBe("/workflows/a%20b/code");
   });
 
-  it("links Visual to the landing when nothing is selected, and makes Code inert without calling it soon", () => {
-    // A file is always one workflow's, so with none selected Code has nothing to open — and it
-    // is built, so *soon* would be untrue.
-    const [visual, code] = studioTabs(null);
+  it("links Visual to the landing when nothing is selected, and makes Code and Copilot inert with a reason", () => {
+    // A file and a conversation are always one workflow's, so with none selected they have
+    // nothing to open — and both are built, so neither is called *soon*.
+    const [visual, code, copilot] = studioTabs(null);
 
     expect(isLiveTab(visual!) && visual.href).toBe(WORKFLOWS_PATH);
     expect(isLiveTab(code!)).toBe(false);
-    expect(!isLiveTab(code!) && code.soon).toBe(false);
     expect(!isLiveTab(code!) && code.note).toBe(CODE_NEEDS_WORKFLOW_NOTE);
+    expect(isLiveTab(copilot!)).toBe(false);
+    expect(!isLiveTab(copilot!) && copilot.note).toBe(COPILOT_NEEDS_WORKFLOW_NOTE);
   });
 
-  it("labels Copilot soon, with the issue that builds it, whether or not a workflow is selected", () => {
+  it("carries no soon state any more, and names no issue as what Copilot waits for (#565)", () => {
     for (const slug of ["standard-fix", null]) {
-      const [, , copilot] = studioTabs(slug);
-
-      expect(isLiveTab(copilot!)).toBe(false);
-      expect(!isLiveTab(copilot!) && copilot.soon).toBe(true);
-      expect(!isLiveTab(copilot!) && copilot.note).toBe(COPILOT_SOON_NOTE);
+      for (const tab of studioTabs(slug)) {
+        expect(tab).not.toHaveProperty("soon");
+        expect(isLiveTab(tab) ? "" : tab.note).not.toMatch(/#\d+|soon|arrives/);
+      }
     }
-    expect(COPILOT_SOON_NOTE).toMatch(/#565/);
   });
 
   it("names the section the way the eyebrow does", () => {
@@ -443,6 +448,17 @@ describe("the rail", () => {
   it("links each entry to its own studio URL", () => {
     for (const item of railItems(seededRail(), null)) {
       expect(item.href).toBe(workflowPath(item.slug));
+    }
+  });
+
+  it("links each entry to its own conversation on the copilot's rail, and to the canvas on every other (#565)", () => {
+    for (const item of railItems(seededRail(), null, "copilot")) {
+      expect(item.href).toBe(workflowCopilotPath(item.slug));
+    }
+    for (const surface of ["visual", "code"] as const) {
+      for (const item of railItems(seededRail(), null, surface)) {
+        expect(item.href).toBe(workflowPath(item.slug));
+      }
     }
   });
 });

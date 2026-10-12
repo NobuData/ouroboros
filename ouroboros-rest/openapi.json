@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.41.17",
+    "version": "0.41.18",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -95,7 +95,7 @@
     },
     {
       "name": "copilot",
-      "description": "**The Workflow Copilot** (mockup 20, epic\n[#552](https://github.com/NobuData/ouroboros/issues/552)) — the conversational author of\nthe shared draft. One active session per workflow; every edit the copilot makes is a typed\noperation on the same draft the canvas and the code editor edit (decision **W2**), validated\nbefore it is applied and recorded with `copilot` provenance; questions are chip rows the\nperson answers; a reply streams as server-sent events so the draft is seen being built."
+      "description": "**The Workflow Copilot** (mockup 20, epic\n[#552](https://github.com/NobuData/ouroboros/issues/552)) — the conversational author of\nthe shared draft. One active session per workflow; every edit the copilot makes is a typed\noperation on the same draft the canvas and the code editor edit (decision **W2**), validated\nbefore it is applied and recorded with `copilot` provenance; questions are chip rows the\nperson answers; a reply streams as server-sent events so the draft is seen being built.\n\nA conversation ends one of two ways. **Promote to workflow** is the workflow's own\n`POST /api/v1/workflows/{id}/publish`, which closes the active session as `promoted`;\n`GET …/copilot/promotion` says beforehand what it would publish, naming each guard with\nwhere it is really enforced. **Discard draft** is `POST …/copilot/discard`: the draft\ngoes, the session closes as `discarded`, the workflow and the transcript stay."
     },
     {
       "name": "dry-runs",
@@ -23297,7 +23297,7 @@
           "workflows"
         ],
         "summary": "Publish the draft as the next immutable version",
-        "description": "The mockup's **Publish v15** — the draft's document frozen as the next version, behind\ntwo validators.\n\n**Both must be green.** The P.2 zod validator\n([#133](https://github.com/NobuData/ouroboros/issues/133)) runs first, in this process;\na document it refuses never reaches the second stage, because the engine cannot say\nanything useful about a document that does not parse and two copies of one complaint\nmake a list harder to act on. Then `ouroboros-engine`'s own reading of the DSL (R.2,\n[#144](https://github.com/NobuData/ouroboros/issues/144)) — the component that will\nexecute the definition — so the first time the two disagree is here rather than at\nruntime months later.\n\n**A finding from either is a `422`, and nothing is written.** Not rolled back: the\ngate runs before a transaction is opened, so there is no version to undo. Each finding\ncarries `source` (`dsl` or `engine`), the validator's own `code`, and an anchor —\n`node`, `edge`, or a `path` JSON Pointer — so the canvas can select the offending node\nwhen somebody clicks one.\n\n**The draft survives the publish.** The version is a new row; the draft keeps its\ndocument and its etag, so the canvas goes on autosaving into the same slot. Publishing\nagain with no edit in between writes the *next* version rather than revising the last\none — `workflow_versions` is immutable once published (decision **P1**), enforced in\nthe database for every role.\n\n**`200`, not `201`.** A version is not a resource with a URL of its own: it is read\nback through `GET /api/v1/workflows/{id}?version=15`, which is the same resource the\nworkflow already had, so a `201` would owe a `Location` that names nothing new.\n\n**`owner` or `admin`.**",
+        "description": "The mockup's **Publish v15** — the draft's document frozen as the next version, behind\ntwo validators.\n\n**Both must be green.** The P.2 zod validator\n([#133](https://github.com/NobuData/ouroboros/issues/133)) runs first, in this process;\na document it refuses never reaches the second stage, because the engine cannot say\nanything useful about a document that does not parse and two copies of one complaint\nmake a list harder to act on. Then `ouroboros-engine`'s own reading of the DSL (R.2,\n[#144](https://github.com/NobuData/ouroboros/issues/144)) — the component that will\nexecute the definition — so the first time the two disagree is here rather than at\nruntime months later.\n\n**A finding from either is a `422`, and nothing is written.** Not rolled back: the\ngate runs before a transaction is opened, so there is no version to undo. Each finding\ncarries `source` (`dsl` or `engine`), the validator's own `code`, and an anchor —\n`node`, `edge`, or a `path` JSON Pointer — so the canvas can select the offending node\nwhen somebody clicks one.\n\n**The draft survives the publish.** The version is a new row; the draft keeps its\ndocument and its etag, so the canvas goes on autosaving into the same slot. Publishing\nagain with no edit in between writes the *next* version rather than revising the last\none — `workflow_versions` is immutable once published (decision **P1**), enforced in\nthe database for every role.\n\n**`200`, not `201`.** A version is not a resource with a URL of its own: it is read\nback through `GET /api/v1/workflows/{id}?version=15`, which is the same resource the\nworkflow already had, so a `201` would owe a `Location` that names nothing new.\n\n**Publishing promotes the conversation.** When the workflow has an active copilot\nsession, it moves to `promoted` with its `closedAt` in the same transaction as the\npublish (CE.1, [#565](https://github.com/NobuData/ouroboros/issues/565)); its transcript\nstays readable through `GET …/copilot/conversation`. A workflow with no active session\npublishes exactly as before.\n\n**`owner` or `admin`.**",
         "operationId": "publishWorkflow",
         "parameters": [
           {
@@ -24583,8 +24583,8 @@
         "tags": [
           "copilot"
         ],
-        "summary": "Read the active conversation and the draft as it stands",
-        "description": "Decision **W9**: switching to the canvas or the code view and back preserves the\nconversation. This is what a surface reads when it comes back — the active session, its\nmessages in order (chips with their answers, tool traces, per-exchange cost), and the\nshared draft: its `etag` (the same one the canvas sends as `If-Match`), its `v0.N` label,\nthe provenance summary and the W7 unresolved-reference warnings.\n\nEvery member may read it, like the draft.",
+        "summary": "Read the conversation and the draft as it stands",
+        "description": "Decision **W9**: switching to the canvas or the code view and back preserves the\nconversation. This is what a surface reads when it comes back — the active session, its\nmessages in order (chips with their answers, tool traces, per-exchange cost), and the\nshared draft: its `etag` (the same one the canvas sends as `If-Match`), its `v0.N` label,\nthe provenance summary and the W7 unresolved-reference warnings.\n\n**A closed conversation stays readable.** When no session is active, this answers the\nworkflow's **most recently closed** session — `promoted` or `discarded`, newest\n`closedAt`; `session.status` says which — with its messages, read-only: every route\nthat writes to a session still answers `409 copilot_session_closed`. The `draft` beside\nit is the workflow's draft *now* (after a discard, `definition` is `null`). A workflow\nthat never had a conversation is `404 copilot_session_not_found`.\n\nEvery member may read it, like the draft.",
         "operationId": "readCopilotConversation",
         "parameters": [
           {
@@ -24752,11 +24752,303 @@
             }
           },
           "404": {
-            "description": "`workflow_not_found`, or `copilot_session_not_found` when no session is active.",
+            "description": "`workflow_not_found`, or `copilot_session_not_found` when the workflow never had a session — active or closed.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workflows/{id}/copilot/promotion": {
+      "get": {
+        "tags": [
+          "copilot"
+        ],
+        "summary": "Read what Promote to workflow would publish",
+        "description": "The promote dialog's content (mockup 20; CE.1,\n[#565](https://github.com/NobuData/ouroboros/issues/565)): the version a publish would\ncreate (`security-patch v1`), the draft it would publish, the conversation it would\nclose, and — said honestly — the **guards** and the **unresolved references**.\n\n**Guards are named with their real enforcement; none is compiled into configuration.**\n\n| `id` | listed when | `source` | `enforcement` |\n|---|---|---|---|\n| `never_auto_merge` | the draft has at least one `term` node and none of them is `open_pr_automerge` | `definition` | `enforced` — the graph itself cannot merge |\n| `spend_guard` | the conversation proposed a per-run spend cap (the copilot's `set_guard`) | `conversation` | `dry_run_only` — dry runs are held to it; **real runs are not yet**, because the workflow language has no guard construct |\n\n`enforcedBy` is one sentence saying where, for a person to read.\n\n**References** are the draft's W7 warnings with `blocking`: `true` exactly for\n`reference.unknown_alias`, which the publish gate refuses; an unknown skill or task\nroute is advisory and publishes.\n\n**`blocked` is what is known without validating** — no draft, or a blocking reference —\nwith a sentence each in `blockedReasons`. This read does **not** run the engine's\nvalidation: `POST …/publish` does, and its `422 workflow_definition_invalid` findings\nremain the authority. A promotion that is not `blocked` may still be refused there.\n\nPromoting is `POST /api/v1/workflows/{id}/publish`; `draft.etag` is the draft slot's\netag as every save uses it.\n\nEvery member may read it, like the draft.",
+        "operationId": "readCopilotPromotion",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The promotion as it stands.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CopilotPromotion"
+                },
+                "examples": {
+                  "ready": {
+                    "summary": "The seeded security-patch draft — two guards, two advisory references",
+                    "value": {
+                      "workflow": {
+                        "id": "5eed0089-0000-4000-8000-000000000001",
+                        "slug": "security-patch",
+                        "name": "security-patch"
+                      },
+                      "publishes": {
+                        "version": 1,
+                        "label": "security-patch v1"
+                      },
+                      "draft": {
+                        "present": true,
+                        "label": "v0.3",
+                        "etag": "2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0"
+                      },
+                      "session": {
+                        "id": "5eed008a-0000-4000-8000-000000000001",
+                        "status": "active"
+                      },
+                      "guards": [
+                        {
+                          "id": "never_auto_merge",
+                          "label": "never auto-merge",
+                          "source": "definition",
+                          "enforcement": "enforced",
+                          "enforcedBy": "Enforced by the workflow itself: every run ends at human review (`needs_review`), and no ending of this workflow merges on its own (`open_pr_automerge`)."
+                        },
+                        {
+                          "id": "spend_guard",
+                          "label": "spend cap $5.00/run",
+                          "source": "conversation",
+                          "enforcement": "dry_run_only",
+                          "enforcedBy": "Honoured by dry runs of this workflow. Not enforced on real runs yet — the workflow language has no guard construct."
+                        }
+                      ],
+                      "references": [
+                        {
+                          "code": "reference.unknown_skill",
+                          "node": "analyze",
+                          "name": "advisory-db",
+                          "path": "/nodes/1/config/skill",
+                          "message": "No skill named `advisory-db` is defined in this workspace yet.",
+                          "blocking": false
+                        },
+                        {
+                          "code": "reference.unknown_task",
+                          "node": "exploit-verify",
+                          "name": "exploit-verify",
+                          "path": "/nodes/9/config/routing/inherit_task",
+                          "message": "No task route named `exploit-verify` exists in this workspace yet.",
+                          "blocking": false
+                        }
+                      ],
+                      "blocked": false,
+                      "blockedReasons": []
+                    }
+                  },
+                  "noDraft": {
+                    "summary": "After a discard — nothing to promote",
+                    "value": {
+                      "workflow": {
+                        "id": "5eed0089-0000-4000-8000-000000000001",
+                        "slug": "security-patch",
+                        "name": "security-patch"
+                      },
+                      "publishes": {
+                        "version": 1,
+                        "label": "security-patch v1"
+                      },
+                      "draft": {
+                        "present": false,
+                        "label": "v0.0",
+                        "etag": "9a3c5e7f1b2d4f6a8c0e2a4c6e8f0b1d3f5a7c9e1b3d5f7a9c1e3a5c7e9f1b3d"
+                      },
+                      "session": {
+                        "id": "5eed008a-0000-4000-8000-000000000001",
+                        "status": "discarded"
+                      },
+                      "guards": [],
+                      "references": [],
+                      "blocked": true,
+                      "blockedReasons": [
+                        "There is no draft to promote."
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found` — no such workflow for this caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/workflows/{id}/copilot/discard": {
+      "post": {
+        "tags": [
+          "copilot"
+        ],
+        "summary": "Discard the draft and close the conversation",
+        "description": "**Discard draft** (mockup 20's head; CE.1,\n[#565](https://github.com/NobuData/ouroboros/issues/565)). Atomically:\n\n* **the draft is dropped** — the draft row, the operation log of that draft and its\n  `v0.N` counters. The workflow **stays**: it is its published version again, or, never\n  published, an empty unpublished workflow that is still listed. The next edit starts a\n  new draft at revision 1;\n* **the active copilot session, if any, moves to `discarded`** with its `closedAt`. Its\n  messages are kept and stay readable through `GET …/copilot/conversation`.\n\nEither half alone is enough: a draft nobody was talking about is discarded\n(`session` is `null`), and a conversation that never produced a draft is closed\n(`draftDiscarded` is `false`). With neither there is nothing to do, and the answer is\n`409 copilot_nothing_to_discard`.\n\n**Refused while a dry run of the workflow is in progress** — `409 dry_run_in_progress`,\n`details.dryRunId` naming the run to follow or cancel: it was started on the draft\nbeing discarded and would go on spending against it. Published versions are never\ntouched.\n\nNo request body. **`owner` or `admin`.**",
+        "operationId": "discardCopilotDraft",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What was discarded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CopilotDiscard"
+                },
+                "example": {
+                  "workflowId": "5eed0089-0000-4000-8000-000000000001",
+                  "draftDiscarded": true,
+                  "session": {
+                    "id": "5eed008a-0000-4000-8000-000000000001",
+                    "workflowId": "5eed0089-0000-4000-8000-000000000001",
+                    "status": "discarded",
+                    "draftName": "security-patch",
+                    "modelProvenance": [
+                      {
+                        "seq": 2,
+                        "alias": "coder-max",
+                        "modelId": "claude-fable-5"
+                      }
+                    ],
+                    "createdAt": "2026-10-08T15:02:00.000Z",
+                    "closedAt": "2026-10-11T09:30:00.000Z",
+                    "lastSeq": 6
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — a member below `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found` — no such workflow for this caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`copilot_nothing_to_discard` — the workflow has neither a draft nor an active\nsession; `dry_run_in_progress` — a dry run of this workflow has not ended\n(`details.dryRunId`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "examples": {
+                  "nothing": {
+                    "summary": "Nothing to discard",
+                    "value": {
+                      "code": "copilot_nothing_to_discard",
+                      "message": "This workflow has no draft and no active copilot session — there is nothing to discard.",
+                      "details": {
+                        "workflowId": "5eed0089-0000-4000-8000-000000000001"
+                      }
+                    }
+                  },
+                  "dryRun": {
+                    "summary": "A dry run is still going",
+                    "value": {
+                      "code": "dry_run_in_progress",
+                      "message": "This workflow already has a dry run in progress. Follow it, or cancel it first.",
+                      "details": {
+                        "dryRunId": "5eed008b-0000-4000-8000-000000000001"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -77686,6 +77978,273 @@
           },
           "draft": {
             "$ref": "#/components/schemas/CopilotDraft"
+          }
+        }
+      },
+      "CopilotPromotionGuard": {
+        "type": "object",
+        "title": "CopilotPromotionGuard",
+        "description": "One guard a promotion carries, with where it is really enforced (CE.1, #565). A guard is\nnever compiled into new configuration on promote: it is named, and `enforcement` says\nwhether real runs are held to it.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "label",
+          "source",
+          "enforcement",
+          "enforcedBy"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "never_auto_merge",
+              "spend_guard"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "description": "The chip — `never auto-merge`, or `spend cap $5.00/run`.",
+            "examples": [
+              "never auto-merge",
+              "spend cap $5.00/run"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "definition",
+              "conversation"
+            ],
+            "description": "`definition` — the document itself says it; `conversation` — the copilot proposed it and it is not in the document."
+          },
+          "enforcement": {
+            "type": "string",
+            "enum": [
+              "enforced",
+              "dry_run_only"
+            ],
+            "description": "`enforced` on every real run, or `dry_run_only` — honoured by dry runs and not yet by real ones."
+          },
+          "enforcedBy": {
+            "type": "string",
+            "description": "One sentence naming where the guard is enforced — or is not yet."
+          }
+        }
+      },
+      "CopilotPromotionReference": {
+        "type": "object",
+        "title": "CopilotPromotionReference",
+        "description": "An unresolved reference of the draft — a `CopilotWarning` — with whether the publish\ngate refuses it.",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "node",
+          "name",
+          "path",
+          "message",
+          "blocking"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "reference.unknown_skill",
+              "reference.unknown_alias",
+              "reference.unknown_task"
+            ]
+          },
+          "node": {
+            "type": "string",
+            "description": "The stage that names it."
+          },
+          "name": {
+            "type": "string",
+            "description": "The name that resolved to nothing."
+          },
+          "path": {
+            "type": "string",
+            "description": "An RFC 6901 pointer to the value."
+          },
+          "message": {
+            "type": "string"
+          },
+          "blocking": {
+            "type": "boolean",
+            "description": "`true` exactly for `reference.unknown_alias`, which publishing refuses; an unknown skill or task route is advisory."
+          }
+        }
+      },
+      "CopilotPromotion": {
+        "type": "object",
+        "title": "CopilotPromotion",
+        "description": "What **Promote to workflow** would publish (CE.1,",
+        "additionalProperties": false,
+        "required": [
+          "workflow",
+          "publishes",
+          "draft",
+          "session",
+          "guards",
+          "references",
+          "blocked",
+          "blockedReasons"
+        ],
+        "properties": {
+          "workflow": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "slug",
+              "name"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "slug": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "publishes": {
+            "type": "object",
+            "description": "The version a publish would create.",
+            "additionalProperties": false,
+            "required": [
+              "version",
+              "label"
+            ],
+            "properties": {
+              "version": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "One above the workflow's highest published version — `1` for a workflow never published."
+              },
+              "label": {
+                "type": "string",
+                "description": "`<slug> v<version>`.",
+                "examples": [
+                  "security-patch v1"
+                ]
+              }
+            }
+          },
+          "draft": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "present",
+              "label",
+              "etag"
+            ],
+            "properties": {
+              "present": {
+                "type": "boolean",
+                "description": "`false` when the workflow has no draft — nothing to promote."
+              },
+              "label": {
+                "type": "string",
+                "description": "`v{published}.{rev}`.",
+                "examples": [
+                  "v0.3"
+                ]
+              },
+              "etag": {
+                "type": "string",
+                "description": "The draft slot's etag — what a save sends as `If-Match`."
+              }
+            }
+          },
+          "session": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "status"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "promoted",
+                      "discarded"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The active session, else the most recently closed one, else `null` — a workflow nobody talked to the copilot about."
+          },
+          "guards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CopilotPromotionGuard"
+            }
+          },
+          "references": {
+            "type": "array",
+            "description": "The draft's unresolved references, in document order.",
+            "items": {
+              "$ref": "#/components/schemas/CopilotPromotionReference"
+            }
+          },
+          "blocked": {
+            "type": "boolean",
+            "description": "Whether something already known stands in the way — no draft, or a blocking reference. Publishing still validates; this is not its verdict."
+          },
+          "blockedReasons": {
+            "type": "array",
+            "description": "A sentence per reason. Empty when `blocked` is `false`.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "CopilotDiscard": {
+        "type": "object",
+        "title": "CopilotDiscard",
+        "description": "What **Discard draft** did (CE.1,",
+        "additionalProperties": false,
+        "required": [
+          "workflowId",
+          "draftDiscarded",
+          "session"
+        ],
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "draftDiscarded": {
+            "type": "boolean",
+            "description": "Whether a draft was removed — `false` when only a conversation was closed."
+          },
+          "session": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CopilotSession"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The session just closed as `discarded`, or `null` when none was active."
           }
         }
       },

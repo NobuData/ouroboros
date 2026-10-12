@@ -128,4 +128,88 @@ describe("the copilot repository", () => {
       JSON.stringify(operations),
     ]);
   });
+
+  it("reads the active session inside a transaction when the caller holds one", async () => {
+    await database.service.transaction(async (trx) => {
+      await copilots.activeSession(WORKSPACE, WORKFLOW, trx);
+    });
+
+    const sql = database.sql();
+    expect(sql[0]).toBe("begin");
+    expect(sql[1]).toContain('from "ouroboros"."copilot_sessions"');
+    expect(database.statements[1].parameters).toEqual([WORKSPACE, WORKFLOW, "active"]);
+  });
+
+  it("reads the session closed last — promoted or discarded, newest first, one row", async () => {
+    await copilots.lastClosedSession(WORKSPACE, WORKFLOW);
+
+    const [statement] = database.statements;
+    expect(statement.sql).toContain('from "ouroboros"."copilot_sessions"');
+    expect(statement.sql).toContain('"status" <> $3');
+    expect(statement.sql).toContain('order by "closed_at" desc, "created_at" desc');
+    expect(statement.sql).toContain("limit $4");
+    expect(statement.parameters).toEqual([WORKSPACE, WORKFLOW, "active", 1]);
+  });
+
+  it("reads the highest published version, which is what a publish numbers from", async () => {
+    database.answers({ rows: [{ highest: 14 }] });
+
+    await expect(copilots.highestVersion(WORKFLOW)).resolves.toBe(14);
+
+    const [statement] = database.statements;
+    expect(statement.sql).toContain("max(version)");
+    expect(statement.sql).toContain('from "ouroboros"."workflow_versions"');
+    expect(statement.parameters).toEqual([WORKFLOW]);
+  });
+
+  it("answers null for a workflow that has published nothing", async () => {
+    database.answers({ rows: [{ highest: null }] });
+
+    await expect(copilots.highestVersion(WORKFLOW)).resolves.toBeNull();
+  });
+
+  it("reads the workflow's dry run that has not ended", async () => {
+    await copilots.openDryRun(WORKFLOW);
+
+    const [statement] = database.statements;
+    expect(statement.sql).toContain('select "id", "started_at" from "ouroboros"."dry_runs"');
+    expect(statement.sql).toContain('"status" not in ($2, $3, $4, $5)');
+    expect(statement.parameters).toEqual([
+      WORKFLOW,
+      "complete",
+      "failed",
+      "budget_stopped",
+      "cancelled",
+      1,
+    ]);
+  });
+
+  it("discards through the database's function, in the caller's transaction", async () => {
+    database.answers({
+      rows: [{ draft_discarded: true, operations_removed: 26, session_id: SESSION }],
+    });
+
+    const discarded = await database.service.transaction((trx) =>
+      copilots.discardDraft(WORKSPACE, WORKFLOW, trx),
+    );
+
+    expect(discarded).toEqual({
+      draft_discarded: true,
+      operations_removed: 26,
+      session_id: SESSION,
+    });
+    const sql = database.sql();
+    expect(sql[0]).toBe("begin");
+    expect(sql[1]).toContain("from ouroboros.discard_workflow_draft($1, $2::uuid)");
+    expect(database.statements[1].parameters).toEqual([WORKSPACE, WORKFLOW]);
+    // The function is the only writer: no delete of the draft or its log is issued from here.
+    expect(sql.some((statement) => statement.includes("delete from"))).toBe(false);
+    expect(sql.at(-1)).toBe("commit");
+  });
+
+  it("refuses to pretend when the function answers nothing", async () => {
+    await expect(
+      database.service.transaction((trx) => copilots.discardDraft(WORKSPACE, WORKFLOW, trx)),
+    ).rejects.toThrow("discard_workflow_draft returned no row");
+  });
 });

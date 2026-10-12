@@ -2,10 +2,11 @@
  * The Workflow Copilot — CD.1 ([#559](https://github.com/NobuData/ouroboros/issues/559)).
  *
  * copilot.controller.ts   the routes under /workflows/{id}/copilot
- * copilot.service.ts      sessions, exchanges, answers, continuity, the etag-guarded apply
+ * copilot.service.ts      sessions, exchanges, continuity, promotion, discard, the guarded apply
  * copilot.exchange.ts     the loop: turns, tools, bounces, conflicts, W7
  * copilot.operations.ts   the typed operation vocabulary, validated against the DSL
  * copilot.references.ts   W7 — what does not resolve, named
+ * copilot.promotion.ts    what Promote would publish: guards with their real enforcement (CE.1, #565)
  * copilot.context.ts      the grounding: catalog, skills, task routes, guards
  * copilot.guards.ts       the guard vocabulary (the org policy's core rules)
  * copilot.repository.ts   the statements, including apply_draft_batch()

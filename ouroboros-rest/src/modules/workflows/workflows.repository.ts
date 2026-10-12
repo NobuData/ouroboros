@@ -541,4 +541,42 @@ export class WorkflowsRepository {
 
     return version;
   }
+
+  /**
+   * Close the workflow's active copilot conversation as `promoted` — what a publish does to the
+   * conversation that produced the draft (CE.1, [#565](https://github.com/NobuData/ouroboros/issues/565)).
+   *
+   * A statement here rather than a call into the copilot's module, which imports this one: the
+   * rule is the workflow's (*publishing is promoting*), and V107 keeps its shape — only
+   * `active → promoted`, `closed_at` set exactly then, at most one active session per workflow
+   * (`copilot_sessions_one_active`), so the update touches one row or none. The transcript is
+   * not touched; it stays readable until the retention sweep's `custom:copilot-chat-promoted`.
+   *
+   * `clock_timestamp()` rather than the publish's instant or `now()`: a session started by a
+   * transaction that began after this one carries a later `created_at`, and
+   * `copilot_sessions_closed_after_created` would refuse to close it in its own past.
+   *
+   * @param organizationId - The workspace, from the tenant context.
+   * @param workflowId - A workflow already resolved through {@link lock}.
+   * @param trx - The publish's transaction. Required: a conversation is promoted exactly when
+   *   its draft is published, and a publish that rolls back promotes nothing.
+   * @returns The id of the session that was promoted, or `undefined` when none was active —
+   *   a workflow published from the canvas, with no conversation to close.
+   */
+  async promoteCopilotSession(
+    organizationId: string,
+    workflowId: string,
+    trx: Transaction<Database>,
+  ): Promise<string | undefined> {
+    const row = await trx
+      .updateTable("copilot_sessions")
+      .set({ status: "promoted", closed_at: sql<Date>`clock_timestamp()` })
+      .where("organization_id", "=", organizationId)
+      .where("workflow_id", "=", workflowId)
+      .where("status", "=", "active")
+      .returning("id")
+      .executeTakeFirst();
+
+    return row?.id;
+  }
 }

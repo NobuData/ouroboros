@@ -11,6 +11,7 @@ import type { DryRunPickerService } from "../dry-runs/dry-runs.picker.service";
 import type { DryRunSuggestionsService } from "../dry-runs/suggestions.service";
 import type { EngineClient } from "../engine/engine.client";
 import type { EngineCopilotEvent, EngineCopilotTurnRequest } from "../engine/engine.copilot";
+import { ENGINE_DRY_RUN_TIMEOUT_MS } from "../engine/engine.dryruns";
 import { NotFoundError } from "../errors/error.envelope";
 import type { ResolutionService } from "../routing/resolution.service";
 import type { CopilotContextService } from "./copilot.context";
@@ -161,6 +162,12 @@ function harness(
       .fn()
       .mockImplementation(() => Promise.resolve({ current_version: null, draft_rev: rev })),
     activeSession: jest.fn().mockResolvedValue(session()),
+    lastClosedSession: jest.fn().mockResolvedValue(undefined),
+    highestVersion: jest.fn().mockResolvedValue(null),
+    openDryRun: jest.fn().mockResolvedValue(undefined),
+    discardDraft: jest
+      .fn()
+      .mockResolvedValue({ draft_discarded: true, operations_removed: 3, session_id: SESSION }),
     session: jest.fn().mockResolvedValue(session()),
     createSession: jest.fn().mockResolvedValue(session()),
     appendProvenance: jest.fn().mockResolvedValue(undefined),
@@ -240,6 +247,7 @@ function harness(
   const suggestions = {
     propose: jest.fn().mockResolvedValue({ ok: true, suggestion: { id: "s-1" } }),
     debriefing: jest.fn().mockResolvedValue("[dry run results] exploit-verify: skipped"),
+    draftSpendGuardCents: jest.fn().mockResolvedValue(null),
   };
   const aftermath = { register: jest.fn() };
 
@@ -272,6 +280,9 @@ function harness(
     sent,
     finished,
     batches,
+    grounding,
+    database,
+    trx,
     moveDraft: (row: WorkflowVersion | undefined) => (draft = row),
   };
 }
@@ -356,13 +367,351 @@ describe("the continuity read", () => {
     });
   });
 
-  it("is a 404 when no session is active", async () => {
+  it("answers the conversation closed last, read-only, when none is active", async () => {
+    const history = [message({ id: "m-1", seq: 1 }), message({ id: "m-2", seq: 2 })];
+    const { service, copilots } = harness({ messages: history });
+    const closed = session({
+      id: "5eed008a-0000-4000-8000-000000000002",
+      status: "discarded",
+      closed_at: new Date("2026-10-09T09:00:00.000Z"),
+      last_seq: 2,
+    });
+    copilots.activeSession.mockResolvedValue(undefined);
+    copilots.lastClosedSession.mockResolvedValue(closed);
+    // After a discard there is no draft beside the transcript.
+    copilots.draftOf.mockResolvedValue(undefined);
+
+    const conversation = await service.conversation(WORKSPACE, WORKFLOW);
+
+    expect(copilots.lastClosedSession).toHaveBeenCalledWith(WORKSPACE, WORKFLOW);
+    expect(conversation.session).toMatchObject({
+      id: closed.id,
+      status: "discarded",
+      closedAt: "2026-10-09T09:00:00.000Z",
+    });
+    expect(copilots.messages).toHaveBeenCalledWith(closed.id);
+    expect(conversation.messages.map((row) => row.id)).toEqual(["m-1", "m-2"]);
+    expect(conversation.draft.definition).toBeNull();
+    expect(conversation.draft.warnings).toEqual([]);
+  });
+
+  it("prefers the active session to any closed one", async () => {
+    const { service, copilots } = harness();
+    copilots.lastClosedSession.mockResolvedValue(session({ id: "older", status: "promoted" }));
+
+    const conversation = await service.conversation(WORKSPACE, WORKFLOW);
+
+    expect(conversation.session).toMatchObject({ id: SESSION, status: "active" });
+    expect(copilots.lastClosedSession).not.toHaveBeenCalled();
+  });
+
+  it("is a 404 when the workflow never had a session", async () => {
     const { service, copilots } = harness();
     copilots.activeSession.mockResolvedValue(undefined);
 
     await expect(service.conversation(WORKSPACE, WORKFLOW)).rejects.toMatchObject({
       code: COPILOT_ERRORS.sessionNotFound,
+      details: { workflowId: WORKFLOW },
     });
+  });
+});
+
+describe("what a promotion would publish", () => {
+  const NEEDS_REVIEW = {
+    id: "open-pr",
+    type: "term",
+    title: "Needs review",
+    position: { x: 900, y: 0 },
+    config: { action: "needs_review", options: {} },
+  };
+  const AUTOMERGE = {
+    id: "merge",
+    type: "term",
+    title: "Auto-merge",
+    position: { x: 900, y: 200 },
+    config: {
+      action: "open_pr_automerge",
+      options: { merge_method: "squash", delete_branch: true },
+    },
+  };
+
+  function drafted(...nodes: unknown[]) {
+    return draftRow({ ...DRAFT_DOCUMENT, nodes: [TRIGGER_NODE, ...nodes] });
+  }
+
+  it("names the next version, the draft, the session, the guards and the references", async () => {
+    const { service, copilots, suggestions } = harness();
+    copilots.workflow.mockResolvedValue(workflow({ draft_rev: 3 }));
+    copilots.draftOf.mockResolvedValue(
+      drafted(
+        { ...REVIEW_NODE, id: "analyze", config: { ...REVIEW_NODE.config, skill: "advisory-db" } },
+        {
+          ...REVIEW_NODE,
+          id: "exploit-verify",
+          config: { ...REVIEW_NODE.config, routing: { inherit_task: "exploit-verify" } },
+        },
+        NEEDS_REVIEW,
+      ),
+    );
+    suggestions.draftSpendGuardCents.mockResolvedValue(500);
+
+    const promotion = await service.promotion(WORKSPACE, WORKFLOW);
+
+    expect(suggestions.draftSpendGuardCents).toHaveBeenCalledWith(WORKSPACE, WORKFLOW);
+    expect(promotion).toEqual({
+      workflow: { id: WORKFLOW, slug: "security-patch", name: "security-patch" },
+      publishes: { version: 1, label: "security-patch v1" },
+      draft: {
+        present: true,
+        label: "v0.3",
+        etag: expect.stringMatching(/^[0-9a-f]{64}$/) as string,
+      },
+      session: { id: SESSION, status: "active" },
+      guards: [
+        expect.objectContaining({
+          id: "never_auto_merge",
+          source: "definition",
+          enforcement: "enforced",
+        }) as object,
+        expect.objectContaining({
+          id: "spend_guard",
+          label: "spend cap $5.00/run",
+          source: "conversation",
+          enforcement: "dry_run_only",
+        }) as object,
+      ],
+      references: [
+        {
+          code: "reference.unknown_skill",
+          node: "analyze",
+          name: "advisory-db",
+          path: "/nodes/1/config/skill",
+          message: "No skill named `advisory-db` is defined in this workspace yet.",
+          blocking: false,
+        },
+        {
+          code: "reference.unknown_task",
+          node: "exploit-verify",
+          name: "exploit-verify",
+          path: "/nodes/2/config/routing/inherit_task",
+          message: "No task route named `exploit-verify` exists in this workspace yet.",
+          blocking: false,
+        },
+      ],
+      blocked: false,
+      blockedReasons: [],
+    });
+  });
+
+  it("numbers the publish after the highest version, not the one in force", async () => {
+    const { service, copilots } = harness();
+    copilots.workflow.mockResolvedValue(workflow({ current_version: 2, draft_rev: 1 }));
+    copilots.highestVersion.mockResolvedValue(3);
+
+    const promotion = await service.promotion(WORKSPACE, WORKFLOW);
+
+    expect(promotion.publishes).toEqual({ version: 4, label: "security-patch v4" });
+    expect(promotion.draft.label).toBe("v2.1");
+  });
+
+  it("lists never auto-merge only while no ending auto-merges", async () => {
+    const { service, copilots } = harness();
+
+    copilots.draftOf.mockResolvedValue(drafted(NEEDS_REVIEW));
+    expect((await service.promotion(WORKSPACE, WORKFLOW)).guards.map((guard) => guard.id)).toEqual([
+      "never_auto_merge",
+    ]);
+
+    copilots.draftOf.mockResolvedValue(drafted(NEEDS_REVIEW, AUTOMERGE));
+    expect((await service.promotion(WORKSPACE, WORKFLOW)).guards).toEqual([]);
+
+    // No ending at all: the draft does not end yet, which is not a promise never to merge.
+    copilots.draftOf.mockResolvedValue(drafted());
+    expect((await service.promotion(WORKSPACE, WORKFLOW)).guards).toEqual([]);
+  });
+
+  it("lists the spend guard only when the conversation set one", async () => {
+    const { service, copilots, suggestions } = harness();
+    copilots.draftOf.mockResolvedValue(drafted(AUTOMERGE));
+
+    expect((await service.promotion(WORKSPACE, WORKFLOW)).guards).toEqual([]);
+
+    suggestions.draftSpendGuardCents.mockResolvedValue(1250);
+    expect((await service.promotion(WORKSPACE, WORKFLOW)).guards).toEqual([
+      expect.objectContaining({ id: "spend_guard", label: "spend cap $12.50/run" }) as object,
+    ]);
+  });
+
+  it("is blocked by a pinned alias the registry does not have, and says which", async () => {
+    const { service, copilots, grounding } = harness();
+    copilots.draftOf.mockResolvedValue(
+      drafted(
+        { ...REVIEW_NODE, id: "analyze", config: { ...REVIEW_NODE.config, skill: "advisory-db" } },
+        {
+          ...REVIEW_NODE,
+          id: "review-second",
+          config: { ...REVIEW_NODE.config, routing: { pinned_model: { alias: "second-opinion" } } },
+        },
+      ),
+    );
+    grounding.grounding.mockResolvedValue({
+      context: { catalog: [], skills: [], tasks: ["review"], guards: [] },
+      catalogue: { skills: ["pr-etiquette"], tasks: ["review"], aliases: ["coder-max"] },
+    });
+
+    const promotion = await service.promotion(WORKSPACE, WORKFLOW);
+
+    expect(promotion.references.map((reference) => [reference.code, reference.blocking])).toEqual([
+      ["reference.unknown_skill", false],
+      ["reference.unknown_alias", true],
+    ]);
+    expect(promotion.blocked).toBe(true);
+    expect(promotion.blockedReasons).toEqual([
+      "Stage `review-second` pins the alias `second-opinion`, which is not in this workspace's registry — publishing refuses it.",
+    ]);
+  });
+
+  it("is blocked with no draft, and names the conversation closed last", async () => {
+    const { service, copilots } = harness();
+    copilots.workflow.mockResolvedValue(workflow({ draft_rev: 0 }));
+    copilots.draftOf.mockResolvedValue(undefined);
+    copilots.activeSession.mockResolvedValue(undefined);
+    copilots.lastClosedSession.mockResolvedValue(
+      session({ status: "discarded", closed_at: new Date("2026-10-09T09:00:00.000Z") }),
+    );
+
+    const promotion = await service.promotion(WORKSPACE, WORKFLOW);
+
+    expect(promotion).toMatchObject({
+      draft: { present: false, label: "v0.0" },
+      session: { id: SESSION, status: "discarded" },
+      guards: [],
+      references: [],
+      blocked: true,
+      blockedReasons: ["There is no draft to promote."],
+    });
+  });
+
+  it("has no session to name on a workflow nobody talked to the copilot about", async () => {
+    const { service, copilots } = harness();
+    copilots.activeSession.mockResolvedValue(undefined);
+
+    expect((await service.promotion(WORKSPACE, WORKFLOW)).session).toBeNull();
+  });
+
+  it("is a 404 for a workflow this caller cannot see", async () => {
+    const { service, copilots } = harness();
+    copilots.workflow.mockResolvedValue(undefined);
+
+    await expect(service.promotion(WORKSPACE, WORKFLOW)).rejects.toMatchObject({
+      code: "workflow_not_found",
+    });
+  });
+});
+
+describe("discarding the draft", () => {
+  const CLOSED_AT = new Date("2026-10-11T09:30:00.000Z");
+
+  it("drops the draft and closes the conversation in one transaction, under the draft's lock", async () => {
+    const { service, copilots, database, trx } = harness();
+    copilots.session.mockResolvedValue(session({ status: "discarded", closed_at: CLOSED_AT }));
+
+    const discarded = await service.discard(WORKSPACE, WORKFLOW);
+
+    expect(database.transaction).toHaveBeenCalledTimes(1);
+    // The draft lock first, as every draft writer takes it.
+    expect(copilots.draftOf).toHaveBeenCalledWith(WORKFLOW, trx, true);
+    expect(copilots.activeSession).toHaveBeenCalledWith(WORKSPACE, WORKFLOW, trx);
+    expect(copilots.discardDraft).toHaveBeenCalledWith(WORKSPACE, WORKFLOW, trx);
+    expect(copilots.session).toHaveBeenCalledWith(WORKSPACE, WORKFLOW, SESSION);
+    expect(discarded).toEqual({
+      workflowId: WORKFLOW,
+      draftDiscarded: true,
+      session: expect.objectContaining({
+        id: SESSION,
+        status: "discarded",
+        closedAt: CLOSED_AT.toISOString(),
+      }) as object,
+    });
+  });
+
+  it("discards a draft nobody was talking about", async () => {
+    const { service, copilots } = harness();
+    copilots.activeSession.mockResolvedValue(undefined);
+    copilots.discardDraft.mockResolvedValue({
+      draft_discarded: true,
+      operations_removed: 0,
+      session_id: null,
+    });
+
+    await expect(service.discard(WORKSPACE, WORKFLOW)).resolves.toEqual({
+      workflowId: WORKFLOW,
+      draftDiscarded: true,
+      session: null,
+    });
+    expect(copilots.session).not.toHaveBeenCalled();
+  });
+
+  it("closes a conversation that never produced a draft", async () => {
+    const { service, copilots } = harness();
+    copilots.draftOf.mockResolvedValue(undefined);
+    copilots.discardDraft.mockResolvedValue({
+      draft_discarded: false,
+      operations_removed: 0,
+      session_id: SESSION,
+    });
+    copilots.session.mockResolvedValue(session({ status: "discarded", closed_at: CLOSED_AT }));
+
+    await expect(service.discard(WORKSPACE, WORKFLOW)).resolves.toMatchObject({
+      draftDiscarded: false,
+      session: { id: SESSION, status: "discarded" },
+    });
+  });
+
+  it("is a 409 with neither a draft nor an active session, and writes nothing", async () => {
+    const { service, copilots } = harness();
+    copilots.draftOf.mockResolvedValue(undefined);
+    copilots.activeSession.mockResolvedValue(undefined);
+
+    await expect(service.discard(WORKSPACE, WORKFLOW)).rejects.toMatchObject({
+      code: COPILOT_ERRORS.nothingToDiscard,
+      details: { workflowId: WORKFLOW },
+    });
+    expect(copilots.discardDraft).not.toHaveBeenCalled();
+  });
+
+  it("refuses while a dry run of the workflow is in progress, naming it", async () => {
+    const { service, copilots, database } = harness();
+    copilots.openDryRun.mockResolvedValue({ id: "run-1", started_at: new Date() });
+
+    await expect(service.discard(WORKSPACE, WORKFLOW)).rejects.toMatchObject({
+      code: "dry_run_in_progress",
+      details: { dryRunId: "run-1" },
+    });
+    expect(copilots.openDryRun).toHaveBeenCalledWith(WORKFLOW);
+    expect(database.transaction).not.toHaveBeenCalled();
+  });
+
+  it("is not held up by a dry run left open past the harness's deadline", async () => {
+    const { service, copilots } = harness();
+    copilots.openDryRun.mockResolvedValue({
+      id: "run-abandoned",
+      started_at: new Date(Date.now() - ENGINE_DRY_RUN_TIMEOUT_MS - 60_000),
+    });
+
+    await expect(service.discard(WORKSPACE, WORKFLOW)).resolves.toMatchObject({
+      draftDiscarded: true,
+    });
+  });
+
+  it("is a 404 for a workflow this caller cannot see", async () => {
+    const { service, copilots } = harness();
+    copilots.workflow.mockResolvedValue(undefined);
+
+    await expect(service.discard(WORKSPACE, WORKFLOW)).rejects.toMatchObject({
+      code: "workflow_not_found",
+    });
+    expect(copilots.discardDraft).not.toHaveBeenCalled();
   });
 });
 

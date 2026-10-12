@@ -11,7 +11,7 @@ import { ConflictError, InvalidRequestError, NotFoundError } from "../errors/err
 
 /** Every code this module answers with. The document (`openapi.yaml`) is the registry. */
 export const COPILOT_ERRORS = {
-  /** No active session for that workflow, or none this caller may know about. */
+  /** No session for that workflow — active or closed — or none this caller may know about. */
   sessionNotFound: "copilot_session_not_found",
   /** The workflow already has an active session (`copilot_sessions_one_active`). */
   sessionActive: "copilot_session_active",
@@ -23,10 +23,13 @@ export const COPILOT_ERRORS = {
   messageNotFound: "copilot_message_not_found",
   /** The answer names a question the reply did not ask, an option it did not offer, or one already answered. */
   answerInvalid: "copilot_answer_invalid",
+  /** Discard draft on a workflow with neither a draft nor an active session. */
+  nothingToDiscard: "copilot_nothing_to_discard",
 } as const;
 
 /**
- * `404` — no active session for this workflow.
+ * `404` — no such session on this workflow: none active for a route that needs one, or none at
+ * all for the conversation read (which answers a closed one, read-only, when none is active).
  *
  * @param workflowId - The workflow the request named, echoed into `details.workflowId`.
  * @returns The error to throw.
@@ -34,7 +37,7 @@ export const COPILOT_ERRORS = {
 export function sessionNotFound(workflowId: string): NotFoundError {
   return new NotFoundError(
     COPILOT_ERRORS.sessionNotFound,
-    "This workflow has no active copilot session.",
+    "This workflow has no copilot session.",
     { workflowId },
   );
 }
@@ -102,4 +105,18 @@ export function messageNotFound(messageId: string): NotFoundError {
  */
 export function answerInvalid(reason: string): InvalidRequestError {
   return new InvalidRequestError(COPILOT_ERRORS.answerInvalid, reason);
+}
+
+/**
+ * `409` — there is nothing to discard: the workflow has no draft and no active conversation.
+ *
+ * @param workflowId - The workflow, echoed into `details.workflowId`.
+ * @returns The error to throw.
+ */
+export function nothingToDiscard(workflowId: string): ConflictError {
+  return new ConflictError(
+    COPILOT_ERRORS.nothingToDiscard,
+    "This workflow has no draft and no active copilot session — there is nothing to discard.",
+    { workflowId },
+  );
 }

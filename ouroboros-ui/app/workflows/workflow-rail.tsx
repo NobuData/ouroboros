@@ -4,7 +4,7 @@ import type { WorkflowRailEntry } from "@/app/api/workflows";
 import { cx } from "@/app/ui";
 
 import { NewWorkflow } from "./new-workflow";
-import { RAIL_LABEL, railItems } from "./view";
+import { RAIL_LABEL, type StudioSurface, railItems } from "./view";
 
 import "./workflows.css";
 
@@ -36,7 +36,7 @@ import "./workflows.css";
  * tell it from the sidebar's *Primary navigation* and the segmented control's *Workflow
  * Studio*. The items are links (`next/link`, so the navigation is client-side and the pane's
  * scroll restoration sees it) to `/workflows/<slug>` — the ticket's *linkable* — rather than
- * buttons that select in place.
+ * buttons that select in place. On the copilot they link to `/workflows/<slug>/copilot`.
  *
  * A Server Component: it renders links and reads nothing. The tile at its foot is the one
  * Client Component, because it owns a dialog.
@@ -50,6 +50,13 @@ export interface WorkflowRailProps {
   readonly activeSlug: string | null;
   /** Whether the tile may open its dialog — see `NewWorkflow`. */
   readonly mayAdminister: boolean;
+  /**
+   * The surface the page is. Defaults to `visual`, the rail's behaviour since S.1. On the copilot
+   * (CE.1, [#565](https://github.com/NobuData/ouroboros/issues/565)) each item links to that
+   * workflow's own conversation and the tile's dialog opens with **Copilot** chosen, so the rail
+   * changes the workflow and never the surface.
+   */
+  readonly surface?: StudioSurface;
 }
 
 /**
@@ -58,8 +65,8 @@ export interface WorkflowRailProps {
  * @param props See {@link WorkflowRailProps}.
  * @returns The navigation region: one link per workflow, then the tile.
  */
-export function WorkflowRail({ entries, activeSlug, mayAdminister }: WorkflowRailProps) {
-  const items = railItems(entries, activeSlug);
+export function WorkflowRail({ entries, activeSlug, mayAdminister, surface = "visual" }: WorkflowRailProps) {
+  const items = railItems(entries, activeSlug, surface);
 
   return (
     <nav aria-label={RAIL_LABEL} className="studio-rail">
@@ -84,7 +91,11 @@ export function WorkflowRail({ entries, activeSlug, mayAdminister }: WorkflowRai
         </ul>
       )}
 
-      <NewWorkflow mayAdminister={mayAdminister} slugs={items.map((item) => item.slug)} />
+      <NewWorkflow
+        mayAdminister={mayAdminister}
+        slugs={items.map((item) => item.slug)}
+        start={surface === "copilot" ? "copilot" : "canvas"}
+      />
     </nav>
   );
 }

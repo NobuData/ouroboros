@@ -32,10 +32,13 @@ import "./workflows.css";
 /**
  * The guard on the studio's segmented control (V.1,
  * [#169](https://github.com/NobuData/ouroboros/issues/169)): what stops a switch between
- * **Visual** and **Code** from silently discarding code that has not parsed.
+ * **Visual**, **Code** and **Copilot** (CE.1,
+ * [#565](https://github.com/NobuData/ouroboros/issues/565)) from silently discarding code that
+ * has not parsed.
  *
- * Decision **C3** makes a switch loss-free by construction — both editors read the one draft,
- * so each page simply reads it again — and decision **C4** names the one exception: a buffer
+ * Decision **C3** makes a switch loss-free by construction — every surface reads the one draft,
+ * so each page simply reads it again, and the copilot's conversation is stored by the service
+ * and read again with it (**W9**) — and decision **C4** names the one exception: a buffer
  * that has not parsed never reached the draft. `mode-switch.ts` decides when that exception
  * applies and what to ask; this module is the three pieces that act on it.
  *
@@ -101,7 +104,7 @@ const GuardContext = createContext<Guard | null>(null);
 /**
  * The guard, and the prompt it draws.
  *
- * @param props.children The workflow's page — the visual editor or the code view.
+ * @param props.children The workflow's page — the visual editor, the code view or the copilot.
  * @returns The page, with the prompt beside it while a switch is waiting for an answer.
  */
 export function StudioModeGuard({ children }: Readonly<{ children: ReactNode }>) {

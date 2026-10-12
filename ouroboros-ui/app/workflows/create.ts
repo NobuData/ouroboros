@@ -341,3 +341,29 @@ export const CREATING = "Creating the workflow…";
 
 /** The way out without writing anything. */
 export const CREATE_CANCEL = "Cancel";
+
+/* ------------------------------------------------------------------ where a new workflow opens */
+
+/**
+ * Where a workflow opens once it is created (CE.1,
+ * [#565](https://github.com/NobuData/ouroboros/issues/565)): on the blank canvas, as it always
+ * has, or on the copilot — so a conversation is a first-class way to begin a workflow rather
+ * than only to edit one.
+ *
+ * It is a choice about the *page*, not about the workflow: the same `POST` creates the same
+ * blank draft either way, and no conversation is started here — the first message is what
+ * starts one.
+ */
+export type CreateStart = "canvas" | "copilot";
+
+/** The choices, in the order the dialog draws them — the default first. */
+export const CREATE_STARTS: readonly CreateStart[] = ["canvas", "copilot"];
+
+/** The legend over the choice. */
+export const START_LABEL = "Start with";
+
+/** What each choice is called, and what it means. */
+export const START_OPTIONS: Readonly<Record<CreateStart, { readonly label: string; readonly hint: string }>> = {
+  canvas: { label: "Canvas", hint: "Open the blank canvas and build the workflow stage by stage." },
+  copilot: { label: "Copilot", hint: "Open the copilot and describe the workflow in a conversation." },
+};
