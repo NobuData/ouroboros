@@ -1901,8 +1901,8 @@ check_contains "$CHAT_BODY" "'5eed009c-0000-4000-8000-" 'the chat seed builds it
 
 chat_tables=$(grep -Eo '^(insert into|update) ouroboros\.[a-z_]+' "$CHAT_BODY" |
   sed -E 's/^(insert into|update) ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
-check_equals 'chat_channels chat_commands chat_connections chat_identity_links chat_messages on_call_assignments ' "$chat_tables" \
-  'the chat seed writes the connection, its channels, the identities, the on-call designee, the messages and the command — and nothing else'
+check_equals 'chat_channels chat_commands chat_connections chat_identity_links chat_messages notification_routes on_call_assignments ' "$chat_tables" \
+  'the chat seed writes the connection, its channels, the identities, the on-call designee, the routes, the messages and the commands — and nothing else'
 
 # **The cards are about rows other seeds hold.** No loop, pull request, issue, decision or audit
 # event is written here, and every ref is built from the row it names.
@@ -1924,6 +1924,23 @@ check_contains "$CHAT_BODY" 'member\."userId" = person\."id"' 'a link'"'"'s memb
 check_contains "$CHAT_BODY" "and link\.state = 'linked'" 'the on-call designee is read off a linked identity'
 check_absent "$CHAT_BODY" 'link_token_hash' 'no handshake token, hashed or otherwise, is seeded'
 check_contains "$CHAT_BODY" 'and cmd\.invoker_link_id is null' 'the command'"'"'s link is filled in only where it is missing, so a second apply writes nothing'
+
+# **Mockup 19's clock (#534).** The stream is stamped at the mockup's eight times, the day before
+# the seed ran; and the routes are custom kinds, one of them off.
+for clock in 13:58 14:07 14:11 14:12 14:13 14:31; do
+  check_contains "$CHAT_BODY" "time '$clock'" "the stream carries the mockup's $clock"
+done
+check_contains "$CHAT_BODY" "\('custom:stage-transitions',  'C071LOOPS', false, false\)" \
+  'every stage transition is seeded disabled'
+check_contains "$CHAT_BODY" "\('custom:blocking-questions', 'C071LOOPS', true,  true\)" \
+  'blocking questions go to the channel and the on-call DM in one row'
+check_absent "$CHAT_BODY" "'(weekly_insights|loop_failures|daily_digest|needs_you_dm)'" \
+  'the chat seed writes none of mockup 17'"'"'s four route kinds'
+check_contains "$CHAT_BODY" "'revoked', 'admin_assigned'" 'one identity is seeded revoked'
+check_contains "$CHAT_BODY" "run\.issue_number = 474 and run\.status = 'merged'" \
+  'the completion card is the merged loop of #474, found by its issue'
+check_absent "$CHAT_BODY" "'(checks_passed|checks_total|cycle_seconds)', [0-9]" \
+  'the completion card'"'"'s figures are the run'"'"'s columns, not typed'
 
 # **Every digest is computed**, so a second apply collides instead of duplicating.
 check_equals "$(count_lines '^insert into ouroboros\.chat_messages' "$CHAT_BODY")" \

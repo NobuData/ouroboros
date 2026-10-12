@@ -6779,7 +6779,9 @@ select pg_temp.must_hold(
                   'loop_failures|pagerduty|false|connect PagerDuty first|',
                   'weekly_insights|email|true||09:00']
      from ouroboros.notification_routes_effective r
-    where r.organization_id = '5eed0001-0000-4000-8000-000000000001'),
+    -- The chat seed's five `custom:*` Slack routes (#534) are asserted in its own section.
+    where r.organization_id = '5eed0001-0000-4000-8000-000000000001'
+      and r.kind not like 'custom:%'),
   'daily digest 09:00 → email on, weekly insights → email on, loop failures → PagerDuty locked: "connect PagerDuty first"; no needs-you DM, since there is no Slack');
 
 -- ===========================================================================
@@ -7751,28 +7753,32 @@ select pg_temp.must_hold(
   'Ken''s personal workspace has no research rows — the empty state #633 verifies against');
 
 -- ===========================================================================
--- R__dev_seed_workspace_triage_slack.sql — mockup 19's stream from the rows (#532, BY.2)
+-- R__dev_seed_workspace_triage_slack.sql — mockup 19 from the rows (#532, #533, #534)
 -- ===========================================================================
 --
--- *"A seeded completion card's PR, issue and run ids all point at real rows."* The seed builds
--- each ref from the row it names; this asks the resolver the product uses, of every ref of every
--- seeded message, so a ref that dangles — or a seed that typed an id — fails here by name.
-select pg_temp.must_hold(
-  (select count(*) = 3 and bool_and(ouroboros.decision_ref_resolves(m.organization_id, r))
-          and array_agg(r ->> 'type' order by r ->> 'type') = array['pr', 'run', 'ticket']
-     from ouroboros.chat_messages m, jsonb_array_elements(m.refs) r
-    where m.id = '5eed009c-0000-4000-8000-000000000101'),
-  'the seeded completion card names a run, a pull request and an issue, and each is a real row of acme-robotics');
+-- The page's own invariants — vocabularies, uniqueness, the fixtures, every ref resolving — are
+-- tests/chat-invariants.sql's (#534), which ci/db runs against this database and verifies
+-- red-then-green. What is asked here is that the seeded rows say what the rows they are about say.
 
+-- The completion card is the dashboard's merged loop of #474, with that run's own figures.
 select pg_temp.must_hold(
-  (select pr.state = 'merged' and pr.run_id = run.id and pr.ticket_id = ticket.id
-          and m.facts ->> 'outcome' = 'merged'
+  (select run.status = 'merged' and run.issue_number = 474
+          and (m.facts ->> 'pr_number')::int = run.pr_number and run.pr_number = 512
+          and (m.facts ->> 'checks_passed')::int = run.checks_passed
+          and (m.facts ->> 'checks_total')::int = run.checks_total
+          and (m.facts ->> 'cycle_seconds')::int = extract(epoch from run.finished_at - run.started_at)::int
+          and m.facts ->> 'model' = run.model and m.facts ->> 'issue_title' = run.issue_title
+          and m.refs -> 0 ->> 'label' = 'loop #' || run.loop_seq and jsonb_array_length(m.refs) = 1
      from ouroboros.chat_messages m
      join ouroboros.runs run on run.id = (m.refs -> 0 ->> 'id')::uuid
-     join ouroboros.pull_requests pr on pr.id = (m.refs -> 1 ->> 'id')::uuid
-     join ouroboros.tickets ticket on ticket.id = (m.refs -> 2 ->> 'id')::uuid
     where m.id = '5eed009c-0000-4000-8000-000000000101'),
-  'and they are one story: that run''s merged pull request, closing that issue');
+  'the completion card is the merged loop of #474 — PR #512, its checks, its cycle and its model are the run''s own, and the run is its one live ref');
+
+select pg_temp.must_hold(
+  (select (m.facts ->> 'checks_passed') = '14' and (m.facts ->> 'checks_total') = '14'
+          and (m.facts ->> 'cycle_seconds') = '660' and m.facts ->> 'model' = 'claude-fable-5'
+     from ouroboros.chat_messages m where m.id = '5eed009c-0000-4000-8000-000000000101'),
+  'and they are the mockup''s: 14/14 checks · 11m cycle · claude-fable-5');
 
 select pg_temp.must_hold(
   (select count(*) > 0 and bool_and(ouroboros.decision_ref_resolves(m.organization_id, r))
@@ -7781,44 +7787,28 @@ select pg_temp.must_hold(
     where m.organization_id = org."id"),
   'every ref of every seeded message resolves');
 
--- The six archetypes, in the order the channel shows them.
+-- The resolved card says what the inbox says: the same action and person.
 select pg_temp.must_hold(
-  (select array_agg(row order by at, row) = array[
-            'event_card/loop_finished/-',
-            'decision_card/resize_review/resolved',
-            'system_line/resize_review/-',
-            'decision_card/protected_path_allow_once/open',
-            'command/status/ok/slack',
-            'command_reply/-/-',
-            'event_card/build_green/-']
-     from (select m.posted_at as at, m.kind || '/' || coalesce(m.card_kind, '-') || '/' || coalesce(m.state, '-') as row
-             from ouroboros.chat_messages m
-            where m.channel_id = '5eed009c-0000-4000-8000-0000000000a1'
-           union all
-           select c.invoked_at, 'command/' || c.command || '/' || c.outcome || '/' || c.surface
-             from ouroboros.chat_commands c
-            where c.channel_id = '5eed009c-0000-4000-8000-0000000000a1') stream),
-  'mockup 19''s stream is seeded: a completion card, the question card resolved and open, the system line, /ouro status with its reply, and a build card');
-
--- The resolved card says what the inbox says: the same action, person and moment.
-select pg_temp.must_hold(
-  (select m.outcome = res.action_id and m.resolved_by = res.resolved_by_user
-          and m.resolved_at = res.resolved_at and res.channel = 'slack'
-          and person."email" = 'maya@acme-robotics.dev' and m.edited_at > m.posted_at
+  (select m.outcome = res.action_id and m.resolved_by = res.resolved_by_user and res.channel = 'slack'
+          and person."email" = 'maya@acme-robotics.dev'
+          and to_char(m.posted_at, 'HH24:MI') = '14:07' and to_char(m.resolved_at, 'HH24:MI') = '14:11'
+          and m.edited_at = m.resolved_at
      from ouroboros.chat_messages m
      join ouroboros.decision_resolutions res on res.item_id = m.decision_item_id
      join ouroboros."user" person on person."id" = m.resolved_by
     where m.id = '5eed009c-0000-4000-8000-000000000103'),
-  'the resolved card is the item Maya answered from Slack — its outcome, answerer and time are the resolution''s');
+  'the resolved card is the item Maya answered from Slack — its outcome and answerer are the resolution''s, posted 14:07 and edited 14:11');
 
 select pg_temp.must_hold(
   (select item.status = 'open' and m.card_kind = 'protected_path_allow_once' and m.refs = item.refs
+          and m.posted_at > (select max(posted_at) from ouroboros.chat_messages o
+                              where o.channel_id = m.channel_id and o.id <> m.id)
      from ouroboros.chat_messages m
      join ouroboros.decision_items item on item.id = m.decision_item_id
     where m.id = '5eed009c-0000-4000-8000-000000000102' and m.state = 'open'),
-  'the open card is an allow-once question the inbox still holds open, with the item''s own refs');
+  'the open card is the allow-once question the inbox still holds open, with the item''s own refs, after the mockup''s stream');
 
--- The reply's figures are counts of what is there.
+-- The status reply's figures are counts of what is there.
 select pg_temp.must_hold(
   (select (m.facts ->> 'loops_live')::bigint
             = (select count(*) from ouroboros.runs r
@@ -7831,45 +7821,28 @@ select pg_temp.must_hold(
      from ouroboros.chat_messages m where m.id = '5eed009c-0000-4000-8000-000000000105'),
   'the status reply''s loops live, queued and needs-you are the workspace''s own counts');
 
+-- Both commands are Ken's by his identity link, and each names the reply it produced.
 select pg_temp.must_hold(
-  (select c.result_ref ->> 'message' = m.id::text and m.kind = 'command_reply'
-          and link.state = 'linked' and link.platform_user_id = c.platform_user_id
-          and person."email" = 'ken@acme-robotics.dev'
+  (select count(*) = 2
+          and bool_and(m.kind = 'command_reply' and link.state = 'linked'
+                       and link.platform_user_id = c.platform_user_id
+                       and person."email" = 'ken@acme-robotics.dev' and c.outcome = 'ok')
      from ouroboros.chat_commands c
      join ouroboros.chat_messages m on m.id = (c.result_ref ->> 'message')::uuid
      join ouroboros.chat_identity_links link on link.id = c.invoker_link_id
      join ouroboros."user" person on person."id" = link.user_id
-    where c.id = '5eed009c-0000-4000-8000-000000000201'),
-  'the seeded command names the reply it produced, and its invoker is Ken by his identity link (#533)');
-
--- Identities and on-call (#533, BY.3).
-select pg_temp.must_hold(
-  (select array_agg(person."email" || ':' || link.state || ':' || link.verified_via || ':' || member."role"
-                    order by person."email")
-            = array['ken@acme-robotics.dev:linked:oauth_session:owner',
-                    'maya@acme-robotics.dev:linked:oauth_session:admin']
-     from ouroboros.chat_identity_links link
-     join ouroboros.member member on member."id" = link.member_id
-     join ouroboros."user" person on person."id" = link.user_id and person."id" = member."userId"
-    where link.connection_id = '5eed009c-0000-4000-8000-000000000001'),
-  'Ken and Maya have linked Slack identities, each resolving to their own member of acme-robotics');
+    where c.channel_id = '5eed009c-0000-4000-8000-0000000000a1'),
+  '/ouro status and /ouro dry-run are Ken''s by his identity link, and each names the reply it produced');
 
 select pg_temp.must_hold(
-  (select count(*) = 1 and bool_and(person."email" = 'ken@acme-robotics.dev' and a.scope = 'decisions')
-     from ouroboros.on_call_assignments a
-     join ouroboros.organization org on org."id" = a.organization_id and org."slug" = 'acme-robotics'
-     join ouroboros.member member on member."id" = a.member_id
-     join ouroboros."user" person on person."id" = member."userId"
-    where a.active
-      and exists (select 1 from ouroboros.chat_identity_links link
-                   where link.member_id = a.member_id and link.state = 'linked')),
-  'one person is on call for decisions — Ken — and a DM can reach him');
-
-select pg_temp.must_hold(
-  not exists (select 1 from ouroboros.chat_identity_links link
-                join ouroboros."user" person on person."id" = link.user_id
-               where person."email" = 'jorge@acme-robotics.dev'),
-  'Jorge has no link: the seeded workspace has someone the "link your account" prompt is for');
+  (select c.args = '{"issue": 486, "workflow": "feature-loop"}'::jsonb
+          and m.refs -> 0 ->> 'label' = 'issue #486' and m.facts ->> 'workflow' = 'feature-loop'
+          and exists (select 1 from ouroboros.workflows w
+                       where w.organization_id = c.organization_id and w.slug = 'feature-loop')
+     from ouroboros.chat_commands c
+     join ouroboros.chat_messages m on m.id = (c.result_ref ->> 'message')::uuid
+    where c.id = '5eed009c-0000-4000-8000-000000000202'),
+  'the dry-run command''s reply names issue #486 as a live ref and the feature-loop workflow, which exists');
 
 select pg_temp.must_hold(
   (select (m.facts ->> 'passed')::int = tr.passed and (m.facts ->> 'total')::int = tr.total and tr.passed = tr.total
@@ -7879,29 +7852,19 @@ select pg_temp.must_hold(
     where m.id = '5eed009c-0000-4000-8000-000000000106'),
   'the build card''s count is its run''s all-green test run');
 
--- Every seeded digest is unique in its channel, and no platform ts is shared.
+-- The chat routes are custom kinds on Slack; mockup 17's rows are as the settings seed left them.
 select pg_temp.must_hold(
-  (select count(*) = count(distinct payload_digest) and count(*) = count(distinct platform_ts) and count(*) = 6
-     from ouroboros.chat_messages where channel_id = '5eed009c-0000-4000-8000-0000000000a1'),
-  'six seeded messages, six digests, six platform timestamps');
+  (select count(*) = 5 and bool_and(e.locked and not e.delivering and e.locked_reason = 'connect Slack first')
+     from ouroboros.notification_routes_effective e
+     join ouroboros.organization org on org."id" = e.organization_id and org."slug" = 'acme-robotics'
+    where e.kind like 'custom:%' and e.channel = 'slack'),
+  'the five chat routes read locked — connect Slack first — until something publishes to Slack');
 
--- The connection: one active Slack workspace, three channels the bot is in, a token that seals nothing.
-select pg_temp.must_hold(
-  (select c.status = 'active' and c.install_meta ->> 'app_version' = 'v2.4'
-          and (select count(*) = 3 and bool_and(ch.joined) and max(ch.member_count) = 24
-                 from ouroboros.chat_channels ch where ch.connection_id = c.id)
-     from ouroboros.chat_connections_public c where c.id = '5eed009c-0000-4000-8000-000000000001'),
-  'acme-robotics has one active Slack connection at app v2.4 and three joined channels, #ouroboros-loops with 24 members');
-
--- The mirror's read of the seeded channel's most recent day reaches the table through an index.
+-- The mirror's read of the seeded channel's most recent days reaches the table through an index.
 set enable_seqscan = off;
-select pg_temp.must_not_scan(
-  $$select id, kind, card_kind, refs, state, posted_at from ouroboros.chat_messages
-     where channel_id = '5eed009c-0000-4000-8000-0000000000a1' and posted_at >= now() - interval '1 day'
-     order by posted_at desc, id desc limit 50$$);
 select pg_temp.must_use_index(
   $$select id, kind, card_kind, refs, state, posted_at from ouroboros.chat_messages
-     where channel_id = '5eed009c-0000-4000-8000-0000000000a1' and posted_at >= now() - interval '1 day'
+     where channel_id = '5eed009c-0000-4000-8000-0000000000a1' and posted_at >= now() - interval '2 days'
      order by posted_at desc, id desc limit 50$$,
   'chat_messages_channel_posted_idx');
 reset enable_seqscan;

@@ -661,6 +661,23 @@ jobs:
               -v ON_ERROR_STOP=1 -f /tests/copilot-invariants.sql
           OURO_DB_NAME="$SEED_DB_NAME" ouroboros-db/tests/verify-copilot-invariants.sh --runner docker
 
+      # BY.4 (#534): the invariants mockup 19's seeded Chat Ops page trusts — the platform, status,
+      # message-kind and command-outcome vocabularies; one active Slack connection per workspace;
+      # the dedupe key; identity links one-to-one both ways; on-call reachable; every message ref
+      # resolving into the shared universe; and the page's fixtures — the header's figures, the
+      # sealed token, the resolved question card with its system line, the revoked link, and the
+      # stage-transition route off. verify-chat-invariants.sh plants a violation of each and
+      # requires red naming it — every probe verified red-then-green.
+      - name: Assert the chat invariants against the seeded database, and that they go red
+        run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            --volume "$PWD/ouroboros-db/tests:/tests:ro" \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
+              -v ON_ERROR_STOP=1 -f /tests/chat-invariants.sql
+          OURO_DB_NAME="$SEED_DB_NAME" ouroboros-db/tests/verify-chat-invariants.sh --runner docker
+
       # CK.6 (#613): the disciplines mockup 22's seeded Research page trusts — every finding claim
       # cited, every matrix cell but `unknown` cited, the regression watch's vocabulary and
       # lifecycle (no `bisected` without a bisect result, no `fixed_merged` without a PR), roadmap
