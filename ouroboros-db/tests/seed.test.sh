@@ -106,6 +106,7 @@ RESEARCH_SEED="$MODULE_DIR/migrations/R__dev_seed_research.sql"
 COPILOT_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_copilot.sql"
 WORKSPACE_RESEARCH_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_research.sql"
 REPLAY_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_replay.sql"
+CHAT_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_triage_slack.sql"
 CONFIG="$MODULE_DIR/flyway.toml"
 SEED_CONFIG="$MODULE_DIR/flyway.seed.toml"
 DEV_CONFIG="$MODULE_DIR/flyway.dev.toml"
@@ -156,6 +157,7 @@ RESEARCH_BODY="$work/seed-body-research.sql"
 COPILOT_BODY="$work/seed-body-workspace-copilot.sql"
 WORKSPACE_RESEARCH_BODY="$work/seed-body-workspace-research.sql"
 REPLAY_BODY="$work/seed-body-workspace-replay.sql"
+CHAT_BODY="$work/seed-body-workspace-triage-slack.sql"
 seed_body "$SEED" "$BODY"
 seed_body "$DASHBOARD_SEED" "$DASHBOARD_BODY"
 seed_body "$INTAKE_SEED" "$INTAKE_BODY"
@@ -180,6 +182,7 @@ seed_body "$RESEARCH_SEED" "$RESEARCH_BODY"
 seed_body "$COPILOT_SEED" "$COPILOT_BODY"
 seed_body "$WORKSPACE_RESEARCH_SEED" "$WORKSPACE_RESEARCH_BODY"
 seed_body "$REPLAY_SEED" "$REPLAY_BODY"
+seed_body "$CHAT_SEED" "$CHAT_BODY"
 
 # count_lines PATTERN [FILE] — how many lines of a seed's SQL match an extended regex.
 # Defaults to R__dev_seed.sql, which is what the assertions written before there was a
@@ -220,6 +223,7 @@ check_exists "$RESEARCH_SEED" 'migrations/R__dev_seed_research.sql exists'
 check_exists "$COPILOT_SEED" 'migrations/R__dev_seed_workspace_copilot.sql exists'
 check_exists "$WORKSPACE_RESEARCH_SEED" 'migrations/R__dev_seed_workspace_research.sql exists'
 check_exists "$REPLAY_SEED" 'migrations/R__dev_seed_workspace_replay.sql exists'
+check_exists "$CHAT_SEED" 'migrations/R__dev_seed_workspace_triage_slack.sql exists'
 
 # Repeatable, not versioned. A seed that grows with the product would otherwise become a
 # chain of V### files that can never be re-run — README.md § Migration rules, rule 3.
@@ -228,7 +232,7 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
                  "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED" \
                  "$KNOWLEDGE_SEED" "$ONBOARDING_SEED" "$INTERVENTIONS_SEED" "$METRICS_SEED" \
                  "$ANALYZER_SEED" "$SETTINGS_SEED" "$INBOX_SEED" "$RESEARCH_SEED" "$COPILOT_SEED" \
-                 "$WORKSPACE_RESEARCH_SEED" "$REPLAY_SEED"; do
+                 "$WORKSPACE_RESEARCH_SEED" "$REPLAY_SEED" "$CHAT_SEED"; do
   check_matches "$(basename -- "$seed_file")" '^R__[a-z0-9_]+\.sql$' \
     "$(basename -- "$seed_file") is a repeatable migration, so it re-applies when it changes"
 done
@@ -292,6 +296,8 @@ workspace_research_description=$(basename -- "$WORKSPACE_RESEARCH_SEED" .sql)
 workspace_research_description=${workspace_research_description#R__}
 replay_description=$(basename -- "$REPLAY_SEED" .sql)
 replay_description=${replay_description#R__}
+chat_description=$(basename -- "$CHAT_SEED" .sql)
+chat_description=${chat_description#R__}
 
 # The providers seed hangs off the first one too — it finds the workspace by slug and Ken
 # by email — and the routing seed hangs off the providers one, since every alias binds to a
@@ -404,10 +410,13 @@ replay_description=${replay_description#R__}
 # the first of their domain. `dev_seed_farm` does that; `farm_dev_seed`, which reads better,
 # would sort before `dev_seed` and every join in it would find nothing on a database migrated
 # from empty.
-check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$research_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$copilot_description" "$interventions_description" "$knowledge_description" "$metrics_description" "$analyzer_description" "$replay_description" "$workspace_research_description" "$settings_description" "$inbox_description")" \
-  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$research_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$copilot_description" "$interventions_description" "$knowledge_description" "$metrics_description" "$analyzer_description" "$replay_description" "$workspace_research_description" "$settings_description" "$inbox_description" |
+# The chat seed (#532) writes cards about the inbox's decision items, the metrics seed's merged
+# loop and the verification seed's pull request, so it sorts after all three and last of all:
+# `dev_seed_workspace_triage_slack` follows `dev_seed_workspace_triage_inbox`.
+check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$research_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$copilot_description" "$interventions_description" "$knowledge_description" "$metrics_description" "$analyzer_description" "$replay_description" "$workspace_research_description" "$settings_description" "$inbox_description" "$chat_description")" \
+  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$research_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$copilot_description" "$interventions_description" "$knowledge_description" "$metrics_description" "$analyzer_description" "$replay_description" "$workspace_research_description" "$settings_description" "$inbox_description" "$chat_description" |
      LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" \
-  'the twenty-three seeds sort in the order their rows depend on, so Flyway applies them in it'
+  'the twenty-five seeds sort in the order their rows depend on, so Flyway applies them in it'
 
 # Every statement is guarded, and every statement can be applied twice. Counted rather
 # than spot-checked: the failure this catches is a *new* statement added later without
@@ -430,7 +439,7 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
                  "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED" \
                  "$KNOWLEDGE_SEED" "$ONBOARDING_SEED" "$INTERVENTIONS_SEED" "$METRICS_SEED" \
                  "$ANALYZER_SEED" "$SETTINGS_SEED" "$INBOX_SEED" "$RESEARCH_SEED" "$COPILOT_SEED" \
-                 "$WORKSPACE_RESEARCH_SEED" "$REPLAY_SEED"; do
+                 "$WORKSPACE_RESEARCH_SEED" "$REPLAY_SEED" "$CHAT_SEED"; do
   name=$(basename -- "$seed_file")
   body=$BODY
   [ "$seed_file" = "$AUDIT_SEED" ] && body=$AUDIT_BODY
@@ -456,6 +465,7 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
   [ "$seed_file" = "$COPILOT_SEED" ] && body=$COPILOT_BODY
   [ "$seed_file" = "$WORKSPACE_RESEARCH_SEED" ] && body=$WORKSPACE_RESEARCH_BODY
   [ "$seed_file" = "$REPLAY_SEED" ] && body=$REPLAY_BODY
+  [ "$seed_file" = "$CHAT_SEED" ] && body=$CHAT_BODY
 
   inserts=$(count_lines '^insert into ouroboros\.' "$body")
   updates=$(count_lines '^update ouroboros\.' "$body")
@@ -1882,6 +1892,42 @@ check_contains "$REPLAY_BODY" "and r\.status = 'running'" 'the build row and the
 check_contains "$REPLAY_BODY" "and r\.status = 'complete'" 'the suggestions are filed only on a finished dry run'
 
 # ---------------------------------------------------------------------------
+# R__dev_seed_workspace_triage_slack.sql — mockup 19's stream, as published records (#532)
+# ---------------------------------------------------------------------------
+
+printf '\nR__dev_seed_workspace_triage_slack.sql — the Slack workspace, its channels and the six-message stream\n'
+
+check_contains "$CHAT_BODY" "'5eed009c-0000-4000-8000-" 'the chat seed builds its ids from the 5eed009c… prefix'
+
+chat_tables=$(grep -Eo '^(insert into|update) ouroboros\.[a-z_]+' "$CHAT_BODY" |
+  sed -E 's/^(insert into|update) ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
+check_equals 'chat_channels chat_commands chat_connections chat_messages ' "$chat_tables" \
+  'the chat seed writes the connection, its channels, the messages and the command — and nothing else'
+
+# **The cards are about rows other seeds hold.** No loop, pull request, issue, decision or audit
+# event is written here, and every ref is built from the row it names.
+check_contains "$CHAT_BODY" "'id', run\.id::text" 'a run ref is the joined run'"'"'s own id'
+check_contains "$CHAT_BODY" "'id', pr\.id::text" 'a pull-request ref is the joined pull request'"'"'s own id'
+check_contains "$CHAT_BODY" 'item\.refs' 'a decision card carries its item'"'"'s own refs'
+check_contains "$CHAT_BODY" "answer\.channel = 'slack'" 'the resolved card is the item that was really answered from Slack'
+check_contains "$CHAT_BODY" 'answer\.action_id' 'and its outcome is that resolution'"'"'s action, not a typed one'
+
+# **The reply's figures are counted.** `3 loops live · 12 queued` is the mockup's; here it is a count.
+check_contains "$CHAT_BODY" "r\.status in \('coding', 'building', 'review'\)" 'loops live is counted from runs'
+check_contains "$CHAT_BODY" 'from ouroboros\.queue_items q' 'queued is counted from the queue'
+check_absent "$CHAT_BODY" "'loops_live', [0-9]" 'no loop count is typed'
+
+# **Every digest is computed**, so a second apply collides instead of duplicating.
+check_equals "$(count_lines '^insert into ouroboros\.chat_messages' "$CHAT_BODY")" \
+  "$(count_lines "encode\(sha256\(convert_to\(" "$CHAT_BODY")" \
+  'every seeded message'"'"'s payload digest is a SHA-256 computed from what the row is about'
+
+# The token is an envelope that seals nothing.
+check_contains "$CHAT_BODY" "'ouro\.v1\.1\.ZGV2LXNlZWQtbm9uY2U\.ZGV2LXNlZWQtdmFsdWUtbm90LWEtcmVhbC1ib3QtdG9rZW4'" \
+  'the bot token is the dev-seed envelope — dev-seed-value-not-a-real-bot-token — and no other'
+check_absent "$CHAT_BODY" 'xox[abp]-' 'no Slack token shape appears in the chat seed'
+
+# ---------------------------------------------------------------------------
 # R__dev_seed_workspace_research.sql — the rest of mockup 22 (#613)
 # ---------------------------------------------------------------------------
 
@@ -1974,6 +2020,7 @@ check_contains "$README" 'R__dev_seed_workspace_triage_inbox\.sql' 'README.md do
 check_contains "$README" 'R__dev_seed_research\.sql' 'README.md documents the research seed'
 check_contains "$README" 'R__dev_seed_workspace_copilot\.sql' 'README.md documents the copilot seed'
 check_contains "$README" 'R__dev_seed_workspace_replay\.sql' 'README.md documents the replay seed'
+check_contains "$README" 'R__dev_seed_workspace_triage_slack\.sql' 'README.md documents the chat seed'
 check_contains "$README" 'R__dev_seed_workspace_research\.sql' 'README.md documents the research workspace seed'
 check_contains "$README" 'acme-onboarding' 'README.md names the onboarding workspace a developer will find'
 check_contains "$README" 'resolution_snapshots' 'README.md documents the snapshot table the routing seed fills for mockup 21'
