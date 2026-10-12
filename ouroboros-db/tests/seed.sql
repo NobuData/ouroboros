@@ -7750,6 +7750,136 @@ select pg_temp.must_hold(
                     join ouroboros.organization org on org."id" = d.organization_id and org."slug" = 'kensuenobu'),
   'Ken''s personal workspace has no research rows — the empty state #633 verifies against');
 
+-- ===========================================================================
+-- R__dev_seed_workspace_triage_slack.sql — mockup 19's stream from the rows (#532, BY.2)
+-- ===========================================================================
+--
+-- *"A seeded completion card's PR, issue and run ids all point at real rows."* The seed builds
+-- each ref from the row it names; this asks the resolver the product uses, of every ref of every
+-- seeded message, so a ref that dangles — or a seed that typed an id — fails here by name.
+select pg_temp.must_hold(
+  (select count(*) = 3 and bool_and(ouroboros.decision_ref_resolves(m.organization_id, r))
+          and array_agg(r ->> 'type' order by r ->> 'type') = array['pr', 'run', 'ticket']
+     from ouroboros.chat_messages m, jsonb_array_elements(m.refs) r
+    where m.id = '5eed009c-0000-4000-8000-000000000101'),
+  'the seeded completion card names a run, a pull request and an issue, and each is a real row of acme-robotics');
+
+select pg_temp.must_hold(
+  (select pr.state = 'merged' and pr.run_id = run.id and pr.ticket_id = ticket.id
+          and m.facts ->> 'outcome' = 'merged'
+     from ouroboros.chat_messages m
+     join ouroboros.runs run on run.id = (m.refs -> 0 ->> 'id')::uuid
+     join ouroboros.pull_requests pr on pr.id = (m.refs -> 1 ->> 'id')::uuid
+     join ouroboros.tickets ticket on ticket.id = (m.refs -> 2 ->> 'id')::uuid
+    where m.id = '5eed009c-0000-4000-8000-000000000101'),
+  'and they are one story: that run''s merged pull request, closing that issue');
+
+select pg_temp.must_hold(
+  (select count(*) > 0 and bool_and(ouroboros.decision_ref_resolves(m.organization_id, r))
+     from ouroboros.chat_messages m, jsonb_array_elements(m.refs) r
+     join ouroboros.organization org on org."slug" = 'acme-robotics'
+    where m.organization_id = org."id"),
+  'every ref of every seeded message resolves');
+
+-- The six archetypes, in the order the channel shows them.
+select pg_temp.must_hold(
+  (select array_agg(row order by at, row) = array[
+            'event_card/loop_finished/-',
+            'decision_card/resize_review/resolved',
+            'system_line/resize_review/-',
+            'decision_card/protected_path_allow_once/open',
+            'command/status/ok/slack',
+            'command_reply/-/-',
+            'event_card/build_green/-']
+     from (select m.posted_at as at, m.kind || '/' || coalesce(m.card_kind, '-') || '/' || coalesce(m.state, '-') as row
+             from ouroboros.chat_messages m
+            where m.channel_id = '5eed009c-0000-4000-8000-0000000000a1'
+           union all
+           select c.invoked_at, 'command/' || c.command || '/' || c.outcome || '/' || c.surface
+             from ouroboros.chat_commands c
+            where c.channel_id = '5eed009c-0000-4000-8000-0000000000a1') stream),
+  'mockup 19''s stream is seeded: a completion card, the question card resolved and open, the system line, /ouro status with its reply, and a build card');
+
+-- The resolved card says what the inbox says: the same action, person and moment.
+select pg_temp.must_hold(
+  (select m.outcome = res.action_id and m.resolved_by = res.resolved_by_user
+          and m.resolved_at = res.resolved_at and res.channel = 'slack'
+          and person."email" = 'maya@acme-robotics.dev' and m.edited_at > m.posted_at
+     from ouroboros.chat_messages m
+     join ouroboros.decision_resolutions res on res.item_id = m.decision_item_id
+     join ouroboros."user" person on person."id" = m.resolved_by
+    where m.id = '5eed009c-0000-4000-8000-000000000103'),
+  'the resolved card is the item Maya answered from Slack — its outcome, answerer and time are the resolution''s');
+
+select pg_temp.must_hold(
+  (select item.status = 'open' and m.card_kind = 'protected_path_allow_once' and m.refs = item.refs
+     from ouroboros.chat_messages m
+     join ouroboros.decision_items item on item.id = m.decision_item_id
+    where m.id = '5eed009c-0000-4000-8000-000000000102' and m.state = 'open'),
+  'the open card is an allow-once question the inbox still holds open, with the item''s own refs');
+
+-- The reply's figures are counts of what is there.
+select pg_temp.must_hold(
+  (select (m.facts ->> 'loops_live')::bigint
+            = (select count(*) from ouroboros.runs r
+                where r.organization_id = m.organization_id and r.status in ('coding', 'building', 'review'))
+          and (m.facts ->> 'queued')::bigint
+            = (select count(*) from ouroboros.queue_items q where q.organization_id = m.organization_id)
+          and (m.facts ->> 'needs_you')::bigint
+            = (select count(*) from ouroboros.decision_items i
+                where i.organization_id = m.organization_id and i.status = 'open')
+     from ouroboros.chat_messages m where m.id = '5eed009c-0000-4000-8000-000000000105'),
+  'the status reply''s loops live, queued and needs-you are the workspace''s own counts');
+
+select pg_temp.must_hold(
+  (select c.result_ref ->> 'message' = m.id::text and m.kind = 'command_reply'
+          and c.invoker_link_id is null and c.platform_user_id is not null
+     from ouroboros.chat_commands c
+     join ouroboros.chat_messages m on m.id = (c.result_ref ->> 'message')::uuid
+    where c.id = '5eed009c-0000-4000-8000-000000000201'),
+  'the seeded command names the reply it produced, and its invoker by platform id alone — no link is seeded');
+
+select pg_temp.must_hold(
+  (select (m.facts ->> 'passed')::int = tr.passed and (m.facts ->> 'total')::int = tr.total and tr.passed = tr.total
+     from ouroboros.chat_messages m
+     join ouroboros.test_runs tr on tr.run_id = (m.refs -> 0 ->> 'id')::uuid and tr.status = 'complete'
+                                and tr.passed = tr.total
+    where m.id = '5eed009c-0000-4000-8000-000000000106'),
+  'the build card''s count is its run''s all-green test run');
+
+-- Every seeded digest is unique in its channel, and no platform ts is shared.
+select pg_temp.must_hold(
+  (select count(*) = count(distinct payload_digest) and count(*) = count(distinct platform_ts) and count(*) = 6
+     from ouroboros.chat_messages where channel_id = '5eed009c-0000-4000-8000-0000000000a1'),
+  'six seeded messages, six digests, six platform timestamps');
+
+-- The connection: one active Slack workspace, three channels the bot is in, a token that seals nothing.
+select pg_temp.must_hold(
+  (select c.status = 'active' and c.install_meta ->> 'app_version' = 'v2.4'
+          and (select count(*) = 3 and bool_and(ch.joined) and max(ch.member_count) = 24
+                 from ouroboros.chat_channels ch where ch.connection_id = c.id)
+     from ouroboros.chat_connections_public c where c.id = '5eed009c-0000-4000-8000-000000000001'),
+  'acme-robotics has one active Slack connection at app v2.4 and three joined channels, #ouroboros-loops with 24 members');
+
+-- The mirror's read of the seeded channel's most recent day reaches the table through an index.
+set enable_seqscan = off;
+select pg_temp.must_not_scan(
+  $$select id, kind, card_kind, refs, state, posted_at from ouroboros.chat_messages
+     where channel_id = '5eed009c-0000-4000-8000-0000000000a1' and posted_at >= now() - interval '1 day'
+     order by posted_at desc, id desc limit 50$$);
+select pg_temp.must_use_index(
+  $$select id, kind, card_kind, refs, state, posted_at from ouroboros.chat_messages
+     where channel_id = '5eed009c-0000-4000-8000-0000000000a1' and posted_at >= now() - interval '1 day'
+     order by posted_at desc, id desc limit 50$$,
+  'chat_messages_channel_posted_idx');
+reset enable_seqscan;
+
+-- The personal workspace has no chat install: the page's not-connected state.
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.chat_connections c
+                join ouroboros.organization org on org."id" = c.organization_id and org."slug" = 'kensuenobu'),
+  'Ken''s personal workspace has no chat connection');
+
 
 \o
 \echo 'seed.sql: all assertions passed'

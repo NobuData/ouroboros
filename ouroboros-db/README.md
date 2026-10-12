@@ -1893,6 +1893,41 @@
 > - Connection and channel rows are configuration, not telemetry: they are in no retention class
 >   ([#482](https://github.com/NobuData/ouroboros/issues/482)).
 
+> `V131` ([#532](https://github.com/NobuData/ouroboros/issues/532), BY.2) records every card
+> published and every command invoked.
+>
+> - **`chat_messages`** — `kind` `decision_card | event_card | command_reply | system_line`;
+>   `card_kind` (a decision kind's id, or `loop_finished | build_green | build_failed | digest`);
+>   `refs` in BM.1's typed shape, each resolving in the message's workspace
+>   (`chat_messages_refs_resolve`); `facts` (the figures a renderer prints); a decision card's
+>   `state` `open | resolved` with `outcome`, `resolved_by`, `resolved_at`; `decision_item_id`,
+>   whose kind is the row's `card_kind` by foreign key; `thread_ts`, `escalated_at`, `posted_at`,
+>   `edited_at`. **No platform markup is stored** — a row re-renders from these.
+> - **The edit key and the lookup** — `platform_ts` is null until the platform answers, then
+>   unique per channel; `chat_messages_platform_ts_key` leads with it.
+> - **Dedupe** — `payload_digest` (SHA-256 hex) with `dedupe_bucket`, `posted_at` binned to the
+>   hour: `chat_messages_dedupe_key` is unique on (channel, digest, bucket), so a retried publish
+>   creates no row. A retry that crosses the top of the hour is not caught by it;
+>   `chat_messages_one_open_decision_card` — one **open** decision card per (channel, item), with
+>   no window — is what keeps a decision to one answer path.
+> - **`chat_commands`** — `surface` `slack | console`, `command`, parsed `args`, `raw_text`,
+>   `outcome` `ok | error | denied | unlinked | async_pending`, `result_ref`, `error_detail`,
+>   `invoked_at`, `completed_at`. A Slack invocation always keeps `platform_user_id`; an `unlinked`
+>   one has no link. **`invoker_link_id` has no foreign key yet** — BY.3
+>   ([#533](https://github.com/NobuData/ouroboros/issues/533)) adds it with the links table.
+> - **Audit linkage** — `chat_commands.audit_event_id` names the command's `audit_events` entry,
+>   and the services write chat provenance as
+>   `detail.chat = {connection_id, channel_id, message_id}`, which V102's GIN index answers by
+>   containment. No trigger writes audit rows.
+> - **Retention** — classes `custom:chat-messages` and `custom:chat-commands` through
+>   `chat_records_sweep()`: commands are never cut earlier than messages, and an open decision
+>   card and a pending command are never swept. The application role cannot delete either table.
+> - The mirror's read is `chat_messages_channel_posted_idx` (`channel_id, posted_at desc, id desc`).
+>
+> [`R__dev_seed_workspace_triage_slack.sql`](migrations/R__dev_seed_workspace_triage_slack.sql)
+> seeds `acme-robotics`' Slack workspace, three channels and mockup 19's stream — see
+> [The development seed](#the-development-seed).
+
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
 > migration *below* its current version — which `validate` rejects, and `migrate`
@@ -2692,6 +2727,26 @@ open, 40 sized — the same move [#460](https://github.com/NobuData/ouroboros/is
 made — and `security-patch` joins the studio rail as `not published`. It sorts after
 `dev_seed_intake`, `dev_seed_routing` and `dev_seed_workflows`, which it reads; the replay seed
 sorts after `dev_seed_workspace_metrics_analyzer`, whose builds are the history it reads.
+
+[`R__dev_seed_workspace_triage_slack.sql`](migrations/R__dev_seed_workspace_triage_slack.sql)
+([#532](https://github.com/NobuData/ouroboros/issues/532)) is mockup 19's channel for
+`acme-robotics`: one active Slack connection (`Ouroboros app v2.4`, a token envelope that seals
+nothing), the channels `#ouroboros-loops` (24 members), `#helios-alerts` and `#eng-leads`, and the
+six-message stream as published records — **about rows the other seeds already hold**, so the
+digits are the seed's and not the mockup's.
+
+| The mockup's message | From the rows |
+|---|---|
+| `✓ Loop … finished — PR … merged` | an `event_card` / `loop_finished` whose refs are the merged loop of `#520`, its pull request and its issue |
+| `⏸ Build paused — a question for you` | a `decision_card`, `open`, on the inbox's open `protected_path_allow_once` item, with the item's own refs |
+| the same card, answered | a `decision_card`, `resolved`, on the item Maya answered **from Slack** — outcome, answerer and time are that `decision_resolutions` row's (`keep_size`) |
+| `✓ Maya Chen answered: …` | the `system_line` that answer added |
+| `/ouro status` | one `chat_commands` row, `surface: slack`, `outcome: ok`, naming its reply; no identity link is seeded, so the invoker is a platform user id |
+| `3 loops live · 12 queued · … needs-you: 3` | a `command_reply` whose `facts` are **counted** from runs, the queue and open decision items |
+| `⟳ Loop #1847 build … green — 63/63` | an `event_card` / `build_green` on run `#482` and PR `#514`, with its all-green test run's count |
+
+It writes no audit event and no notification route. It sorts after
+`dev_seed_workspace_triage_inbox` — the last of the seeds it reads.
 
 ### The bundled price catalog
 
@@ -3693,6 +3748,7 @@ ouroboros-db/
 │   ├── V128__suggestion_rules.sql    # dry_run_stages.skip_kind/skip_input; dry_run_suggestions: empty proposed_ops (advisory) and null confidence exactly on llm — #563
 │   ├── V129__discard_workflow_draft.sql # discard_workflow_draft(): drops a draft with its current-base draft_operations, resets draft_rev/provenance_summary, closes the active copilot session as discarded — #565
 │   ├── V130__chat_connections_channels.sql # chat_connections (sealed bot token, active|revoked|error, one active Slack per workspace) + chat_connections_public, chat_channels; notification_routes.chat_channel_id/dm_on_call — #531
+│   ├── V131__chat_messages_commands.sql # chat_messages (kind, card_kind, typed refs, facts, state; platform_ts edit key; hourly dedupe key; one open decision card per channel+item), chat_commands (surface, outcome matrix, audit_event_id), chat_records_sweep() — #532
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -3716,7 +3772,8 @@ ouroboros-db/
 │   ├── R__dev_seed_workspace_settings.sql # mockup 17 — policy v1–v7, members, today's audit lines, retention, webhooks, routes, dev only — #484
 │   ├── R__dev_seed_workspace_copilot.sql # mockup 20 — the security-patch conversation, draft v0.3 with W7 warnings, the open dry run on #489, dev only — #558
 │   ├── R__dev_seed_workspace_replay.sql # mockup 20 — the dry run's build row computed from farm history, its completion, the two suggestions, dev only — #561
-│   ├── R__dev_seed_workspace_triage_inbox.sql # mockup 16 — three open cards, the week's eleven answers, PR #504, dev only — #460 (sorts last)
+│   ├── R__dev_seed_workspace_triage_inbox.sql # mockup 16 — three open cards, the week's eleven answers, PR #504, dev only — #460
+│   ├── R__dev_seed_workspace_triage_slack.sql # mockup 19 — the Slack workspace, three channels and the six-message stream as published records, dev only — #532 (sorts last)
 │   └── R__model_price_catalog.sql    # the bundled price snapshot, every environment — #580 (generated)
 └── tests/
     ├── lib/
@@ -3921,6 +3978,8 @@ outside this module alters it.
 | `notification_routes` | `V094`, `V130` | Org-level notification routes ([#484](https://github.com/NobuData/ouroboros/issues/484), schema for BR.4 [#488](https://github.com/NobuData/ouroboros/issues/488)) — `kind`, `channel`, `config`, `enabled`, and since `V130` ([#531](https://github.com/NobuData/ouroboros/issues/531)) `chat_channel_id` and `dm_on_call` | `(organization_id, kind)` primary key; kind `needs_you_dm\|daily_digest\|loop_failures\|weekly_insights` or `custom:<slug>`; channel `email\|slack\|pagerduty`; config only `time` (HH:MM), `weekday`, `recipients`; read through `notification_routes_effective`, which derives `locked`, `locked_reason` and `delivering`; only a Slack route carries a chat target, an enabled one resolves to a channel, the on-call DM or `needs_you_dm`, and the channel is the route's own workspace's and platform's (deferred, no action) |
 | `chat_connections` | `V130` | An installed chat workspace ([#531](https://github.com/NobuData/ouroboros/issues/531), BY.1) — `platform`, `workspace_id`, `workspace_name`, `bot_token_sealed`, `bot_user_id`, `install_meta`, `status`, `status_detail`, `installed_by`, `installed_at`, `last_verified_at` | platform `slack\|teams` (teams reserved, inert); one row per `(organization_id, platform, workspace_id)`; `bot_token_sealed` is the vault's envelope by CHECK, required while active and in no view — read paths select `chat_connections_public`; status `active\|revoked\|error` with `status_detail` null exactly when active; `chat_connections_one_active_slack` allows one active Slack connection per workspace; cascades with the workspace; `ouroboros_app` may select, insert and update — never delete |
 | `chat_channels` | `V130` | A connection's channels ([#531](https://github.com/NobuData/ouroboros/issues/531), BY.1) — `channel_id`, `channel_name`, `is_private`, `joined`, `joined_at`, `member_count`, `purpose_tag`, `archived` | unique per `(connection_id, channel_id)`; the name is stored without `#` and nothing is keyed on it; `joined` requires `joined_at` and is independent of `archived`; `organization_id` and `platform` are the connection's by composite foreign key; cascades with the connection, unless a route targets it; `ouroboros_app` may select, insert and update |
+| `chat_messages` | `V131` | What was published to a chat channel ([#532](https://github.com/NobuData/ouroboros/issues/532), BY.2) — `platform_ts`, `platform_message_id`, `kind`, `card_kind`, `decision_item_id`, `refs`, `facts`, `state`, `outcome`, `resolved_by`, `resolved_at`, `payload_digest`, `dedupe_bucket`, `thread_ts`, `escalated_at`, `posted_at`, `edited_at` | kind `decision_card\|event_card\|command_reply\|system_line`; an event card's `card_kind` is `loop_finished\|build_green\|build_failed\|digest`, a decision card's is its item's kind by foreign key; `refs` is BM.1's typed list and resolves in the workspace; only a decision card has a `state` (`open\|resolved`, resolved carrying outcome and time); `platform_ts` unique per channel once set; unique `(channel_id, payload_digest, dedupe_bucket)` — the hourly dedupe; one open decision card per `(channel_id, decision_item_id)`; retention class `custom:chat-messages`; `ouroboros_app` may select, insert and update — never delete |
+| `chat_commands` | `V131` | Every `/ouro` command invoked ([#532](https://github.com/NobuData/ouroboros/issues/532), BY.2) — `connection_id`, `channel_id`, `invoker_link_id`, `platform_user_id`, `surface`, `command`, `args`, `raw_text`, `outcome`, `result_ref`, `error_detail`, `audit_event_id`, `invoked_at`, `completed_at` | surface `slack\|console` (console: no channel, no platform user); outcome `ok\|error\|denied\|unlinked\|async_pending`, `completed_at` null exactly while pending, `error_detail` required for `error`; `unlinked` has no `invoker_link_id` and keeps `platform_user_id`; `invoker_link_id` has no foreign key until [#533](https://github.com/NobuData/ouroboros/issues/533); the channel is one of the connection's; `audit_event_id` set null on purge; retention class `custom:chat-commands`, never cut before messages; `ouroboros_app` may select, insert and update — never delete |
 | `notification_route_sends` | `V103` | Every mail an org-level notification route sent ([#488](https://github.com/NobuData/ouroboros/issues/488), BR.4) — `kind`, `slot_at`, `recipient`, `attempt`, `message_id`, `status`, `error` | Unique `(organization_id, kind, slot_at, recipient, attempt)` so replicas never mail one address twice for a slot; kind `daily_digest\|weekly_insights`; status `claimed\|sent\|failed`, settled once (`sent` without an error, `failed` with one); no foreign key to the route, so re-binding a route does not rewrite what it sent |
 | `service_tokens` | `V091` | Service account bearer tokens, **hash-only** ([#485](https://github.com/NobuData/ouroboros/issues/485)) — `token_hash`, `hint_sealed`, `last_used_at`, `revoked_at` | `token_hash` 64 hex and unique; `hint_sealed` an AD.1 envelope; one live token per account (`service_tokens_one_live_idx`); no column holds the token |
 | `analysis_suggestions` | `V081` | A card or ticket draft ([#507](https://github.com/NobuData/ouroboros/issues/507), decision **A4**) — `repo_ref`, `kind`, `identity_key`, `last_run_id`, `title`, `evidence_line`, `confidence`, `impact`, `needs_spike`, `action_binding`, `status`, `resolved_by`, `resolved_at`, `resolution_reason`, `applied_event_id`, `draft_batch_id` | unique on `(organization_id, repo_ref, identity_key)`, the identity derived from the cited findings and checked at commit; `kind` `build_process\|workflow\|ticket_draft`; `impact` required except on ticket drafts, its `basis` mandatory, an `unquantified` basis needs `needs_spike`; planning is the plane of ticket drafts and spikes only, a workflow suggestion binds the workflow plane; born `open`; `applied` needs its `analysis_suggestion.applied` audit event (not a ticket draft or spike), `dismissed` an actor and a reason, `drafted` a same-workspace batch (ticket draft or spike); resolutions are terminal and frozen; `last_run_id` sets null; cascades with the workspace |

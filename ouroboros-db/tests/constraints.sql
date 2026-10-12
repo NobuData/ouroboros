@@ -14532,8 +14532,11 @@ select pg_temp.must_hold(
    -- and their artifacts while the writer still cannot delete one — asserted in V111's section.
    -- #565 added `discard_workflow_draft()`, so a draft can be dropped with its operation log
    -- while the writer still cannot delete an operation — asserted in V129's section.
+   -- #532 added `chat_records_sweep()`, so the chat retention sweep can remove old messages and
+   -- command records while the writer still cannot delete one — asserted in V131's section.
    and (select array_agg(proname::text order by proname) = array['apply_draft_batch',
                                                                  'audit_events_purge',
+                                                                 'chat_records_sweep',
                                                                  'copilot_messages_allocate_seq',
                                                                  'copilot_sessions_sweep',
                                                                  'decision_ref_resolves',
@@ -41333,6 +41336,694 @@ select pg_temp.must_hold(
   and (select count(*) = 0 from ouroboros.notification_routes where organization_id = 'org-v130c'),
   'a workspace takes its connections, their channels and the routes that target them with it');
 
+-- ===========================================================================
+-- V131 — chat messages and command records (#532, BY.2)
+-- ===========================================================================
+--
+-- Mockup 19's six-message stream as rows: a completion card whose refs resolve, the question card
+-- open and then resolved(allow_once, by Maya) with its system line, `/ouro status` and its reply,
+-- and a build card. Asked here: every archetype is representable and re-renders from kind, card
+-- kind, refs, state and facts; a retried publish creates no row; a decision has one open card per
+-- channel; the command outcome matrix is whole and an unlinked attempt keeps its platform user;
+-- console and Slack share one table; the mirror's read is an index read; and the sweep removes
+-- old records, commands never before messages.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v131',  'Stream Works', 'stream-works-v131', now()),
+  ('org-v131b', 'Stream Two',   'stream-two-v131',   now()),
+  ('org-v131c', 'Stream Gone',  'stream-gone-v131',  now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v131-maya', 'Maya Chen', 'maya@stream-works-v131.dev', true);
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a1310000-0000-0000-0000-00000000000a', 'org-v131',  'stream-v131', true),
+  ('a1310000-0000-0000-0000-00000000000b', 'org-v131b', 'two-v131',    true);
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a131f000-0000-0000-0000-00000000000a', 'a1310000-0000-0000-0000-00000000000a', 'helios-firmware', true, 'main'),
+  ('a131f000-0000-0000-0000-00000000000b', 'a1310000-0000-0000-0000-00000000000b', 'two-firmware',    true, 'main');
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('a1320000-0000-0000-0000-00000000000a', 'org-v131',  'github', 'GitHub · stream'),
+  ('a1320000-0000-0000-0000-00000000000b', 'org-v131b', 'github', 'GitHub · two');
+
+-- The mockup's universe: issues #474 and #479, loops #1846, #1847 and #1851, PRs #512 and #514.
+insert into ouroboros.tickets
+    (id, organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values
+    ('a1330000-0000-0000-0000-000000000474', 'org-v131', 'a1320000-0000-0000-0000-00000000000a',
+     '474', '#474', 'https://github.com/stream-v131/helios-firmware/issues/474',
+     'Watchdog resets under brown-out', 'closed', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z'),
+    ('a1330000-0000-0000-0000-000000000479', 'org-v131', 'a1320000-0000-0000-0000-00000000000a',
+     '479', '#479', 'https://github.com/stream-v131/helios-firmware/issues/479',
+     'OTA rollback flag is never cleared', 'open', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, loop_seq)
+  values
+    ('a1360000-0000-0000-0000-000000001846', 'org-v131', 'a131f000-0000-0000-0000-00000000000a',
+     474, 'Watchdog resets under brown-out', 'standard-fix', 'claude-fable-5', 'review',
+     'Review', 7, 8, '2026-09-01T09:00:00Z', 1846),
+    ('a1360000-0000-0000-0000-000000001847', 'org-v131', 'a131f000-0000-0000-0000-00000000000a',
+     482, 'CAN frame order flakes under ISR load', 'standard-fix', 'claude-fable-5', 'building',
+     'Build', 4, 8, '2026-09-01T09:10:00Z', 1847),
+    ('a1360000-0000-0000-0000-000000001851', 'org-v131', 'a131f000-0000-0000-0000-00000000000a',
+     479, 'OTA rollback flag is never cleared', 'standard-fix', 'claude-fable-5', 'review',
+     'Review', 7, 8, '2026-09-01T09:30:00Z', 1851),
+    ('a1360000-0000-0000-0000-00000000f001', 'org-v131b', 'a131f000-0000-0000-0000-00000000000b',
+     1, 'someone else''s loop', 'standard-fix', 'claude-fable-5', 'review',
+     'Review', 7, 8, '2026-09-01T09:30:00Z', 1);
+
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title, head_branch,
+     base_branch, run_id, ticket_id, state)
+  values
+    ('a1370000-0000-0000-0000-000000000512', 'org-v131', 'a1320000-0000-0000-0000-00000000000a',
+     512, 'https://github.com/stream-v131/helios-firmware/pull/512', 'watchdog: hold reset',
+     'loop/474', 'main', 'a1360000-0000-0000-0000-000000001846',
+     'a1330000-0000-0000-0000-000000000474', 'open'),
+    ('a1370000-0000-0000-0000-000000000514', 'org-v131', 'a1320000-0000-0000-0000-00000000000a',
+     514, 'https://github.com/stream-v131/helios-firmware/pull/514', 'can: fix flake',
+     'loop/482', 'main', 'a1360000-0000-0000-0000-000000001847', null, 'open');
+
+-- The question: may loop #1851 touch a protected path? Filed the way the guardrail plane files it.
+create temporary table v131_item on commit drop as
+select ouroboros.decision_item_emit(
+         'org-v131', 'protected_path_allow_once',
+         '{"subject": "The OTA rollback fix", "edit_summary": "add one line",
+           "path": "boot/rollback_flag.c", "diff_lines": 3}',
+         '[{"type": "run",    "id": "a1360000-0000-0000-0000-000000001851", "label": "loop #1851"},
+           {"type": "ticket", "id": "a1330000-0000-0000-0000-000000000479", "label": "issue #479"},
+           {"type": "path",   "id": "boot/rollback_flag.c",                 "label": "boot/rollback_flag.c"}]',
+         'guardrails', 'run:a1360000-0000-0000-0000-000000001851:path:boot/rollback_flag.c') as id;
+
+insert into ouroboros.chat_connections
+  (id, organization_id, platform, workspace_id, workspace_name, bot_token_sealed)
+values
+  ('c1310000-0000-4000-8000-000000000001', 'org-v131',  'slack', 'T131AB', 'stream-works', 'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA'),
+  ('c1310000-0000-4000-8000-000000000002', 'org-v131b', 'slack', 'T131CD', 'stream-two',   'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA'),
+  ('c1310000-0000-4000-8000-000000000003', 'org-v131c', 'slack', 'T131EF', 'stream-gone',  'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA');
+insert into ouroboros.chat_channels (id, organization_id, connection_id, platform, channel_id, channel_name, joined, joined_at)
+values
+  ('c1310000-0000-4000-8000-0000000000a1', 'org-v131',  'c1310000-0000-4000-8000-000000000001', 'slack', 'C131LOOPS', 'ouroboros-loops', true, now()),
+  ('c1310000-0000-4000-8000-0000000000a2', 'org-v131',  'c1310000-0000-4000-8000-000000000001', 'slack', 'C131ALERT', 'helios-alerts',   true, now()),
+  ('c1310000-0000-4000-8000-0000000000b1', 'org-v131b', 'c1310000-0000-4000-8000-000000000002', 'slack', 'C131LOOPS', 'ouroboros-loops', true, now()),
+  ('c1310000-0000-4000-8000-0000000000c1', 'org-v131c', 'c1310000-0000-4000-8000-000000000003', 'slack', 'C131GONE',  'gone',            true, now());
+
+-- --- the six archetypes --------------------------------------------------------------------------
+-- 1. ✓ Loop #1846 finished — PR #512 merged                         event_card · loop_finished
+-- 2. ⏸ Build paused — a question for you                            decision_card · open
+-- 4. /ouro status                                                    a command
+-- 5. 3 loops live · 12 queued · farm 4/5 online · …                  command_reply
+-- 6. ⟳ Loop #1847 build 3 green — 63/63 · publishing PR #514 rev 2   event_card · build_green
+-- (3, the system line, arrives with the answer below.)
+insert into ouroboros.chat_messages
+  (id, organization_id, channel_id, platform_ts, kind, card_kind, decision_item_id, refs, facts,
+   state, payload_digest, posted_at)
+values
+  ('c1310000-0000-4000-8000-00000000d001', 'org-v131', 'c1310000-0000-4000-8000-0000000000a1',
+   '1723210020.004', 'event_card', 'loop_finished', null,
+   '[{"type": "run",    "id": "a1360000-0000-0000-0000-000000001846", "label": "loop #1846"},
+     {"type": "pr",     "id": "a1370000-0000-0000-0000-000000000512", "label": "PR #512"},
+     {"type": "ticket", "id": "a1330000-0000-0000-0000-000000000474", "label": "issue #474"}]',
+   '{"outcome": "merged"}', null, repeat('1', 64), timestamptz '2026-09-01 14:00:20+00'),
+  ('c1310000-0000-4000-8000-00000000d002', 'org-v131', 'c1310000-0000-4000-8000-0000000000a1',
+   '1723210440.011', 'decision_card', 'protected_path_allow_once', (select id from v131_item),
+   '[{"type": "run", "id": "a1360000-0000-0000-0000-000000001851", "label": "loop #1851"}]',
+   '{}', 'open', repeat('2', 64), timestamptz '2026-09-01 14:07:00+00'),
+  ('c1310000-0000-4000-8000-00000000d005', 'org-v131', 'c1310000-0000-4000-8000-0000000000a1',
+   '1723210800.020', 'command_reply', null, null, '[]',
+   '{"loops_live": 3, "queued": 12, "farm_online": 4, "farm_total": 5, "spend_today_cents": 1860, "needs_you": 3}',
+   null, repeat('5', 64), timestamptz '2026-09-01 14:13:20+00'),
+  ('c1310000-0000-4000-8000-00000000d006', 'org-v131', 'c1310000-0000-4000-8000-0000000000a1',
+   '1723210900.031', 'event_card', 'build_green', null,
+   '[{"type": "run", "id": "a1360000-0000-0000-0000-000000001847", "label": "loop #1847"},
+     {"type": "pr",  "id": "a1370000-0000-0000-0000-000000000514", "label": "PR #514"}]',
+   '{"build": 3, "passed": 63, "total": 63, "pr_revision": 2}', null, repeat('6', 64),
+   timestamptz '2026-09-01 14:15:00+00');
+
+insert into ouroboros.chat_commands
+  (id, organization_id, connection_id, channel_id, platform_user_id, surface, command, raw_text,
+   outcome, result_ref, invoked_at, completed_at)
+values
+  ('c1310000-0000-4000-8000-00000000e004', 'org-v131', 'c1310000-0000-4000-8000-000000000001',
+   'c1310000-0000-4000-8000-0000000000a1', 'U131KEN', 'slack', 'status', '/ouro status',
+   'ok', '{"message": "c1310000-0000-4000-8000-00000000d005"}',
+   timestamptz '2026-09-01 14:13:19+00', timestamptz '2026-09-01 14:13:20+00');
+
+-- The answer: the card is edited in place, and a system line is added. 3.
+update ouroboros.chat_messages
+   set state = 'resolved', outcome = 'allow_once', resolved_by = 'user-v131-maya',
+       resolved_at = timestamptz '2026-09-01 14:11:00+00', edited_at = timestamptz '2026-09-01 14:11:01+00',
+       payload_digest = repeat('a', 64)
+ where id = 'c1310000-0000-4000-8000-00000000d002';
+insert into ouroboros.chat_messages
+  (id, organization_id, channel_id, platform_ts, kind, card_kind, decision_item_id, refs, facts,
+   payload_digest, posted_at)
+values
+  ('c1310000-0000-4000-8000-00000000d003', 'org-v131', 'c1310000-0000-4000-8000-0000000000a1',
+   '1723210661.015', 'system_line', 'protected_path_allow_once', (select id from v131_item),
+   '[{"type": "run", "id": "a1360000-0000-0000-0000-000000001851", "label": "loop #1851"}]',
+   '{"action": "allow_once", "effect": "resumed"}', repeat('3', 64), timestamptz '2026-09-01 14:11:01+00');
+
+select pg_temp.must_hold(
+  (select array_agg(row order by at) = array[
+            'event_card/loop_finished/-/loop #1846,PR #512,issue #474',
+            'decision_card/protected_path_allow_once/resolved(allow_once, by Maya Chen)/loop #1851',
+            'system_line/protected_path_allow_once/-/loop #1851',
+            'command//ouro status/ok/slack',
+            'command_reply/-/-/',
+            'event_card/build_green/-/loop #1847,PR #514']
+     from (select m.posted_at as at,
+                  m.kind || '/' || coalesce(m.card_kind, '-') || '/'
+                    || coalesce(m.state || '(' || m.outcome || ', by ' || u."name" || ')', m.state, '-') || '/'
+                    || coalesce((select string_agg(r ->> 'label', ',' order by ord)
+                                   from jsonb_array_elements(m.refs) with ordinality as x(r, ord)), '') as row
+             from ouroboros.chat_messages m
+             left join ouroboros."user" u on u."id" = m.resolved_by
+            where m.channel_id = 'c1310000-0000-4000-8000-0000000000a1'
+           union all
+           select c.invoked_at, 'command/' || c.raw_text || '/' || c.outcome || '/' || c.surface
+             from ouroboros.chat_commands c
+            where c.channel_id = 'c1310000-0000-4000-8000-0000000000a1') stream),
+  'mockup 19''s six-message stream is six rows, in order — and each re-renders from kind, card kind, refs and state alone');
+
+select pg_temp.must_hold(
+  (select state = 'resolved' and outcome = 'allow_once' and resolved_by = 'user-v131-maya'
+          and resolved_at is not null and edited_at > posted_at and platform_ts = '1723210440.011'
+     from ouroboros.chat_messages where id = 'c1310000-0000-4000-8000-00000000d002'),
+  'the question card went from open to resolved(allow_once, by Maya) as an edit of the same row, under the same platform ts');
+
+select pg_temp.must_hold(
+  (select facts = '{"build": 3, "passed": 63, "total": 63, "pr_revision": 2}'::jsonb
+     from ouroboros.chat_messages where id = 'c1310000-0000-4000-8000-00000000d006')
+  and (select (facts ->> 'spend_today_cents')::int = 1860
+         from ouroboros.chat_messages where id = 'c1310000-0000-4000-8000-00000000d005'),
+  'the figures a card prints are facts on the row — 63/63, build 3, $18.60 — not markup');
+
+select pg_temp.must_hold(
+  (select dedupe_bucket = timestamptz '2026-09-01 14:00:00+00'
+     from ouroboros.chat_messages where id = 'c1310000-0000-4000-8000-00000000d006'),
+  'a message''s dedupe bucket is its posted hour');
+
+-- --- refs resolve ------------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select bool_and(ouroboros.decision_ref_resolves(m.organization_id, r)) and count(*) = 3
+     from ouroboros.chat_messages m, jsonb_array_elements(m.refs) r
+    where m.id = 'c1310000-0000-4000-8000-00000000d001'),
+  'the completion card''s run, PR and issue each point at a real row of its workspace');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_messages
+       set refs = '[{"type": "run", "id": "a1360000-0000-0000-0000-00000000f001", "label": "loop #1"}]'
+     where id = 'c1310000-0000-4000-8000-00000000d001'$$,
+  'a card cannot name another workspace''s loop', 'chat_messages_refs_resolve');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_messages
+       set refs = '[{"type": "pr", "id": "00000000-0000-0000-0000-000000000000", "label": "PR #0"}]'
+     where id = 'c1310000-0000-4000-8000-00000000d001'$$,
+  'nor a pull request that does not exist', 'chat_messages_refs_resolve');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_messages set refs = '{"run": 1851}'
+     where id = 'c1310000-0000-4000-8000-00000000d001'$$,
+  'refs are BM.1''s typed list, not a bag of numbers', 'chat_messages_refs_well_formed');
+
+-- --- a retried publish creates no row ------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_messages (organization_id, channel_id, kind, card_kind, payload_digest, posted_at)
+    values ('org-v131', 'c1310000-0000-4000-8000-0000000000a1', 'event_card', 'build_green',
+            repeat('6', 64), timestamptz '2026-09-01 14:40:00+00')$$,
+  'identical content into the same channel in the same hour is refused', 'chat_messages_dedupe_key');
+
+-- The probe: the publisher's own statement, retried. The second attempt is a no-op, not an error.
+insert into ouroboros.chat_messages (organization_id, channel_id, kind, card_kind, payload_digest, posted_at)
+values ('org-v131', 'c1310000-0000-4000-8000-0000000000a1', 'event_card', 'build_green',
+        repeat('6', 64), timestamptz '2026-09-01 14:40:00+00')
+on conflict (channel_id, payload_digest, dedupe_bucket) do nothing;
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.chat_messages
+    where channel_id = 'c1310000-0000-4000-8000-0000000000a1' and payload_digest = repeat('6', 64)),
+  'a retried publish with on conflict do nothing leaves exactly one row — no second card');
+
+insert into ouroboros.chat_messages (organization_id, channel_id, kind, card_kind, payload_digest, posted_at)
+values ('org-v131', 'c1310000-0000-4000-8000-0000000000a2', 'event_card', 'build_green',
+        repeat('6', 64), timestamptz '2026-09-01 14:40:00+00'),
+       ('org-v131', 'c1310000-0000-4000-8000-0000000000a1', 'event_card', 'build_green',
+        repeat('6', 64), timestamptz '2026-09-01 16:05:00+00');
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.chat_messages where payload_digest = repeat('6', 64)),
+  'the same content goes to another channel, and to the same one in a later hour — the window is bounded');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_messages (organization_id, channel_id, kind, payload_digest)
+    values ('org-v131', 'c1310000-0000-4000-8000-0000000000a1', 'system_line', 'not-a-digest')$$,
+  'a payload digest is a SHA-256 in hex', 'chat_messages_payload_digest_sha256');
+
+-- One decision, one open card per channel — with no window at all.
+update ouroboros.chat_messages
+   set state = 'open', outcome = null, resolved_by = null, resolved_at = null
+ where id = 'c1310000-0000-4000-8000-00000000d002';
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_messages (organization_id, channel_id, kind, card_kind, decision_item_id,
+                                         state, payload_digest, posted_at)
+    select 'org-v131', 'c1310000-0000-4000-8000-0000000000a1', 'decision_card',
+           'protected_path_allow_once', id, 'open', repeat('b', 64), timestamptz '2026-09-03 09:00:00+00'
+      from v131_item$$,
+  'a decision has one open card in a channel, however much later the second is posted',
+  'chat_messages_one_open_decision_card');
+insert into ouroboros.chat_messages (organization_id, channel_id, kind, card_kind, decision_item_id,
+                                     state, payload_digest, posted_at)
+select 'org-v131', 'c1310000-0000-4000-8000-0000000000a2', 'decision_card',
+       'protected_path_allow_once', id, 'open', repeat('b', 64), timestamptz '2026-09-03 09:00:00+00'
+  from v131_item;
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.chat_messages
+    where kind = 'decision_card' and state = 'open' and decision_item_id = (select id from v131_item)),
+  'but the same question may be open in a second channel');
+update ouroboros.chat_messages
+   set state = 'resolved', outcome = 'allow_once', resolved_by = 'user-v131-maya',
+       resolved_at = timestamptz '2026-09-01 14:11:00+00'
+ where id = 'c1310000-0000-4000-8000-00000000d002';
+
+-- --- the edit key ------------------------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_messages (organization_id, channel_id, platform_ts, kind, payload_digest)
+    values ('org-v131', 'c1310000-0000-4000-8000-0000000000a1', '1723210020.004', 'system_line', repeat('c', 64))$$,
+  'a platform ts names one message of a channel', 'chat_messages_platform_ts_key');
+
+insert into ouroboros.chat_messages (id, organization_id, channel_id, kind, payload_digest, posted_at)
+values ('c1310000-0000-4000-8000-00000000d0f1', 'org-v131', 'c1310000-0000-4000-8000-0000000000a1',
+        'system_line', repeat('c', 64), timestamptz '2026-09-01 15:00:00+00'),
+       ('c1310000-0000-4000-8000-00000000d0f2', 'org-v131', 'c1310000-0000-4000-8000-0000000000a1',
+        'system_line', repeat('d', 64), timestamptz '2026-09-01 15:00:00+00');
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.chat_messages
+    where id in ('c1310000-0000-4000-8000-00000000d0f1', 'c1310000-0000-4000-8000-00000000d0f2')
+      and platform_ts is null),
+  'a row is written before the platform answers: two unposted messages wait side by side with no ts');
+
+-- --- the shape of each kind --------------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_messages (organization_id, channel_id, kind, payload_digest)
+    values ('org-v131', 'c1310000-0000-4000-8000-0000000000a1', 'reaction', repeat('e', 64))$$,
+  'a message is one of four kinds', 'chat_messages_kind_known');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_messages (organization_id, channel_id, kind, card_kind, payload_digest)
+    values ('org-v131', 'c1310000-0000-4000-8000-0000000000a1', 'event_card', 'loop_exploded', repeat('e', 64))$$,
+  'an event card is of a known family', 'chat_messages_card_kind_by_kind');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_messages (organization_id, channel_id, kind, card_kind, payload_digest)
+    values ('org-v131', 'c1310000-0000-4000-8000-0000000000a1', 'command_reply', 'digest', repeat('e', 64))$$,
+  'a command reply is not a card', 'chat_messages_card_kind_by_kind');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_messages (organization_id, channel_id, kind, card_kind, state, payload_digest)
+    values ('org-v131', 'c1310000-0000-4000-8000-0000000000a1', 'decision_card', null, 'open', repeat('e', 64))$$,
+  'a decision card names its kind', 'chat_messages_card_kind_by_kind');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_messages (organization_id, channel_id, kind, card_kind, decision_item_id,
+                                         state, payload_digest)
+    select 'org-v131', 'c1310000-0000-4000-8000-0000000000a1', 'decision_card', 'merge_approval', id,
+           'open', repeat('e', 64) from v131_item$$,
+  'a decision card''s kind is its item''s — the registry''s, by key', 'chat_messages_decision_item_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_messages (organization_id, channel_id, kind, card_kind, decision_item_id,
+                                         state, payload_digest)
+    select 'org-v131b', 'c1310000-0000-4000-8000-0000000000b1', 'decision_card',
+           'protected_path_allow_once', id, 'open', repeat('e', 64) from v131_item$$,
+  'and its item is its own workspace''s', 'chat_messages_decision_item_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_messages (organization_id, channel_id, kind, card_kind, decision_item_id, payload_digest)
+    select 'org-v131', 'c1310000-0000-4000-8000-0000000000a1', 'event_card', 'digest', id, repeat('e', 64)
+      from v131_item$$,
+  'only a decision card or the line that reports on one carries an item', 'chat_messages_decision_item_placed');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_messages (organization_id, channel_id, kind, card_kind, payload_digest)
+    values ('org-v131', 'c1310000-0000-4000-8000-0000000000a1', 'decision_card', 'merge_approval', repeat('e', 64))$$,
+  'a decision card always has a state', 'chat_messages_state_is_a_decision_cards');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_messages (organization_id, channel_id, kind, card_kind, state, payload_digest)
+    values ('org-v131', 'c1310000-0000-4000-8000-0000000000a1', 'event_card', 'digest', 'open', repeat('e', 64))$$,
+  'and nothing else does', 'chat_messages_state_is_a_decision_cards');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_messages (organization_id, channel_id, kind, card_kind, state, payload_digest)
+    values ('org-v131', 'c1310000-0000-4000-8000-0000000000a1', 'decision_card', 'merge_approval', 'resolved', repeat('e', 64))$$,
+  'a resolved card says how and when', 'chat_messages_resolution_recorded');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_messages (organization_id, channel_id, kind, card_kind, state, outcome, payload_digest)
+    values ('org-v131', 'c1310000-0000-4000-8000-0000000000a1', 'decision_card', 'merge_approval', 'open', 'approve', repeat('e', 64))$$,
+  'an open card has no outcome yet', 'chat_messages_resolution_recorded');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_messages
+       set state = 'snoozed', outcome = null, resolved_by = null, resolved_at = null
+     where id = 'c1310000-0000-4000-8000-00000000d002'$$,
+  'a card is open or resolved', 'chat_messages_state_known');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_messages set escalated_at = now() where id = 'c1310000-0000-4000-8000-00000000d001'$$,
+  'only a decision card is escalated', 'chat_messages_escalation_is_a_decision_cards');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_messages set edited_at = posted_at - interval '1 second'
+     where id = 'c1310000-0000-4000-8000-00000000d001'$$,
+  'an edit comes after the post', 'chat_messages_edited_after_posted');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_messages set facts = '["63/63"]' where id = 'c1310000-0000-4000-8000-00000000d006'$$,
+  'facts are an object', 'chat_messages_facts_object');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_messages (organization_id, channel_id, kind, payload_digest)
+    values ('org-v131b', 'c1310000-0000-4000-8000-0000000000a1', 'system_line', repeat('e', 64))$$,
+  'a message is its channel''s workspace''s', 'chat_messages_channel_fk');
+
+update ouroboros.chat_messages
+   set escalated_at = timestamptz '2026-09-01 14:37:00+00', thread_ts = '1723210440.011'
+ where id = 'c1310000-0000-4000-8000-00000000d002';
+select pg_temp.must_hold(
+  (select escalated_at is not null and thread_ts = '1723210440.011'
+     from ouroboros.chat_messages where id = 'c1310000-0000-4000-8000-00000000d002'),
+  'a decision card takes its escalated annotation and a thread anchor');
+
+-- --- the command outcome matrix ------------------------------------------------------------------------
+insert into ouroboros.chat_commands
+  (id, organization_id, connection_id, channel_id, invoker_link_id, platform_user_id, surface,
+   command, args, raw_text, outcome, error_detail, invoked_at, completed_at)
+values
+  ('c1310000-0000-4000-8000-00000000e011', 'org-v131', 'c1310000-0000-4000-8000-000000000001',
+   'c1310000-0000-4000-8000-0000000000a1', 'c1310000-0000-4000-8000-0000000000f1', 'U131KEN', 'slack',
+   'route', '{"stage": "implement", "alias": "nope"}', '/ouro route implement nope',
+   'error', 'no alias named nope', now(), now()),
+  ('c1310000-0000-4000-8000-00000000e012', 'org-v131', 'c1310000-0000-4000-8000-000000000001',
+   'c1310000-0000-4000-8000-0000000000a1', 'c1310000-0000-4000-8000-0000000000f2', 'U131JORGE', 'slack',
+   'pause all', '{}', '/ouro pause all',
+   'denied', 'pausing every loop is for owners and admins', now(), now()),
+  ('c1310000-0000-4000-8000-00000000e013', 'org-v131', 'c1310000-0000-4000-8000-000000000001',
+   'c1310000-0000-4000-8000-0000000000a1', null, 'U131STRANGER', 'slack',
+   'abort', '{"loop": 1851}', '/ouro abort 1851',
+   'unlinked', null, now(), now()),
+  ('c1310000-0000-4000-8000-00000000e014', 'org-v131', 'c1310000-0000-4000-8000-000000000001',
+   'c1310000-0000-4000-8000-0000000000a1', 'c1310000-0000-4000-8000-0000000000f1', 'U131KEN', 'slack',
+   'dry-run', '{"issue": 479}', '/ouro dry-run 479',
+   'async_pending', null, now(), null),
+  ('c1310000-0000-4000-8000-00000000e015', 'org-v131', 'c1310000-0000-4000-8000-000000000001',
+   null, null, null, 'console',
+   'status', '{}', '/ouro status',
+   'ok', null, now(), now());
+
+select pg_temp.must_hold(
+  (select array_agg(distinct outcome order by outcome)
+            = array['async_pending', 'denied', 'error', 'ok', 'unlinked']
+     from ouroboros.chat_commands where organization_id = 'org-v131'),
+  'the command outcome vocabulary covers the whole matrix');
+
+select pg_temp.must_hold(
+  (select platform_user_id = 'U131STRANGER' and invoker_link_id is null and args = '{"loop": 1851}'::jsonb
+     from ouroboros.chat_commands where id = 'c1310000-0000-4000-8000-00000000e013'),
+  'an unlinked attempt is recorded with its platform user id and what it tried, though no link exists');
+
+select pg_temp.must_hold(
+  (select array_agg(surface || ':' || (channel_id is not null) || ':' || (platform_user_id is not null)
+                    order by surface)
+            = array['console:false:false', 'slack:true:true']
+     from ouroboros.chat_commands
+    where id in ('c1310000-0000-4000-8000-00000000e004', 'c1310000-0000-4000-8000-00000000e015')),
+  'a console and a Slack invocation of the same command share one table and are told apart by surface');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from information_schema.table_constraints tc
+     join information_schema.key_column_usage k using (constraint_schema, constraint_name)
+    where tc.table_schema = 'ouroboros' and tc.table_name = 'chat_commands'
+      and tc.constraint_type = 'FOREIGN KEY' and k.column_name = 'invoker_link_id'),
+  'invoker_link_id carries no foreign key yet — BY.3 (#533) adds it with the links table');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set outcome = 'timeout' where id = 'c1310000-0000-4000-8000-00000000e004'$$,
+  'an outcome is one of the five', 'chat_commands_outcome_known');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set surface = 'teams' where id = 'c1310000-0000-4000-8000-00000000e004'$$,
+  'a surface is slack or console', 'chat_commands_surface_known');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set platform_user_id = null where id = 'c1310000-0000-4000-8000-00000000e004'$$,
+  'a Slack invocation keeps who typed it', 'chat_commands_surface_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set channel_id = 'c1310000-0000-4000-8000-0000000000a1'
+     where id = 'c1310000-0000-4000-8000-00000000e015'$$,
+  'a console invocation has no channel', 'chat_commands_surface_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set invoker_link_id = 'c1310000-0000-4000-8000-0000000000f1'
+     where id = 'c1310000-0000-4000-8000-00000000e013'$$,
+  'unlinked means no link', 'chat_commands_unlinked_has_no_link');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set outcome = 'unlinked' where id = 'c1310000-0000-4000-8000-00000000e015'$$,
+  'and is a Slack outcome — the console is a signed-in person', 'chat_commands_unlinked_has_no_link');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set completed_at = now() where id = 'c1310000-0000-4000-8000-00000000e014'$$,
+  'a pending command has not completed', 'chat_commands_completion_recorded');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set completed_at = null where id = 'c1310000-0000-4000-8000-00000000e004'$$,
+  'and a finished one has', 'chat_commands_completion_recorded');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set completed_at = invoked_at - interval '1 second'
+     where id = 'c1310000-0000-4000-8000-00000000e004'$$,
+  'a command completes after it is invoked', 'chat_commands_completed_after_invoked');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set error_detail = null where id = 'c1310000-0000-4000-8000-00000000e011'$$,
+  'an error says what went wrong', 'chat_commands_error_explained');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set error_detail = 'fine' where id = 'c1310000-0000-4000-8000-00000000e004'$$,
+  'and a success has nothing to explain', 'chat_commands_error_explained');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set command = 'Pause  All' where id = 'c1310000-0000-4000-8000-00000000e012'$$,
+  'a command is lower-case words', 'chat_commands_command_present');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set args = '["implement"]' where id = 'c1310000-0000-4000-8000-00000000e011'$$,
+  'parsed args are an object', 'chat_commands_args_object');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set result_ref = '"run"' where id = 'c1310000-0000-4000-8000-00000000e004'$$,
+  'a result ref is an object', 'chat_commands_result_ref_object');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set channel_id = 'c1310000-0000-4000-8000-0000000000b1'
+     where id = 'c1310000-0000-4000-8000-00000000e004'$$,
+  'a command''s channel is one of its connection''s', 'chat_commands_channel_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_commands (organization_id, connection_id, surface, command, raw_text, outcome, completed_at)
+    values ('org-v131b', 'c1310000-0000-4000-8000-000000000001', 'console', 'status', '/ouro status', 'ok', now())$$,
+  'and its connection is its own workspace''s', 'chat_commands_connection_fk');
+
+-- --- audit linkage -----------------------------------------------------------------------------------
+-- What BZ.3's dispatcher writes: the entry carries its chat provenance, and the command names it.
+insert into ouroboros.audit_events (id, organization_id, actor_id, actor_kind, action, subject_type, subject_id, detail)
+values ('c1310000-0000-4000-8000-0000000000ad', 'org-v131', 'user-v131-maya', 'human',
+        'chat.command_invoked', 'chat_command', 'c1310000-0000-4000-8000-00000000e012',
+        '{"chat": {"connection_id": "c1310000-0000-4000-8000-000000000001",
+                   "channel_id": "c1310000-0000-4000-8000-0000000000a1",
+                   "message_id": "c1310000-0000-4000-8000-00000000d002"},
+          "command": "pause all", "outcome": "denied"}');
+update ouroboros.chat_commands set audit_event_id = 'c1310000-0000-4000-8000-0000000000ad'
+ where id = 'c1310000-0000-4000-8000-00000000e012';
+
+select pg_temp.must_hold(
+  (select a.action = 'chat.command_invoked' and a.detail #>> '{chat,channel_id}' = c.channel_id::text
+     from ouroboros.chat_commands c join ouroboros.audit_events a on a.id = c.audit_event_id
+    where c.id = 'c1310000-0000-4000-8000-00000000e012'),
+  'a command names its audit entry, and the entry carries the workspace, channel and message it came from');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.audit_events
+    where organization_id = 'org-v131'
+      and detail @> '{"chat": {"message_id": "c1310000-0000-4000-8000-00000000d002"}}'),
+  'everything done from one message is a containment lookup on audit_events.detail');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set audit_event_id = '00000000-0000-0000-0000-000000000000'
+     where id = 'c1310000-0000-4000-8000-00000000e004'$$,
+  'an audit entry a command names exists', 'chat_commands_audit_event_id_fkey');
+
+-- --- the mirror's read, index-backed over a corpus ------------------------------------------------------
+insert into ouroboros.chat_messages (organization_id, channel_id, platform_ts, kind, card_kind, payload_digest, posted_at)
+select 'org-v131', 'c1310000-0000-4000-8000-0000000000a2', '17240' || lpad(i::text, 5, '0') || '.001',
+       'event_card', 'build_green', encode(sha256(('corpus-' || i)::bytea), 'hex'),
+       timestamptz '2026-08-01 00:00:00+00' + i * interval '7 minutes'
+  from generate_series(1, 3000) i;
+insert into ouroboros.chat_commands (organization_id, connection_id, channel_id, platform_user_id, surface,
+                                     command, raw_text, outcome, invoked_at, completed_at)
+select 'org-v131', 'c1310000-0000-4000-8000-000000000001', 'c1310000-0000-4000-8000-0000000000a2',
+       'U131KEN', 'slack', 'status', '/ouro status', 'ok',
+       timestamptz '2026-08-01 00:00:00+00' + i * interval '11 minutes',
+       timestamptz '2026-08-01 00:00:00+00' + i * interval '11 minutes'
+  from generate_series(1, 2000) i;
+
+analyze ouroboros.chat_messages;
+analyze ouroboros.chat_commands;
+
+-- The planner's own choice, with sequential scans left on: a day of one channel out of 3,000 rows.
+select pg_temp.must_use_index(
+  $$select id, kind, card_kind, refs, state, posted_at from ouroboros.chat_messages
+     where channel_id = 'c1310000-0000-4000-8000-0000000000a2'
+       and posted_at >= timestamptz '2026-08-15 00:00:00+00' and posted_at < timestamptz '2026-08-16 00:00:00+00'
+     order by posted_at desc, id desc limit 50$$,
+  'chat_messages_channel_posted_idx');
+
+-- …and no sequential scan anywhere in it, with sequential scans still allowed.
+select pg_temp.must_not_scan(
+  $$select id, kind, card_kind, refs, state, posted_at from ouroboros.chat_messages
+     where channel_id = 'c1310000-0000-4000-8000-0000000000a2'
+       and posted_at >= timestamptz '2026-08-15 00:00:00+00' and posted_at < timestamptz '2026-08-16 00:00:00+00'
+     order by posted_at desc, id desc limit 50$$);
+
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select id from ouroboros.chat_messages where platform_ts = '1724001500.001'$$,
+  'chat_messages_platform_ts_key');
+select pg_temp.must_use_index(
+  $$select id, command, outcome from ouroboros.chat_commands
+     where channel_id = 'c1310000-0000-4000-8000-0000000000a2' order by invoked_at desc, id desc limit 50$$,
+  'chat_commands_channel_invoked_idx');
+select pg_temp.must_use_index(
+  $$select id from ouroboros.chat_commands where organization_id = 'org-v131' order by invoked_at desc, id desc limit 50$$,
+  'chat_commands_organization_invoked_idx');
+set local enable_seqscan = on;
+
+-- --- retention: the sweep ---------------------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$select * from ouroboros.chat_records_sweep('org-v131', now() - interval '6 days', now() - interval '30 days', 100)$$,
+  'a chat sweep cannot reach inside the seven-day floor', 'chat_records_sweep_cutoff_floor');
+select pg_temp.must_reject(
+  $$select * from ouroboros.chat_records_sweep('org-v131', now() - interval '30 days', now() - interval '30 days', 0)$$,
+  'and removes at least one row per call', 'chat_records_sweep_limit');
+
+-- Old rows of each sort, in the second channel's past: an open card, a resolved one, a pending
+-- command and a finished one — all dated a year back.
+insert into ouroboros.chat_messages (id, organization_id, channel_id, kind, card_kind, state, outcome, resolved_at, payload_digest, posted_at)
+values ('c1310000-0000-4000-8000-00000000d101', 'org-v131', 'c1310000-0000-4000-8000-0000000000a2',
+        'decision_card', 'merge_approval', 'open', null, null, repeat('f', 64), now() - interval '365 days'),
+       ('c1310000-0000-4000-8000-00000000d102', 'org-v131', 'c1310000-0000-4000-8000-0000000000a2',
+        'decision_card', 'merge_approval', 'resolved', 'approve', now() - interval '364 days', repeat('9', 64), now() - interval '365 days');
+insert into ouroboros.chat_commands (id, organization_id, connection_id, surface, command, raw_text, outcome, invoked_at, completed_at)
+values ('c1310000-0000-4000-8000-00000000e101', 'org-v131', 'c1310000-0000-4000-8000-000000000001',
+        'console', 'dry-run', '/ouro dry-run 479', 'async_pending', now() - interval '365 days', null),
+       ('c1310000-0000-4000-8000-00000000e102', 'org-v131', 'c1310000-0000-4000-8000-000000000001',
+        'console', 'status', '/ouro status', 'ok', now() - interval '365 days', now() - interval '365 days'),
+       ('c1310000-0000-4000-8000-00000000e103', 'org-v131', 'c1310000-0000-4000-8000-000000000001',
+        'console', 'status', '/ouro status', 'ok', now() - interval '100 days', now() - interval '100 days');
+
+-- Messages cut at 200 days, commands asked for at 90: a command is never cut before a message of
+-- its age, so the 100-day-old command stays although its own class's cutoff has passed it.
+create temporary table v131_swept on commit drop as
+select * from ouroboros.chat_records_sweep('org-v131', now() - interval '200 days', now() - interval '90 days', 1000);
+
+select pg_temp.must_hold(
+  (select messages = 1 and commands = 1 from v131_swept),
+  'the sweep removes the old resolved card and the old finished command, and reports both');
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.chat_messages where id = 'c1310000-0000-4000-8000-00000000d101')
+  and (select count(*) = 0 from ouroboros.chat_messages where id = 'c1310000-0000-4000-8000-00000000d102'),
+  'an open decision card is never swept, however old — it still takes an answer');
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.chat_commands where id = 'c1310000-0000-4000-8000-00000000e101')
+  and (select count(*) = 0 from ouroboros.chat_commands where id = 'c1310000-0000-4000-8000-00000000e102'),
+  'nor a pending command — it still owes its outcome');
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.chat_commands where id = 'c1310000-0000-4000-8000-00000000e103'),
+  'command records outlive messages: one younger than the message cutoff stays, whatever its own class says');
+
+select pg_temp.must_hold(
+  (select messages = 0 and commands = 0
+     from ouroboros.chat_records_sweep('org-v131b', now() - interval '8 days', now() - interval '8 days', 1000)),
+  'the sweep is one workspace''s: another''s removes nothing of this one');
+
+-- The two classes are stored by the retention plane as it stands — no schema change.
+insert into ouroboros.retention_policies (organization_id, data_class, days) values
+  ('org-v131', 'custom:chat-messages', 90), ('org-v131', 'custom:chat-commands', 400);
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.retention_policies
+    where organization_id = 'org-v131' and data_class like 'custom:chat-%'),
+  'retention_policies stores the chat classes, commands kept longer than messages');
+
+-- --- the app role, and the sweep's posture ---------------------------------------------------------------
+select pg_temp.must_hold(
+  (select prosecdef
+          and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+          and not has_function_privilege('public', oid, 'execute')
+          and has_function_privilege('ouroboros_app', oid, 'execute')
+     from pg_proc
+    where pronamespace = 'ouroboros'::regnamespace and proname = 'chat_records_sweep'),
+  'chat_records_sweep runs as its owner with its search_path pinned, for the app role and not for public');
+
+set local role ouroboros_app;
+insert into ouroboros.chat_messages (organization_id, channel_id, kind, card_kind, refs, payload_digest)
+values ('org-v131', 'c1310000-0000-4000-8000-0000000000a1', 'event_card', 'digest',
+        '[{"type": "run", "id": "a1360000-0000-0000-0000-000000001846", "label": "loop #1846"}]',
+        repeat('7', 64));
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.chat_messages where payload_digest = repeat('7', 64)),
+  'the app role publishes a card whose ref names a run it cannot itself read');
+select pg_temp.must_raise(
+  $$delete from ouroboros.chat_messages where organization_id = 'org-v131'$$,
+  '42501', 'the app role cannot delete a message — only the sweep removes one');
+select pg_temp.must_raise(
+  $$delete from ouroboros.chat_commands where organization_id = 'org-v131'$$,
+  '42501', 'nor a command record');
+reset role;
+
+-- --- what goes when its parent goes ------------------------------------------------------------------------
+-- The item's delete takes only the pointer: the card still says which kind of question it was.
+delete from ouroboros.decision_items where id = (select id from v131_item);
+select pg_temp.must_hold(
+  (select decision_item_id is null and card_kind = 'protected_path_allow_once' and state = 'resolved'
+     from ouroboros.chat_messages where id = 'c1310000-0000-4000-8000-00000000d002'),
+  'a decision card outlives its item, keeping its kind and its outcome');
+
+delete from ouroboros."user" where "id" = 'user-v131-maya';
+select pg_temp.must_hold(
+  (select resolved_by is null and outcome = 'allow_once'
+     from ouroboros.chat_messages where id = 'c1310000-0000-4000-8000-00000000d002'),
+  'and the person who answered: the outcome stays when the attribution is erased');
+
+select pg_temp.must_hold(
+  (select audit_event_id is null from ouroboros.chat_commands where id = 'c1310000-0000-4000-8000-00000000e004'),
+  'a command with no audit entry yet is storable');
+
+insert into ouroboros.chat_messages (organization_id, channel_id, kind, payload_digest)
+  values ('org-v131c', 'c1310000-0000-4000-8000-0000000000c1', 'system_line', repeat('8', 64));
+insert into ouroboros.chat_commands (organization_id, connection_id, channel_id, platform_user_id, surface,
+                                     command, raw_text, outcome, completed_at)
+  values ('org-v131c', 'c1310000-0000-4000-8000-000000000003', 'c1310000-0000-4000-8000-0000000000c1',
+          'U131X', 'slack', 'status', '/ouro status', 'ok', now());
+delete from ouroboros.organization where "id" = 'org-v131c';
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.chat_messages where organization_id = 'org-v131c')
+  and (select count(*) = 0 from ouroboros.chat_commands where organization_id = 'org-v131c'),
+  'a workspace takes its messages and command records with it');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------
@@ -41361,6 +42052,8 @@ analyze ouroboros.investigations;
 analyze ouroboros.copilot_messages;
 analyze ouroboros.source_records;
 analyze ouroboros.dry_runs;
+analyze ouroboros.chat_messages;
+analyze ouroboros.chat_commands;
 
 \o
 \echo 'constraints.sql: all assertions passed'
