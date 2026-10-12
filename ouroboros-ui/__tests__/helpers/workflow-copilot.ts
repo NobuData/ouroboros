@@ -6,8 +6,12 @@ import type {
   CopilotReadiness,
   CopilotReference,
   CopilotSession,
+  CopilotStageDraft,
   CopilotStreamEvent,
+  CopilotWarning,
 } from "@/app/api/workflow-copilot";
+import type { RoutingAlias } from "@/app/api/routing";
+import { EMPTY_POLL_SNAPSHOT, type Poll, type PollAnswer } from "@/app/poll";
 import type { WorkflowDefinition, WorkflowDetail, WorkflowRailEntry } from "@/app/api/workflows";
 import type { CopilotReadings, SelectedCopilot } from "@/app/workflows/copilot/copilot-view";
 
@@ -213,6 +217,7 @@ export function copilotConversation(overrides: Partial<CopilotConversation> = {}
       definition: securityPatchDefinition(),
       provenanceSummary: { canvas: 0, code: 0, copilot: 2, suggestion: 0 },
       warnings: [],
+      nodeProvenance: [],
     },
     ...overrides,
   };
@@ -485,7 +490,7 @@ export function securityPatchDetail(): WorkflowDetail {
 }
 
 /**
- * The open workflow's four reads, all answered.
+ * The open workflow's six reads, all answered.
  *
  * @param overrides What this case is about.
  * @returns The reads.
@@ -497,6 +502,8 @@ export function selectedCopilot(overrides: Partial<SelectedCopilot> = {}): Selec
     promotion: { ok: true, value: copilotPromotion() },
     conversation: { ok: true, value: copilotConversation() },
     readiness: { ok: true, value: copilotReadiness() },
+    draft: { ok: true, value: copilotStageDraft() },
+    aliases: { ok: true, value: seededAliases() },
     ...overrides,
   };
 }
@@ -525,4 +532,227 @@ export function copilotReadings(overrides: Partial<CopilotReadings> = {}): Copil
  */
 export function copilotReadingsWith(overrides: Partial<SelectedCopilot>): CopilotReadings {
   return copilotReadings({ selected: selectedCopilot(overrides) });
+}
+
+/* ------------------------------------------------------------------ the stage list (CE.3, #567) */
+
+/**
+ * The draft as `GET …/copilot/draft` answers it for the frame's small fixture: the conversation's
+ * draft, with no provenance to report. Its three nodes are of no canvas kind, so the stage list
+ * draws its empty state over it — the frame's suites are about the frame.
+ *
+ * @param overrides What this case is about.
+ * @returns The draft.
+ */
+export function copilotStageDraft(overrides: Partial<CopilotStageDraft> = {}): CopilotStageDraft {
+  return { ...copilotConversation().draft, nodeProvenance: [], ...overrides } as CopilotStageDraft;
+}
+
+/** A model stage's limits and permissions, as the seed writes them. */
+const llm = (
+  id: string,
+  title: string,
+  y: number,
+  config: Record<string, unknown>,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> => ({ id, type: "llm", title, ...extra, position: { x: 0, y }, config });
+
+/**
+ * The seeded `security-patch` draft at `v0.3`, copied from
+ * `ouroboros-db/migrations/R__dev_seed_workspace_copilot.sql`'s three `apply_draft_batch()`
+ * batches: ten DSL nodes in the order the operations added them (`exploit-verify` last), the
+ * edges as the second batch left them, and the third batch's `label:security` trigger.
+ *
+ * @returns The document.
+ */
+export function seededDraftDefinition(): WorkflowDefinition {
+  const edge = (from: string, to: string) => ({ from, to, kind: "default" });
+
+  return {
+    trigger: { event: "ticket_queued", conditions: { labels: ["security"] } },
+    nodes: [
+      { id: "trigger", type: "trigger", title: "trigger", position: { x: 0, y: 0 }, config: {} },
+      llm("analyze", "analyze", 120, {
+        mode: "skill",
+        skill: "advisory-db",
+        prompt_template: "Map the code paths {{issue.title}} touches, and read the advisory for its CVE when it has one.",
+        routing: { pinned_model: { alias: "coder-std" } },
+        limits: { max_retries: 1, token_budget: 200000 },
+        permissions: { push_fixup: false, touch_ci: false },
+      }),
+      llm("plan", "plan", 240, {
+        mode: "prompt",
+        prompt_template: "Plan the patch for {{issue.title}} in small, reviewable steps.",
+        routing: { pinned_model: { alias: "coder-max" } },
+        limits: { max_retries: 1, token_budget: 200000 },
+        permissions: { push_fixup: false, touch_ci: false },
+      }),
+      llm("implement", "implement", 360, {
+        mode: "prompt",
+        prompt_template: "Implement the plan; keep the diff to what the plan names.",
+        routing: { inherit_task: "implement" },
+        limits: { max_retries: 2, token_budget: 400000 },
+        permissions: { push_fixup: true, touch_ci: false },
+      }),
+      { id: "build", type: "infra", title: "build", position: { x: 0, y: 480 }, config: { runner_pool: "pool-a" } },
+      {
+        id: "test",
+        type: "infra",
+        title: "test",
+        description: "twister full",
+        position: { x: 0, y: 600 },
+        config: { runner_pool: "pool-a", command: "west twister --all" },
+      },
+      {
+        ...llm("review-primary", "review", 840, {
+          mode: "prompt",
+          prompt_template: "Review the patch against the advisory and the acceptance criteria.",
+          routing: { pinned_model: { alias: "coder-max" } },
+          limits: { max_retries: 0, token_budget: 150000 },
+          permissions: { push_fixup: false, touch_ci: false },
+        }),
+        position: { x: -160, y: 840 },
+      },
+      {
+        ...llm("review-second", "review", 840, {
+          mode: "prompt",
+          prompt_template: "Give an independent second review of the patch.",
+          routing: { pinned_model: { alias: "second-opinion" } },
+          limits: { max_retries: 0, token_budget: 150000 },
+          permissions: { push_fixup: false, touch_ci: false },
+        }),
+        position: { x: 160, y: 840 },
+      },
+      {
+        id: "open-pr",
+        type: "term",
+        title: "open PR",
+        description: "never auto-merge",
+        position: { x: 0, y: 960 },
+        config: { action: "needs_review", options: {} },
+      },
+      llm(
+        "exploit-verify",
+        "exploit-verify",
+        720,
+        {
+          mode: "prompt",
+          prompt_template:
+            "Re-run the CVE proof-of-concept against the patched build in the sandbox and attach the result to PR verification.",
+          routing: { inherit_task: "exploit-verify" },
+          limits: { max_retries: 0, token_budget: 100000 },
+          permissions: { push_fixup: false, touch_ci: false },
+        },
+        { description: "reruns CVE PoC · sandboxed" },
+      ),
+    ],
+    edges: [
+      edge("trigger", "analyze"),
+      edge("analyze", "plan"),
+      edge("plan", "implement"),
+      edge("implement", "build"),
+      edge("build", "test"),
+      edge("review-primary", "open-pr"),
+      edge("review-second", "open-pr"),
+      edge("test", "exploit-verify"),
+      edge("exploit-verify", "review-primary"),
+      edge("exploit-verify", "review-second"),
+    ],
+  } as unknown as WorkflowDefinition;
+}
+
+/** The ten node ids of the seeded draft, in the document's order. */
+export const SEEDED_NODE_IDS = [
+  "trigger",
+  "analyze",
+  "plan",
+  "implement",
+  "build",
+  "test",
+  "review-primary",
+  "review-second",
+  "open-pr",
+  "exploit-verify",
+] as const;
+
+/** W7's first unresolved reference in the seed: `analyze` loads a skill nobody has created. */
+export const ADVISORY_DB_WARNING: CopilotWarning = {
+  code: "reference.unknown_skill",
+  node: "analyze",
+  name: "advisory-db",
+  path: "/nodes/1/config/skill",
+  message: "No skill named `advisory-db` is defined in this workspace yet.",
+};
+
+/** W7's second: `exploit-verify` routes by a task kind the catalog does not have. */
+export const EXPLOIT_VERIFY_WARNING: CopilotWarning = {
+  code: "reference.unknown_task",
+  node: "exploit-verify",
+  name: "exploit-verify",
+  path: "/nodes/9/config/routing/inherit_task",
+  message: "No task route named `exploit-verify` exists in this workspace yet.",
+};
+
+/**
+ * Who each seeded stage is by: Ken's nine from the canvas at rev 1, and the copilot's
+ * `exploit-verify` at rev 2 — the only row with `added by copilot`.
+ *
+ * @returns One entry per node, in the document's order.
+ */
+export function seededProvenance(): CopilotStageDraft["nodeProvenance"] {
+  return SEEDED_NODE_IDS.map((nodeId) =>
+    nodeId === "exploit-verify"
+      ? { nodeId, provenance: "copilot" as const, addedRev: 2 }
+      : { nodeId, provenance: "human" as const, addedRev: 1 },
+  );
+}
+
+/**
+ * The seeded draft as `GET …/copilot/draft` answers it: `v0.3`, ten nodes, both W7 warnings,
+ * one canvas batch and two of the copilot's.
+ *
+ * @param overrides What this case is about.
+ * @returns The draft.
+ */
+export function seededStageDraft(overrides: Partial<CopilotStageDraft> = {}): CopilotStageDraft {
+  return {
+    etag: "etag-draft-3",
+    label: "v0.3",
+    definition: seededDraftDefinition(),
+    provenanceSummary: { canvas: 1, code: 0, copilot: 2, suggestion: 0 },
+    warnings: [ADVISORY_DB_WARNING, EXPLOIT_VERIFY_WARNING],
+    nodeProvenance: seededProvenance(),
+    ...overrides,
+  } as CopilotStageDraft;
+}
+
+/**
+ * The three registry aliases the seeded draft pins, as `R__dev_seed_routing.sql` binds them —
+ * `second-opinion` to Cursor's `composer-2`, which the mockup prints as `cursor/composer-2`.
+ *
+ * @returns The aliases.
+ */
+export function seededAliases(): RoutingAlias[] {
+  const alias = (name: string, modelId: string): RoutingAlias => ({ alias: name, modelId, params: {}, provider: null });
+
+  return [alias("coder-max", "claude-fable-5"), alias("coder-std", "claude-sonnet-5"), alias("second-opinion", "composer-2")];
+}
+
+/**
+ * A poll that never asks — for a suite that renders the stage list and is not about its poll.
+ *
+ * @returns The poll.
+ */
+export function inertStagesPoll(): Poll<CopilotStageDraft> {
+  return { snapshot: () => EMPTY_POLL_SNAPSHOT, subscribe: () => () => {}, refresh: () => {}, start: () => () => {} };
+}
+
+/**
+ * A poll answer carrying a draft.
+ *
+ * @param payload The draft.
+ * @returns The answer, as `requestPayload` shapes a `200`.
+ */
+export function freshDraft(payload: CopilotStageDraft): PollAnswer<CopilotStageDraft> {
+  return { state: "fresh", payload, etag: null, pollAfterSeconds: null };
 }

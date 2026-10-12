@@ -195,6 +195,23 @@ describe("the copilot repository", () => {
     await expect(copilots.highestVersion(WORKFLOW)).resolves.toBeNull();
   });
 
+  it("reads who each stage of the draft is by from the provenance view (#567)", async () => {
+    database.answers({
+      rows: [{ node_id: "exploit-verify", provenance: "copilot", added_rev: 2 }],
+    });
+
+    await expect(copilots.nodeProvenance(WORKFLOW)).resolves.toEqual([
+      { node_id: "exploit-verify", provenance: "copilot", added_rev: 2 },
+    ]);
+
+    const [statement] = database.statements;
+    expect(statement.sql).toBe(
+      'select "node_id", "provenance", "added_rev" ' +
+        'from "ouroboros"."workflow_draft_node_provenance" where "workflow_id" = $1',
+    );
+    expect(statement.parameters).toEqual([WORKFLOW]);
+  });
+
   it("reads the workflow's dry run that has not ended", async () => {
     await copilots.openDryRun(WORKFLOW);
 

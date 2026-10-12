@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.20"
+  version: "0.41.21"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -568,6 +568,9 @@ tags:
       `GET …/copilot/readiness` says, without invoking anything, whether a message sent now
       could be answered: the invocation gateway, the `copilot-workflow` route, and the
       workflow's open dry run.
+
+      `GET …/copilot/draft` is the shared draft on its own — the document, and who each of its
+      stages is by — for the stage list beside the conversation; it needs no conversation.
 
   - name: dry-runs
     description: |-
@@ -22549,6 +22552,7 @@ paths:
                       name: exploit-verify
                       path: /nodes/8/config/routing/inherit_task
                       message: No task route named `exploit-verify` exists in this workspace yet.
+                  nodeProvenance: []
         "400":
           description: "`organization_required`."
           content:
@@ -22793,6 +22797,110 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/workflows/{id}/copilot/draft:
+    get:
+      tags: [copilot]
+      summary: Read the shared draft with who each stage is by
+      description: |-
+        The draft as it stands — what the stage list beside the conversation draws (mockup 20;
+        CE.3, [#567](https://github.com/NobuData/ouroboros/issues/567)). The same `CopilotDraft`
+        the conversation read and a reply's final `done` event carry, on a route that **needs no
+        conversation**: a draft drawn on the canvas alone reads here too.
+
+        * **`definition`** — the stored document, or `null` when the workflow has no draft.
+        * **`nodeProvenance`** — one entry per stage, in the document's order. `copilot` and
+          `suggestion` mark a stage the conversation or an applied suggestion added and nobody
+          has edited since; a stage a person added, or has edited on the canvas or in code
+          since, reads `human`; a stage the draft inherited from the version it started from
+          reads `published`. Empty when there is no draft.
+        * **`etag`**, **`label`**, **`provenanceSummary`**, **`warnings`** — as on the
+          conversation read.
+
+        Nothing is written, and no model or engine is asked. Every member may read it, like the
+        conversation.
+      operationId: readCopilotDraft
+      parameters:
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The draft as it stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CopilotDraft"
+              examples:
+                drafted:
+                  summary: A draft the copilot added a stage to
+                  value:
+                    etag: 2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0
+                    label: v0.2
+                    definition:
+                      dsl_version: "1.0"
+                      trigger: {event: ticket_queued, conditions: {}}
+                      nodes:
+                        - id: implement
+                          type: llm
+                          title: Implement
+                          position: {x: 300, y: 200}
+                          config:
+                            mode: prompt
+                            prompt_template: Make the change the ticket asks for.
+                            routing: {inherit_task: implement}
+                        - id: exploit-verify
+                          type: llm
+                          title: Exploit verify
+                          position: {x: 560, y: 200}
+                          config:
+                            mode: prompt
+                            prompt_template: Prove the CVE is fixed.
+                            routing: {inherit_task: exploit-verify}
+                      edges:
+                        - {from: implement, to: exploit-verify, kind: default}
+                    provenanceSummary: {canvas: 1, code: 0, copilot: 1, suggestion: 0}
+                    warnings:
+                      - code: reference.unknown_task
+                        node: exploit-verify
+                        name: exploit-verify
+                        path: /nodes/1/config/routing/inherit_task
+                        message: No task route named `exploit-verify` exists in this workspace yet.
+                    nodeProvenance:
+                      - {nodeId: implement, provenance: human, addedRev: 1}
+                      - {nodeId: exploit-verify, provenance: copilot, addedRev: 2}
+                none:
+                  summary: A workflow with no draft
+                  value:
+                    etag: none
+                    label: v3.0
+                    definition: null
+                    provenanceSummary: {canvas: 0, code: 0, copilot: 0, suggestion: 0}
+                    warnings: []
+                    nodeProvenance: []
+        "400":
+          description: "`organization_required`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "`unauthenticated`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "`workflow_not_found` — no such workflow for this caller."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "`validation_failed` — the id is not a uuid."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/workflows/{id}/copilot/discard:
     post:
       tags: [copilot]
@@ -22976,7 +23084,7 @@ paths:
                 data: {"kind":"usage","tokensIn":9800,"tokensOut":600,"costCents":4}
 
                 event: done
-                data: {"kind":"done","message":{"id":"5eed008a-0000-4000-8000-000000000104","seq":4,"role":"copilot","body":"Added a $5/run spend guard (proposed — guards are not a workflow construct yet). Want a dry run? #489 is the closest open issue.","choices":null,"toolTrace":{"operations":[{"op":{"kind":"set_trigger","params":{"trigger":{"event":"ticket_queued","conditions":{"labels":["security"]}}}},"outcome":"applied","validatorMessage":null},{"op":{"kind":"set_guard","params":{"guard":"spend_guard","params":{"per_run_cap_cents":500}}},"outcome":"proposed","validatorMessage":null}],"reads":[],"dryRunProposals":[{"ticket":"#489","reason":"no CVE — exercises the skip path"}]},"tokensIn":9800,"tokensOut":600,"costCents":4,"status":"complete","createdAt":"2026-10-08T15:04:00.000Z"},"draft":{"etag":"7b1c…","label":"v0.3","definition":{"dsl_version":"1.0","nodes":[],"edges":[]},"provenanceSummary":{"canvas":1,"code":0,"copilot":2,"suggestion":0},"warnings":[]}}
+                data: {"kind":"done","message":{"id":"5eed008a-0000-4000-8000-000000000104","seq":4,"role":"copilot","body":"Added a $5/run spend guard (proposed — guards are not a workflow construct yet). Want a dry run? #489 is the closest open issue.","choices":null,"toolTrace":{"operations":[{"op":{"kind":"set_trigger","params":{"trigger":{"event":"ticket_queued","conditions":{"labels":["security"]}}}},"outcome":"applied","validatorMessage":null},{"op":{"kind":"set_guard","params":{"guard":"spend_guard","params":{"per_run_cap_cents":500}}},"outcome":"proposed","validatorMessage":null}],"reads":[],"dryRunProposals":[{"ticket":"#489","reason":"no CVE — exercises the skip path"}]},"tokensIn":9800,"tokensOut":600,"costCents":4,"status":"complete","createdAt":"2026-10-08T15:04:00.000Z"},"draft":{"etag":"7b1c…","label":"v0.3","definition":{"dsl_version":"1.0","nodes":[],"edges":[]},"provenanceSummary":{"canvas":1,"code":0,"copilot":2,"suggestion":0},"warnings":[],"nodeProvenance":[]}}
         "400":
           description: "`organization_required`."
           content:
@@ -23057,7 +23165,7 @@ paths:
                 data: {"kind":"delta","text":"Set the trigger to label:security."}
 
                 event: done
-                data: {"kind":"done","message":{"id":"5eed008a-0000-4000-8000-000000000106","seq":6,"role":"copilot","body":"Set the trigger to label:security.","choices":null,"toolTrace":{"operations":[],"reads":[],"dryRunProposals":[]},"tokensIn":null,"tokensOut":null,"costCents":null,"status":"complete","createdAt":"2026-10-08T15:04:31.000Z"},"draft":{"etag":"7b1c…","label":"v0.3","definition":{"dsl_version":"1.0","nodes":[],"edges":[]},"provenanceSummary":{"canvas":1,"code":0,"copilot":2,"suggestion":0},"warnings":[]}}
+                data: {"kind":"done","message":{"id":"5eed008a-0000-4000-8000-000000000106","seq":6,"role":"copilot","body":"Set the trigger to label:security.","choices":null,"toolTrace":{"operations":[],"reads":[],"dryRunProposals":[]},"tokensIn":null,"tokensOut":null,"costCents":null,"status":"complete","createdAt":"2026-10-08T15:04:31.000Z"},"draft":{"etag":"7b1c…","label":"v0.3","definition":{"dsl_version":"1.0","nodes":[],"edges":[]},"provenanceSummary":{"canvas":1,"code":0,"copilot":2,"suggestion":0},"warnings":[],"nodeProvenance":[]}}
         "400":
           description: "`organization_required`."
           content:
@@ -60419,7 +60527,7 @@ components:
       title: CopilotDraft
       description: The shared draft as the conversation sees it.
       additionalProperties: false
-      required: [etag, label, definition, provenanceSummary, warnings]
+      required: [etag, label, definition, provenanceSummary, warnings, nodeProvenance]
       properties:
         etag:
           type: string
@@ -60447,6 +60555,43 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CopilotWarning"
+        nodeProvenance:
+          type: array
+          description: |-
+            Who each stage of the draft is by — one entry per stage of `definition.nodes`, in
+            the document's order; empty when there is no draft (CE.3,
+            [#567](https://github.com/NobuData/ouroboros/issues/567)).
+          items:
+            $ref: "#/components/schemas/CopilotNodeProvenance"
+
+    CopilotNodeProvenance:
+      type: object
+      title: CopilotNodeProvenance
+      description: |-
+        Who one stage of the draft is by, derived from the draft's operation log — the stage
+        list's `added by copilot` pill.
+      additionalProperties: false
+      required: [nodeId, provenance, addedRev]
+      properties:
+        nodeId:
+          type: string
+          description: The stage's `id` in `definition.nodes`.
+          examples: [exploit-verify]
+        provenance:
+          type: string
+          enum: [human, copilot, suggestion, published]
+          description: |-
+            `copilot` — the conversation added the stage and no canvas or code edit has touched
+            it since. `suggestion` — an applied dry-run suggestion added it, likewise untouched.
+            `human` — a person added it, or has since edited it. `published` — the draft
+            inherited it from the version it started from.
+          examples: [copilot]
+        addedRev:
+          type: [integer, "null"]
+          description: |-
+            The draft revision whose batch added the stage — the `N` of `v{published}.N`;
+            `null` for a `published` stage.
+          examples: [2]
 
     CopilotConversation:
       type: object

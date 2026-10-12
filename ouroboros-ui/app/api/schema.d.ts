@@ -6770,6 +6770,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workflows/{id}/copilot/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the shared draft with who each stage is by
+         * @description The draft as it stands — what the stage list beside the conversation draws (mockup 20;
+         *     CE.3, [#567](https://github.com/NobuData/ouroboros/issues/567)). The same `CopilotDraft`
+         *     the conversation read and a reply's final `done` event carry, on a route that **needs no
+         *     conversation**: a draft drawn on the canvas alone reads here too.
+         *
+         *     * **`definition`** — the stored document, or `null` when the workflow has no draft.
+         *     * **`nodeProvenance`** — one entry per stage, in the document's order. `copilot` and
+         *       `suggestion` mark a stage the conversation or an applied suggestion added and nobody
+         *       has edited since; a stage a person added, or has edited on the canvas or in code
+         *       since, reads `human`; a stage the draft inherited from the version it started from
+         *       reads `published`. Empty when there is no draft.
+         *     * **`etag`**, **`label`**, **`provenanceSummary`**, **`warnings`** — as on the
+         *       conversation read.
+         *
+         *     Nothing is written, and no model or engine is asked. Every member may read it, like the
+         *     conversation.
+         */
+        get: operations["readCopilotDraft"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workflows/{id}/copilot/discard": {
         parameters: {
             query?: never;
@@ -25794,6 +25829,39 @@ export interface components {
                 suggestion: number;
             };
             warnings: components["schemas"]["CopilotWarning"][];
+            /**
+             * @description Who each stage of the draft is by — one entry per stage of `definition.nodes`, in
+             *     the document's order; empty when there is no draft (CE.3,
+             *     [#567](https://github.com/NobuData/ouroboros/issues/567)).
+             */
+            nodeProvenance: components["schemas"]["CopilotNodeProvenance"][];
+        };
+        /**
+         * CopilotNodeProvenance
+         * @description Who one stage of the draft is by, derived from the draft's operation log — the stage
+         *     list's `added by copilot` pill.
+         */
+        CopilotNodeProvenance: {
+            /**
+             * @description The stage's `id` in `definition.nodes`.
+             * @example exploit-verify
+             */
+            nodeId: string;
+            /**
+             * @description `copilot` — the conversation added the stage and no canvas or code edit has touched
+             *     it since. `suggestion` — an applied dry-run suggestion added it, likewise untouched.
+             *     `human` — a person added it, or has since edited it. `published` — the draft
+             *     inherited it from the version it started from.
+             * @example copilot
+             * @enum {string}
+             */
+            provenance: "human" | "copilot" | "suggestion" | "published";
+            /**
+             * @description The draft revision whose batch added the stage — the `N` of `v{published}.N`;
+             *     `null` for a `published` stage.
+             * @example 2
+             */
+            addedRev: number | null;
         };
         /**
          * CopilotConversation
@@ -62649,7 +62717,8 @@ export interface operations {
                      *             "path": "/nodes/8/config/routing/inherit_task",
                      *             "message": "No task route named `exploit-verify` exists in this workspace yet."
                      *           }
-                     *         ]
+                     *         ],
+                     *         "nodeProvenance": []
                      *       }
                      *     }
                      */
@@ -62856,6 +62925,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CopilotReadiness"];
+                };
+            };
+            /** @description `organization_required`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workflow_not_found` — no such workflow for this caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readCopilotDraft: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The draft as it stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CopilotDraft"];
                 };
             };
             /** @description `organization_required`. */
@@ -63132,7 +63302,7 @@ export interface operations {
                      *     data: {"kind":"usage","tokensIn":9800,"tokensOut":600,"costCents":4}
                      *
                      *     event: done
-                     *     data: {"kind":"done","message":{"id":"5eed008a-0000-4000-8000-000000000104","seq":4,"role":"copilot","body":"Added a $5/run spend guard (proposed — guards are not a workflow construct yet). Want a dry run? #489 is the closest open issue.","choices":null,"toolTrace":{"operations":[{"op":{"kind":"set_trigger","params":{"trigger":{"event":"ticket_queued","conditions":{"labels":["security"]}}}},"outcome":"applied","validatorMessage":null},{"op":{"kind":"set_guard","params":{"guard":"spend_guard","params":{"per_run_cap_cents":500}}},"outcome":"proposed","validatorMessage":null}],"reads":[],"dryRunProposals":[{"ticket":"#489","reason":"no CVE — exercises the skip path"}]},"tokensIn":9800,"tokensOut":600,"costCents":4,"status":"complete","createdAt":"2026-10-08T15:04:00.000Z"},"draft":{"etag":"7b1c…","label":"v0.3","definition":{"dsl_version":"1.0","nodes":[],"edges":[]},"provenanceSummary":{"canvas":1,"code":0,"copilot":2,"suggestion":0},"warnings":[]}}
+                     *     data: {"kind":"done","message":{"id":"5eed008a-0000-4000-8000-000000000104","seq":4,"role":"copilot","body":"Added a $5/run spend guard (proposed — guards are not a workflow construct yet). Want a dry run? #489 is the closest open issue.","choices":null,"toolTrace":{"operations":[{"op":{"kind":"set_trigger","params":{"trigger":{"event":"ticket_queued","conditions":{"labels":["security"]}}}},"outcome":"applied","validatorMessage":null},{"op":{"kind":"set_guard","params":{"guard":"spend_guard","params":{"per_run_cap_cents":500}}},"outcome":"proposed","validatorMessage":null}],"reads":[],"dryRunProposals":[{"ticket":"#489","reason":"no CVE — exercises the skip path"}]},"tokensIn":9800,"tokensOut":600,"costCents":4,"status":"complete","createdAt":"2026-10-08T15:04:00.000Z"},"draft":{"etag":"7b1c…","label":"v0.3","definition":{"dsl_version":"1.0","nodes":[],"edges":[]},"provenanceSummary":{"canvas":1,"code":0,"copilot":2,"suggestion":0},"warnings":[],"nodeProvenance":[]}}
                      */
                     "text/event-stream": components["schemas"]["CopilotStreamEvent"];
                 };
@@ -63278,7 +63448,7 @@ export interface operations {
                      *     data: {"kind":"delta","text":"Set the trigger to label:security."}
                      *
                      *     event: done
-                     *     data: {"kind":"done","message":{"id":"5eed008a-0000-4000-8000-000000000106","seq":6,"role":"copilot","body":"Set the trigger to label:security.","choices":null,"toolTrace":{"operations":[],"reads":[],"dryRunProposals":[]},"tokensIn":null,"tokensOut":null,"costCents":null,"status":"complete","createdAt":"2026-10-08T15:04:31.000Z"},"draft":{"etag":"7b1c…","label":"v0.3","definition":{"dsl_version":"1.0","nodes":[],"edges":[]},"provenanceSummary":{"canvas":1,"code":0,"copilot":2,"suggestion":0},"warnings":[]}}
+                     *     data: {"kind":"done","message":{"id":"5eed008a-0000-4000-8000-000000000106","seq":6,"role":"copilot","body":"Set the trigger to label:security.","choices":null,"toolTrace":{"operations":[],"reads":[],"dryRunProposals":[]},"tokensIn":null,"tokensOut":null,"costCents":null,"status":"complete","createdAt":"2026-10-08T15:04:31.000Z"},"draft":{"etag":"7b1c…","label":"v0.3","definition":{"dsl_version":"1.0","nodes":[],"edges":[]},"provenanceSummary":{"canvas":1,"code":0,"copilot":2,"suggestion":0},"warnings":[],"nodeProvenance":[]}}
                      */
                     "text/event-stream": components["schemas"]["CopilotStreamEvent"];
                 };

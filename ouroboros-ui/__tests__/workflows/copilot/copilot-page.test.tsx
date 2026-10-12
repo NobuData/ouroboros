@@ -56,6 +56,12 @@ vi.mock("@/app/workflows/draft-actions", () => ({ publishWorkflow: vi.fn() }));
 vi.mock("@/app/workflows/copilot/copilot-actions", () => ({ discardCopilotDraft: vi.fn() }));
 // The rail's tile opens S.1's create dialog, on a Server Action; nothing here creates.
 vi.mock("@/app/workflows/create-actions", () => ({ createWorkflow: vi.fn() }));
+// The stage list's poll is its own suite's (`stages-card.test.tsx`); here it never asks.
+vi.mock("@/app/workflows/copilot/stages-poll", async () => {
+  const { inertStagesPoll } = await import("../../helpers/workflow-copilot");
+
+  return { createStagesPoll: inertStagesPoll };
+});
 
 const CopilotPage = (await import("@/app/(app)/workflows/[slug]/copilot/page")).default;
 const Loading = (await import("@/app/(app)/workflows/[slug]/copilot/loading")).default;

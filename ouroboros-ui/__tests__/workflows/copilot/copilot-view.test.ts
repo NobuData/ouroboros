@@ -382,11 +382,13 @@ describe("the document findings are anchored in", () => {
 });
 
 describe("the seats", () => {
-  it("names the issue that fills each, and fakes nothing", () => {
-    // The conversation is drawn (#566): its seat is only what a failed read leaves, and says so.
+  it("names the issue that fills the one still seated, and fakes nothing", () => {
+    // The conversation (#566) and the stage list (#567) are drawn: each seat is only what a failed
+    // read leaves, and says so.
     expect(COPILOT_SEATS.conversation.note).toMatch(/could not be read/);
     expect(COPILOT_SEATS.conversation.note).not.toMatch(/#\d/);
-    expect(COPILOT_SEATS.stages.note).toMatch(/#567/);
+    expect(COPILOT_SEATS.stages.note).toMatch(/could not be read/);
+    expect(COPILOT_SEATS.stages.note).not.toMatch(/#\d/);
     expect(COPILOT_SEATS["dry-run"].note).toMatch(/#568/);
     expect(Object.keys(COPILOT_SEATS)).toEqual(["conversation", "stages", "dry-run"]);
   });

@@ -77,10 +77,20 @@ async function settle(): Promise<void> {
  * @param options Whether the reader may edit, and what Reload does.
  * @returns The render, settled, with the workflow and the reload spy.
  */
-async function open({ mayAdminister = true, reload = vi.fn() } = {}) {
+async function open({
+  mayAdminister = true,
+  reload = vi.fn(),
+  initialFocus = null,
+}: { mayAdminister?: boolean; reload?: () => void; initialFocus?: string | null } = {}) {
   const workflow = workflowDetail();
   const view = render(
-    <StudioSession mayAdminister={mayAdminister} now={READ_AT} reload={reload} workflow={workflow}>
+    <StudioSession
+      initialFocus={initialFocus}
+      mayAdminister={mayAdminister}
+      now={READ_AT}
+      reload={reload}
+      workflow={workflow}
+    >
       <p data-testid="subline">
         <StudioSubline entry={railEntry()} fallback="" />
       </p>
@@ -419,5 +429,63 @@ describe("the dry run", () => {
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(/engine could not walk/);
     expect(active(container)).toEqual([]);
+  });
+});
+
+describe("opened on a stage — `?node=` (#567)", () => {
+  afterEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("selects the stage, opens the inspector on it, and selects nothing else", async () => {
+    window.history.replaceState(null, "", "/workflows/standard-fix?node=implement");
+    const { container } = await open({ initialFocus: "implement" });
+
+    expect(stage(container, "implement")).toHaveClass("selected");
+    expect(container.querySelectorAll(".react-flow__node.selected")).toHaveLength(1);
+    expect(screen.queryByText(NOTHING_SELECTED_TITLE)).toBeNull();
+    expect(screen.getByRole("complementary")).toHaveTextContent(/implement/i);
+  });
+
+  it("opens the same way for a reader who may not edit — reading the canvas is everyone's", async () => {
+    const { container } = await open({ initialFocus: "implement", mayAdminister: false });
+
+    expect(stage(container, "implement")).toHaveClass("selected");
+    expect(screen.queryByText(NOTHING_SELECTED_TITLE)).toBeNull();
+  });
+
+  it("takes the parameter off the address once it has been used, keeping the rest of it", async () => {
+    window.history.replaceState({ kept: true }, "", "/workflows/standard-fix?node=implement&x=1#top");
+    await open({ initialFocus: "implement" });
+
+    expect(`${window.location.pathname}${window.location.search}${window.location.hash}`).toBe(
+      "/workflows/standard-fix?x=1#top",
+    );
+    expect(window.history.state).toEqual({ kept: true });
+  });
+
+  it("takes an ignored parameter off the address too, and leaves an address without one alone", async () => {
+    window.history.replaceState(null, "", "/workflows/standard-fix?node=nobody");
+    const { container, unmount } = await open();
+
+    expect(window.location.search).toBe("");
+    expect(container.querySelector(".react-flow__node.selected")).toBeNull();
+    expect(screen.getByText(NOTHING_SELECTED_TITLE)).toBeInTheDocument();
+    unmount();
+
+    const replace = vi.spyOn(window.history, "replaceState");
+    await open();
+    expect(replace).not.toHaveBeenCalled();
+    replace.mockRestore();
+  });
+
+  it("leaves the selection the reader's afterwards: another stage can be selected", async () => {
+    const { container } = await open({ initialFocus: "implement" });
+
+    fireEvent.click(stage(container, "plan"));
+    await settle();
+
+    expect(stage(container, "plan")).toHaveClass("selected");
+    expect(stage(container, "implement")).not.toHaveClass("selected");
   });
 });

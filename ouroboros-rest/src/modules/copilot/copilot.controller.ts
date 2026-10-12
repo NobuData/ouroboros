@@ -2,9 +2,9 @@
  * `/api/v1/workflows/{id}/copilot/…` — the conversation's routes.
  *
  * Starting a session, sending to it and discarding the draft change the draft, so they are
- * administrators' like the draft's own `PUT`; reading the conversation, what a promotion would
- * publish, and whether a reply could be made at all (CE.2, #566) is every member's, like
- * reading the draft. **Promote** itself has no
+ * administrators' like the draft's own `PUT`; reading the conversation, the draft with who
+ * each stage is by (CE.3, #567), what a promotion would publish, and whether a reply could be
+ * made at all (CE.2, #566) is every member's, like reading the draft. **Promote** itself has no
  * route here: it is `POST /workflows/{id}/publish`, which closes the conversation as `promoted`
  * (CE.1, #565). The two sending routes answer `text/event-stream` written directly to the response — see
  * `copilot.stream.ts` for why the headers go out after the first event.
@@ -28,6 +28,7 @@ import {
 import type {
   CopilotConversationResource,
   CopilotDiscardResource,
+  CopilotDraftResource,
   CopilotPromotionResource,
   CopilotReadinessResource,
   CopilotSessionResource,
@@ -110,6 +111,22 @@ export class CopilotController {
     @Param() params: CopilotWorkflowParams,
   ): Promise<CopilotReadinessResource> {
     return this.copilot.readiness(tenant.id, params.id);
+  }
+
+  /**
+   * `GET /api/v1/workflows/{id}/copilot/draft` — the shared draft as it stands, with who each
+   * stage is by; needs no conversation.
+   *
+   * @param tenant - The workspace.
+   * @param params - The workflow's id.
+   * @returns The draft, its warnings and its per-stage provenance.
+   */
+  @Get("draft")
+  draft(
+    @CurrentTenant() tenant: Organization,
+    @Param() params: CopilotWorkflowParams,
+  ): Promise<CopilotDraftResource> {
+    return this.copilot.draft(tenant.id, params.id);
   }
 
   /**

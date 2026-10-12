@@ -322,6 +322,28 @@ export function workflowPath(slug: string): string {
   return `${WORKFLOWS_PATH}/${encodeURIComponent(slug)}`;
 }
 
+/** The query parameter that names the stage the canvas opens focused on — `?node=analyze`. */
+export const WORKFLOW_NODE_PARAM = "node";
+
+/**
+ * The canvas, opened on one workflow and focused on one of its stages —
+ * `/workflows/security-patch?node=exploit-verify` (CE.3,
+ * [#567](https://github.com/NobuData/ouroboros/issues/567)): where the copilot's stage list
+ * sends each row's **edit**.
+ *
+ * A query parameter rather than a segment, because the stage is where the canvas *starts
+ * looking*, not a page of its own: the studio selects it, opens the inspector on it and centres
+ * it, then takes the parameter off the address — the selection is the canvas's from there, and
+ * an address still naming a stage the reader has left would say something untrue.
+ *
+ * @param slug The workflow's slug, encoded for the reason {@link workflowPath} gives.
+ * @param nodeId The stage's node id, as the definition spells it.
+ * @returns The path.
+ */
+export function workflowNodePath(slug: string, nodeId: string): string {
+  return `${workflowPath(slug)}?${WORKFLOW_NODE_PARAM}=${encodeURIComponent(nodeId)}`;
+}
+
 /**
  * The studio's code view, opened on one workflow — `/workflows/standard-fix/code` (V.1,
  * [#169](https://github.com/NobuData/ouroboros/issues/169)), mockup 05.

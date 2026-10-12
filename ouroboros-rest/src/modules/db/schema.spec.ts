@@ -525,7 +525,10 @@ describe("TABLE_COLUMNS", () => {
     // The hundred-and-seventy-first and second are V114's `dry_run_suggestions` and
     // `review_replay_pairs`, which the suggestion rule pack (#563) is the first code to read and
     // write.
-    expect(TABLE_NAMES).toHaveLength(172);
+    //
+    // The hundred-and-seventy-third is V110's `workflow_draft_node_provenance` view, which the
+    // copilot's draft read (#567) is the first code to read: who added each stage of a draft.
+    expect(TABLE_NAMES).toHaveLength(173);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
@@ -712,7 +715,7 @@ describe("TABLE_COLUMNS", () => {
     for (const view of READ_ONLY_VIEWS) {
       expect(TABLE_NAMES).toContain(view);
     }
-    expect(READ_ONLY_VIEWS).toHaveLength(14);
+    expect(READ_ONLY_VIEWS).toHaveLength(15);
   });
 
   it("makes runs_with_stage the same shape as runs, so the stage read moves by one word", () => {

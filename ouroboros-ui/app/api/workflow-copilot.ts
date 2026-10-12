@@ -3,7 +3,7 @@
  * and writes through `ouroboros-rest` (CE.1,
  * [#565](https://github.com/NobuData/ouroboros/issues/565)).
  *
- * Four operations, all beneath one workflow:
+ * Five operations, all beneath one workflow:
  *
  * - `GET /api/v1/workflows/{id}/copilot/promotion` — what **Promote draft → security-patch v1**
  *   would publish: the version it would make, the draft it would freeze, the guards the
@@ -14,6 +14,8 @@
  *   most recently closed one; a workflow that never had one answers `404`
  *   {@link COPILOT_SESSION_NOT_FOUND}, which {@link workflowCopilot.conversation} hands back as
  *   `null`, because *no conversation yet* is a state of the page and not a failed read.
+ * - `GET /api/v1/workflows/{id}/copilot/draft` — the shared draft with who each stage is by
+ *   (CE.3, #567): what the stage list draws, with or without a conversation.
  * - `GET /api/v1/workflows/{id}/copilot/readiness` — whether a message sent now could be
  *   answered (CE.2, #566): the gateway, the route, and the dry run in the way.
  * - `POST /api/v1/workflows/{id}/copilot/discard` — **Discard draft**: the draft is thrown away
@@ -27,7 +29,7 @@
  *
  * Every type here is an alias of `app/api/schema.d.ts`, generated from the service's OpenAPI
  * document by `yarn api:sync` — the promotion and discard shapes since CE.1, the conversation's
- * since CC.1, the readiness since CE.2.
+ * since CC.1, the readiness since CE.2, the draft read and its provenance since CE.3.
  *
  * ### The workspace is the session's
  *
@@ -87,6 +89,18 @@ export type CopilotWarning = components["schemas"]["CopilotWarning"];
 /** The shared draft as the conversation sees it. */
 export type CopilotDraft = components["schemas"]["CopilotDraft"];
 
+/**
+ * Who one stage of the draft is by, derived from the draft's operation log (#556) — the stage
+ * list's `added by copilot` pill (CE.3, [#567](https://github.com/NobuData/ouroboros/issues/567)).
+ */
+export type CopilotNodeProvenance = components["schemas"]["CopilotNodeProvenance"];
+
+/**
+ * The draft as `GET …/copilot/draft` answers it: {@link CopilotDraft}, which carries one
+ * {@link CopilotNodeProvenance} per stage, in the document's order.
+ */
+export type CopilotStageDraft = CopilotDraft;
+
 /** One server-sent event of an exchange — the `data:` of an event whose `event:` is its `kind`. */
 export type CopilotStreamEvent = components["schemas"]["CopilotStreamEvent"];
 
@@ -137,6 +151,24 @@ export const workflowCopilot = {
       if (isApiError(error) && error.code === COPILOT_SESSION_NOT_FOUND) return null;
       throw error;
     }
+  },
+
+  /**
+   * The workflow's shared draft, with who each stage is by — what the stage list draws.
+   *
+   * It answers whether or not the workflow has a conversation: a workflow with no draft answers
+   * `definition: null` and no provenance, which is the list's empty state and not a failure.
+   *
+   * @param id The workflow's id.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @param signal A deadline — the poll's.
+   * @returns The draft.
+   * @throws {ApiError} What the service answered — `404 workflow_not_found`.
+   */
+  async draft(id: string, client: ApiClient = api(), signal?: AbortSignal): Promise<CopilotStageDraft> {
+    return unwrap(
+      await client.GET("/api/v1/workflows/{id}/copilot/draft", { params: { path: { id } }, signal }),
+    );
   },
 
   /**

@@ -27,6 +27,7 @@ import {
   type Database,
   type DryRun,
   type Workflow,
+  type WorkflowDraftNodeProvenance,
   type WorkflowVersion,
 } from "../db/schema";
 import { queryOn } from "../tenancy/queries";
@@ -110,6 +111,23 @@ export class CopilotRepository {
       .where("version", "is", null);
 
     return (lock ? query.forUpdate() : query).executeTakeFirst();
+  }
+
+  /**
+   * Who each stage of the workflow's draft is by — V110's `workflow_draft_node_provenance`,
+   * which derives it from the operation log (CE.3, #567).
+   *
+   * @param workflowId - The workflow.
+   * @returns One row per stage of the draft, in no promised order; none without a draft.
+   */
+  async nodeProvenance(
+    workflowId: string,
+  ): Promise<Pick<WorkflowDraftNodeProvenance, "added_rev" | "node_id" | "provenance">[]> {
+    return this.database.db
+      .selectFrom("workflow_draft_node_provenance")
+      .select(["node_id", "provenance", "added_rev"])
+      .where("workflow_id", "=", workflowId)
+      .execute();
   }
 
   /**

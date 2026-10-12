@@ -4,7 +4,7 @@ import "server-only";
  * Everything the copilot route reads (CE.1,
  * [#565](https://github.com/NobuData/ouroboros/issues/565)).
  *
- * The rail, then four reads of the workflow the URL names — composed the way
+ * The rail, then six reads of the workflow the URL names — composed the way
  * `app/workflows/code/code-data.ts` composes the code view's: the route stays three lines, and
  * **one failed read is one degraded region**. The rail first, for that module's two reasons: a
  * slug the workspace does not have is answered from the listing and costs no further request,
@@ -17,7 +17,7 @@ import "server-only";
  * after a save, shows the draft as it now is and the conversation where it was left. There is
  * no client state to carry across a switch and so none to lose.
  *
- * ### The four reads
+ * ### The six reads
  *
  * - **the workflow** (`GET /api/v1/workflows/{id}`), as the visual editor reads it — its draft's
  *   document is what a refused promote's findings are anchored in;
@@ -30,7 +30,13 @@ import "server-only";
  * - **the readiness** (`GET …/copilot/readiness`, CE.2, #566) — whether a message sent now could
  *   be answered: the deployment's gateway, the copilot's route, and the dry run in the way. The
  *   composer's reasons come from it rather than from constants here. A failed read gates
- *   nothing.
+ *   nothing;
+ * - **the draft** (`GET …/copilot/draft`, CE.3, #567) — the shared draft with who each stage is
+ *   by, which is what the stage list draws. It answers with or without a conversation, so the
+ *   list does not hang off the conversation read;
+ * - **the aliases** (`GET /api/v1/routing/aliases`) — the registry's names, as the canvas's
+ *   inspector reads them, so a pinned stage's tag can name its model. A failed read costs only
+ *   that: the tag names the alias.
  *
  * They are made in parallel, and each is kept as its own reading. Anything that is not an
  * `ApiError` keeps travelling — Next.js's redirect signal above all, which is how a session that
@@ -39,6 +45,7 @@ import "server-only";
 
 import type { Workspace } from "@/app/api/access";
 import { attempt } from "@/app/api/reading";
+import { routing } from "@/app/api/routing";
 import { workflowCopilot } from "@/app/api/workflow-copilot";
 import { workflows } from "@/app/api/workflows";
 
@@ -46,7 +53,7 @@ import type { CopilotReadings } from "./copilot-view";
 
 /**
  * Read the copilot route: the rail, and for the workflow the URL names, the workflow, its
- * promotion summary, its conversation and its readiness.
+ * promotion summary, its conversation, its readiness, its draft and the workspace's aliases.
  *
  * @param access The workspace the gate returned — a precondition made visible in the type, for
  *   the reason `readStudio` gives, and not read.
@@ -67,12 +74,19 @@ export async function readStudioCopilot(access: Workspace, slug: string): Promis
   const entry = rail.value.find((candidate) => candidate.slug === slug);
   if (entry === undefined) return { rail, requested: slug, selected: null, now };
 
-  const [detail, promotion, conversation, readiness] = await Promise.all([
+  const [detail, promotion, conversation, readiness, draft, aliases] = await Promise.all([
     attempt(async () => workflows.read(entry.id)),
     attempt(async () => workflowCopilot.promotion(entry.id)),
     attempt(async () => workflowCopilot.conversation(entry.id)),
     attempt(async () => workflowCopilot.readiness(entry.id)),
+    attempt(async () => workflowCopilot.draft(entry.id)),
+    attempt(async () => routing.aliases()),
   ]);
 
-  return { rail, requested: slug, selected: { entry, detail, promotion, conversation, readiness }, now };
+  return {
+    rail,
+    requested: slug,
+    selected: { entry, detail, promotion, conversation, readiness, draft, aliases },
+    now,
+  };
 }

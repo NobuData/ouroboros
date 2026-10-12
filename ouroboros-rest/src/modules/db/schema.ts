@@ -4165,6 +4165,25 @@ export interface DraftOperationsTable {
   applied_at: GeneratedAlways<Date>;
 }
 
+/** `workflow_draft_node_provenance.provenance` (V110, #556) — who a draft's stage is by. */
+export type DraftNodeProvenance = "human" | "copilot" | "suggestion" | "published";
+
+/**
+ * `ouroboros.workflow_draft_node_provenance` — per stage of each workflow's draft, who added it
+ * (V110, [#556](https://github.com/NobuData/ouroboros/issues/556)): derived from
+ * {@link DraftOperationsTable}, so a stage a person has since reconfigured reads `human`.
+ * **Read only**, and no row for a workflow without a draft.
+ */
+export interface WorkflowDraftNodeProvenanceView {
+  workflow_id: string;
+  organization_id: string;
+  /** The stage's `id` in the draft's `definition.nodes`. */
+  node_id: string;
+  provenance: DraftNodeProvenance;
+  /** The `draft_rev` whose batch added the stage; null for a `published` one. */
+  added_rev: number | null;
+}
+
 /**
  * `ouroboros.workflow_versions` — a workflow's version history plus its one mutable draft
  * (V029, [#132](https://github.com/NobuData/ouroboros/issues/132)).
@@ -4930,6 +4949,10 @@ export interface WorkspaceSettingsEffectiveView {
  * the fourteenth**: a `UNION ALL` of tickets, PRs and imported documents, which PostgreSQL would
  * refuse a write through.
  *
+ * **`workflow_draft_node_provenance` (V110, [#556](https://github.com/NobuData/ouroboros/issues/556))
+ * is the fifteenth**: a lateral join over `draft_operations`, which only `apply_draft_batch()`
+ * writes — the stage list (#567) reads who added each stage through it.
+ *
  * `schema.spec.ts` holds this list to the view interfaces above; `db.integration-spec.ts`
  * compares their columns against `information_schema` exactly as it does a table's, because a
  * view that lost a column breaks a query the same way a table that lost one does.
@@ -4949,6 +4972,7 @@ export const READ_ONLY_VIEWS = [
   "org_policies_effective",
   "notification_routes_effective",
   "history_index_entries",
+  "workflow_draft_node_provenance",
 ] as const;
 
 /**
@@ -7707,6 +7731,7 @@ export interface Database {
   copilot_sessions: CopilotSessionsTable;
   copilot_messages: CopilotMessagesTable;
   draft_operations: DraftOperationsTable;
+  workflow_draft_node_provenance: WorkflowDraftNodeProvenanceView;
   dry_runs: DryRunsTable;
   dry_run_stages: DryRunStagesTable;
   dry_run_artifacts: DryRunArtifactsTable;
@@ -8424,6 +8449,13 @@ export const TABLE_COLUMNS = {
     "session_id",
     "suggestion_id",
     "applied_at",
+  ],
+  workflow_draft_node_provenance: [
+    "workflow_id",
+    "organization_id",
+    "node_id",
+    "provenance",
+    "added_rev",
   ],
   dry_runs: [
     "id",
@@ -10229,6 +10261,11 @@ export type CopilotSession = Selectable<CopilotSessionsTable>;
 export type CopilotMessage = Selectable<CopilotMessagesTable>;
 /** A row of `ouroboros.draft_operations`, as a `select` returns it. */
 export type DraftOperation = Selectable<DraftOperationsTable>;
+/**
+ * A row of `ouroboros.workflow_draft_node_provenance`, as a `select` returns it. No `New…`
+ * counterpart: the view is derived from `draft_operations`.
+ */
+export type WorkflowDraftNodeProvenance = Selectable<WorkflowDraftNodeProvenanceView>;
 /** A row of `ouroboros.dry_runs`, as a `select` returns it. */
 export type DryRun = Selectable<DryRunsTable>;
 /** A row of `ouroboros.dry_run_stages`, as a `select` returns it. */

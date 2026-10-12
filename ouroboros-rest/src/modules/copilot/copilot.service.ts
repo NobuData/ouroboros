@@ -64,6 +64,7 @@ import { unresolvedReferences } from "./copilot.references";
 import { CopilotRepository, EMPTY_TRACE } from "./copilot.repository";
 import {
   copilotMessage,
+  copilotNodeProvenance,
   copilotReadiness,
   copilotSession,
   copilotWarning,
@@ -229,6 +230,26 @@ export class CopilotService implements OnModuleInit {
       messages: messages.map(copilotMessage),
       draft: await this.draftResource(workflow, catalogue),
     };
+  }
+
+  /**
+   * The shared draft as it stands, with who each stage is by — what the stage list reads
+   * (CE.3, #567).
+   *
+   * Unlike {@link CopilotService.conversation} it needs no conversation: a draft drawn on the
+   * canvas alone reads here too, every stage `human`. A workflow without a draft answers a
+   * `null` definition and no stages.
+   *
+   * @param organizationId - The workspace.
+   * @param workflowId - The workflow.
+   * @returns The draft, its W7 warnings and its per-stage provenance.
+   * @throws {NotFoundError} `workflow_not_found`.
+   */
+  async draft(organizationId: string, workflowId: string): Promise<CopilotDraftResource> {
+    const workflow = await this.requireWorkflow(organizationId, workflowId);
+    const { catalogue } = await this.grounding.grounding(organizationId);
+
+    return this.draftResource(workflow, catalogue);
   }
 
   /**
@@ -771,7 +792,7 @@ export class CopilotService implements OnModuleInit {
   }
 
   /**
-   * The draft as the conversation shows it.
+   * The draft as the conversation shows it, with who each stage is by.
    *
    * @param workflow - The workflow row.
    * @param catalogue - The names that exist, for the warnings.
@@ -781,7 +802,10 @@ export class CopilotService implements OnModuleInit {
     workflow: Workflow,
     catalogue: DslCatalogue,
   ): Promise<CopilotDraftResource> {
-    const draft = await this.copilots.draftOf(workflow.id);
+    const [draft, provenance] = await Promise.all([
+      this.copilots.draftOf(workflow.id),
+      this.copilots.nodeProvenance(workflow.id),
+    ]);
     const definition = draft?.definition ?? null;
     return {
       etag: draftEtag(draft),
@@ -789,6 +813,7 @@ export class CopilotService implements OnModuleInit {
       definition,
       provenanceSummary: workflow.provenance_summary,
       warnings: unresolvedReferences(definition, catalogue).map(copilotWarning),
+      nodeProvenance: copilotNodeProvenance(definition, provenance),
     };
   }
 

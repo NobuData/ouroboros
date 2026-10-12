@@ -87,6 +87,10 @@ const CASES: Readonly<Record<string, RouteCase>> = {
     about: "cannot read whether their copilot could reply",
     kind: "tenant",
   },
+  [`GET ${COPILOT}/draft`]: {
+    about: "cannot read their draft or who its stages are by",
+    kind: "tenant",
+  },
   [`POST ${COPILOT}/discard`]: { about: "cannot discard their draft", kind: "tenant" },
   [`POST ${COPILOT}/sessions/:sessionId/messages`]: {
     about: "cannot speak in their conversation",

@@ -3,6 +3,7 @@ import { DslWarningCode } from "../workflows/dsl.errors";
 import {
   copilotChoices,
   copilotMessage,
+  copilotNodeProvenance,
   copilotReadiness,
   copilotSession,
   copilotTrace,
@@ -173,6 +174,56 @@ describe("the copilot resources", () => {
       },
       dryRun: { id: "5eed008b-0000-4000-8000-000000000001", status: "running" },
     });
+  });
+
+  it("lists who each stage is by in the document's order, not the view's (#567)", () => {
+    const definition = {
+      nodes: [{ id: "trigger" }, { id: "implement" }, { id: "exploit-verify" }],
+    };
+
+    expect(
+      copilotNodeProvenance(definition, [
+        { node_id: "exploit-verify", provenance: "copilot", added_rev: 3 },
+        { node_id: "trigger", provenance: "published", added_rev: null },
+        { node_id: "implement", provenance: "human", added_rev: 1 },
+      ]),
+    ).toEqual([
+      { nodeId: "trigger", provenance: "published", addedRev: null },
+      { nodeId: "implement", provenance: "human", addedRev: 1 },
+      { nodeId: "exploit-verify", provenance: "copilot", addedRev: 3 },
+    ]);
+  });
+
+  it("lists only the stages the document and the view agree on", () => {
+    // Two reads: a batch may land between them, so either side may know a stage the other
+    // does not. A node without an id, or one named twice, is listed at most once.
+    const rows = [
+      { node_id: "implement", provenance: "suggestion", added_rev: 4 },
+      { node_id: "gone", provenance: "copilot", added_rev: 2 },
+    ] as const;
+
+    expect(
+      copilotNodeProvenance(
+        {
+          nodes: [
+            { id: "new" },
+            null,
+            { title: "no id" },
+            { id: "implement" },
+            { id: "implement" },
+          ],
+        },
+        rows,
+      ),
+    ).toEqual([{ nodeId: "implement", provenance: "suggestion", addedRev: 4 }]);
+  });
+
+  it("lists nothing without a draft, or for a document with no stage list", () => {
+    const rows = [{ node_id: "implement", provenance: "human", added_rev: 1 } as const];
+
+    expect(copilotNodeProvenance(null, rows)).toEqual([]);
+    expect(copilotNodeProvenance({}, rows)).toEqual([]);
+    expect(copilotNodeProvenance({ nodes: "implement" }, rows)).toEqual([]);
   });
 
   it("shows a warning as the reference it is", () => {

@@ -1,7 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { WORKFLOW_NODE_PARAM } from "@/app/paths";
 
 import type { WorkflowDefinition, WorkflowDetail } from "@/app/api/workflows";
 
@@ -39,6 +41,12 @@ export interface StudioSessionProps {
    * canvas, the inspector, the history and the etag all start again from the stored draft.
    */
   readonly reload?: () => void;
+  /**
+   * A stage to open focused on — the address's `?node=`, already checked against the draft by
+   * the screen (CE.3, [#567](https://github.com/NobuData/ouroboros/issues/567)). Read once: it
+   * is the session's first focus request, exactly as if a finding had asked for the stage.
+   */
+  readonly initialFocus?: string | null;
   /** The page. */
   readonly children: ReactNode;
 }
@@ -63,11 +71,22 @@ function reloadPage(): void {
  *   gate. A refusal with findings stays in the dialog; a success moves the head's version and leaves a toast.
  * - **Dry run** writes what is waiting first, for the same reason, then asks the engine to walk the stored
  *   draft. The answer is painted until the draft changes — any edit, an undo included, clears it.
+ * - **`?node=`** opens the canvas focused on a stage (`initialFocus`), through the same focus request a
+ *   finding makes. The parameter is then taken off the address: the studio keeps no selection in its URL,
+ *   and one left behind would go on naming a stage after the reader had selected another — and select it
+ *   again on a reload.
  *
  * @param props See {@link StudioSessionProps}.
  * @returns The page, with the session around it and the dialogs beside it.
  */
-export function StudioSession({ workflow, mayAdminister, now: readAt, reload = reloadPage, children }: StudioSessionProps) {
+export function StudioSession({
+  workflow,
+  mayAdminister,
+  now: readAt,
+  reload = reloadPage,
+  initialFocus = null,
+  children,
+}: StudioSessionProps) {
   const router = useRouter();
   const [opening] = useState(() => canvasDefinition(workflow));
   const draftRef = useRef(opening);
@@ -82,7 +101,20 @@ export function StudioSession({ workflow, mayAdminister, now: readAt, reload = r
   const [conflict, setConflict] = useState<{ readonly found: DraftConflict; readonly at: string } | null>(null);
   const [conflictOpen, setConflictOpen] = useState(false);
   const [dryRun, setDryRun] = useState<ShownDryRun | null>(null);
-  const [focus, setFocus] = useState<FocusRequest | null>(null);
+  // Nonce 0 is the address's request; `focusStage` counts from 1.
+  const [focus, setFocus] = useState<FocusRequest | null>(() =>
+    initialFocus === null ? null : { id: initialFocus, nonce: 0 },
+  );
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has(WORKFLOW_NODE_PARAM)) return;
+
+    // Honoured or ignored, the parameter has done what it will do. `replaceState`, so Back still
+    // leaves the studio rather than returning to the same page with the parameter on it.
+    url.searchParams.delete(WORKFLOW_NODE_PARAM);
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }, []);
   const [toast, setToast] = useState<string | null>(null);
 
   const { status, schedule, flush } = useAutosave({
