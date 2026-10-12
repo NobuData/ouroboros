@@ -3,7 +3,14 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/app/api/errors";
 
 import { STUB_BASE_URL, clientAnswering } from "../helpers/api";
-import { SECURITY_PATCH_ID, copilotConversation, copilotPromotion, copilotSession } from "../helpers/workflow-copilot";
+import {
+  NO_GATEWAY,
+  SECURITY_PATCH_ID,
+  copilotConversation,
+  copilotPromotion,
+  copilotReadiness,
+  copilotSession,
+} from "../helpers/workflow-copilot";
 
 // The facade sits on the server-side client — see `server.test.ts` for what each of these answers.
 vi.mock("server-only", () => ({}));
@@ -40,6 +47,37 @@ describe("workflowCopilot.promotion", () => {
     const { client } = clientAnswering({ code: "workflow_not_found", message: "No such workflow.", details: {} }, 404);
 
     const refused = await workflowCopilot.promotion(SECURITY_PATCH_ID, client).catch((error: unknown) => error);
+
+    expect(refused).toBeInstanceOf(ApiError);
+    expect(refused).toMatchObject({ status: 404, code: "workflow_not_found" });
+  });
+});
+
+describe("workflowCopilot.readiness", () => {
+  it("reads the readiness by the workflow's id", async () => {
+    const { client, requests } = clientAnswering(NO_GATEWAY);
+
+    await expect(workflowCopilot.readiness(SECURITY_PATCH_ID, client)).resolves.toEqual(NO_GATEWAY);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].method).toBe("GET");
+    expect(requests[0].url).toBe(`${BASE}/readiness`);
+  });
+
+  it("hands back a ready copilot as the service serves it — the route's alias and model, no dry run", async () => {
+    const { client } = clientAnswering(copilotReadiness());
+
+    await expect(workflowCopilot.readiness(SECURITY_PATCH_ID, client)).resolves.toMatchObject({
+      gateway: { available: true },
+      route: { taskKind: "copilot-workflow", resolved: true, alias: "coder-max", reason: null },
+      dryRun: null,
+    });
+  });
+
+  it("rejects with the service's refusal for a workflow this workspace does not have", async () => {
+    const { client } = clientAnswering({ code: "workflow_not_found", message: "No such workflow.", details: {} }, 404);
+
+    const refused = await workflowCopilot.readiness(SECURITY_PATCH_ID, client).catch((error: unknown) => error);
 
     expect(refused).toBeInstanceOf(ApiError);
     expect(refused).toMatchObject({ status: 404, code: "workflow_not_found" });

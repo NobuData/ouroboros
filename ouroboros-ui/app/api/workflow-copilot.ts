@@ -3,7 +3,7 @@
  * and writes through `ouroboros-rest` (CE.1,
  * [#565](https://github.com/NobuData/ouroboros/issues/565)).
  *
- * Three operations, all beneath one workflow:
+ * Four operations, all beneath one workflow:
  *
  * - `GET /api/v1/workflows/{id}/copilot/promotion` — what **Promote draft → security-patch v1**
  *   would publish: the version it would make, the draft it would freeze, the guards the
@@ -14,6 +14,8 @@
  *   most recently closed one; a workflow that never had one answers `404`
  *   {@link COPILOT_SESSION_NOT_FOUND}, which {@link workflowCopilot.conversation} hands back as
  *   `null`, because *no conversation yet* is a state of the page and not a failed read.
+ * - `GET /api/v1/workflows/{id}/copilot/readiness` — whether a message sent now could be
+ *   answered (CE.2, #566): the gateway, the route, and the dry run in the way.
  * - `POST /api/v1/workflows/{id}/copilot/discard` — **Discard draft**: the draft is thrown away
  *   and the session closed as `discarded`, its transcript kept.
  *
@@ -25,7 +27,7 @@
  *
  * Every type here is an alias of `app/api/schema.d.ts`, generated from the service's OpenAPI
  * document by `yarn api:sync` — the promotion and discard shapes since CE.1, the conversation's
- * since CC.1.
+ * since CC.1, the readiness since CE.2.
  *
  * ### The workspace is the session's
  *
@@ -70,6 +72,31 @@ export type CopilotPromotion = components["schemas"]["CopilotPromotion"];
 /** What a discard did: whether there was a draft, and the conversation as it now stands. */
 export type CopilotDiscardResult = components["schemas"]["CopilotDiscard"];
 
+/** One chip row of a reply — an `ask_user` question, and its answer once given. */
+export type CopilotChoice = components["schemas"]["CopilotChoice"];
+
+/** How a reply came to be: the operations it proposed, the reads it made, the dry runs it suggested. */
+export type CopilotToolTrace = components["schemas"]["CopilotToolTrace"];
+
+/** One operation a reply proposed, and what became of it. */
+export type CopilotTraceOperation = components["schemas"]["CopilotTraceOperation"];
+
+/** A reference in the draft that resolves to nothing yet (decision W7). */
+export type CopilotWarning = components["schemas"]["CopilotWarning"];
+
+/** The shared draft as the conversation sees it. */
+export type CopilotDraft = components["schemas"]["CopilotDraft"];
+
+/** One server-sent event of an exchange — the `data:` of an event whose `event:` is its `kind`. */
+export type CopilotStreamEvent = components["schemas"]["CopilotStreamEvent"];
+
+/**
+ * Whether a message sent now could be answered (CE.2,
+ * [#566](https://github.com/NobuData/ouroboros/issues/566)): the deployment's gateway, what
+ * routing the next reply would find, and the workflow's dry run that has not ended.
+ */
+export type CopilotReadiness = components["schemas"]["CopilotReadiness"];
+
 /** The code a `404` answers for a workflow that never had a conversation. */
 export const COPILOT_SESSION_NOT_FOUND = "copilot_session_not_found";
 
@@ -110,6 +137,21 @@ export const workflowCopilot = {
       if (isApiError(error) && error.code === COPILOT_SESSION_NOT_FOUND) return null;
       throw error;
     }
+  },
+
+  /**
+   * Whether a message sent now could be answered: the deployment's gateway, the copilot's route,
+   * and the workflow's open dry run.
+   *
+   * @param id The workflow's id.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The readiness as the service knows it — it asks no engine and no provider.
+   * @throws {ApiError} What the service answered — `404 workflow_not_found`.
+   */
+  async readiness(id: string, client: ApiClient = api()): Promise<CopilotReadiness> {
+    return unwrap(
+      await client.GET("/api/v1/workflows/{id}/copilot/readiness", { params: { path: { id } } }),
+    );
   },
 
   /**

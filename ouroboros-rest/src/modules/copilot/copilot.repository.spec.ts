@@ -108,6 +108,33 @@ describe("the copilot repository", () => {
     ]);
   });
 
+  it("reads a session's status under the workflow's row lock, in the caller's transaction (#566)", async () => {
+    database.answers({ rows: [{ id: WORKFLOW }] }, { rows: [{ status: "discarded" }] });
+
+    const status = await database.service.transaction((trx) =>
+      copilots.sessionStatusLocked(WORKFLOW, SESSION, trx),
+    );
+
+    expect(status).toBe("discarded");
+    const sql = database.sql();
+    expect(sql[0]).toBe("begin");
+    expect(sql[1]).toContain('from "ouroboros"."workflows"');
+    expect(sql[1]).toContain("for update");
+    expect(database.statements[1].parameters).toEqual([WORKFLOW]);
+    expect(sql[2]).toContain('select "status" from "ouroboros"."copilot_sessions"');
+    expect(sql[2]).not.toContain("for update");
+    expect(database.statements[2].parameters).toEqual([WORKFLOW, SESSION]);
+    expect(sql.at(-1)).toBe("commit");
+  });
+
+  it("answers no status for a session that is gone", async () => {
+    database.answers({ rows: [] }, { rows: [] });
+
+    await expect(
+      database.service.transaction((trx) => copilots.sessionStatusLocked(WORKFLOW, SESSION, trx)),
+    ).resolves.toBeUndefined();
+  });
+
   it("applies a batch through apply_draft_batch() as the copilot, inside the caller's transaction", async () => {
     database.answers({ rows: [{ draft_rev: 2, batch_id: "batch-2" }] });
     const operations = [{ kind: "add_stage", params: { node: { id: "exploit-verify" } } }];
@@ -172,7 +199,9 @@ describe("the copilot repository", () => {
     await copilots.openDryRun(WORKFLOW);
 
     const [statement] = database.statements;
-    expect(statement.sql).toContain('select "id", "started_at" from "ouroboros"."dry_runs"');
+    expect(statement.sql).toContain(
+      'select "id", "started_at", "status" from "ouroboros"."dry_runs"',
+    );
     expect(statement.sql).toContain('"status" not in ($2, $3, $4, $5)');
     expect(statement.parameters).toEqual([
       WORKFLOW,

@@ -10,7 +10,8 @@
  * reply the conversation shows (`copilot_unrouted`), recorded `interrupted` with no cost: nothing
  * was invoked, so nothing is metered.
  * **Operations apply under the etag.** The exchange's apply port runs each one in a transaction
- * that locks the draft row, compares the etag the loop holds to the slot's, and only then calls
+ * that locks the draft row, checks the session is still active (a reply can outlive its
+ * conversation — CE.2, #566), compares the etag the loop holds to the slot's, and only then calls
  * `apply_draft_batch()` — the same discipline the canvas and the code editor save under (WF-P.3).
  * **Continuity** (decision W9) is `conversation()`: the active session, its messages, and the
  * draft as it stands — what a surface read when it switches back. With nothing active it
@@ -36,6 +37,7 @@ import { DryRunPickerService } from "../dry-runs/dry-runs.picker.service";
 import { dryRunInProgress } from "../dry-runs/dry-runs.errors";
 import { DryRunSuggestionsService } from "../dry-runs/suggestions.service";
 import { ENGINE_DRY_RUN_TIMEOUT_MS } from "../engine/engine.dryruns";
+import { INVOCATION_GATEWAY_AVAILABLE } from "../internal/invoke.contract";
 import { ResolutionService } from "../routing/resolution.service";
 import { draftEtag } from "../workflows/draft.etag";
 import { workflowNotFound } from "../workflows/workflows.errors";
@@ -62,6 +64,7 @@ import { unresolvedReferences } from "./copilot.references";
 import { CopilotRepository, EMPTY_TRACE } from "./copilot.repository";
 import {
   copilotMessage,
+  copilotReadiness,
   copilotSession,
   copilotWarning,
   draftLabel,
@@ -69,6 +72,7 @@ import {
   type CopilotDiscardResource,
   type CopilotDraftResource,
   type CopilotPromotionResource,
+  type CopilotReadinessResource,
   type CopilotSessionResource,
 } from "./copilot.resources";
 import type { CopilotStreamEvent } from "./copilot.stream";
@@ -79,6 +83,9 @@ export const COPILOT_TASK_KIND = "copilot-workflow";
 
 /** The reply could not be made because nothing routes the copilot in this workspace. */
 export const COPILOT_UNROUTED = "copilot_unrouted";
+
+/** How an unrouted reply begins; what follows is the reason the readiness read reports. */
+export const UNROUTED_PREFIX = "I can't reach a model: ";
 
 /** The read a reply's trace carries when a dry run's results were its input (CD.5, #563). */
 export const DRY_RUN_RESULTS = "dry_run_results";
@@ -269,6 +276,46 @@ export class CopilotService implements OnModuleInit {
   }
 
   /**
+   * Whether a message sent now could be answered, and whether a dry run stands in the way of a
+   * discard — what the conversation card says before anybody types (CE.2, #566).
+   *
+   * Reports only what this service already knows: the deployment's invocation gateway, what
+   * `route()` would decide for the next reply, and the workflow's dry run that has not ended.
+   * Nothing is asked of the engine or of a provider, and nothing is written.
+   *
+   * @param organizationId - The workspace.
+   * @param workflowId - The workflow.
+   * @returns The readiness as it stands.
+   * @throws {NotFoundError} `workflow_not_found`.
+   */
+  async readiness(organizationId: string, workflowId: string): Promise<CopilotReadinessResource> {
+    const workflow = await this.requireWorkflow(organizationId, workflowId);
+    const [routed, open] = await Promise.all([
+      this.route(organizationId),
+      this.copilots.openDryRun(workflow.id),
+    ]);
+
+    return copilotReadiness(
+      INVOCATION_GATEWAY_AVAILABLE,
+      COPILOT_TASK_KIND,
+      routed.ok ? { alias: routed.model.alias, modelId: routed.model.modelId } : routed.reason,
+      // A run past the harness deadline is one nothing is relaying any more: the next start
+      // reaps it and a discard ignores it, so it must not hold the composer shut either.
+      open !== undefined && this.inFlight(open) ? open : undefined,
+    );
+  }
+
+  /**
+   * Whether an open dry run can still be running — it started within the harness's deadline.
+   *
+   * @param run - The open run's start.
+   * @returns False for a run older than {@link ENGINE_DRY_RUN_TIMEOUT_MS}.
+   */
+  private inFlight(run: { readonly started_at: Date }): boolean {
+    return Date.now() - run.started_at.getTime() <= ENGINE_DRY_RUN_TIMEOUT_MS;
+  }
+
+  /**
    * **Discard draft**: drop the draft and close the conversation; keep the workflow and the
    * transcript (CE.1, #565).
    *
@@ -296,7 +343,7 @@ export class CopilotService implements OnModuleInit {
     const workflow = await this.requireWorkflow(organizationId, workflowId);
 
     const open = await this.copilots.openDryRun(workflow.id);
-    if (open !== undefined && Date.now() - open.started_at.getTime() <= ENGINE_DRY_RUN_TIMEOUT_MS) {
+    if (open !== undefined && this.inFlight(open)) {
       throw dryRunInProgress(open.id);
     }
 
@@ -482,8 +529,9 @@ export class CopilotService implements OnModuleInit {
     const routed = await this.route(organizationId);
 
     if (!routed.ok) {
+      const message = unroutedMessage(routed.reason);
       const recorded = await this.copilots.finishReply(reply.id, {
-        body: routed.message,
+        body: message,
         choices: null,
         tool_trace: EMPTY_TRACE,
         tokens_in: null,
@@ -491,8 +539,8 @@ export class CopilotService implements OnModuleInit {
         cost_cents: null,
         status: "interrupted",
       });
-      yield { kind: "delta", text: routed.message };
-      yield { kind: "error", code: COPILOT_UNROUTED, message: routed.message };
+      yield { kind: "delta", text: message };
+      yield { kind: "error", code: COPILOT_UNROUTED, message };
       yield {
         kind: "done",
         message: copilotMessage(recorded),
@@ -564,11 +612,12 @@ export class CopilotService implements OnModuleInit {
    * Resolve the `copilot-workflow` kind, honestly.
    *
    * @param organizationId - The workspace.
-   * @returns The chain's primary, or the sentence the reply says instead.
+   * @returns The chain's primary, or why there is none — the reason an unrouted reply gives
+   *   after {@link UNROUTED_PREFIX}, and the one the readiness read reports as it is.
    */
   private async route(
     organizationId: string,
-  ): Promise<{ ok: true; model: RoutedModel } | { ok: false; message: string }> {
+  ): Promise<{ ok: true; model: RoutedModel } | { ok: false; reason: string }> {
     let resolution;
     try {
       resolution = await this.routing.resolve(organizationId, COPILOT_TASK_KIND);
@@ -576,8 +625,8 @@ export class CopilotService implements OnModuleInit {
       if (error instanceof NotFoundError) {
         return {
           ok: false,
-          message:
-            `I can't reach a model: this workspace has no route for the \`${COPILOT_TASK_KIND}\` task kind. ` +
+          reason:
+            `this workspace has no route for the \`${COPILOT_TASK_KIND}\` task kind. ` +
             "Add one under Model routing and try again.",
         };
       }
@@ -590,7 +639,7 @@ export class CopilotService implements OnModuleInit {
         resolution.failure?.explanation ?? "no provider in the chain can serve it right now";
       return {
         ok: false,
-        message: `I can't reach a model: the \`${COPILOT_TASK_KIND}\` route did not resolve — ${reason}`,
+        reason: `the \`${COPILOT_TASK_KIND}\` route did not resolve — ${reason}`,
       };
     }
 
@@ -626,6 +675,13 @@ export class CopilotService implements OnModuleInit {
   /**
    * The apply port — the etag discipline, then `apply_draft_batch()`.
    *
+   * **Only while the conversation is open** (CE.2, #566). A reply can outlive its session: a
+   * publish or a discard may close it between two operations. Each apply therefore re-reads the
+   * session's status inside its own transaction, under the workflow's row lock — the lock both
+   * closers hold while they write the session, and the one `apply_draft_batch()` takes next —
+   * so no close can commit between the check and the write. A session that is not `active`
+   * applies nothing and the port answers `closed`.
+   *
    * @param workflow - The workflow.
    * @param session - The session.
    * @param userId - The person in the conversation.
@@ -655,6 +711,12 @@ export class CopilotService implements OnModuleInit {
       apply: async (operation: DraftOperation, expectedEtag: string) =>
         this.database.transaction(async (trx) => {
           const existing = await this.copilots.draftOf(workflow.id, trx, true);
+
+          // Before the etag: a discard removes the draft, and a reply told only that "the draft
+          // changed" would re-plan and write a new one for a conversation that is over.
+          const status = await this.copilots.sessionStatusLocked(workflow.id, session.id, trx);
+          if (status !== "active") return { ok: false as const, closed: true as const };
+
           if (draftEtag(existing) !== expectedEtag) {
             const row = await this.copilots.revision(workflow.id, trx);
             return {
@@ -752,6 +814,16 @@ export class CopilotService implements OnModuleInit {
     if (workflow === undefined) throw workflowNotFound(workflowId);
     return workflow;
   }
+}
+
+/**
+ * What an unrouted reply says.
+ *
+ * @param reason - Why the `copilot-workflow` kind did not resolve, as `route()` gives it.
+ * @returns The reply's sentence.
+ */
+export function unroutedMessage(reason: string): string {
+  return `${UNROUTED_PREFIX}${reason}`;
 }
 
 /**

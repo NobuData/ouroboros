@@ -18,6 +18,9 @@
  * - **Etag conflicts.** A studio save landing between two turns moves the etag; the copilot's
  *   stale operation is not applied, the studio's edit survives, and the model is told to re-plan
  *   from the draft as it now stands.
+ * - **A conversation closed mid-reply** (CE.2, #566). A discard landing between two turns of one
+ *   exchange closes the session; the operation the next turn proposes is not applied, no further
+ *   turn is asked for, and the reply ends `interrupted` with `copilot_session_closed`.
  * - **Cost and provenance.** Tokens and cost are summed over the turns, cost is `null` as soon as
  *   one turn was unpriced, and the session and the operation log record what was routed to and
  *   who applied what.
@@ -32,7 +35,7 @@ import { readFixture } from "../../workflows/dsl.golden.fixture";
 import { validateWorkflowDocument } from "../../workflows/dsl.validator";
 import type { Person } from "../../../testing/harness.fixture";
 import { COPILOT_ERRORS } from "../copilot.errors";
-import { MAX_BOUNCES, MAX_TURNS } from "../copilot.exchange";
+import { MAX_BOUNCES, MAX_TURNS, SESSION_CLOSED_MID_REPLY } from "../copilot.exchange";
 import { EMPTY_DRAFT, asDraftDocument, checkOperation } from "../copilot.operations";
 import type { CopilotConversationResource } from "../copilot.resources";
 import { COPILOT_TASK_KIND, COPILOT_UNROUTED } from "../copilot.service";
@@ -774,6 +777,103 @@ describe("copilot certification — session flows (#564)", () => {
       expect((await stored(reply.message.id)).tool_trace.operations).toEqual([
         { op: { kind: "add_stage", params: { node: TEST_NODE } }, outcome: "applied" },
       ]);
+    });
+  });
+
+  describe("a conversation closed during a reply (#566)", () => {
+    it("applies nothing after a discard made between two turns, asks no further turn, and says so", async () => {
+      const { workflow, session } = await conversationOn("closed mid-reply");
+
+      // Three turns are scripted; the third must never be asked for. The discard — the real
+      // route, as the owner — lands after the first turn's operation was applied and before the
+      // second turn is sent, exactly as the etag case stages its studio save.
+      stage.engine.script(
+        [
+          delta("Setting the trigger. "),
+          toolCall("open", "set_trigger", { trigger: TRIGGER }),
+          usage(100, 10, 1),
+          done("tool_use"),
+        ],
+        [
+          toolCall("late", "add_stage", { node: IMPLEMENT_NODE }),
+          usage(50, 5, 1),
+          done("tool_use"),
+        ],
+        [delta("Never asked for."), done()],
+      );
+      const client = stage.api.nest.get(EngineClient);
+      const turn = client.copilotTurn.bind(client);
+      let discard: { status: number; body: unknown } | undefined;
+      let rowsAtDiscard = -1;
+      let asked = 0;
+      const between = jest
+        .spyOn(client, "copilotTurn")
+        .mockImplementation(async function* (request) {
+          asked += 1;
+          if (asked === 2) {
+            rowsAtDiscard = (await logged(workflow.id)).length;
+            const response = await stage.as(
+              stage.people.owner,
+              "post",
+              `/api/v1/workflows/${workflow.id}/copilot/discard`,
+            );
+            discard = { status: response.status, body: response.body };
+          }
+          yield* turn(request);
+        });
+
+      let exchange: Exchange;
+      try {
+        exchange = await stage.say(workflow.id, session, "A bug loop, please.");
+      } finally {
+        between.mockRestore();
+      }
+
+      // The discard was an ordinary one, of a draft the first turn had really written.
+      expect(rowsAtDiscard).toBe(1);
+      expect(discard).toMatchObject({
+        status: 200,
+        body: { draftDiscarded: true, session: { id: session, status: "discarded" } },
+      });
+
+      // The engine: the turn in flight was answered, and no other was asked for.
+      expect(asked).toBe(2);
+      expect(stage.engine.turns).toHaveLength(2);
+
+      // The stream: one operation marker — the one applied while the conversation was open —
+      // then the sentence, and the error before the final done.
+      expect(exchange.status).toBe(201);
+      expect(kindsOf(exchange.events).slice(-4)).toEqual(["delta", "usage", "error", "done"]);
+      const marker = only(ofKind(exchange.events, "operation"), "operation event");
+      expect(marker).toMatchObject({ outcome: "applied", op: { kind: "set_trigger" } });
+      expect(only(ofKind(exchange.events, "error"), "error event")).toEqual({
+        kind: "error",
+        code: COPILOT_ERRORS.sessionClosed,
+        message: SESSION_CLOSED_MID_REPLY,
+      });
+      expect(textOf(exchange.events).at(-1)).toBe(SESSION_CLOSED_MID_REPLY);
+
+      // The rows: no draft and no log — the late operation wrote neither — and a reply recorded
+      // interrupted, with only what was applied on its trace and what was metered as its cost.
+      expect(await stage.draft(workflow.id)).toEqual({ definition: null, draftRev: 0 });
+      expect(await logged(workflow.id)).toEqual([]);
+      const reply = only(ofKind(exchange.events, "done"), "done event");
+      expect(reply.draft.definition).toBeNull();
+      expect(reply.message.status).toBe("interrupted");
+      const row = await stored(reply.message.id);
+      expect(row.status).toBe("interrupted");
+      expect(row.body).toBe(`Setting the trigger. \n${SESSION_CLOSED_MID_REPLY}`);
+      expect(row.tool_trace.operations).toEqual([
+        { op: { kind: "set_trigger", params: { trigger: TRIGGER } }, outcome: "applied" },
+      ]);
+      expect(row.tokens_in).toBe(150);
+
+      // The conversation stays closed and readable, and takes nothing more.
+      const read = await conversation(workflow.id);
+      expect(read.session).toMatchObject({ id: session, status: "discarded" });
+      expect(read.messages.at(-1)).toMatchObject({ id: reply.message.id, status: "interrupted" });
+      const refused = await stage.say(workflow.id, session, "Still there?");
+      expect(refused.refusal).toMatchObject({ code: COPILOT_ERRORS.sessionClosed });
     });
   });
 

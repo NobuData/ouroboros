@@ -3,6 +3,7 @@ import { DslWarningCode } from "../workflows/dsl.errors";
 import {
   copilotChoices,
   copilotMessage,
+  copilotReadiness,
   copilotSession,
   copilotTrace,
   copilotWarning,
@@ -131,6 +132,46 @@ describe("the copilot resources", () => {
       operations: [],
       reads: [],
       dryRunProposals: [],
+    });
+  });
+
+  it("shows a resolved route with its alias and model, and no reason (#566)", () => {
+    expect(
+      copilotReadiness(
+        true,
+        "copilot-workflow",
+        { alias: "coder-max", modelId: "claude-fable-5" },
+        undefined,
+      ),
+    ).toEqual({
+      gateway: { available: true },
+      route: {
+        taskKind: "copilot-workflow",
+        resolved: true,
+        alias: "coder-max",
+        modelId: "claude-fable-5",
+        reason: null,
+      },
+      dryRun: null,
+    });
+  });
+
+  it("shows an unresolved route with its reason and nulls, and the open dry run by id and status", () => {
+    expect(
+      copilotReadiness(false, "copilot-workflow", "the route did not resolve.", {
+        id: "5eed008b-0000-4000-8000-000000000001",
+        status: "running",
+      }),
+    ).toEqual({
+      gateway: { available: false },
+      route: {
+        taskKind: "copilot-workflow",
+        resolved: false,
+        alias: null,
+        modelId: null,
+        reason: "the route did not resolve.",
+      },
+      dryRun: { id: "5eed008b-0000-4000-8000-000000000001", status: "running" },
     });
   });
 

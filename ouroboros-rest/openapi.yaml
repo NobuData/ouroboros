@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.19"
+  version: "0.41.20"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -561,7 +561,13 @@ tags:
       `POST /api/v1/workflows/{id}/publish`, which closes the active session as `promoted`;
       `GET …/copilot/promotion` says beforehand what it would publish, naming each guard with
       where it is really enforced. **Discard draft** is `POST …/copilot/discard`: the draft
-      goes, the session closes as `discarded`, the workflow and the transcript stay.
+      goes, the session closes as `discarded`, the workflow and the transcript stay. A reply
+      still building when its conversation closes applies nothing further and ends
+      `copilot_session_closed`.
+
+      `GET …/copilot/readiness` says, without invoking anything, whether a message sent now
+      could be answered: the invocation gateway, the `copilot-workflow` route, and the
+      workflow's open dry run.
 
   - name: dry-runs
     description: |-
@@ -22697,6 +22703,96 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/workflows/{id}/copilot/readiness:
+    get:
+      tags: [copilot]
+      summary: Read whether the copilot could answer a message now
+      description: |-
+        What the conversation card says before anybody types (mockup 20; CE.2,
+        [#566](https://github.com/NobuData/ouroboros/issues/566)). It reports what this service
+        already knows and **asks nobody**: no model, engine or provider is invoked, and nothing
+        is written.
+
+        * **`gateway.available`** — whether this deployment has the invocation gateway a reply
+          is made through. `false` until AF.2
+          ([#235](https://github.com/NobuData/ouroboros/issues/235)) lands: a reply then ends
+          with the stream's `gateway_unavailable` whatever the route says. The same fact
+          `GET /api/v1/research/settings` reports.
+        * **`route`** — what routing the next reply would find for the `copilot-workflow` task
+          kind, decided by the function that routes a reply. `resolved` with the `alias` and
+          `modelId` the reply would be sent to; or not, with `reason` — the explanation an
+          unrouted reply gives (the stream's `copilot_unrouted`) **without** its leading
+          `I can't reach a model: `. `alias` and `modelId` are strings exactly when `resolved`;
+          `reason` is a string exactly when not.
+        * **`dryRun`** — the workflow's dry run that has not ended (`precheck` or `running`),
+          or `null`. It is the run `POST …/copilot/discard` names when it answers
+          `409 dry_run_in_progress`.
+
+        A resolved route is a statement about routing, not a promise of a reply: the provider
+        may still fail when it is asked.
+
+        Every member may read it, like the conversation.
+      operationId: readCopilotReadiness
+      parameters:
+        - $ref: "#/components/parameters/WorkflowId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The readiness as it stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CopilotReadiness"
+              examples:
+                unrouted:
+                  summary: No gateway yet, and no route for the kind
+                  value:
+                    gateway: {available: false}
+                    route:
+                      taskKind: copilot-workflow
+                      resolved: false
+                      alias: null
+                      modelId: null
+                      reason: this workspace has no route for the `copilot-workflow` task kind. Add one under Model routing and try again.
+                    dryRun: null
+                routed:
+                  summary: A resolved route, with a dry run in progress
+                  value:
+                    gateway: {available: false}
+                    route:
+                      taskKind: copilot-workflow
+                      resolved: true
+                      alias: coder-max
+                      modelId: claude-fable-5
+                      reason: null
+                    dryRun:
+                      id: 5eed008b-0000-4000-8000-000000000001
+                      status: running
+        "400":
+          description: "`organization_required`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: "`unauthenticated`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "`workflow_not_found` — no such workflow for this caller."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: "`validation_failed` — the id is not a uuid."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/workflows/{id}/copilot/discard:
     post:
       tags: [copilot]
@@ -22832,6 +22928,9 @@ paths:
         * `error` — the reply could not be finished: `copilot_unrouted` (no route for the kind;
           nothing was invoked), `gateway_unavailable` (until AF.2,
           [#235](https://github.com/NobuData/ouroboros/issues/235), lands), `engine_unavailable`,
+          `copilot_session_closed` (the conversation was promoted or discarded while the reply
+          was building — the operation in hand was **not** applied, nothing further is, and the
+          reply is recorded `interrupted`; operations applied before the close stand),
           or the gateway's own per-hop codes;
         * `done` — always last: the reply as recorded, and the draft as it stands.
 
@@ -60494,6 +60593,54 @@ components:
           description: A sentence per reason. Empty when `blocked` is `false`.
           items:
             type: string
+
+    CopilotReadiness:
+      type: object
+      title: CopilotReadiness
+      description: Whether a message sent to the copilot now could be answered (CE.2, #566) — what the service knows without invoking anything.
+      additionalProperties: false
+      required: [gateway, route, dryRun]
+      properties:
+        gateway:
+          type: object
+          additionalProperties: false
+          required: [available]
+          properties:
+            available:
+              type: boolean
+              description: Whether this deployment has the invocation gateway a reply is made through. `false` until AF.2 (#235) lands.
+        route:
+          type: object
+          description: What routing the next reply would find.
+          additionalProperties: false
+          required: [taskKind, resolved, alias, modelId, reason]
+          properties:
+            taskKind:
+              type: string
+              description: The task kind the copilot is routed as — `copilot-workflow`.
+            resolved:
+              type: boolean
+              description: Whether a reply sent now would be routed to a model.
+            alias:
+              type: [string, "null"]
+              description: The alias a reply would be routed to — a string exactly when `resolved`.
+            modelId:
+              type: [string, "null"]
+              description: That alias's model id — a string exactly when `resolved`.
+            reason:
+              type: [string, "null"]
+              description: "Why the route does not resolve — `null` exactly when `resolved`. The sentence an unrouted reply gives, without its leading `I can't reach a model: `."
+        dryRun:
+          type: [object, "null"]
+          description: The workflow's dry run that has not ended, or `null`.
+          additionalProperties: false
+          required: [id, status]
+          properties:
+            id: {type: string, format: uuid}
+            status:
+              type: string
+              enum: [precheck, running]
+              description: The run's status — one of the two a dry run has before it ends.
 
     CopilotDiscard:
       type: object

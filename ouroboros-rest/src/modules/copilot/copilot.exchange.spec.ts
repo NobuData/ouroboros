@@ -3,6 +3,7 @@ import type { EngineCopilotEvent, EngineCopilotTurnRequest } from "../engine/eng
 import {
   MAX_BOUNCES,
   MAX_TURNS,
+  SESSION_CLOSED_MID_REPLY,
   SUGGESTION_RECORDED,
   runExchange,
   type ApplyResult,
@@ -130,6 +131,7 @@ function drafts(initial: DraftState = INITIAL) {
   const port: DraftPort & {
     state(): DraftState;
     move(editedIn: string | null): void;
+    close(): void;
     applied: DraftOperation[];
     suggested: SuggestionProposal[];
   } = {
@@ -140,8 +142,12 @@ function drafts(initial: DraftState = INITIAL) {
       state = { ...state, etag: `moved-${rev}`, label: `v0.${rev}` };
       moved = editedIn;
     },
+    close() {
+      closed = true;
+    },
     async apply(operation, expectedEtag): Promise<ApplyResult> {
       await Promise.resolve();
+      if (closed) return { ok: false, closed: true };
       if (expectedEtag !== state.etag) {
         const current = state;
         const by = moved;
@@ -168,6 +174,7 @@ function drafts(initial: DraftState = INITIAL) {
     },
   };
   let moved: string | null | undefined;
+  let closed = false;
   return port;
 }
 
@@ -462,6 +469,58 @@ describe("the exchange loop", () => {
     ]);
     expect(outcome.body).toContain("I re-read it");
     expect(outcome.body).toContain("Re-planned from your edit.");
+  });
+
+  it("applies nothing once the session is closed: no further turn, interrupted, and it says so (#566)", async () => {
+    const port = drafts();
+    const turns = engine(
+      [
+        { kind: "delta", text: "Adding two stages." },
+        call("call-1", "add_stage", { node: REVIEW_NODE }),
+        { kind: "done", finishReason: "tool_calls" },
+      ],
+      [
+        // The conversation is discarded while this turn is being produced.
+        call("call-2", "add_stage", { node: EXPLOIT_NODE }),
+        call("call-3", "set_trigger", {
+          trigger: { event: "ticket_queued", conditions: { labels: ["security"] } },
+        }),
+        USAGE,
+        { kind: "done", finishReason: "tool_calls" },
+      ],
+      [
+        { kind: "delta", text: "Never asked for." },
+        { kind: "done", finishReason: "stop" },
+      ],
+    );
+    const closing: TurnPort = {
+      copilotTurn(request) {
+        if (turns.sent.length === 1) port.close();
+        return turns.copilotTurn(request);
+      },
+    };
+
+    const { events, outcome } = await run(input(), closing, port);
+
+    // The first operation — made while the session was open — stands; nothing after it does.
+    expect(port.applied.map((operation) => operation.kind)).toEqual(["add_stage"]);
+    expect(port.state().label).toBe("v0.1");
+    expect(turns.sent).toHaveLength(2);
+    expect(outcome.status).toBe("interrupted");
+    expect(outcome.failure).toEqual({
+      code: "copilot_session_closed",
+      message: SESSION_CLOSED_MID_REPLY,
+    });
+    // Neither refused operation is on the trace or the stream: no outcome describes it.
+    expect(outcome.trace.operations).toEqual([
+      { op: expect.objectContaining({ kind: "add_stage" }) as object, outcome: "applied" },
+    ]);
+    expect(events.filter((event) => event.kind === "operation")).toHaveLength(1);
+    expect(events.at(-1)).toEqual({ kind: "delta", text: SESSION_CLOSED_MID_REPLY });
+    expect(outcome.body).toBe(`Adding two stages.\n${SESSION_CLOSED_MID_REPLY}`);
+    // What was metered before the stop is still the exchange's cost.
+    expect(outcome.tokensIn).toBe(100);
+    expect(outcome.draft.label).toBe("v0.1");
   });
 
   it("records a guard as a proposal and bounces one the planes do not honour", async () => {

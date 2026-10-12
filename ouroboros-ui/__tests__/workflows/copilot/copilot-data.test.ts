@@ -5,11 +5,13 @@ import { ApiError } from "@/app/api/errors";
 
 import { TENANT_ID, membership, sessionUser } from "../../helpers/login";
 import {
+  NO_GATEWAY,
   SECURITY_PATCH_ID,
   closedConversation,
   copilotConversation,
   copilotPromotion,
   copilotRail,
+  copilotReadiness,
   securityPatchDetail,
   securityPatchEntry,
 } from "../../helpers/workflow-copilot";
@@ -38,6 +40,9 @@ const promotion = vi.fn();
 /** What the conversation endpoint answers, by id. */
 const conversation = vi.fn();
 
+/** What the readiness endpoint answers, by id. */
+const readiness = vi.fn();
+
 vi.mock("@/app/api/workflows", () => ({
   workflows: { list: () => list(), read: (id: string) => read(id) },
 }));
@@ -45,6 +50,7 @@ vi.mock("@/app/api/workflow-copilot", () => ({
   workflowCopilot: {
     promotion: (id: string) => promotion(id),
     conversation: (id: string) => conversation(id),
+    readiness: (id: string) => readiness(id),
   },
 }));
 
@@ -70,6 +76,7 @@ beforeEach(() => {
   read.mockReset().mockResolvedValue(securityPatchDetail());
   promotion.mockReset().mockResolvedValue(copilotPromotion());
   conversation.mockReset().mockResolvedValue(copilotConversation());
+  readiness.mockReset().mockResolvedValue(copilotReadiness());
 });
 
 describe("a workflow the rail holds", () => {
@@ -79,6 +86,7 @@ describe("a workflow the rail holds", () => {
     expect(read).toHaveBeenCalledExactlyOnceWith(SECURITY_PATCH_ID);
     expect(promotion).toHaveBeenCalledExactlyOnceWith(SECURITY_PATCH_ID);
     expect(conversation).toHaveBeenCalledExactlyOnceWith(SECURITY_PATCH_ID);
+    expect(readiness).toHaveBeenCalledExactlyOnceWith(SECURITY_PATCH_ID);
     expect(readings).toMatchObject({
       rail: { ok: true, value: copilotRail() },
       requested: "security-patch",
@@ -87,8 +95,33 @@ describe("a workflow the rail holds", () => {
         detail: { ok: true, value: securityPatchDetail() },
         promotion: { ok: true, value: copilotPromotion() },
         conversation: { ok: true, value: copilotConversation() },
+        readiness: { ok: true, value: copilotReadiness() },
       },
     });
+  });
+
+  it("hands the service's readiness to the page as it was read — the composer's reasons are the service's", async () => {
+    readiness.mockResolvedValue(NO_GATEWAY);
+
+    const readings = await readStudioCopilot(ACCESS, "security-patch");
+
+    expect(readings.selected?.readiness).toEqual({ ok: true, value: NO_GATEWAY });
+  });
+
+  it("keeps a refused readiness as its own degraded reading, and every other read as it was", async () => {
+    readiness.mockRejectedValue(REFUSED);
+
+    const readings = await readStudioCopilot(ACCESS, "security-patch");
+
+    expect(readings.selected?.readiness).toEqual({ ok: false, reason: "The service could not answer." });
+    expect(readings.selected?.conversation).toEqual({ ok: true, value: copilotConversation() });
+    expect(readings.selected?.promotion).toMatchObject({ ok: true });
+  });
+
+  it("lets what is not a refusal from the readiness read keep travelling — the redirect to login above all", async () => {
+    readiness.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
+
+    await expect(readStudioCopilot(ACCESS, "security-patch")).rejects.toThrow("NEXT_REDIRECT /login");
   });
 
   it("stamps the instant the page was read, for every message's age", async () => {
@@ -107,6 +140,7 @@ describe("a workflow the rail holds", () => {
     // The workflow has not answered, and the other two have already been asked.
     await vi.waitFor(() => expect(promotion).toHaveBeenCalledOnce());
     expect(conversation).toHaveBeenCalledOnce();
+    expect(readiness).toHaveBeenCalledOnce();
 
     release(securityPatchDetail());
     await expect(pending).resolves.toMatchObject({ selected: { detail: { ok: true } } });

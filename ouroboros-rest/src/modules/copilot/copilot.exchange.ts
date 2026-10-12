@@ -23,6 +23,10 @@
  * * **Invented references are named** (decision W7). Every applied operation is read for
  *   references the catalogue does not list; the model is told, and if the reply's own prose does
  *   not name them, the loop appends the sentence that does.
+ * * **A closed conversation applies nothing** (CE.2, #566). A reply can still be building when
+ *   its session is promoted or discarded; the apply port says so (`closed`), and the loop stops
+ *   there — the operation is not applied, no further turn is asked for, and the exchange ends
+ *   `interrupted` with `copilot_session_closed`.
  * * **Cost is per exchange** and honest: tokens summed over every usage event, cost `null` when
  *   any of it was unpriced.
  *
@@ -40,6 +44,7 @@ import type {
 } from "../engine/engine.copilot";
 import type { CopilotChoice, CopilotToolTrace, CopilotTraceOperation } from "../db/schema";
 import type { DslCatalogue } from "../workflows/dsl.references";
+import { COPILOT_ERRORS } from "./copilot.errors";
 import { isKnownGuard } from "./copilot.guards";
 import {
   GUARD_KIND,
@@ -84,6 +89,13 @@ export interface SuggestionProposal {
 export const SUGGESTION_RECORDED =
   "recorded as a suggestion under the dry run, labelled as yours and unscored — the user can Apply, Explain or Ignore it. Do not state a confidence for it.";
 
+/**
+ * What a reply says when its conversation was promoted or discarded while it was still building
+ * (CE.2, #566) — the last line of the reply, and the `copilot_session_closed` event's message.
+ */
+export const SESSION_CLOSED_MID_REPLY =
+  "This conversation was closed while I was replying, so I stopped — nothing further was applied.";
+
 /** The draft as the loop holds it between operations. */
 export interface DraftState {
   readonly document: unknown;
@@ -101,6 +113,14 @@ export type ApplyResult =
       readonly draft: DraftState;
       /** Which editor moved it, when the row says. */
       readonly editedIn: string | null;
+    }
+  | {
+      readonly ok: false;
+      /**
+       * The conversation was promoted or discarded while the reply was building (CE.2, #566):
+       * nothing was applied, and nothing further may be.
+       */
+      readonly closed: true;
     };
 
 /** What the loop needs of the draft and the workspace. */
@@ -110,7 +130,9 @@ export interface DraftPort {
    *
    * @param operation - The operation, validated.
    * @param expectedEtag - The etag the loop holds.
-   * @returns Applied with the new revision, or the conflict with the current draft.
+   * @returns Applied with the new revision, the conflict with the current draft, or `closed`
+   *   when the session is no longer active — checked where the apply is, so that a discard or
+   *   a publish cannot land between the check and the write.
    */
   apply(operation: DraftOperation, expectedEtag: string): Promise<ApplyResult>;
   /**
@@ -313,6 +335,13 @@ export async function* runExchange(
         }
 
         const applied = await drafts.apply(check.operation, draft.etag);
+        if (!applied.ok && "closed" in applied) {
+          // Promoted or discarded under the reply. The operation was not applied and is not
+          // on the trace; the rest of this turn's calls are not acted on, and no further turn
+          // is asked for.
+          failure = { code: COPILOT_ERRORS.sessionClosed, message: SESSION_CLOSED_MID_REPLY };
+          break;
+        }
         if (!applied.ok) {
           draft = applied.draft;
           const editor =
@@ -474,6 +503,12 @@ export async function* runExchange(
           result(message, false);
         }
       }
+    }
+
+    if (failure !== null) {
+      body = appendLine(body, failure.message);
+      yield { kind: "delta", text: failure.message };
+      break;
     }
 
     transcript.push(...results);

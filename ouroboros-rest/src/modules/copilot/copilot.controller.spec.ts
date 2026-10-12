@@ -36,7 +36,10 @@ function response() {
 
 describe("the copilot controller", () => {
   let service: jest.Mocked<
-    Pick<CopilotService, "start" | "conversation" | "promotion" | "discard" | "send" | "answer">
+    Pick<
+      CopilotService,
+      "start" | "conversation" | "promotion" | "readiness" | "discard" | "send" | "answer"
+    >
   >;
   let controller: CopilotController;
   let reflector: Reflector;
@@ -48,6 +51,7 @@ describe("the copilot controller", () => {
         .fn()
         .mockResolvedValue({ session: { id: SESSION }, messages: [], draft: {} }),
       promotion: jest.fn().mockResolvedValue({ blocked: false }),
+      readiness: jest.fn().mockResolvedValue({ gateway: { available: false } }),
       discard: jest
         .fn()
         .mockResolvedValue({ workflowId: WORKFLOW, draftDiscarded: true, session: null }),
@@ -90,6 +94,19 @@ describe("the copilot controller", () => {
       RequestMethod.GET,
     );
     expect(reflector.get(REQUIRED_ROLES, controller.promotion)).toBeUndefined();
+  });
+
+  it("reads the readiness for every member (#566)", async () => {
+    await expect(controller.readiness(TENANT, { id: WORKFLOW })).resolves.toEqual({
+      gateway: { available: false },
+    });
+
+    expect(service.readiness).toHaveBeenCalledWith(TENANT.id, WORKFLOW);
+    expect(reflector.get<string>(PATH_METADATA, controller.readiness)).toBe("readiness");
+    expect(reflector.get<RequestMethod>(METHOD_METADATA, controller.readiness)).toBe(
+      RequestMethod.GET,
+    );
+    expect(reflector.get(REQUIRED_ROLES, controller.readiness)).toBeUndefined();
   });
 
   it("discards the draft for the tenant and the workflow, answering 200", async () => {

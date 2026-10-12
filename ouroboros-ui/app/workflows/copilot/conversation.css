@@ -1,0 +1,526 @@
+/*
+ * The workflow copilot's conversation card — CE.2 (#566), docs/mockups/20-workflow-copilot.html's
+ * `.chat-*`, `.msg`, `.bubble`, `.choice-row`, `.chip` and `.composer`.
+ *
+ * The card, its head, the model pill, the draft tag and the buttons are the design system's
+ * primitives. What is here is what only a conversation draws: the two bubble treatments with
+ * their mono meta lines, the chip rows, the quiet operation markers, the composer, and the
+ * wrapper the messages scroll inside.
+ *
+ * Every colour is a token, so the light and dark renderings are the token sheet's; every size is
+ * a token or a rem, so the font-size preference scales the surface (the 125% step included).
+ *
+ * This is the one place on the copilot's page that scrolls inside itself, and deliberately: a
+ * conversation is read from its end, beside a stage list that should stay in view while it
+ * grows. The wrapper's block size is bounded in rem — it grows with the type — and nothing but
+ * that wrapper scrolls.
+ */
+
+/* ---------- the column: the card over its caption ---------- */
+
+.copilot-chat__column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+/* The card as a column, so the composer sits at its foot whatever the messages' height. */
+.copilot-chat {
+  /* The containing block for the card's visually hidden live region (`.sr-only` is
+     `position: absolute`): without one it is laid out against the document and stretches it
+     past the viewport, which the shell forbids. */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The pill and the tag, together at the head's trailing edge; they wrap rather than clip. */
+.copilot-chat__head-end {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.copilot-chat__caption {
+  margin: 0;
+  padding: 0 var(--sp-2);
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the hard prerequisite: no gateway, or no route ---------- */
+
+/*
+ * Inside the card, above the messages: a hairline box on the warning rule. It states a fact
+ * about the deployment or the workspace; the transcript under it stays readable.
+ */
+.copilot-chat__notice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-6);
+  padding: var(--sp-6) var(--sp-7);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.copilot-chat__notice-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+.copilot-chat__notice-text {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.copilot-chat__notice-link {
+  color: var(--accent);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+/* ---------- the scroller ---------- */
+
+/*
+ * The messages' own wrapper. A floor so an empty conversation is not a sliver, a ceiling in rem
+ * so a long one scrolls here and not at the pane, and `overscroll-behavior` so reaching its end
+ * does not start scrolling the page behind it.
+ */
+.copilot-chat__scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-7);
+  min-block-size: 12rem;
+  max-block-size: 26rem;
+  padding: var(--sp-2) var(--sp-2) var(--sp-6);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.copilot-chat__earlier {
+  align-self: center;
+}
+
+/* Under the scroller, at its trailing edge: something arrived while the reader was elsewhere. */
+.copilot-chat__newest {
+  align-self: flex-end;
+  margin-top: var(--sp-4);
+}
+
+.copilot-chat__messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-7);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---------- a message: the meta line over the bubble ---------- */
+
+.copilot-chat__msg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* The person's, at the trailing edge; the inset keeps the two sides from sharing a margin. */
+.copilot-chat__msg--user {
+  align-items: flex-end;
+  align-self: flex-end;
+  margin-inline-start: var(--sp-10);
+}
+
+.copilot-chat__msg--bot {
+  align-items: flex-start;
+  align-self: flex-start;
+  margin-inline-end: var(--sp-10);
+}
+
+.copilot-chat__meta {
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.copilot-chat__meta--bot {
+  color: var(--accent);
+}
+
+/* The exchange's cost: on the meta line and quieter than it — in view, not an invoice. */
+.copilot-chat__cost {
+  color: var(--ink-faint);
+}
+
+.copilot-chat__bubble {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+  padding: var(--sp-5) var(--sp-7);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  font-size: var(--t-md);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* The person's words as they typed them: their own line breaks kept. */
+.copilot-chat__bubble--user {
+  border-color: var(--line-strong);
+  border-bottom-right-radius: var(--r-xs);
+  background: var(--raised);
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
+.copilot-chat__bubble--bot {
+  border-bottom-left-radius: var(--r-xs);
+  background: var(--inset);
+  color: var(--ink-dim);
+}
+
+.copilot-chat__para {
+  margin: 0;
+}
+
+.copilot-chat__strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.copilot-chat__code {
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* A fenced block scrolls sideways inside itself rather than widening the bubble. */
+.copilot-chat__pre {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-loose);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.copilot-chat__thinking {
+  margin: 0;
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+/* ---------- operation markers: quiet, mono, in the order they landed ---------- */
+
+.copilot-chat__marker {
+  margin: 0;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* A guard that was recorded and not applied: never in the applied marker's ink alone. */
+.copilot-chat__marker--proposed {
+  color: var(--warn);
+}
+
+/* A W7 warning an operation introduced. */
+.copilot-chat__warning {
+  margin: 0;
+  color: var(--warn);
+  font-size: var(--t-xs);
+}
+
+.copilot-chat__trace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* The disclosure: a button that reads as the quiet line it is. */
+.copilot-chat__trace-toggle {
+  display: inline-flex;
+  align-items: baseline;
+  align-self: flex-start;
+  gap: var(--sp-3);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  text-align: start;
+  cursor: pointer;
+}
+
+.copilot-chat__trace-toggle:hover {
+  color: var(--ink);
+}
+
+.copilot-chat__trace-caret {
+  color: var(--ink-faint);
+}
+
+.copilot-chat__trace-detail {
+  padding-inline-start: var(--sp-6);
+  border-inline-start: 1px solid var(--line);
+}
+
+.copilot-chat__trace-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.copilot-chat__trace-line {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.copilot-chat__trace-line--bounced {
+  color: var(--ink-dim);
+}
+
+/* ---------- the chip rows ---------- */
+
+.copilot-chat__choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.copilot-chat__question {
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+}
+
+.copilot-chat__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--sp-1) var(--sp-6);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--raised);
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+
+.copilot-chat__chip:hover:enabled {
+  border-color: var(--ink-faint);
+  color: var(--ink);
+}
+
+/* A chip that cannot be pressed does not offer to be. */
+.copilot-chat__chip:disabled {
+  cursor: default;
+}
+
+.copilot-chat__chip--selected {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+/* ---------- how a reply that did not finish ended ---------- */
+
+.copilot-chat__ending {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+/* A failure, on the error rule. */
+.copilot-chat__ending--failed {
+  border-left: 3px solid var(--err);
+}
+
+/* A reply stopped because the conversation closed: stated, on the neutral rule — nothing broke. */
+.copilot-chat__ending--closed {
+  border-left: 3px solid var(--line-strong);
+}
+
+.copilot-chat__ending-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.copilot-chat__ending-text {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- the empty state ---------- */
+
+.copilot-chat__empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  padding: var(--sp-6) var(--sp-2);
+}
+
+.copilot-chat__empty-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-lg);
+  font-weight: 600;
+}
+
+.copilot-chat__empty-note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.copilot-chat__examples {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* An example brief: a button that reads as the message it would put in the box. */
+.copilot-chat__example {
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  color: var(--ink-dim);
+  font-family: var(--f-ui);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  text-align: start;
+  cursor: pointer;
+}
+
+.copilot-chat__example:hover:enabled {
+  border-color: var(--accent-line);
+  color: var(--ink);
+}
+
+.copilot-chat__example:disabled {
+  color: var(--ink-faint);
+  cursor: default;
+}
+
+.copilot-chat__silent {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-sm);
+}
+
+/* ---------- the composer ---------- */
+
+.copilot-chat__composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin-top: var(--sp-6);
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--line);
+}
+
+/* The box and Send on a row; Send keeps to the box's foot as the box grows. */
+.copilot-chat__entry {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-5);
+}
+
+/* Two lines to start with, in rem so the preference moves it; the reader may drag it taller. */
+.copilot-chat__input {
+  flex: 1;
+  min-width: 0;
+  min-height: 3.75rem;
+  line-height: var(--lh-body);
+  resize: vertical;
+}
+
+/* Switched off, and saying so: the reason is the line under it. */
+.copilot-chat__input[aria-disabled="true"] {
+  color: var(--ink-faint);
+  cursor: not-allowed;
+}
+
+/* Why the composer cannot send — always in view while it cannot. */
+.copilot-chat__reason {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* A send the service refused before a reply started. */
+.copilot-chat__refusal {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--err-line);
+  border-radius: var(--r-md);
+  background: var(--err-tint);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* In place of the composer: why there is none, and — for a closed one — the way to a new one. */
+.copilot-chat__closed {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-4);
+}
+
+.copilot-chat__readonly {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}

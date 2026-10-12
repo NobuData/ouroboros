@@ -16,9 +16,10 @@
  * ### What this ticket draws, and what it seats
  *
  * CE.1 is the frame: the route, the head, the live segment, and promote and discard. The
- * conversation (CE.2, #566), the draft's stage list (CE.3, #567) and the dry-run card (CE.4,
- * #568) are later tickets, and each has a **labelled seat** here ({@link COPILOT_SEATS}) that
- * says which issue fills it rather than a picture of what it will look like.
+ * conversation is CE.2's card (#566, `conversation.ts`). The draft's stage list (CE.3, #567) and
+ * the dry-run card (CE.4, #568) are later tickets, and each has a **labelled seat** here
+ * ({@link COPILOT_SEATS}) that says which issue fills it rather than a picture of what it will
+ * look like.
  *
  * ### The anchor contract
  *
@@ -35,14 +36,14 @@ import type {
   CopilotGuard,
   CopilotMessage,
   CopilotPromotion,
+  CopilotReadiness,
   CopilotReference,
 } from "@/app/api/workflow-copilot";
 import type { WorkflowDefinition, WorkflowDetail, WorkflowRailEntry } from "@/app/api/workflows";
-import { relativeAgo } from "@/app/format";
 
 /* ------------------------------------------------------------------ what the page reads */
 
-/** The workflow the copilot is open on, and the three reads behind it. */
+/** The workflow the copilot is open on, and the four reads behind it. */
 export interface SelectedCopilot {
   /** Its row on the rail. */
   readonly entry: WorkflowRailEntry;
@@ -58,6 +59,12 @@ export interface SelectedCopilot {
    * successful reading for a workflow that never had one, or why it could not be read.
    */
   readonly conversation: Reading<CopilotConversation | null>;
+  /**
+   * Whether a message sent now could be answered — the gateway, the copilot's route, and the dry
+   * run in the way (CE.2, #566). A failed read gates nothing: the composer stays live and the
+   * service refuses what it must.
+   */
+  readonly readiness: Reading<CopilotReadiness>;
 }
 
 /** Everything the copilot route was able to read, and why it could not read the rest. */
@@ -68,7 +75,7 @@ export interface CopilotReadings {
   readonly requested: string;
   /** The workflow the URL named, with its reads — `null` when the rail does not hold it. */
   readonly selected: SelectedCopilot | null;
-  /** When the page was read, ISO 8601 — what every message's *2h ago* is measured from. */
+  /** When the page was read, ISO 8601. */
   readonly now: string;
 }
 
@@ -547,7 +554,7 @@ export const COPILOT_SEATS: Readonly<Record<CopilotSeatId, CopilotSeat>> = {
   conversation: {
     id: "conversation",
     title: "Conversation",
-    note: "The conversation with the copilot — describing the workflow and answering its questions — arrives with #566.",
+    note: "The conversation could not be read, so there is nothing to continue from here. The banner above carries the reason, and the retry.",
   },
   stages: {
     id: "stages",
@@ -571,9 +578,9 @@ export function seatElementId(id: CopilotSeatId): string {
   return `copilot-${id}`;
 }
 
-/* ------------------------------------------------------------------ the read-only transcript */
+/* ------------------------------------------------------------------ the read-only conversation */
 
-/** Why a conversation is shown as a transcript rather than as something to continue. */
+/** Why a conversation is shown read-only rather than as something to continue. */
 export type TranscriptReason = "discarded" | "promoted" | "role";
 
 /** The note over a discarded conversation's transcript. */
@@ -598,15 +605,15 @@ export function promotedTranscriptNote(name: string): string {
 }
 
 /**
- * Whether the conversation is drawn as a read-only transcript, and why.
+ * Whether the conversation is read-only, and why.
  *
  * A closed conversation is read-only for everyone. An open one is read-only for a reader whose
- * role may not edit; for a reader who may, it is CE.2's ([#566](https://github.com/NobuData/ouroboros/issues/566))
- * to draw, and this ticket leaves its seat labelled.
+ * role may not edit; for a reader who may, the conversation card
+ * (CE.2, [#566](https://github.com/NobuData/ouroboros/issues/566)) has its composer.
  *
  * @param conversation The conversation, or `null` when the workflow never had one.
  * @param mayAdminister Whether the reader's role may edit workflows.
- * @returns The reason, or `null` when there is no transcript to draw here.
+ * @returns The reason, or `null` when it may be continued — or there is none.
  */
 export function transcriptReason(
   conversation: CopilotConversation | null,
@@ -637,10 +644,7 @@ export function transcriptNote(reason: TranscriptReason, name: string): string {
   }
 }
 
-/** The transcript's accessible name. */
-export const TRANSCRIPT_LABEL = "Conversation transcript";
-
-/** What a transcript with no messages says. */
+/** What a closed conversation with no messages says. */
 export const TRANSCRIPT_EMPTY = "Nothing was said in this conversation.";
 
 /** How each side of the conversation is named. */
@@ -649,41 +653,8 @@ export const SPEAKER_WORDS: Readonly<Record<CopilotMessage["role"], string>> = {
   copilot: "Copilot",
 };
 
-/** What stands in for a reply that was interrupted before it said anything. */
+/** What stands in a bubble for a reply that was interrupted before it said anything. */
 export const INTERRUPTED_BODY = "(This reply was interrupted before it said anything.)";
-
-/** One line of the transcript, decided. */
-export interface TranscriptLine {
-  /** The message's id — the React key. */
-  readonly id: string;
-  /** Who said it — *You* or *Copilot*. */
-  readonly speaker: string;
-  /** What was said. */
-  readonly body: string;
-  /** When, ISO 8601 — the `<time>`'s machine value. */
-  readonly at: string;
-  /** When, in words — *2h ago*. */
-  readonly ago: string;
-}
-
-/**
- * The transcript, decided: one line per message, in the order they were said.
- *
- * @param messages The conversation's messages.
- * @param now The instant the page was read.
- * @returns The lines, ordered by `seq` — the service's commit order — whatever order they arrived in.
- */
-export function transcriptLines(messages: readonly CopilotMessage[], now: Date): readonly TranscriptLine[] {
-  return [...messages]
-    .sort((a, b) => a.seq - b.seq)
-    .map((message) => ({
-      id: message.id,
-      speaker: SPEAKER_WORDS[message.role],
-      body: message.body.trim() === "" ? INTERRUPTED_BODY : message.body,
-      at: message.createdAt,
-      ago: relativeAgo(message.createdAt, now),
-    }));
-}
 
 /* ------------------------------------------------------------------ the states with no workflow */
 

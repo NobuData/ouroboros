@@ -4,12 +4,13 @@
  * The head, the tab row, the rail and the grid they sit in are the studio's (workflows.css), and
  * the dialogs are the shell's overlay with the studio's own dialog classes. What is here is what
  * only this surface draws: the head's two actions with the gate's notes under them, mockup 20's
- * two columns of seats, the read-only transcript, and what the promote confirmation states.
+ * two columns, and what the promote confirmation states. The conversation card's own sheet is
+ * conversation.css.
  *
  * Every colour is a token, so the light and dark renderings are the token sheet's; every size is
  * a token or a rem, so the font-size preference scales the surface (the 125% step included) and
- * nothing here has a fixed height a larger type could be clipped by. Nothing scrolls inside
- * itself: the content pane is the page's one scroller.
+ * nothing here has a fixed height a larger type could be clipped by. Nothing in this sheet
+ * scrolls inside itself; the conversation's messages do, in conversation.css, and say why there.
  */
 
 /* ---------- the head's actions, and the gate under them ---------- */
@@ -102,7 +103,7 @@
 /*
  * Beside the rail, across the canvas's and the inspector's tracks: the conversation in mockup
  * 20's five columns of twelve, the stage list and the dry run in its seven. Both tracks are
- * floored at zero so a long line in a transcript wraps instead of widening the pane (§ 1.3).
+ * floored at zero so a long line in a bubble wraps instead of widening the pane (§ 1.3).
  */
 .copilot-view__body {
   display: grid;
@@ -133,71 +134,6 @@
 .copilot-view__vacant {
   grid-column: 2 / -1;
   min-height: 24rem;
-}
-
-/* ---------- the read-only transcript ---------- */
-
-.copilot-view__transcript {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-6);
-  min-width: 0;
-}
-
-/* Why it is read-only — the studio's read-only note's inks, in the card's own rhythm. */
-.copilot-view__readonly {
-  margin: 0;
-  color: var(--ink-mut);
-  font-size: var(--t-sm);
-  line-height: var(--lh-body);
-}
-
-.copilot-view__silent {
-  margin: 0;
-  color: var(--ink-faint);
-  font-size: var(--t-sm);
-}
-
-.copilot-view__messages {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-6);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-/* One message: a hairline above it, so the list reads as a record rather than as bubbles. */
-.copilot-view__message {
-  min-width: 0;
-  padding-top: var(--sp-5);
-  border-top: 1px solid var(--line);
-}
-
-.copilot-view__message-head {
-  margin: 0;
-  font-size: var(--t-xs);
-  line-height: var(--lh-body);
-}
-
-.copilot-view__speaker {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.copilot-view__time {
-  color: var(--ink-faint);
-  font-family: var(--f-mono);
-}
-
-/* The text as it was written: its own line breaks kept, a long token wrapped. */
-.copilot-view__message-body {
-  margin: var(--sp-2) 0 0;
-  color: var(--ink-dim);
-  font-size: var(--t-sm);
-  line-height: var(--lh-body);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 /* ---------- the promote confirmation: what is being published ---------- */

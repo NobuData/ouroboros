@@ -43,11 +43,20 @@ import {
   RESOLVE_LABEL,
   ROLE_TRANSCRIPT_NOTE,
   TRANSCRIPT_EMPTY,
-  TRANSCRIPT_LABEL,
   discardBody,
   promotedNotice,
   promotedTranscriptNote,
 } from "@/app/workflows/copilot/copilot-view";
+import {
+  COMPOSER_LABEL,
+  CONVERSATION_CAPTION,
+  EMPTY_READER_TITLE,
+  EMPTY_TITLE,
+  GATEWAY_NOTICE_TITLE,
+  GATEWAY_REASON,
+  MESSAGES_LABEL,
+  SEND_LABEL,
+} from "@/app/workflows/copilot/conversation";
 import { CHANGE_NOTE_LABEL, DISMISS_TOAST_LABEL, FINDINGS_LABEL, PUBLISH_CANCEL } from "@/app/workflows/publish";
 import { RAIL_FAILED_HEADLINE } from "@/app/workflows/states";
 import { COPILOT_NEEDS_WORKFLOW_NOTE, NEW_WORKFLOW_LABEL, RAIL_LABEL, STUDIO_EYEBROW } from "@/app/workflows/view";
@@ -58,6 +67,7 @@ import {
   ADVISORY_REFERENCE,
   COPILOT_REPLY,
   NEVER_AUTO_MERGE,
+  NO_GATEWAY,
   SECURITY_PATCH_ID,
   SPEND_GUARD,
   closedConversation,
@@ -67,6 +77,7 @@ import {
   copilotReadingsWith,
   copilotReference,
   copilotSession,
+  seededConversation,
 } from "../../helpers/workflow-copilot";
 
 /**
@@ -239,44 +250,117 @@ describe("the segment", () => {
 });
 
 describe("the seats", () => {
-  it("are mockup 20's two columns: the conversation, then the stage list over the dry run", () => {
+  it("are mockup 20's two columns: the conversation over its caption, then the stage list over the dry run", () => {
     const { container } = renderOwner();
 
     const body = container.querySelector(".copilot-view__body");
 
     expect(body?.children).toHaveLength(2);
-    expect(body?.firstElementChild).toBe(seat("conversation"));
+    expect(body?.firstElementChild).toContainElement(seat("conversation"));
+    expect(body?.firstElementChild).toHaveTextContent(CONVERSATION_CAPTION);
     expect([...(container.querySelector(".copilot-view__side")?.children ?? [])]).toEqual([
       seat("stages"),
       seat("dry-run"),
     ]);
   });
 
-  it("each says which issue fills it, and fakes nothing", () => {
+  it("the two a later ticket fills each say which issue does, and fake nothing", () => {
     renderOwner();
 
-    expect(seat("conversation")).toHaveTextContent(COPILOT_SEATS.conversation.note);
-    expect(seat("conversation")).toHaveTextContent(/#566/);
     expect(seat("stages")).toHaveTextContent(/#567/);
     expect(seat("dry-run")).toHaveTextContent(/#568/);
-    // An open conversation an owner may continue is #566's to draw: no transcript here.
-    expect(screen.queryByRole("list", { name: TRANSCRIPT_LABEL })).toBeNull();
-    expect(seat("conversation")).not.toHaveTextContent(copilotMessage().body);
   });
 
-  it("carry stable ids, so a link to a region lands on the same element once its card arrives", () => {
+  it("carry stable ids, so a link to a region lands on the same element whatever is mounted in it", () => {
     renderOwner();
 
     expect(seat("conversation")).toHaveAttribute("id", "copilot-conversation");
     expect(seat("stages")).toHaveAttribute("id", "copilot-stages");
     expect(seat("dry-run")).toHaveAttribute("id", "copilot-dry-run");
   });
+});
 
-  it("leave the conversation's seat labelled for a workflow that never had one", () => {
+describe("the conversation", () => {
+  /** The conversation's messages, in order. */
+  function bubbles(): HTMLElement[] {
+    return within(within(seat("conversation")).getByRole("group", { name: MESSAGES_LABEL })).getAllByRole("listitem");
+  }
+
+  it("is the card, drawn from what the route read: the bubbles, and a composer for a reader who may write", () => {
+    renderOwner(copilotReadingsWith({ conversation: { ok: true, value: seededConversation() } }));
+
+    expect(bubbles()).toHaveLength(6);
+    expect(within(seat("conversation")).getByRole("textbox", { name: COMPOSER_LABEL })).toBeInTheDocument();
+    expect(within(seat("conversation")).getByRole("button", { name: SEND_LABEL })).toBeInTheDocument();
+    expect(within(seat("conversation")).getByText("claude-fable-5")).toBeInTheDocument();
+    expect(seat("conversation")).not.toHaveTextContent(/#566/);
+  });
+
+  it("invites a first message for a workflow that never had a conversation", () => {
     renderOwner(copilotReadingsWith({ conversation: { ok: true, value: null } }));
 
-    expect(seat("conversation")).toHaveTextContent(COPILOT_SEATS.conversation.note);
-    expect(screen.queryByRole("list", { name: TRANSCRIPT_LABEL })).toBeNull();
+    expect(seat("conversation")).toHaveTextContent(EMPTY_TITLE);
+    expect(within(seat("conversation")).getByRole("textbox", { name: COMPOSER_LABEL })).toBeInTheDocument();
+  });
+
+  it("takes the composer's reasons from the service's readiness, not from constants here", () => {
+    renderOwner(copilotReadingsWith({ readiness: { ok: true, value: NO_GATEWAY } }));
+
+    expect(within(seat("conversation")).getByRole("status")).toHaveTextContent(GATEWAY_NOTICE_TITLE);
+    expect(within(seat("conversation")).getByRole("textbox", { name: COMPOSER_LABEL })).toHaveAccessibleDescription(
+      GATEWAY_REASON,
+    );
+  });
+
+  it("gates nothing when the readiness could not be read — the service still refuses what it must", () => {
+    renderOwner(copilotReadingsWith({ readiness: { ok: false, reason: "Readiness is unavailable." } }));
+
+    const box = within(seat("conversation")).getByRole("textbox", { name: COMPOSER_LABEL });
+
+    expect(box).not.toHaveAttribute("aria-disabled");
+    expect(seat("conversation")).not.toHaveTextContent("Readiness is unavailable.");
+  });
+
+  it.each([
+    ["discarded", DISCARDED_TRANSCRIPT_NOTE],
+    ["promoted", promotedTranscriptNote("security-patch")],
+  ] as const)("keeps a %s conversation readable, with the reason where the composer would be", (status, note) => {
+    renderOwner(copilotReadingsWith({ conversation: { ok: true, value: closedConversation(status) } }));
+
+    const conversation = seat("conversation");
+
+    expect(within(conversation).getByRole("note")).toHaveTextContent(note);
+    expect(bubbles()).toHaveLength(2);
+    expect(bubbles()[0]).toHaveTextContent("You");
+    expect(bubbles()[0]).toHaveTextContent(copilotMessage().body);
+    expect(bubbles()[1]).toHaveTextContent("Copilot");
+    expect(bubbles()[1]).toHaveTextContent("Both guards are recorded.");
+    expect(within(conversation).queryByRole("textbox")).toBeNull();
+    expect(within(conversation).queryByRole("button", { name: SEND_LABEL })).toBeNull();
+  });
+
+  it("says a closed conversation with nothing in it was silent", () => {
+    renderOwner(
+      copilotReadingsWith({
+        conversation: { ok: true, value: { ...closedConversation("discarded"), messages: [] } },
+      }),
+    );
+
+    expect(seat("conversation")).toHaveTextContent(TRANSCRIPT_EMPTY);
+  });
+
+  it("keeps the order the messages were said in, whatever order they arrived in", () => {
+    renderOwner(
+      copilotReadingsWith({
+        conversation: {
+          ok: true,
+          value: { ...closedConversation("discarded"), messages: [COPILOT_REPLY, copilotMessage()] },
+        },
+      }),
+    );
+
+    expect(bubbles()[0]).toHaveTextContent("You");
+    expect(bubbles()[1]).toHaveTextContent("Copilot");
   });
 });
 
@@ -374,9 +458,11 @@ describe("an unpublishable draft says so before the press", () => {
   });
 
   it("draws no gate at all for a draft that neither blocks nor flags", () => {
-    renderOwner();
+    const { container } = renderOwner();
 
-    expect(screen.queryByRole("group")).toBeNull();
+    // The conversation card has groups of its own; the gate's are the head's.
+    expect(container.querySelector(".copilot-view__gate")).toBeNull();
+    expect(container.querySelector('.copilot-view__actions [role="group"]')).toBeNull();
   });
 });
 
@@ -693,72 +779,6 @@ describe("Discard draft", () => {
   });
 });
 
-describe("the read-only transcript", () => {
-  it.each([
-    ["discarded", DISCARDED_TRANSCRIPT_NOTE],
-    ["promoted", promotedTranscriptNote("security-patch")],
-  ] as const)("is drawn for a %s conversation, under a note saying why", (status, note) => {
-    renderOwner(copilotReadingsWith({ conversation: { ok: true, value: closedConversation(status) } }));
-
-    const conversation = seat("conversation");
-
-    expect(within(conversation).getByRole("note")).toHaveTextContent(note);
-    expect(conversation).not.toHaveTextContent(COPILOT_SEATS.conversation.note);
-
-    const lines = within(within(conversation).getByRole("list", { name: TRANSCRIPT_LABEL })).getAllByRole("listitem");
-
-    expect(lines).toHaveLength(2);
-    expect(lines[0]).toHaveTextContent("You");
-    expect(lines[0]).toHaveTextContent(copilotMessage().body);
-    expect(lines[1]).toHaveTextContent("Copilot");
-    expect(lines[1]).toHaveTextContent("Both guards are recorded.");
-  });
-
-  it("says who said it, what, and when — with a machine-readable time", () => {
-    renderOwner(copilotReadingsWith({ conversation: { ok: true, value: closedConversation("discarded") } }));
-
-    const [first] = within(screen.getByRole("list", { name: TRANSCRIPT_LABEL })).getAllByRole("listitem");
-    const time = first!.querySelector("time");
-
-    expect(time).toHaveAttribute("datetime", "2026-09-13T10:00:00.000Z");
-    expect(time).toHaveTextContent("2h ago");
-  });
-
-  it("offers nothing to continue it with — no input, no button, in the conversation's seat", () => {
-    renderOwner(copilotReadingsWith({ conversation: { ok: true, value: closedConversation("promoted") } }));
-
-    expect(within(seat("conversation")).queryByRole("textbox")).toBeNull();
-    expect(within(seat("conversation")).queryByRole("button")).toBeNull();
-  });
-
-  it("says a closed conversation with nothing in it was silent", () => {
-    renderOwner(
-      copilotReadingsWith({
-        conversation: { ok: true, value: { ...closedConversation("discarded"), messages: [] } },
-      }),
-    );
-
-    expect(seat("conversation")).toHaveTextContent(TRANSCRIPT_EMPTY);
-    expect(screen.queryByRole("list", { name: TRANSCRIPT_LABEL })).toBeNull();
-  });
-
-  it("keeps the order the messages were said in, whatever order they arrived in", () => {
-    renderOwner(
-      copilotReadingsWith({
-        conversation: {
-          ok: true,
-          value: { ...closedConversation("discarded"), messages: [COPILOT_REPLY, copilotMessage()] },
-        },
-      }),
-    );
-
-    const lines = within(screen.getByRole("list", { name: TRANSCRIPT_LABEL })).getAllByRole("listitem");
-
-    expect(lines[0]).toHaveTextContent("You");
-    expect(lines[1]).toHaveTextContent("Copilot");
-  });
-});
-
 describe("a reader who may not edit", () => {
   /** Render as a viewer. */
   function renderViewer(readings = copilotReadings()) {
@@ -787,15 +807,22 @@ describe("a reader who may not edit", () => {
     expect(discardCopilotDraft).not.toHaveBeenCalled();
   });
 
-  it("reads an open conversation as a transcript, with the reason it cannot be continued", () => {
+  it("reads an open conversation in the same card, read-only, with the reason it cannot be continued", () => {
     renderViewer();
 
     const conversation = seat("conversation");
 
     expect(within(conversation).getByRole("note")).toHaveTextContent(ROLE_TRANSCRIPT_NOTE);
-    expect(within(conversation).getByRole("list", { name: TRANSCRIPT_LABEL })).toHaveTextContent(
-      copilotMessage().body,
-    );
+    expect(within(conversation).getByRole("group", { name: MESSAGES_LABEL })).toHaveTextContent(copilotMessage().body);
+    expect(within(conversation).queryByRole("textbox")).toBeNull();
+    expect(within(conversation).queryByRole("button", { name: SEND_LABEL })).toBeNull();
+  });
+
+  it("is told there is no conversation yet, for a workflow that never had one", () => {
+    renderViewer(copilotReadingsWith({ conversation: { ok: true, value: null } }));
+
+    expect(seat("conversation")).toHaveTextContent(EMPTY_READER_TITLE);
+    expect(within(seat("conversation")).queryByRole("textbox")).toBeNull();
   });
 
   it("is still shown what blocks the draft, for whoever they ask to promote it", () => {
