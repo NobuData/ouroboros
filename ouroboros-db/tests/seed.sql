@@ -7833,11 +7833,43 @@ select pg_temp.must_hold(
 
 select pg_temp.must_hold(
   (select c.result_ref ->> 'message' = m.id::text and m.kind = 'command_reply'
-          and c.invoker_link_id is null and c.platform_user_id is not null
+          and link.state = 'linked' and link.platform_user_id = c.platform_user_id
+          and person."email" = 'ken@acme-robotics.dev'
      from ouroboros.chat_commands c
      join ouroboros.chat_messages m on m.id = (c.result_ref ->> 'message')::uuid
+     join ouroboros.chat_identity_links link on link.id = c.invoker_link_id
+     join ouroboros."user" person on person."id" = link.user_id
     where c.id = '5eed009c-0000-4000-8000-000000000201'),
-  'the seeded command names the reply it produced, and its invoker by platform id alone — no link is seeded');
+  'the seeded command names the reply it produced, and its invoker is Ken by his identity link (#533)');
+
+-- Identities and on-call (#533, BY.3).
+select pg_temp.must_hold(
+  (select array_agg(person."email" || ':' || link.state || ':' || link.verified_via || ':' || member."role"
+                    order by person."email")
+            = array['ken@acme-robotics.dev:linked:oauth_session:owner',
+                    'maya@acme-robotics.dev:linked:oauth_session:admin']
+     from ouroboros.chat_identity_links link
+     join ouroboros.member member on member."id" = link.member_id
+     join ouroboros."user" person on person."id" = link.user_id and person."id" = member."userId"
+    where link.connection_id = '5eed009c-0000-4000-8000-000000000001'),
+  'Ken and Maya have linked Slack identities, each resolving to their own member of acme-robotics');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(person."email" = 'ken@acme-robotics.dev' and a.scope = 'decisions')
+     from ouroboros.on_call_assignments a
+     join ouroboros.organization org on org."id" = a.organization_id and org."slug" = 'acme-robotics'
+     join ouroboros.member member on member."id" = a.member_id
+     join ouroboros."user" person on person."id" = member."userId"
+    where a.active
+      and exists (select 1 from ouroboros.chat_identity_links link
+                   where link.member_id = a.member_id and link.state = 'linked')),
+  'one person is on call for decisions — Ken — and a DM can reach him');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.chat_identity_links link
+                join ouroboros."user" person on person."id" = link.user_id
+               where person."email" = 'jorge@acme-robotics.dev'),
+  'Jorge has no link: the seeded workspace has someone the "link your account" prompt is for');
 
 select pg_temp.must_hold(
   (select (m.facts ->> 'passed')::int = tr.passed and (m.facts ->> 'total')::int = tr.total and tr.passed = tr.total

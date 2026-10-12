@@ -41718,6 +41718,20 @@ select pg_temp.must_hold(
   'a decision card takes its escalated annotation and a thread anchor');
 
 -- --- the command outcome matrix ------------------------------------------------------------------------
+-- The two linked invokers below, as V132 (#533) makes them: a command's link is a real row.
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v131-ken',   'Ken S',       'ken@stream-works-v131.dev',   true),
+  ('user-v131-jorge', 'Jorge Reyes', 'jorge@stream-works-v131.dev', true);
+insert into ouroboros.member ("id", "organizationId", "userId", "role", "createdAt") values
+  ('mem-v131-ken',   'org-v131', 'user-v131-ken',   'owner',  now()),
+  ('mem-v131-jorge', 'org-v131', 'user-v131-jorge', 'member', now());
+insert into ouroboros.chat_identity_links (id, organization_id, connection_id, platform_user_id, member_id,
+                                           state, verified_via, linked_at)
+values ('c1310000-0000-4000-8000-0000000000f1', 'org-v131', 'c1310000-0000-4000-8000-000000000001',
+        'U131KEN', 'mem-v131-ken', 'linked', 'oauth_session', now()),
+       ('c1310000-0000-4000-8000-0000000000f2', 'org-v131', 'c1310000-0000-4000-8000-000000000001',
+        'U131JORGE', 'mem-v131-jorge', 'linked', 'oauth_session', now());
+
 insert into ouroboros.chat_commands
   (id, organization_id, connection_id, channel_id, invoker_link_id, platform_user_id, surface,
    command, args, raw_text, outcome, error_detail, invoked_at, completed_at)
@@ -41763,11 +41777,10 @@ select pg_temp.must_hold(
   'a console and a Slack invocation of the same command share one table and are told apart by surface');
 
 select pg_temp.must_hold(
-  (select count(*) = 0 from information_schema.table_constraints tc
-     join information_schema.key_column_usage k using (constraint_schema, constraint_name)
-    where tc.table_schema = 'ouroboros' and tc.table_name = 'chat_commands'
-      and tc.constraint_type = 'FOREIGN KEY' and k.column_name = 'invoker_link_id'),
-  'invoker_link_id carries no foreign key yet — BY.3 (#533) adds it with the links table');
+  (select count(*) = 3 from ouroboros.chat_commands c
+     join ouroboros.chat_identity_links link on link.id = c.invoker_link_id
+    where c.organization_id = 'org-v131'),
+  'a linked invocation names its identity link — a real row since V132 (#533), asserted in that section');
 
 select pg_temp.must_reject(
   $$update ouroboros.chat_commands set outcome = 'timeout' where id = 'c1310000-0000-4000-8000-00000000e004'$$,
@@ -42024,6 +42037,448 @@ select pg_temp.must_hold(
   and (select count(*) = 0 from ouroboros.chat_commands where organization_id = 'org-v131c'),
   'a workspace takes its messages and command records with it');
 
+-- ===========================================================================
+-- V132 — chat identity links and on-call assignments (#533, BY.3)
+-- ===========================================================================
+--
+-- A Slack user id becomes a member through a link that says how it was verified; a pending link
+-- is a hashed, expiring, single-use handshake; revoking keeps the row; the unlinked lookup is one
+-- index read; a workspace has one active on-call designee per scope, who must be reachable and is
+-- stood down when they stop being.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v132',  'Link Works', 'link-works-v132', now()),
+  ('org-v132b', 'Link Two',   'link-two-v132',   now()),
+  ('org-v132c', 'Link Gone',  'link-gone-v132',  now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v132-maya',  'Maya Chen',   'maya@link-works-v132.dev',  true),
+  ('user-v132-ken',   'Ken S',       'ken@link-works-v132.dev',   true),
+  ('user-v132-jorge', 'Jorge Reyes', 'jorge@link-works-v132.dev', true),
+  ('user-v132-other', 'Other Person', 'other@link-two-v132.dev',  true);
+
+insert into ouroboros.member ("id", "organizationId", "userId", "role", "createdAt") values
+  ('mem-v132-maya',  'org-v132',  'user-v132-maya',  'admin',  now()),
+  ('mem-v132-ken',   'org-v132',  'user-v132-ken',   'owner',  now()),
+  ('mem-v132-jorge', 'org-v132',  'user-v132-jorge', 'member', now()),
+  ('mem-v132-other', 'org-v132b', 'user-v132-other', 'owner',  now()),
+  ('mem-v132-gone',  'org-v132c', 'user-v132-other', 'owner',  now());
+
+insert into ouroboros.chat_connections
+  (id, organization_id, platform, workspace_id, workspace_name, bot_token_sealed)
+values
+  ('c1320000-0000-4000-8000-000000000001', 'org-v132',  'slack', 'T132AB', 'link-works', 'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA'),
+  ('c1320000-0000-4000-8000-000000000002', 'org-v132b', 'slack', 'T132CD', 'link-two',   'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA'),
+  ('c1320000-0000-4000-8000-000000000003', 'org-v132c', 'slack', 'T132EF', 'link-gone',  'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA'),
+  ('c1320000-0000-4000-8000-000000000004', 'org-v132',  'teams', '19:link',  'Link Works', 'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA');
+
+-- --- a link says how it was verified -----------------------------------------------------------------
+insert into ouroboros.chat_identity_links
+  (id, organization_id, connection_id, platform_user_id, member_id, state, verified_via,
+   display_name_cache, linked_at, created_at, updated_at)
+values
+  ('c1320000-0000-4000-8000-0000000000a1', 'org-v132', 'c1320000-0000-4000-8000-000000000001',
+   'U024MAYA', 'mem-v132-maya', 'linked', 'oauth_session', 'Maya Chen', now(),
+   now() - interval '1 hour', now() - interval '1 hour'),
+  ('c1320000-0000-4000-8000-0000000000a2', 'org-v132', 'c1320000-0000-4000-8000-000000000001',
+   'U024KEN', 'mem-v132-ken', 'linked', 'email_match_confirmed', 'Ken S', now(),
+   now() - interval '1 hour', now() - interval '1 hour'),
+  ('c1320000-0000-4000-8000-0000000000a3', 'org-v132', 'c1320000-0000-4000-8000-000000000001',
+   'U024JORGE', 'mem-v132-jorge', 'linked', 'admin_assigned', null, now(),
+   now() - interval '1 hour', now() - interval '1 hour');
+
+select pg_temp.must_hold(
+  (select array_agg(platform_user_id || ':' || verified_via || ':' || user_id order by platform_user_id)
+            = array['U024JORGE:admin_assigned:user-v132-jorge',
+                    'U024KEN:email_match_confirmed:user-v132-ken',
+                    'U024MAYA:oauth_session:user-v132-maya']
+     from ouroboros.chat_identity_links where organization_id = 'org-v132'),
+  'a link records which of the three ways it was verified, and remembers the person behind its member');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_identity_links (organization_id, connection_id, platform_user_id, member_id, state, linked_at)
+    values ('org-v132b', 'c1320000-0000-4000-8000-000000000002', 'U0X', 'mem-v132-other', 'linked', now())$$,
+  'no path makes a linked row without saying how it was verified', 'chat_identity_links_linked_is_verified');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_identity_links (organization_id, connection_id, platform_user_id, state, verified_via, linked_at)
+    values ('org-v132b', 'c1320000-0000-4000-8000-000000000002', 'U0X', 'linked', 'oauth_session', now())$$,
+  'nor without a member', 'chat_identity_links_linked_is_verified');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_identity_links (organization_id, connection_id, platform_user_id, member_id, state, verified_via, linked_at)
+    values ('org-v132b', 'c1320000-0000-4000-8000-000000000002', 'U0X', 'mem-v132-other', 'linked', 'display_name', now())$$,
+  'a display name is not a verification', 'chat_identity_links_verified_via_known');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_identity_links (organization_id, connection_id, platform_user_id, member_id, state, verified_via, linked_at)
+    values ('org-v132b', 'c1320000-0000-4000-8000-000000000002', 'U0X', 'mem-v132-maya', 'linked', 'oauth_session', now())$$,
+  'a link''s member is its own workspace''s', 'chat_identity_links_member_resolve');
+
+-- The member key is deferred (a workspace's delete removes members and links by different
+-- paths), so its refusal is forced by name.
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       insert into ouroboros.chat_identity_links (organization_id, connection_id, platform_user_id, member_id, state, verified_via, linked_at)
+       values ('org-v132b', 'c1320000-0000-4000-8000-000000000002', 'U0X', 'mem-nobody', 'linked', 'oauth_session', now());
+       set constraints ouroboros.chat_identity_links_member_id_fkey immediate;
+     end $x$ $q$,
+  'and exists', 'chat_identity_links_member_id_fkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_identity_links (organization_id, connection_id, platform_user_id, member_id, state, verified_via, linked_at)
+    values ('org-v132b', 'c1320000-0000-4000-8000-000000000001', 'U0X', 'mem-v132-other', 'linked', 'oauth_session', now())$$,
+  'a link''s connection is its own workspace''s', 'chat_identity_links_connection_fk');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_identity_links set state = 'banned' where id = 'c1320000-0000-4000-8000-0000000000a1'$$,
+  'a state is linked, pending or revoked', 'chat_identity_links_state_known');
+
+-- --- one platform user ↔ one member, both directions ----------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_identity_links (organization_id, connection_id, platform_user_id, member_id, state, verified_via, linked_at)
+    values ('org-v132', 'c1320000-0000-4000-8000-000000000001', 'U024MAYA', 'mem-v132-jorge', 'linked', 'admin_assigned', now())$$,
+  'a platform user maps to at most one member on a connection', 'chat_identity_links_platform_user_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_identity_links (organization_id, connection_id, platform_user_id, member_id, state, verified_via, linked_at)
+    values ('org-v132', 'c1320000-0000-4000-8000-000000000001', 'U024SECOND', 'mem-v132-maya', 'linked', 'admin_assigned', now())$$,
+  'and a member has at most one platform identity on it', 'chat_identity_links_member_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_identity_links (organization_id, connection_id, platform_user_id, state, link_token_hash, expires_at)
+    values ('org-v132', 'c1320000-0000-4000-8000-000000000001', 'U024MAYA', 'pending', repeat('a', 64), now() + interval '10 minutes')$$,
+  'a pending handshake counts too: a linked user cannot open a second identity', 'chat_identity_links_platform_user_key');
+
+insert into ouroboros.chat_identity_links (organization_id, connection_id, platform_user_id, member_id, state, verified_via, linked_at)
+values ('org-v132', 'c1320000-0000-4000-8000-000000000004', 'teams-maya', 'mem-v132-maya', 'linked', 'oauth_session', now());
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.chat_identity_links where member_id = 'mem-v132-maya' and state = 'linked'),
+  'the rule is per connection: the same member has an identity on another');
+
+-- --- pending: hashed, expiring, single-use -----------------------------------------------------------------
+insert into ouroboros.chat_identity_links
+  (id, organization_id, connection_id, platform_user_id, state, link_token_hash, expires_at)
+values
+  ('c1320000-0000-4000-8000-0000000000b1', 'org-v132b', 'c1320000-0000-4000-8000-000000000002',
+   'U0PENDING', 'pending', repeat('b', 64), now() + interval '10 minutes'),
+  ('c1320000-0000-4000-8000-0000000000b2', 'org-v132b', 'c1320000-0000-4000-8000-000000000002',
+   'U0LATE', 'pending', repeat('c', 64), now() - interval '1 minute');
+
+select pg_temp.must_hold(
+  (select member_id is null and verified_via is null and linked_at is null
+     from ouroboros.chat_identity_links where id = 'c1320000-0000-4000-8000-0000000000b1'),
+  'a handshake starts on the platform: pending knows the platform user and not yet the member');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_identity_links (organization_id, connection_id, platform_user_id, state, link_token_hash, expires_at)
+    values ('org-v132b', 'c1320000-0000-4000-8000-000000000002', 'U0PLAIN', 'pending', 'link-token-in-the-clear', now() + interval '10 minutes')$$,
+  'a link token is stored hashed, never in the clear', 'chat_identity_links_token_hash_sha256');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_identity_links (organization_id, connection_id, platform_user_id, state, link_token_hash)
+    values ('org-v132b', 'c1320000-0000-4000-8000-000000000002', 'U0NOEXP', 'pending', repeat('d', 64))$$,
+  'a pending link expires', 'chat_identity_links_pending_handshake');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_identity_links (organization_id, connection_id, platform_user_id, state)
+    values ('org-v132b', 'c1320000-0000-4000-8000-000000000002', 'U0NOTOKEN', 'pending')$$,
+  'and holds a token hash', 'chat_identity_links_pending_handshake');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_identity_links (organization_id, connection_id, platform_user_id, state, link_token_hash, expires_at)
+    values ('org-v132b', 'c1320000-0000-4000-8000-000000000002', 'U0REUSE', 'pending', repeat('b', 64), now() + interval '10 minutes')$$,
+  'a token hash names one handshake', 'chat_identity_links_token_hash_key');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_identity_links
+       set state = 'linked', member_id = 'mem-v132-other', verified_via = 'oauth_session', linked_at = now()
+     where id = 'c1320000-0000-4000-8000-0000000000b1'$$,
+  'a link cannot become linked while still holding its token', 'chat_identity_links_pending_handshake');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_identity_links
+       set state = 'linked', member_id = 'mem-v132-other', verified_via = 'oauth_session', linked_at = now(),
+           link_token_hash = null, expires_at = null
+     where id = 'c1320000-0000-4000-8000-0000000000b2'$$,
+  'an expired handshake cannot be confirmed', 'chat_identity_links_transition');
+
+-- The confirmation: found by its token's hash, linked, and the token is gone.
+update ouroboros.chat_identity_links
+   set state = 'linked', member_id = 'mem-v132-other', verified_via = 'oauth_session', linked_at = now(),
+       link_token_hash = null, expires_at = null
+ where link_token_hash = repeat('b', 64);
+select pg_temp.must_hold(
+  (select state = 'linked' and user_id = 'user-v132-other' and link_token_hash is null
+     from ouroboros.chat_identity_links where id = 'c1320000-0000-4000-8000-0000000000b1')
+  and (select count(*) = 0 from ouroboros.chat_identity_links where link_token_hash = repeat('b', 64)),
+  'confirming a handshake links it and spends the token: a second use finds nothing');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_identity_links
+       set state = 'pending', verified_via = null, linked_at = null,
+           link_token_hash = repeat('e', 64), expires_at = now() + interval '10 minutes'
+     where id = 'c1320000-0000-4000-8000-0000000000b1'$$,
+  'a linked identity does not go back to pending', 'chat_identity_links_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_identity_links set platform_user_id = 'U0SOMEONEELSE'
+     where id = 'c1320000-0000-4000-8000-0000000000b1'$$,
+  'a link''s platform user never changes', 'chat_identity_links_transition');
+
+-- --- the unlinked lookup is one indexed read -----------------------------------------------------------------
+insert into ouroboros.chat_identity_links (organization_id, connection_id, platform_user_id, state, revoked_at)
+select 'org-v132b', 'c1320000-0000-4000-8000-000000000002', 'U' || lpad(i::text, 8, '0'), 'revoked', now()
+  from generate_series(1, 4000) i;
+analyze ouroboros.chat_identity_links;
+
+-- Sequential scans left on: the planner picks the index by itself over a corpus.
+select pg_temp.must_use_index(
+  $$select id, member_id, state from ouroboros.chat_identity_links
+     where connection_id = 'c1320000-0000-4000-8000-000000000001' and platform_user_id = 'U024MAYA'
+       and state <> 'revoked'$$,
+  'chat_identity_links_platform_user_key');
+select pg_temp.must_not_scan(
+  $$select id, member_id, state from ouroboros.chat_identity_links
+     where connection_id = 'c1320000-0000-4000-8000-000000000002' and platform_user_id = 'U0NOBODY'
+       and state <> 'revoked'$$);
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.chat_identity_links
+    where connection_id = 'c1320000-0000-4000-8000-000000000002' and platform_user_id = 'U00000007'
+      and state <> 'revoked'),
+  'someone who was revoked reads as unlinked — the same lookup, the same answer as a stranger');
+
+-- --- on-call: one active designee per scope, who is reachable ---------------------------------------------------
+insert into ouroboros.on_call_assignments (id, organization_id, member_id, assigned_by)
+values ('c1320000-0000-4000-8000-0000000000c1', 'org-v132', 'mem-v132-ken', 'user-v132-maya');
+select pg_temp.must_hold(
+  (select scope = 'decisions' and active from ouroboros.on_call_assignments
+    where id = 'c1320000-0000-4000-8000-0000000000c1'),
+  'an assignment is for decisions and in force unless said otherwise');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.on_call_assignments (organization_id, member_id) values ('org-v132', 'mem-v132-maya')$$,
+  'exactly one designee is in force per workspace and scope', 'on_call_assignments_one_active');
+
+insert into ouroboros.on_call_assignments (organization_id, member_id, scope)
+values ('org-v132', 'mem-v132-maya', 'rotation:firmware');
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.on_call_assignments where organization_id = 'org-v132' and active),
+  'a second scope has its own designee, with no migration — CB.3''s rotations layer on');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.on_call_assignments (organization_id, member_id, scope) values ('org-v132', 'mem-v132-maya', 'Decisions!')$$,
+  'a scope is a slug', 'on_call_assignments_scope_slug');
+
+-- Reassignment: the old one is switched off, the new one added, and the old row stays.
+update ouroboros.on_call_assignments set active = false where id = 'c1320000-0000-4000-8000-0000000000c1';
+insert into ouroboros.on_call_assignments (id, organization_id, member_id, assigned_by)
+values ('c1320000-0000-4000-8000-0000000000c2', 'org-v132', 'mem-v132-jorge', 'user-v132-ken');
+select pg_temp.must_hold(
+  (select array_agg(member_id || ':' || active order by assigned_at, member_id) filter (where scope = 'decisions')
+            = array['mem-v132-jorge:true', 'mem-v132-ken:false']
+     from ouroboros.on_call_assignments where organization_id = 'org-v132'),
+  'reassigning leaves the earlier assignment as an inactive row');
+
+-- Unreachable people cannot be made on-call.
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v132-nolink', 'No Link', 'nolink@link-works-v132.dev', true);
+insert into ouroboros.member ("id", "organizationId", "userId", "role", "createdAt") values
+  ('mem-v132-nolink', 'org-v132', 'user-v132-nolink', 'member', now());
+update ouroboros.on_call_assignments set active = false where id = 'c1320000-0000-4000-8000-0000000000c2';
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.on_call_assignments (organization_id, member_id) values ('org-v132', 'mem-v132-nolink')$$,
+  'a designee with no identity link cannot be made active', 'on_call_assignments_designee_linked');
+
+insert into ouroboros.chat_identity_links (id, organization_id, connection_id, platform_user_id, member_id, state, link_token_hash, expires_at)
+values ('c1320000-0000-4000-8000-0000000000a9', 'org-v132', 'c1320000-0000-4000-8000-000000000001',
+        'U024NOLINK', 'mem-v132-nolink', 'pending', repeat('f', 64), now() + interval '10 minutes');
+select pg_temp.must_reject(
+  $$insert into ouroboros.on_call_assignments (organization_id, member_id) values ('org-v132', 'mem-v132-nolink')$$,
+  'nor one whose link is only pending', 'on_call_assignments_designee_linked');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.on_call_assignments (organization_id, member_id) values ('org-v132b', 'mem-v132-maya')$$,
+  'nor one linked in another workspace', 'on_call_assignments_designee_linked');
+
+insert into ouroboros.on_call_assignments (id, organization_id, member_id, active)
+values ('c1320000-0000-4000-8000-0000000000c3', 'org-v132', 'mem-v132-nolink', false);
+select pg_temp.must_reject(
+  $$update ouroboros.on_call_assignments set active = true where id = 'c1320000-0000-4000-8000-0000000000c3'$$,
+  'an inactive assignment may name them, but switching it on is the same check', 'on_call_assignments_designee_linked');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.on_call_assignments (organization_id, member_id, active) values ('org-v132', null, true)$$,
+  'an active assignment names someone', 'on_call_assignments_active_has_member');
+
+-- A link on a connection that is not active is not a live link.
+update ouroboros.chat_connections set status = 'revoked', status_detail = 'invalid_auth'
+ where id = 'c1320000-0000-4000-8000-000000000001';
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.on_call_assignments
+    where organization_id = 'org-v132' and scope = 'rotation:firmware' and active),
+  'a connection going to revoked stands nobody down — that is the platform''s state');
+select pg_temp.must_reject(
+  $$update ouroboros.on_call_assignments set active = true where id = 'c1320000-0000-4000-8000-0000000000c2'$$,
+  'but nobody can be made on-call while the workspace''s Slack connection is not active',
+  'on_call_assignments_designee_linked');
+update ouroboros.chat_connections set status = 'active', status_detail = null
+ where id = 'c1320000-0000-4000-8000-000000000001';
+update ouroboros.on_call_assignments set active = true where id = 'c1320000-0000-4000-8000-0000000000c2';
+
+-- --- revocation revokes; it does not erase ------------------------------------------------------------------
+insert into ouroboros.chat_commands
+  (id, organization_id, connection_id, invoker_link_id, platform_user_id, surface, command, raw_text, outcome, completed_at)
+values ('c1320000-0000-4000-8000-0000000000d1', 'org-v132', 'c1320000-0000-4000-8000-000000000001',
+        'c1320000-0000-4000-8000-0000000000a3', 'U024JORGE', 'slack', 'pause all', '/ouro pause all', 'denied', now());
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_identity_links set state = 'revoked' where id = 'c1320000-0000-4000-8000-0000000000a3'$$,
+  'a revocation says when', 'chat_identity_links_revocation_recorded');
+
+-- Jorge is the active decisions designee; his link is revoked by Maya.
+update ouroboros.chat_identity_links
+   set state = 'revoked', revoked_at = now(), revoked_by = 'user-v132-maya'
+ where id = 'c1320000-0000-4000-8000-0000000000a3';
+
+select pg_temp.must_hold(
+  (select state = 'revoked' and member_id = 'mem-v132-jorge' and verified_via = 'admin_assigned'
+          and revoked_by = 'user-v132-maya' and updated_at > created_at
+     from ouroboros.chat_identity_links where id = 'c1320000-0000-4000-8000-0000000000a3'),
+  'a revoked link is kept, with who it was, how it had been verified and who revoked it');
+
+select pg_temp.must_hold(
+  (select link.state = 'revoked' and link.user_id = 'user-v132-jorge' and person."name" = 'Jorge Reyes'
+     from ouroboros.chat_commands c
+     join ouroboros.chat_identity_links link on link.id = c.invoker_link_id
+     join ouroboros."user" person on person."id" = link.user_id
+    where c.id = 'c1320000-0000-4000-8000-0000000000d1'),
+  'a command invoked under it is still attributable to the person');
+
+select pg_temp.must_hold(
+  (select not active and member_id = 'mem-v132-jorge' from ouroboros.on_call_assignments
+    where id = 'c1320000-0000-4000-8000-0000000000c2')
+  and (select count(*) = 0 from ouroboros.on_call_assignments
+        where organization_id = 'org-v132' and scope = 'decisions' and active),
+  'and the designee whose link was revoked is stood down — on-call is empty, not a dead end');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_identity_links set state = 'linked', revoked_at = null, revoked_by = null
+     where id = 'c1320000-0000-4000-8000-0000000000a3'$$,
+  'a revoked link is final', 'chat_identity_links_transition');
+
+-- Linking again is a new row; the old one keeps its history.
+insert into ouroboros.chat_identity_links (organization_id, connection_id, platform_user_id, member_id, state, verified_via, linked_at)
+values ('org-v132', 'c1320000-0000-4000-8000-000000000001', 'U024JORGE', 'mem-v132-jorge', 'linked', 'oauth_session', now());
+select pg_temp.must_hold(
+  (select array_agg(state || ':' || verified_via order by state)
+            = array['linked:oauth_session', 'revoked:admin_assigned']
+     from ouroboros.chat_identity_links
+    where connection_id = 'c1320000-0000-4000-8000-000000000001' and platform_user_id = 'U024JORGE'),
+  'the same person links again as a new row beside the revoked one');
+
+-- --- a member who leaves the workspace -----------------------------------------------------------------------
+-- Maya is on call for the firmware rotation and has links on two connections.
+delete from ouroboros.member where "id" = 'mem-v132-maya';
+
+select pg_temp.must_hold(
+  (select count(*) = 2 and bool_and(state = 'revoked' and member_id is null and revoked_at is not null
+                                    and user_id = 'user-v132-maya' and display_name_cache is not distinct from
+                                        case when platform_user_id = 'U024MAYA' then 'Maya Chen' end)
+     from ouroboros.chat_identity_links
+    where organization_id = 'org-v132' and platform_user_id in ('U024MAYA', 'teams-maya')),
+  'removing a member revokes their links and keeps them: no member any more, but still the person');
+
+select pg_temp.must_hold(
+  (select not active and member_id is null from ouroboros.on_call_assignments
+    where organization_id = 'org-v132' and scope = 'rotation:firmware'),
+  'and stands them down from on-call');
+
+-- The member is gone and nothing still points at it: the deferred keys hold when forced.
+set constraints ouroboros.chat_identity_links_member_id_fkey, ouroboros.on_call_assignments_member_id_fkey immediate;
+set constraints ouroboros.chat_identity_links_member_id_fkey, ouroboros.on_call_assignments_member_id_fkey deferred;
+
+-- --- chat_commands.invoker_link_id is a real key now ------------------------------------------------------------
+select pg_temp.must_hold(
+  (select condeferrable and condeferred and confdeltype = 'a'
+     from pg_constraint where conname = 'chat_commands_invoker_link_fk'),
+  'a command''s invoker link is a foreign key — deferred, and taking no action on delete');
+
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       insert into ouroboros.chat_commands (organization_id, connection_id, invoker_link_id, platform_user_id,
+                                            surface, command, raw_text, outcome, completed_at)
+       values ('org-v132', 'c1320000-0000-4000-8000-000000000001', '00000000-0000-0000-0000-000000000000',
+               'U0X', 'slack', 'status', '/ouro status', 'ok', now());
+       set constraints ouroboros.chat_commands_invoker_link_fk immediate;
+     end $x$ $q$,
+  'a command cannot name a link that does not exist', 'chat_commands_invoker_link_fk');
+
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       insert into ouroboros.chat_commands (organization_id, connection_id, invoker_link_id, platform_user_id,
+                                            surface, command, raw_text, outcome, completed_at)
+       values ('org-v132', 'c1320000-0000-4000-8000-000000000001', 'c1320000-0000-4000-8000-0000000000b1',
+               'U0X', 'slack', 'status', '/ouro status', 'ok', now());
+       set constraints ouroboros.chat_commands_invoker_link_fk immediate;
+     end $x$ $q$,
+  'nor another connection''s link', 'chat_commands_invoker_link_fk');
+
+-- --- audit: the vocabulary is storable ---------------------------------------------------------------------------
+insert into ouroboros.audit_events (organization_id, actor_id, actor_kind, action, subject_type, subject_id, detail)
+values
+  ('org-v132', 'user-v132-ken', 'human', 'chat.identity_linked', 'chat_identity_link',
+   'c1320000-0000-4000-8000-0000000000a2',
+   '{"chat": {"connection_id": "c1320000-0000-4000-8000-000000000001"}, "verified_via": "email_match_confirmed"}'),
+  ('org-v132', 'user-v132-maya', 'human', 'chat.identity_unlinked', 'chat_identity_link',
+   'c1320000-0000-4000-8000-0000000000a3',
+   '{"chat": {"connection_id": "c1320000-0000-4000-8000-000000000001"}}'),
+  ('org-v132', 'user-v132-ken', 'human', 'chat.on_call_assigned', 'on_call_assignment',
+   'c1320000-0000-4000-8000-0000000000c2', '{"scope": "decisions", "member_id": "mem-v132-jorge"}');
+select pg_temp.must_hold(
+  (select array_agg(action order by action)
+            = array['chat.identity_linked', 'chat.identity_unlinked', 'chat.on_call_assigned']
+          and bool_and(plane = 'chat')
+     from ouroboros.audit_events where organization_id = 'org-v132'),
+  'a link, an unlink and an on-call reassignment each have an audit action on the chat plane');
+
+-- --- the app role ----------------------------------------------------------------------------------------------
+set local role ouroboros_app;
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.chat_identity_links
+    where connection_id = 'c1320000-0000-4000-8000-000000000001' and platform_user_id = 'U024KEN'
+      and state <> 'revoked'),
+  'the app role resolves a platform user');
+insert into ouroboros.on_call_assignments (organization_id, member_id) values ('org-v132', 'mem-v132-ken');
+select pg_temp.must_raise(
+  $$delete from ouroboros.chat_identity_links where organization_id = 'org-v132'$$,
+  '42501', 'the app role cannot delete a link — revocation is a state');
+select pg_temp.must_raise(
+  $$delete from ouroboros.on_call_assignments where organization_id = 'org-v132'$$,
+  '42501', 'nor an assignment');
+reset role;
+
+-- --- a workspace takes all of it with it ---------------------------------------------------------------------------
+insert into ouroboros.chat_identity_links (id, organization_id, connection_id, platform_user_id, member_id, state, verified_via, linked_at)
+values ('c1320000-0000-4000-8000-0000000000e1', 'org-v132c', 'c1320000-0000-4000-8000-000000000003',
+        'U0GONE', 'mem-v132-gone', 'linked', 'oauth_session', now());
+insert into ouroboros.on_call_assignments (organization_id, member_id) values ('org-v132c', 'mem-v132-gone');
+insert into ouroboros.chat_commands (organization_id, connection_id, invoker_link_id, platform_user_id, surface,
+                                     command, raw_text, outcome, completed_at)
+values ('org-v132c', 'c1320000-0000-4000-8000-000000000003', 'c1320000-0000-4000-8000-0000000000e1',
+        'U0GONE', 'slack', 'status', '/ouro status', 'ok', now());
+
+delete from ouroboros.organization where "id" = 'org-v132c';
+set constraints ouroboros.chat_commands_invoker_link_fk, ouroboros.chat_identity_links_member_id_fkey,
+                ouroboros.on_call_assignments_member_id_fkey immediate;
+set constraints ouroboros.chat_commands_invoker_link_fk, ouroboros.chat_identity_links_member_id_fkey,
+                ouroboros.on_call_assignments_member_id_fkey deferred;
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.chat_identity_links where organization_id = 'org-v132c')
+  and (select count(*) = 0 from ouroboros.on_call_assignments where organization_id = 'org-v132c')
+  and (select count(*) = 0 from ouroboros.chat_commands where organization_id = 'org-v132c'),
+  'a workspace takes its links, its on-call assignments and its commands with it');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------
@@ -42054,6 +42509,7 @@ analyze ouroboros.source_records;
 analyze ouroboros.dry_runs;
 analyze ouroboros.chat_messages;
 analyze ouroboros.chat_commands;
+analyze ouroboros.chat_identity_links;
 
 \o
 \echo 'constraints.sql: all assertions passed'
