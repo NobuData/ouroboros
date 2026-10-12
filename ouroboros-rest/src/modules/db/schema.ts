@@ -7402,6 +7402,14 @@ export interface NotificationRoutesTable {
   enabled: Generated<boolean>;
   updated_by: string | null;
   updated_at: Stamped;
+  /**
+   * The chat channel a Slack route posts to (V130,
+   * [#531](https://github.com/NobuData/ouroboros/issues/531)), or `null`. Mirrored so the table's
+   * columns match the migration; nothing reads or writes it until the Chat Ops services land.
+   */
+  chat_channel_id: ColumnType<string | null, string | null | undefined, string | null>;
+  /** Whether a Slack route also DMs the designated on-call (V130) — mockup 19's `+ DM on-call`. */
+  dm_on_call: Generated<boolean>;
 }
 
 /**
@@ -9663,6 +9671,8 @@ export const TABLE_COLUMNS = {
     "enabled",
     "updated_by",
     "updated_at",
+    "chat_channel_id",
+    "dm_on_call",
   ],
   notification_route_sends: [
     "id",

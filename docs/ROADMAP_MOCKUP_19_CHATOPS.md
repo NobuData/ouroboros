@@ -231,14 +231,16 @@ v2`** created at filing; every issue assigned. Complexity chips:
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BY.1 | #531 | 🟡 Open | ouroboros-db: [BY.1] Chat connections & channel bindings | Workspace installs (sealed tokens), channels, route targets | mvp, chatops, db | N (after AD.1, BR.4) | Y | M | ouroboros-db |
+| BY.1 | #531 ✅ | 🟢 Done | ouroboros-db: [BY.1] Chat connections & channel bindings | Workspace installs (sealed tokens), channels, route targets | mvp, chatops, db | N (after AD.1, BR.4) | Y | M | ouroboros-db |
 | BY.2 | #532 | 🟡 Open | ouroboros-db: [BY.2] Message & command records | Published cards (for edits + mirror), command invocations, links | mvp, chatops, db | N (after BY.1, BM.1) | Y | M | ouroboros-db |
 | BY.3 | #533 | 🟡 Open | ouroboros-db: [BY.3] Identity links & on-call | Slack↔member mappings, link states, designated on-call | mvp, chatops, db | N (after BY.1, BR.1) | Y | S | ouroboros-db |
 | BY.4 | #534 | 🟡 Open | ouroboros-db: [BY.4] Chat seeds — mockup-19 parity + probes | The six-message stream, bindings, links; ci checks | mvp, chatops, db, ci | N (after BY.2/BY.3, #24) | Y | S | ouroboros-db, .github |
 
 ### Issue BY.1 — ouroboros-db: [BY.1] Chat connections & channel bindings
 
-> **GitHub issue:** #531 · **Status:** 🟡 Open · **Parent epic:** #527
+> **GitHub issue:** #531 ✅ · **Status:** 🟢 Done · **Parent epic:** #527
+>
+> **Delivered (#531 — `V130__chat_connections_channels.sql`, `ouroboros-rest` 0.41.23 (schema mirror only); no API or UI change):** **`chat_connections`** — one row per (workspace, `platform` `slack | teams`, platform workspace id) with `workspace_name`, `bot_user_id`, `install_meta` (`scopes`, `app_id`, `app_version`), `installed_by`/`installed_at`, `last_verified_at`; `bot_token_sealed` is the vault's **text envelope** by CHECK (the repo's convention since V015/V030, not the diagram's `bytea`; the envelope's version is the DEK reference), required while active, and read paths select `chat_connections_public`, which does not reference it — `constraints.sql` asserts by `pg_depend` that **no view reads the column** and shows the probe catching an aliased one. `status` `active | revoked | error` with `status_detail` null exactly when active; a revoked row may drop its token and a re-install revives the same row; the app role cannot delete. **`chat_connections_one_active_slack`** (partial unique on the workspace where Slack and active), proven under a race by `tests/verify-chat-connection-guard.sh` — five interleavings, the third with the index dropped, the fifth showing `teams` rows outside the rule — with its own CI step. **`chat_channels`** — `channel_id` and `channel_name` (no `#`) apart, `is_private`, `joined` + `joined_at`, `member_count`, `purpose_tag`, `archived`; unique per (connection, channel id); workspace and platform are the connection's by composite key. **The BR.4 amendment lands on `notification_routes`** — there is no separate bindings table, the route row is the binding: `chat_channel_id` and `dm_on_call`, so `#ouroboros-loops + DM on-call` is one row. Only a Slack route carries either; the channel is the route's own workspace's **and platform's** (the route's `channel` is part of the foreign key, so a Slack route cannot reach a Teams channel); the key is deferred with no action, so a targeted channel cannot be deleted and a workspace's delete still goes through. **Two choices were the user's (2026-10-12):** the Slack lock in `notification_routes_effective` is **left as it is** — routes stay *connect Slack first* until something publishes (#536); and *at least one delivery target* is required of an **enabled** Slack route only, a disabled one storing none. **One exemption I added, found in the code:** `needs_you_dm` — BR.4's default Slack route — is exempt, because its target is the person the item waits on. The migration switches off any other enabled Slack route already stored (none can deliver; BR.4 never stores one enabled). REST's `schema.ts` mirrors the two new route columns so `db.integration-spec` still matches; the two new tables are mirrored by the tickets that read them. **Not done:** no seed rows (mockup-19 parity is a later ticket's), no mutation probes in `verify-constraint-probes.sh`, and retention classes are noted, not applied.
 
 - **Problem Statement:** Installs, channels, and route targets need durable
   rows — the substrate for publishing and the Settings/`#eng-leads`
@@ -865,7 +867,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    #488), BR.1 (#485), AD.1/AD.4 (#222, #225), AP.4 (#306), INTAKE-M.3/R.1
    (#112, #143), WF-R.2 (#144), Z.2 (#195), BR.5 (#489), BJ.4 (#440), H.3
    (#79), #41/#46/#16, driver + sandbox + test Slack workspace.
-2. **Phase 1 — Domain:** BY.1 (#531) → { BY.2 (#532) ⊕ BY.3 (#533) } →
+2. **Phase 1 — Domain:** BY.1 (#531) ✅ → { BY.2 (#532) ⊕ BY.3 (#533) } →
    BY.4 (#534)
 3. **Phase 2 — App & services:** BZ.1 (#535) → { BZ.2 (#536) ⊕ BZ.3 (#537) }
    → { BZ.4 (#538) ⊕ BZ.5 (#539) } → BZ.6 (#540)

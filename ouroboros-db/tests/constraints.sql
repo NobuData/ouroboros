@@ -40899,6 +40899,440 @@ select pg_temp.must_hold(
     where pronamespace = 'ouroboros'::regnamespace and proname = 'discard_workflow_draft'),
   'discard_workflow_draft runs as its owner with its search_path pinned, for the app role and not for public');
 
+-- ===========================================================================
+-- V130 — chat connections, their channels, and routes that target them (#531, BY.1)
+-- ===========================================================================
+--
+-- An installed chat workspace is a credential and a state: the token is the vault's envelope and
+-- in no view, removing the app is `revoked` rather than a delete, and a workspace has one active
+-- Slack connection. Channels are addressed by id and drawn by name. A notification route may
+-- target a channel, the on-call DM, or both in one row.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v130',  'Chat Works', 'chat-works-v130', now()),
+  ('org-v130b', 'Chat Two',   'chat-two-v130',   now()),
+  ('org-v130c', 'Chat Gone',  'chat-gone-v130',  now());
+
+-- --- chat_connections: the install round-trips, sealed --------------------------------------------
+insert into ouroboros.chat_connections
+  (id, organization_id, platform, workspace_id, workspace_name, bot_token_sealed, bot_user_id,
+   install_meta, created_at, updated_at)
+values
+  ('c1300000-0000-4000-8000-000000000001', 'org-v130', 'slack', 'T024AB', 'acme-robotics',
+   'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA', 'U07BOT',
+   '{"scopes": ["chat:write", "commands"], "app_id": "A07OURO", "app_version": "v2.4"}',
+   now() - interval '1 hour', now() - interval '1 hour');
+
+select pg_temp.must_hold(
+  (select status = 'active' and status_detail is null and last_verified_at is null
+          and bot_token_sealed = 'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA'
+          and install_meta ->> 'app_version' = 'v2.4'
+          and install_meta -> 'scopes' = '["chat:write", "commands"]'::jsonb
+     from ouroboros.chat_connections where id = 'c1300000-0000-4000-8000-000000000001'),
+  'an install round-trips: active, unexplained, its token sealed and its scopes and app version as granted');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_connections set bot_token_sealed = 'xoxb-plaintext-token'
+     where id = 'c1300000-0000-4000-8000-000000000001'$$,
+  'a bot token is never stored in the clear', 'chat_connections_bot_token_sealed');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_connections (organization_id, platform, workspace_id, workspace_name, bot_token_sealed)
+    values ('org-v130b', 'discord', 'G1', 'guild', 'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA')$$,
+  'a platform is slack or teams', 'chat_connections_platform_known');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_connections (organization_id, platform, workspace_id, workspace_name, bot_token_sealed)
+    values ('org-v130b', 'slack', 'T 1', 'spaced', 'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA')$$,
+  'a workspace id is one token', 'chat_connections_workspace_id_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_connections (organization_id, platform, workspace_id, workspace_name, bot_token_sealed)
+    values ('org-v130b', 'slack', 'T1', '  ', 'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA')$$,
+  'a workspace has a name', 'chat_connections_workspace_name_present');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_connections set install_meta = '[]'
+     where id = 'c1300000-0000-4000-8000-000000000001'$$,
+  'install metadata is an object', 'chat_connections_install_meta_object');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_connections set install_meta = '{"scopes": "chat:write"}'
+     where id = 'c1300000-0000-4000-8000-000000000001'$$,
+  'granted scopes are a list', 'chat_connections_install_meta_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_connections set install_meta = '{"app_version": 2.4}'
+     where id = 'c1300000-0000-4000-8000-000000000001'$$,
+  'an app version is a string', 'chat_connections_install_meta_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_connections (organization_id, platform, workspace_id, workspace_name, status, status_detail)
+    values ('org-v130', 'slack', 'T024AB', 'acme-robotics', 'revoked', 'invalid_auth')$$,
+  'a workspace is installed once per platform — a re-install revives its row',
+  'chat_connections_workspace_key');
+
+-- --- the token is in no view ---------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(column_name::text order by ordinal_position)
+            = array['id', 'organization_id', 'platform', 'workspace_id', 'workspace_name',
+                    'bot_user_id', 'install_meta', 'status', 'status_detail', 'installed_by',
+                    'installed_at', 'last_verified_at', 'created_at', 'updated_at']
+     from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'chat_connections_public'),
+  'chat_connections_public carries every column of a connection but the bot token');
+
+select pg_temp.must_hold(
+  (select reloptions @> array['security_invoker=true'] from pg_class
+    where oid = 'ouroboros.chat_connections_public'::regclass),
+  'chat_connections_public is security_invoker, so it grants no read the table would not');
+
+-- The probe, in two halves. By dependency: no view's definition reads the column, under any
+-- name — an alias, a cast or a `length(…)` would all show here. And by name: no view in the
+-- schema has a column called a sealed bot token, whatever it was computed from.
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from pg_depend d
+     join pg_rewrite r on r.oid = d.objid and d.classid = 'pg_rewrite'::regclass
+     join pg_class v on v.oid = r.ev_class and v.relkind in ('v', 'm')
+     join pg_attribute a on a.attrelid = d.refobjid and a.attnum = d.refobjsubid
+    where d.refclassid = 'pg_class'::regclass
+      and d.refobjid = 'ouroboros.chat_connections'::regclass
+      and a.attname = 'bot_token_sealed'),
+  'no view reads chat_connections.bot_token_sealed — the sealed bot token is exposed by no read model');
+
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from information_schema.columns c
+     join information_schema.views w on w.table_schema = c.table_schema and w.table_name = c.table_name
+    where c.table_schema = 'ouroboros' and c.column_name ~ 'bot_token'),
+  'and no view has a bot-token column under any derivation');
+
+-- The dependency half is what would catch an alias, shown by making one and looking again.
+create view ouroboros.chat_connections_leak_v130 as
+  select id, length(bot_token_sealed) as n from ouroboros.chat_connections;
+select pg_temp.must_hold(
+  (select count(*) = 1
+     from pg_depend d
+     join pg_rewrite r on r.oid = d.objid and d.classid = 'pg_rewrite'::regclass
+     join pg_class v on v.oid = r.ev_class and v.relkind in ('v', 'm')
+     join pg_attribute a on a.attrelid = d.refobjid and a.attnum = d.refobjsubid
+    where d.refclassid = 'pg_class'::regclass
+      and d.refobjid = 'ouroboros.chat_connections'::regclass
+      and a.attname = 'bot_token_sealed'),
+  'the probe sees a view that reads the token under another name');
+drop view ouroboros.chat_connections_leak_v130;
+
+-- --- revoked is a state, distinct from error and from active ----------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.chat_connections set status = 'revoked'
+     where id = 'c1300000-0000-4000-8000-000000000001'$$,
+  'a connection that is not working says why', 'chat_connections_status_explained');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_connections set status_detail = 'all good'
+     where id = 'c1300000-0000-4000-8000-000000000001'$$,
+  'and a working one has nothing to explain', 'chat_connections_status_explained');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_connections set status = 'disabled', status_detail = 'x'
+     where id = 'c1300000-0000-4000-8000-000000000001'$$,
+  'a status is active, revoked or error', 'chat_connections_status_known');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_connections set bot_token_sealed = null
+     where id = 'c1300000-0000-4000-8000-000000000001'$$,
+  'an active connection holds its token', 'chat_connections_active_has_token');
+
+update ouroboros.chat_connections
+   set status = 'revoked', status_detail = 'invalid_auth', bot_token_sealed = null
+ where id = 'c1300000-0000-4000-8000-000000000001';
+select pg_temp.must_hold(
+  (select status = 'revoked' and status_detail = 'invalid_auth' and bot_token_sealed is null
+          and updated_at > created_at
+     from ouroboros.chat_connections where id = 'c1300000-0000-4000-8000-000000000001'),
+  'removing the app is a revoked row carrying the platform''s reason — kept, and free to drop its dead token');
+
+update ouroboros.chat_connections set status = 'error', status_detail = 'slack_unreachable'
+ where id = 'c1300000-0000-4000-8000-000000000001';
+select pg_temp.must_hold(
+  (select status = 'error' and status_detail = 'slack_unreachable'
+     from ouroboros.chat_connections where id = 'c1300000-0000-4000-8000-000000000001'),
+  'error is its own state, with its own reason');
+
+update ouroboros.chat_connections
+   set status = 'active', status_detail = null, bot_token_sealed = 'ouro.v1.2.bm9uY2U.cmVzZWFsZWQ',
+       last_verified_at = now()
+ where id = 'c1300000-0000-4000-8000-000000000001';
+select pg_temp.must_hold(
+  (select status = 'active' and bot_token_sealed = 'ouro.v1.2.bm9uY2U.cmVzZWFsZWQ'
+     from ouroboros.chat_connections where id = 'c1300000-0000-4000-8000-000000000001'),
+  'and neither is final: a re-install writes active again onto the same row');
+
+-- --- one active Slack connection per workspace ------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_connections (organization_id, platform, workspace_id, workspace_name, bot_token_sealed)
+    values ('org-v130', 'slack', 'T999ZZ', 'acme-labs', 'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA')$$,
+  'a workspace has at most one active Slack connection', 'chat_connections_one_active_slack');
+
+insert into ouroboros.chat_connections
+  (id, organization_id, platform, workspace_id, workspace_name, status, status_detail)
+values
+  ('c1300000-0000-4000-8000-000000000002', 'org-v130', 'slack', 'T999ZZ', 'acme-labs', 'revoked', 'account_inactive');
+insert into ouroboros.chat_connections
+  (id, organization_id, platform, workspace_id, workspace_name, bot_token_sealed)
+values
+  ('c1300000-0000-4000-8000-000000000003', 'org-v130b', 'slack', 'T024AB', 'acme-robotics',
+   'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA');
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.chat_connections where platform = 'slack'
+      and organization_id in ('org-v130', 'org-v130b')),
+  'a revoked connection sits beside the active one, and another workspace has its own');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_connections
+       set status = 'active', status_detail = null, bot_token_sealed = 'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA'
+     where id = 'c1300000-0000-4000-8000-000000000002'$$,
+  'and reviving the revoked one while another is active is refused too',
+  'chat_connections_one_active_slack');
+
+-- --- teams: storable, and inert ---------------------------------------------------------------------
+insert into ouroboros.chat_connections
+  (id, organization_id, platform, workspace_id, workspace_name, bot_token_sealed)
+values
+  ('c1300000-0000-4000-8000-000000000004', 'org-v130', 'teams', '19:tenant-acme', 'Acme Robotics',
+   'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA');
+select pg_temp.must_hold(
+  (select platform = 'teams' and status = 'active' and workspace_name = 'Acme Robotics'
+     from ouroboros.chat_connections where id = 'c1300000-0000-4000-8000-000000000004'),
+  'a teams connection inserts and reads back, beside the active Slack one');
+
+select pg_temp.must_hold(
+  (select array_agg(id::text) = array['c1300000-0000-4000-8000-000000000001']
+     from ouroboros.chat_connections
+    where organization_id = 'org-v130' and platform = 'slack' and status = 'active'),
+  'the workspace''s Slack connection is one row, and the teams row is not it');
+
+-- --- chat_channels ------------------------------------------------------------------------------------
+insert into ouroboros.chat_channels
+  (id, organization_id, connection_id, platform, channel_id, channel_name, joined, joined_at,
+   member_count, purpose_tag, created_at, updated_at)
+values
+  ('c1300000-0000-4000-8000-0000000000a1', 'org-v130', 'c1300000-0000-4000-8000-000000000001', 'slack',
+   'C071LOOPS', 'ouroboros-loops', true, now() - interval '2 hours', 24, 'loops',
+   now() - interval '1 hour', now() - interval '1 hour'),
+  ('c1300000-0000-4000-8000-0000000000a2', 'org-v130', 'c1300000-0000-4000-8000-000000000001', 'slack',
+   'C072ALERT', 'helios-alerts', false, null, null, 'alerts',
+   now() - interval '1 hour', now() - interval '1 hour'),
+  ('c1300000-0000-4000-8000-0000000000a3', 'org-v130', 'c1300000-0000-4000-8000-000000000004', 'teams',
+   '19:general', 'General', true, now(), null, null, now(), now()),
+  ('c1300000-0000-4000-8000-0000000000b1', 'org-v130b', 'c1300000-0000-4000-8000-000000000003', 'slack',
+   'C071LOOPS', 'ouroboros-loops', true, now(), null, null, now(), now());
+
+select pg_temp.must_hold(
+  (select is_private = false and archived = false and member_count = 24 and purpose_tag = 'loops'
+     from ouroboros.chat_channels where id = 'c1300000-0000-4000-8000-0000000000a1'),
+  'a channel keeps its id, its name, its member count and its tag; public and live unless said otherwise');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_channels (organization_id, connection_id, platform, channel_id, channel_name)
+    values ('org-v130', 'c1300000-0000-4000-8000-000000000001', 'slack', 'C071LOOPS', 'loops-again')$$,
+  'a channel is known once per connection, by its id', 'chat_channels_channel_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_channels (organization_id, connection_id, platform, channel_id, channel_name)
+    values ('org-v130b', 'c1300000-0000-4000-8000-000000000001', 'slack', 'C0OTHER', 'other')$$,
+  'a channel is its connection''s workspace''s', 'chat_channels_connection_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_channels (organization_id, connection_id, platform, channel_id, channel_name)
+    values ('org-v130', 'c1300000-0000-4000-8000-000000000001', 'teams', 'C0OTHER', 'other')$$,
+  'and on its connection''s platform', 'chat_channels_connection_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_channels (organization_id, connection_id, platform, channel_id, channel_name)
+    values ('org-v130', 'c1300000-0000-4000-8000-000000000001', 'slack', 'C0HASH', '#eng-leads')$$,
+  'a channel name is stored without its #', 'chat_channels_channel_name_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_channels (organization_id, connection_id, platform, channel_id, channel_name)
+    values ('org-v130', 'c1300000-0000-4000-8000-000000000001', 'slack', '', 'nameless')$$,
+  'a channel has an id', 'chat_channels_channel_id_present');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_channels set joined = true where id = 'c1300000-0000-4000-8000-0000000000a2'$$,
+  'a channel the bot is in was joined at some moment', 'chat_channels_joined_at_recorded');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_channels set member_count = -1 where id = 'c1300000-0000-4000-8000-0000000000a1'$$,
+  'a member count is not negative', 'chat_channels_member_count_nonnegative');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_channels set purpose_tag = 'Eng Leads' where id = 'c1300000-0000-4000-8000-0000000000a1'$$,
+  'a purpose tag is a lowercase slug', 'chat_channels_purpose_tag_slug');
+
+-- Not joined is not archived: three channels, three different answers.
+update ouroboros.chat_channels set archived = true, joined = false
+ where id = 'c1300000-0000-4000-8000-0000000000a3';
+select pg_temp.must_hold(
+  (select array_agg(channel_id || ':' || joined || ':' || archived order by channel_id)
+            = array['19:general:false:true', 'C071LOOPS:true:false', 'C072ALERT:false:false']
+     from ouroboros.chat_channels where organization_id = 'org-v130'),
+  'joined = false is representable and is not archived: a channel the bot is not in still exists');
+
+select pg_temp.must_hold(
+  (select joined_at is not null from ouroboros.chat_channels
+    where id = 'c1300000-0000-4000-8000-0000000000a3'),
+  'and a channel the bot has left may remember when it joined');
+
+-- --- notification routes target a channel (the BR.4 amendment) -------------------------------------
+-- Mockup 19's blocking-questions row: a channel post and a DM to on-call, in one binding.
+insert into ouroboros.notification_routes (organization_id, kind, channel, chat_channel_id, dm_on_call)
+  values ('org-v130', 'custom:blocking-questions', 'slack', 'c1300000-0000-4000-8000-0000000000a1', true),
+         ('org-v130', 'loop_failures',             'slack', 'c1300000-0000-4000-8000-0000000000a2', false),
+         ('org-v130', 'custom:on-call-only',       'slack', null, true),
+         ('org-v130', 'needs_you_dm',              'slack', null, false),
+         ('org-v130', 'daily_digest',              'email', null, false);
+
+select pg_temp.must_hold(
+  (select array_agg(r.kind || ' → ' || coalesce('#' || c.channel_name, '-')
+                    || case when r.dm_on_call then ' + DM on-call' else '' end order by r.kind)
+            = array['custom:blocking-questions → #ouroboros-loops + DM on-call',
+                    'custom:on-call-only → - + DM on-call',
+                    'daily_digest → -',
+                    'loop_failures → #helios-alerts',
+                    'needs_you_dm → -']
+     from ouroboros.notification_routes r
+     left join ouroboros.chat_channels c on c.id = r.chat_channel_id
+    where r.organization_id = 'org-v130'),
+  'routes join their channels, and channel + DM on-call is one binding');
+
+select pg_temp.must_hold(
+  (select dm_on_call = false and chat_channel_id is null from ouroboros.notification_routes
+    where organization_id = 'org-v130' and kind = 'daily_digest'),
+  'an email route is unaffected: no channel and no on-call DM by default');
+
+-- A rename is an update of the name, and the route does not notice.
+update ouroboros.chat_channels set channel_name = 'helios-incidents'
+ where id = 'c1300000-0000-4000-8000-0000000000a2';
+select pg_temp.must_hold(
+  (select c.channel_id = 'C072ALERT' and c.channel_name = 'helios-incidents'
+          and c.updated_at > c.created_at
+     from ouroboros.notification_routes r
+     join ouroboros.chat_channels c on c.id = r.chat_channel_id
+    where r.organization_id = 'org-v130' and r.kind = 'loop_failures'),
+  'a rename changes the channel''s name and breaks no route bound to it');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.notification_routes (organization_id, kind, channel)
+    values ('org-v130', 'weekly_insights', 'slack')$$,
+  'an enabled Slack route resolves to a delivery target', 'notification_routes_slack_target');
+
+select pg_temp.must_reject(
+  $$update ouroboros.notification_routes set dm_on_call = false
+     where organization_id = 'org-v130' and kind = 'custom:on-call-only'$$,
+  'and cannot lose its only one while enabled', 'notification_routes_slack_target');
+
+insert into ouroboros.notification_routes (organization_id, kind, channel, enabled)
+  values ('org-v130', 'weekly_insights', 'slack', false);
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.notification_routes
+    where organization_id = 'org-v130' and kind = 'weekly_insights' and not enabled),
+  'a disabled Slack route may be stored with no target, as a locked one is');
+
+select pg_temp.must_reject(
+  $$update ouroboros.notification_routes set enabled = true
+     where organization_id = 'org-v130' and kind = 'weekly_insights'$$,
+  'but not switched on without one', 'notification_routes_slack_target');
+
+select pg_temp.must_hold(
+  (select enabled from ouroboros.notification_routes
+    where organization_id = 'org-v130' and kind = 'needs_you_dm'),
+  'needs_you_dm needs neither: its target is the person the item waits on');
+
+select pg_temp.must_reject(
+  $$update ouroboros.notification_routes set dm_on_call = true
+     where organization_id = 'org-v130' and kind = 'daily_digest'$$,
+  'an email route carries no on-call DM', 'notification_routes_chat_target_slack_only');
+
+select pg_temp.must_reject(
+  $$update ouroboros.notification_routes set chat_channel_id = 'c1300000-0000-4000-8000-0000000000a1'
+     where organization_id = 'org-v130' and kind = 'daily_digest'$$,
+  'and no chat channel', 'notification_routes_chat_target_slack_only');
+
+-- The foreign key is deferred, so each refusal is forced by name — never `all`, which would fire
+-- whatever earlier sections left pending.
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       update ouroboros.notification_routes set chat_channel_id = 'c1300000-0000-4000-8000-0000000000b1'
+        where organization_id = 'org-v130' and kind = 'loop_failures';
+       set constraints ouroboros.notification_routes_chat_channel_fk immediate;
+     end $x$ $q$,
+  'a route cannot target another workspace''s channel', 'notification_routes_chat_channel_fk');
+
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       update ouroboros.notification_routes set chat_channel_id = 'c1300000-0000-4000-8000-0000000000a3'
+        where organization_id = 'org-v130' and kind = 'loop_failures';
+       set constraints ouroboros.notification_routes_chat_channel_fk immediate;
+     end $x$ $q$,
+  'a Slack route cannot target a teams channel — the reserved platform is inert',
+  'notification_routes_chat_channel_fk');
+
+select pg_temp.must_reject(
+  $q$do $x$ begin
+       delete from ouroboros.chat_channels where id = 'c1300000-0000-4000-8000-0000000000a1';
+       set constraints ouroboros.notification_routes_chat_channel_fk immediate;
+     end $x$ $q$,
+  'a channel a route targets cannot be deleted from under it', 'notification_routes_chat_channel_fk');
+
+select pg_temp.must_hold(
+  (select condeferrable and condeferred and confdeltype = 'a'
+     from pg_constraint where conname = 'notification_routes_chat_channel_fk'),
+  'the route''s channel key is deferred and takes no action on delete');
+
+-- The lock is not lifted by a connection: nothing delivers to Slack yet.
+select pg_temp.must_hold(
+  (select bool_and(locked and not delivering and locked_reason = 'connect Slack first')
+     from ouroboros.notification_routes_effective
+    where organization_id = 'org-v130' and channel = 'slack'),
+  'a Slack route still reads locked with an active connection and a joined channel — nothing publishes to Slack yet');
+
+-- --- the app role ------------------------------------------------------------------------------------
+set local role ouroboros_app;
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.chat_connections_public where organization_id = 'org-v130'),
+  'the app role reads connections through the view');
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.chat_channels where organization_id = 'org-v130'),
+  'and reads channels');
+select pg_temp.must_raise(
+  $$delete from ouroboros.chat_connections where organization_id = 'org-v130'$$,
+  '42501', 'the app role cannot delete a connection — revocation is a state');
+select pg_temp.must_raise(
+  $$delete from ouroboros.chat_channels where organization_id = 'org-v130'$$,
+  '42501', 'nor a channel — one that went away is archived');
+reset role;
+
+-- --- a workspace takes all of it with it ---------------------------------------------------------------
+-- Routes and channels leave by different cascade paths; the deferred key is what lets them.
+insert into ouroboros.chat_connections (id, organization_id, platform, workspace_id, workspace_name, bot_token_sealed)
+  values ('c1300000-0000-4000-8000-000000000005', 'org-v130c', 'slack', 'T0GONE', 'gone',
+          'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA');
+insert into ouroboros.chat_channels (id, organization_id, connection_id, platform, channel_id, channel_name)
+  values ('c1300000-0000-4000-8000-0000000000c1', 'org-v130c', 'c1300000-0000-4000-8000-000000000005',
+          'slack', 'C0GONE', 'gone');
+insert into ouroboros.notification_routes (organization_id, kind, channel, chat_channel_id)
+  values ('org-v130c', 'loop_failures', 'slack', 'c1300000-0000-4000-8000-0000000000c1');
+
+delete from ouroboros.organization where "id" = 'org-v130c';
+set constraints ouroboros.notification_routes_chat_channel_fk immediate;
+set constraints ouroboros.notification_routes_chat_channel_fk deferred;
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.chat_connections where organization_id = 'org-v130c')
+  and (select count(*) = 0 from ouroboros.chat_channels where organization_id = 'org-v130c')
+  and (select count(*) = 0 from ouroboros.notification_routes where organization_id = 'org-v130c'),
+  'a workspace takes its connections, their channels and the routes that target them with it');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

@@ -1865,6 +1865,34 @@
 >   never the token — and the recipient's address, which outlives the person: the audit is *what
 >   was sent, to whom*. A deleted workspace takes all four tables' rows with it.
 
+> `V130` ([#531](https://github.com/NobuData/ouroboros/issues/531), BY.1) is the Chat Ops domain's
+> first migration: an installed chat workspace, its channels, and routes that target them.
+>
+> - **`chat_connections`** — one row per (workspace, `platform` `slack | teams`, platform
+>   workspace id): `workspace_name`, `bot_user_id`, `install_meta` (`scopes`, `app_id`,
+>   `app_version`), `installed_by`/`installed_at`, `last_verified_at`. **`bot_token_sealed` is the
+>   vault's text envelope by CHECK** and is in no view: read paths select
+>   `chat_connections_public`, which does not reference the column, and
+>   [`tests/constraints.sql`](tests/constraints.sql) asserts no view depends on it.
+> - **Revocation is a state.** `status` is `active | revoked | error`; `status_detail` carries the
+>   platform's reason and is null exactly when active. A revoked connection may drop its token, an
+>   active one must hold it, a re-install revives the same row, and `ouroboros_app` cannot delete.
+> - **One active Slack connection per workspace** — `chat_connections_one_active_slack`, proven
+>   under a race by [`tests/verify-chat-connection-guard.sh`](tests/verify-chat-connection-guard.sh).
+>   `teams` is reserved for [#547](https://github.com/NobuData/ouroboros/issues/547): storable,
+>   and counted by nothing.
+> - **`chat_channels`** — `channel_id` (the address) and `channel_name` (the label, without `#`)
+>   kept apart so a rename breaks no route; `is_private`, `joined` with `joined_at`,
+>   `member_count`, `purpose_tag`, `archived`. *Not joined* and *archived* are separate facts.
+> - **`notification_routes` gains `chat_channel_id` and `dm_on_call`** (the BR.4 amendment —
+>   the route row is the binding). Only a Slack route carries either; an **enabled** Slack route
+>   has a channel, the on-call DM, or is `needs_you_dm`; and the channel is the route's own
+>   workspace's and platform's, by a deferred foreign key that also keeps a targeted channel from
+>   being deleted. `notification_routes_effective` is unchanged: a Slack route stays locked until
+>   something publishes to Slack ([#536](https://github.com/NobuData/ouroboros/issues/536)).
+> - Connection and channel rows are configuration, not telemetry: they are in no retention class
+>   ([#482](https://github.com/NobuData/ouroboros/issues/482)).
+
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
 > migration *below* its current version — which `validate` rejects, and `migrate`
@@ -3159,6 +3187,23 @@ harness:
 PGPASSWORD=ouroboros ouroboros-db/tests/verify-copilot-sessions.sh
 ```
 
+A workspace's one active Slack connection ([#531](https://github.com/NobuData/ouroboros/issues/531))
+has the same shape, and
+[`tests/verify-chat-connection-guard.sh`](tests/verify-chat-connection-guard.sh) proves it the same
+way:
+
+1. **The guard holds.** A installs a Slack workspace and has not committed; B's install of
+   another for the same org waits, then is refused by `chat_connections_one_active_slack`.
+2. **A rollback does not wedge the org.** A rolls back instead, and B's install succeeds.
+3. **The probe.** With the index dropped, the same race leaves two active Slack connections.
+4. **Orgs do not contend.** Two orgs install at once without waiting.
+5. **Teams is outside the rule.** Two `teams` installs neither wait on an uncommitted Slack one
+   nor are refused.
+
+```bash
+PGPASSWORD=ouroboros ouroboros-db/tests/verify-chat-connection-guard.sh
+```
+
 ### The drift check
 
 Every table BetterAuth uses is hand-ported into a `V###__*.sql` migration here, because
@@ -3293,6 +3338,7 @@ misnamed migration is worth reporting before a database is waited on.
 | `tests/verify-analysis-run-guard.sh` | That two triggers racing to analyse one repo leave one running analysis — and that without `analysis_runs_one_running` they leave two ([#506](https://github.com/NobuData/ouroboros/issues/506)) | yes (one of its own) |
 | `tests/verify-investigation-seq.sh` | That concurrent investigation creates get gapless `RS-###` numbers, a rollback returns its number — and that a lock-free `max + 1` collides ([#608](https://github.com/NobuData/ouroboros/issues/608)) | yes (one of its own) |
 | `tests/verify-copilot-sessions.sh` | That two conversations racing onto one draft leave one active, concurrent appends commit in seq order — and that without the index or the session row lock they do not ([#555](https://github.com/NobuData/ouroboros/issues/555)) | yes (one of its own) |
+| `tests/verify-chat-connection-guard.sh` | That two Slack installs racing onto one org leave one active connection — and that without the index they do not; that `teams` rows are outside the rule ([#531](https://github.com/NobuData/ouroboros/issues/531)) | yes (one of its own) |
 | `scripts/betterauth-schema.mjs --applied` | The applied schema still holds everything BetterAuth expects | yes |
 | `scripts/betterauth-schema.mjs --check` | The library still expects what the committed snapshot describes | yes (an empty one) |
 | `scripts/migrate --config flyway.seed.toml` ×2 | The seed applies, and applies twice without changing anything | yes (a second one) |
@@ -3646,6 +3692,7 @@ ouroboros-db/
 │   ├── V127__research_tool_settings.sql # research_tool_settings (workspace × tool → config + sealed credential; a row is "enabled") and its credential-free view — #629
 │   ├── V128__suggestion_rules.sql    # dry_run_stages.skip_kind/skip_input; dry_run_suggestions: empty proposed_ops (advisory) and null confidence exactly on llm — #563
 │   ├── V129__discard_workflow_draft.sql # discard_workflow_draft(): drops a draft with its current-base draft_operations, resets draft_rev/provenance_summary, closes the active copilot session as discarded — #565
+│   ├── V130__chat_connections_channels.sql # chat_connections (sealed bot token, active|revoked|error, one active Slack per workspace) + chat_connections_public, chat_channels; notification_routes.chat_channel_id/dm_on_call — #531
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -3721,6 +3768,7 @@ ouroboros-db/
     ├── verify-analysis-run-guard.sh  # one running analysis per repo, under a two-session race — #506
     ├── verify-investigation-seq.sh   # gapless RS-### numbers under concurrent creates — #608
     ├── verify-copilot-sessions.sh    # one active copilot session per draft, ordered appends — #555
+    ├── verify-chat-connection-guard.sh # one active Slack connection per org, teams outside the rule — #531
     ├── decision-refs.sql             # BM.1's typed decision refs against the seeded universe — #457
     ├── constraints.sql               # what the schema enforces, asserted against a live database
     └── seed.sql                      # what the seeds put there, asserted against a live database
@@ -3870,7 +3918,9 @@ outside this module alters it.
 | `retention_policies` | `V094` | How long each class of a workspace's data is kept ([#484](https://github.com/NobuData/ouroboros/issues/484), schema for BQ.3 [#482](https://github.com/NobuData/ouroboros/issues/482)) — `data_class`, `days`, `updated_by`, `updated_at` | `(organization_id, data_class)` primary key; class `transcripts\|build_logs\|artifacts\|audit` or `custom:<slug>`; `days` at least 90 for audit and 7 otherwise (`retention_policies_days_floor`); at most 365 for the loop classes and 3650 for audit and `custom:*` (`retention_policies_days_ceiling`, `V101`) |
 | `webhook_endpoints` | `V094`, `V098` | Outbound webhook endpoints ([#484](https://github.com/NobuData/ouroboros/issues/484), schema for BR.3 [#487](https://github.com/NobuData/ouroboros/issues/487)) — `name`, `url`, `hmac_key_sealed`, `event_families`, `siem`, `active`, `description`, `registry_version` | `url` https with no user-info; `hmac_key_sealed` an AD.1 envelope, the only key column; `event_families` 1–64 family wildcards (`audit.* decision.* run.* pr.*`) or exact event types (V098); `siem` ⇒ subscribes to `audit.*`, at most one per workspace (`webhook_endpoints_one_siem_idx`) |
 | `webhook_deliveries` | `V094`, `V098` | The delivery log, one row per attempt ([#484](https://github.com/NobuData/ouroboros/issues/484)) — `event_type`, `event_id`, `attempt`, `status`, `response_code`, `latency_ms`, `response_excerpt`, `attempted_at`, `delivery_key`, `next_attempt_at`, `error` | `(endpoint_id, organization_id)` references its endpoint; `event_type` `family.event` or `ping`, of a family the endpoint subscribes to (`webhook_deliveries_family_subscribed`); `status` `pending\|succeeded\|failed\|dead_lettered` agreeing with the response code; excerpt at most 1024 characters; `next_attempt_at` present exactly while pending; one pending attempt per `delivery_key`, attempt numbers unique per key; `error` at most 512 characters |
-| `notification_routes` | `V094` | Org-level notification routes ([#484](https://github.com/NobuData/ouroboros/issues/484), schema for BR.4 [#488](https://github.com/NobuData/ouroboros/issues/488)) — `kind`, `channel`, `config`, `enabled` | `(organization_id, kind)` primary key; kind `needs_you_dm\|daily_digest\|loop_failures\|weekly_insights` or `custom:<slug>`; channel `email\|slack\|pagerduty`; config only `time` (HH:MM), `weekday`, `recipients`; read through `notification_routes_effective`, which derives `locked`, `locked_reason` and `delivering` |
+| `notification_routes` | `V094`, `V130` | Org-level notification routes ([#484](https://github.com/NobuData/ouroboros/issues/484), schema for BR.4 [#488](https://github.com/NobuData/ouroboros/issues/488)) — `kind`, `channel`, `config`, `enabled`, and since `V130` ([#531](https://github.com/NobuData/ouroboros/issues/531)) `chat_channel_id` and `dm_on_call` | `(organization_id, kind)` primary key; kind `needs_you_dm\|daily_digest\|loop_failures\|weekly_insights` or `custom:<slug>`; channel `email\|slack\|pagerduty`; config only `time` (HH:MM), `weekday`, `recipients`; read through `notification_routes_effective`, which derives `locked`, `locked_reason` and `delivering`; only a Slack route carries a chat target, an enabled one resolves to a channel, the on-call DM or `needs_you_dm`, and the channel is the route's own workspace's and platform's (deferred, no action) |
+| `chat_connections` | `V130` | An installed chat workspace ([#531](https://github.com/NobuData/ouroboros/issues/531), BY.1) — `platform`, `workspace_id`, `workspace_name`, `bot_token_sealed`, `bot_user_id`, `install_meta`, `status`, `status_detail`, `installed_by`, `installed_at`, `last_verified_at` | platform `slack\|teams` (teams reserved, inert); one row per `(organization_id, platform, workspace_id)`; `bot_token_sealed` is the vault's envelope by CHECK, required while active and in no view — read paths select `chat_connections_public`; status `active\|revoked\|error` with `status_detail` null exactly when active; `chat_connections_one_active_slack` allows one active Slack connection per workspace; cascades with the workspace; `ouroboros_app` may select, insert and update — never delete |
+| `chat_channels` | `V130` | A connection's channels ([#531](https://github.com/NobuData/ouroboros/issues/531), BY.1) — `channel_id`, `channel_name`, `is_private`, `joined`, `joined_at`, `member_count`, `purpose_tag`, `archived` | unique per `(connection_id, channel_id)`; the name is stored without `#` and nothing is keyed on it; `joined` requires `joined_at` and is independent of `archived`; `organization_id` and `platform` are the connection's by composite foreign key; cascades with the connection, unless a route targets it; `ouroboros_app` may select, insert and update |
 | `notification_route_sends` | `V103` | Every mail an org-level notification route sent ([#488](https://github.com/NobuData/ouroboros/issues/488), BR.4) — `kind`, `slot_at`, `recipient`, `attempt`, `message_id`, `status`, `error` | Unique `(organization_id, kind, slot_at, recipient, attempt)` so replicas never mail one address twice for a slot; kind `daily_digest\|weekly_insights`; status `claimed\|sent\|failed`, settled once (`sent` without an error, `failed` with one); no foreign key to the route, so re-binding a route does not rewrite what it sent |
 | `service_tokens` | `V091` | Service account bearer tokens, **hash-only** ([#485](https://github.com/NobuData/ouroboros/issues/485)) — `token_hash`, `hint_sealed`, `last_used_at`, `revoked_at` | `token_hash` 64 hex and unique; `hint_sealed` an AD.1 envelope; one live token per account (`service_tokens_one_live_idx`); no column holds the token |
 | `analysis_suggestions` | `V081` | A card or ticket draft ([#507](https://github.com/NobuData/ouroboros/issues/507), decision **A4**) — `repo_ref`, `kind`, `identity_key`, `last_run_id`, `title`, `evidence_line`, `confidence`, `impact`, `needs_spike`, `action_binding`, `status`, `resolved_by`, `resolved_at`, `resolution_reason`, `applied_event_id`, `draft_batch_id` | unique on `(organization_id, repo_ref, identity_key)`, the identity derived from the cited findings and checked at commit; `kind` `build_process\|workflow\|ticket_draft`; `impact` required except on ticket drafts, its `basis` mandatory, an `unquantified` basis needs `needs_spike`; planning is the plane of ticket drafts and spikes only, a workflow suggestion binds the workflow plane; born `open`; `applied` needs its `analysis_suggestion.applied` audit event (not a ticket draft or spike), `dismissed` an actor and a reason, `drafted` a same-workspace batch (ticket draft or spike); resolutions are terminal and frozen; `last_run_id` sets null; cascades with the workspace |

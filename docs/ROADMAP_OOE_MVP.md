@@ -1777,7 +1777,7 @@ Requires a test Slack workspace — provision it during P14 so this phase is not
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 440 | **BY.1** | [#531](https://github.com/NobuData/ouroboros/issues/531) | Chat connections & channel bindings | ouroboros-db | M | AD.1, BR.4 |
+| 440 | **BY.1** | ✅ [#531](https://github.com/NobuData/ouroboros/issues/531) | Chat connections & channel bindings | ouroboros-db | M | AD.1, BR.4 |
 | 441 | **BY.2** | [#532](https://github.com/NobuData/ouroboros/issues/532) | Message & command records | ouroboros-db | M | BM.1, BY.1 |
 | 442 | **BY.3** | [#533](https://github.com/NobuData/ouroboros/issues/533) | Identity links & on-call | ouroboros-db | S | BR.1, BY.1 |
 | 443 | **BY.4** | [#534](https://github.com/NobuData/ouroboros/issues/534) | Chat seeds — mockup-19 parity + probes | ouroboros-db, .github | S | 3.6, BY.2, BY.3 |
