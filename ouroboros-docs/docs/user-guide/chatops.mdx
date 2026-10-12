@@ -1,0 +1,77 @@
+---
+title: "Chat Ops — linking your Slack identity"
+sidebar_label: "Chat Ops"
+sidebar_position: 18
+description: "Linking your Slack identity to your Ouroboros account with /ouro link, the confirmation screen, and unlinking."
+---
+
+Chat Ops lets you work with Ouroboros from Slack. Before anything you do in Slack can count as
+*you*, Ouroboros has to know which account your Slack identity belongs to. That is **linking**,
+and you do it once.
+
+Your workspace's Owner or Maintainer connects Slack first — see
+[Chat Ops — connecting Slack](../administration/chatops.mdx).
+
+:::info[What works today]
+
+Linking and unlinking work now: `/ouro link`, `/ouro unlink` and `/ouro help`. Every other
+`/ouro` command, and answering a decision with a button in Slack, replies that it is not
+available yet. Until then, answer decisions in the [Needs-you inbox](./inbox.mdx).
+
+:::
+
+## Why you link
+
+A button pressed or a command typed in Slack acts with **your** Ouroboros permissions and
+appears in the audit trail under **your** name. A Slack display name can be changed by anyone,
+so Ouroboros never trusts one. It acts only for a Slack identity that a signed-in person has
+confirmed is theirs.
+
+## Link your identity
+
+1. In Slack, type `/ouro link`.
+2. Ouroboros answers with a message only you can see, and a **Link your account** button.
+   The link works once, for fifteen minutes, and only for you.
+3. Choose the button. A page opens in your browser. If you are not signed in to Ouroboros it
+   reads **Sign in to link your Slack identity** — choose **Sign in to continue**, and you
+   return to the page afterwards.
+4. The page reads **Link this Slack identity to your account?** It names your Slack identity
+   and its workspace, and the Ouroboros account it will act as. Check both.
+5. Choose **Link this Slack identity**.
+
+The page then reads **Your Slack identity is linked**, and you can go back to Slack.
+
+**Nothing is linked until you press the button.** Opening the link — or a mail scanner or
+link preview opening it for you — changes nothing.
+
+### The email note on the confirmation screen
+
+The screen says whether the email on your Slack profile matches your Ouroboros account. This is
+a hint, not proof: a match never links anyone by itself, and no match does not stop you.
+Confirm only if the Slack identity shown is yours.
+
+## Unlink
+
+In Slack, type `/ouro unlink`. Ouroboros answers that your identity is unlinked. What you did
+while it was linked stays in the audit trail under your name.
+
+To link again, type `/ouro link`.
+
+## If you press a button before linking
+
+Ouroboros answers, to you alone, *You're not linked* with a **Link your account** button, and
+does nothing else. Link, then press the button again.
+
+## When a link does not work
+
+| The page reads | What happened | What to do |
+| --- | --- | --- |
+| **This link is not valid** | The link was already used, was replaced by a newer one, or its address is incomplete. | Type `/ouro link` again. |
+| **This link has expired** | More than fifteen minutes passed since it was sent. | Type `/ouro link` again. |
+| **You are not a member of that workspace** | You are signed in to an account that is not a member of the Ouroboros workspace this Slack workspace is connected to. | Sign in with the right account, or ask an Owner or Maintainer to invite you. |
+| **Your account already has a Slack identity** | Your account is already linked to another Slack identity in that Slack workspace. | Type `/ouro unlink` from the other identity first. |
+| **Slack is no longer connected** | The Slack app was removed since the link was sent. | Ask an Owner or Maintainer to connect Slack again. |
+
+Each of these pages ends with **Nothing was linked.**
+
+If `/ouro link` answers *Your Slack identity is already linked*, there is nothing to do.

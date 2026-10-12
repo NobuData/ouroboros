@@ -1,12 +1,21 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { Integrations } from "@/app/api/settings-integrations";
+import type {
+  IntegrationTile,
+  Integrations,
+} from "@/app/api/settings-integrations";
 import type { WebhookList } from "@/app/api/settings-webhooks";
 import { settingsAccess } from "@/app/settings/access";
 import { ThemeProvider } from "@/app/theme-provider";
 
-import { FARM_REASON, SLACK_REASON, V2_REASON, integrations, tile } from "../helpers/integrations";
+import {
+  FARM_REASON,
+  SLACK_REASON,
+  V2_REASON,
+  integrations,
+  tile,
+} from "../helpers/integrations";
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 
 /**
@@ -15,10 +24,15 @@ import { maskIds, renderInBothPalettes } from "../helpers/palettes";
  * owning surface is a sheet on this card.
  */
 
-const sheet = vi.fn<(props: { open: boolean; initial: WebhookList | null }) => void>();
+const sheet =
+  vi.fn<(props: { open: boolean; initial: WebhookList | null }) => void>();
 
 vi.mock("@/app/webhooks/webhook-sheet", () => ({
-  WebhookSheet: (props: { open: boolean; onClose: () => void; initial: WebhookList | null }) => {
+  WebhookSheet: (props: {
+    open: boolean;
+    onClose: () => void;
+    initial: WebhookList | null;
+  }) => {
     sheet(props);
 
     return props.open ? (
@@ -37,7 +51,8 @@ vi.mock("next/navigation", () => ({
 
 const { SettingsSaveProvider } = await import("@/app/settings/save-provider");
 const { SettingsSeat } = await import("@/app/settings/settings-seat");
-const { IntegrationsCard } = await import("@/app/integrations/integrations-card");
+const { IntegrationsCard } =
+  await import("@/app/integrations/integrations-card");
 
 /** A webhook list to hand the sheet — only its identity matters here. */
 const WEBHOOKS = { items: [], activeCount: 2 } as unknown as WebhookList;
@@ -54,11 +69,21 @@ function card({
   grid = integrations(),
   mayManage = true,
   webhooks = WEBHOOKS,
-}: { grid?: Integrations; mayManage?: boolean; webhooks?: WebhookList | null } = {}) {
+}: {
+  grid?: Integrations;
+  mayManage?: boolean;
+  webhooks?: WebhookList | null;
+} = {}) {
   return (
-    <SettingsSaveProvider access={settingsAccess(mayManage ? ["owner"] : ["viewer"])}>
+    <SettingsSaveProvider
+      access={settingsAccess(mayManage ? ["owner"] : ["viewer"])}
+    >
       <SettingsSeat section="integrations">
-        <IntegrationsCard integrations={grid} mayManage={mayManage} webhooks={webhooks} />
+        <IntegrationsCard
+          integrations={grid}
+          mayManage={mayManage}
+          webhooks={webhooks}
+        />
       </SettingsSeat>
     </SettingsSaveProvider>
   );
@@ -71,7 +96,9 @@ function card({
  * @returns The list item.
  */
 function tileOf(name: string): HTMLElement {
-  return screen.getByText(name, { selector: ".integrations__name" }).closest("li") as HTMLElement;
+  return screen
+    .getByText(name, { selector: ".integrations__name" })
+    .closest("li") as HTMLElement;
 }
 
 describe("the seeded grid", () => {
@@ -93,7 +120,9 @@ describe("the seeded grid", () => {
     render(card());
 
     expect(tileOf("GitHub")).toHaveClass("integrations__tile--ok");
-    expect(tileOf("GitHub")).toHaveTextContent("acme-robotics · GitHub App installed");
+    expect(tileOf("GitHub")).toHaveTextContent(
+      "acme-robotics · GitHub App installed",
+    );
     expect(tileOf("Webhooks")).toHaveTextContent("2 active");
   });
 
@@ -114,6 +143,62 @@ describe("the seeded grid", () => {
     expect(slack).toHaveTextContent("not built yet");
     expect(slack).toHaveTextContent(SLACK_REASON);
     expect(slack.querySelector("a, button")).toBeNull();
+  });
+
+  it("draws the Slack tile the service sends once its install exists (#535)", () => {
+    // BZ.1 built the install, so the hub answers Slack with the states every other tile has.
+    // Nothing here is Slack-specific: the card draws them as it draws Linear's and GitHub's.
+    const withSlack = (slack: Partial<IntegrationTile>) => ({
+      ...integrations(),
+      tiles: integrations().tiles.map((one) =>
+        one.kind === "slack" ? tile("slack", "Slack", slack) : one,
+      ),
+    });
+    const install = "/api/v1/slack/oauth/install";
+
+    const { rerender } = render(
+      card({
+        grid: withSlack({
+          availability: "disconnected",
+          state: "off",
+          deepLink: { label: "Connect", path: install },
+        }),
+      }),
+    );
+    expect(tileOf("Slack")).toHaveClass("integrations__tile--disconnected");
+    expect(screen.getByRole("link", { name: "Connect Slack" })).toHaveAttribute(
+      "href",
+      install,
+    );
+
+    rerender(
+      card({
+        grid: withSlack({
+          availability: "disconnected",
+          state: "off",
+          reason:
+            "No Slack app is registered on this deployment (OURO_SLACK_CLIENT_ID).",
+        }),
+      }),
+    );
+    expect(tileOf("Slack")).toHaveTextContent(
+      "No Slack app is registered on this deployment",
+    );
+    expect(tileOf("Slack").querySelector("a, button")).toBeNull();
+
+    rerender(
+      card({
+        grid: withSlack({
+          contextLine: "acme-robotics",
+          deepLink: { label: "Reinstall", path: install },
+        }),
+      }),
+    );
+    expect(tileOf("Slack")).toHaveClass("integrations__tile--ok");
+    expect(tileOf("Slack")).toHaveTextContent("acme-robotics");
+    expect(
+      screen.getByRole("link", { name: "Reinstall Slack" }),
+    ).toHaveAttribute("href", install);
   });
 
   it("labels the v2 tiles v2 — not off — and gives them no control", () => {
@@ -150,23 +235,35 @@ describe("the seeded grid", () => {
   it("gives the ok mark to exactly the tiles that are connected and ok", () => {
     render(card());
 
-    const earned = [...document.querySelectorAll(".integrations__tile--ok")].map(
-      (one) => one.querySelector(".integrations__name")?.textContent,
-    );
+    const earned = [
+      ...document.querySelectorAll(".integrations__tile--ok"),
+    ].map((one) => one.querySelector(".integrations__name")?.textContent);
 
     expect(earned).toEqual(["GitHub", "Jira", "Webhooks"]);
   });
 
   it("cannot be made to show an unearned ok mark by any availability × state the service sends", () => {
     const pairs = (
-      ["connected", "disconnected", "unavailable_v2", "unavailable_unbuilt"] as const
+      [
+        "connected",
+        "disconnected",
+        "unavailable_v2",
+        "unavailable_unbuilt",
+      ] as const
     ).flatMap((availability) =>
-      (["ok", "attention", "off"] as const).map((state) => ({ availability, state })),
+      (["ok", "attention", "off"] as const).map((state) => ({
+        availability,
+        state,
+      })),
     );
 
     for (const pair of pairs) {
       const { unmount } = render(
-        card({ grid: integrations({ tiles: [tile("slack", "Slack", { ...pair, contextLine: "#loops" })] }) }),
+        card({
+          grid: integrations({
+            tiles: [tile("slack", "Slack", { ...pair, contextLine: "#loops" })],
+          }),
+        }),
       );
 
       expect(
@@ -178,7 +275,9 @@ describe("the seeded grid", () => {
   });
 
   it("draws the same card in both palettes", () => {
-    const [light, dark] = renderInBothPalettes(<ThemeProvider>{card()}</ThemeProvider>);
+    const [light, dark] = renderInBothPalettes(
+      <ThemeProvider>{card()}</ThemeProvider>,
+    );
 
     expect(maskIds(light!)).toBe(maskIds(dark!));
   });
@@ -188,25 +287,25 @@ describe("Connect and Manage", () => {
   it("deep-link to the surface that owns the connection", () => {
     render(card());
 
-    expect(screen.getByRole("link", { name: "Connect Linear" })).toHaveAttribute(
-      "href",
-      "/settings/sources",
-    );
+    expect(
+      screen.getByRole("link", { name: "Connect Linear" }),
+    ).toHaveAttribute("href", "/settings/sources");
     expect(screen.getByRole("link", { name: "Manage GitHub" })).toHaveAttribute(
       "href",
       "/settings/sources",
     );
-    expect(screen.getByRole("link", { name: "Manage Build farm" })).toHaveAttribute(
-      "href",
-      "/build-farm",
-    );
+    expect(
+      screen.getByRole("link", { name: "Manage Build farm" }),
+    ).toHaveAttribute("href", "/build-farm");
   });
 
   it("are the card's only controls besides the webhook sheet — there is no connection form", () => {
     render(card());
     const region = screen.getByRole("region", { name: "Integrations" });
 
-    expect(region.querySelector("form, input, select, textarea, [role=switch]")).toBeNull();
+    expect(
+      region.querySelector("form, input, select, textarea, [role=switch]"),
+    ).toBeNull();
     expect(within(region).getAllByRole("button")).toHaveLength(1);
   });
 });
@@ -221,8 +320,12 @@ describe("the Webhooks tile", () => {
 
     fireEvent.click(manage);
 
-    expect(screen.getByRole("dialog", { name: "Webhooks" })).toBeInTheDocument();
-    expect(sheet).toHaveBeenLastCalledWith(expect.objectContaining({ open: true, initial: WEBHOOKS }));
+    expect(
+      screen.getByRole("dialog", { name: "Webhooks" }),
+    ).toBeInTheDocument();
+    expect(sheet).toHaveBeenLastCalledWith(
+      expect.objectContaining({ open: true, initial: WEBHOOKS }),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -240,9 +343,13 @@ describe("the Webhooks tile", () => {
     });
     render(card({ grid, webhooks: null }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Add endpoint Webhooks" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add endpoint Webhooks" }),
+    );
 
-    expect(sheet).toHaveBeenLastCalledWith(expect.objectContaining({ open: true, initial: null }));
+    expect(sheet).toHaveBeenLastCalledWith(
+      expect.objectContaining({ open: true, initial: null }),
+    );
   });
 
   it("shows a reader who may not manage its state and no control, dead or otherwise", () => {
@@ -263,7 +370,9 @@ describe("a viewer", () => {
 
     expect(within(region).getAllByRole("listitem")).toHaveLength(9);
     expect(within(region).queryAllByRole("button")).toHaveLength(0);
-    expect(within(region).getByRole("link", { name: "Manage GitHub" })).toBeInTheDocument();
+    expect(
+      within(region).getByRole("link", { name: "Manage GitHub" }),
+    ).toBeInTheDocument();
 
     for (const control of region.querySelectorAll("a, button")) {
       expect(control.getAttribute("aria-disabled")).toBeNull();

@@ -142,6 +142,16 @@ export const SHIPPED_PUBLIC_SURFACE: readonly string[] = [
   // guard still reads on an anonymous route), and someone else's session refuses the link.
   `GET ${API_BASE_PATH}/inbox/answer/:token`,
   `POST ${API_BASE_PATH}/inbox/answer/:token`,
+  // The Slack app's five (#535, BZ.1). The first three are called by Slack, which holds no
+  // session: each is admitted only on a valid `x-slack-signature` over the raw body
+  // (`slack.signature.guard.ts`), and answers its own `401 slack_signature_invalid` otherwise.
+  // The link pages are the answer pages' shape: a single-use token in the path, the session
+  // read when present, and nothing bound without a signed-in member pressing the button.
+  `POST ${API_BASE_PATH}/slack/commands`,
+  `POST ${API_BASE_PATH}/slack/events`,
+  `POST ${API_BASE_PATH}/slack/interactivity`,
+  `GET ${API_BASE_PATH}/slack/link/:token`,
+  `POST ${API_BASE_PATH}/slack/link/:token`,
 ].sort();
 
 /**

@@ -243,6 +243,17 @@ export const WEBHOOK_REGISTRY: readonly WebhookRegistryVersion[] = [
     // CM.5 (#624): a roadmap suggestion was dismissed, and the direct-commit opt-in changed.
     adds: ["audit.roadmap.suggestion_dismissed", "audit.roadmap.policy_updated"],
   },
+  {
+    version: 10,
+    // BZ.1 (#535): the Slack app was installed or stopped working, and a person linked or
+    // unlinked their Slack identity.
+    adds: [
+      "audit.chat.connection_installed",
+      "audit.chat.connection_revoked",
+      "audit.chat.identity_linked",
+      "audit.chat.identity_unlinked",
+    ],
+  },
 ];
 
 /** The newest registry version — what a new endpoint subscribes under. */

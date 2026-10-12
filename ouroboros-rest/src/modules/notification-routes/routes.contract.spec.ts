@@ -108,6 +108,7 @@ describe("the integrations grid on the wire", () => {
             sources: [],
             activeWebhooks: 0,
             runners: new Map(),
+            slack: { configured: false, connection: null },
           }),
         ),
       ),
@@ -133,6 +134,10 @@ describe("the integrations grid on the wire", () => {
               ["online", 1],
               ["offline", 1],
             ]),
+            slack: {
+              configured: true,
+              connection: { workspaceName: "acme-robotics", status: "active", statusDetail: null },
+            },
           }),
         ),
       ),

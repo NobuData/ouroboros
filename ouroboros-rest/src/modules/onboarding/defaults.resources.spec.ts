@@ -176,14 +176,13 @@ describe("the smart-defaults rows", () => {
     expect(defaultRows(facts({ estimator: never }))[2].estimator).toEqual(never);
   });
 
-  it("keeps Slack dim and unlinked — there is no Slack surface to send anyone to", () => {
+  it("keeps Slack optional and leads to the integrations grid, where it is connected (#535)", () => {
     expect(defaultRows(facts())[3]).toEqual({
       key: "slack",
       variant: "slack_future",
       status: "optional",
       text: "Slack: connect after your first PR (optional)",
-      link: null,
-      arrivesWith: "ChatOps",
+      link: { label: "Integrations", path: "/settings#integrations" },
     });
   });
 

@@ -4655,11 +4655,13 @@ PATCH /api/v1/settings/notifications/{kind}   owner/admin · { channel?, config?
 connection, on every request, and nothing is written: GitHub from `github_credentials` (token),
 `github_orgs.installed_at` (App) and its ticket sources; Jira and Linear from their ticket sources
 (unpaused, credential stored); webhooks from active `webhook_endpoints`; the build farm from
-`runners` by the farm's own online rule. `availability` is
-`connected | disconnected | unavailable_v2 | unavailable_unbuilt`: Slack is `unavailable_unbuilt`
-until Chat Ops (mockup 19) exists, and Teams, Datadog and PagerDuty are `unavailable_v2` (BT.3).
+`runners` by the farm's own online rule; Slack from `chat_connections_public` and whether the
+deployment registered a Slack app (#535). `availability` is
+`connected | disconnected | unavailable_v2 | unavailable_unbuilt`: Teams, Datadog and PagerDuty are
+`unavailable_v2` (BT.3), and no tile answers `unavailable_unbuilt` since Slack's install was built.
 Every `deepLink` is the owning surface (`/settings/sources`, `/build-farm`,
-`/settings#integrations` for the webhook sheet); there is no connection form here.
+`/settings#integrations` for the webhook sheet, `/api/v1/slack/oauth/install` for Slack); there is
+no connection form here.
 
 **Org routes sit above BN.3's per-person preferences** and never read or write them. One route per
 (workspace, kind) — `needs_you_dm | daily_digest | loop_failures | weekly_insights | custom:<slug>`
@@ -4728,6 +4730,53 @@ went red:
 | `notification-routes/routes.service.ts` — the lock check | routes |
 | `members/members.repository.ts` — the member query's workspace filter | isolation |
 | `audit-plane/audit-purge.sweeper.ts` — the floor refusal | audit |
+
+## The Slack app
+
+> **Issue:** [#535](https://github.com/NobuData/ouroboros/issues/535) — *[BZ.1] Slack app —
+> install, endpoints & identity* · epic [#528](https://github.com/NobuData/ouroboros/issues/528) ·
+> schema `V130`, `V132` · setup: [`docs/CHATOPS_SETUP.md`](../docs/CHATOPS_SETUP.md)
+
+`src/modules/slack/` is the boundary between Slack and everything else: the install, the three
+request URLs Slack calls, the page that links a Slack identity to an account, and the connection
+status every surface reads. Each deployment registers its own app; what that app is — scopes,
+events, command, paths, manifest version — is fixed in `slack.app.ts`.
+
+```
+GET  /api/v1/slack/oauth/install       owner/admin · 302 to Slack's consent · state cookie
+GET  /api/v1/slack/oauth/callback      owner/admin · exchange, seal, store · 302 to /settings?slack=…
+POST /api/v1/slack/events              Slack · signed · URL verification, app_uninstalled, tokens_revoked
+POST /api/v1/slack/interactivity       Slack · signed · a button press
+POST /api/v1/slack/commands            Slack · signed · /ouro link | unlink | help
+GET  /api/v1/slack/link/{token}        the token's holder · HTML confirm page · binds nothing
+POST /api/v1/slack/link/{token}        the token's holder + a session · binds the identity
+GET  /api/v1/slack/connection          any member · state, workspace, scopes, last verified
+POST /api/v1/slack/connection/verify   owner/admin · auth.test + channel refresh
+```
+
+- **The signature is the only credential on the three request URLs.** `SlackSignatureGuard`
+  checks `X-Slack-Signature` (`v0=` HMAC-SHA256 of `v0:{timestamp}:{raw body}` under the app's
+  signing secret) in constant time, over the bytes as they arrived, and refuses a
+  timestamp more than five minutes off. Every refusal is the same `401 slack_signature_invalid`
+  and a `SlackSecurity` log line. The raw bytes are kept by a `verify` hook on both body parsers
+  (`auth/auth.module.ts`), for this path family only.
+- **Acknowledge, then work.** Each handler answers at once and runs its work detached, replying
+  through the request's `response_url`. Events are deduplicated by `event_id` in memory — both
+  are per process; there is no shared queue.
+- **The bot token is sealed and stays sealed.** The vault encrypts it into
+  `chat_connections.bot_token_sealed` (`ChatConnectionTokenStore` is the fourth registered sealed
+  store, so key rotation sweeps it); reads go through `chat_connections_public`, and only
+  `SlackRepository.sealedToken` touches the column.
+- **A link needs two proofs.** `/ouro link` delivers a single-use, fifteen-minute token (stored
+  as a hash) ephemerally to the Slack user who asked; the page demands a session of a member of
+  the connected workspace and an explicit confirm. An email match is shown as a suggestion and
+  recorded as `email_match_confirmed`; it never links anybody.
+- **Socket Mode** is a development transport, refused at boot when `NODE_ENV=production`. Its
+  two variables, and the app's three, are described in `.env.example` § Slack.
+
+Audited as `chat.connection_installed`, `chat.connection_revoked`, `chat.identity_linked` and
+`chat.identity_unlinked` (webhook registry v10). Commands beyond `link`, `unlink` and `help`, and
+button presses by linked users, answer *not available yet* until #537 and #538.
 
 ## Build logs
 

@@ -54,6 +54,7 @@ import { ServiceAccountsModule } from "../service-accounts/service-accounts.modu
 import { WebhooksModule } from "../webhooks/webhooks.module";
 import { IntegrationsModule } from "../integrations/integrations.module";
 import { NotificationRoutesModule } from "../notification-routes/notification-routes.module";
+import { SlackModule } from "../slack/slack.module";
 import { RetentionModule } from "../retention/retention.module";
 import { AuditPlaneModule } from "../audit-plane/audit-plane.module";
 import { SettingsModule } from "../settings/settings.module";
@@ -411,6 +412,11 @@ export class AppModule {
         // `InboxChannelsModule` and `InsightsModule` for their digests' composers.
         IntegrationsModule,
         NotificationRoutesModule,
+        // BZ.1 ([#535](https://github.com/NobuData/ouroboros/issues/535)) — this deployment's Slack
+        // app under `/api/v1/slack`: the OAuth install, the three signature-verified endpoints Slack
+        // calls, the identity-linking pages and the connection's status. The inbound routes are
+        // anonymous to the session guard and guarded by the signature instead.
+        SlackModule,
         // K.4 ([#102](https://github.com/NobuData/ouroboros/issues/102)) — the poller that
         // fills `github_issues`. After `GithubModule`, which it imports for the client and
         // for the *which workspaces have a token* question; it declares no route at all, so

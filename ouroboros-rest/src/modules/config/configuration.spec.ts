@@ -150,6 +150,7 @@ describe("the development defaults", () => {
       webhookDispatchSeconds: DEFAULT_WEBHOOK_DISPATCH_SECONDS,
       webhookMaxAttempts: DEFAULT_WEBHOOK_MAX_ATTEMPTS,
       webhookInternalAllowlist: [],
+      slackSocketMode: false,
       researchSearxngUrl: "http://localhost:8888",
       researchFetchTimeoutMs: 15_000,
       researchFetchMaxBytes: 5_242_880,
@@ -537,6 +538,84 @@ describe("the secrets", () => {
 // variable is optional and its *absence* is a configuration rather than a failure — a
 // deployment that runs no simulator opens only real runs — so the only rule it has is the one
 // that is about identity rather than about a value.
+describe("the Slack app's variables (#535)", () => {
+  const app = {
+    OURO_SLACK_CLIENT_ID: "1234567890.1234567890123",
+    OURO_SLACK_CLIENT_SECRET: "0123456789abcdef0123456789abcdef",
+    OURO_SLACK_SIGNING_SECRET: "fedcba9876543210fedcba9876543210",
+  };
+
+  it("are all absent on a deployment that registered no Slack app", () => {
+    const configuration = loadConfiguration(testEnvironment());
+
+    expect(configuration.slackClientId).toBeUndefined();
+    expect(configuration.slackClientSecret).toBeUndefined();
+    expect(configuration.slackSigningSecret).toBeUndefined();
+    expect(configuration.slackAppToken).toBeUndefined();
+    expect(configuration.slackSocketMode).toBe(false);
+  });
+
+  it("carry the app's client id, client secret and signing secret when all three are set", () => {
+    const configuration = loadConfiguration(testEnvironment(app));
+
+    expect(configuration.slackClientId).toBe(app.OURO_SLACK_CLIENT_ID);
+    expect(configuration.slackClientSecret).toBe(app.OURO_SLACK_CLIENT_SECRET);
+    expect(configuration.slackSigningSecret).toBe(app.OURO_SLACK_SIGNING_SECRET);
+  });
+
+  it.each(Object.keys(app))("refuse an app missing %s — the three travel together", (missing) => {
+    const partial = Object.fromEntries(Object.entries(app).filter(([name]) => name !== missing));
+
+    expect(failureFor(testEnvironment(partial))).toContain(
+      `${missing}: is required when any of the Slack app's settings is set`,
+    );
+  });
+
+  it("refuse a signing secret too short to be one", () => {
+    expect(failureFor(testEnvironment({ ...app, OURO_SLACK_SIGNING_SECRET: "short" }))).toContain(
+      `${VARIABLES.slackSigningSecret}: expected at least ${MINIMUM_SECRET_LENGTH} characters`,
+    );
+  });
+
+  it("turn Socket Mode on with an app-level token, in development", () => {
+    const configuration = loadConfiguration(
+      testEnvironment({
+        ...app,
+        OURO_SLACK_SOCKET_MODE: "true",
+        OURO_SLACK_APP_TOKEN: "xapp-1-A0-1-abc",
+      }),
+    );
+
+    expect(configuration.slackSocketMode).toBe(true);
+    expect(configuration.slackAppToken).toBe("xapp-1-A0-1-abc");
+  });
+
+  it("refuse Socket Mode without its app-level token", () => {
+    expect(failureFor(testEnvironment({ ...app, OURO_SLACK_SOCKET_MODE: "true" }))).toContain(
+      `${VARIABLES.slackAppToken}: is required when OURO_SLACK_SOCKET_MODE is true`,
+    );
+  });
+
+  it("refuse an app token that is not an app-level token", () => {
+    expect(
+      failureFor(testEnvironment({ ...app, OURO_SLACK_APP_TOKEN: "xoxb-a-bot-token" })),
+    ).toContain(`${VARIABLES.slackAppToken}: expected an app-level token, which starts with xapp-`);
+  });
+
+  it("refuse Socket Mode in production — the signed HTTPS endpoints are the one supported path", () => {
+    expect(
+      failureFor(
+        testEnvironment({
+          ...app,
+          NODE_ENV: "production",
+          OURO_SLACK_SOCKET_MODE: "true",
+          OURO_SLACK_APP_TOKEN: "xapp-1-A0-1-abc",
+        }),
+      ),
+    ).toContain(`${VARIABLES.slackSocketMode}: Socket Mode is for development`);
+  });
+});
+
 describe("OURO_RUN_SIMULATOR_SECRET", () => {
   it("is absent by default, which is a deployment that runs no simulator", () => {
     expect(loadConfiguration(testEnvironment()).runSimulatorSecret).toBeUndefined();

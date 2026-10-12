@@ -2,7 +2,8 @@ import type { RunnerStatus } from "../db/schema";
 import type { IntegrationFacts, SourceFact } from "./integrations.repository";
 import {
   INTEGRATION_KINDS,
-  SLACK_REASON,
+  SLACK_INSTALL_PATH,
+  SLACK_NOT_CONFIGURED_REASON,
   V2_REASON,
   WEBHOOKS_PATH,
   composeIntegrations,
@@ -27,6 +28,7 @@ function facts(overrides: Partial<IntegrationFacts> = {}): IntegrationFacts {
     sources: [],
     activeWebhooks: 0,
     runners: new Map(),
+    slack: { configured: false, connection: null },
     ...overrides,
   };
 }
@@ -97,18 +99,6 @@ describe("the integrations grid", () => {
     expect(composeIntegrations(SEEDED).connectedCount).toBe(4);
   });
 
-  it("renders Slack as honestly absent — unbuilt, not merely off", () => {
-    expect(tile(SEEDED, "slack")).toEqual({
-      kind: "slack",
-      label: "Slack",
-      availability: "unavailable_unbuilt",
-      state: "off",
-      contextLine: null,
-      deepLink: null,
-      reason: SLACK_REASON,
-    });
-  });
-
   it("labels Teams, Datadog and PagerDuty as v2 kinds, distinguishable from unconfigured", () => {
     for (const kind of ["teams", "datadog", "pagerduty"] as const) {
       expect(tile(SEEDED, kind)).toMatchObject({
@@ -126,6 +116,85 @@ describe("the integrations grid", () => {
     );
 
     expect(new Set(links)).toEqual(new Set(["/settings/sources", WEBHOOKS_PATH, "/build-farm"]));
+  });
+});
+
+describe("the Slack tile (#535)", () => {
+  const active = { workspaceName: "acme-robotics", status: "active", statusDetail: null } as const;
+
+  it("says why there is nothing to connect on a deployment with no Slack app", () => {
+    expect(tile(facts(), "slack")).toEqual({
+      kind: "slack",
+      label: "Slack",
+      availability: "disconnected",
+      state: "off",
+      contextLine: null,
+      deepLink: null,
+      reason: SLACK_NOT_CONFIGURED_REASON,
+    });
+  });
+
+  it("offers the install route where there is an app and no install", () => {
+    expect(tile(facts({ slack: { configured: true, connection: null } }), "slack")).toEqual({
+      kind: "slack",
+      label: "Slack",
+      availability: "disconnected",
+      state: "off",
+      contextLine: null,
+      deepLink: { label: "Connect", path: "/api/v1/slack/oauth/install" },
+      reason: null,
+    });
+    expect(SLACK_INSTALL_PATH).toBe("/api/v1/slack/oauth/install");
+  });
+
+  it("is connected, with the Slack workspace's name, once installed — and counts", () => {
+    const grid = composeIntegrations(facts({ slack: { configured: true, connection: active } }));
+
+    expect(grid.tiles.find((t) => t.kind === "slack")).toEqual({
+      kind: "slack",
+      label: "Slack",
+      availability: "connected",
+      state: "ok",
+      contextLine: "acme-robotics",
+      deepLink: { label: "Reinstall", path: SLACK_INSTALL_PATH },
+      reason: null,
+    });
+    expect(grid.connectedCount).toBe(1);
+  });
+
+  it("reads a revoked install as disconnected, with Slack's reason — never a ✓", () => {
+    const revoked = { ...active, status: "revoked", statusDetail: "app_uninstalled" } as const;
+    const grid = composeIntegrations(facts({ slack: { configured: true, connection: revoked } }));
+
+    expect(grid.tiles.find((t) => t.kind === "slack")).toMatchObject({
+      availability: "disconnected",
+      state: "off",
+      contextLine: null,
+      deepLink: { label: "Connect", path: SLACK_INSTALL_PATH },
+      reason: "Slack revoked the app (app_uninstalled).",
+    });
+    expect(grid.connectedCount).toBe(0);
+  });
+
+  it("reads a failing install as connected and needing a look", () => {
+    const failing = { ...active, status: "error", statusDetail: "ratelimited" } as const;
+
+    expect(
+      tile(facts({ slack: { configured: true, connection: failing } }), "slack"),
+    ).toMatchObject({
+      availability: "connected",
+      state: "attention",
+      reason: "ratelimited",
+    });
+  });
+
+  it("keeps an install's state but offers no action once the deployment's app is gone", () => {
+    expect(
+      tile(facts({ slack: { configured: false, connection: active } }), "slack"),
+    ).toMatchObject({
+      availability: "connected",
+      deepLink: null,
+    });
   });
 });
 

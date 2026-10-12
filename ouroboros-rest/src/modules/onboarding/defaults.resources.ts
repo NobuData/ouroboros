@@ -23,6 +23,7 @@
 
 import type { BacklogHealthResource } from "../planning/planning.resources";
 import { projectTimeline, type TimelineFacts, type TimelineResource } from "./launch.timeline";
+import { SETTINGS_PATH } from "./resources";
 
 /** Providers & keys (mockup 07). Mirrors the UI route. */
 export const PROVIDERS_PATH = "/models/providers";
@@ -78,7 +79,10 @@ export interface DefaultRowResource {
   readonly trialCredit?: { readonly cents: number; readonly display: string };
   /** The nightly job's schedule and last run — only on `nightly_estimator`. */
   readonly estimator?: BacklogHealthResource["reestimation"];
-  /** What the row waits for — only on `slack_future`. */
+  /**
+   * What the row waits for. The Slack row carried *ChatOps* until its install was built (BZ.1,
+   * #535) and now carries a link instead; no row sets this today.
+   */
   readonly arrivesWith?: string;
 }
 
@@ -246,9 +250,9 @@ export function defaultRows(
       variant: "slack_future",
       status: "optional",
       text: "Slack: connect after your first PR (optional)",
-      // Dim and unlinked: there is no Slack surface to send anyone to yet.
-      link: null,
-      arrivesWith: "ChatOps",
+      // Still optional and dim; the Slack app's install (BZ.1, #535) is offered from the
+      // integrations grid, so that is where the row leads.
+      link: { label: "Integrations", path: `${SETTINGS_PATH}#integrations` },
     },
   ];
 }

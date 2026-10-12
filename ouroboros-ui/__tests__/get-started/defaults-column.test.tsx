@@ -2,7 +2,11 @@ import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { OnboardingDefaults } from "@/app/api/onboarding";
-import { DefaultsColumn, ReassureStrip, TimelineCard } from "@/app/get-started/defaults-column";
+import {
+  DefaultsColumn,
+  ReassureStrip,
+  TimelineCard,
+} from "@/app/get-started/defaults-column";
 import type { DefaultsPollOptions } from "@/app/get-started/defaults-poll";
 import {
   BASIS_LINES,
@@ -44,7 +48,8 @@ import { settle } from "../helpers/settle";
 let answer: PollAnswer<OnboardingDefaults> | null = null;
 
 const POLL: DefaultsPollOptions = {
-  read: () => (answer === null ? new Promise(() => {}) : Promise.resolve(answer)),
+  read: () =>
+    answer === null ? new Promise(() => {}) : Promise.resolve(answer),
   visible: () => true,
 };
 
@@ -57,23 +62,43 @@ const NOW = () => FIRST_ISSUE_READ_AT;
  * @param extra Anything else to pass.
  * @returns The render.
  */
-function column(initial: OnboardingDefaults = selfHostedDefaults(), extra: Partial<Parameters<typeof DefaultsColumn>[0]> = {}) {
-  return render(<DefaultsColumn initial={{ ok: true, value: initial }} now={NOW} poll={POLL} repo={REPO} {...extra} />);
+function column(
+  initial: OnboardingDefaults = selfHostedDefaults(),
+  extra: Partial<Parameters<typeof DefaultsColumn>[0]> = {},
+) {
+  return render(
+    <DefaultsColumn
+      initial={{ ok: true, value: initial }}
+      now={NOW}
+      poll={POLL}
+      repo={REPO}
+      {...extra}
+    />,
+  );
 }
 
 /** The three regions. */
 const defaults = () => screen.getByRole("region", { name: "Smart defaults" });
-const timeline = () => screen.getByRole("region", { name: "What happens next" });
-const strip = () => screen.getByRole("region", { name: "Why this is safe to try" });
+const timeline = () =>
+  screen.getByRole("region", { name: "What happens next" });
+const strip = () =>
+  screen.getByRole("region", { name: "Why this is safe to try" });
 
 /** The defaults rows, in order. */
-const rows = () => within(within(defaults()).getByRole("list", { name: "What is set up for you" })).getAllByRole("listitem");
+const rows = () =>
+  within(
+    within(defaults()).getByRole("list", { name: "What is set up for you" }),
+  ).getAllByRole("listitem");
 
 /** The timeline rows, in order. */
-const steps = () => within(within(timeline()).getByRole("list", { name: "Projected first loop" })).getAllByRole("listitem");
+const steps = () =>
+  within(
+    within(timeline()).getByRole("list", { name: "Projected first loop" }),
+  ).getAllByRole("listitem");
 
 /** Each timeline row's printed time. */
-const times = () => steps().map((step) => step.querySelector(".timeline__time")!.textContent);
+const times = () =>
+  steps().map((step) => step.querySelector(".timeline__time")!.textContent);
 
 /** A fresh poll answer. */
 function fresh(payload: OnboardingDefaults): PollAnswer<OnboardingDefaults> {
@@ -100,74 +125,131 @@ describe("the defaults card", () => {
   it("shows a self-hosted deployment the BYOK and enroll-a-runner rows and no trial-credit or hosted-runner copy (O6)", () => {
     column();
 
-    expect(within(defaults()).getByText("zero config")).toHaveAttribute("title", DEPLOYMENT_NOTES.self_hosted);
+    expect(within(defaults()).getByText("zero config")).toHaveAttribute(
+      "title",
+      DEPLOYMENT_NOTES.self_hosted,
+    );
 
     const [models, build] = rows();
     expect(rows()).toHaveLength(4);
-    expect(models).toHaveTextContent("Ready: Models: bring your own keys → Providers");
-    expect(within(models!).getByRole("link", { name: "Providers" })).toHaveAttribute("href", "/models/providers");
-    expect(build).toHaveTextContent("Ready: Build: enroll a runner → Build Farm");
-    expect(within(build!).getByRole("link", { name: "Build Farm" })).toHaveAttribute("href", "/build-farm");
+    expect(models).toHaveTextContent(
+      "Ready: Models: bring your own keys → Providers",
+    );
+    expect(
+      within(models!).getByRole("link", { name: "Providers" }),
+    ).toHaveAttribute("href", "/models/providers");
+    expect(build).toHaveTextContent(
+      "Ready: Build: enroll a runner → Build Farm",
+    );
+    expect(
+      within(build!).getByRole("link", { name: "Build Farm" }),
+    ).toHaveAttribute("href", "/build-farm");
 
-    expect(defaults()).not.toHaveTextContent(/managed keys|hosted runner|trial/i);
+    expect(defaults()).not.toHaveTextContent(
+      /managed keys|hosted runner|trial/i,
+    );
     expect(defaults()).not.toHaveTextContent("$");
   });
 
   it("renders a SaaS-flagged fixture's managed rows as sent — forward-compatible with #397", () => {
     column(saasDefaults());
 
-    expect(within(defaults()).getByText("zero config")).toHaveAttribute("title", DEPLOYMENT_NOTES.saas);
+    expect(within(defaults()).getByText("zero config")).toHaveAttribute(
+      "title",
+      DEPLOYMENT_NOTES.saas,
+    );
 
     const [models, build] = rows();
-    expect(models).toHaveTextContent("Models: managed keys with $5 trial credit — bring your own keys anytime");
-    expect(within(models!).getByRole("link", { name: "bring your own keys anytime" })).toHaveAttribute("href", "/models/providers");
-    expect(build).toHaveTextContent("Build: hosted runner for your first loops — enroll your own farm later");
-    expect(within(build!).getByRole("link", { name: "enroll your own farm later" })).toHaveAttribute("href", "/build-farm");
+    expect(models).toHaveTextContent(
+      "Models: managed keys with $5 trial credit — bring your own keys anytime",
+    );
+    expect(
+      within(models!).getByRole("link", {
+        name: "bring your own keys anytime",
+      }),
+    ).toHaveAttribute("href", "/models/providers");
+    expect(build).toHaveTextContent(
+      "Build: hosted runner for your first loops — enroll your own farm later",
+    );
+    expect(
+      within(build!).getByRole("link", { name: "enroll your own farm later" }),
+    ).toHaveAttribute("href", "/build-farm");
   });
 
   it("shows the estimator row's real nightly run, not a static string — and says when it has not run", () => {
     const { unmount } = column();
 
     const estimator = rows()[2]!;
-    expect(estimator).toHaveTextContent("Estimator pre-sizes your backlog overnight");
-    expect(estimator.querySelector(".defaults__affix")).toHaveTextContent(estimatorAffix(estimatorStatus(), new Date(FIRST_ISSUE_READ_AT)));
-    expect(estimator.querySelector(".defaults__affix")).toHaveTextContent(/^last run \S+ ago ✓ · nightly at 02:00 UTC$/);
+    expect(estimator).toHaveTextContent(
+      "Estimator pre-sizes your backlog overnight",
+    );
+    expect(estimator.querySelector(".defaults__affix")).toHaveTextContent(
+      estimatorAffix(estimatorStatus(), new Date(FIRST_ISSUE_READ_AT)),
+    );
+    expect(estimator.querySelector(".defaults__affix")).toHaveTextContent(
+      /^last run \S+ ago ✓ · nightly at 02:00 UTC$/,
+    );
     unmount();
 
     column(
       selfHostedDefaults({
-        rows: [defaultRow({ key: "models" }), defaultRow({ key: "build" }), defaultRow({ key: "estimator", estimator: estimatorStatus({ lastRun: null }) }), defaultRow({ key: "slack" })],
+        rows: [
+          defaultRow({ key: "models" }),
+          defaultRow({ key: "build" }),
+          defaultRow({
+            key: "estimator",
+            estimator: estimatorStatus({ lastRun: null }),
+          }),
+          defaultRow({ key: "slack" }),
+        ],
       }),
     );
 
-    expect(rows()[2]!.querySelector(".defaults__affix")).toHaveTextContent("not run yet · nightly at 02:00 UTC");
+    expect(rows()[2]!.querySelector(".defaults__affix")).toHaveTextContent(
+      "not run yet · nightly at 02:00 UTC",
+    );
   });
 
-  it("draws the Slack row dim and optional, saying what it waits for, with no link until its surface exists", () => {
+  it("draws the Slack row dim and optional, leading to the integrations grid where it is connected (#535)", () => {
     const { unmount } = column();
 
     const slack = rows()[3]!;
     expect(slack).toHaveClass("defaults__row--optional");
-    expect(slack).toHaveTextContent("Optional: Slack: connect after your first PR (optional)");
-    expect(slack.querySelector(".defaults__affix")).toHaveTextContent("arrives with ChatOps");
-    expect(within(slack).queryByRole("link")).toBeNull();
+    expect(slack).toHaveTextContent(
+      "Optional: Slack: connect after your first PR (optional)",
+    );
+    expect(slack.querySelector(".defaults__affix")).toBeNull();
+    expect(
+      within(slack).getByRole("link", { name: "Integrations" }),
+    ).toHaveAttribute("href", "/settings#integrations");
     unmount();
 
-    // When the service sends the row linked (the ChatOps surface, #541), the link renders as sent.
+    // A row the service sends unlinked and waiting — the Slack row before its install was built —
+    // still says what it waits for and offers nothing to follow.
     column(
       selfHostedDefaults({
-        rows: [defaultRow({ key: "models" }), defaultRow({ key: "build" }), defaultRow({ key: "estimator" }), defaultRow({ key: "slack", link: { label: "ChatOps", path: "/chatops" } })],
+        rows: [
+          defaultRow({ key: "models" }),
+          defaultRow({ key: "build" }),
+          defaultRow({ key: "estimator" }),
+          defaultRow({ key: "slack", link: null, arrivesWith: "ChatOps" }),
+        ],
       }),
     );
 
-    expect(within(rows()[3]!).getByRole("link", { name: "ChatOps" })).toHaveAttribute("href", "/chatops");
+    expect(rows()[3]!.querySelector(".defaults__affix")).toHaveTextContent(
+      "arrives with ChatOps",
+    );
+    expect(within(rows()[3]!).queryByRole("link")).toBeNull();
   });
 
   it("marks ready rows with the tick and the optional row with the ring, hidden from the reader who hears the state", () => {
     column();
 
     expect(rows()[0]!.querySelector(".defaults__mark")).toHaveTextContent("✓");
-    expect(rows()[0]!.querySelector(".defaults__mark")).toHaveAttribute("aria-hidden");
+    expect(rows()[0]!.querySelector(".defaults__mark")).toHaveAttribute(
+      "aria-hidden",
+    );
     expect(rows()[3]!.querySelector(".defaults__mark")).toHaveTextContent("○");
   });
 });
@@ -177,7 +259,11 @@ describe("the timeline card", () => {
     column();
 
     expect(steps()).toHaveLength(5);
-    for (const step of steps()) expect(within(step).getByText("projected")).toHaveAttribute("title", PROJECTED_NOTE);
+    for (const step of steps())
+      expect(within(step).getByText("projected")).toHaveAttribute(
+        "title",
+        PROJECTED_NOTE,
+      );
     expect(within(timeline()).getAllByText("projected")).toHaveLength(6);
   });
 
@@ -190,16 +276,22 @@ describe("the timeline card", () => {
     expect(steps()[3]).toHaveClass("timeline__row--you");
     expect(steps()[3]).toHaveTextContent("you review");
     expect(steps()[4]).toHaveClass("timeline__row--end");
-    expect(steps()[4]).toHaveTextContent("merge — only when you say so; dry-run never merges");
+    expect(steps()[4]).toHaveTextContent(
+      "merge — only when you say so; dry-run never merges",
+    );
     expect(steps()[4]!.querySelector(".timeline__node")).toHaveTextContent("○");
-    expect(within(timeline()).getByText(BASIS_LINES.issue_estimate)).toBeInTheDocument();
+    expect(
+      within(timeline()).getByText(BASIS_LINES.issue_estimate),
+    ).toBeInTheDocument();
   });
 
   it("reflects dry-run truth: off, the PR is not a draft and the merge row is the workflow's decision, not yours", () => {
     column(mergingDefaults());
 
     expect(steps()[2]).toHaveTextContent("pull request opens");
-    expect(steps()[4]).toHaveTextContent("merge — as the workflow's final step decides");
+    expect(steps()[4]).toHaveTextContent(
+      "merge — as the workflow's final step decides",
+    );
     expect(steps()[4]!.querySelector(".timeline__node")).toHaveTextContent("●");
     expect(steps()[4]).toHaveClass("timeline__row--end");
   });
@@ -215,7 +307,14 @@ describe("the timeline card", () => {
 
   it("carries the live-upgrade slot (BD.1): a measured row prints its time and drops the label; all measured, the label goes", () => {
     const { unmount } = render(
-      <TimelineCard failure={null} live={[{ key: "loop_starts", at: "0:00" }, { key: "plan_posted", at: "0:48" }]} timeline={projectedTimeline()} />,
+      <TimelineCard
+        failure={null}
+        live={[
+          { key: "loop_starts", at: "0:00" },
+          { key: "plan_posted", at: "0:48" },
+        ]}
+        timeline={projectedTimeline()}
+      />,
     );
 
     expect(times()).toEqual(["0:00", "0:48", "~4 min", "", ""]);
@@ -228,7 +327,10 @@ describe("the timeline card", () => {
     render(
       <TimelineCard
         failure={null}
-        live={projectedTimeline().rows.map((row) => ({ key: row.key, at: "1:00" }))}
+        live={projectedTimeline().rows.map((row) => ({
+          key: row.key,
+          at: "1:00",
+        }))}
         timeline={projectedTimeline()}
       />,
     );
@@ -238,10 +340,17 @@ describe("the timeline card", () => {
   });
 
   it("renders no average-time or percentage claim anywhere on the column (O8) — the mockup's footer does not ship", () => {
-    for (const fixture of [selfHostedDefaults(), saasDefaults(), mergingDefaults(), selfHostedDefaults({ timeline: genericTimeline() })]) {
+    for (const fixture of [
+      selfHostedDefaults(),
+      saasDefaults(),
+      mergingDefaults(),
+      selfHostedDefaults({ timeline: genericTimeline() }),
+    ]) {
       const { container, unmount } = column(fixture);
 
-      expect(container.textContent, fixture.deployment).not.toMatch(FABRICATED_AGGREGATE);
+      expect(container.textContent, fixture.deployment).not.toMatch(
+        FABRICATED_AGGREGATE,
+      );
       expect(container.textContent).not.toMatch(/4m 10s/);
       unmount();
     }
@@ -258,8 +367,15 @@ describe("the reassure strip", () => {
       "The GitHub connection can be paused in one click.",
       "Your keys are sealed in the tenant vault and never leave the control plane.",
     ]);
-    expect(links.map((link) => link.getAttribute("href"))).toEqual(["/settings/policies", "/settings/sources", "/models/providers"]);
-    expect(links[0]).toHaveAttribute("title", claimNote(reassureClaim("draft_only")));
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/settings/policies",
+      "/settings/sources",
+      "/models/providers",
+    ]);
+    expect(links[0]).toHaveAttribute(
+      "title",
+      claimNote(reassureClaim("draft_only")),
+    );
     expect(strip()).toHaveTextContent("(Because: The dry-run policy is on");
     expect(strip()).toHaveTextContent("(#222)");
   });
@@ -274,34 +390,64 @@ describe("the reassure strip", () => {
 
     column(selfHostedDefaults({ reassure: { claims: [], line: "" } }));
 
-    expect(screen.queryByRole("region", { name: "Why this is safe to try" })).toBeNull();
+    expect(
+      screen.queryByRole("region", { name: "Why this is safe to try" }),
+    ).toBeNull();
   });
 
   it("prints a claim whose mechanism has no surface in this app as words, not a link", () => {
     const vault = reassureClaim("vault");
-    render(<ReassureStrip claims={[{ ...vault, mechanism: { ...vault.mechanism, path: null } }]} />);
+    render(
+      <ReassureStrip
+        claims={[{ ...vault, mechanism: { ...vault.mechanism, path: null } }]}
+      />,
+    );
 
     expect(within(strip()).queryByRole("link")).toBeNull();
-    expect(within(strip()).getByText(vault.text)).toHaveAttribute("title", claimNote(vault));
+    expect(within(strip()).getByText(vault.text)).toHaveAttribute(
+      "title",
+      claimNote(vault),
+    );
   });
 });
 
 describe("the states", () => {
   it("draws skeletons while the first read is in flight — and no strip, because nothing is claimed yet", () => {
-    const { container } = render(<DefaultsColumn initial={null} now={NOW} poll={POLL} repo={REPO} />);
+    const { container } = render(
+      <DefaultsColumn initial={null} now={NOW} poll={POLL} repo={REPO} />,
+    );
 
-    expect(screen.getAllByRole("status").map((status) => status.textContent)).toEqual([LOADING_DEFAULTS, LOADING_DEFAULTS]);
-    expect(container.querySelectorAll(".defaults-skeleton__bone")).toHaveLength(9);
-    expect(screen.queryByRole("region", { name: "Why this is safe to try" })).toBeNull();
+    expect(
+      screen.getAllByRole("status").map((status) => status.textContent),
+    ).toEqual([LOADING_DEFAULTS, LOADING_DEFAULTS]);
+    expect(container.querySelectorAll(".defaults-skeleton__bone")).toHaveLength(
+      9,
+    );
+    expect(
+      screen.queryByRole("region", { name: "Why this is safe to try" }),
+    ).toBeNull();
     expect(screen.queryByText("projected")).toBeNull();
   });
 
   it("says why the column could not be read — once as an alert, and quietly on the timeline", () => {
-    render(<DefaultsColumn initial={{ ok: false, reason: "The defaults are busy." }} now={NOW} poll={POLL} repo={REPO} />);
+    render(
+      <DefaultsColumn
+        initial={{ ok: false, reason: "The defaults are busy." }}
+        now={NOW}
+        poll={POLL}
+        repo={REPO}
+      />,
+    );
 
-    expect(screen.getByRole("alert")).toHaveTextContent("The defaults are busy.");
-    expect(within(timeline()).getByText("The defaults are busy.")).not.toHaveAttribute("role");
-    expect(screen.queryByRole("region", { name: "Why this is safe to try" })).toBeNull();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The defaults are busy.",
+    );
+    expect(
+      within(timeline()).getByText("The defaults are busy."),
+    ).not.toHaveAttribute("role");
+    expect(
+      screen.queryByRole("region", { name: "Why this is safe to try" }),
+    ).toBeNull();
   });
 
   it("is re-read on the poll: a dry-run flip reaches the merge row and the draft-only claim without a reload", async () => {
@@ -312,7 +458,9 @@ describe("the states", () => {
     answer = fresh(mergingDefaults());
     await pollNow();
 
-    expect(steps()[4]).toHaveTextContent("merge — as the workflow's final step decides");
+    expect(steps()[4]).toHaveTextContent(
+      "merge — as the workflow's final step decides",
+    );
     expect(screen.queryByText("Nothing is written to main.")).toBeNull();
     expect(within(strip()).getAllByRole("link")).toHaveLength(1);
   });
@@ -321,7 +469,12 @@ describe("the states", () => {
 describe("both themes", () => {
   it("renders the same markup in both palettes", () => {
     const [light, dark] = renderInBothPalettes(
-      <DefaultsColumn initial={{ ok: true, value: selfHostedDefaults() }} now={NOW} poll={POLL} repo={REPO} />,
+      <DefaultsColumn
+        initial={{ ok: true, value: selfHostedDefaults() }}
+        now={NOW}
+        poll={POLL}
+        repo={REPO}
+      />,
     );
 
     expect(maskIds(light!)).toBe(maskIds(dark!));

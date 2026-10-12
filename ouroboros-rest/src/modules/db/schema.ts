@@ -4973,6 +4973,7 @@ export const READ_ONLY_VIEWS = [
   "notification_routes_effective",
   "history_index_entries",
   "workflow_draft_node_provenance",
+  "chat_connections_public",
 ] as const;
 
 /**
@@ -7689,6 +7690,121 @@ export interface TestRunCoverageView {
   delta: string | null;
 }
 
+/** `chat_connections.platform` (V130) — `teams` is reserved and inert. */
+export type ChatPlatform = "slack" | "teams";
+
+/** `chat_connections.status` (V130) — revoked and error both say why in `status_detail`. */
+export type ChatConnectionStatus = "active" | "revoked" | "error";
+
+/** `chat_connections.install_meta` (V130) — what the install granted; each key optional. */
+export interface ChatInstallMeta {
+  /** The scopes Slack granted the bot. */
+  scopes?: string[];
+  /** The Slack app's id (`A07…`). */
+  app_id?: string;
+  /** The version of the app manifest this deployment registered — the header's `app v2.4`. */
+  app_version?: string;
+}
+
+/**
+ * `ouroboros.chat_connections` — an installed chat workspace (V130,
+ * [#531](https://github.com/NobuData/ouroboros/issues/531); written by BZ.1,
+ * [#535](https://github.com/NobuData/ouroboros/issues/535)). **Read through
+ * {@link ChatConnectionsPublicView}**: this table carries the sealed bot token, which only the
+ * code about to call the platform selects.
+ */
+export interface ChatConnectionsTable {
+  id: Generated<string>;
+  organization_id: string;
+  platform: ChatPlatform;
+  /** The platform's own id for the workspace (`T024AB`). */
+  workspace_id: string;
+  workspace_name: string;
+  /** The bot token as the vault's `ouro.v1.…` envelope, bound to this row's id. Never the token. */
+  bot_token_sealed: string | null;
+  bot_user_id: string | null;
+  install_meta: ColumnType<ChatInstallMeta, string | undefined, string>;
+  status: Generated<ChatConnectionStatus>;
+  /** The platform's reason — null exactly when `status` is `active`. */
+  status_detail: string | null;
+  installed_by: string | null;
+  installed_at: ColumnType<Date, Date | undefined, Date>;
+  last_verified_at: Date | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/** `ouroboros.chat_connections_public` — a connection without its bot token (V130). */
+export interface ChatConnectionsPublicView {
+  id: string;
+  organization_id: string;
+  platform: ChatPlatform;
+  workspace_id: string;
+  workspace_name: string;
+  bot_user_id: string | null;
+  install_meta: ChatInstallMeta;
+  status: ChatConnectionStatus;
+  status_detail: string | null;
+  installed_by: string | null;
+  installed_at: Date;
+  last_verified_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+/**
+ * `ouroboros.chat_channels` — a connection's channels (V130): addressed by `channel_id`, drawn
+ * by `channel_name`. `joined` and `archived` are separate facts.
+ */
+export interface ChatChannelsTable {
+  id: Generated<string>;
+  organization_id: string;
+  connection_id: string;
+  platform: ChatPlatform;
+  channel_id: string;
+  /** Without the leading `#`. */
+  channel_name: string;
+  is_private: Generated<boolean>;
+  joined: Generated<boolean>;
+  joined_at: Date | null;
+  member_count: number | null;
+  purpose_tag: string | null;
+  archived: Generated<boolean>;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/** `chat_identity_links.state` (V132) — revoked is kept and final. */
+export type ChatIdentityLinkState = "linked" | "pending" | "revoked";
+
+/** `chat_identity_links.verified_via` (V132) — how a link was established. */
+export type ChatIdentityVerification = "oauth_session" | "email_match_confirmed" | "admin_assigned";
+
+/**
+ * `ouroboros.chat_identity_links` — a platform user is a member (V132,
+ * [#533](https://github.com/NobuData/ouroboros/issues/533)). A pending row holds the SHA-256 of
+ * its single-use link token and an expiry; `user_id` is set by the database from the member.
+ */
+export interface ChatIdentityLinksTable {
+  id: Generated<string>;
+  organization_id: string;
+  connection_id: string;
+  platform_user_id: string;
+  member_id: string | null;
+  /** Copied from the member by trigger — never written here. */
+  user_id: ColumnType<string | null, never, never>;
+  state: Generated<ChatIdentityLinkState>;
+  verified_via: ChatIdentityVerification | null;
+  display_name_cache: string | null;
+  link_token_hash: string | null;
+  expires_at: Date | null;
+  linked_at: Date | null;
+  revoked_at: Date | null;
+  revoked_by: string | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
 export interface Database {
   user: UserTable;
   tenant_domains: TenantDomainsTable;
@@ -7848,6 +7964,10 @@ export interface Database {
   decision_action_attempts: DecisionActionAttemptsTable;
   notification_routes: NotificationRoutesTable;
   notification_route_sends: NotificationRouteSendsTable;
+  chat_connections: ChatConnectionsTable;
+  chat_connections_public: ChatConnectionsPublicView;
+  chat_channels: ChatChannelsTable;
+  chat_identity_links: ChatIdentityLinksTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -8457,6 +8577,73 @@ export const TABLE_COLUMNS = {
     "session_id",
     "suggestion_id",
     "applied_at",
+  ],
+  chat_connections: [
+    "id",
+    "organization_id",
+    "platform",
+    "workspace_id",
+    "workspace_name",
+    "bot_token_sealed",
+    "bot_user_id",
+    "install_meta",
+    "status",
+    "status_detail",
+    "installed_by",
+    "installed_at",
+    "last_verified_at",
+    "created_at",
+    "updated_at",
+  ],
+  chat_connections_public: [
+    "id",
+    "organization_id",
+    "platform",
+    "workspace_id",
+    "workspace_name",
+    "bot_user_id",
+    "install_meta",
+    "status",
+    "status_detail",
+    "installed_by",
+    "installed_at",
+    "last_verified_at",
+    "created_at",
+    "updated_at",
+  ],
+  chat_channels: [
+    "id",
+    "organization_id",
+    "connection_id",
+    "platform",
+    "channel_id",
+    "channel_name",
+    "is_private",
+    "joined",
+    "joined_at",
+    "member_count",
+    "purpose_tag",
+    "archived",
+    "created_at",
+    "updated_at",
+  ],
+  chat_identity_links: [
+    "id",
+    "organization_id",
+    "connection_id",
+    "platform_user_id",
+    "member_id",
+    "user_id",
+    "state",
+    "verified_via",
+    "display_name_cache",
+    "link_token_hash",
+    "expires_at",
+    "linked_at",
+    "revoked_at",
+    "revoked_by",
+    "created_at",
+    "updated_at",
   ],
   workflow_draft_node_provenance: [
     "workflow_id",
@@ -10447,3 +10634,10 @@ export type WebhookEndpoint = Selectable<WebhookEndpointsTable>;
 export type WebhookDelivery = Selectable<WebhookDeliveriesTable>;
 /** A row of `ouroboros.webhook_outbox`, as a `select` returns it. */
 export type WebhookOutboxEvent = Selectable<WebhookOutboxTable>;
+
+/** A row of `ouroboros.chat_connections_public`, as a `select` returns it. */
+export type ChatConnectionPublic = Selectable<ChatConnectionsPublicView>;
+/** A row of `ouroboros.chat_channels`, as a `select` returns it. */
+export type ChatChannel = Selectable<ChatChannelsTable>;
+/** A row of `ouroboros.chat_identity_links`, as a `select` returns it. */
+export type ChatIdentityLink = Selectable<ChatIdentityLinksTable>;

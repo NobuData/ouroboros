@@ -376,6 +376,31 @@ export class AppConfigService {
     return this.config.getOrThrow<readonly string[]>("webhookInternalAllowlist");
   }
 
+  /** `OURO_SLACK_CLIENT_ID` — this deployment's Slack app, or `undefined` when none is registered (#535). */
+  get slackClientId(): string | undefined {
+    return this.config.get<string>("slackClientId");
+  }
+
+  /** `OURO_SLACK_CLIENT_SECRET` — exchanged for a bot token at install (#535). */
+  get slackClientSecret(): string | undefined {
+    return this.config.get<string>("slackClientSecret");
+  }
+
+  /** `OURO_SLACK_SIGNING_SECRET` — what every request from Slack is verified against (#535). */
+  get slackSigningSecret(): string | undefined {
+    return this.config.get<string>("slackSigningSecret");
+  }
+
+  /** `OURO_SLACK_SOCKET_MODE` — whether the development Socket Mode transport is on (#535). */
+  get slackSocketMode(): boolean {
+    return this.config.getOrThrow<boolean>("slackSocketMode");
+  }
+
+  /** `OURO_SLACK_APP_TOKEN` — the app-level token Socket Mode connects with (#535). */
+  get slackAppToken(): string | undefined {
+    return this.config.get<string>("slackAppToken");
+  }
+
   /** `OURO_RESEARCH_SEARXNG_URL` — where the web research tool searches by default (#615). */
   get researchSearxngUrl(): string {
     return this.config.getOrThrow<string>("researchSearxngUrl");
@@ -649,6 +674,11 @@ export class AppConfigService {
       webhookDispatchSeconds: this.webhookDispatchSeconds,
       webhookMaxAttempts: this.webhookMaxAttempts,
       webhookInternalAllowlist: this.webhookInternalAllowlist,
+      slackClientId: this.slackClientId,
+      slackClientSecret: this.slackClientSecret,
+      slackSigningSecret: this.slackSigningSecret,
+      slackSocketMode: this.slackSocketMode,
+      slackAppToken: this.slackAppToken,
       researchSearxngUrl: this.researchSearxngUrl,
       researchFetchTimeoutMs: this.researchFetchTimeoutMs,
       researchFetchMaxBytes: this.researchFetchMaxBytes,

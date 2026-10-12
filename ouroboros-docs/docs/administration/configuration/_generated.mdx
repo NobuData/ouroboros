@@ -485,6 +485,38 @@ How many attempts a delivery gets before it lands in the dead-letter queue. Opti
 
 Internal collectors a webhook may reach despite the SSRF policy, comma-separated: hostnames, IP addresses or CIDR blocks (collector.internal,10.20.0.0/16). Optional; empty means none. By default a webhook may not reach loopback, link-local (including the cloud metadata address 169.254.169.254), RFC1918, carrier-grade NAT or unique-local addresses — at save and again at every delivery. This never relaxes https. Left commented: unset means no internal target is reachable, which is the only safe default for a template that may be copied anywhere.
 
+## Slack — this deployment's own Slack app
+
+### `OURO_SLACK_CLIENT_ID`
+
+**Development default:** unset. Example: `1234567890.1234567890123`
+
+The app's OAuth client id. Not a credential — it appears in the install URL.
+
+### `OURO_SLACK_CLIENT_SECRET`
+
+**Development default:** unset.
+
+The app's OAuth client secret, exchanged for a workspace's bot token at install.
+
+### `OURO_SLACK_SIGNING_SECRET`
+
+**Development default:** unset.
+
+The app's signing secret. Every request Slack sends — an event, a button press, a slash command — is verified against it, over the raw bytes, before anything is parsed.
+
+### `OURO_SLACK_SOCKET_MODE`
+
+**Development default:** unset. Example: `false`
+
+Reach Slack over Socket Mode instead of the three HTTPS endpoints, so a local stack needs no public URL. Development only: ouroboros-rest refuses to boot with it on in production, where the signed HTTPS endpoints are the one supported path. Optional; defaults to false.
+
+### `OURO_SLACK_APP_TOKEN`
+
+**Development default:** unset.
+
+The app-level token (xapp-…, scope connections:write) Socket Mode connects with. Required when OURO_SLACK_SOCKET_MODE is true, unused otherwise.
+
 ## Research — the web search & page reader and the competitor tracker
 
 ### `OURO_RESEARCH_SEARXNG_URL`

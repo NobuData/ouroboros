@@ -178,6 +178,16 @@ const TEMPLATES: Readonly<Record<string, Template>> = {
     f.directCommit === true
       ? "let roadmaps be committed without a pull request"
       : "required a pull request for every roadmap change",
+  "chat.connection_installed": (f) =>
+    typeof f.workspaceName === "string"
+      ? `connected the Slack workspace ${f.workspaceName}`
+      : "connected a Slack workspace",
+  "chat.connection_revoked": (f) =>
+    typeof f.reason === "string"
+      ? `the Slack connection stopped working (${f.reason})`
+      : "the Slack connection stopped working",
+  "chat.identity_linked": () => "linked their Slack identity",
+  "chat.identity_unlinked": () => "unlinked their Slack identity",
 };
 
 /**

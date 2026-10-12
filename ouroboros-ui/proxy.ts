@@ -49,7 +49,18 @@
  * link opens a confirm page the service renders, and a merge-class answer there demands the
  * person's session (decision X5). The session cookie lives on **this** origin, so the mail links
  * here and this file forwards the family, cookie and form body included — the browser travels it,
- * exactly as it travels the OAuth callback. Nothing else under `/api/v1` is forwarded.
+ * exactly as it travels the OAuth callback.
+ *
+ * ## 1c. The Slack app — part of `/api/v1/slack/*`, also answered by `ouroboros-rest`
+ *
+ * Added by [#535](https://github.com/NobuData/ouroboros/issues/535) (BZ.1). Two of its families
+ * are travelled by a browser that needs its session cookie: the install (`oauth/install` and the
+ * `oauth/callback` Slack redirects back to) and the page that links a Slack identity
+ * (`link/<token>`). The other three — `events`, `interactivity`, `commands` — are called by
+ * Slack itself, and are forwarded so that the app's manifest names **one** origin; the body is
+ * forwarded as it arrived, which is what Slack's signature is computed over. The family's JSON
+ * routes (`connection`) are not forwarded: like the rest of `/api/v1`, they are read from the
+ * server. Nothing else under `/api/v1` is forwarded.
  *
  * ## 2. The request's own address, published to the server
  *
@@ -121,6 +132,33 @@ const AUTH_PREFIX = "/api/auth";
 const ANSWER_PREFIX = "/api/v1/inbox/answer/";
 
 /**
+ * The Slack app's forwarded routes (§ 1c): two families a browser travels, and the three request
+ * URLs Slack calls. Written out for the same reason as {@link AUTH_PREFIX}, and matched exactly —
+ * `/api/v1/slack/connection` is not here, and is not forwarded.
+ */
+const SLACK_FAMILIES = ["/api/v1/slack/oauth/", "/api/v1/slack/link/"];
+const SLACK_REQUEST_URLS = [
+  "/api/v1/slack/events",
+  "/api/v1/slack/interactivity",
+  "/api/v1/slack/commands",
+];
+
+/**
+ * Whether a path is one this file forwards to `ouroboros-rest`.
+ *
+ * @param pathname The request's path.
+ * @returns `true` for the auth family, the answer page, and the Slack app's forwarded routes.
+ */
+function forwarded(pathname: string): boolean {
+  return (
+    pathname.startsWith(AUTH_PREFIX) ||
+    pathname.startsWith(ANSWER_PREFIX) ||
+    SLACK_FAMILIES.some((family) => pathname.startsWith(family)) ||
+    SLACK_REQUEST_URLS.includes(pathname)
+  );
+}
+
+/**
  * Next.js's own cache-busting parameter on a React Server Component request —
  * `NEXT_RSC_UNION_QUERY` in `node_modules/next/dist/client/components/app-router-headers.js`.
  *
@@ -140,13 +178,11 @@ const RSC_PARAM = "_rsc";
 export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
 
-  return pathname.startsWith(AUTH_PREFIX) || pathname.startsWith(ANSWER_PREFIX)
-    ? forward(request)
-    : announce(request);
+  return forwarded(pathname) ? forward(request) : announce(request);
 }
 
 /**
- * Forward one auth or answer-page request to `ouroboros-rest`.
+ * Forward one auth, answer-page or Slack-app request to `ouroboros-rest`.
  *
  * The path is passed through unchanged rather than rebuilt from a captured segment: this
  * origin and the service agree on the `/api/auth` prefix, so `/api/auth/callback/github`
@@ -155,13 +191,16 @@ export function proxy(request: NextRequest): NextResponse {
  * the OAuth callback *is* its query string, and dropping it would strip the `code` and the
  * `state` and fail the exchange at the last hop.
  *
- * @param request The incoming request, under {@link AUTH_PREFIX} or {@link ANSWER_PREFIX}.
+ * @param request The incoming request, on a path {@link forwarded} accepts.
  * @returns A rewrite of it onto the service. Method, headers, body and cookies travel with
  *   the rewrite, and the service's answer — `Set-Cookie` included — is what the browser
  *   receives.
  */
 function forward(request: NextRequest): NextResponse {
-  const target = new URL(request.nextUrl.pathname + request.nextUrl.search, restUrl());
+  const target = new URL(
+    request.nextUrl.pathname + request.nextUrl.search,
+    restUrl(),
+  );
 
   return NextResponse.rewrite(target);
 }
@@ -224,7 +263,9 @@ export function requestAddress(url: Pick<URL, "pathname" | "search">): string {
  * **The second** is the answer page's forward (§ 1b) — one family of `/api/v1`, named exactly,
  * because the browser travels it from a mail; the rest of `/api/v1` stays unforwarded.
  *
- * **The third** is the stamper's, and it is written as an exclusion rather than as a list of
+ * **The next five** are the Slack app's (§ 1c), each named exactly for the same reason.
+ *
+ * **The last** is the stamper's, and it is written as an exclusion rather than as a list of
  * protected routes *on purpose*. A list would be the route table kept in two places, which is
  * the drift § *Why this file is not the auth gate* refuses. What is excluded instead is
  * everything that is not a page: `/api/*` (the forwarder's own prefix, and the generated
@@ -253,6 +294,11 @@ export const config = {
   matcher: [
     "/api/auth/:path*",
     "/api/v1/inbox/answer/:path*",
+    "/api/v1/slack/oauth/:path*",
+    "/api/v1/slack/link/:path*",
+    "/api/v1/slack/events",
+    "/api/v1/slack/interactivity",
+    "/api/v1/slack/commands",
     "/((?!api/|_next/|.*\\.(?:ico|png|svg|jpg|jpeg|gif|webp|avif|txt|xml|json|webmanifest)$).*)",
   ],
 };

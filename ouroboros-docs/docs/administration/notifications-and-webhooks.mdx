@@ -49,7 +49,9 @@ Owner or Maintainer changes it and chooses **Save changes**.
 | **Weekly insights report → email** | The week's figures from [Insights](../user-guide/insights.mdx). | **Weekly insights recipients** — addresses separated by commas or new lines; left empty, the Owners and Maintainers. Mondays. |
 
 Switch a route on or off with its switch. A **locked** route cannot be switched on: its channel
-cannot be connected in this version. Slack and PagerDuty are not available yet.
+cannot deliver in this version. PagerDuty cannot be connected yet. Slack can be connected — see
+[Chat Ops — connecting Slack](./chatops.mdx) — but decisions are not delivered to it yet, so
+its route stays locked whether or not Slack is connected.
 
 The routes are the workspace's own mail, and they are separate from each person's mail:
 
@@ -257,8 +259,8 @@ secrets for a moment while you switch. Rotate whenever the secret may have been 
   the REST service's log, and try the server with mailpit's settings first.
 - **The daily digest or weekly report never arrives.** Its route is switched off, or it went to
   the Owners and Maintainers because **Weekly insights recipients** is empty.
-- **A route cannot be switched on.** It is **locked**: Slack and PagerDuty cannot be connected
-  yet.
+- **A route cannot be switched on.** It is **locked**: PagerDuty cannot be connected yet, and
+  decisions are not delivered to Slack yet, even when Slack is connected.
 - **Saving an endpoint is refused because of its URL.** It is not `https`, or its host resolves
   to an internal address. Use a public address, or ask the deployment administrator to allow
   the collector in `OURO_WEBHOOK_INTERNAL_ALLOWLIST`.

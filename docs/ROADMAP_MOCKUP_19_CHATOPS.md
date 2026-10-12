@@ -366,7 +366,7 @@ seeds: connection(app v2.4) · 3 channels · 6-message stream (refs live) ·
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BZ.1 | #535 | 🟡 Open | ouroboros-rest: [BZ.1] Slack app — install, endpoints & identity | OAuth install, signature-verified events/interactivity/slash, linking | mvp, chatops, rest | N (after BY.1/BY.3) | Y | L | ouroboros-rest |
+| BZ.1 | #535 ✅ | 🟢 Done | ouroboros-rest: [BZ.1] Slack app — install, endpoints & identity | OAuth install, signature-verified events/interactivity/slash, linking | mvp, chatops, rest | N (after BY.1/BY.3) | Y | L | ouroboros-rest |
 | BZ.2 | #536 | 🟡 Open | ouroboros-rest: [BZ.2] Card renderer & event publisher | Block Kit kinds, outbox publishing, chat.update lifecycle | mvp, chatops, rest, inbox | N (after BY.2, BN.1, BR.3) | Y | L | ouroboros-rest |
 | BZ.3 | #537 | 🟡 Open | ouroboros-rest: [BZ.3] `/ouro` grammar & dispatcher | The command registry + nine bindings; console mount contract | mvp, chatops, rest | N (after BZ.1, plane APIs) | Y | L | ouroboros-rest |
 | BZ.4 | #538 | 🟡 Open | ouroboros-rest: [BZ.4] Interactive answers & escalation | Button→BN.2 flows, session-confirm gating, timers (C5) | mvp, chatops, rest, inbox | N (after BZ.2, BN.2) | Y | M | ouroboros-rest |
@@ -375,7 +375,13 @@ seeds: connection(app v2.4) · 3 channels · 6-message stream (refs live) ·
 
 ### Issue BZ.1 — ouroboros-rest: [BZ.1] Slack app — install, endpoints & identity
 
-> **GitHub issue:** #535 · **Status:** 🟡 Open · **Parent epic:** #528
+> **GitHub issue:** #535 ✅ · **Status:** 🟢 Done · **Parent epic:** #528
+>
+> **Delivered (#535 — `ouroboros-rest` 0.41.24 (`src/modules/slack/`, nine operations under `/api/v1/slack/*`, tag `chatops`), `ouroboros-ui` 0.156.1 (proxy only), `docs/CHATOPS_SETUP.md`, `ouroboros-docs` 0.4.0; no migration):** **install** — `GET /slack/oauth/install` → Slack's consent → `GET /slack/oauth/callback` (owners/admins; `state` bound to the browser and workspace by an `HttpOnly` cookie; the bot token sealed by the vault into `chat_connections.bot_token_sealed`, registered as the fourth sealed store, never returned or logged; channels read into `chat_channels`; `chat.connection_installed`). **Endpoints** — `POST /slack/{events,interactivity,commands}`, each verified by `v0=` HMAC-SHA256 over the raw bytes in constant time with a ±5 min replay window (`401 slack_signature_invalid`, security-logged), each acknowledged before its work runs; URL-verification handshake; `event_id` dedupe; `app_uninstalled`/`tokens_revoked` flip the connection to `revoked` (`chat.connection_revoked`). **Linking** — `/ouro link` → an ephemeral single-use 15-minute link (stored as a hash) → the REST-rendered page `GET|POST /slack/link/{token}` → session → explicit confirm → `chat_identity_links` (`email_match_confirmed` or `oauth_session`; an email match only ever suggests); `/ouro unlink`; an unlinked button press is answered with the link prompt. **Status** — `GET /slack/connection`, `POST /slack/connection/verify`. **Truth flips** — the Settings Slack tile reads the real connection (`unavailable_unbuilt` is no longer answered by any tile); the onboarding Slack row links to Settings → Integrations. Webhook registry v10 adds the four `audit.chat.*` events. Five `OURO_SLACK_*` variables; Socket Mode is opt-in and refused in production.
+>
+> **Decided with the user:** the endpoints live under `/api/v1/slack/*` (the issue's `/slack/*`, on the API base path); the link confirmation is a REST-rendered page forwarded by `ouroboros-ui/proxy.ts`, as the emailed answer page is — the proxy forwards the install, the link page and Slack's three request URLs, so the manifest names one origin; **the tile flips and the delivery rows wait** — the inbox's Slack channel row and the *Needs-you decisions → Slack DM* route lock stay as they are until BZ.2 (#536) can deliver; Socket Mode is included.
+>
+> **Not delivered, and why:** nothing was run against a real Slack workspace — the install round-trip and the setup-guide walkthrough (acceptance criteria 1 and 5) are verified against a fake of Slack's API only and remain to be walked by a reviewer with a test workspace. There is no shared async queue in `ouroboros-rest`: acknowledged work runs detached in-process and the event dedupe is per-process memory, so a multi-replica deployment can handle a redelivery twice (the handlers are idempotent). `/ouro` subcommands other than `link`, `unlink` and `help`, and button presses by linked users, answer *not available yet* until BZ.3 (#537) and BZ.4 (#538). The onboarding row keeps its `slack_future` variant name. A failed install returns to `/settings?slack=<code>#integrations`, which no UI reads yet (CA.1, #541). Fallout: the seeded workspace's Slack tile now reads connected, so `tests/e2e` `settings-*.png` baselines need regenerating (e2e not run here).
 
 - **Problem Statement:** The foundation (C1/C4): a per-deployment Slack app
   with verified endpoints, org installs, and the linking flow.
@@ -875,7 +881,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    (#79), #41/#46/#16, driver + sandbox + test Slack workspace.
 2. **Phase 1 — Domain:** BY.1 (#531) ✅ → { BY.2 (#532) ✅ ⊕ BY.3 (#533) ✅ } →
    BY.4 (#534) ✅
-3. **Phase 2 — App & services:** BZ.1 (#535) → { BZ.2 (#536) ⊕ BZ.3 (#537) }
+3. **Phase 2 — App & services:** BZ.1 (#535) ✅ → { BZ.2 (#536) ⊕ BZ.3 (#537) }
    → { BZ.4 (#538) ⊕ BZ.5 (#539) } → BZ.6 (#540)
 4. **Phase 3 — UI:** CA.1 (#541) → { CA.2 (#542) ⊕ CA.3 (#543) ⊕
    CA.4 (#544) } → **CA.5 (#545) ✅** *(MVP gate, amending #56)*

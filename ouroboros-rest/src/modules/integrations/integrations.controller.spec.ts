@@ -15,6 +15,7 @@ describe("the integrations controller", () => {
       sources: [],
       activeWebhooks: 1,
       runners: new Map(),
+      slack: { configured: false, connection: null },
     };
     const repository = { facts: jest.fn().mockResolvedValue(facts) };
     const controller = new IntegrationsController(repository as unknown as IntegrationsRepository);

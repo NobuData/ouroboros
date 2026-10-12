@@ -81,7 +81,9 @@ export type AuditSubjectType =
   | "notification_route"
   | "regression_watch_settings"
   | "roadmap_doc"
-  | "roadmap_pipeline_settings";
+  | "roadmap_pipeline_settings"
+  | "chat_connection"
+  | "chat_identity_link";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -627,6 +629,37 @@ export const ROADMAP_SUGGESTION_DISMISSED_EVENT = "roadmap.suggestion_dismissed"
  */
 export const ROADMAP_POLICY_UPDATED_EVENT = "roadmap.policy_updated";
 
+/**
+ * A workspace installed this deployment's Slack app (BZ.1, #535) — an owner or admin completed
+ * the OAuth install. Subject `chat_connection`. The detail carries the Slack workspace's id and
+ * name, the app's id and manifest version, and the granted scopes as a comma-separated list —
+ * never the bot token, which exists only sealed.
+ */
+export const CHAT_CONNECTION_INSTALLED_EVENT = "chat.connection_installed";
+
+/**
+ * A Slack connection stopped working for good (BZ.1, #535): the app was removed, or its token
+ * revoked. Subject `chat_connection`. The detail carries the platform's `reason`
+ * (`app_uninstalled`, `token_revoked`, `invalid_auth`, …) and `source` — the event or the call
+ * that revealed it. A system event: nobody in this product did it.
+ */
+export const CHAT_CONNECTION_REVOKED_EVENT = "chat.connection_revoked";
+
+/**
+ * A person bound their Slack identity to their membership (BY.3 #533's vocabulary; written by
+ * BZ.1, #535), after confirming in a signed-in session. Subject `chat_identity_link`. The detail
+ * carries `chat.connection_id` flattened as `connectionId`, the `platformUserId`, and
+ * `verifiedVia` — `oauth_session` or `email_match_confirmed`.
+ */
+export const CHAT_IDENTITY_LINKED_EVENT = "chat.identity_linked";
+
+/**
+ * A person's Slack identity was unlinked — by themselves, with `/ouro unlink` (BZ.1, #535).
+ * Subject `chat_identity_link`. The link row is revoked and kept, so what they did under it
+ * stays attributable.
+ */
+export const CHAT_IDENTITY_UNLINKED_EVENT = "chat.identity_unlinked";
+
 /* ---------------------------------------------------------------------------
  * The audit plane itself — BR.2 ([#486](https://github.com/NobuData/ouroboros/issues/486)).
  *
@@ -741,6 +774,10 @@ export const AUDIT_ACTIONS = [
   RESEARCH_WATCH_POLICY_UPDATED_EVENT,
   ROADMAP_SUGGESTION_DISMISSED_EVENT,
   ROADMAP_POLICY_UPDATED_EVENT,
+  CHAT_CONNECTION_INSTALLED_EVENT,
+  CHAT_CONNECTION_REVOKED_EVENT,
+  CHAT_IDENTITY_LINKED_EVENT,
+  CHAT_IDENTITY_UNLINKED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

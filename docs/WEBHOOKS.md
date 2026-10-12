@@ -66,6 +66,10 @@ purge's per-workspace record — cutoff, tier, `removed` and `held`).
 **Registry version 7** (#488) adds an org notification route change:
 `audit.notification_route.updated` (the route's kind, the changed fields, and each field's value
 before and after).
+**Registry version 10** (#535) adds the Slack app's four: `audit.chat.connection_installed` (the
+Slack workspace, the app's manifest version and the granted scopes — never the bot token),
+`audit.chat.connection_revoked` (the platform's reason), `audit.chat.identity_linked` (the Slack
+user id and how the link was verified) and `audit.chat.identity_unlinked`.
 
 The full list is `GET /api/v1/settings/webhooks` → `registry.eventTypes`.
 

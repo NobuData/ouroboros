@@ -8,6 +8,7 @@
  * Jira/Linear ticket_sources of that kind
  * webhooks    webhook_endpoints (active)
  * build farm  runners (by status, removed excluded)
+ * Slack       chat_connections_public (the token-less view) · whether the deployment has an app
  * ```
  *
  * Read directly rather than through each plane's service, as onboarding does (`OnboardingModule`):
@@ -19,8 +20,14 @@
 import { Injectable } from "@nestjs/common";
 import { sql } from "kysely";
 
+import { AppConfigService } from "../config/config.service";
 import { DatabaseService } from "../db/db.service";
-import type { RunnerStatus, TicketSourceKind, TicketSourceStatus } from "../db/schema";
+import type {
+  ChatConnectionStatus,
+  RunnerStatus,
+  TicketSourceKind,
+  TicketSourceStatus,
+} from "../db/schema";
 
 /** One ticket source, as the hub needs it. */
 export interface SourceFact {
@@ -40,6 +47,20 @@ export interface GithubOrgFact {
   readonly appInstalled: boolean;
 }
 
+/** The workspace's Slack install (BZ.1, #535), as the hub needs it. */
+export interface SlackFact {
+  /** The deployment has a Slack app to install (`OURO_SLACK_CLIENT_ID` and its secret). */
+  readonly configured: boolean;
+  /** The install, or null for a workspace that never installed. */
+  readonly connection: {
+    /** The Slack workspace's name — `acme-robotics`. */
+    readonly workspaceName: string;
+    readonly status: ChatConnectionStatus;
+    /** The platform's reason, on a connection that is not active. */
+    readonly statusDetail: string | null;
+  } | null;
+}
+
 /** Everything the tiles are composed from. */
 export interface IntegrationFacts {
   /** A workspace GitHub token is stored (K.4's `github_credentials`). */
@@ -51,6 +72,8 @@ export interface IntegrationFacts {
   readonly activeWebhooks: number;
   /** Runners in the fleet (removed excluded), by status. */
   readonly runners: ReadonlyMap<RunnerStatus, number>;
+  /** The Slack install and whether one can be made. */
+  readonly slack: SlackFact;
 }
 
 /** The ticket-source kinds the grid shows a tile for. */
@@ -58,7 +81,10 @@ const SOURCE_KINDS: readonly TicketSourceKind[] = ["github", "jira", "linear"];
 
 @Injectable()
 export class IntegrationsRepository {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly config: AppConfigService,
+  ) {}
 
   /**
    * Every fact the grid is composed from, for one workspace.
@@ -68,7 +94,7 @@ export class IntegrationsRepository {
    */
   async facts(organizationId: string): Promise<IntegrationFacts> {
     const db = this.database.db;
-    const [token, orgs, sources, webhooks, runners] = await Promise.all([
+    const [token, orgs, sources, webhooks, runners, slack] = await Promise.all([
       db
         .selectFrom("github_credentials")
         .select("organization_id")
@@ -107,6 +133,12 @@ export class IntegrationsRepository {
         .where("status", "<>", "removed")
         .groupBy("status")
         .execute(),
+      db
+        .selectFrom("chat_connections_public")
+        .select(["workspace_name", "status", "status_detail"])
+        .where("organization_id", "=", organizationId)
+        .where("platform", "=", "slack")
+        .executeTakeFirst(),
     ]);
 
     return {
@@ -125,6 +157,18 @@ export class IntegrationsRepository {
       })),
       activeWebhooks: Number(webhooks?.count ?? 0),
       runners: new Map(runners.map((row) => [row.status, Number(row.count)])),
+      slack: {
+        configured:
+          this.config.slackClientId !== undefined && this.config.slackClientSecret !== undefined,
+        connection:
+          slack === undefined
+            ? null
+            : {
+                workspaceName: slack.workspace_name,
+                status: slack.status,
+                statusDetail: slack.status_detail,
+              },
+      },
     };
   }
 }

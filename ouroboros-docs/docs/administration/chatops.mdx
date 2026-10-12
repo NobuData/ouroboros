@@ -1,0 +1,219 @@
+---
+title: "Chat Ops — connecting Slack"
+sidebar_label: "Chat Ops (Slack)"
+sidebar_position: 15
+description: "Registering your deployment's Slack app, installing it into a workspace, and how its requests are verified."
+---
+
+Chat Ops brings Ouroboros into Slack. This page is for the person who sets it up. It covers:
+
+- registering the deployment's own Slack app;
+- giving the deployment the app's credentials;
+- installing the app into a workspace, and checking that it works;
+- how Ouroboros verifies what Slack sends it.
+
+How each person links their own Slack identity is in the User Guide's
+[Chat Ops](../user-guide/chatops.mdx).
+
+:::info[What works today]
+
+Connecting Slack and linking identities work now. In Slack, `/ouro link`, `/ouro unlink` and
+`/ouro help` work. Every other `/ouro` command, and answering a decision with a button in
+Slack, replies that it is not available yet and changes nothing. The
+**Needs-you decisions → Slack DM** notification route stays locked until decisions can be
+delivered to Slack.
+
+:::
+
+## Each deployment registers its own app
+
+A self-hosted deployment cannot use anybody else's Slack app. The deployment administrator
+creates one Slack app for the deployment; an Owner or Maintainer of each Ouroboros workspace then
+installs it into their Slack workspace.
+
+You need:
+
+- a Slack workspace where you may create and install apps;
+- the deployment's public address — the value of <EnvVar name="OURO_UI_URL" />, such as
+  `https://ouroboros.example.com`. It must be HTTPS and reachable from Slack.
+
+## Create the app
+
+At [api.slack.com/apps](https://api.slack.com/apps) choose **Create New App**, then
+**From a manifest**. Pick the workspace and paste this manifest, replacing every
+`https://ouroboros.example.com` with your deployment's address:
+
+```yaml
+display_information:
+  name: Ouroboros
+  description: Answer what your loops are waiting on, from Slack.
+features:
+  bot_user:
+    display_name: Ouroboros
+    always_online: true
+  slash_commands:
+    - command: /ouro
+      url: https://ouroboros.example.com/api/v1/slack/commands
+      description: Ouroboros commands
+      usage_hint: link | unlink | help
+      should_escape: false
+oauth_config:
+  redirect_urls:
+    - https://ouroboros.example.com/api/v1/slack/oauth/callback
+  scopes:
+    bot:
+      - chat:write
+      - commands
+      - channels:read
+      - groups:read
+      - im:write
+      - users:read
+      - users:read.email
+settings:
+  event_subscriptions:
+    request_url: https://ouroboros.example.com/api/v1/slack/events
+    bot_events:
+      - app_uninstalled
+      - tokens_revoked
+  interactivity:
+    is_enabled: true
+    request_url: https://ouroboros.example.com/api/v1/slack/interactivity
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
+```
+
+### The four addresses
+
+All four are on the deployment's one public address.
+
+| Slack setting | Address |
+| --- | --- |
+| **Event Subscriptions** → Request URL | `/api/v1/slack/events` |
+| **Interactivity & Shortcuts** → Request URL | `/api/v1/slack/interactivity` |
+| **Slash Commands** → `/ouro` → Request URL | `/api/v1/slack/commands` |
+| **OAuth & Permissions** → Redirect URL | `/api/v1/slack/oauth/callback` |
+
+### The scopes
+
+The app asks for seven bot scopes and no user scopes. None of them reads message content.
+
+| Scope | What Ouroboros uses it for |
+| --- | --- |
+| `chat:write` | Posting messages as the app in channels it was added to. |
+| `commands` | The `/ouro` command. |
+| `channels:read` | Listing public channels, so a channel can be chosen by name. |
+| `groups:read` | The same, for private channels the app was invited to. |
+| `im:write` | Opening a direct message with a person. |
+| `users:read` | A person's display name on the linking screen. |
+| `users:read.email` | A suggestion on the linking screen: whether the Slack profile's email matches the signed-in account. It never links anyone by itself. |
+
+## Give the deployment the app's credentials
+
+Copy three values from the app's **Basic Information** page into the REST service's
+environment:
+
+- <EnvVar name="OURO_SLACK_CLIENT_ID" /> — the **Client ID**.
+- <EnvVar name="OURO_SLACK_CLIENT_SECRET" /> — the **Client Secret**.
+- <EnvVar name="OURO_SLACK_SIGNING_SECRET" /> — the **Signing Secret**.
+
+Set all three or none: the REST service refuses to start with only some of them. Restart it
+after setting them.
+
+Slack checks the Event Subscriptions address the moment you save it. The deployment must
+already be running with the signing secret set, or Slack reports the address as unverified.
+If it does, set the variables, restart the REST service, and choose **Retry** in Slack.
+
+**With none of the three set**, the Slack tile in Settings reads **not connected** with
+*No Slack app is registered on this deployment (OURO_SLACK_CLIENT_ID).* and offers nothing to
+press.
+
+## Install the app into a workspace
+
+An Owner or Maintainer installs it:
+
+1. Open the **Integrations** section of <UiPath path="Settings" />.
+2. On the **Slack** tile, choose **Connect**.
+3. Slack shows what the app asks for. Approve it.
+
+You return to Settings, and the Slack tile shows the Slack workspace's name. **Reinstall** on
+the tile runs the same steps again — use it after the app's scopes change.
+
+One Slack workspace connects to one Ouroboros workspace. The token Slack grants is encrypted
+before it is stored, is never shown again, and is never written to a log.
+
+### What the tile says
+
+| The tile reads | It means |
+| --- | --- |
+| The Slack workspace's name | Connected and working. |
+| **not connected**, with **Connect** | The deployment has a Slack app; this workspace has not installed it. |
+| **not connected**, with *Slack revoked the app (…)* | The app was removed from the Slack workspace, or its token was revoked. **Connect** installs it again. |
+| **not connected**, with *No Slack app is registered on this deployment* | The three variables are not set. |
+| The workspace's name, marked as needing attention | Installed, but Slack is answering with an error. The tile gives Slack's reason. |
+
+Installing, and the connection being revoked, are both recorded in the
+[audit trail](./retention-audit-lifecycle.mdx), as is every identity a person links or unlinks.
+
+## Check that it works
+
+- Slack's **Event Subscriptions** page shows the request URL as **Verified**.
+- The **Slack** tile shows the Slack workspace's name.
+- In Slack, `/ouro help` answers, visible only to you.
+- `/ouro link` answers with a **Link your account** button, and the page it opens completes
+  the link. See [Chat Ops](../user-guide/chatops.mdx) in the User Guide.
+- Removing the app from the Slack workspace turns the tile to **not connected**, with
+  Slack's reason.
+
+## How requests from Slack are verified
+
+Slack calls three addresses: events, button presses and the `/ouro` command. Ouroboros trusts
+nothing about such a request except its signature.
+
+Slack signs each request with the app's signing secret. Ouroboros computes the same signature
+over the request exactly as it arrived and compares the two. A request that is unsigned, signed
+with another secret, altered after signing, or more than five minutes old is refused, and the
+refusal is logged. Nothing in a refused request is read or acted on.
+
+Because requests older than five minutes are refused, **keep the server's clock
+synchronised**. A clock that drifts makes Slack's genuine requests look like replays.
+
+Ouroboros acknowledges every request at once and does the work afterwards, so Slack never
+times a command out. An event Slack sends twice is handled once.
+
+## Development: Socket Mode
+
+A stack on your own machine has no public address for Slack to call. For development only,
+the app can connect out to Slack instead:
+
+1. In the app's settings, turn **Socket Mode** on.
+2. Under **Basic Information** → **App-Level Tokens**, create a token with the
+   `connections:write` scope. It begins `xapp-`.
+3. Set <EnvVar name="OURO_SLACK_SOCKET_MODE" /> to `true` and
+   <EnvVar name="OURO_SLACK_APP_TOKEN" /> to that token, alongside the three variables above.
+
+Events, button presses and `/ouro` then arrive over that connection. The redirect address can
+be `http://localhost:3000/api/v1/slack/oauth/callback`.
+
+:::caution[Not for production]
+
+Socket Mode is a development convenience. The REST service refuses to start with
+`OURO_SLACK_SOCKET_MODE=true` in production; HTTPS with verified signatures is the only
+supported way to run it.
+
+:::
+
+## When something is wrong
+
+- **Slack will not verify the Event Subscriptions address.** The signing secret is not set,
+  the REST service was not restarted after setting it, or the deployment's address is not
+  reachable from Slack over HTTPS.
+- **`/ouro` answers with Slack's own error, such as *dispatch_failed*.** The same causes —
+  or the server's clock is more than five minutes out.
+- **Connect returns to Settings and the tile still reads not connected.** The install was
+  declined in Slack, took longer than ten minutes, or was started in one browser and finished
+  in another. Choose **Connect** again. If that Slack workspace is already connected to a
+  different Ouroboros workspace, it cannot be connected to a second one.
+- **The tile turned to not connected by itself.** The app was removed from the Slack
+  workspace or its token was revoked. Choose **Connect** to install it again; people's links
+  are kept.
