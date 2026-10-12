@@ -4,12 +4,14 @@ import type { DecisionRef } from "./decision.types";
 import {
   NO_FIGURE,
   decisionNoun,
+  decisionShortId,
   estimatePhrase,
   estimateSeconds,
   formatDuration,
   inboxActions,
   inboxHead,
   outcomeWords,
+  parseDecisionShortId,
   refsOf,
   resolvedSubject,
   resolvedSummary,
@@ -73,6 +75,26 @@ describe("the head (X8)", () => {
     expect(estimatePhrase(4)).toBe("About 10 seconds of your time.");
     expect(estimatePhrase(118)).toBe("About 120 seconds of your time.");
     expect(estimatePhrase(121)).toBe("About 2 minutes of your time.");
+  });
+});
+
+describe("decisionShortId, parseDecisionShortId", () => {
+  it("prints an item's number as the id a card shows", () => {
+    expect(decisionShortId(231)).toBe("q-231");
+  });
+
+  it.each([
+    ["q-231", 231],
+    ["Q-231", 231],
+    ["q231", 231],
+    ["231", 231],
+    [" q-7 ", 7],
+  ])("reads %s back", (typed, shortSeq) => {
+    expect(parseDecisionShortId(typed)).toBe(shortSeq);
+  });
+
+  it.each(["q-", "question", "q-12a", "-3", "q-1234567890", ""])("refuses %j", (typed) => {
+    expect(parseDecisionShortId(typed)).toBeUndefined();
   });
 });
 

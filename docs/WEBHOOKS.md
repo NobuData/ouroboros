@@ -70,6 +70,10 @@ before and after).
 Slack workspace, the app's manifest version and the granted scopes — never the bot token),
 `audit.chat.connection_revoked` (the platform's reason), `audit.chat.identity_linked` (the Slack
 user id and how the link was verified) and `audit.chat.identity_unlinked`.
+**Registry version 11** (#537) adds `audit.chat.command_invoked`: somebody typed an `/ouro`
+command — the surface, the command, how it ended (`ok`, `error`, `denied`, `unlinked` or
+`async_pending`), the connection and channel it came through, the platform's user id and the
+grammar version. Never the arguments or the text typed.
 
 The full list is `GET /api/v1/settings/webhooks` → `registry.eventTypes`.
 

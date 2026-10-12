@@ -9,7 +9,13 @@
  * inbox.feed / controller  GET /api/v1/inbox/feed — the sidebar badge
  * inbox.queue / controller GET /api/v1/inbox, /resolved, /stats, snooze (BN.4, #464)
  * inbox.repository         exported: the asking items BN.3's mails (#463) list
+ * question.lookup          exported, read-only: `q-231` → the item (#537)
  * ```
+ *
+ * {@link InboxQueueService} is exported too, for the `/ouro` grammar (#537): `status` reads the
+ * queue's head count and the hints endpoint completes open questions from the same read the page
+ * makes, so the chat line and the Needs-You pill cannot disagree.
+ *
  *
  * It imports only `DbModule`, `AuditModule` and the scheduler, so every plane can import it for the registry and
  * the watcher without a cycle. **Emitter adapters live with their plane** — the gate engine's,
@@ -31,6 +37,7 @@ import { CapabilityRepository } from "../tenancy/capability.repository";
 import { InboxFeedService } from "./inbox.feed";
 import { InboxQueueService } from "./inbox.queue";
 import { InboxRepository } from "./inbox.repository";
+import { QuestionLookupRepository } from "./question.lookup.repository";
 
 @Module({
   imports: [DbModule, AuditModule, ScheduleModule.forRoot()],
@@ -44,8 +51,16 @@ import { InboxRepository } from "./inbox.repository";
     InboxFeedService,
     InboxRepository,
     InboxQueueService,
+    QuestionLookupRepository,
     CapabilityRepository,
   ],
-  exports: [DecisionKindRegistry, DecisionLifecycle, DecisionSourceWatcher, InboxRepository],
+  exports: [
+    DecisionKindRegistry,
+    DecisionLifecycle,
+    DecisionSourceWatcher,
+    InboxRepository,
+    InboxQueueService,
+    QuestionLookupRepository,
+  ],
 })
 export class DecisionsModule {}

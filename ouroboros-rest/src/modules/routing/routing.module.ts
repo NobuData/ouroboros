@@ -56,8 +56,11 @@
  * stats.service.ts           load, compose, remember — GET /routing and GET /routing/spend
  * ```
  *
- * **`ResolutionService` is the one export**, unchanged: the editor's service is this module's
- * own controller's dependency and nothing outside reaches it. What changed is that the engine
+ * **`ResolutionService` is the export every plane consumes**, unchanged. The editor's service,
+ * `RoutingManagementService`, is exported beside it for exactly one caller — `/ouro route` (BZ.3,
+ * [#537](https://github.com/NobuData/ouroboros/issues/537)), which must save through the same
+ * method `PUT /routing/routes/{taskKind}` does or it would be a second way to edit a route. What
+ * changed earlier is that the engine
  * now has a controller of its own — `SimulateController` injects the service and nothing else,
  * which is how *"the simulator calls the same code execution will"* is a fact about the
  * dependency graph rather than a sentence in a comment.
@@ -101,16 +104,18 @@ import { SimulateController } from "./simulate.controller";
     RoutingStatsRepository,
     RoutingStatsCache,
   ],
-  // The one export, and the internal contract Z.4 (#197), AB.5 (#211) and CH.6 (#589) were
+  // `ResolutionService` is the internal contract Z.4 (#197), AB.5 (#211) and CH.6 (#589) were
   // all told to consume. Both repositories stay private: a consumer reaching past the service
   // would be a consumer holding rows instead of a resolution, and rows carry no explanations.
-  // `RoutingManagementService` stays private for the sharper version of the same reason — it
-  // writes, and a module that could inject it could edit another surface's routes.
+  // `RoutingManagementService` writes, so it is exported for one caller only: `/ouro route`
+  // (#537), which is the editor's own save typed in chat — the same validation, revision and
+  // audit as `PUT /routing/routes/{taskKind}`, because it is the same method. The role gate that
+  // route carries is the dispatcher's there (owner/admin), and nothing else may import it.
   // `RoutingStatsService` stays private too, and that is a decision rather than an oversight:
   // AB.4 (#210) is a UI surface and reads `GET /routing/spend` over HTTP like any other client,
   // so exporting it would only create a second way into the same numbers. `RoutingStatsCache`
   // is a provider rather than a global for the same reason `PricingCache` is — the bound is
   // one map per process, and a module that could inject it could drop another surface's.
-  exports: [ResolutionService],
+  exports: [ResolutionService, RoutingManagementService],
 })
 export class RoutingModule {}

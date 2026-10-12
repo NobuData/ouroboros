@@ -23,6 +23,8 @@ import type { DecisionChannel, DecisionItemStatus, DecisionSeverity } from "../d
 /** One item as the queue reads it. */
 export interface InboxItemRow {
   readonly id: string;
+  /** `decision_items.short_seq` — the workspace's own number for the item, shown as `q-231` (#537). */
+  readonly shortSeq: number;
   readonly kindId: string;
   readonly kindVersion: number;
   readonly severity: DecisionSeverity;
@@ -40,6 +42,8 @@ export interface InboxItemRow {
 /** One resolution of a day, with its item. */
 export interface InboxResolvedRow {
   readonly itemId: string;
+  /** The item's `short_seq` (#537). */
+  readonly shortSeq: number;
   readonly kindId: string;
   readonly kindVersion: number;
   readonly payload: Readonly<Record<string, unknown>>;
@@ -86,6 +90,14 @@ const ITEM_COLUMNS = [
 ] as const;
 
 /**
+ * `decision_items.short_seq` (V133, #537), selected beside {@link ITEM_COLUMNS}.
+ *
+ * Typed here rather than read off the table type so this statement does not wait on
+ * `db/schema.ts` naming the column; once it does, this is `"short_seq"` in the list above.
+ */
+const SHORT_SEQ = sql<number>`short_seq`.as("short_seq");
+
+/**
  * A row as {@link InboxItemRow}.
  *
  * @param row - The selected columns.
@@ -93,6 +105,7 @@ const ITEM_COLUMNS = [
  */
 function itemOf(row: {
   id: string;
+  short_seq: number;
   kind_id: string;
   kind_version: number;
   severity: DecisionSeverity;
@@ -107,6 +120,7 @@ function itemOf(row: {
 }): InboxItemRow {
   return {
     id: row.id,
+    shortSeq: row.short_seq,
     kindId: row.kind_id,
     kindVersion: row.kind_version,
     severity: row.severity,
@@ -154,6 +168,7 @@ export class InboxRepository {
     const rows = await this.database.db
       .selectFrom("decision_items")
       .select(ITEM_COLUMNS)
+      .select(SHORT_SEQ)
       .where("organization_id", "=", organizationId)
       .where((w) =>
         w.or([
@@ -179,6 +194,7 @@ export class InboxRepository {
     const rows = await this.database.db
       .selectFrom("decision_items")
       .select(ITEM_COLUMNS)
+      .select(SHORT_SEQ)
       .where("organization_id", "=", organizationId)
       .where("status", "=", "snoozed")
       .where("snoozed_until", ">", now)
@@ -200,6 +216,7 @@ export class InboxRepository {
     const row = await this.database.db
       .selectFrom("decision_items")
       .select(ITEM_COLUMNS)
+      .select(SHORT_SEQ)
       .where("organization_id", "=", organizationId)
       .where("id", "=", itemId)
       .executeTakeFirst();
@@ -217,6 +234,7 @@ export class InboxRepository {
   async resolved(organizationId: string, day: string): Promise<InboxResolvedRow[]> {
     const result = await sql<{
       item_id: string;
+      short_seq: number;
       kind_id: string;
       kind_version: number;
       payload: Record<string, unknown>;
@@ -233,7 +251,7 @@ export class InboxRepository {
       answer_seconds: string;
       wait_seconds: string | null;
     }>`
-      select r.item_id, i.kind_id, i.kind_version, i.payload, i.refs, r.action_id, r.resolver,
+      select r.item_id, i.short_seq, i.kind_id, i.kind_version, i.payload, i.refs, r.action_id, r.resolver,
              r.resolved_by_policy, r.resolved_by_user, u.name as person_name, r.channel, r.note,
              r.outcome, r.resolved_at,
              extract(epoch from r.answer_latency)::text as answer_seconds,
@@ -249,6 +267,7 @@ export class InboxRepository {
 
     return result.rows.map((row) => ({
       itemId: row.item_id,
+      shortSeq: row.short_seq,
       kindId: row.kind_id,
       kindVersion: row.kind_version,
       payload: row.payload,

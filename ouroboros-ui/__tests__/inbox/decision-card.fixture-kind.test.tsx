@@ -32,6 +32,7 @@ const RUN = "5eed0009-0000-4000-8000-00000000f1c7";
 /** `custom:fixture-oven`, as the queue serves one of its items to a member. */
 const OVEN: InboxItem = {
   id: "5eed0082-0000-4000-8000-0000000000f1",
+  shortId: "q-241",
   kindId: "custom:fixture-oven",
   kindVersion: 1,
   severity: "warn",
@@ -76,6 +77,7 @@ describe("a kind the card has never seen", () => {
     expect(card.querySelector(".inbox-card__body")).toHaveClass("inbox-card__body--warn");
     expect(card.querySelector(".inbox-card__age")).toHaveTextContent("3m");
     expect([...card.querySelectorAll(".inbox-card__refs .ou-tag")].map((tag) => tag.textContent)).toEqual([
+      "Short id q-241",
       "loop #1901",
       "rig-7",
       "farm",

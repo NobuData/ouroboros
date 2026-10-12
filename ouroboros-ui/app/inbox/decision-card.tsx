@@ -112,28 +112,31 @@ export function DecisionCard({ item, clock, asOfSeconds, onPressed, onSettled, n
             <span className="sr-only">{askedAgo(age)}</span>
           </span>
         </div>
-        {(item.refs.length > 0 || item.tags.length > 0) && (
-          <div className="inbox-card__refs">
-            {item.refs.map((ref) => {
-              const href = sitePath(ref.href);
+        <div className="inbox-card__refs">
+          {/* What `/ouro answer` takes (#537): the item's short id, said in full to a reader. */}
+          <Tag className="inbox-card__tag">
+            <span className="sr-only">Short id </span>
+            {item.shortId}
+          </Tag>
+          {item.refs.map((ref) => {
+            const href = sitePath(ref.href);
 
-              return href === null ? (
-                <Tag className="inbox-card__tag" key={`${ref.type}:${ref.id}`}>
-                  {ref.label}
-                </Tag>
-              ) : (
-                <Link className="inbox-card__ref" href={href} key={`${ref.type}:${ref.id}`}>
-                  <Tag className="inbox-card__tag">{ref.label}</Tag>
-                </Link>
-              );
-            })}
-            {item.tags.map((tag) => (
-              <Tag className="inbox-card__tag" key={`tag:${tag}`}>
-                {tag}
+            return href === null ? (
+              <Tag className="inbox-card__tag" key={`${ref.type}:${ref.id}`}>
+                {ref.label}
               </Tag>
-            ))}
-          </div>
-        )}
+            ) : (
+              <Link className="inbox-card__ref" href={href} key={`${ref.type}:${ref.id}`}>
+                <Tag className="inbox-card__tag">{ref.label}</Tag>
+              </Link>
+            );
+          })}
+          {item.tags.map((tag) => (
+            <Tag className="inbox-card__tag" key={`tag:${tag}`}>
+              {tag}
+            </Tag>
+          ))}
+        </div>
         <p className="inbox-card__why">
           <Segments monoClassName="inbox-card__mono" segments={whySegments(item.why, item.facts)} />
         </p>

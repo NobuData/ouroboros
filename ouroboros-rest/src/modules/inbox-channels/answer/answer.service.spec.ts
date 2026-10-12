@@ -37,6 +37,7 @@ describe("AnswerService (#463)", () => {
       id,
       {
         id,
+        shortSeq: 231,
         kindId,
         kindVersion: 1,
         severity: "err",

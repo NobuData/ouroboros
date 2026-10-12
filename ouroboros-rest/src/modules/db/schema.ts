@@ -7325,6 +7325,12 @@ export interface DecisionItemsTable {
   snoozed_until: Date | null;
   snoozed_by: string | null;
   snooze_reason: string | null;
+  /**
+   * The item's short number in its workspace (V133,
+   * [#537](https://github.com/NobuData/ouroboros/issues/537)) — shown to people as `q-231` and
+   * what `/ouro answer` addresses. Assigned by the database on insert; never written here.
+   */
+  short_seq: ColumnType<number, never, never>;
 }
 
 /** `webhook_deliveries.status` (V094). */
@@ -7805,6 +7811,82 @@ export interface ChatIdentityLinksTable {
   updated_at: Stamped;
 }
 
+/** `chat_messages.kind` (V131). */
+export type ChatMessageKind = "decision_card" | "event_card" | "command_reply" | "system_line";
+
+/**
+ * `ouroboros.chat_messages` — what was published to a chat channel (V131,
+ * [#532](https://github.com/NobuData/ouroboros/issues/532)). A row re-renders from `kind`,
+ * `card_kind`, `refs`, `state` and `facts`; no platform markup is stored. The application role
+ * holds no `delete`: the retention sweep is the only thing that removes one.
+ */
+export interface ChatMessagesTable {
+  id: Generated<string>;
+  organization_id: string;
+  /** The `chat_channels` row — not the platform's channel id. */
+  channel_id: string;
+  /** The platform's message timestamp — null until the platform has answered the post. */
+  platform_ts: string | null;
+  platform_message_id: string | null;
+  kind: ChatMessageKind;
+  /** A decision kind's id or an event family; null for a command reply. */
+  card_kind: string | null;
+  decision_item_id: string | null;
+  /** BM.1's typed refs `[{type, id, label}]`, each resolving in the workspace (trigger). */
+  refs: ColumnType<unknown, string | undefined, string>;
+  /** The figures a renderer prints. Facts, never prose or markup. */
+  facts: ColumnType<Record<string, unknown>, string | undefined, string>;
+  /** A decision card's state; null for every other kind. */
+  state: "open" | "resolved" | null;
+  outcome: string | null;
+  resolved_by: string | null;
+  resolved_at: Date | null;
+  /** SHA-256 (hex) of what is about to be posted — with `dedupe_bucket`, the dedupe key. */
+  payload_digest: string;
+  thread_ts: string | null;
+  escalated_at: Date | null;
+  posted_at: ColumnType<Date, Date | undefined, Date>;
+  edited_at: Date | null;
+  /** `posted_at` binned to the hour, generated. */
+  dedupe_bucket: ColumnType<Date, never, never>;
+}
+
+/** `chat_commands.surface` (V131). */
+export type ChatCommandSurface = "slack" | "console";
+
+/** `chat_commands.outcome` (V131) — `async_pending` exactly while `completed_at` is null. */
+export type ChatCommandOutcome = "ok" | "error" | "denied" | "unlinked" | "async_pending";
+
+/**
+ * `ouroboros.chat_commands` — every `/ouro` command invoked (V131,
+ * [#532](https://github.com/NobuData/ouroboros/issues/532)); written by the dispatcher
+ * ([#537](https://github.com/NobuData/ouroboros/issues/537)). An audit trail: the application
+ * role holds no `delete`.
+ */
+export interface ChatCommandsTable {
+  id: Generated<string>;
+  organization_id: string;
+  connection_id: string;
+  /** The `chat_channels` row it was typed in; null for a DM or a channel the app has not joined. */
+  channel_id: string | null;
+  /** The invoker's identity link; null for an unlinked attempt. */
+  invoker_link_id: string | null;
+  /** The platform's id for whoever typed it — always present on the slack surface. */
+  platform_user_id: string | null;
+  surface: ChatCommandSurface;
+  /** The command as dispatched — `status`, `pause all`. */
+  command: string;
+  args: ColumnType<Record<string, unknown>, string | undefined, string>;
+  raw_text: string;
+  outcome: ChatCommandOutcome;
+  /** What it produced, as an object of ids — `{"message": …}`; null when nothing. */
+  result_ref: ColumnType<Record<string, unknown> | null, string | null | undefined, string | null>;
+  error_detail: string | null;
+  audit_event_id: string | null;
+  invoked_at: ColumnType<Date, Date | undefined, Date>;
+  completed_at: Date | null;
+}
+
 export interface Database {
   user: UserTable;
   tenant_domains: TenantDomainsTable;
@@ -7968,6 +8050,8 @@ export interface Database {
   chat_connections_public: ChatConnectionsPublicView;
   chat_channels: ChatChannelsTable;
   chat_identity_links: ChatIdentityLinksTable;
+  chat_messages: ChatMessagesTable;
+  chat_commands: ChatCommandsTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -8644,6 +8728,46 @@ export const TABLE_COLUMNS = {
     "revoked_by",
     "created_at",
     "updated_at",
+  ],
+  chat_messages: [
+    "id",
+    "organization_id",
+    "channel_id",
+    "platform_ts",
+    "platform_message_id",
+    "kind",
+    "card_kind",
+    "decision_item_id",
+    "refs",
+    "facts",
+    "state",
+    "outcome",
+    "resolved_by",
+    "resolved_at",
+    "payload_digest",
+    "thread_ts",
+    "escalated_at",
+    "posted_at",
+    "edited_at",
+    "dedupe_bucket",
+  ],
+  chat_commands: [
+    "id",
+    "organization_id",
+    "connection_id",
+    "channel_id",
+    "invoker_link_id",
+    "platform_user_id",
+    "surface",
+    "command",
+    "args",
+    "raw_text",
+    "outcome",
+    "result_ref",
+    "error_detail",
+    "audit_event_id",
+    "invoked_at",
+    "completed_at",
   ],
   workflow_draft_node_provenance: [
     "workflow_id",
@@ -9833,6 +9957,7 @@ export const TABLE_COLUMNS = {
     "snoozed_until",
     "snoozed_by",
     "snooze_reason",
+    "short_seq",
   ],
   decision_resolutions: [
     "item_id",
@@ -10641,3 +10766,7 @@ export type ChatConnectionPublic = Selectable<ChatConnectionsPublicView>;
 export type ChatChannel = Selectable<ChatChannelsTable>;
 /** A row of `ouroboros.chat_identity_links`, as a `select` returns it. */
 export type ChatIdentityLink = Selectable<ChatIdentityLinksTable>;
+/** A row of `ouroboros.chat_commands`, as a `select` returns it. */
+export type ChatCommand = Selectable<ChatCommandsTable>;
+/** A row of `ouroboros.chat_messages`, as a `select` returns it. */
+export type ChatMessage = Selectable<ChatMessagesTable>;

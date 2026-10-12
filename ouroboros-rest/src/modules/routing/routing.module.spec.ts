@@ -45,16 +45,16 @@ describe("the routing module", () => {
     await moduleRef.close();
   });
 
-  it("exports the resolution service, and only that", () => {
+  it("exports the resolution service, and the editor's service for `/ouro route`", () => {
     // Both repositories stay private: a consumer reaching past the service would be a consumer
     // holding rows instead of a resolution, and rows carry no explanations. The management
-    // service stays private for the sharper version of the same reason — it writes, and a
-    // module that could inject it could edit another surface's routes. The stats service stays
+    // service writes, so it is exported for one caller: `/ouro route` (#537), which saves
+    // through the method `PUT /routing/routes/{taskKind}` does. The stats service stays
     // private too: AB.4 (#210) is a UI surface and reads `GET /routing/spend` like any other
     // client, so exporting it would only create a second way into the same numbers.
     const exports = Reflect.getMetadata("exports", RoutingModule) as unknown[] | undefined;
 
-    expect(exports).toEqual([ResolutionService]);
+    expect(exports).toEqual([ResolutionService, RoutingManagementService]);
   });
 
   it("declares the editor's controller and the engine's, and only those two", () => {

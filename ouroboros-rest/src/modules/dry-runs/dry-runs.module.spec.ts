@@ -27,14 +27,16 @@ describe("DryRunsModule", () => {
     await moduleRef.close();
   });
 
-  it("exports what the copilot needs and nothing else", () => {
+  it("exports what the copilot needs, and the start `/ouro dry-run` shares with the route", () => {
     // The copilot's `lookup_tickets` must rank with the scorer the dry-run menu uses, its
     // `propose_suggestion` is recorded by the suggestions service, and it registers with the
-    // aftermath to be told a run ended; nothing else here is anybody else's to call.
+    // aftermath to be told a run ended. `/ouro dry-run` (#537) starts a run through the service
+    // the route calls, and hears it end through the same aftermath.
     expect(Reflect.getMetadata("exports", DryRunsModule)).toEqual([
       DryRunPickerService,
       DryRunSuggestionsService,
       DryRunAftermath,
+      DryRunsService,
     ]);
   });
 

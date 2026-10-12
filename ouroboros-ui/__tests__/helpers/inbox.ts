@@ -147,6 +147,7 @@ export function waiverActions(): InboxAction[] {
 export function inboxItem(overrides: Partial<InboxItem> = {}): InboxItem {
   return {
     id: MERGE_ITEM,
+    shortId: "q-231",
     kindId: "merge_approval",
     kindVersion: 1,
     severity: "err",
@@ -260,6 +261,7 @@ export function actionResult(overrides: Partial<InboxActionResult> = {}): InboxA
 export function snoozedItem(overrides: Partial<InboxSnoozedItem> = {}): InboxSnoozedItem {
   return {
     id: "5eed0082-0000-4000-8000-000000000009",
+    shortId: "q-9",
     kindId: "fact_review",
     severity: "info",
     question: "Should the loops trust this fact?",
@@ -306,6 +308,7 @@ export function resolvedRow(overrides: Partial<InboxResolvedRow> = {}): InboxRes
 
   return {
     itemId: "5eed0082-0000-4000-8000-000000000102",
+    shortId: "q-102",
     kindId: "split_approval",
     summary: `${subject} — ${verdict}`,
     subject,

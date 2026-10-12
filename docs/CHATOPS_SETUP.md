@@ -161,7 +161,9 @@ one supported production transport.
 ## 8. What works today
 
 BZ.1 delivers the boundary: install, verified endpoints, identity linking and the connection
-status. `/ouro link`, `/ouro unlink` and `/ouro help` work. Every other `/ouro` command, and
-answering a decision with a button in Slack, replies *not available yet* and changes nothing —
-they arrive with the rest of the Chat Ops epic (#536–#538). The **Needs-you decisions → Slack
+status. BZ.3 (#537) delivers the commands: `/ouro status`, `queue`, `pause loop`, `resume loop`,
+`abort loop`, `answer`, `dry-run`, `route`, `estimate`, `pause all` and `help` run as the linked
+person who typed them — the reference is `ouroboros-docs/docs/cli/ouro.mdx`. Answering a
+decision with a button in Slack replies *not available yet* and changes nothing, and no card is
+posted to a channel yet — those arrive with the rest of the Chat Ops epic (#536, #538). The **Needs-you decisions → Slack
 DM** notification route stays locked until decisions can be delivered to Slack.

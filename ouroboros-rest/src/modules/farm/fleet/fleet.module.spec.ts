@@ -15,10 +15,11 @@ import { RunnersService } from "./runners.service";
  * The wiring — the one thing about a Nest module that can be wrong at run time and right at
  * compile time. Nothing connects: `pg` connects lazily, and no query is issued.
  *
- * The export list gets its own assertion for the reason `farm.module.spec.ts` gives, with the
- * opposite answer: this module exports **nothing**. Its routes are its surface, and the UI
- * tickets it feeds are clients over HTTP rather than modules — so an export appearing here
- * would be a second caller reaching past the role gates on those routes.
+ * The export list gets its own assertion for the reason `farm.module.spec.ts` gives: this module
+ * exports **one read** — `FleetService`, whose only method is the page every member may see, for
+ * `/ouro status` (#537). The UI tickets it feeds are clients over HTTP rather than modules, and
+ * the services behind the admin routes stay private — exporting one of those would be a second
+ * caller reaching past the role gates on those routes.
  */
 
 describe("the farm fleet module", () => {
@@ -49,9 +50,9 @@ describe("the farm fleet module", () => {
     expect(imported).toEqual(["DbModule", "AuditModule", "FarmModule", "FarmGatewayModule"]);
   });
 
-  it("exports nothing — its routes are its surface", () => {
+  it("exports the page's read and nothing behind an admin route", () => {
     const exported = Reflect.getMetadata("exports", FarmFleetModule) as unknown[] | undefined;
 
-    expect(exported).toBeUndefined();
+    expect(exported).toEqual([FleetService]);
   });
 });

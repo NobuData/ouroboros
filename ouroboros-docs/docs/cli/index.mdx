@@ -17,19 +17,12 @@ state.
 | [`ouroboros-runner`](./runner/index.mdx) — the runner agent | Build-farm operators | Your build machines | Enrolling a machine into a pool, then running as a service that takes build jobs. It connects out to your deployment and listens on no port. |
 | [`install.sh`](./install-sh.mdx) — the runner installer | Build-farm operators | Your build machines | Downloading and verifying `ouroboros-runner`, enrolling it and installing it as a service. This is the one-liner the Build Farm page gives you. `--uninstall` removes it again. |
 | [Stack commands](./stack-commands.mdx) — `yarn setup`, `yarn dev`, `yarn dev:stop`, `yarn dev:reset`, `yarn verify` | Self-hosters trying Ouroboros out, and contributors | A checkout of the Ouroboros repository | Creating the `.env` files, running a local stack, stopping and resetting it, and running the checks. |
+| [`/ouro`](./ouro.mdx) — chat commands | Everyone in a workspace that has connected Slack | Slack | Checking status, queueing an issue, pausing or aborting a loop, answering a question and more, as yourself. |
 | [The REST API from the shell](./rest-api.mdx) — `curl` and `jq` | Integrators: scripts, CI jobs and bots | Wherever your script runs, as long as it can reach the REST service | Calling the REST API with a service account's API token. |
 
 To deploy Ouroboros for a team, see [Deploying Ouroboros](../administration/deploy/overview.mdx).
 To set up the build farm in the app, see
 [Build farm administration](../administration/build-farm.mdx).
-
-:::info[Not available yet]
-
-Chat commands (`/ouro …` typed in Slack or another chat tool) arrive with Chat Ops. Only
-`/ouro link`, `/ouro unlink` and `/ouro help` work today — see
-[Chat Ops](../user-guide/chatops.mdx). The rest are not part of Ouroboros yet.
-
-:::
 
 ## Conventions
 

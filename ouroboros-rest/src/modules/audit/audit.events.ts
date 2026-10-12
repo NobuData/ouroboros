@@ -83,7 +83,8 @@ export type AuditSubjectType =
   | "roadmap_doc"
   | "roadmap_pipeline_settings"
   | "chat_connection"
-  | "chat_identity_link";
+  | "chat_identity_link"
+  | "chat_command";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -660,6 +661,17 @@ export const CHAT_IDENTITY_LINKED_EVENT = "chat.identity_linked";
  */
 export const CHAT_IDENTITY_UNLINKED_EVENT = "chat.identity_unlinked";
 
+/**
+ * Somebody typed an `/ouro` command (BZ.3, #537) — recorded for every invocation that has a
+ * `chat_commands` row, whatever came of it. Subject `chat_command`, the row's id. The actor is
+ * the person the command acted as, or nobody when the platform user was not linked. The detail
+ * is the chat provenance, flat: `surface`, `command`, `outcome`, `connectionId`, `channelId`
+ * (the workspace's channel row, when the app has joined it), `platformChannelId`,
+ * `platformUserId` and `grammarVersion`. Never the arguments or the raw text — those are the
+ * row's. What the command *did* is the owning plane's own event, unchanged.
+ */
+export const CHAT_COMMAND_INVOKED_EVENT = "chat.command_invoked";
+
 /* ---------------------------------------------------------------------------
  * The audit plane itself — BR.2 ([#486](https://github.com/NobuData/ouroboros/issues/486)).
  *
@@ -778,6 +790,7 @@ export const AUDIT_ACTIONS = [
   CHAT_CONNECTION_REVOKED_EVENT,
   CHAT_IDENTITY_LINKED_EVENT,
   CHAT_IDENTITY_UNLINKED_EVENT,
+  CHAT_COMMAND_INVOKED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

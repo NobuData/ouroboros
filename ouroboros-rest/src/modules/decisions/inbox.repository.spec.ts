@@ -37,6 +37,40 @@ describe("InboxRepository", () => {
     expect(statement.parameters).toEqual(expect.arrayContaining([ORG, "open", "snoozed", NOW]));
   });
 
+  it("reads each item's short number beside it, and maps it (#537)", async () => {
+    const row = {
+      id: "item-1",
+      short_seq: 231,
+      kind_id: "merge_approval",
+      kind_version: 1,
+      severity: "err",
+      status: "open",
+      payload: {},
+      refs: [],
+      source_ref: "test:merge",
+      created_at: NOW,
+      snoozed_until: null,
+      snoozed_by: null,
+      snooze_reason: null,
+    };
+    database.answers({ rows: [row] }, { rows: [row] }, { rows: [row] });
+
+    const [open] = await repository.open(ORG, NOW);
+    const [snoozed] = await repository.snoozed(ORG, NOW);
+    const one = await repository.item(ORG, "item-1");
+
+    for (const statement of database.statements) {
+      expect(statement.sql).toContain('short_seq as "short_seq"');
+    }
+    expect([open.shortSeq, snoozed.shortSeq, one?.shortSeq]).toEqual([231, 231, 231]);
+  });
+
+  it("reads a resolution's item short number (#537)", async () => {
+    await repository.resolved(ORG, "2026-10-04");
+
+    expect(database.statements[0].sql).toContain("i.short_seq");
+  });
+
   it("reads the hidden items soonest-to-wake first", async () => {
     await repository.snoozed(ORG, NOW);
 

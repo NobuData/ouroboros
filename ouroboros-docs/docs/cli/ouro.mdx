@@ -1,0 +1,230 @@
+---
+title: "/ouro chat commands"
+sidebar_label: "/ouro commands"
+sidebar_position: 6
+description: "Every /ouro command you can type in Slack: its arguments, who may run it, what it answers, and the confirm rule for abort and pause all."
+---
+
+`/ouro` is the command you type in Slack to work with Ouroboros without leaving the channel.
+This page lists every command, what it takes, who may run it and what it answers.
+<Since version="0.41.25" module="ouroboros-rest" />
+
+Every command acts as **you**, with your role in the workspace, and is recorded in the audit
+trail under your name. It does exactly what the matching button or page in Ouroboros does —
+there is no separate chat-only path. The answer is shown to you alone.
+
+## Before you start
+
+- Your workspace's Owner or Maintainer has connected Slack — see
+  [Chat Ops — connecting Slack](../administration/chatops.mdx).
+- You have linked your Slack identity with `/ouro link` — see
+  [Chat Ops](../user-guide/chatops.mdx). Until you do, every command answers *You're not
+  linked* with a **Link your account** button, and does nothing.
+
+## The commands
+
+| Command | What it does | Who may run it |
+| --- | --- | --- |
+| [`/ouro status`](#status) | everything live, in one line | every workspace member |
+| [`/ouro queue <ticket> [workflow]`](#queue) | send an issue into the loop | Owner, Maintainer or `member` |
+| [`/ouro pause loop <loop>`](#pause-loop-and-resume-loop) | hold a loop mid-flight | Owner or Maintainer |
+| [`/ouro resume loop <loop>`](#pause-loop-and-resume-loop) | let a held loop continue | Owner or Maintainer |
+| [`/ouro abort loop <loop> confirm`](#abort-loop) | stop and clean up | Owner or Maintainer |
+| [`/ouro answer <question> <action>`](#answer) | answer a blocking question | every workspace member |
+| [`/ouro dry-run <ticket> [workflow]`](#dry-run) | rehearse with no writes | Owner, Maintainer or `member` |
+| [`/ouro route <task> <alias>`](#route) | repin a stage's model | Owner or Maintainer |
+| [`/ouro estimate <ticket>`](#estimate) | effort, cost, and cycle guess | every workspace member |
+| [`/ouro pause all confirm`](#pause-all) | the big red button | Owner or Maintainer |
+| [`/ouro explain pr <pr>`](#explain-pr) | plain-language summary of a PR | not available yet |
+
+Three more words are not commands of the grammar: [`/ouro help`](#help), and `/ouro link` and
+`/ouro unlink`, which are covered in [Chat Ops](../user-guide/chatops.mdx).
+
+For what Owner, Maintainer, Viewer and `member` mean, see
+[Roles](../administration/roles.mdx). A role that is too low gets an answer that names what the
+command takes — for example *`/ouro route` is for workspace owners and admins.*
+
+## How arguments are read
+
+| Argument | What you can type |
+| --- | --- |
+| `<ticket>` | `#485`, `485`, `repo#485`, or the issue's GitHub URL. All four name the same issue. |
+| `<loop>` | The loop's number: `1847` or `#1847`. |
+| `<workflow>` | A workflow's slug, such as `standard-fix`. |
+| `<task>` | A task kind, such as `implement`. |
+| `<alias>` | A model alias. Never a raw model id. |
+| `<question>` | The question's short id as its card shows it, such as `q-231`. |
+| `<action>` | One of the answers that question takes, such as `allow_once`. |
+| `<pr>` | The pull request's number: `514` or `#514`. |
+
+An argument in `[brackets]` is optional.
+
+When an argument names nothing, the answer says which argument and offers what you could have
+typed, for example *unknown workflow "feature-lopp" — try: standard-fix, feature-loop, hotfix*.
+Nothing runs.
+
+## The confirm rule
+
+`/ouro abort loop` and `/ouro pause all` run only with the word `confirm` as their last word.
+Without it nothing happens: the answer describes exactly what would, and gives you the full
+command to type.
+
+## `status`
+
+```text
+/ouro status
+```
+
+Answers with one line: loops live, issues queued, build runners online, today's spend, and how
+many decisions are waiting in the Needs-you inbox.
+
+```text
+3 loops live · 12 queued · farm 4/5 online · spend today $18.60 · needs-you: 3
+```
+
+These are the same figures the [dashboard](../user-guide/dashboard.mdx) shows.
+
+## `queue`
+
+```text
+/ouro queue #485
+/ouro queue #485 standard-fix
+```
+
+Sends an issue into the loop — the same as queueing it on the Issues page. Name a workflow to
+pin it. Leave it out and the workspace's triggers choose.
+
+```text
+queued at position 2 (pinned standard-fix@v14)
+```
+
+## `pause loop` and `resume loop`
+
+```text
+/ouro pause loop 1847
+/ouro resume loop 1847
+```
+
+`pause loop` holds a loop where it is. `resume loop` lets it continue from where it stopped.
+Both ask the run for the control, exactly as the buttons in the run console do, and the answer
+says the control was requested. If the loop has already finished, the answer says it was not
+paused or resumed, and why.
+
+## `abort loop`
+
+```text
+/ouro abort loop 1847 confirm
+```
+
+Stops a loop for good and closes its run as canceled. Its branch is kept. Nothing is reverted or
+deleted.
+
+This command follows [the confirm rule](#the-confirm-rule). Typed without `confirm`, it answers:
+
+```text
+Add `confirm` to abort — this stops loop 1847 for good and closes its run as canceled. Its
+branch is kept; nothing is reverted or deleted. `/ouro abort loop 1847 confirm`
+```
+
+## `answer`
+
+```text
+/ouro answer q-231 allow_once
+```
+
+Answers a decision that is waiting in the [Needs-you inbox](../user-guide/inbox.mdx). The
+question's short id is shown on its card. The actions are the ones that card offers. Any member
+may type the command, but the question's own rules still apply: if you could not answer it in
+the inbox, you cannot answer it here, and the answer tells you why.
+
+The reply names the question, the answer recorded and what it set in motion.
+
+## `dry-run`
+
+```text
+/ouro dry-run #486
+/ouro dry-run #486 feature-loop
+```
+
+Rehearses a workflow against an issue with no writes and no pull requests. Leave the workflow
+out to rehearse the one the triggers would pin.
+
+A dry run takes minutes, so you get two messages. The first arrives at once and says only that
+it started:
+
+```text
+Dry run started — no writes, no PRs. Results in ~3 min → follow in Workflow Copilot
+```
+
+The second arrives when the run ends, with how it ended, how long it took, what it cost,
+whether the guards stayed clean, and a link to open it in Workflow Copilot.
+
+## `route`
+
+```text
+/ouro route implement claude-fable-5
+```
+
+Repins the model alias a task kind's first hop uses — the same change as editing the route on
+the [Models](../user-guide/models.mdx) page. The alias must be one the workspace has. If the
+task kind already routes there, the answer says nothing changed.
+
+## `estimate`
+
+```text
+/ouro estimate #490
+```
+
+Answers with the issue's estimate: effort, the cycle range, estimated minutes and tokens,
+confidence, and the workflow it suggests. If the issue has no estimate yet, the command starts
+one and asks you to type it again in a minute.
+
+## `pause all`
+
+```text
+/ouro pause all confirm
+```
+
+Pauses the whole workspace: no loop starts anything new. Stages already running finish, and
+queued work stays queued until an Owner or Maintainer resumes the workspace in
+<UiPath path="Settings" /> — see
+[Pausing all loops](../administration/retention-audit-lifecycle.mdx#pausing-all-loops).
+
+This command follows [the confirm rule](#the-confirm-rule). Typed without `confirm`, it names
+the workspace it would pause and changes nothing.
+
+## `explain pr`
+
+:::info[Not available yet]
+
+`/ouro explain pr` is listed so you know it is coming. It does not summarise anything yet. Typed
+today, it answers that plain-language pull request summaries arrive with AI presence.
+
+:::
+
+## `help`
+
+```text
+/ouro help
+/ouro help queue
+```
+
+`/ouro help` lists every command. `/ouro help <command>` shows one command's arguments and who
+may run it. A bare `/ouro` does the same as `/ouro help`. Help works before you link.
+
+## When a command does not run
+
+| The answer | What happened | What to do |
+| --- | --- | --- |
+| *You're not linked* | Your Slack identity is not linked to an Ouroboros account. | Choose **Link your account**, then type the command again. |
+| *…is for workspace owners and admins.* | Your role does not include this command. | Ask an Owner or Maintainer to run it, or to change your role. |
+| *Your linked Ouroboros account is no longer a member of this workspace* | You were removed from the workspace after linking. | Ask an Owner or Maintainer to invite you again. |
+| *This Slack workspace is not connected to Ouroboros any more* | The Slack app was removed or its access was revoked. | Ask an Owner or Maintainer to connect Slack again. |
+| An unknown command, or a missing or extra argument | The text did not match a command. | Read the answer: it names the problem and what you could type. `/ouro help` lists everything. |
+| *Something went wrong running that command, and it may not have taken effect.* | Ouroboros failed while running it. | Check in Ouroboros before trying again. |
+
+## For integrators
+
+The grammar is one versioned registry. `GET /api/v1/chat/grammar` returns it — every command,
+argument and requirement on this page — and `GET /api/v1/chat/completions?text=…` returns what
+could be typed next. See [The REST API from the shell](./rest-api.mdx) for how to call them.
