@@ -3,7 +3,14 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/app/api/errors";
 
 import { STUB_BASE_URL, clientAnswering } from "../helpers/api";
-import { DRY_RUN_ID, SECURITY_PATCH_ID, seededDryRun, seededHistory, seededSuggestions } from "../helpers/workflow-copilot";
+import {
+  DRY_RUN_ID,
+  SECURITY_PATCH_ID,
+  drySafety,
+  seededDryRun,
+  seededHistory,
+  seededSuggestions,
+} from "../helpers/workflow-copilot";
 
 // The facade sits on the server-side client — see `server.test.ts` for what each of these answers.
 vi.mock("server-only", () => ({}));
@@ -51,6 +58,15 @@ describe("workflowDryRuns", () => {
 
     expect(requests[0].method).toBe("GET");
     expect(requests[0].url).toBe(`${BASE}/${DRY_RUN_ID}/suggestions`);
+  });
+
+  it("reads the safety strip by the workflow's id (#569)", async () => {
+    const { client, requests } = clientAnswering(drySafety());
+
+    await expect(workflowDryRuns.safety(SECURITY_PATCH_ID, client)).resolves.toEqual(drySafety());
+
+    expect(requests[0].method).toBe("GET");
+    expect(requests[0].url).toBe(`${BASE}/safety`);
   });
 
   it("rejects with the service's refusal for a run this workflow does not have", async () => {

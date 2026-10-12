@@ -39,7 +39,9 @@ import type {
   CopilotReference,
   CopilotStageDraft,
 } from "@/app/api/workflow-copilot";
+import type { ProviderConnection } from "@/app/api/providers";
 import type { RoutingAlias } from "@/app/api/routing";
+import type { DryRunSafety } from "@/app/api/workflow-dry-runs";
 import type { WorkflowDefinition, WorkflowDetail, WorkflowRailEntry } from "@/app/api/workflows";
 
 import type { DryRunBoard } from "./dry-run";
@@ -85,6 +87,17 @@ export interface SelectedCopilot {
    * failed read costs the card and nothing else.
    */
   readonly dryRun: Reading<DryRunBoard>;
+  /**
+   * The safety strip (CE.5, #569): the claims the installed harness backs, each with its
+   * mechanism. A failed read costs the strip and nothing else — and the strip then makes no
+   * claim at all, rather than falling back to copy.
+   */
+  readonly safety: Reading<DryRunSafety>;
+  /**
+   * The workspace's provider connections (CE.5, #569) — what the gateway notice reports the
+   * current status of. A failed read costs only that line.
+   */
+  readonly providers: Reading<readonly ProviderConnection[]>;
 }
 
 /** Everything the copilot route was able to read, and why it could not read the rest. */
@@ -556,8 +569,8 @@ export function discardedNotice(draftDiscarded: boolean): string {
 
 /* ------------------------------------------------------------------ the seats */
 
-/** The page's three regions. */
-export type CopilotSeatId = "conversation" | "stages" | "dry-run";
+/** The page's four regions. */
+export type CopilotSeatId = "conversation" | "stages" | "dry-run" | "safety";
 
 /** One seat: what the region is, and what it says when its card cannot be drawn. */
 export interface CopilotSeat {
@@ -569,7 +582,10 @@ export interface CopilotSeat {
   readonly note: string;
 }
 
-/** The seats, in mockup 20's order: the conversation on the left; the stage list and the dry run on the right. */
+/**
+ * The seats, in mockup 20's order: the conversation on the left; the stage list, the dry run and
+ * the safety strip (CE.5, #569) on the right.
+ */
 export const COPILOT_SEATS: Readonly<Record<CopilotSeatId, CopilotSeat>> = {
   conversation: {
     id: "conversation",
@@ -586,13 +602,18 @@ export const COPILOT_SEATS: Readonly<Record<CopilotSeatId, CopilotSeat>> = {
     title: "Dry run",
     note: "The dry run could not be read, so there are no results to show. The banner above carries the reason, and the retry.",
   },
+  safety: {
+    id: "safety",
+    title: "Why dry runs are safe",
+    note: "What makes a dry run safe could not be read, so no claim is made here. The banner above carries the reason, and the retry.",
+  },
 };
 
 /**
  * A seat's element id.
  *
  * @param id The seat.
- * @returns `copilot-conversation`, `copilot-stages`, `copilot-dry-run`.
+ * @returns `copilot-conversation`, `copilot-stages`, `copilot-dry-run`, `copilot-safety`.
  */
 export function seatElementId(id: CopilotSeatId): string {
   return `copilot-${id}`;

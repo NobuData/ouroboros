@@ -287,9 +287,9 @@
       "masks": [],
       "caption": "The Copilot page of a workflow: the Visual, Code and Copilot views, Discard draft and Promote draft, and the unresolved references flagged under them.",
       "alt": "The Workflow Studio's Copilot page open on security-patch, headed Describe the workflow. Watch it build. Test it before it touches anything. The Visual, Code and Copilot tabs have Copilot selected, and Discard draft and Promote draft → security-patch v1 buttons sit above a note that 2 unresolved references are flagged. Below are the conversation card, the draft's stage list and the dry-run card.",
-      "capturedAt": "2026-10-12T04:21:50.372Z",
-      "uiVersion": "0.154.0",
-      "seedRef": "b6289b2fe9ded98f4e6a7bc6ee5123b8d2e86bb7"
+      "capturedAt": "2026-10-12T16:06:32.178Z",
+      "uiVersion": "0.155.0",
+      "seedRef": "3965abb305125c196c3d5ad26bbe76b53f3f9688"
     },
     {
       "id": "user-guide.workflows.copilot.conversation",
@@ -304,11 +304,11 @@
       ],
       "clip": "#copilot-conversation",
       "masks": [],
-      "caption": "The conversation card: the model the replies were routed to, the messages with their costs, and two questions answered by choosing an option.",
-      "alt": "The Conversation card for security-patch, with a claude-fable-5 pill and a draft: security-patch tag. A notice at the top reads The copilot needs the invocation gateway, with a See Providers link. Below it the messages are scrolled part-way: a Copilot reply ends with a line reading applied 6 operations, 1 corrected and two numbered questions, What triggers it? and May it read the GitHub Advisory DB?, with label:security and Yes marked as chosen; then a message from You, and a Copilot reply marked $0.04. The message box at the foot reads Refine the workflow — or ask for a dry run…, with the line The copilot cannot reply: this deployment has no invocation gateway. under it.",
-      "capturedAt": "2026-10-12T03:32:29.278Z",
-      "uiVersion": "0.153.0",
-      "seedRef": "59d2d41ac4a9d365f5ce051942d92814b865a929"
+      "caption": "The conversation card: the model the replies were routed to, the gateway notice with the workspace's provider status, and the first messages with their costs and the Copilot's questions.",
+      "alt": "The Conversation card for security-patch, with a claude-fable-5 pill and a draft: security-patch tag. A notice at the top reads The copilot needs the invocation gateway, reports Provider status: 5 connected — 4 active, 1 failing., and has a See Providers link. Below it the conversation is at its start: a message from You asking for a workflow for security patches, then a Copilot reply marked $0.12 that ends with a line reading applied 6 operations, 1 corrected and two numbered questions, What triggers it?, with label:security marked as chosen beside CVE pattern in title, and May it read the GitHub Advisory DB?. The message box at the foot reads Refine the workflow — or ask for a dry run…, with the line The copilot cannot reply: this deployment has no invocation gateway. under it.",
+      "capturedAt": "2026-10-12T16:08:41.991Z",
+      "uiVersion": "0.155.0",
+      "seedRef": "3965abb305125c196c3d5ad26bbe76b53f3f9688"
     },
     {
       "id": "user-guide.workflows.copilot.stages",
@@ -337,6 +337,19 @@
       "capturedAt": "2026-10-12T04:21:50.372Z",
       "uiVersion": "0.154.0",
       "seedRef": "b6289b2fe9ded98f4e6a7bc6ee5123b8d2e86bb7"
+    },
+    {
+      "id": "user-guide.workflows.copilot.safety",
+      "route": "/workflows/security-patch/copilot",
+      "workspace": "acme-robotics",
+      "ready": "#copilot-safety [data-claim]",
+      "clip": "#copilot-safety",
+      "masks": [],
+      "caption": "Why dry runs are safe: the three claims the installed dry-run harness backs, each with a mark that opens the mechanism behind it.",
+      "alt": "The Why dry runs are safe card, tagged harness: dry-run-v1, with three columns, each with an information mark beside its heading: Simulated writes — Diffs are drafted in memory — the repo is untouched. Replayed infra — Build & test are estimated from your history; the farm stays idle. Real models — Prompts & routing are exercised for real — that's what you're testing.",
+      "capturedAt": "2026-10-12T16:06:25.286Z",
+      "uiVersion": "0.155.0",
+      "seedRef": "3965abb305125c196c3d5ad26bbe76b53f3f9688"
     },
     {
       "id": "user-guide.workflows",

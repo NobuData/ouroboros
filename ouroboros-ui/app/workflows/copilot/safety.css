@@ -1,0 +1,157 @@
+/*
+ * The workflow copilot's safety strip — CE.5 (#569), docs/mockups/20-workflow-copilot.html's
+ * `.safe-col` card.
+ *
+ * The card, its head and the harness tag are the design system's primitives. What is here is
+ * what only the strip draws: the columns, each claim's accent key over its sentence, the ⓘ and
+ * the mechanism trace it opens, and the line that says a claim is being withheld.
+ *
+ * Every colour is a token, so the light and dark renderings are the token sheet's; every size is
+ * a token or a rem, so the font-size preference scales the surface (the 125% step included).
+ * Nothing in this sheet scrolls inside itself and nothing has a fixed height.
+ */
+
+/* ---------- the columns ---------- */
+
+/*
+ * Mockup 20's row: equal columns with a floor, wrapping to a stack when the card is narrow. The
+ * floor is under the mockup's 180px because this card is one of a column, not the page's width:
+ * at the default type the three claims sit on one row beside the conversation.
+ */
+.copilot-safety__columns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.copilot-safety__column {
+  flex: 1 1 8.5rem;
+  min-width: 0;
+}
+
+/* The claim's key: mono, wide-tracked capitals in the accent, with its ⓘ beside it. */
+.copilot-safety__key {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-2);
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.copilot-safety__sentence {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- the ⓘ, and the trace it opens ---------- */
+
+.copilot-safety__info {
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--accent);
+  font-size: var(--t-sm);
+  line-height: var(--lh-snug);
+  cursor: pointer;
+}
+
+.copilot-safety__info:hover {
+  color: var(--ink);
+}
+
+.copilot-safety__info:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+/* Under the columns, in the flow: which mechanism, what it does, and what carries it. */
+.copilot-safety__trace {
+  margin-top: var(--sp-6);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: var(--inset);
+}
+
+.copilot-safety__trace[hidden] {
+  display: none;
+}
+
+.copilot-safety__trace-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.copilot-safety__trace-detail {
+  margin: var(--sp-3) 0 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.copilot-safety__facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: var(--sp-5) 0 0;
+}
+
+.copilot-safety__fact {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.copilot-safety__fact dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  overflow-wrap: anywhere;
+}
+
+.copilot-safety__fact-value--mono {
+  font-family: var(--f-mono);
+}
+
+/* ---------- a claim withheld ---------- */
+
+/*
+ * On the warning rule and tint: a strip that is short is not an ordinary state, and must not
+ * read as a footnote.
+ */
+.copilot-safety__withheld {
+  margin: var(--sp-6) 0 0;
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--warn-line);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--r-sm);
+  background: var(--warn-tint);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* The only thing under the head when no claim holds: no gap to open over nothing. */
+.copilot-safety__withheld--alone {
+  margin-top: 0;
+}

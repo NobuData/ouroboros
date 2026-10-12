@@ -64,7 +64,9 @@ import {
   adoptBoard,
   appliedNotice,
   applyReason,
+  budgetAdvice,
   budgetLine,
+  budgetSpentLine,
   cancelReason,
   cardReducer,
   diffLines,
@@ -678,8 +680,12 @@ export function DryRunCard({
                 {BUDGET_HEADING}
               </p>
               {run.failureReason !== null && <p className="copilot-dry__state-text">{run.failureReason}</p>}
+              {budgetSpentLine(run.totals) !== null && (
+                <p className="copilot-dry__state-text">{budgetSpentLine(run.totals)}</p>
+              )}
               {budgetLine(run.budget) !== null && <p className="copilot-dry__state-text">{budgetLine(run.budget)}</p>}
               <p className="copilot-dry__state-text">{PARTIAL_NOTE}</p>
+              <p className="copilot-dry__state-text">{budgetAdvice(run.budget)}</p>
             </div>
           )}
 

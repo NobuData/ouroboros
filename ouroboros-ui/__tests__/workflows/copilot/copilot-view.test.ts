@@ -391,7 +391,10 @@ describe("the seats", () => {
     expect(COPILOT_SEATS.stages.note).not.toMatch(/#\d/);
     expect(COPILOT_SEATS["dry-run"].note).toMatch(/could not be read/);
     expect(COPILOT_SEATS["dry-run"].note).not.toMatch(/#\d/);
-    expect(Object.keys(COPILOT_SEATS)).toEqual(["conversation", "stages", "dry-run"]);
+    expect(COPILOT_SEATS.safety.note).toMatch(/could not be read/);
+    expect(COPILOT_SEATS.safety.note).toMatch(/no claim is made/);
+    expect(COPILOT_SEATS.safety.note).not.toMatch(/#\d/);
+    expect(Object.keys(COPILOT_SEATS)).toEqual(["conversation", "stages", "dry-run", "safety"]);
   });
 
   it("gives each a stable element id", () => {

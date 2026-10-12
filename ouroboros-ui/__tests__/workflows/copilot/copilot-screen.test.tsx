@@ -68,6 +68,7 @@ import {
   SIMULATED_PILL,
   dryRunTitle,
 } from "@/app/workflows/copilot/dry-run";
+import { SAFETY_CLAIMS, SAFETY_FAILED_HEADLINE } from "@/app/workflows/copilot/safety";
 import { DRAFT_FAILED_HEADLINE, STAGES_LABEL, VIEW_AS_CODE_LABEL, stagesTitle } from "@/app/workflows/copilot/stages";
 import { CHANGE_NOTE_LABEL, DISMISS_TOAST_LABEL, FINDINGS_LABEL, PUBLISH_CANCEL } from "@/app/workflows/publish";
 import { RAIL_FAILED_HEADLINE } from "@/app/workflows/states";
@@ -89,6 +90,7 @@ import {
   copilotReadingsWith,
   copilotReference,
   copilotSession,
+  drySafety,
   seededBoard,
   seededConversation,
   seededStageDraft,
@@ -272,7 +274,7 @@ describe("the segment", () => {
 });
 
 describe("the seats", () => {
-  it("are mockup 20's two columns: the conversation over its caption, then the stage list over the dry run", () => {
+  it("are mockup 20's two columns: the conversation over its caption, then the stage list, the dry run and the safety strip", () => {
     const { container } = renderOwner();
 
     const body = container.querySelector(".copilot-view__body");
@@ -283,7 +285,30 @@ describe("the seats", () => {
     expect([...(container.querySelector(".copilot-view__side")?.children ?? [])]).toEqual([
       seat("stages"),
       seat("dry-run"),
+      seat("safety"),
     ]);
+  });
+
+  it("draws the safety strip in its seat, from the payload the route read (#569)", () => {
+    renderOwner();
+
+    expect(seat("safety")).toHaveAttribute("id", "copilot-safety");
+    for (const claim of Object.values(SAFETY_CLAIMS)) expect(seat("safety")).toHaveTextContent(claim.sentence);
+  });
+
+  it("draws only the claims the payload asserts — the fixture that removes one removes it from the page (#569)", () => {
+    const safety = drySafety({ columns: drySafety().columns.filter((column) => column.id !== "replayed_infra") });
+    const { container } = renderOwner(copilotReadingsWith({ safety: { ok: true, value: safety } }));
+
+    expect(container).not.toHaveTextContent(SAFETY_CLAIMS.replayed_infra.sentence);
+    expect(seat("safety")).toHaveTextContent(SAFETY_CLAIMS.simulated_writes.sentence);
+    expect(seat("safety")).toHaveTextContent(SAFETY_CLAIMS.real_models.sentence);
+  });
+
+  it("draws the same strip for a viewer — nothing in it is an action (#569)", () => {
+    render(<CopilotScreen readings={copilotReadings()} role="viewer" />);
+
+    for (const claim of Object.values(SAFETY_CLAIMS)) expect(seat("safety")).toHaveTextContent(claim.sentence);
   });
 
   it("draws the dry-run card in its seat — its empty state for a workflow never dry-run, and no issue number (#568)", () => {
@@ -425,6 +450,27 @@ describe("the conversation", () => {
     expect(within(seat("conversation")).getByRole("textbox", { name: COMPOSER_LABEL })).toHaveAccessibleDescription(
       GATEWAY_REASON,
     );
+  });
+
+  it("hands the workspace's providers to the gateway notice, which reports their status (#569)", () => {
+    renderOwner(copilotReadingsWith({ readiness: { ok: true, value: NO_GATEWAY } }));
+
+    expect(within(seat("conversation")).getByRole("status")).toHaveTextContent(/Provider status: \d+ connected/);
+  });
+
+  it("draws the gateway notice without a status when the providers could not be read (#569)", () => {
+    renderOwner(
+      copilotReadingsWith({
+        readiness: { ok: true, value: NO_GATEWAY },
+        providers: { ok: false, reason: "Providers are unavailable." },
+      }),
+    );
+
+    const notice = within(seat("conversation")).getByRole("status");
+
+    expect(notice).toHaveTextContent(GATEWAY_NOTICE_TITLE);
+    expect(notice).not.toHaveTextContent(/Provider status/);
+    expect(screen.queryByText("Providers are unavailable.")).toBeNull();
   });
 
   it("gates nothing when the readiness could not be read — the service still refuses what it must", () => {
@@ -1044,6 +1090,21 @@ describe("one failed read is one degraded region", () => {
     expect(within(seat("dry-run")).queryByRole("button")).toBeNull();
     // The conversation, the stage list and promote are untouched.
     expect(seat("conversation")).toBeInTheDocument();
+    expect(seat("stages")).toBeInTheDocument();
+    expect(promote()).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("wears the banner for a safety strip that could not be read, and makes no claim in its seat (#569)", () => {
+    renderOwner(copilotReadingsWith({ safety: { ok: false, reason: "The harness is unavailable." } }));
+
+    expect(screen.getByText(SAFETY_FAILED_HEADLINE)).toBeInTheDocument();
+    expect(screen.getByText("The harness is unavailable.")).toBeInTheDocument();
+    expect(seat("safety")).toHaveAttribute("id", "copilot-safety");
+    expect(seat("safety")).toHaveTextContent(COPILOT_SEATS.safety.note);
+    // Not one of the three sentences is drawn from copy.
+    for (const claim of Object.values(SAFETY_CLAIMS)) expect(seat("safety")).not.toHaveTextContent(claim.sentence);
+    // The dry run, the stage list and promote are untouched.
+    expect(seat("dry-run")).toBeInTheDocument();
     expect(seat("stages")).toBeInTheDocument();
     expect(promote()).not.toHaveAttribute("aria-disabled");
   });

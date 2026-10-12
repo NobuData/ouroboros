@@ -117,8 +117,17 @@ async function shoot(page: Page, entry: Entry): Promise<Buffer> {
   }
 }
 
+/** How far apart the two looks that call a page's scrolling settled are. */
+const SCROLL_SETTLE_POLL_MS = 150;
+
+/** How long a capture with actions waits for the page to go quiet before the first one. */
+const HYDRATION_WAIT_MS = 5_000;
+
+/** The most a page pins over its pane's top edge: the sub-navigation row and a sticky bar under it. */
+const PINNED_ALLOWANCE_PX = 96;
+
 /**
- * Makes room for an element taller than the viewport, for the length of one capture.
+ * Makes room for an element taller than the pane it scrolls in, for the length of one capture.
  *
  * The app scrolls inside its content pane, not the document, so Playwright cannot stitch a tall
  * element: the part below the fold comes out as a blank band with the shell's header drawn
@@ -132,7 +141,17 @@ async function shoot(page: Page, entry: Entry): Promise<Buffer> {
 async function fitViewport(page: Page, target: Locator): Promise<() => Promise<void>> {
   const viewport = page.viewportSize();
   const box = await target.boundingBox();
-  if (!viewport || !box || box.height <= viewport.height) return async () => {};
+  if (!viewport || !box) return async () => {};
+
+  // What the element has to fit in is the pane it scrolls in, less what is pinned over the pane's
+  // top edge — not the window, part of which is the shell's header.
+  const room = await target.evaluate((element, pinned) => {
+    for (let node = element.parentElement; node; node = node.parentElement) {
+      if (/^(auto|scroll)$/.test(getComputedStyle(node).overflowY)) return node.clientHeight - pinned;
+    }
+    return window.innerHeight;
+  }, PINNED_ALLOWANCE_PX);
+  if (box.height <= Math.min(viewport.height, room)) return async () => {};
 
   // The element's own height plus one window: whatever sits above it in the pane still fits.
   await page.setViewportSize({
@@ -141,6 +160,30 @@ async function fitViewport(page: Page, target: Locator): Promise<() => Promise<v
   });
   await target.scrollIntoViewIfNeeded();
   return () => page.setViewportSize(viewport);
+}
+
+/**
+ * Waits until nothing on the page is still scrolling.
+ *
+ * Chromium animates a scroll made from the keyboard, so a capture taken straight after a `press`
+ * catches the scroller part-way — and at a different offset in each theme's run.
+ *
+ * @param page the page.
+ * @returns when two looks in a row found every scroll position where the last one left it.
+ */
+async function settleScroll(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => {
+      const held = window as unknown as { ouroScrollSeen?: string };
+      const seen = [...document.querySelectorAll("*")].map((element) => element.scrollTop).join(",");
+      const still = held.ouroScrollSeen === seen;
+
+      held.ouroScrollSeen = seen;
+      return still;
+    },
+    undefined,
+    { polling: SCROLL_SETTLE_POLL_MS },
+  );
 }
 
 for (const entry of entries) {
@@ -160,7 +203,14 @@ for (const entry of entries) {
     if (redirected) throw new Error(redirected);
 
     await page.addStyleTag({ content: FREEZE_CSS });
+    // An action on a page that has not hydrated yet races the page's own first effects — a card
+    // that scrolls itself to its end on mount undoes a key pressed before it. Bounded, because a
+    // page that polls or holds a stream open is never idle.
+    if (entry.actions?.length) {
+      await page.waitForLoadState("networkidle", { timeout: HYDRATION_WAIT_MS }).catch(() => {});
+    }
     await runActions(page, entry.actions);
+    if (entry.actions?.length) await settleScroll(page);
 
     try {
       await page

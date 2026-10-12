@@ -2,7 +2,7 @@
 title: "Workflow Copilot"
 sidebar_label: "Copilot"
 sidebar_position: 3
-description: "The Copilot page: the Visual, Code and Copilot views of one draft, the conversation that edits it, the draft's stage list, promoting and discarding a draft, and the dry-run card with its result rows, simulated diff, suggestions, budget and history."
+description: "The Copilot page: the Visual, Code and Copilot views of one draft, the conversation that edits it, the draft's stage list, promoting and discarding a draft, the dry-run card with its result rows, simulated diff, suggestions, budget and history, why dry runs are safe, and what can go wrong."
 ---
 
 The **Workflow Copilot** drafts a workflow with you in conversation and then proves the draft
@@ -24,8 +24,13 @@ exception that asks you first: leaving **Code** while the file does not parse �
 
 The page head has two actions, **Discard draft** and **Promote draft → `<slug>` vN**.
 
-Under the head are three cards: [the conversation](#the-conversation) on the left, and
-[the draft's stage list](#the-draft) over [the dry-run card](#the-dry-run-card) on the right.
+Under the head are four cards: [the conversation](#the-conversation) on the left, and
+[the draft's stage list](#the-draft), [the dry-run card](#the-dry-run-card) and
+[**Why dry runs are safe**](#why-dry-runs-are-safe) on the right.
+
+While the page loads, each card is drawn as an outline in its own shape, so nothing moves when
+the content arrives. If something on the page is not as you expect, see
+[What can go wrong](#what-can-go-wrong).
 
 ### Starting a workflow from a conversation
 
@@ -206,14 +211,30 @@ A workflow that has no conversation yet shows **Describe the workflow you want**
 example briefs. Choosing an example puts it in the box; it is not sent until you send it. The
 conversation starts with your first message.
 
+Under the examples the card says plainly what to expect:
+
+| The copilot will | It will not |
+| --- | --- |
+| Draft the stages from your brief, and ask when a choice is yours to make. | Run anything, write to a repository or open a pull request. |
+| Change only this workflow's draft — you can see every change in the stage list. | Publish the workflow — that is **Promote draft**, and yours to press. |
+| Show what each reply cost, when the model is priced. | Start a dry run by itself; you start one from the dry-run card. |
+
+Someone who cannot start a conversation sees **No conversation yet** instead, without the
+examples.
+
 ### When the Copilot cannot reply
 
 Two things must be in place before the Copilot can answer. When one is missing, the card says
 which, above the messages, and the box is switched off. Messages already in the conversation
 stay readable.
 
-- **The copilot needs the invocation gateway** — this deployment cannot call a model. The
-  notice links to [Providers](../../administration/providers.mdx).
+- **The copilot needs the invocation gateway** — this deployment cannot call a model, and the
+  Copilot cannot exist without one. This is a prerequisite, not an error: the page does not
+  spin, and nothing fails when you press a button. The notice reports the workspace's current
+  provider status — for example *Provider status: 4 connected — 3 active, 1 not yet checked.*,
+  or *no provider is connected in this workspace* — and links to
+  [Providers](../../administration/providers.mdx) through **See Providers**, where providers
+  are connected and checked. The status line is left out if the providers cannot be read.
 - **The copilot has no model route** — the workspace has no route for the Copilot's task kind,
   `copilot-workflow`, or the route does not resolve. The notice gives the reason and links to
   **Model routing**, where an owner or admin adds the route.
@@ -543,7 +564,7 @@ other end has a box above the rows, and the rows the run reached are kept under 
 | --- | --- | --- |
 | **This dry run failed** | A stage failed. | The reason, as the run recorded it. |
 | **The draft did not pass the pre-check** | The [structural pre-check](#the-structural-pre-check) found a problem, so no stage ran. | Each finding. A finding about a stage is a link to that stage's row in [the stage list](#the-draft). |
-| **This dry run was stopped at its budget** | The [budget](#the-budget) was reached. | What stopped it, the cap, and whether the cap was the workspace's or the draft's own spend guard. |
+| **This dry run was stopped at its budget** | The [budget](#the-budget) was reached. | What stopped it, what it had spent, the cap and whether it was the workspace's or the draft's own spend guard, and what to change before running again. |
 | **This dry run was cancelled** | Someone cancelled it. | Nothing more. |
 | **A guard had to stop this dry run** | A stage tried something a dry run must never do. See [Guards](#guards). | Each attempt that was blocked: what was tried, which guard refused it, how many times, and in which stage. |
 
@@ -607,6 +628,9 @@ budget.
 A dry run is kept apart from your loops. It is not a run, and its cost is not counted in any
 run, dashboard or spend figure.
 
+The page states these three differences itself, and shows what enforces each: see
+[Why dry runs are safe](#why-dry-runs-are-safe).
+
 ### Starting a dry run
 
 A dry run needs three things:
@@ -656,6 +680,13 @@ A dry run stops spending at its **budget**, which is the lower of two caps:
 
 For example, a draft with a `$5.00` spend guard in a workspace capped at `$10.00` has a budget
 of `$5.00`. A dry run says which of the two caps set its budget.
+
+A run stopped at its budget says what to change:
+
+- stopped by **the draft's own spend guard** — ask the Copilot to raise the draft's per-run
+  spend cap, or make the model stages cheaper, then re-run;
+- stopped by **the workspace's dry-run cap** — make the draft's model stages cheaper, or ask a
+  workspace owner to raise the cap, then re-run.
 
 ### How a dry run ends
 
@@ -731,6 +762,57 @@ For example, for a draft triggered by the label `security`:
 | 2 | `#550` — labels `ota`, `security` | Meets every condition — exercises the main path. |
 
 The Copilot uses the same ranking when it suggests an issue to dry-run against.
+
+## Why dry runs are safe
+
+Under the dry-run card, **Why dry runs are safe** states what a dry run does and does not
+touch, in up to three columns:
+
+<Screenshot id="user-guide.workflows.copilot.safety" />
+
+| Column | What it says | What makes it true |
+| --- | --- | --- |
+| **Simulated writes** | Diffs are drafted in memory — the repo is untouched. | The **in-memory overlay**: a stage's edits are held in memory, later stages read through them, and they become the simulated diff. No tool a dry run has can write to a repository. |
+| **Replayed infra** | Build & test are estimated from your history; the farm stays idle. | The **replay estimator service**: build and test stages are answered from your past builds and test runs, with a sample count and spread. Nothing is dispatched to the build farm. |
+| **Real models** | Prompts & routing are exercised for real — that's what you're testing. | **Invocation gateway routing**: every model stage runs its own prompt through the gateway with its routing resolved, counted against the dry run's budget. |
+
+Press the **ⓘ** beside a column to see its mechanism: what it is, what it does, the dry-run
+tools that carry it, the path it goes through, and — for **Replayed infra** — the formulas the
+estimate uses. One is open at a time; press it again, or **Esc**, to close it. The tag in the
+card's head names the dry-run harness the claims are about.
+
+### A column that is missing
+
+The columns are not fixed text. The page reads them from the service, which checks each one
+against the dry-run harness that is installed, and a column is shown **only while its mechanism
+is in place**.
+
+- If one or two are missing, the card says so in a highlighted line — *1 of this strip's 3
+  claims is not shown: the installed dry-run harness does not back it, so the page does not
+  make it.* — and the missing column is not drawn at all.
+- If none is in place, the card shows only a warning: do not rely on a dry run being safe
+  until this is resolved.
+
+Treat a missing column as a real loss of that guarantee and tell your administrator.
+
+If the claims cannot be read, the page says **The dry run's safety claims could not be read**
+with a **Retry**, the card makes no claim, and the rest of the page still works.
+
+## What can go wrong
+
+Each of these is a state the page shows on purpose, with what to do about it.
+
+| What you see | Where | What it means | What to do |
+| --- | --- | --- | --- |
+| **The copilot needs the invocation gateway** | Conversation | The deployment cannot call a model. The conversation is read-only; nothing is broken. | Read the provider status in the notice and follow **See Providers**. See [When the Copilot cannot reply](#when-the-copilot-cannot-reply) and [Providers](../../administration/providers.mdx). |
+| **Describe the workflow you want** | Conversation | Nothing has been said yet. | Pick an example brief or write your own. See [An empty conversation](#an-empty-conversation). |
+| Controls switched off with *One dry run at a time — this one is still running.* | Dry-run card, and the message box | A dry run is in progress. The rows it has reached are already shown. | Wait for it, or **Cancel dry run**. See [Watching a dry run](#watching-a-dry-run). |
+| **This dry run was stopped at its budget** | Dry-run card | The run reached its cap. The rows it reached are kept. | Follow the last line of the box — it says which cap to change. See [The budget](#the-budget). |
+| **A guard had to stop this dry run** | Dry-run card, in the error colour | A stage tried something a dry run must never do, and was blocked. Nothing was written. | **Do not trust this run's results** and do not promote the draft until you know why. See [Guards](#guards). |
+| **The draft did not pass the pre-check** | Dry-run card | The draft has a structural problem, so no stage ran. | Follow each finding's link to its stage in [the stage list](#the-draft) and fix it. See [The structural pre-check](#the-structural-pre-check). |
+| A note that you can read but not change, and controls switched off with a reason | Whole page | Your role cannot do that here. | Ask an owner or admin. See [Who can promote and discard](#who-can-promote-and-discard), [Who can take part](#who-can-take-part) and [Who can use the card](#who-can-use-the-card). |
+| A column missing from **Why dry runs are safe** | Safety card | The installed harness no longer backs that claim. | Tell your administrator. See [A column that is missing](#a-column-that-is-missing). |
+| A banner ending in **Retry** over one card | Any card | That card's content could not be read. The other cards still work. | Press **Retry**. |
 
 ## Suggestions
 

@@ -619,7 +619,7 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 | CE.2 | #566 ✅ | 🟢 Done | ouroboros-ui: [CE.2] Conversation card | Bubbles, choice chips, composer, streaming replies | mvp, copilot, ui, design | N (after CE.1, CD.1) | Y | L | ouroboros-ui |
 | CE.3 | #567 ✅ | 🟢 Done | ouroboros-ui: [CE.3] Draft stage list | Numbered rows, tags, provenance pills, W7 warnings, edit links | mvp, copilot, ui, design | N (after CE.1, CC.2) | Y | M | ouroboros-ui |
 | CE.4 | #568 ✅ | 🟢 Done | ouroboros-ui: [CE.4] Dry-run card | Result rows, simulated diff, suggestion callouts, pickers | mvp, copilot, ui, design | N (after CE.1, CD.4/CD.5) | Y | L | ouroboros-ui |
-| CE.5 | #569 | 🟡 Open | ouroboros-ui: [CE.5] Safety strip, states & e2e leg | Mechanism-traced strip; cold/error states; the full-chain e2e | mvp, copilot, ui, ci | N (after CE.2–CE.4) | Y | M | ouroboros-ui, .github |
+| CE.5 | #569 ✅ | 🟢 Done | ouroboros-ui: [CE.5] Safety strip, states & e2e leg | Mechanism-traced strip; cold/error states; the full-chain e2e | mvp, copilot, ui, ci | N (after CE.2–CE.4) | Y | M | ouroboros-ui, .github |
 
 ### Issue CE.1 — ouroboros-ui: [CE.1] Copilot route, head & promote/discard
 
@@ -757,7 +757,9 @@ promote ─▶ "publishes v1 · never-auto-merge + $5/run guard compiled" ─▶
 
 ### Issue CE.5 — ouroboros-ui: [CE.5] Safety strip, states & e2e leg
 
-> **GitHub issue:** #569 · **Status:** 🟡 Open · **Parent epic:** #553
+> **GitHub issue:** #569 ✅ · **Status:** 🟢 Done · **Parent epic:** #553
+>
+> **Delivered (#569 — `ouroboros-ui` 0.156.0, `tests/e2e` 0.35.0, `ouroboros-docs` 0.3.9; no REST or DB change):** the safety strip in its seat under the dry run (`app/workflows/copilot/safety-strip.tsx`, pure composition in `safety.ts`), read on the server from #562's `GET …/dry-runs/safety`: a column is drawn **only** while the payload serves it and it `holds`, in the payload's order, worded by the issue's verbatim sentence looked up by the id the payload sent; each ⓘ opens — in the flow, one at a time, Escape returning focus — the mechanism behind the claim (its name, the service's own `detail`, the harness tools, the control-plane path, and for the estimator the registered formulas with their dispersion). A claim the payload does not assert has no column and no sentence; a short strip says *n of this strip's 3 claims is not shown* on the warning treatment without repeating it, none holding is a warning alone, and a strip that could not be read is a labelled seat that claims nothing. **States:** the gateway notice now reports the workspace's **provider status** (`Provider status: 5 connected — 4 active, 1 failing.`), read from the existing `GET /api/v1/providers` — the user's choice over extending readiness; the cold invitation gains a plain *The copilot will* / *It will not* pair; a budget-stopped run says what it had spent and **what to change**, by which cap stopped it; and the loading skeleton draws each of the four cards in its own shape. The other states the issue lists (dry run in progress, guard-audit violation, pre-check findings, viewer read-only) were delivered by #566–#568 and are unchanged. **e2e leg 29** (`tests/e2e/specs/copilot.spec.ts`, `support/copilot.ts`): ten tests, nine run in about ten seconds — page ≡ payload for the strip and each mechanism, the gateway-absent state, the seeded dry run, the member's page, the shell (fixed chrome, *Workflows* and *Copilot* lit, **the segment sticky in the pane**, 125 %), and the strip's two screenshot pairs. **Parked, the user's choice (2026-10-12):** the chain — brief → draft → chips → dry run → Apply → re-run → promote → tri-surface parity — is one `test.fixme`, registered as a parked failure-mode pair, waiting on the invocation gateway (#235), a `copilot-workflow` route (#1748) and a publishable blank draft (#1744). **Its body has never run**, so four acceptance criteria are **not met**: green from a cold stack with a live gateway, Apply → re-run changing behaviour, promote asserted at the enforcement planes, and tri-surface parity — and with them the four deliberate breakages (operation applier, harness guards, suggestion rules, promote gate). The one breakage done: `engine` stopped turns the strip tests red with *reading the dry run's safety strip answered 502*. **Docs harness:** an element clip now grows the window when it is taller than its pane (not only the window), and a capture with actions waits for the page to go quiet and for scrolling to settle, so `user-guide.workflows.copilot.conversation` is byte-identical between captures.
 
 - **Problem Statement:** The safety strip must trace to mechanism, cold
   states must guide, and the whole conversational chain needs
@@ -1054,7 +1056,7 @@ Issue-level impact:
 |---|:---:|:---:|---|
 | CE.1 | #565 ✅ | 🟢 Done | Mounts in the shell content pane; navigation reached via the sidebar **Workflows** entry, not a topbar link; the Workflows subnav renders as PageSubnav, sticky in-pane |
 | CE.2, CE.3, CE.4 | #566, #567, #568 | 🟡 Open | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
-| CE.5 | #569 | 🟡 Open | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
+| CE.5 | #569 ✅ | 🟢 Done | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
 ## Next Step
 
