@@ -433,6 +433,12 @@ jobs:
             psql -v ON_ERROR_STOP=1 -f /tests/inbox-invariants.sql
           ouroboros-db/tests/verify-inbox-invariants.sh --runner docker
 
+      - name: Assert the chat invariants against the seeded database, and that they go red
+        run: |
+          docker run --rm --network=host "$POSTGRES_IMAGE" \
+            psql -v ON_ERROR_STOP=1 -f /tests/chat-invariants.sql
+          ouroboros-db/tests/verify-chat-invariants.sh --runner docker
+
       - name: Install uv
         uses: astral-sh/setup-uv@v9.0.0
 
@@ -1601,6 +1607,15 @@ check_break 'a pass that never asserts the inbox invariants is reported' \
 check_break 'a pass that never plants bad inbox rows is reported' \
   'plants bad inbox rows' \
   'sed -i "/verify-inbox-invariants.sh/d" "$root/.github/workflows/db.yml"'
+
+# Mockup 19's chat seed (#534): both invariant halves, each dropped on its own.
+check_break 'a pass that never asserts the chat invariants is reported' \
+  'asserts the chat invariants against the seeded database' \
+  'sed -i "s|/tests/chat-invariants.sql|/tests/nothing.sql|" "$root/.github/workflows/db.yml"'
+
+check_break 'a pass that never plants bad chat rows is reported' \
+  'plants bad chat rows' \
+  'sed -i "/verify-chat-invariants.sh/d" "$root/.github/workflows/db.yml"'
 
 check_break 'a rediscovery with no engine environment under it is reported' \
   'prepares the engine environment the rediscovery runs in' \

@@ -234,7 +234,7 @@ v2`** created at filing; every issue assigned. Complexity chips:
 | BY.1 | #531 ✅ | 🟢 Done | ouroboros-db: [BY.1] Chat connections & channel bindings | Workspace installs (sealed tokens), channels, route targets | mvp, chatops, db | N (after AD.1, BR.4) | Y | M | ouroboros-db |
 | BY.2 | #532 ✅ | 🟢 Done | ouroboros-db: [BY.2] Message & command records | Published cards (for edits + mirror), command invocations, links | mvp, chatops, db | N (after BY.1, BM.1) | Y | M | ouroboros-db |
 | BY.3 | #533 ✅ | 🟢 Done | ouroboros-db: [BY.3] Identity links & on-call | Slack↔member mappings, link states, designated on-call | mvp, chatops, db | N (after BY.1, BR.1) | Y | S | ouroboros-db |
-| BY.4 | #534 | 🟡 Open | ouroboros-db: [BY.4] Chat seeds — mockup-19 parity + probes | The six-message stream, bindings, links; ci checks | mvp, chatops, db, ci | N (after BY.2/BY.3, #24) | Y | S | ouroboros-db, .github |
+| BY.4 | #534 ✅ | 🟢 Done | ouroboros-db: [BY.4] Chat seeds — mockup-19 parity + probes | The six-message stream, bindings, links; ci checks | mvp, chatops, db, ci | N (after BY.2/BY.3, #24) | Y | S | ouroboros-db, .github |
 
 ### Issue BY.1 — ouroboros-db: [BY.1] Chat connections & channel bindings
 
@@ -332,7 +332,9 @@ on_call{ken} ─▶ blocking questions DM Ken (rotations: CB.3)
 
 ### Issue BY.4 — ouroboros-db: [BY.4] Chat seeds — mockup-19 parity + probes
 
-> **GitHub issue:** #534 · **Status:** 🟡 Open · **Parent epic:** #527
+> **GitHub issue:** #534 ✅ · **Status:** 🟢 Done · **Parent epic:** #527
+>
+> **Delivered (#534 — `R__dev_seed_workspace_triage_slack.sql` reshaped, `tests/chat-invariants.sql` + `tests/verify-chat-invariants.sh`, a `ci/db` step; no migration, REST, API or UI change):** the seed #532 and #533 started is now mockup 19: the header's `24 members · v2.4` from the connection and channel rows; the stream at the mockup's clock times (13:58 · 14:07→14:11 · 14:11 · 14:12 · 14:12 · 14:13 · 14:13 · 14:31), on the day before the seed ran; `/ouro dry-run #486 feature-loop` with its reply; five route rows; Ken and Maya linked, Jorge **revoked**; Ken on call. **Probes:** `lib/chat-invariants.sql` names fifteen invariants — platform/status and message-kind/outcome/surface vocabularies read from the CHECKs, one active Slack connection, the dedupe key, link uniqueness both ways, on-call reachable, every ref resolving, and the fixtures (header, sealed token, stream, resolved card + system line, open card, links, routes, stage transitions off) — and `verify-chat-invariants.sh` plants **eighteen** violations, each required to go red naming its invariant (run green: 37 checks). **Five choices were the user's (2026-10-12), each where the mockup meets a row that does not exist or that another seed owns:** (1) **the resolved question card stays the real Slack answer** — the resize review Maya answered (`keep_size`), with actor, `edited_at` and its system line — because the inbox seed (#460) owns the mockup's protected-path item on `#479` **open**; that item is seeded as an **open** card after the mockup's stream, so both states have a fixture; (2) **the completion card is the dashboard's merged loop of `#474`** — its real `14/14 checks · 11m cycle · claude-fable-5` and `PR #512` as facts — with **only a run ref**, since no `pull_requests` row for #512 and no canonical ticket #474 exist (and its loop is `#1839`, the universe's number, not `#1846`); (3) **the routes are five `custom:*` kinds on Slack**, leaving mockup 17's `weekly_insights` (email) and `loop_failures` (PagerDuty) rows alone; (4) **the stream carries the mockup's clock times**, not the times of the rows it is about; (5) **seed the routes knowing the fallout:** Settings' Notifications card lists every stored route, so it gains five rows on a seeded stack. **Not met / caveats:** the bot token is the usual dev envelope that seals nothing — SQL cannot seal through #222, so *sealed through the real path* is met only as the column's CHECK; the mockup's `$0.94`, `farm 4/5 online`, `build 3`, `rev 2` and a Copilot follow-up ref have no row behind them and are not seeded (`spend today $18.60` is, counted); **the e2e settings leg's baselines and assertions, the readability matrix's settings page and the `administration.settings` docs screenshot will need re-recording** for the five new route rows — not run here; databases seeded before this keep their older stream rows (`on conflict do nothing`), so reset a dev database to see the new one.
 
 - **Problem Statement:** Design review needs the mockup's exact stream and
   configuration over the shared universe.
@@ -872,7 +874,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    (#112, #143), WF-R.2 (#144), Z.2 (#195), BR.5 (#489), BJ.4 (#440), H.3
    (#79), #41/#46/#16, driver + sandbox + test Slack workspace.
 2. **Phase 1 — Domain:** BY.1 (#531) ✅ → { BY.2 (#532) ✅ ⊕ BY.3 (#533) ✅ } →
-   BY.4 (#534)
+   BY.4 (#534) ✅
 3. **Phase 2 — App & services:** BZ.1 (#535) → { BZ.2 (#536) ⊕ BZ.3 (#537) }
    → { BZ.4 (#538) ⊕ BZ.5 (#539) } → BZ.6 (#540)
 4. **Phase 3 — UI:** CA.1 (#541) → { CA.2 (#542) ⊕ CA.3 (#543) ⊕

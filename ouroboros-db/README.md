@@ -2754,25 +2754,37 @@ made — and `security-patch` joins the studio rail as `not published`. It sorts
 sorts after `dev_seed_workspace_metrics_analyzer`, whose builds are the history it reads.
 
 [`R__dev_seed_workspace_triage_slack.sql`](migrations/R__dev_seed_workspace_triage_slack.sql)
-([#532](https://github.com/NobuData/ouroboros/issues/532)) is mockup 19's channel for
-`acme-robotics`: one active Slack connection (`Ouroboros app v2.4`, a token envelope that seals
-nothing), the channels `#ouroboros-loops` (24 members), `#helios-alerts` and `#eng-leads`, and the
-six-message stream as published records — **about rows the other seeds already hold**, so the
-digits are the seed's and not the mockup's.
+([#534](https://github.com/NobuData/ouroboros/issues/534), over
+[#532](https://github.com/NobuData/ouroboros/issues/532) and
+[#533](https://github.com/NobuData/ouroboros/issues/533)) is mockup 19 for `acme-robotics`, written
+**about rows the other seeds already hold**, so every ref resolves.
 
-| The mockup's message | From the rows |
+| The mockup | From the rows |
 |---|---|
-| `✓ Loop … finished — PR … merged` | an `event_card` / `loop_finished` whose refs are the merged loop of `#520`, its pull request and its issue |
-| `⏸ Build paused — a question for you` | a `decision_card`, `open`, on the inbox's open `protected_path_allow_once` item, with the item's own refs |
-| the same card, answered | a `decision_card`, `resolved`, on the item Maya answered **from Slack** — outcome, answerer and time are that `decision_resolutions` row's (`keep_size`) |
-| `✓ Maya Chen answered: …` | the `system_line` that answer added |
-| `/ouro status` | one `chat_commands` row, `surface: slack`, `outcome: ok`, naming its reply; its invoker is Ken's identity link |
-| *Same permissions, same audit trail* · `+ DM on-call` | `chat_identity_links` for Ken and Maya, each `linked` by `oauth_session`; one active `on_call_assignments` row — Ken, for `decisions`. Jorge has no link ([#533](https://github.com/NobuData/ouroboros/issues/533)) |
-| `3 loops live · 12 queued · … needs-you: 3` | a `command_reply` whose `facts` are **counted** from runs, the queue and open decision items |
-| `⟳ Loop #1847 build … green — 63/63` | an `event_card` / `build_green` on run `#482` and PR `#514`, with its all-green test run's count |
+| `#ouroboros-loops · Slack · 24 members · Ouroboros app v2.4` | one active `chat_connections` row (`install_meta.app_version`, a token envelope that seals nothing) and its channel's `member_count`; beside it `#helios-alerts` and `#eng-leads` |
+| 13:58 `✓ Loop … finished — PR #512 merged` · `14/14 checks · 11m cycle · claude-fable-5` | an `event_card` / `loop_finished` on the dashboard's merged loop of `#474`; the figures are that run's columns, and the run is its one live ref |
+| 14:07 `⏸ a question for you`, resolved 14:11 | a `decision_card`, `resolved`, on the item Maya answered **from Slack** — outcome and answerer are that `decision_resolutions` row's (`keep_size`), with `edited_at` |
+| 14:11 `✓ Maya Chen answered: …` | the `system_line` about the same item |
+| 14:12 `/ouro status` · `3 loops live · 12 queued · … spend today $18.60 · needs-you: 3` | a `chat_commands` row by Ken's identity link, and a `command_reply` whose `facts` are **counted** from runs, the queue, open decision items and today's spend |
+| 14:13 `/ouro dry-run #486 feature-loop` | a second command, `ok`, and a reply naming issue `#486` (a live ref) and the workflow |
+| 14:31 `⟳ Loop #1847 build … green — 63/63` | an `event_card` / `build_green` on run `#482` and PR `#514`, with its all-green test run's count |
+| the five route rows, *every stage transition* off | five `custom:*` Slack routes — `loop-finished`, `blocking-questions` (channel **+ DM on-call**), `build-failures`, `weekly-insights`, and `stage-transitions` **disabled** — each locked *connect Slack first* until [#536](https://github.com/NobuData/ouroboros/issues/536) |
+| *Same permissions, same audit trail* · `+ DM on-call` | `chat_identity_links` for Ken and Maya (`linked`, `oauth_session`) and Jorge (`revoked`); one active `on_call_assignments` row — Ken, for `decisions` |
 
-It writes no audit event and no notification route. It sorts after
-`dev_seed_workspace_triage_inbox` — the last of the seeds it reads.
+Where it departs from the mockup, each because a row does not exist or another seed owns it in a
+different state: the loop of `#474` is `#1839` here, not `#1846`; `PR #512` is a figure on the run,
+since no `pull_requests` row or canonical ticket `#474` exists to be a ref; the resolved question
+is a real answer rather than *allow once* on `#479`, which the inbox seed holds **open** — that
+item is seeded as an open card after the mockup's stream, so both states have a fixture; and there
+is no cost, farm or dry-run figure that no row holds. The stream carries the mockup's clock times,
+on the day before the seed ran. The custom routes also appear on Settings' Notifications card,
+which lists every stored route.
+
+Its probes, [`tests/chat-invariants.sql`](tests/chat-invariants.sql), assert the vocabularies, the
+uniqueness rules, the on-call rule, ref resolvability and each fixture above, and
+[`tests/verify-chat-invariants.sh`](tests/verify-chat-invariants.sh) proves each goes red — eighteen
+planted violations, each required to fail naming its invariant. It writes no audit event, and
+sorts after `dev_seed_workspace_triage_inbox`, the last of the seeds it reads.
 
 ### The bundled price catalog
 
@@ -3800,7 +3812,7 @@ ouroboros-db/
 │   ├── R__dev_seed_workspace_copilot.sql # mockup 20 — the security-patch conversation, draft v0.3 with W7 warnings, the open dry run on #489, dev only — #558
 │   ├── R__dev_seed_workspace_replay.sql # mockup 20 — the dry run's build row computed from farm history, its completion, the two suggestions, dev only — #561
 │   ├── R__dev_seed_workspace_triage_inbox.sql # mockup 16 — three open cards, the week's eleven answers, PR #504, dev only — #460
-│   ├── R__dev_seed_workspace_triage_slack.sql # mockup 19 — the Slack workspace, three channels and the six-message stream as published records, Ken's and Maya's identities and the on-call designee, dev only — #532, #533 (sorts last)
+│   ├── R__dev_seed_workspace_triage_slack.sql # mockup 19 — the Slack workspace, three channels and the stream at the mockup's clock times, the five route rows, three identities and the on-call designee, dev only — #532, #533, #534 (sorts last)
 │   └── R__model_price_catalog.sql    # the bundled price snapshot, every environment — #580 (generated)
 └── tests/
     ├── lib/
@@ -3813,6 +3825,7 @@ ouroboros-db/
     │   ├── settings-invariants.sql   # the Settings invariants mockup 17 trusts, named — #484
     │   ├── inbox-invariants.sql      # the Needs-You inbox invariants mockup 16 trusts, named — #460
     │   ├── copilot-invariants.sql    # the copilot seed's invariants mockup 20 trusts, named — #558
+    │   ├── chat-invariants.sql       # the chat seed's invariants mockup 19 trusts, named — #534
     │   ├── analyzer-corpus.sql       # the seeded corpus as the engine's Corpus JSON — #509
     │   ├── rediscover.py             # runs the change-point analyzer over it and compares — #509
     │   ├── dependency-cycles.sql     # the recursive-CTE walk that finds a stored cycle — #276
@@ -3849,6 +3862,9 @@ ouroboros-db/
     ├── copilot-invariants.test.sh    # the copilot verifier's usage, and that its pieces agree — #558
     ├── copilot-invariants.sql        # the copilot invariants against the seeded rows — #558
     ├── verify-copilot-invariants.sh  # that they go red when a rule is broken, naming it — #558
+    ├── chat-invariants.test.sh       # the chat verifier's usage, and that its pieces agree — #534
+    ├── chat-invariants.sql           # the chat invariants against the seeded rows — #534
+    ├── verify-chat-invariants.sh     # that they go red when a rule is broken, naming it — #534
     ├── verify-analysis-run-guard.sh  # one running analysis per repo, under a two-session race — #506
     ├── verify-investigation-seq.sh   # gapless RS-### numbers under concurrent creates — #608
     ├── verify-copilot-sessions.sh    # one active copilot session per draft, ordered appends — #555
