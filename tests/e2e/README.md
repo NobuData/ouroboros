@@ -45,6 +45,7 @@ deployment. Five legs from the issue, and twenty-two amended in since:
 | 25 | [`specs/inbox.spec.ts`](specs/inbox.spec.ts) | **The Needs-You inbox's MVP gate (#470)** against the #460 seed: mockup 16 photographed whole in both palettes; the **This week** card reading `11 decisions` and *median answer time 41s · loops never waited longer than 6m* as `GET /api/v1/inbox/stats` does — and reading four more after the chain; **all three answers asserted on their effect** — *Approve & merge* merging PR `#504` **on the sandbox host**, at the sha the receipt names; *Allow once* resuming a simulated loop past its protected-path stop until its `implement` stage succeeds and the driver reports `completed`; *Waive & annotate* leaving the claim, the note and the waiver's author **in the host PR's conversation**; **the daily digest, sent by the scheduler's real tick, read out of mailpit** — its *Deny* link answering loop `#1844` with one signed-out `POST` (and refusing a second), its merge-class *Approve & merge* link showing *Sign in to confirm*, answering a signed-out `POST` `401` and merging nothing; a one-minute snooze that dims the card and leaves the badge's count, and **expires back into the queue with its age intact**, and *Wake now*; **two concurrent answers making exactly one resolution and one guardrail exception**, the stale card saying *Answered by …*; a member whose approver-only answers are inert on the page and `403` past it; a queue that cannot be refreshed naming its last refresh to the second, and *Retry*; inbox zero with every answer a resolved row in its resolver's class, the email answer tagged `email`, and the **Needs You** badge gone; and the shell at 125%. Cold-only: an answer is final |
 | 26 | [`specs/settings.spec.ts`](specs/settings.spec.ts) | **The Settings MVP gate (#496)** against the #484 seed: mockup 17's hub photographed whole in both palettes, for an owner and for a member who is served the same page read-only and refused past it; and **each card asserted on the plane it governs** — the protected-paths rule published off while a simulated loop is *already held* at `boot/can_bringup.c`, so that a plain resume (no allow-once) makes the driver report the same change-set to a gate that now passes it, with zero exceptions granted, the publish in the audit log and the version tag one higher; *Can approve loops* unticked for an admin, whose approver-class answer the service then refuses `403` where it had asked for its note; the retention select saved, and the new tier in the service's read, in the rows a sweep computes its cutoff from, and in the audit trail; **a webhook endpoint made in the sheet, its secret read off the one-time dialog, and the test ping found at a fixture receiver signed with that secret**; the audit log filtered and exported, the downloaded CSV equal to the filtered view row for row and the export itself the newest `audit.exported`; **pause-all pressed mid-stage — that stage reported `succeeded` afterwards, the next refused `409 workspace_paused`, no new loop able to open, the banner on the dashboard for a member too, and one press of *Resume* there clearing it everywhere** before a fresh loop runs through; a delete rehearsal on a workspace of the leg's own — the exact name, a step-up demanded of an aged session and answered with the password, the recovery screen's countdown, every other surface `403 workspace_pending_delete`, a member told who can act, and **Restore**; and the shell at 125% |
 | 27 | [`specs/wizard.spec.ts`](specs/wizard.spec.ts) | **The Get Started wizard's MVP gate (#395)** — the states mockup 13 cannot draw, and the chain that certifies the onboarding roadmap from a cold rail: standalone chrome (no shell header, sidebar or pane; nothing fixed to the viewport; no mockup topbar), the head, rail and action bar holding still while only the step content scrolls, the 125 % step, the seeded wizard in both palettes, and a fresh workspace's dashboard offer dismissed for good while `/get-started` stays reachable; then, in `acme-robotics` on a repository it has never onboarded (the sandbox tracker's `helios-bootloader`), **every step undone and done for real**: GitHub connected through the embedded add-source dialog (the service validates the token against the sandbox tracker), the repository switched on through the embedded enablement switch — recorded, enabled, scanned — **detection rows read off the fixture repository's own files**, the issue the leg filed sized through the engine and picked, *Quick fixes* selected and **found in the Studio**, *Run my first loop →* and its receipt, the **dashboard's** queue count moving by exactly one with the queue API holding the issue pinned `quick-fixes` v1 `explicit`, **dry-run really flipped on** by the launch (Settings → Policies and the policy API), the simulated driver's `first-loop` opening a **watermarked** run of that issue under the wizard's own workflow and walking it to *Open PR & auto-merge* — the rail reading *run started* — and the **regression leg**: the source paused in its own row, step 1 un-ticked with the service's reason and a fix path, resumed and done again. Named to sort last: it files a ticket and a queue row the planning, intake and dashboard legs' parity counts. Cold-only: a repository is onboarded once |
+| 28 | [`specs/research.spec.ts`](specs/research.spec.ts) | **The Research MVP gate (#634)** against the #613 seed: mockup 22's seven regions photographed one by one in both palettes; **every superscript of the featured brief resolving to the source row the ledger holds under that marker**, and lighting it; the exported artifact read back — claims with their markers, the matrix, the proposal and all 44 sources; `ROADMAP.md` as projected and the tracker's issue rows agreeing item for item; the page **without the invocation gateway** — said once, both start controls inert with the reason, and an owner's *Apply* refused by the engine with nothing changed; a member's page read-only and the service refusing past it; fixed chrome, *Research* lit and the 125 % step; a tool **enabled through the schema-driven sheet** and its dot turning healthy; *Draft epic from gaps* opening a batch in Planning whose drafts name their gap and cite their sources **with nothing filed on the tracker**; and a **planted drift detected by a real nightly comparison**, rested at *needs repro* by the scheduler's pass and dismissed by an owner. Four chains — investigate → brief, cancel, apply → re-run → writeback, and bisected → forensics → fix draft — are parked on #235 and #991 |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
 route-migration gate. Its containment assertions come with their own falsifier:
@@ -645,6 +646,60 @@ The registered pairs (`scripts/verify-failure-modes.sh`) are `db`, which takes t
 owner's sign-in, and `webhook-receiver`, against the webhook test alone, which must name the fixture
 before it creates anything.
 
+Leg 28 is [#634](https://github.com/NobuData/ouroboros/issues/634)'s — CN.8, the Research
+roadmap's MVP gate — over #627–#633's page and #613's seed: fourteen tests in one file, ten that run
+in about forty-five seconds and four that are parked. The issue's allowance is three added minutes.
+
+**What runs, and what each is asserted on.** *Parity* is seven screenshots a palette, one a region.
+*Citations* walks every marker of RS-127's brief: the row it addresses exists, carries the marker's
+own label and the title `GET …/brief` holds for that record, and is the one row lit after the
+press — then *all ↗* opens the ledger with the heading's count. *Export* presses the link and reads
+the **downloaded file**. *Pipeline* reads the raw `ROADMAP.md` off the card and requires each line's
+issue, title, size and tick to be the tracker row in the same position. *No gateway* and *member*
+are the page's two guards. *Tool enable* runs in the personal workspace, which has enabled nothing:
+web search through its sheet, the dot the deployment's own SearXNG answering. *Gaps → Planning*
+reads the batch back through `GET /api/v1/planning/batches/{id}` and the sandbox tracker's issue
+count before and after. *The watch* is below.
+
+**The watch's fixture is one row.** `support/research.ts` plants a release baseline for a HIL
+metric the seed measures and never baselined, names the metric as watched with **no replay test**,
+and calls `POST …/regression-watch/comparisons` — the route the nightly tick calls. The telemetry
+tool reads the seeded measurements, the drift rule opens the item, the card draws it, and the
+scheduler's next pass rests it at *needs repro: no replayable test is configured…*. An owner then
+dismisses it in the dialog. The pass is the real one: `docker-compose.e2e.yml` sets
+`OURO_RESEARCH_REGRESSION_TICK_MS` to the ten-second floor, where the default is five minutes.
+
+**Four chains are parked**, each a `test.fixme` naming the issue that un-parks it, and each
+registered as a parked pair:
+
+| Chain | Waits on | Asserted meanwhile |
+|---|---|---|
+| start → source count ticks → `brief_ready` → citation → export | the invocation gateway, [#235](https://github.com/NobuData/ouroboros/issues/235) — every step of an investigation asks a model | citations and export on the seeded brief; the start controls inert with the reason |
+| cancel mid-run, partial state and ledger kept | #235 | — |
+| apply → re-run → new version; `create-issues` → writeback ≡ tracker | #235 — both skills are model calls | the engine's refusal with the document untouched; document ≡ tracker on the seeded roadmap |
+| drift → bisected with its culprit → forensics → fix draft | a runner that can check a commit out, [#991](https://github.com/NobuData/ouroboros/issues/991), and a host the engine can clone from | drift → *needs repro*, live; the later states on the seeded rows' screenshot |
+
+A replayable metric is deliberately **not** planted: its bisect would ask the real host for a clone
+on every ten-second pass.
+
+**What it leaves behind.** The tool row and the planted baseline are taken back out in a `finally`
+(`disableTool`, `removeDrift` — the baseline is immutable by trigger, so the delete is the migration
+owner's). *Draft epic from gaps* leaves its batch in Planning; a second run reopens that batch
+without being asked for a tracker, and the test follows either path. So the leg is **re-runnable**,
+and it sorts after the planning leg, which counts batches.
+
+**The breakages #634 asks for**, each done once by hand on a compose stack:
+
+| Broken | Test | Went red with |
+|---|---|---|
+| the sources panel's rows given a different `id` (`brief-sources.tsx`, the image rebuilt) | *citations* | *a citation marker no longer resolves to its source row … [07] addresses no row* |
+| issue `#743` closed in `tickets` beneath the document | *pipeline* | *ROADMAP.md and the tracker disagree* |
+| `engine` stopped | *no gateway* | *was not refused by the engine for want of a model* |
+| `searxng` stopped | *tool enable* | *the fixture tool's dot did not turn healthy* |
+| `db` stopped | the whole leg | the sign-in's `5xx` |
+
+The last three are the registered pairs (`scripts/verify-failure-modes.sh`).
+
 ## Stack
 
 [Playwright](https://playwright.dev) on Node 24, Chromium only, over the stack
@@ -825,6 +880,7 @@ tests/e2e/
 │   ├── sandbox.ts              # the sandbox tracker's PR plane, read back: a merge and an annotation (leg 25)
 │   ├── analyzer.ts             # what mockup 18's seven regions and the page's other states render, the reads beneath the browser, the poll rewriter and the calendar pin, and what legs 23 and 24 put back
 │   ├── wizard.ts               # the Get Started wizard's words, the never-onboarded repository the chain runs on, and the reads beneath the browser: sources, mirror, queue, dry-run (leg 27)
+│   ├── research.ts             # mockup 22's seven regions, the page's refusals in its own words, the planted baseline and the reads beneath the browser (leg 28)
 │   ├── shell.ts                # the containment contract as assertions (leg 7)
 │   ├── readability.ts          # the matrix roster and the 150% probes (leg 8)
 │   ├── contrast.ts             # WCAG ratios over what the browser painted (leg 8)
@@ -984,6 +1040,12 @@ recorded yet**, as leg 22's are not: it needs a cold stack, which is the next re
 It has leg 6's kind of calendar precondition too: on a **Monday** the seed's clamp puts the week's
 eleven answers on today (its header says so), and *Resolved today* draws more rows than the pair —
 record and verify on any other day.
+
+Leg 28's pairs are seven: `research-{head,composer,tools,watch,brief,pipeline,investigations}-{light,dark}`,
+mockup 22's regions each photographed alone through a 1440 × 1100 window, **unmasked** — nothing
+the page prints is measured against the clock (a tool's latency is in its dot's tooltip, not on the
+card). They are of the seeded page with the gateway notice above the grid, which is every stack's
+page until #235; that issue re-records `head` and `composer`.
 
 Leg 26 records five pairs. `settings-{light,dark}` and `settings-member-{light,dark}` are the whole
 hub through a 1440 × 3600 window the leg asserts does not scroll — an owner's and a member's — and
@@ -1168,6 +1230,11 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
    a half minutes compressed twenty-fold, and the regression's two polls. The connect, the
    enablement and the template selection are seconds each. `SUITE_BUDGET_MS` did not move.
 
+   Leg 28's stated allowance is **three minutes** and it spends about forty-five seconds: nothing
+   in it waits on a model, and its longest wait is one ten-second pass of the watch's scheduler.
+   The four parked chains are where the rest of the allowance goes when #235 and #991 land.
+   `SUITE_BUDGET_MS` did not move.
+
    Leg 8 is the exception that proves the rule and is allowed to be one for a stated
    reason: its runtime *is* an acceptance criterion of a different issue, so it has a
    config, a budget and a CI step of its own rather than three minutes of #56's ten (§ *The
@@ -1251,5 +1318,10 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
 - [#487](https://github.com/NobuData/ouroboros/issues/487) — outbound webhooks, whose URL policy is why leg 26's receiver speaks TLS
 - [#489](https://github.com/NobuData/ouroboros/issues/489) — the workspace lifecycle leg 26 pauses, deletes and restores through
 - [#490](https://github.com/NobuData/ouroboros/issues/490) — the governance harness, where the purge leg 26 does not wait for is asserted
+- [#634](https://github.com/NobuData/ouroboros/issues/634) — leg 28, the Research page's citations, export, pipeline, guards, hand-off and watch, and the Research MVP gate
+- [#627](https://github.com/NobuData/ouroboros/issues/627)–[#633](https://github.com/NobuData/ouroboros/issues/633) — the frame, the cards and the states leg 28 drives
+- [#613](https://github.com/NobuData/ouroboros/issues/613) — the research seed leg 28's parity asserts against
+- [#235](https://github.com/NobuData/ouroboros/issues/235) — the invocation gateway, which un-parks three of leg 28's chains
+- [#991](https://github.com/NobuData/ouroboros/issues/991) — runner source checkout, which un-parks the bisect half of leg 28's watch chain
 - [#306](https://github.com/NobuData/ouroboros/issues/306) — the control queue leg 17's presses travel through
 - [#307](https://github.com/NobuData/ouroboros/issues/307) — the simulated-run driver that acknowledges them

@@ -317,6 +317,24 @@
 # and the seed's two (`siem.acme-robotics.dev`, `hooks.acme-robotics.dev`) are still refused or
 # unresolvable exactly as they were.
 #
+# ---------------------------------------------------------------------------
+# The eleventh line, and the pass it lets the suite wait for (issue #634, the research leg).
+# ---------------------------------------------------------------------------
+#
+#   * `OURO_RESEARCH_REGRESSION_TICK_MS: "10000"` — how often the regression watch's scheduler
+#     passes over its open items. The minimum the service accepts, rather than the default five
+#     minutes.
+#
+# **What it is for.** The research leg (specs/research.spec.ts) plants a baseline, runs the
+# nightly comparison through its own route, and then waits for the scheduler's next pass to rest
+# the drift at *needs repro* — the chain's honest stop for a metric with no replay test. At the
+# default cadence that pass is up to five minutes away, more than the leg's whole allowance. The
+# pass is the real one; only its cadence is an operator's setting.
+#
+# **What it changes for every other leg, which is nothing.** The seed watches no metric, so the
+# nightly comparison has nothing to read, and the three seeded items are at states a pass leaves
+# alone (#623).
+#
 # Everything else — images, healthchecks, the shared ui/rest network namespace, the
 # loopback-only port publishing — is the base file's, unrepeated here so it cannot drift.
 services:
@@ -330,6 +348,7 @@ services:
       OURO_RUN_SIMULATOR_SECRET: "e2e-run-simulator-secret"
       OURO_ENGINE_URL: "http://engine-tap:8000"
       OURO_INSIGHTS_DIGEST_INTERVAL_SECONDS: "5"
+      OURO_RESEARCH_REGRESSION_TICK_MS: "10000"
       OURO_WEBHOOK_INTERNAL_ALLOWLIST: "webhook-receiver"
       NODE_EXTRA_CA_CERTS: /webhook-ca/ca.pem
     volumes:
