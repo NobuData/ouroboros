@@ -32,6 +32,38 @@ export interface ReplayPolicy {
   readonly sampleFloor: number;
 }
 
+/** The executors a build's similarity class can name — `runner_pools.executor` (V040). */
+const BUILD_EXECUTORS: readonly string[] = ["container", "shell"];
+
+/** What joins the parts of a printed similarity class (V121). */
+const CLASS_SEPARATOR = " · ";
+
+/**
+ * Which estimator printed a similarity class — read from the class's own shape, which V121's two
+ * functions fix: `build_similarity_class()` prints `<pool> · <repository> · <executor> ·
+ * <configuration class>` and `test_similarity_class()` prints `<repository> · tests · <suite
+ * set>`. A pool's name is a slug and a repository's is GitHub's, so neither holds the separator
+ * and the leading parts are exact.
+ *
+ * A stage row stores no kind — only this class — so this is the one stored fact that tells a
+ * build estimate from a test estimate. It never reads the stage's name, and a class that fits
+ * both shapes (a build in a repository named `tests`, say) or neither is answered `null`
+ * rather than guessed.
+ *
+ * @param similarityClass - A replayed row's `metrics.similarity_class`.
+ * @returns `build`, `test`, or `null` when the class does not say which.
+ */
+export function replayKindOfClass(similarityClass: string): ReplayKind | null {
+  const parts = similarityClass.split(CLASS_SEPARATOR);
+  const [, second, third] = parts;
+  const build = parts.length >= 4 && third !== undefined && BUILD_EXECUTORS.includes(third);
+  const test = parts.length >= 3 && second === "tests";
+
+  if (build === test) return null;
+
+  return build ? "build" : "test";
+}
+
 /** A sample's statistics, as the database computed them. */
 export interface ReplaySample {
   /** How many similar builds or test runs were found in the window. */

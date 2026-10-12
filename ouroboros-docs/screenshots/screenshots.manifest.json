@@ -286,10 +286,10 @@
       "clip": "page",
       "masks": [],
       "caption": "The Copilot page of a workflow: the Visual, Code and Copilot views, Discard draft and Promote draft, and the unresolved references flagged under them.",
-      "alt": "The Workflow Studio's Copilot page open on security-patch, headed Describe the workflow. Watch it build. Test it before it touches anything. The Visual, Code and Copilot tabs have Copilot selected, and Discard draft and Promote draft → security-patch v1 buttons sit above a note that 2 unresolved references are flagged. Below are the conversation card, the draft's stage list and a marked place for the dry run.",
-      "capturedAt": "2026-10-12T03:32:29.278Z",
-      "uiVersion": "0.153.0",
-      "seedRef": "59d2d41ac4a9d365f5ce051942d92814b865a929"
+      "alt": "The Workflow Studio's Copilot page open on security-patch, headed Describe the workflow. Watch it build. Test it before it touches anything. The Visual, Code and Copilot tabs have Copilot selected, and Discard draft and Promote draft → security-patch v1 buttons sit above a note that 2 unresolved references are flagged. Below are the conversation card, the draft's stage list and the dry-run card.",
+      "capturedAt": "2026-10-12T04:21:50.372Z",
+      "uiVersion": "0.154.0",
+      "seedRef": "b6289b2fe9ded98f4e6a7bc6ee5123b8d2e86bb7"
     },
     {
       "id": "user-guide.workflows.copilot.conversation",
@@ -322,6 +322,21 @@
       "capturedAt": "2026-10-12T03:32:29.278Z",
       "uiVersion": "0.153.0",
       "seedRef": "59d2d41ac4a9d365f5ce051942d92814b865a929"
+    },
+    {
+      "id": "user-guide.workflows.copilot.dry-run",
+      "route": "/workflows/security-patch/copilot",
+      "workspace": "acme-robotics",
+      "ready": "#copilot-dry-run .copilot-dry__row",
+      "clip": "#copilot-dry-run",
+      "masks": [
+        "#copilot-dry-run .copilot-dry__row:nth-child(4) .copilot-dry__note"
+      ],
+      "caption": "The dry-run card: seven result rows with how each result was produced, the simulated diff, two suggestions, and the controls to run again.",
+      "alt": "The Dry run — #489 CAN arbitration-lost storm under full telemetry load card, with a pill reading simulated — no writes · no PRs · no merges and the totals 2m 41s · $0.31. Seven rows: analyze, plan, implement (simulated), build (replayed from history) with an information mark, exploit-verify (skipped) in the warning colour with the note no PoC exists: stage had nothing to do, review ×2, and open PR marked not run with the note would open DRAFT PR · not merged (policy). Below them a diff block headed simulated diff (never written to repo), drivers/can/arbitration.c +41 −9. Then two highlighted suggestions, Make exploit-verify conditional at 93% and Pin the pr-etiquette skill to both reviewers at 81%, each with Apply to draft, Explain and Ignore buttons. At the foot, Re-run dry run and Dry-run another issue buttons and the line history: 1 dry run · draft v0.3 (2 copilot edits).",
+      "capturedAt": "2026-10-12T04:21:50.372Z",
+      "uiVersion": "0.154.0",
+      "seedRef": "b6289b2fe9ded98f4e6a7bc6ee5123b8d2e86bb7"
     },
     {
       "id": "user-guide.workflows",

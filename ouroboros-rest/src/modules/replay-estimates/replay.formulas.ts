@@ -82,6 +82,23 @@ export const REPLAY_FORMULAS: Readonly<Record<ReplayKind, ReplayFormula>> = {
 };
 
 /**
+ * Each formula in one sentence — what a dry-run stage row says beside its estimate (CE.4,
+ * [#568](https://github.com/NobuData/ouroboros/issues/568)).
+ *
+ * Kept beside {@link REPLAY_FORMULAS} rather than inside it: an applied formula is a closed shape
+ * on the internal wire (`replay.contract.spec.ts`), and a stage row needs only the id, the
+ * version and this sentence. **A version raised above is a sentence re-read here.**
+ */
+export const REPLAY_FORMULA_SUMMARIES: Readonly<Record<ReplayKind, string>> = {
+  build:
+    "The median wall time of the succeeded builds in the window that share this stage's " +
+    "similarity class; the ± is their median absolute deviation.",
+  test:
+    "The median wall time of this repository's complete test runs in the window that " +
+    "reported exactly this suite set; the ± is their median absolute deviation.",
+};
+
+/**
  * The formula an estimator of a kind declares.
  *
  * @param kind - What is estimated.

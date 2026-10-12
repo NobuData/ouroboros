@@ -14,8 +14,12 @@ import {
   copilotReadiness,
   securityPatchDetail,
   securityPatchEntry,
+  DRY_RUN_ID,
   seededAliases,
+  seededDryRun,
+  seededHistory,
   seededStageDraft,
+  seededSuggestions,
 } from "../../helpers/workflow-copilot";
 
 /**
@@ -64,6 +68,23 @@ vi.mock("@/app/api/workflow-copilot", () => ({
 }));
 vi.mock("@/app/api/routing", () => ({ routing: { aliases: () => aliases() } }));
 
+/** What the dry-run history endpoint answers, by workflow id. */
+const dryRunHistory = vi.fn();
+
+/** What the dry-run endpoint answers, by workflow and run id. */
+const dryRunRead = vi.fn();
+
+/** What the suggestions endpoint answers, by workflow and run id. */
+const dryRunSuggestions = vi.fn();
+
+vi.mock("@/app/api/workflow-dry-runs", () => ({
+  workflowDryRuns: {
+    history: (id: string) => dryRunHistory(id),
+    read: (id: string, dryRunId: string) => dryRunRead(id, dryRunId),
+    suggestions: (id: string, dryRunId: string) => dryRunSuggestions(id, dryRunId),
+  },
+}));
+
 const { readStudioCopilot } = await import("@/app/workflows/copilot/copilot-data");
 
 /** The workspace the gate hands over. */
@@ -89,6 +110,69 @@ beforeEach(() => {
   readiness.mockReset().mockResolvedValue(copilotReadiness());
   draft.mockReset().mockResolvedValue(seededStageDraft());
   aliases.mockReset().mockResolvedValue(seededAliases());
+  dryRunHistory.mockReset().mockResolvedValue(seededHistory());
+  dryRunRead.mockReset().mockResolvedValue(seededDryRun());
+  dryRunSuggestions.mockReset().mockResolvedValue({ dryRunId: DRY_RUN_ID, suggestions: seededSuggestions() });
+});
+
+describe("the dry-run card's reads (#568)", () => {
+  it("reads the history, then the newest run and its suggestions by the ids the history gave", async () => {
+    const readings = await readStudioCopilot(ACCESS, "security-patch");
+
+    expect(dryRunHistory).toHaveBeenCalledExactlyOnceWith(SECURITY_PATCH_ID);
+    expect(dryRunRead).toHaveBeenCalledExactlyOnceWith(SECURITY_PATCH_ID, DRY_RUN_ID);
+    expect(dryRunSuggestions).toHaveBeenCalledExactlyOnceWith(SECURITY_PATCH_ID, DRY_RUN_ID);
+    expect(readings.selected?.dryRun).toEqual({
+      ok: true,
+      value: { history: seededHistory(), run: seededDryRun(), suggestions: seededSuggestions() },
+    });
+  });
+
+  it("reads a workflow never dry-run as a board with no run, and asks for nothing more", async () => {
+    const history = seededHistory({ count: 0, runs: [] });
+    dryRunHistory.mockResolvedValue(history);
+
+    const readings = await readStudioCopilot(ACCESS, "security-patch");
+
+    expect(dryRunRead).not.toHaveBeenCalled();
+    expect(dryRunSuggestions).not.toHaveBeenCalled();
+    expect(readings.selected?.dryRun).toEqual({ ok: true, value: { history, run: null, suggestions: [] } });
+  });
+
+  it("keeps a refused history as its own degraded reading, and every other read as it was", async () => {
+    dryRunHistory.mockRejectedValue(REFUSED);
+
+    const readings = await readStudioCopilot(ACCESS, "security-patch");
+
+    expect(readings.selected?.dryRun).toEqual({ ok: false, reason: "The service could not answer." });
+    expect(readings.selected?.draft).toMatchObject({ ok: true });
+    expect(readings.selected?.conversation).toMatchObject({ ok: true });
+  });
+
+  it("keeps a refused run as the board's refusal — there is nothing to draw rows from", async () => {
+    dryRunRead.mockRejectedValue(REFUSED);
+
+    const readings = await readStudioCopilot(ACCESS, "security-patch");
+
+    expect(readings.selected?.dryRun).toEqual({ ok: false, reason: "The service could not answer." });
+  });
+
+  it("keeps the run when only its suggestions were refused — the rows and the diff still draw", async () => {
+    dryRunSuggestions.mockRejectedValue(REFUSED);
+
+    const readings = await readStudioCopilot(ACCESS, "security-patch");
+
+    expect(readings.selected?.dryRun).toEqual({
+      ok: true,
+      value: { history: seededHistory(), run: seededDryRun(), suggestions: null },
+    });
+  });
+
+  it("lets anything that is not a refusal keep travelling", async () => {
+    dryRunHistory.mockRejectedValue(new Error("NEXT_REDIRECT"));
+
+    await expect(readStudioCopilot(ACCESS, "security-patch")).rejects.toThrow("NEXT_REDIRECT");
+  });
 });
 
 describe("the stage list's reads (#567)", () => {

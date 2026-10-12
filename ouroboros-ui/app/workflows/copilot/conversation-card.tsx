@@ -62,7 +62,14 @@ import {
 } from "./conversation";
 import { ChoiceRows, MetaLine, ReplyEnding, ReplyText, Segments, StoredTrace } from "./conversation-parts";
 import { type CopilotTransport, type TransportRefusal, browserTransport } from "./conversation-transport";
-import { publishDraft, publishOperation, publishStreaming, resetCopilotLive } from "./copilot-live";
+import {
+  liveReadiness,
+  publishDraft,
+  publishOperation,
+  publishStreaming,
+  resetCopilotLive,
+  useLiveDryRun,
+} from "./copilot-live";
 import {
   COPILOT_SEATS,
   INTERRUPTED_BODY,
@@ -184,6 +191,7 @@ export function ConversationCard({
   const titleId = `${element}-title`;
   const inputId = useId();
   const reasonId = useId();
+  const liveDryRun = useLiveDryRun(workflowId);
 
   /* ---- what is drawn ---- */
 
@@ -198,7 +206,8 @@ export function ConversationCard({
     mayAdminister,
     streaming: live !== null,
     pending: last?.role === "copilot" && last.status === "streaming",
-    readiness,
+    // The dry-run card knows a run started or ended before the route's readiness is read again.
+    readiness: liveReadiness(readiness, liveDryRun),
     closedNote: closed === null ? "" : transcriptNote(closed, name),
   });
   const absent = composerAbsent(gate);

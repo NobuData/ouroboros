@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { test, type Page } from "@playwright/test";
+import { test, type Locator, type Page } from "@playwright/test";
 
 import { runActions } from "./lib/actions.ts";
 import { optimiseCapture } from "./lib/image.ts";
@@ -108,7 +108,39 @@ async function shoot(page: Page, entry: Entry): Promise<Buffer> {
   };
   if (entry.clip === "page") return page.screenshot(options);
   if (entry.clip === "fullPage") return page.screenshot({ ...options, fullPage: true });
-  return page.locator(entry.clip).first().screenshot(options);
+  const target = page.locator(entry.clip).first();
+  const restore = await fitViewport(page, target);
+  try {
+    return await target.screenshot(options);
+  } finally {
+    await restore();
+  }
+}
+
+/**
+ * Makes room for an element taller than the viewport, for the length of one capture.
+ *
+ * The app scrolls inside its content pane, not the document, so Playwright cannot stitch a tall
+ * element: the part below the fold comes out as a blank band with the shell's header drawn
+ * across it. Growing the window lets the pane lay the whole element out; the width, and so the
+ * layout, is unchanged.
+ *
+ * @param page the page.
+ * @param target the element about to be captured.
+ * @returns a function that puts the viewport back.
+ */
+async function fitViewport(page: Page, target: Locator): Promise<() => Promise<void>> {
+  const viewport = page.viewportSize();
+  const box = await target.boundingBox();
+  if (!viewport || !box || box.height <= viewport.height) return async () => {};
+
+  // The element's own height plus one window: whatever sits above it in the pane still fits.
+  await page.setViewportSize({
+    width: viewport.width,
+    height: Math.ceil(box.height) + viewport.height,
+  });
+  await target.scrollIntoViewIfNeeded();
+  return () => page.setViewportSize(viewport);
 }
 
 for (const entry of entries) {

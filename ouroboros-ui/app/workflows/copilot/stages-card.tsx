@@ -124,6 +124,12 @@ export function StagesCard({ workflowId, slug, name, currentVersion, draft, alia
     };
   }, [poll, live.streaming]);
 
+  // Something other than the conversation changed the draft — the dry-run card applied a
+  // suggestion (CE.4, #568) — so the list asks again now rather than at its next interval.
+  useEffect(() => {
+    if (live.revision > 0) poll.refresh();
+  }, [poll, live.revision]);
+
   // The working draft, advanced during render by whatever has arrived — React's *adjusting state
   // when a prop changes*, since each source is an input and the fold is pure.
   const [held, setHeld] = useState(() => openStageDraft(draft, live));

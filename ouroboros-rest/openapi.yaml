@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.21"
+  version: "0.41.22"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -23634,6 +23634,7 @@ paths:
                     howLabel: simulated
                     note: diff drafted +41 −9 (below) · 84k tokens
                     metrics: {tokens: 84000, simulated_writes: 1, lines_added: 41, lines_removed: 9}
+                    estimate: null
                     skipReason: null
                     skipKind: null
                     skipInput: null
@@ -23646,7 +23647,18 @@ paths:
                     how: replayed
                     howLabel: replayed from history
                     note: est. 4m 02s (214 similar builds, ±20s)
-                    metrics: {estimate_ms: 242000, sample_count: 214, spread_ms: 20000, similarity_class: "helios-firmware · pool-a · docker · zephyr-sdk west build"}
+                    metrics: {estimate_ms: 242000, sample_count: 214, spread_ms: 20000, similarity_class: "pool-a · helios-firmware · container · ghcr.io/acme/zephyr-sdk · west build -b helios_h7 app", window_days: 30}
+                    estimate:
+                      status: estimated
+                      estimateMs: 242000
+                      spreadMs: 20000
+                      sampleCount: 214
+                      sampleFloor: 20
+                      windowDays: 30
+                      formula:
+                        id: build_duration_replay
+                        version: 1
+                        summary: "The median wall time of the succeeded builds in the window that share this stage's similarity class; the ± is their median absolute deviation."
                     skipReason: null
                     skipKind: null
                     skipInput: null
@@ -23720,7 +23732,7 @@ paths:
                 data: {"kind":"stage_started","seq":4,"stageKey":"build","displayName":"build"}
 
                 event: stage_finished
-                data: {"kind":"stage_finished","stage":{"seq":4,"stageKey":"build","displayName":"build","verdict":"ok","how":"replayed","howLabel":"replayed from history","note":"est. 4m 02s (214 similar builds, ±20s)","metrics":{"estimate_ms":242000,"sample_count":214,"spread_ms":20000,"similarity_class":"x"},"skipReason":null,"skipKind":null,"skipInput":null,"startedAt":"2026-10-08T15:06:50.000Z","finishedAt":"2026-10-08T15:06:51.000Z"}}
+                data: {"kind":"stage_finished","stage":{"seq":4,"stageKey":"build","displayName":"build","verdict":"ok","how":"replayed","howLabel":"replayed from history","note":"est. 4m 02s (214 similar builds, ±20s)","metrics":{"estimate_ms":242000,"sample_count":214,"spread_ms":20000,"similarity_class":"pool-a · helios-firmware · container · ghcr.io/acme/zephyr-sdk · west build -b helios_h7 app","window_days":30},"estimate":{"status":"estimated","estimateMs":242000,"spreadMs":20000,"sampleCount":214,"sampleFloor":20,"windowDays":30,"formula":{"id":"build_duration_replay","version":1,"summary":"The median wall time of the succeeded builds in the window that share this stage's similarity class; the ± is their median absolute deviation."}},"skipReason":null,"skipKind":null,"skipInput":null,"startedAt":"2026-10-08T15:06:50.000Z","finishedAt":"2026-10-08T15:06:51.000Z"}}
         "400":
           description: "`organization_required`."
           content:
@@ -23796,6 +23808,7 @@ paths:
                     howLabel: null
                     note: mapped 4 files
                     metrics: {tokens: 12000, files_touched: 4}
+                    estimate: null
                     skipReason: null
                     skipKind: null
                     skipInput: null
@@ -60855,7 +60868,7 @@ components:
         result was produced — the honesty of the card. A `replayed` row is a statistical
         estimate, not a measurement, and its `metrics` carry the estimate with its sample.
       additionalProperties: false
-      required: [seq, stageKey, displayName, verdict, how, howLabel, note, metrics, skipReason, skipKind, skipInput, startedAt, finishedAt]
+      required: [seq, stageKey, displayName, verdict, how, howLabel, note, metrics, estimate, skipReason, skipKind, skipInput, startedAt, finishedAt]
       properties:
         seq:
           type: integer
@@ -60887,6 +60900,14 @@ components:
             `tokens`, `cost_cents` (absent when unpriced), `files_touched`, `simulated_writes`,
             `lines_added`, `lines_removed`; on a replay also `estimate_ms`, `sample_count`,
             `spread_ms`, `similarity_class` and `window_days`, or `insufficient_history`.
+        estimate:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/DryRunStageEstimate"
+          description: |-
+            A `replayed` row's estimate with its basis, read out of `metrics` — `null` on every
+            other row, and on a replayed row whose metrics are neither an estimate nor the
+            insufficient-history marker.
         skipReason:
           type: [string, "null"]
           description: Why a skipped stage had nothing to do — set exactly when `verdict` is `skipped`.
@@ -60907,6 +60928,61 @@ components:
         finishedAt:
           type: [string, "null"]
           format: date-time
+
+    DryRunStageEstimate:
+      type: object
+      title: DryRunStageEstimate
+      description: |-
+        What a replayed row's estimate rests on. `estimated` carries the median and its spread;
+        `insufficient_history` carries **no number** — `estimateMs` and `spreadMs` are `null`,
+        and `sampleCount` is how many samples were found short of `sampleFloor`. Nothing here is
+        computed when it is served: the numbers are the row's stored `metrics`.
+      additionalProperties: false
+      required: [status, estimateMs, spreadMs, sampleCount, sampleFloor, windowDays, formula]
+      properties:
+        status:
+          type: string
+          enum: [estimated, insufficient_history]
+        estimateMs:
+          type: [integer, "null"]
+          minimum: 0
+          description: The median wall time of the sample, in milliseconds; `null` without enough history.
+        spreadMs:
+          type: [integer, "null"]
+          minimum: 0
+          description: The median absolute deviation of the sample — the card's `±`; `null` without enough history.
+        sampleCount:
+          type: integer
+          minimum: 0
+          description: How many similar builds or test runs matched; at least 1 on an estimate.
+        sampleFloor:
+          type: integer
+          minimum: 1
+          description: The fewest samples an estimate may rest on — the replay policy in force.
+        windowDays:
+          type: integer
+          minimum: 1
+          description: The window the sample was read over — the row's own `window_days`, else the replay policy's.
+        formula:
+          oneOf:
+            - type: "null"
+            - type: object
+              additionalProperties: false
+              required: [id, version, summary]
+              properties:
+                id:
+                  type: string
+                  enum: [build_duration_replay, test_duration_replay]
+                version:
+                  type: integer
+                  minimum: 1
+                summary:
+                  type: string
+                  description: The computation in one sentence.
+          description: |-
+            The registered formula the estimate was computed with, told from the row's
+            `metrics.similarity_class` — never from the stage's name. `null` when the class does
+            not say whether builds or test runs were sampled.
 
     DryRunArtifact:
       type: object

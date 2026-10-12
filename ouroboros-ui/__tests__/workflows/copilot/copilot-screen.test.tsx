@@ -57,6 +57,17 @@ import {
   MESSAGES_LABEL,
   SEND_LABEL,
 } from "@/app/workflows/copilot/conversation";
+import {
+  APPLY_LABEL,
+  CONTROL_ROLE_REASON,
+  DRY_RUN_FAILED_HEADLINE,
+  EMPTY_TITLE as DRY_RUN_EMPTY_TITLE,
+  NO_STAGES_REASON,
+  RERUN_LABEL,
+  ROWS_LABEL,
+  SIMULATED_PILL,
+  dryRunTitle,
+} from "@/app/workflows/copilot/dry-run";
 import { DRAFT_FAILED_HEADLINE, STAGES_LABEL, VIEW_AS_CODE_LABEL, stagesTitle } from "@/app/workflows/copilot/stages";
 import { CHANGE_NOTE_LABEL, DISMISS_TOAST_LABEL, FINDINGS_LABEL, PUBLISH_CANCEL } from "@/app/workflows/publish";
 import { RAIL_FAILED_HEADLINE } from "@/app/workflows/states";
@@ -78,6 +89,7 @@ import {
   copilotReadingsWith,
   copilotReference,
   copilotSession,
+  seededBoard,
   seededConversation,
   seededStageDraft,
 } from "../../helpers/workflow-copilot";
@@ -274,10 +286,59 @@ describe("the seats", () => {
     ]);
   });
 
-  it("the one a later ticket fills says which issue does, and fakes nothing", () => {
+  it("draws the dry-run card in its seat — its empty state for a workflow never dry-run, and no issue number (#568)", () => {
     renderOwner();
 
-    expect(seat("dry-run")).toHaveTextContent(/#568/);
+    expect(seat("dry-run")).toHaveAttribute("id", "copilot-dry-run");
+    expect(seat("dry-run")).toHaveTextContent(DRY_RUN_EMPTY_TITLE);
+    expect(seat("dry-run")).toHaveTextContent(SIMULATED_PILL);
+    expect(seat("dry-run")).not.toHaveTextContent(/#\d/);
+  });
+
+  it("draws the seeded run in the seat, from the board the route read (#568)", () => {
+    renderOwner(
+      copilotReadingsWith({
+        draft: { ok: true, value: seededStageDraft() },
+        dryRun: { ok: true, value: seededBoard() },
+      }),
+    );
+
+    const card = screen.getByRole("region", { name: dryRunTitle(seededBoard().run!.ticket) });
+
+    expect(card).toHaveAttribute("id", "copilot-dry-run");
+    expect(within(within(card).getByRole("list", { name: ROWS_LABEL })).getAllByRole("listitem")).toHaveLength(7);
+    expect(within(card).getAllByRole("button", { name: APPLY_LABEL })).toHaveLength(2);
+    // An owner may contribute: the controls act.
+    expect(within(card).getByRole("button", { name: RERUN_LABEL })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("lets a member run and settle — wider than the conversation — and keeps a viewer's controls inert", () => {
+    const readings = copilotReadingsWith({
+      draft: { ok: true, value: seededStageDraft() },
+      dryRun: { ok: true, value: seededBoard() },
+    });
+
+    const member = render(<CopilotScreen mayContribute readings={readings} role="member" />);
+    expect(screen.getByRole("button", { name: RERUN_LABEL })).not.toHaveAttribute("aria-disabled");
+    member.unmount();
+
+    render(<CopilotScreen readings={readings} role="viewer" />);
+    expect(screen.getByRole("button", { name: RERUN_LABEL })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("button", { name: RERUN_LABEL })).toHaveAttribute("title", CONTROL_ROLE_REASON);
+  });
+
+  it("gates a run on a draft with no stages, and gates nothing on a draft that could not be read", () => {
+    const { unmount } = renderOwner(copilotReadingsWith({ dryRun: { ok: true, value: seededBoard() } }));
+    expect(screen.getByRole("button", { name: RERUN_LABEL })).toHaveAttribute("title", NO_STAGES_REASON);
+    unmount();
+
+    renderOwner(
+      copilotReadingsWith({
+        draft: { ok: false, reason: "The draft is unavailable." },
+        dryRun: { ok: true, value: seededBoard() },
+      }),
+    );
+    expect(screen.getByRole("button", { name: RERUN_LABEL })).not.toHaveAttribute("aria-disabled");
   });
 
   it("draws the stage list in its seat, from the draft the route read (#567)", () => {
@@ -970,6 +1031,20 @@ describe("one failed read is one degraded region", () => {
     expect(within(failed).queryByRole("listitem")).toBeNull();
     // The conversation and promote are untouched.
     expect(seat("conversation")).toBeInTheDocument();
+    expect(promote()).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("wears the banner for a dry run that could not be read, and takes only the dry-run seat with it", () => {
+    renderOwner(copilotReadingsWith({ dryRun: { ok: false, reason: "The dry runs are unavailable." } }));
+
+    expect(screen.getByText(DRY_RUN_FAILED_HEADLINE)).toBeInTheDocument();
+    expect(screen.getByText("The dry runs are unavailable.")).toBeInTheDocument();
+    expect(seat("dry-run")).toHaveAttribute("id", "copilot-dry-run");
+    expect(seat("dry-run")).toHaveTextContent(COPILOT_SEATS["dry-run"].note);
+    expect(within(seat("dry-run")).queryByRole("button")).toBeNull();
+    // The conversation, the stage list and promote are untouched.
+    expect(seat("conversation")).toBeInTheDocument();
+    expect(seat("stages")).toBeInTheDocument();
     expect(promote()).not.toHaveAttribute("aria-disabled");
   });
 

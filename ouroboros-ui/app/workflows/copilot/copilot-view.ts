@@ -16,10 +16,9 @@
  * ### What this ticket draws, and what it seats
  *
  * CE.1 is the frame: the route, the head, the live segment, and promote and discard. The
- * conversation is CE.2's card (#566, `conversation.ts`) and the draft's stage list is CE.3's
- * (#567, `stages.ts`). The dry-run card (CE.4, #568) is a later ticket, and has a **labelled
- * seat** here ({@link COPILOT_SEATS}) that says which issue fills it rather than a picture of
- * what it will look like.
+ * conversation is CE.2's card (#566, `conversation.ts`), the draft's stage list is CE.3's
+ * (#567, `stages.ts`) and the dry run is CE.4's (#568, `dry-run.ts`). Each has a **labelled
+ * seat** here ({@link COPILOT_SEATS}) — what is drawn in the card's place when its read failed.
  *
  * ### The anchor contract
  *
@@ -43,9 +42,11 @@ import type {
 import type { RoutingAlias } from "@/app/api/routing";
 import type { WorkflowDefinition, WorkflowDetail, WorkflowRailEntry } from "@/app/api/workflows";
 
+import type { DryRunBoard } from "./dry-run";
+
 /* ------------------------------------------------------------------ what the page reads */
 
-/** The workflow the copilot is open on, and the six reads behind it. */
+/** The workflow the copilot is open on, and the reads behind it. */
 export interface SelectedCopilot {
   /** Its row on the rail. */
   readonly entry: WorkflowRailEntry;
@@ -78,6 +79,12 @@ export interface SelectedCopilot {
    * `claude-sonnet-5`). A failed read costs only the resolution: a tag then names the alias.
    */
   readonly aliases: Reading<readonly RoutingAlias[]>;
+  /**
+   * The dry-run card's board (CE.4, #568): the history, the newest run in full and its
+   * suggestions. A workflow that has never been dry-run is a successful reading with no run. A
+   * failed read costs the card and nothing else.
+   */
+  readonly dryRun: Reading<DryRunBoard>;
 }
 
 /** Everything the copilot route was able to read, and why it could not read the rest. */
@@ -577,7 +584,7 @@ export const COPILOT_SEATS: Readonly<Record<CopilotSeatId, CopilotSeat>> = {
   "dry-run": {
     id: "dry-run",
     title: "Dry run",
-    note: "Dry-running the draft against a real issue from this page arrives with #568.",
+    note: "The dry run could not be read, so there are no results to show. The banner above carries the reason, and the retry.",
   },
 };
 

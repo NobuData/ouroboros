@@ -2,7 +2,7 @@
 title: "Workflow Copilot"
 sidebar_label: "Copilot"
 sidebar_position: 3
-description: "The Copilot page: the Visual, Code and Copilot views of one draft, the conversation that edits it, the draft's stage list, promoting and discarding a draft, and the deep dry run with its budget, history and suggestions."
+description: "The Copilot page: the Visual, Code and Copilot views of one draft, the conversation that edits it, the draft's stage list, promoting and discarding a draft, and the dry-run card with its result rows, simulated diff, suggestions, budget and history."
 ---
 
 The **Workflow Copilot** drafts a workflow with you in conversation and then proves the draft
@@ -24,15 +24,8 @@ exception that asks you first: leaving **Code** while the file does not parse �
 
 The page head has two actions, **Discard draft** and **Promote draft → `<slug>` vN**.
 
-:::info[The page is arriving in parts]
-
-The [conversation](#the-conversation) and [the draft's stage list](#the-draft) are on the
-page. The dry-run card is not yet: its place is marked, saying which piece is still to come.
-Until it arrives, a dry run and its suggestions are started and read through the
-[REST API](../../cli/rest-api.mdx#the-api-description) from a signed-in session; an API token
-cannot start one.
-
-:::
+Under the head are three cards: [the conversation](#the-conversation) on the left, and
+[the draft's stage list](#the-draft) over [the dry-run card](#the-dry-run-card) on the right.
 
 ### Starting a workflow from a conversation
 
@@ -372,6 +365,230 @@ and the rest of the page still works.
 
 A long list scrolls inside the card.
 
+## The dry-run card
+
+The card under the stage list shows the workflow's **newest dry run**: what each stage did,
+the change the run drafted, the suggestions it led to, and the controls to run again. What a
+dry run is, and what it does and does not do, is described under [Dry runs](#dry-runs) below;
+this section describes the card.
+
+<Screenshot id="user-guide.workflows.copilot.dry-run" />
+
+### The head of the dry-run card
+
+- **The title** names the issue the run tested: **Dry run — #489 CAN arbitration-lost storm
+  under full telemetry load**. A long title is cut short; hover it to read the whole of it.
+- **The pill** always reads `simulated — no writes · no PRs · no merges`. It is true of every
+  dry run: see [Dry runs](#dry-runs).
+- **The totals** are the time the run took and what it cost: `2m 41s · $0.31`. A run whose
+  models have no price set shows the time alone; a cost is never shown as `$0.00`. While a run
+  is going, the totals' place shows how long it has been running instead.
+
+### Result rows
+
+One row for each stage, in the order the run walked them:
+
+```text
+✓ analyze                                  mapped 4 files · advisory DB skipped (no CVE on this issue)
+✓ implement       (simulated)              diff drafted +41 −9 (below) · 84k tokens
+✓ build           (replayed from history)  est. 3m 42s (217 similar builds, ±22s)
+⏸ exploit-verify  (skipped)                no PoC exists: stage had nothing to do
+○ open PR                                  would open DRAFT PR · not merged (policy)
+```
+
+Each row has a mark, the stage's name, a label saying **how** the result was produced, and a
+note in the run's own words.
+
+| Mark | Meaning |
+| --- | --- |
+| `✓` | The stage finished. |
+| `⏸` | The stage was skipped. Its label and note are shown in the warning colour. |
+| `○` | The stage was not run. On the last stage it says what a real run would have done there, such as opening a draft pull request. |
+| `✕` | The stage failed. |
+
+The label in parentheses is the part to read before trusting a row:
+
+| Label | What the row is |
+| --- | --- |
+| *(none)* | A real result: a model was called and this is what it did. |
+| `(simulated)` | A model was called for real, and its edits were held in memory. Nothing was written to the repository. |
+| `(replayed from history)` | **An estimate.** Nothing was built or run. The figure comes from similar past builds or test runs. |
+| `(skipped)` | The stage did nothing, and the note says why. |
+
+Two stages that are one step done twice share a row, as they do in the
+[stage list](#stage-rows): **review ×2**.
+
+### Where an estimate comes from
+
+A `replayed from history` row has an **ⓘ** after its label. Choose it — or Tab to it and press
+Enter — to see what the estimate rests on. Choose it again, or press Escape, to close it.
+
+| Shown | Meaning |
+| --- | --- |
+| **estimate** | The estimated time, for example `3m 42s`. It is the median of the sample. |
+| **sample** | How many similar past builds or test runs it is based on: `n = 217`. |
+| **spread** | How much those varied: `± 22s`. |
+| **window** | How far back the sample was taken from: `30-day window`. |
+| **formula** | The formula used, by name and version, with one sentence saying what it computes: `formula build_duration_replay v1 — …`. |
+
+The more past runs behind an estimate and the smaller its spread, the more it is worth. The
+figures are taken from your own runners' history at the time of the dry run, so the same draft
+dry-run a week later can show a different estimate.
+
+#### Not enough history
+
+When too few similar runs exist, the row shows **no figure at all** — not in its note and not
+behind the ⓘ. The ⓘ says only what was found and what is needed:
+
+> Not enough history: 12 similar builds in the last 30 days, 20 needed.
+
+An estimate is given once the number needed has been reached.
+
+### The simulated diff
+
+Under the rows is the change the run drafted, as a diff. The block is headed, inside the
+block itself, **simulated diff (never written to repo)**, followed by each file it touches
+and its added and removed line counts: `drivers/can/arbitration.c +41 −9`.
+
+It is the edit the workflow *would* make. No branch, commit or pull request was created for
+it.
+
+A long diff scrolls inside the block. A very large one is cut off, and the block then says
+so underneath with both sizes: `Truncated — showing the first 64.0 KB of 212.4 KB.`
+
+### Suggestions on the card
+
+Each open [suggestion](#suggestions) is a highlighted callout under the diff, marked `✦`:
+its title, what it is based on, and where it came from.
+
+- **A suggestion from a rule** shows a confidence, such as `93%`, and under it the rule's name
+  and version: `rule · skipped-nothing-to-do v1`. Choose the confidence to see how it was
+  scored — the method and every number that went into it. See [Confidence](#confidence).
+- **A suggestion from the Copilot's model** is labelled `from the model · unscored` and shows
+  no percentage. See [Suggestions from the Copilot](#suggestions-from-the-copilot).
+
+Each callout has three actions:
+
+- **Apply to draft** opens a confirmation first. It lists every change the suggestion will
+  make, in order — `adding stage has-cve`, `connecting test → has-cve` — each of which opens to
+  the exact operation, and it names the revision the draft will become: *This makes draft
+  v0.4.* Nothing is changed until you confirm. See [Apply to draft](#apply-to-draft).
+- **Explain** opens the rule, its version, what it found in this run and how the confidence
+  was scored. See [Explain](#explain).
+- **Ignore** dismisses the suggestion. See [Ignore](#ignore).
+
+After you confirm an apply, a notice at the top of the page reads **Applied — the draft is now
+v0.4.** and lists the **Changed stages** as links. Choose one to go to that stage's row in
+[the stage list](#the-draft), which has already been re-read. The callout is replaced by one
+quiet line, *Applied — …*; an ignored suggestion leaves *Ignored — … (it will not be raised
+again for this draft revision)*.
+
+A suggestion that is advice only keeps its **Apply to draft** button, switched off, with the
+line *This suggestion is advice only — it proposes no change to apply.*
+
+If the draft has changed since the dry run so that the suggestion no longer fits, the
+confirmation says which part no longer fits, changes nothing, and offers **Re-run dry run**.
+
+### Re-run dry run and Dry-run another issue
+
+At the foot of the card:
+
+- **Re-run dry run** starts a new dry run on the same issue, against the draft **as it is
+  now**. When the draft has moved on since the run on the card, a line under the buttons says
+  which draft it will use: *re-runs on draft v0.4*. See [Re-running](#re-running).
+- **Dry-run another issue ▾** opens a ranked list of issues under the buttons. Each entry has
+  its rank, the issue, and **the reason it ranks where it does** — for example *Meets every
+  condition — exercises the main path.* An issue that would not start this workflow is still
+  listed, marked **would not trigger this workflow**: those are often the most useful ones to
+  try. Choose **Dry-run #490** beside an issue to start. How the ranking works is under
+  [Choosing an issue](#choosing-an-issue). Press Escape to close the list.
+- **The history line** — `history: 1 dry run · draft v0.3 (2 copilot edits)` — says how many
+  dry runs the workflow has had, the draft's current revision, and how many batches of changes
+  the Copilot has applied to it.
+
+Starting a dry run needs the workspace's GitHub token, as described under
+[Starting a dry run](#starting-a-dry-run).
+
+:::info[Not available yet]
+
+A dry run's model stages call a model through the invocation gateway, which is not delivered
+yet — the same gateway the [conversation](#when-the-copilot-cannot-reply) waits for. Until it
+is, the card is for reading dry runs that are already recorded.
+
+:::
+
+### Watching a dry run
+
+A dry run takes minutes. While one is going, the card follows it without a reload:
+
+1. Each stage appears as a row marked `◌` and **running…** when it starts, and fills in when
+   it finishes.
+2. When the run ends, the totals replace the running time and the simulated diff appears.
+3. Then the suggestions appear.
+
+**Cancel dry run** is shown while a run is going. See [Cancelling](#cancelling). **Re-run dry
+run** and **Dry-run another issue** are switched off until it ends, with the reason: *One dry
+run at a time — this one is still running.* The [conversation's](#sending-a-message) message
+box is switched off for the same time.
+
+If the live connection is lost, the card says so and reads the run again every few seconds
+instead; nothing is missed.
+
+### How a run's end is shown
+
+A run that ends **complete** shows its rows, diff and suggestions with nothing added. Every
+other end has a box above the rows, and the rows the run reached are kept under it:
+
+| Box | When | What it shows |
+| --- | --- | --- |
+| **This dry run failed** | A stage failed. | The reason, as the run recorded it. |
+| **The draft did not pass the pre-check** | The [structural pre-check](#the-structural-pre-check) found a problem, so no stage ran. | Each finding. A finding about a stage is a link to that stage's row in [the stage list](#the-draft). |
+| **This dry run was stopped at its budget** | The [budget](#the-budget) was reached. | What stopped it, the cap, and whether the cap was the workspace's or the draft's own spend guard. |
+| **This dry run was cancelled** | Someone cancelled it. | Nothing more. |
+| **A guard had to stop this dry run** | A stage tried something a dry run must never do. See [Guards](#guards). | Each attempt that was blocked: what was tried, which guard refused it, how many times, and in which stage. |
+
+**A guard had to stop this dry run** is drawn more heavily than the others, in the error
+colour, and is not an ordinary failure. Nothing was written, but do not rely on that run's
+results, and find out why the stage tried it before promoting the draft.
+
+### When a dry run cannot start
+
+If a dry run is refused, the reason is shown at the top of the card, in a box you can
+**Dismiss**. The previous run's results stay on the card underneath.
+
+| Heading | Why |
+| --- | --- |
+| **A dry run of this workflow is already running** | Someone else started one. The card reads it and follows it. |
+| **The draft changed before the dry run could start** | The draft was edited after the page was read. The page reads it again; start the dry run once more. |
+| **That issue has no repository to read** | The issue names no repository mirrored for the workspace. |
+| **That issue's tracker cannot trigger a workflow** | The issue comes from a source a workflow's trigger cannot name. |
+| **The dry-run engine is not available** | The service that runs dry runs could not be reached. |
+| **The dry run did not start** | Anything else — for example, the workspace has no GitHub token to read the repository with. The sentence under the heading says what. |
+
+### Before the first dry run
+
+A workflow that has never been dry-run shows **No dry run yet** and **Choose an issue ▾**,
+which opens the same ranked list.
+
+If the Copilot proposed an issue in the conversation, the card names it with the Copilot's
+reason — *The copilot suggested dry-running #489 — security workflow × no-CVE issue —
+exercises the skip path* — and offers **Dry-run #489**. If that issue is not in the ranked
+list, the list opens instead and says so.
+
+### Who can use the card
+
+Owners, admins and **members** can start, cancel and re-run a dry run, and apply or ignore a
+suggestion. This is wider than [the conversation](#who-can-take-part), which only owners and
+admins can continue.
+
+Viewers see the same card — the rows, the diff, the suggestions, **Explain** and the
+confidence — with every other control switched off and the reason beside it.
+
+A dry run also cannot be started while the draft has no stages.
+
+If the dry run cannot be read when the page opens, the page says **The dry run could not be
+read** with a **Retry**, and the rest of the page still works.
+
 ## Dry runs
 
 A dry run walks a workflow's draft for one issue, the way a loop would, with three
@@ -486,7 +703,7 @@ and works out the budget again.
 ### History
 
 Each workflow keeps its dry runs, newest first. The history says how many there have been and
-which draft is current, for example `1 dry run · draft v0.3 (2 copilot edits applied)`. Each
+which draft is current, for example `history: 1 dry run · draft v0.3 (2 copilot edits)`. Each
 entry shows the draft revision and issue it tested, how it ended, and its totals, so two runs
 of the same issue before and after an edit can be compared.
 
@@ -547,8 +764,8 @@ does, this rule never fires and no such suggestion appears.
 
 :::
 
-A suggestion marked **advice only** proposes no change to the draft. It can be explained and
-ignored, and **Apply to draft** is not offered for it.
+A suggestion that is **advice only** proposes no change to the draft. It can be explained and
+ignored, and its **Apply to draft** button is switched off, with the reason.
 
 ### Confidence
 
@@ -572,18 +789,19 @@ Both numbers are stored with the suggestion, together with what the rule counted
 ### Suggestions from the Copilot
 
 If the dry run was started from a Copilot conversation, the Copilot is shown the results when
-the run ends and may add suggestions of its own. These are labelled as coming from the
-Copilot rather than from a rule, and they show **no confidence**: the change they propose is
-checked against the draft before it is kept, but it is not scored.
+the run ends and may add suggestions of its own. These are labelled `from the model ·
+unscored` rather than with a rule's name, and they show **no confidence**: the change they
+propose is checked against the draft before it is kept, but it is not scored.
 
 The Copilot's reply appears in the conversation as its next message. It does not repeat a
 suggestion a rule has already made.
 
 ### Apply to draft
 
-**Apply to draft** makes the suggestion's change to the draft in one step. The draft moves to
-its next revision, for example from `v0.3` to `v0.4`, and the change is recorded as coming
-from a suggestion. [Re-run](#re-running) the dry run to see what the change did: in the
+**Apply to draft** first shows [what it will change](#suggestions-on-the-card). When you
+confirm, the suggestion's change is made to the draft in one step. The draft moves to its next
+revision, for example from `v0.3` to `v0.4`, and the change is recorded as coming from a
+suggestion. [Re-run](#re-running) the dry run to see what the change did: in the
 example above, `exploit-verify` is now skipped because the decision routes `#489` around it.
 
 The change was worked out for the draft as it was when the dry run ended. If the draft has

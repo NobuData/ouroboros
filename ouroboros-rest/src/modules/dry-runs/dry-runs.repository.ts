@@ -33,6 +33,7 @@ import {
   type Workflow,
 } from "../db/schema";
 import type { EngineDryRunArtifact, EngineDryRunStage } from "../engine/engine.dryruns";
+import type { ReplayPolicy } from "../replay-estimates/replay.estimate";
 import type { Effort, SourceKind } from "../workflows/dsl.schema";
 
 /** How many copilot replies a spend-guard lookup reads, newest first. */
@@ -494,6 +495,26 @@ export class DryRunsRepository {
       .where("dry_run_id", "=", dryRunId)
       .orderBy("seq", "asc")
       .execute();
+  }
+
+  /**
+   * The window and sample floor every replay estimate is held to — `replay_estimate_policy()`
+   * (V121), read rather than repeated here so a stage's estimate names the floor the estimator
+   * used.
+   *
+   * @returns The policy.
+   * @throws {Error} When the function answers no row — which its definition makes impossible.
+   */
+  async replayPolicy(): Promise<ReplayPolicy> {
+    const { rows } = await sql<{ window_days: number; sample_floor: number }>`
+      select policy.window_days, policy.sample_floor
+        from ${sql.id(SCHEMA_NAME)}.replay_estimate_policy() policy
+    `.execute(this.database.db);
+    const [row] = rows;
+
+    if (row === undefined) throw new Error("replay_estimate_policy() answered no row");
+
+    return { windowDays: row.window_days, sampleFloor: row.sample_floor };
   }
 
   /**

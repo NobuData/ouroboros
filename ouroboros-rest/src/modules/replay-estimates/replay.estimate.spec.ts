@@ -4,6 +4,7 @@ import {
   cacheContext,
   composeEstimate,
   durationLabel,
+  replayKindOfClass,
   replayNote,
   replayStageRecord,
   type ReplayEstimate,
@@ -406,5 +407,39 @@ describe("the stage row a result is recorded as", () => {
 
       for (const key of Object.keys(record.metrics)) expect(known).toContain(key);
     }
+  });
+});
+
+describe("which estimator printed a similarity class", () => {
+  it.each([
+    [CLASS, "build"],
+    ["pool-b · helios-firmware · shell · make -j8", "build"],
+    ["helios-firmware · tests · hil + unit", "test"],
+    ["helios-firmware · tests · no measured test run", "test"],
+    // A command may hold the separator, or the word `tests`, after the executor.
+    ["pool-a · helios-firmware · shell · make · tests", "build"],
+  ] as const)("reads %s as a %s", (similarityClass, kind) => {
+    expect(replayKindOfClass(similarityClass)).toBe(kind);
+  });
+
+  it.each([
+    "",
+    "x",
+    "helios-firmware · tests",
+    "pool-a · helios-firmware · container",
+    "helios-firmware · pool-a · docker · zephyr-sdk west build",
+    // Both shapes at once: a build in a repository named `tests`.
+    "pool-a · tests · container · ghcr.io/acme/sdk · make",
+    "pool-a · tests · shell · make",
+  ])("does not guess for %j", (similarityClass) => {
+    expect(replayKindOfClass(similarityClass)).toBeNull();
+  });
+
+  it("agrees with the class every composed estimate carries", () => {
+    const sample = { sampleCount: 3, medianMs: null, spreadMs: null };
+
+    expect(replayKindOfClass(composeEstimate("build", CLASS, sample, POLICY).similarityClass)).toBe(
+      "build",
+    );
   });
 });

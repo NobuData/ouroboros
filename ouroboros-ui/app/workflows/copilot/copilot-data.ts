@@ -4,7 +4,7 @@ import "server-only";
  * Everything the copilot route reads (CE.1,
  * [#565](https://github.com/NobuData/ouroboros/issues/565)).
  *
- * The rail, then six reads of the workflow the URL names — composed the way
+ * The rail, then seven reads of the workflow the URL names — composed the way
  * `app/workflows/code/code-data.ts` composes the code view's: the route stays three lines, and
  * **one failed read is one degraded region**. The rail first, for that module's two reasons: a
  * slug the workspace does not have is answered from the listing and costs no further request,
@@ -17,7 +17,7 @@ import "server-only";
  * after a save, shows the draft as it now is and the conversation where it was left. There is
  * no client state to carry across a switch and so none to lose.
  *
- * ### The six reads
+ * ### The seven reads
  *
  * - **the workflow** (`GET /api/v1/workflows/{id}`), as the visual editor reads it — its draft's
  *   document is what a refused promote's findings are anchored in;
@@ -36,7 +36,11 @@ import "server-only";
  *   list does not hang off the conversation read;
  * - **the aliases** (`GET /api/v1/routing/aliases`) — the registry's names, as the canvas's
  *   inspector reads them, so a pinned stage's tag can name its model. A failed read costs only
- *   that: the tag names the alias.
+ *   that: the tag names the alias;
+ * - **the dry run** (CE.4, #568) — `GET …/dry-runs` for the history, which names the newest run
+ *   and the draft as it stands; then that run in full and its suggestions. A workflow that has
+ *   never been dry-run reads as a board with no run. The suggestions are their own attempt: a
+ *   run whose callouts could not be read still draws its rows and its diff.
  *
  * They are made in parallel, and each is kept as its own reading. Anything that is not an
  * `ApiError` keeps travelling — Next.js's redirect signal above all, which is how a session that
@@ -47,13 +51,38 @@ import type { Workspace } from "@/app/api/access";
 import { attempt } from "@/app/api/reading";
 import { routing } from "@/app/api/routing";
 import { workflowCopilot } from "@/app/api/workflow-copilot";
+import { workflowDryRuns } from "@/app/api/workflow-dry-runs";
 import { workflows } from "@/app/api/workflows";
 
 import type { CopilotReadings } from "./copilot-view";
+import type { DryRunBoard } from "./dry-run";
+
+/**
+ * Read the dry-run card's board: the history, the newest run and its suggestions.
+ *
+ * @param workflowId The workflow.
+ * @returns The board. `run` is `null` for a workflow never dry-run; `suggestions` is `null` when
+ *   that one read was refused.
+ * @throws The history's or the run's `ApiError` — the caller's `attempt` makes it a reading — and
+ *   whatever is not an `ApiError`.
+ */
+async function readDryRunBoard(workflowId: string): Promise<DryRunBoard> {
+  const history = await workflowDryRuns.history(workflowId);
+  const newest = history.runs[0];
+  if (newest === undefined) return { history, run: null, suggestions: [] };
+
+  const [run, suggestions] = await Promise.all([
+    workflowDryRuns.read(workflowId, newest.id),
+    attempt(async () => workflowDryRuns.suggestions(workflowId, newest.id)),
+  ]);
+
+  return { history, run, suggestions: suggestions.ok ? suggestions.value.suggestions : null };
+}
 
 /**
  * Read the copilot route: the rail, and for the workflow the URL names, the workflow, its
- * promotion summary, its conversation, its readiness, its draft and the workspace's aliases.
+ * promotion summary, its conversation, its readiness, its draft, the workspace's aliases and the
+ * dry-run card's board.
  *
  * @param access The workspace the gate returned — a precondition made visible in the type, for
  *   the reason `readStudio` gives, and not read.
@@ -74,19 +103,20 @@ export async function readStudioCopilot(access: Workspace, slug: string): Promis
   const entry = rail.value.find((candidate) => candidate.slug === slug);
   if (entry === undefined) return { rail, requested: slug, selected: null, now };
 
-  const [detail, promotion, conversation, readiness, draft, aliases] = await Promise.all([
+  const [detail, promotion, conversation, readiness, draft, aliases, dryRun] = await Promise.all([
     attempt(async () => workflows.read(entry.id)),
     attempt(async () => workflowCopilot.promotion(entry.id)),
     attempt(async () => workflowCopilot.conversation(entry.id)),
     attempt(async () => workflowCopilot.readiness(entry.id)),
     attempt(async () => workflowCopilot.draft(entry.id)),
     attempt(async () => routing.aliases()),
+    attempt(async () => readDryRunBoard(entry.id)),
   ]);
 
   return {
     rail,
     requested: slug,
-    selected: { entry, detail, promotion, conversation, readiness, draft, aliases },
+    selected: { entry, detail, promotion, conversation, readiness, draft, aliases, dryRun },
     now,
   };
 }

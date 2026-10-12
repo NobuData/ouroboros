@@ -65,7 +65,6 @@ import {
   dryRunCandidate,
   dryRunDraftLabel,
   dryRunHistory,
-  dryRunStage,
   type DryRunCandidatesResource,
   type DryRunHistoryResource,
   type DryRunResource,
@@ -320,9 +319,8 @@ export class DryRunsService {
     const resource = await this.records.resource(stored);
 
     yield { kind: "accepted", dryRun: resource };
-    for (const stage of await this.dryRuns.stages(stored.id)) {
-      yield { kind: "stage_finished", stage: dryRunStage(stage) };
-    }
+    // The resource's rows are the record's, already in card order and in the wire shape.
+    for (const stage of resource.stages) yield { kind: "stage_finished", stage };
     if (isTerminal(stored)) yield { kind: "done", dryRun: resource };
   }
 

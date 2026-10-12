@@ -1,5 +1,5 @@
 import { requireWorkspace } from "@/app/api/access";
-import { mayAdminister, primaryRole } from "@/app/api/membership";
+import { mayAdminister, mayContribute, primaryRole } from "@/app/api/membership";
 import { readStudioCopilot } from "@/app/workflows/copilot/copilot-data";
 import { CopilotScreen } from "@/app/workflows/copilot/copilot-screen";
 
@@ -43,6 +43,7 @@ export default async function Page({
   return (
     <CopilotScreen
       mayAdminister={mayAdminister(access.membership.roles)}
+      mayContribute={mayContribute(access.membership.roles)}
       readings={readings}
       role={primaryRole(access.membership.roles)}
     />

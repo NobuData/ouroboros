@@ -26078,6 +26078,12 @@ export interface components {
             metrics: {
                 [key: string]: unknown;
             };
+            /**
+             * @description A `replayed` row's estimate with its basis, read out of `metrics` — `null` on every
+             *     other row, and on a replayed row whose metrics are neither an estimate nor the
+             *     insufficient-history marker.
+             */
+            estimate: null | components["schemas"]["DryRunStageEstimate"];
             /** @description Why a skipped stage had nothing to do — set exactly when `verdict` is `skipped`. */
             skipReason: string | null;
             /**
@@ -26094,6 +26100,39 @@ export interface components {
             startedAt: string | null;
             /** Format: date-time */
             finishedAt: string | null;
+        };
+        /**
+         * DryRunStageEstimate
+         * @description What a replayed row's estimate rests on. `estimated` carries the median and its spread;
+         *     `insufficient_history` carries **no number** — `estimateMs` and `spreadMs` are `null`,
+         *     and `sampleCount` is how many samples were found short of `sampleFloor`. Nothing here is
+         *     computed when it is served: the numbers are the row's stored `metrics`.
+         */
+        DryRunStageEstimate: {
+            /** @enum {string} */
+            status: "estimated" | "insufficient_history";
+            /** @description The median wall time of the sample, in milliseconds; `null` without enough history. */
+            estimateMs: number | null;
+            /** @description The median absolute deviation of the sample — the card's `±`; `null` without enough history. */
+            spreadMs: number | null;
+            /** @description How many similar builds or test runs matched; at least 1 on an estimate. */
+            sampleCount: number;
+            /** @description The fewest samples an estimate may rest on — the replay policy in force. */
+            sampleFloor: number;
+            /** @description The window the sample was read over — the row's own `window_days`, else the replay policy's. */
+            windowDays: number;
+            /**
+             * @description The registered formula the estimate was computed with, told from the row's
+             *     `metrics.similarity_class` — never from the stage's name. `null` when the class does
+             *     not say whether builds or test runs were sampled.
+             */
+            formula: null | {
+                /** @enum {string} */
+                id: "build_duration_replay" | "test_duration_replay";
+                version: number;
+                /** @description The computation in one sentence. */
+                summary: string;
+            };
         };
         /**
          * DryRunArtifact
@@ -64298,6 +64337,7 @@ export interface operations {
                      *             "lines_added": 41,
                      *             "lines_removed": 9
                      *           },
+                     *           "estimate": null,
                      *           "skipReason": null,
                      *           "skipKind": null,
                      *           "skipInput": null,
@@ -64316,7 +64356,21 @@ export interface operations {
                      *             "estimate_ms": 242000,
                      *             "sample_count": 214,
                      *             "spread_ms": 20000,
-                     *             "similarity_class": "helios-firmware · pool-a · docker · zephyr-sdk west build"
+                     *             "similarity_class": "pool-a · helios-firmware · container · ghcr.io/acme/zephyr-sdk · west build -b helios_h7 app",
+                     *             "window_days": 30
+                     *           },
+                     *           "estimate": {
+                     *             "status": "estimated",
+                     *             "estimateMs": 242000,
+                     *             "spreadMs": 20000,
+                     *             "sampleCount": 214,
+                     *             "sampleFloor": 20,
+                     *             "windowDays": 30,
+                     *             "formula": {
+                     *               "id": "build_duration_replay",
+                     *               "version": 1,
+                     *               "summary": "The median wall time of the succeeded builds in the window that share this stage's similarity class; the ± is their median absolute deviation."
+                     *             }
                      *           },
                      *           "skipReason": null,
                      *           "skipKind": null,
@@ -64454,7 +64508,7 @@ export interface operations {
                      *     data: {"kind":"stage_started","seq":4,"stageKey":"build","displayName":"build"}
                      *
                      *     event: stage_finished
-                     *     data: {"kind":"stage_finished","stage":{"seq":4,"stageKey":"build","displayName":"build","verdict":"ok","how":"replayed","howLabel":"replayed from history","note":"est. 4m 02s (214 similar builds, ±20s)","metrics":{"estimate_ms":242000,"sample_count":214,"spread_ms":20000,"similarity_class":"x"},"skipReason":null,"skipKind":null,"skipInput":null,"startedAt":"2026-10-08T15:06:50.000Z","finishedAt":"2026-10-08T15:06:51.000Z"}}
+                     *     data: {"kind":"stage_finished","stage":{"seq":4,"stageKey":"build","displayName":"build","verdict":"ok","how":"replayed","howLabel":"replayed from history","note":"est. 4m 02s (214 similar builds, ±20s)","metrics":{"estimate_ms":242000,"sample_count":214,"spread_ms":20000,"similarity_class":"pool-a · helios-firmware · container · ghcr.io/acme/zephyr-sdk · west build -b helios_h7 app","window_days":30},"estimate":{"status":"estimated","estimateMs":242000,"spreadMs":20000,"sampleCount":214,"sampleFloor":20,"windowDays":30,"formula":{"id":"build_duration_replay","version":1,"summary":"The median wall time of the succeeded builds in the window that share this stage's similarity class; the ± is their median absolute deviation."}},"skipReason":null,"skipKind":null,"skipInput":null,"startedAt":"2026-10-08T15:06:50.000Z","finishedAt":"2026-10-08T15:06:51.000Z"}}
                      */
                     "text/event-stream": components["schemas"]["DryRunStreamEvent"];
                 };
@@ -64606,6 +64660,7 @@ export interface operations {
                      *             "tokens": 12000,
                      *             "files_touched": 4
                      *           },
+                     *           "estimate": null,
                      *           "skipReason": null,
                      *           "skipKind": null,
                      *           "skipInput": null,

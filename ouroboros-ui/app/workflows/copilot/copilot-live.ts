@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { CopilotDraft, CopilotWarning } from "@/app/api/workflow-copilot";
+import type { CopilotDraft, CopilotReadiness, CopilotWarning } from "@/app/api/workflow-copilot";
 
 import type { OperationShape } from "./conversation";
 
@@ -16,6 +16,13 @@ import type { OperationShape } from "./conversation";
  * order the stream delivered them, each with the W7 warnings it introduced; whether a reply is
  * arriving now; and the draft as the last finished reply left it (the stream's `done.draft`).
  * A bounced operation changed nothing and is not here.
+ *
+ * Since CE.4 ([#568](https://github.com/NobuData/ouroboros/issues/568)) the dry-run card writes
+ * two more things, because it changes what its neighbours should show without the conversation
+ * being involved: a **revision** that counts every time something other than the stream moved
+ * the draft (an applied suggestion), which the stage list answers by reading the draft again at
+ * once; and the **dry run** the card knows is in flight, which gates the composer the way the
+ * service's readiness does, without waiting for the page to be read again.
  *
  * ### What it is not
  *
@@ -52,10 +59,23 @@ export interface CopilotLive {
   readonly draft: CopilotDraft | null;
   /** Whether a reply is arriving now. */
   readonly streaming: boolean;
+  /**
+   * How many times something other than the conversation's stream has changed the draft in this
+   * page session — an applied suggestion. The stage list re-reads the draft when it moves.
+   */
+  readonly revision: number;
+  /**
+   * The dry run this page session knows is in flight; `false` once it knows the run ended; and
+   * `null` when it knows nothing, and the route's own readiness stands.
+   */
+  readonly dryRun: LiveDryRun | false | null;
 }
 
+/** A dry run in flight, as the service's readiness names one. */
+export type LiveDryRun = NonNullable<CopilotReadiness["dryRun"]>;
+
 /** What a workflow nobody has conversed with on this page holds. The same object every time. */
-export const EMPTY_LIVE: CopilotLive = { operations: [], draft: null, streaming: false };
+export const EMPTY_LIVE: CopilotLive = { operations: [], draft: null, streaming: false, revision: 0, dryRun: null };
 
 const held = new Map<string, CopilotLive>();
 const listeners = new Set<() => void>();
@@ -129,6 +149,47 @@ export function publishDraft(workflowId: string, draft: CopilotDraft): void {
 }
 
 /**
+ * Say that the draft was changed by something other than the conversation's stream — an applied
+ * suggestion — so the regions that draw it read it again now rather than at their next interval.
+ *
+ * @param workflowId The workflow.
+ */
+export function touchDraft(workflowId: string): void {
+  update(workflowId, (current) => ({ ...current, revision: current.revision + 1 }));
+}
+
+/**
+ * Record the dry run the card knows is in flight, or that it knows the run has ended.
+ *
+ * @param workflowId The workflow.
+ * @param dryRun The run in flight, or `false` once it has ended.
+ */
+export function publishDryRun(workflowId: string, dryRun: LiveDryRun | false): void {
+  const held = readCopilotLive(workflowId).dryRun;
+  const same =
+    dryRun === false || held === false || held === null
+      ? held === dryRun
+      : held.id === dryRun.id && held.status === dryRun.status;
+  if (same) return;
+
+  update(workflowId, (current) => ({ ...current, dryRun }));
+}
+
+/**
+ * The service's readiness, corrected by what this page session knows about the dry run.
+ *
+ * @param readiness The readiness the route read, or `null` when it could not be read.
+ * @param dryRun The store's account of the dry run.
+ * @returns The readiness with the newer account of the dry run; `null` stays `null`, which gates
+ *   nothing.
+ */
+export function liveReadiness(readiness: CopilotReadiness | null, dryRun: CopilotLive["dryRun"]): CopilotReadiness | null {
+  if (readiness === null || dryRun === null) return readiness;
+
+  return { ...readiness, dryRun: dryRun === false ? null : dryRun };
+}
+
+/**
  * Forget one workflow's entry — a new conversation starts from nothing — or all of them.
  *
  * @param workflowId The workflow. Omitted, every entry (a test's reset).
@@ -151,5 +212,21 @@ export function useCopilotLive(workflowId: string): CopilotLive {
     subscribeCopilotLive,
     () => readCopilotLive(workflowId),
     () => EMPTY_LIVE,
+  );
+}
+
+/**
+ * The store's account of a workflow's dry run, and nothing else of the entry — so a caller that
+ * only gates on it is not drawn again by every operation a reply applies.
+ *
+ * @param workflowId The workflow.
+ * @returns The run in flight, `false` once it is known to have ended, or `null` when the store
+ *   knows nothing. On the server, and for the hydrating render, `null`.
+ */
+export function useLiveDryRun(workflowId: string): CopilotLive["dryRun"] {
+  return useSyncExternalStore(
+    subscribeCopilotLive,
+    () => readCopilotLive(workflowId).dryRun,
+    () => null,
   );
 }

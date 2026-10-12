@@ -1,4 +1,9 @@
-import { REPLAY_DISPERSION, REPLAY_FORMULAS, replayFormula } from "./replay.formulas";
+import {
+  REPLAY_DISPERSION,
+  REPLAY_FORMULAS,
+  REPLAY_FORMULA_SUMMARIES,
+  replayFormula,
+} from "./replay.formulas";
 
 /**
  * The registered formulas (#561): each estimator declares its computation in the metrics
@@ -35,6 +40,23 @@ describe("the replay formula registry", () => {
     expect(formula.formulaText).toMatch(/window/);
     expect(formula.formulaText).toMatch(/insufficient history/);
     expect(formula.caveats).toMatch(/not a measurement/);
+  });
+
+  it.each(Object.entries(REPLAY_FORMULA_SUMMARIES))("sums %s up in one sentence", (_kind, text) => {
+    // One sentence: a single full stop, and it is the last character.
+    expect(text.indexOf(".")).toBe(text.length - 1);
+    expect(text).toMatch(/^The median wall time/);
+    expect(text).toMatch(/window/);
+    expect(text).toMatch(/median absolute deviation/);
+  });
+
+  it("has a sentence for every registered formula, and no other", () => {
+    expect(Object.keys(REPLAY_FORMULA_SUMMARIES).toSorted()).toEqual(
+      Object.keys(REPLAY_FORMULAS).toSorted(),
+    );
+    expect(REPLAY_FORMULA_SUMMARIES.build).toMatch(/succeeded builds/);
+    expect(REPLAY_FORMULA_SUMMARIES.test).toMatch(/complete test runs/);
+    expect(REPLAY_FORMULA_SUMMARIES.test).toMatch(/suite set/);
   });
 
   it("names the similarity class's parts in the build formula", () => {

@@ -14,6 +14,18 @@ import type { RoutingAlias } from "@/app/api/routing";
 import { EMPTY_POLL_SNAPSHOT, type Poll, type PollAnswer } from "@/app/poll";
 import type { WorkflowDefinition, WorkflowDetail, WorkflowRailEntry } from "@/app/api/workflows";
 import type { CopilotReadings, SelectedCopilot } from "@/app/workflows/copilot/copilot-view";
+import type {
+  DryRun,
+  DryRunArtifact,
+  DryRunBoard,
+  DryRunCandidate,
+  DryRunExplanation,
+  DryRunHistory,
+  DryRunStage,
+  DryRunSuggestion,
+  StageEstimate,
+} from "@/app/workflows/copilot/dry-run";
+import type { DryRunTransport } from "@/app/workflows/copilot/dry-run-transport";
 
 import { READ_AT, railEntry, seededRail, workflowDetail } from "./workflows";
 
@@ -490,7 +502,8 @@ export function securityPatchDetail(): WorkflowDetail {
 }
 
 /**
- * The open workflow's six reads, all answered.
+ * The open workflow's reads, all answered — with no dry run yet, so the frame's suites draw the
+ * dry-run card's empty state.
  *
  * @param overrides What this case is about.
  * @returns The reads.
@@ -504,6 +517,7 @@ export function selectedCopilot(overrides: Partial<SelectedCopilot> = {}): Selec
     readiness: { ok: true, value: copilotReadiness() },
     draft: { ok: true, value: copilotStageDraft() },
     aliases: { ok: true, value: seededAliases() },
+    dryRun: { ok: true, value: emptyBoard() },
     ...overrides,
   };
 }
@@ -755,4 +769,500 @@ export function inertStagesPoll(): Poll<CopilotStageDraft> {
  */
 export function freshDraft(payload: CopilotStageDraft): PollAnswer<CopilotStageDraft> {
   return { state: "fresh", payload, etag: null, pollAfterSeconds: null };
+}
+
+/* ------------------------------------------------------------------ the dry-run card (CE.4, #568) */
+
+/** The seeded dry run's id (`R__dev_seed_workspace_copilot.sql`). */
+export const DRY_RUN_ID = "5eed008b-0000-4000-8000-000000000001";
+
+/** `#489`'s canonical ticket id. */
+export const TICKET_489_ID = "5eed0088-0000-4000-8000-000000000489";
+
+/** The two seeded suggestions' ids (`R__dev_seed_workspace_replay.sql`). */
+export const SUGGESTION_SKIP_ID = "5eed008c-0000-4000-8000-000000000001";
+export const SUGGESTION_REVIEW_ID = "5eed008c-0000-4000-8000-000000000002";
+
+/** The build formula's one-sentence summary, as the registry writes it. */
+export const BUILD_FORMULA_SUMMARY =
+  "The median wall time of the succeeded builds in the window that share this stage's similarity class; the ± is their median absolute deviation.";
+
+/** The seeded build row's note, as the database composes it from farm history at one moment. */
+export const BUILD_NOTE = "est. 3m 42s (217 similar builds, ±22s)";
+
+/**
+ * The seeded build row's provenance: 217 similar builds in a 30-day window.
+ *
+ * @param overrides What this case is about.
+ * @returns The estimate.
+ */
+export function buildEstimate(overrides: Partial<StageEstimate> = {}): StageEstimate {
+  return {
+    status: "estimated",
+    estimateMs: 222_000,
+    spreadMs: 22_000,
+    sampleCount: 217,
+    sampleFloor: 20,
+    windowDays: 30,
+    formula: { id: "build_duration_replay", version: 1, summary: BUILD_FORMULA_SUMMARY },
+    ...overrides,
+  };
+}
+
+/** A replayed row below the floor: twelve samples where twenty are needed, and no number anywhere. */
+export const INSUFFICIENT_ESTIMATE: StageEstimate = buildEstimate({
+  status: "insufficient_history",
+  estimateMs: null,
+  spreadMs: null,
+  sampleCount: 12,
+});
+
+/**
+ * One result row.
+ *
+ * @param overrides What this case is about.
+ * @returns The row.
+ */
+export function dryRunStage(overrides: Partial<DryRunStage> = {}): DryRunStage {
+  return {
+    seq: 1,
+    stageKey: "analyze",
+    displayName: "analyze",
+    verdict: "ok",
+    how: "llm",
+    howLabel: null,
+    note: "",
+    metrics: {},
+    estimate: null,
+    skipReason: null,
+    skipKind: null,
+    skipInput: null,
+    startedAt: null,
+    finishedAt: null,
+    ...overrides,
+  };
+}
+
+/**
+ * The seeded run's seven rows, with their exact notes and `how` labels — the two seed files'
+ * rows as the service maps them (`simulated` for the stage whose writes were virtualized).
+ *
+ * @returns The rows, in card order.
+ */
+export function seededStages(): DryRunStage[] {
+  return [
+    dryRunStage({
+      seq: 1,
+      note: "mapped 4 files · advisory DB skipped (no CVE on this issue)",
+      metrics: { tokens: 18200, cost_cents: 6, files_touched: 4 },
+    }),
+    dryRunStage({
+      seq: 2,
+      stageKey: "plan",
+      displayName: "plan",
+      note: "3 steps · would touch drivers/can/arbitration.c",
+      metrics: { tokens: 12400, cost_cents: 5 },
+    }),
+    dryRunStage({
+      seq: 3,
+      stageKey: "implement",
+      displayName: "implement",
+      howLabel: "simulated",
+      note: "diff drafted +41 −9 (below) · 84k tokens",
+      metrics: { tokens: 84000, cost_cents: 14, files_touched: 1, simulated_writes: 1, lines_added: 41, lines_removed: 9 },
+    }),
+    dryRunStage({
+      seq: 4,
+      stageKey: "build",
+      displayName: "build",
+      how: "replayed",
+      howLabel: "replayed from history",
+      note: BUILD_NOTE,
+      metrics: { sample_count: 217, window_days: 30, estimate_ms: 222_000, spread_ms: 22_000 },
+      estimate: buildEstimate(),
+    }),
+    dryRunStage({
+      seq: 5,
+      stageKey: "exploit-verify",
+      displayName: "exploit-verify",
+      verdict: "skipped",
+      how: "skipped",
+      howLabel: "skipped",
+      note: "no PoC exists: stage had nothing to do",
+      skipReason: "no PoC exists: stage had nothing to do",
+      skipKind: "nothing_to_do",
+      skipInput: "cve",
+    }),
+    dryRunStage({
+      seq: 6,
+      stageKey: "review",
+      displayName: "review ×2",
+      note: "both approve · 1 style nit",
+      metrics: { tokens: 16600, cost_cents: 6 },
+    }),
+    dryRunStage({
+      seq: 7,
+      stageKey: "open-pr",
+      displayName: "open PR",
+      verdict: "not_reached",
+      how: "deterministic",
+      note: "would open DRAFT PR · not merged (policy)",
+    }),
+  ];
+}
+
+/** The seeded overlay diff's content. */
+export const SEEDED_DIFF = [
+  "--- a/drivers/can/arbitration.c",
+  "+++ b/drivers/can/arbitration.c",
+  "@@ -212,8 +212,11 @@ static void can_handle_tx_error(const struct device *dev, struct can_frame *frame, uint32_t err)",
+  "-\tif (err & CAN_ERR_LOSTARB) {",
+  "-\t\tcan_retry_tx(dev, frame); /* immediate retry floods the bus */",
+  "+\tif (err & CAN_ERR_LOSTARB) {",
+  "+\t\tk_sleep(K_USEC(backoff_us)); /* exponential backoff, 50–800 µs */",
+  "+\t\tbackoff_us = MIN(backoff_us << 1, CAN_ARB_BACKOFF_MAX_US);",
+  "+\t\tcan_retry_tx(dev, frame);",
+  "",
+].join("\n");
+
+/**
+ * The seeded simulated diff: `drivers/can/arbitration.c +41 −9`, whole.
+ *
+ * @param overrides What this case is about.
+ * @returns The artifact.
+ */
+export function seededDiff(overrides: Partial<DryRunArtifact> = {}): DryRunArtifact {
+  return {
+    kind: "overlay_diff",
+    content: SEEDED_DIFF,
+    truncated: false,
+    originalBytes: new TextEncoder().encode(SEEDED_DIFF).length,
+    pathSummary: [{ path: "drivers/can/arbitration.c", added: 41, removed: 9 }],
+    ...overrides,
+  };
+}
+
+/**
+ * The seeded dry run on `#489`: complete in 2m 41s for $0.31, guards clean, seven rows and the
+ * diff.
+ *
+ * @param overrides What this case is about.
+ * @returns The run.
+ */
+export function seededDryRun(overrides: Partial<DryRun> = {}): DryRun {
+  return {
+    id: DRY_RUN_ID,
+    workflowId: SECURITY_PATCH_ID,
+    draft: { baseVersion: null, rev: 3, label: "v0.3" },
+    ticket: {
+      id: TICKET_489_ID,
+      key: "#489",
+      title: "CAN arbitration-lost storm under full telemetry load",
+      url: "https://github.com/acme-robotics/helios-firmware/issues/489",
+    },
+    sessionId: SESSION_ID,
+    pinnedSha: "8c1b2e40d6a5f3c19b7e2a4d8f0c6b13e5a7d9f2",
+    mode: "deep",
+    status: "complete",
+    failureReason: null,
+    totals: { durationMs: 161_000, costCents: 31, tokens: 131_200 },
+    guardAudit: [],
+    guardsClean: true,
+    precheckFindings: [],
+    startedAt: "2026-09-13T15:05:00.000Z",
+    finishedAt: "2026-09-13T15:07:41.000Z",
+    stages: seededStages(),
+    artifacts: [seededDiff()],
+    budget: { capCents: 500, source: "draft_guard", workspaceCapCents: 1000, draftGuardCents: 500 },
+    ...overrides,
+  };
+}
+
+/**
+ * The seeded run while it was still going: `running`, with its first three rows and no totals.
+ *
+ * @param overrides What this case is about.
+ * @returns The run.
+ */
+export function runningDryRun(overrides: Partial<DryRun> = {}): DryRun {
+  return seededDryRun({
+    status: "running",
+    totals: { durationMs: null, costCents: null, tokens: null },
+    finishedAt: null,
+    stages: seededStages().slice(0, 3),
+    artifacts: [],
+    ...overrides,
+  });
+}
+
+/**
+ * One suggestion — a rule's, open and applicable.
+ *
+ * @param overrides What this case is about.
+ * @returns The suggestion.
+ */
+export function dryRunSuggestion(overrides: Partial<DryRunSuggestion> = {}): DryRunSuggestion {
+  return {
+    id: SUGGESTION_SKIP_ID,
+    dryRunId: DRY_RUN_ID,
+    source: "rule",
+    ruleId: "skipped-nothing-to-do",
+    ruleVersion: 1,
+    title: "Make exploit-verify conditional",
+    body: "Make exploit-verify conditional — it had nothing to do because #489 carries no `cve` label. Route issues without `cve` around it, so it skips cleanly instead of running with nothing to check.",
+    confidence: 93,
+    confidenceBasis: {
+      method: "rule_strength_x_sample_adequacy",
+      inputs: {
+        rule: "skipped-nothing-to-do",
+        rule_version: 1,
+        rule_strength: 0.95,
+        sample_adequacy: 0.98,
+        outcome: "skipped_nothing_to_do",
+        deterministic: true,
+        observations: 1,
+      },
+    },
+    applicable: true,
+    proposedOps: [
+      {
+        kind: "add_stage",
+        params: {
+          node: {
+            id: "has-cve",
+            type: "flow",
+            title: "has CVE?",
+            position: { x: 0, y: 660 },
+            config: { kind: "decision", predicate: { kind: "labels", op: "any", values: ["cve"] } },
+          },
+        },
+      },
+      { kind: "remove_edge", params: { from: "test", to: "exploit-verify" } },
+      { kind: "add_edge", params: { edge: { from: "test", to: "has-cve", kind: "default" } } },
+      { kind: "add_edge", params: { edge: { from: "has-cve", to: "exploit-verify", kind: "branch", label: "cve" } } },
+      { kind: "add_edge", params: { edge: { from: "has-cve", to: "review-primary", kind: "branch", label: "no cve" } } },
+      { kind: "add_edge", params: { edge: { from: "has-cve", to: "review-second", kind: "branch", label: "no cve" } } },
+    ],
+    status: "open",
+    appliedOpBatchId: null,
+    resolvedAt: null,
+    createdAt: "2026-09-13T15:08:00.000Z",
+    ...overrides,
+  };
+}
+
+/**
+ * The seeded run's two suggestions: `skipped-nothing-to-do` at 93% and `reviewer-disagreement`
+ * at 81%.
+ *
+ * @returns The suggestions, in card order.
+ */
+export function seededSuggestions(): DryRunSuggestion[] {
+  return [
+    dryRunSuggestion(),
+    dryRunSuggestion({
+      id: SUGGESTION_REVIEW_ID,
+      ruleId: "reviewer-disagreement",
+      title: "Pin the pr-etiquette skill to both reviewers",
+      body: "Pin the pr-etiquette skill to both reviewers — 6 of 10 replayed review pairs disagreed on comment style, not substance.",
+      confidence: 81,
+      confidenceBasis: {
+        method: "rule_strength_x_sample_adequacy",
+        inputs: {
+          rule: "reviewer-disagreement",
+          rule_version: 1,
+          rule_strength: 0.9,
+          sample_adequacy: 0.9,
+          replay_set: "5eed008d-0000-4000-8000-000000000000",
+          pairs: 10,
+          style_disagreements: 6,
+          substance_disagreements: 0,
+          disagreement_rate: 0.6,
+        },
+      },
+      proposedOps: ["review-primary", "review-second"].map((id) => ({
+        kind: "set_stage" as const,
+        params: { node: { id, type: "llm", title: id, config: { mode: "skill", skill: "pr-etiquette" } } },
+      })),
+    }),
+  ];
+}
+
+/** A suggestion the model made: no rule, no confidence, labelled. */
+export const LLM_SUGGESTION: DryRunSuggestion = dryRunSuggestion({
+  id: "5eed008c-0000-4000-8000-000000000003",
+  source: "llm",
+  ruleId: null,
+  ruleVersion: null,
+  title: "Add a rollback note to the plan stage",
+  body: "Add a rollback note to the plan stage — reviewers asked for one twice.",
+  confidence: null,
+  confidenceBasis: { method: "llm_unscored", inputs: { alias: "coder-max" } },
+  proposedOps: [{ kind: "set_stage", params: { node: { id: "plan", type: "llm", title: "plan", config: {} } } }],
+});
+
+/** An advisory suggestion: it proposes no operations, so there is nothing to apply. */
+export const ADVISORY_SUGGESTION: DryRunSuggestion = dryRunSuggestion({
+  id: "5eed008c-0000-4000-8000-000000000004",
+  title: "Consider a second reviewer for driver changes",
+  body: "Consider a second reviewer for driver changes — this run touched `drivers/`.",
+  applicable: false,
+  proposedOps: [],
+});
+
+/**
+ * The seeded history: one dry run, on draft `v0.3` with two copilot edits.
+ *
+ * @param overrides What this case is about.
+ * @returns The history.
+ */
+export function seededHistory(overrides: Partial<DryRunHistory> = {}): DryRunHistory {
+  const run = seededDryRun();
+
+  return {
+    draft: { label: "v0.3", rev: 3, baseVersion: null, copilotEdits: 2 },
+    count: 1,
+    spend: { costCents: 31, unpriced: 0 },
+    runs: [
+      {
+        id: run.id,
+        draftLabel: run.draft.label,
+        draftRev: run.draft.rev,
+        ticket: { key: run.ticket.key, title: run.ticket.title },
+        status: run.status,
+        failureReason: run.failureReason,
+        totals: run.totals,
+        guardsClean: run.guardsClean,
+        startedAt: run.startedAt,
+        finishedAt: run.finishedAt,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+/**
+ * The seeded board — mockup 20's card: the run, its seven rows, the diff and the two suggestions.
+ *
+ * @param overrides What this case is about.
+ * @returns The board.
+ */
+export function seededBoard(overrides: Partial<DryRunBoard> = {}): DryRunBoard {
+  return { history: seededHistory(), run: seededDryRun(), suggestions: seededSuggestions(), ...overrides };
+}
+
+/**
+ * A workflow never dry-run: draft `v0.3`, no runs.
+ *
+ * @returns The board.
+ */
+export function emptyBoard(): DryRunBoard {
+  return { history: seededHistory({ count: 0, runs: [], spend: { costCents: null, unpriced: 0 } }), run: null, suggestions: [] };
+}
+
+/**
+ * One ranked candidate.
+ *
+ * @param overrides What this case is about.
+ * @returns The candidate.
+ */
+export function dryRunCandidate(overrides: Partial<DryRunCandidate> = {}): DryRunCandidate {
+  return {
+    rank: 1,
+    ticket: {
+      id: TICKET_489_ID,
+      key: "#489",
+      title: "CAN arbitration-lost storm under full telemetry load",
+      url: "https://github.com/acme-robotics/helios-firmware/issues/489",
+      labels: ["bug", "can-bus"],
+      effort: "m",
+      source: "github",
+    },
+    score: 2,
+    dimensions: 3,
+    matchesTrigger: false,
+    mismatches: [],
+    reason: "Carries no cve label — exercises the path that skips exploit-verify.",
+    ...overrides,
+  };
+}
+
+/** A second candidate, which would trigger the workflow as drafted. */
+export const CANDIDATE_490: DryRunCandidate = dryRunCandidate({
+  rank: 2,
+  ticket: {
+    id: "5eed0088-0000-4000-8000-000000000490",
+    key: "#490",
+    title: "Bootloader accepts unsigned image over DFU",
+    url: "https://github.com/acme-robotics/helios-firmware/issues/490",
+    labels: ["security", "cve"],
+    effort: "l",
+    source: "github",
+  },
+  score: 1,
+  matchesTrigger: true,
+  reason: "Has CVE-like labels — exercises the PoC path.",
+});
+
+/**
+ * The first seeded suggestion's explanation, as the rule pack describes it.
+ *
+ * @param overrides What this case is about.
+ * @returns The explanation.
+ */
+export function seededExplanation(overrides: Partial<DryRunExplanation> = {}): DryRunExplanation {
+  const suggestion = dryRunSuggestion();
+
+  return {
+    suggestionId: suggestion.id,
+    source: "rule",
+    rule: {
+      id: "skipped-nothing-to-do",
+      version: 1,
+      packVersion: 1,
+      firesWhen: "A stage skipped because the ticket carried nothing for it to do.",
+      proposes: "A decision ahead of the stage that routes such tickets around it.",
+      scoring: {
+        strength: "0.95 for a deterministic outcome.",
+        adequacy: "0.98 when seen in one run.",
+      },
+    },
+    evidence: {
+      stage_key: "exploit-verify",
+      verdict: "skipped",
+      skip_kind: "nothing_to_do",
+      skip_input: "cve",
+      ticket: "#489",
+      ticket_labels: ["bug", "can-bus"],
+      trigger_labels: ["security"],
+    },
+    confidence: 93,
+    confidenceBasis: suggestion.confidenceBasis,
+    proposedOps: suggestion.proposedOps,
+    ...overrides,
+  };
+}
+
+/**
+ * A transport whose every call is refused as unreachable — for a suite that renders the card and
+ * replaces only the calls it is about.
+ *
+ * @param overrides The calls this case is about.
+ * @returns The transport.
+ */
+export function dryRunTransport(overrides: Partial<DryRunTransport> = {}): DryRunTransport {
+  const refused = async () => ({ ok: false as const, refusal: { status: 0, code: "unreachable", message: "unreachable" } });
+
+  return {
+    detail: refused,
+    suggestions: refused,
+    candidates: refused,
+    explanation: refused,
+    start: refused,
+    cancel: refused,
+    rerun: refused,
+    apply: refused,
+    ignore: refused,
+    ...overrides,
+  };
 }

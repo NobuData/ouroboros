@@ -25,11 +25,12 @@
 import request from "supertest";
 
 import { SCHEMA_NAME } from "../../db/schema";
+import type { DryRunResource } from "../../dry-runs/dry-runs.resources";
 import type { ReplayEstimate, ReplayResult } from "../../replay-estimates/replay.estimate";
-import { REPLAY_FORMULAS } from "../../replay-estimates/replay.formulas";
+import { REPLAY_FORMULAS, REPLAY_FORMULA_SUMMARIES } from "../../replay-estimates/replay.formulas";
 import type { ReplayEstimateResource } from "../../replay-estimates/replay.service";
 import { IMPLEMENT_NODE, startCopilotStage, type CopilotStage } from "./certification.fixture";
-import { chain, drafted, internalPost, ran } from "./dry-run-plane.fixture";
+import { chain, drafted, dryRunsPath, internalPost, ran } from "./dry-run-plane.fixture";
 import { runOf, stage as row } from "./scripted-engine.fixture";
 
 /** The window and the floor the issue names: thirty days, twenty samples. */
@@ -533,6 +534,63 @@ describe("copilot certification — the replay estimators' arithmetic (#564)", (
         /est\.|±|\d+m \d\ds|\d+s\b/,
       );
     });
+  });
+
+  it("serves each replayed row's estimate on the dry run as the row's own metrics — and no number without history (#568)", async () => {
+    // The answers the harness would be given: the build class planted above, at 80 s ± 18 s,
+    // and a suite set nothing ever reported.
+    const build = await answered({ kind: "build", runnerPool: POOL });
+    const test = await answered({ kind: "test", suites: ["cert-never-ran"] });
+    expect([build.estimate.status, test.estimate.status]).toEqual([
+      "estimate",
+      "insufficient_history",
+    ]);
+
+    const workflow = await drafted(stage, "Cert estimate rows", chain(IMPLEMENT_NODE));
+    stage.engine.scriptRun((asked) =>
+      runOf(asked, [
+        row(1, "implement"),
+        row(2, "build", { ...build.stage }),
+        row(3, "test", { ...test.stage }),
+      ]),
+    );
+    const run = await ran(stage, workflow.id);
+    const read = await stage
+      .as(stage.people.owner, "get", dryRunsPath(workflow.id, `/${run.id}`))
+      .expect(200);
+    const [implement, builtRow, testedRow] = (read.body as DryRunResource).stages;
+
+    expect(implement.estimate).toBeNull();
+    expect(builtRow.metrics).toEqual(build.stage.metrics);
+    expect(builtRow.estimate).toEqual({
+      status: "estimated",
+      estimateMs: median(HISTORY) * 1000,
+      spreadMs: spread(HISTORY) * 1000,
+      sampleCount: HISTORY.length,
+      sampleFloor: SAMPLE_FLOOR,
+      windowDays: WINDOW_DAYS,
+      formula: {
+        id: REPLAY_FORMULAS.build.id,
+        version: REPLAY_FORMULAS.build.version,
+        summary: REPLAY_FORMULA_SUMMARIES.build,
+      },
+    });
+    expect(testedRow.metrics).toEqual(test.stage.metrics);
+    expect(testedRow.estimate).toEqual({
+      status: "insufficient_history",
+      estimateMs: null,
+      spreadMs: null,
+      sampleCount: 0,
+      sampleFloor: SAMPLE_FLOOR,
+      windowDays: WINDOW_DAYS,
+      formula: {
+        id: REPLAY_FORMULAS.test.id,
+        version: REPLAY_FORMULAS.test.version,
+        summary: REPLAY_FORMULA_SUMMARIES.test,
+      },
+    });
+    // The answer to the start is the same card as the reload.
+    expect(run.stages).toEqual((read.body as DryRunResource).stages);
   });
 
   it("called no engine route but the dry run's own", () => {

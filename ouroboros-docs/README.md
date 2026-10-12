@@ -336,7 +336,7 @@ selector in the message; the rest are still captured, and the run exits non-zero
 | `workspace` | The seeded workspace's slug the page is shown in (`acme-robotics`, `kensuenobu`, …). Required, except on a `signedOut` entry |
 | `signedOut` | `true` to capture the page signed out — the capture's cookies are cleared first — for the sign-in page. Such an entry names no `workspace` |
 | `ready` | A Playwright selector that must be visible before the capture — CSS, `text=…`, `role=…`. Pick something only the *loaded* page has: seeded data, not a heading the skeleton already draws |
-| `clip` | `page` (the 1440×900 viewport), `fullPage`, or a selector whose element is captured alone |
+| `clip` | `page` (the 1440×900 viewport), `fullPage`, or a selector whose element is captured alone — the window grows for the capture when the element is taller than it |
 | `masks` | Selectors painted over in the app's own raised-surface colour — anything that changes between runs: relative times rendered on the server, live sparklines, generated ids |
 | `actions` | Steps before the capture, in order: `{"click": sel}`, `{"hover": sel}`, `{"fill": sel, "value": "…"}`, `{"press": "Escape"}` or `{"press": "Enter", "on": sel}` |
 | `caption`, `alt` | The caption under the image and its alternative text; both required |
