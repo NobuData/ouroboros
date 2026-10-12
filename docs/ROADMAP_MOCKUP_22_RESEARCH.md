@@ -1093,7 +1093,7 @@ anatomy, kind-chip hues, capability/`gap-sev` treatments, `cite` rows,
 | CN.5 | #631 ✅ | 🟢 Done | ouroboros-ui: [CN.5] Roadmap pipeline card | Rendered/raw doc, suggestions apply/dismiss, milestone-grouped issues | mvp, research, ui, design | N (after CN.1, CM.5) | Y | L | ouroboros-ui |
 | CN.6 | #632 ✅ | 🟢 Done | ouroboros-ui: [CN.6] Investigations list, history & library | Active rows, kind chips, links; filterable history/library view | mvp, research, ui | N (after CN.1, CM.6) | Y | M | ouroboros-ui |
 | CN.7 | #633 ✅ | 🟢 Done | ouroboros-ui: [CN.7] Research states & guards | Empty org, AF.2-absent honesty, member gates, load/error | mvp, research, ui, design | N (after CN.2–CN.6) | Y | S | ouroboros-ui |
-| CN.8 | #634 | 🟡 Open | ouroboros-ui: [CN.8] Research e2e leg | Parity, run-to-brief, watch chain, pipeline, gaps→planning, themes | mvp, research, ui, ci | N (after CN.1–CN.7) | Y | M | ouroboros-ui, .github |
+| CN.8 | #634 ✅ | 🟢 Done | ouroboros-ui: [CN.8] Research e2e leg | Parity, run-to-brief, watch chain, pipeline, gaps→planning, themes | mvp, research, ui, ci | N (after CN.1–CN.7) | Y | M | ouroboros-ui, .github |
 
 ### Issue CN.1 — ouroboros-ui: [CN.1] Research route, head & page frame
 
@@ -1323,7 +1323,9 @@ SOURCES — 44 CITED: [07][12][19][31][git] · all ↗       [Export ↗][Draft 
 
 ### Issue CN.8 — ouroboros-ui: [CN.8] Research e2e leg
 
-> **GitHub issue:** #634 · **Status:** 🟡 Open · **Parent epic:** #606
+> **GitHub issue:** #634 ✅ · **Status:** 🟢 Done · **Parent epic:** #606
+
+> **Delivered (#634 — `tests/e2e` 0.34.0; no product change):** leg 28, `tests/e2e/specs/research.spec.ts` over `support/research.ts` — fourteen tests, ten run (~45 s) and four parked. **Run:** the seven regions in both themes; every citation marker of RS-127 resolving to the ledger's row and lighting it; the downloaded export; `ROADMAP.md` ≡ the tracker rows on the seeded roadmap; the gateway-absent page and the engine's refusal of *Apply*; the member's read-only page and the service's refusals; shell + 125 %; a tool enabled through its sheet (web search, in the personal workspace); *Draft epic from gaps* → a Planning batch with gap and citation provenance and nothing filed; a planted baseline → a real comparison → the drift's row → *needs repro* on the scheduler's pass → dismissed. **Parked (`test.fixme`, pairs registered as parked — chosen by the user, 2026-10-11):** investigate → brief, cancel, and apply → re-run → writeback wait on the invocation gateway (#235); bisected → forensics → fix draft waits on runner checkout (#991) and a host the engine can clone from. `docker-compose.e2e.yml` sets `OURO_RESEARCH_REGRESSION_TICK_MS` to its ten-second floor. Breakages done by hand and the registered pairs are in `tests/e2e/README.md` § leg 28.
 
 - **Problem Statement:** Ask→evidence→brief→tickets spans the engine, five
   tools, three sibling planes, and the repo — only e2e certifies the loop
@@ -1639,7 +1641,7 @@ Issue-level impact:
 |---|:---:|:---:|---|
 | CN.1 | #627 ✅ | 🟢 Done | Mounts in the shell content pane; navigation reached via the sidebar **Research** entry (icon `telescope`), not a topbar link |
 | CN.2, CN.3, CN.4, CN.5, CN.6, CN.7 | #628, #629, #630, #631, #632, #633 | 🟡 Open | rem-based type, shell tokens; internal wide/tall regions (matrices, documents, long lists) scroll in their own wrappers |
-| CN.8 | #634 | 🟡 Open | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
+| CN.8 | #634 ✅ | 🟢 Done | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
 ## Next Step
 

@@ -800,6 +800,24 @@ expect_red db wizard.spec.ts "sign-in for .* answered 5[0-9][0-9]"
 expect_red tracker-stub wizard.spec.ts "validates it against the sandbox tracker" "the chain"
 expect_red engine wizard.spec.ts "the estimator sizes it through the engine" "the chain"
 
+# The Research leg (#634, CN.8 — the Research roadmap's MVP gate). Its first touch of the
+# database is the sign-in. An owner's *Apply* is answered by the engine, which has no model to
+# ask and says so: with `engine` stopped the refusal is a different one, and the leg says the
+# engine did not answer. The tool it enables is web search, whose dot is the deployment's
+# SearXNG answering the adapter: with `searxng` stopped the dot never turns healthy.
+expect_red db research.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+expect_red engine research.spec.ts "was not refused by the engine for want of a model" "no gateway"
+expect_red searxng research.spec.ts "the fixture tool's dot did not turn healthy" "tool enable"
+
+# Its four parked chains, registered so that none of them ships without a failure mode: the
+# three that need a model wait on the invocation gateway (AF.2, #235), and the bisect half of
+# the watch chain on a runner that can check a commit out (AG.7, #991). The spec's header says
+# what each is asserted on meanwhile.
+parked research.spec.ts engine "investigate → brief"
+parked research.spec.ts engine "cancel"
+parked research.spec.ts engine "pipeline: apply"
+parked research.spec.ts runner "the watch chain"
+
 printf '\n'
 if check_summary; then
   rm -rf "$LOG_DIR"
