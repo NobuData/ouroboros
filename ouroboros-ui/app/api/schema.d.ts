@@ -6727,6 +6727,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workflows/{id}/copilot/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read whether the copilot could answer a message now
+         * @description What the conversation card says before anybody types (mockup 20; CE.2,
+         *     [#566](https://github.com/NobuData/ouroboros/issues/566)). It reports what this service
+         *     already knows and **asks nobody**: no model, engine or provider is invoked, and nothing
+         *     is written.
+         *
+         *     * **`gateway.available`** — whether this deployment has the invocation gateway a reply
+         *       is made through. `false` until AF.2
+         *       ([#235](https://github.com/NobuData/ouroboros/issues/235)) lands: a reply then ends
+         *       with the stream's `gateway_unavailable` whatever the route says. The same fact
+         *       `GET /api/v1/research/settings` reports.
+         *     * **`route`** — what routing the next reply would find for the `copilot-workflow` task
+         *       kind, decided by the function that routes a reply. `resolved` with the `alias` and
+         *       `modelId` the reply would be sent to; or not, with `reason` — the explanation an
+         *       unrouted reply gives (the stream's `copilot_unrouted`) **without** its leading
+         *       `I can't reach a model: `. `alias` and `modelId` are strings exactly when `resolved`;
+         *       `reason` is a string exactly when not.
+         *     * **`dryRun`** — the workflow's dry run that has not ended (`precheck` or `running`),
+         *       or `null`. It is the run `POST …/copilot/discard` names when it answers
+         *       `409 dry_run_in_progress`.
+         *
+         *     A resolved route is a statement about routing, not a promise of a reply: the provider
+         *     may still fail when it is asked.
+         *
+         *     Every member may read it, like the conversation.
+         */
+        get: operations["readCopilotReadiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workflows/{id}/copilot/discard": {
         parameters: {
             query?: never;
@@ -6801,6 +6844,9 @@ export interface paths {
          *     * `error` — the reply could not be finished: `copilot_unrouted` (no route for the kind;
          *       nothing was invoked), `gateway_unavailable` (until AF.2,
          *       [#235](https://github.com/NobuData/ouroboros/issues/235), lands), `engine_unavailable`,
+         *       `copilot_session_closed` (the conversation was promoted or discarded while the reply
+         *       was building — the operation in hand was **not** applied, nothing further is, and the
+         *       reply is recorded `interrupted`; operations applied before the close stand),
          *       or the gateway's own per-hop codes;
          *     * `done` — always last: the reply as recorded, and the draft as it stands.
          *
@@ -25850,6 +25896,39 @@ export interface components {
             blocked: boolean;
             /** @description A sentence per reason. Empty when `blocked` is `false`. */
             blockedReasons: string[];
+        };
+        /**
+         * CopilotReadiness
+         * @description Whether a message sent to the copilot now could be answered (CE.2,
+         */
+        CopilotReadiness: {
+            gateway: {
+                /** @description Whether this deployment has the invocation gateway a reply is made through. `false` until AF.2 (#235) lands. */
+                available: boolean;
+            };
+            /** @description What routing the next reply would find. */
+            route: {
+                /** @description The task kind the copilot is routed as — `copilot-workflow`. */
+                taskKind: string;
+                /** @description Whether a reply sent now would be routed to a model. */
+                resolved: boolean;
+                /** @description The alias a reply would be routed to — a string exactly when `resolved`. */
+                alias: string | null;
+                /** @description That alias's model id — a string exactly when `resolved`. */
+                modelId: string | null;
+                /** @description Why the route does not resolve — `null` exactly when `resolved`. The sentence an unrouted reply gives, without its leading `I can't reach a model: `. */
+                reason: string | null;
+            };
+            /** @description The workflow's dry run that has not ended, or `null`. */
+            dryRun: {
+                /** Format: uuid */
+                id: string;
+                /**
+                 * @description The run's status — one of the two a dry run has before it ends.
+                 * @enum {string}
+                 */
+                status: "precheck" | "running";
+            } | null;
         };
         /**
          * CopilotDiscard
@@ -62676,6 +62755,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CopilotPromotion"];
+                };
+            };
+            /** @description `organization_required`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workflow_not_found` — no such workflow for this caller. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readCopilotReadiness: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The workflow — `workflows.id`, a uuid minted by the database (V029). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read; a well-formed id that
+                 *     names nothing *this caller may see* is a `404`, and the difference is the difference
+                 *     between "you asked wrongly" and "there is no such thing for you".
+                 * @example 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                 */
+                id: components["parameters"]["WorkflowId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The readiness as it stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CopilotReadiness"];
                 };
             };
             /** @description `organization_required`. */

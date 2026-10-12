@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.41.19",
+    "version": "0.41.20",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -95,7 +95,7 @@
     },
     {
       "name": "copilot",
-      "description": "**The Workflow Copilot** (mockup 20, epic\n[#552](https://github.com/NobuData/ouroboros/issues/552)) — the conversational author of\nthe shared draft. One active session per workflow; every edit the copilot makes is a typed\noperation on the same draft the canvas and the code editor edit (decision **W2**), validated\nbefore it is applied and recorded with `copilot` provenance; questions are chip rows the\nperson answers; a reply streams as server-sent events so the draft is seen being built.\n\nA conversation ends one of two ways. **Promote to workflow** is the workflow's own\n`POST /api/v1/workflows/{id}/publish`, which closes the active session as `promoted`;\n`GET …/copilot/promotion` says beforehand what it would publish, naming each guard with\nwhere it is really enforced. **Discard draft** is `POST …/copilot/discard`: the draft\ngoes, the session closes as `discarded`, the workflow and the transcript stay."
+      "description": "**The Workflow Copilot** (mockup 20, epic\n[#552](https://github.com/NobuData/ouroboros/issues/552)) — the conversational author of\nthe shared draft. One active session per workflow; every edit the copilot makes is a typed\noperation on the same draft the canvas and the code editor edit (decision **W2**), validated\nbefore it is applied and recorded with `copilot` provenance; questions are chip rows the\nperson answers; a reply streams as server-sent events so the draft is seen being built.\n\nA conversation ends one of two ways. **Promote to workflow** is the workflow's own\n`POST /api/v1/workflows/{id}/publish`, which closes the active session as `promoted`;\n`GET …/copilot/promotion` says beforehand what it would publish, naming each guard with\nwhere it is really enforced. **Discard draft** is `POST …/copilot/discard`: the draft\ngoes, the session closes as `discarded`, the workflow and the transcript stay. A reply\nstill building when its conversation closes applies nothing further and ends\n`copilot_session_closed`.\n\n`GET …/copilot/readiness` says, without invoking anything, whether a message sent now\ncould be answered: the invocation gateway, the `copilot-workflow` route, and the\nworkflow's open dry run."
     },
     {
       "name": "dry-runs",
@@ -24934,6 +24934,113 @@
         }
       }
     },
+    "/api/v1/workflows/{id}/copilot/readiness": {
+      "get": {
+        "tags": [
+          "copilot"
+        ],
+        "summary": "Read whether the copilot could answer a message now",
+        "description": "What the conversation card says before anybody types (mockup 20; CE.2,\n[#566](https://github.com/NobuData/ouroboros/issues/566)). It reports what this service\nalready knows and **asks nobody**: no model, engine or provider is invoked, and nothing\nis written.\n\n* **`gateway.available`** — whether this deployment has the invocation gateway a reply\n  is made through. `false` until AF.2\n  ([#235](https://github.com/NobuData/ouroboros/issues/235)) lands: a reply then ends\n  with the stream's `gateway_unavailable` whatever the route says. The same fact\n  `GET /api/v1/research/settings` reports.\n* **`route`** — what routing the next reply would find for the `copilot-workflow` task\n  kind, decided by the function that routes a reply. `resolved` with the `alias` and\n  `modelId` the reply would be sent to; or not, with `reason` — the explanation an\n  unrouted reply gives (the stream's `copilot_unrouted`) **without** its leading\n  `I can't reach a model: `. `alias` and `modelId` are strings exactly when `resolved`;\n  `reason` is a string exactly when not.\n* **`dryRun`** — the workflow's dry run that has not ended (`precheck` or `running`),\n  or `null`. It is the run `POST …/copilot/discard` names when it answers\n  `409 dry_run_in_progress`.\n\nA resolved route is a statement about routing, not a promise of a reply: the provider\nmay still fail when it is asked.\n\nEvery member may read it, like the conversation.",
+        "operationId": "readCopilotReadiness",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WorkflowId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The readiness as it stands.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CopilotReadiness"
+                },
+                "examples": {
+                  "unrouted": {
+                    "summary": "No gateway yet, and no route for the kind",
+                    "value": {
+                      "gateway": {
+                        "available": false
+                      },
+                      "route": {
+                        "taskKind": "copilot-workflow",
+                        "resolved": false,
+                        "alias": null,
+                        "modelId": null,
+                        "reason": "this workspace has no route for the `copilot-workflow` task kind. Add one under Model routing and try again."
+                      },
+                      "dryRun": null
+                    }
+                  },
+                  "routed": {
+                    "summary": "A resolved route, with a dry run in progress",
+                    "value": {
+                      "gateway": {
+                        "available": false
+                      },
+                      "route": {
+                        "taskKind": "copilot-workflow",
+                        "resolved": true,
+                        "alias": "coder-max",
+                        "modelId": "claude-fable-5",
+                        "reason": null
+                      },
+                      "dryRun": {
+                        "id": "5eed008b-0000-4000-8000-000000000001",
+                        "status": "running"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`workflow_not_found` — no such workflow for this caller.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/workflows/{id}/copilot/discard": {
       "post": {
         "tags": [
@@ -25072,7 +25179,7 @@
           "copilot"
         ],
         "summary": "Say something to the copilot, and watch the reply build",
-        "description": "One exchange. The message is recorded, the `copilot-workflow` task kind is resolved\nthrough routing (the alias it resolves to is appended to the session's model\nprovenance), and the loop runs: the engine's turn streams reply text and structured tool\ncalls; each typed operation is **validated against the DSL before application** and\napplied under the draft's etag with `copilot` provenance; an invalid one is bounced back\nto the model with the validator's message, within a bounded budget; a question becomes a\nchip row and ends the exchange until it is answered.\n\nThe answer is `text/event-stream`. Each event's `event:` field is its `kind` and its\n`data:` the JSON object described by `CopilotStreamEvent`:\n\n* `accepted` — always first: the recorded message, and the reply's id and seq;\n* `delta` — a fragment of reply text;\n* `operation` — an operation and what became of it, **in the order the model produced\n  them**: `applied` (with `draftRev`, the new `etag`, and the W7 `warnings` it\n  introduced), `bounced` (with `validatorMessage`) or `proposed` (a guard);\n* `read`, `question`, `dry_run_proposal` — the other tools;\n* `conflict` — the draft changed under the conversation (a canvas save); the copilot\n  re-read it and says so; no human edit is overwritten;\n* `usage` — tokens and cost for the exchange, `null` when unmetered or unpriced;\n* `error` — the reply could not be finished: `copilot_unrouted` (no route for the kind;\n  nothing was invoked), `gateway_unavailable` (until AF.2,\n  [#235](https://github.com/NobuData/ouroboros/issues/235), lands), `engine_unavailable`,\n  or the gateway's own per-hop codes;\n* `done` — always last: the reply as recorded, and the draft as it stands.\n\n**One exchange at a time**: a reply still streaming answers `409 copilot_exchange_busy`.\nAdministrators only.",
+        "description": "One exchange. The message is recorded, the `copilot-workflow` task kind is resolved\nthrough routing (the alias it resolves to is appended to the session's model\nprovenance), and the loop runs: the engine's turn streams reply text and structured tool\ncalls; each typed operation is **validated against the DSL before application** and\napplied under the draft's etag with `copilot` provenance; an invalid one is bounced back\nto the model with the validator's message, within a bounded budget; a question becomes a\nchip row and ends the exchange until it is answered.\n\nThe answer is `text/event-stream`. Each event's `event:` field is its `kind` and its\n`data:` the JSON object described by `CopilotStreamEvent`:\n\n* `accepted` — always first: the recorded message, and the reply's id and seq;\n* `delta` — a fragment of reply text;\n* `operation` — an operation and what became of it, **in the order the model produced\n  them**: `applied` (with `draftRev`, the new `etag`, and the W7 `warnings` it\n  introduced), `bounced` (with `validatorMessage`) or `proposed` (a guard);\n* `read`, `question`, `dry_run_proposal` — the other tools;\n* `conflict` — the draft changed under the conversation (a canvas save); the copilot\n  re-read it and says so; no human edit is overwritten;\n* `usage` — tokens and cost for the exchange, `null` when unmetered or unpriced;\n* `error` — the reply could not be finished: `copilot_unrouted` (no route for the kind;\n  nothing was invoked), `gateway_unavailable` (until AF.2,\n  [#235](https://github.com/NobuData/ouroboros/issues/235), lands), `engine_unavailable`,\n  `copilot_session_closed` (the conversation was promoted or discarded while the reply\n  was building — the operation in hand was **not** applied, nothing further is, and the\n  reply is recorded `interrupted`; operations applied before the close stand),\n  or the gateway's own per-hop codes;\n* `done` — always last: the reply as recorded, and the draft as it stands.\n\n**One exchange at a time**: a reply still streaming answers `409 copilot_exchange_busy`.\nAdministrators only.",
         "operationId": "sendCopilotMessage",
         "parameters": [
           {
@@ -78212,6 +78319,101 @@
             "description": "A sentence per reason. Empty when `blocked` is `false`.",
             "items": {
               "type": "string"
+            }
+          }
+        }
+      },
+      "CopilotReadiness": {
+        "type": "object",
+        "title": "CopilotReadiness",
+        "description": "Whether a message sent to the copilot now could be answered (CE.2,",
+        "additionalProperties": false,
+        "required": [
+          "gateway",
+          "route",
+          "dryRun"
+        ],
+        "properties": {
+          "gateway": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "available"
+            ],
+            "properties": {
+              "available": {
+                "type": "boolean",
+                "description": "Whether this deployment has the invocation gateway a reply is made through. `false` until AF.2 (#235) lands."
+              }
+            }
+          },
+          "route": {
+            "type": "object",
+            "description": "What routing the next reply would find.",
+            "additionalProperties": false,
+            "required": [
+              "taskKind",
+              "resolved",
+              "alias",
+              "modelId",
+              "reason"
+            ],
+            "properties": {
+              "taskKind": {
+                "type": "string",
+                "description": "The task kind the copilot is routed as — `copilot-workflow`."
+              },
+              "resolved": {
+                "type": "boolean",
+                "description": "Whether a reply sent now would be routed to a model."
+              },
+              "alias": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The alias a reply would be routed to — a string exactly when `resolved`."
+              },
+              "modelId": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "That alias's model id — a string exactly when `resolved`."
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Why the route does not resolve — `null` exactly when `resolved`. The sentence an unrouted reply gives, without its leading `I can't reach a model: `."
+              }
+            }
+          },
+          "dryRun": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The workflow's dry run that has not ended, or `null`.",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "status"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "precheck",
+                  "running"
+                ],
+                "description": "The run's status — one of the two a dry run has before it ends."
+              }
             }
           }
         }

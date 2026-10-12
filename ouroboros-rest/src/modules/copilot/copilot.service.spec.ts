@@ -13,9 +13,11 @@ import type { EngineClient } from "../engine/engine.client";
 import type { EngineCopilotEvent, EngineCopilotTurnRequest } from "../engine/engine.copilot";
 import { ENGINE_DRY_RUN_TIMEOUT_MS } from "../engine/engine.dryruns";
 import { NotFoundError } from "../errors/error.envelope";
+import { INVOCATION_GATEWAY_AVAILABLE } from "../internal/invoke.contract";
 import type { ResolutionService } from "../routing/resolution.service";
 import type { CopilotContextService } from "./copilot.context";
 import { COPILOT_ERRORS } from "./copilot.errors";
+import { SESSION_CLOSED_MID_REPLY } from "./copilot.exchange";
 import type { CopilotRepository } from "./copilot.repository";
 import {
   COPILOT_TASK_KIND,
@@ -23,7 +25,9 @@ import {
   DRY_RUN_RESULTS,
   CopilotService,
   MAX_TICKET_CANDIDATES,
+  UNROUTED_PREFIX,
   transcriptOf,
+  unroutedMessage,
 } from "./copilot.service";
 import type { CopilotStreamEvent } from "./copilot.stream";
 
@@ -169,6 +173,7 @@ function harness(
       .fn()
       .mockResolvedValue({ draft_discarded: true, operations_removed: 3, session_id: SESSION }),
     session: jest.fn().mockResolvedValue(session()),
+    sessionStatusLocked: jest.fn().mockResolvedValue("active"),
     createSession: jest.fn().mockResolvedValue(session()),
     appendProvenance: jest.fn().mockResolvedValue(undefined),
     messages: jest
@@ -606,6 +611,278 @@ describe("what a promotion would publish", () => {
     await expect(service.promotion(WORKSPACE, WORKFLOW)).rejects.toMatchObject({
       code: "workflow_not_found",
     });
+  });
+});
+
+describe("the readiness read (#566)", () => {
+  it("reports the gateway, the alias a reply would be routed to, and no dry run", async () => {
+    const { service, copilots, routing, engine, database } = harness();
+
+    await expect(service.readiness(WORKSPACE, WORKFLOW)).resolves.toEqual({
+      gateway: { available: INVOCATION_GATEWAY_AVAILABLE },
+      route: {
+        taskKind: COPILOT_TASK_KIND,
+        resolved: true,
+        alias: "coder-max",
+        modelId: "claude-fable-5",
+        reason: null,
+      },
+      dryRun: null,
+    });
+
+    expect(copilots.workflow).toHaveBeenCalledWith(WORKSPACE, WORKFLOW);
+    expect(routing.resolve).toHaveBeenCalledWith(WORKSPACE, COPILOT_TASK_KIND);
+    expect(copilots.openDryRun).toHaveBeenCalledWith(WORKFLOW);
+    // A read: nobody is invoked and nothing is written.
+    expect(engine.copilotTurn).not.toHaveBeenCalled();
+    expect(database.transaction).not.toHaveBeenCalled();
+    expect(copilots.appendProvenance).not.toHaveBeenCalled();
+  });
+
+  it("gives an unrouted workspace the reason the reply gives, without its prefix", async () => {
+    const options = { routeError: new NotFoundError("route_not_found", "No route.") };
+    const { service } = harness(options);
+
+    const readiness = await service.readiness(WORKSPACE, WORKFLOW);
+
+    expect(readiness.route).toEqual({
+      taskKind: COPILOT_TASK_KIND,
+      resolved: false,
+      alias: null,
+      modelId: null,
+      reason:
+        "this workspace has no route for the `copilot-workflow` task kind. Add one under Model routing and try again.",
+    });
+
+    // One function decides both: what the reply says is the prefix plus this reason.
+    const replying = harness(options);
+    const events = await collect(
+      replying.service.send(WORKSPACE, WORKFLOW, SESSION, "user-1", "hello"),
+    );
+    const said = events.find((event) => event.kind === "error");
+    expect(said).toMatchObject({ message: `${UNROUTED_PREFIX}${String(readiness.route.reason)}` });
+    expect(said).toMatchObject({ message: unroutedMessage(String(readiness.route.reason)) });
+    expect(said).toMatchObject({
+      message:
+        "I can't reach a model: this workspace has no route for the `copilot-workflow` task kind. Add one under Model routing and try again.",
+    });
+  });
+
+  it("gives a route that does not resolve its explanation, the same way", async () => {
+    const options = {
+      resolution: {
+        ...RESOLUTION,
+        outcome: "fail_run",
+        failure: { code: "floor", explanation: "every hop is below the floor" },
+      },
+    };
+    const { service } = harness(options);
+
+    const readiness = await service.readiness(WORKSPACE, WORKFLOW);
+
+    expect(readiness.route).toMatchObject({
+      resolved: false,
+      alias: null,
+      modelId: null,
+      reason: "the `copilot-workflow` route did not resolve — every hop is below the floor",
+    });
+
+    const replying = harness(options);
+    const events = await collect(
+      replying.service.send(WORKSPACE, WORKFLOW, SESSION, "user-1", "hello"),
+    );
+    expect(events.find((event) => event.kind === "error")).toMatchObject({
+      message:
+        "I can't reach a model: the `copilot-workflow` route did not resolve — every hop is below the floor",
+    });
+  });
+
+  it("is unresolved when the resolution keeps no hop, with the stock reason", async () => {
+    const { service } = harness({
+      resolution: {
+        ...RESOLUTION,
+        chain: [{ index: 0, alias: "a", modelId: "m", decision: "dropped" }],
+      },
+    });
+
+    const readiness = await service.readiness(WORKSPACE, WORKFLOW);
+
+    expect(readiness.route.reason).toBe(
+      "the `copilot-workflow` route did not resolve — no provider in the chain can serve it right now",
+    );
+  });
+
+  it("names the workflow's open dry run with its status", async () => {
+    const { service, copilots } = harness();
+    copilots.openDryRun.mockResolvedValue({
+      id: "run-1",
+      started_at: new Date(),
+      status: "running",
+    });
+
+    await expect(service.readiness(WORKSPACE, WORKFLOW)).resolves.toMatchObject({
+      dryRun: { id: "run-1", status: "running" },
+    });
+  });
+
+  it("does not report a dry run past the harness deadline — nothing is relaying it any more", async () => {
+    const { service, copilots } = harness();
+    copilots.openDryRun.mockResolvedValue({ id: "run-1", started_at: AT, status: "running" });
+
+    await expect(service.readiness(WORKSPACE, WORKFLOW)).resolves.toMatchObject({ dryRun: null });
+  });
+
+  it("is a 404 for a workflow the workspace does not have, before anything is resolved", async () => {
+    const { service, copilots, routing } = harness();
+    copilots.workflow.mockResolvedValue(undefined);
+
+    await expect(service.readiness(WORKSPACE, WORKFLOW)).rejects.toMatchObject({
+      code: "workflow_not_found",
+    });
+    expect(routing.resolve).not.toHaveBeenCalled();
+    expect(copilots.openDryRun).not.toHaveBeenCalled();
+  });
+
+  it("lets a routing failure that is not 'no route' through", async () => {
+    const { service } = harness({ routeError: new Error("database is down") });
+
+    await expect(service.readiness(WORKSPACE, WORKFLOW)).rejects.toThrow("database is down");
+  });
+});
+
+describe("a reply that outlives its conversation (#566)", () => {
+  const ADD_REVIEW: EngineCopilotEvent = {
+    kind: "tool_call",
+    id: "call-1",
+    tool: "add_stage",
+    arguments: { node: REVIEW_NODE },
+    error: null,
+  };
+  const SET_TRIGGER: EngineCopilotEvent = {
+    kind: "tool_call",
+    id: "call-2",
+    tool: "set_trigger",
+    arguments: { trigger: { event: "ticket_queued", conditions: { labels: ["security"] } } },
+    error: null,
+  };
+
+  it("checks the session under the apply's transaction, after the draft lock and before the batch", async () => {
+    const { service, copilots, trx } = harness({
+      turns: [[ADD_REVIEW, { kind: "done", finishReason: "tool_calls" }]],
+    });
+
+    await collect(service.send(WORKSPACE, WORKFLOW, SESSION, "user-1", "add review"));
+
+    expect(copilots.sessionStatusLocked).toHaveBeenCalledWith(WORKFLOW, SESSION, trx);
+    const locked = copilots.draftOf.mock.calls.findIndex((args: unknown[]) => args[2] === true);
+    expect(copilots.sessionStatusLocked.mock.invocationCallOrder[0]).toBeGreaterThan(
+      copilots.draftOf.mock.invocationCallOrder[locked],
+    );
+    expect(copilots.sessionStatusLocked.mock.invocationCallOrder[0]).toBeLessThan(
+      copilots.applyBatch.mock.invocationCallOrder[0],
+    );
+  });
+
+  it.each(["discarded", "promoted", undefined] as const)(
+    "applies nothing once the session is %s: no further turn, interrupted, error before done",
+    async (status) => {
+      const { service, copilots, engine, batches, finished } = harness({
+        turns: [
+          [
+            { kind: "delta", text: "Adding a review stage." },
+            ADD_REVIEW,
+            { kind: "done", finishReason: "tool_calls" },
+          ],
+          [SET_TRIGGER, { kind: "done", finishReason: "tool_calls" }],
+          [
+            { kind: "delta", text: "Never asked for." },
+            { kind: "done", finishReason: "stop" },
+          ],
+        ],
+      });
+      // Open for the first operation; closed by the time the second is applied.
+      copilots.sessionStatusLocked.mockResolvedValueOnce("active").mockResolvedValue(status);
+
+      const events = await collect(
+        service.send(WORKSPACE, WORKFLOW, SESSION, "user-1", "add review, then the trigger"),
+      );
+
+      expect(batches).toHaveLength(1);
+      expect(copilots.applyBatch).toHaveBeenCalledTimes(1);
+      expect(engine.copilotTurn).toHaveBeenCalledTimes(2);
+      expect(events.map((event) => event.kind)).toEqual([
+        "accepted",
+        "delta",
+        "operation",
+        "delta",
+        "usage",
+        "error",
+        "done",
+      ]);
+      expect(events.at(-2)).toEqual({
+        kind: "error",
+        code: COPILOT_ERRORS.sessionClosed,
+        message: SESSION_CLOSED_MID_REPLY,
+      });
+      expect(finished[0]).toMatchObject({
+        status: "interrupted",
+        body: `Adding a review stage.\n${SESSION_CLOSED_MID_REPLY}`,
+        tool_trace: { operations: [{ outcome: "applied" }] },
+      });
+      expect(events.at(-1)).toMatchObject({ kind: "done", message: { status: "interrupted" } });
+    },
+  );
+
+  it("does not mistake a discarded draft for a canvas edit: closed is answered before the etag", async () => {
+    const { service, copilots, engine, batches, moveDraft } = harness({
+      turns: [
+        [ADD_REVIEW, { kind: "done", finishReason: "tool_calls" }],
+        [
+          { kind: "delta", text: "Re-planned." },
+          { kind: "done", finishReason: "stop" },
+        ],
+      ],
+    });
+    // The loop reads the draft; then the discard removes it and closes the session.
+    copilots.draftOf.mockImplementationOnce(() => Promise.resolve(draftRow(DRAFT_DOCUMENT)));
+    moveDraft(undefined);
+    copilots.sessionStatusLocked.mockResolvedValue("discarded");
+
+    const events = await collect(
+      service.send(WORKSPACE, WORKFLOW, SESSION, "user-1", "add review"),
+    );
+
+    expect(batches).toEqual([]);
+    expect(events.some((event) => event.kind === "conflict")).toBe(false);
+    expect(engine.copilotTurn).toHaveBeenCalledTimes(1);
+    expect(events.at(-2)).toMatchObject({ kind: "error", code: COPILOT_ERRORS.sessionClosed });
+    expect(events.at(-1)).toMatchObject({ kind: "done", draft: { definition: null } });
+  });
+
+  it("guards the debrief exchange the same way", async () => {
+    const { service, copilots, engine, batches, finished } = harness({
+      messages: [message({ id: "m-1", seq: 1, role: "user", body: "dry run #489" })],
+      turns: [
+        [ADD_REVIEW, { kind: "done", finishReason: "tool_calls" }],
+        [
+          { kind: "delta", text: "Never asked for." },
+          { kind: "done", finishReason: "stop" },
+        ],
+      ],
+    });
+    copilots.sessionStatusLocked.mockResolvedValue("promoted");
+
+    await service.debrief({
+      id: "5eed008b-0000-4000-8000-000000000001",
+      organization_id: WORKSPACE,
+      workflow_id: WORKFLOW,
+      session_id: SESSION,
+      status: "complete",
+    } as DryRun);
+
+    expect(batches).toEqual([]);
+    expect(engine.copilotTurn).toHaveBeenCalledTimes(1);
+    expect(finished[0]).toMatchObject({ status: "interrupted", body: SESSION_CLOSED_MID_REPLY });
   });
 });
 

@@ -205,12 +205,14 @@ export class CopilotRepository {
    * the draft out from under.
    *
    * @param workflowId - The workflow.
-   * @returns The open run's id and start, or `undefined`.
+   * @returns The open run's id, start and status, or `undefined`.
    */
-  async openDryRun(workflowId: string): Promise<Pick<DryRun, "id" | "started_at"> | undefined> {
+  async openDryRun(
+    workflowId: string,
+  ): Promise<Pick<DryRun, "id" | "started_at" | "status"> | undefined> {
     return this.database.db
       .selectFrom("dry_runs")
-      .select(["id", "started_at"])
+      .select(["id", "started_at", "status"])
       .where("workflow_id", "=", workflowId)
       .where("status", "not in", DRY_RUN_TERMINAL_STATUSES)
       .orderBy("started_at", "desc")
@@ -238,6 +240,45 @@ export class CopilotRepository {
       .where("workflow_id", "=", workflowId)
       .where("id", "=", sessionId)
       .executeTakeFirst();
+  }
+
+  /**
+   * A session's status, read under the workflow's row lock — the first half of the guarded
+   * apply's *is this conversation still open?* (CE.2, #566).
+   *
+   * Both ways a conversation closes write the session while holding the workflow's row: a
+   * publish locks it first (`WorkflowsRepository.lock`) and `discard_workflow_draft()` takes it
+   * before it touches anything. So a transaction that holds that lock and then reads the status
+   * — a fresh statement, which under read committed sees everything committed before it — reads
+   * a status that cannot change until the transaction ends: a close that committed first is
+   * seen, and one that has not is waiting. `apply_draft_batch()` takes the same lock next, so
+   * this adds no lock the apply would not take anyway.
+   *
+   * @param workflowId - The workflow the session is bound to.
+   * @param sessionId - The session.
+   * @param trx - The apply's transaction. Required: the lock is what makes the answer hold.
+   * @returns The status, or `undefined` when the workflow or the session is gone.
+   */
+  async sessionStatusLocked(
+    workflowId: string,
+    sessionId: string,
+    trx: Transaction<Database>,
+  ): Promise<CopilotSession["status"] | undefined> {
+    await trx
+      .selectFrom("workflows")
+      .select("id")
+      .where("id", "=", workflowId)
+      .forUpdate()
+      .executeTakeFirst();
+
+    const row = await trx
+      .selectFrom("copilot_sessions")
+      .select("status")
+      .where("workflow_id", "=", workflowId)
+      .where("id", "=", sessionId)
+      .executeTakeFirst();
+
+    return row?.status;
   }
 
   /**

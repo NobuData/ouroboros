@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 
 import type { Role } from "@/app/api/membership";
-import type { CopilotConversation } from "@/app/api/workflow-copilot";
 import { Card, CardHead, EmptyState } from "@/app/ui";
 
 import { EmptyWorkspaceActions } from "../empty-workspace-actions";
@@ -10,6 +9,7 @@ import { StudioFailedBanner } from "../studio-banner";
 import { StudioFrame } from "../studio-frame";
 import { StudioReadOnlyNote } from "../studio-readonly-note";
 import { WorkflowRail } from "../workflow-rail";
+import { ConversationCard } from "./conversation-card";
 import { CopilotFlows, CopilotHeadActions, CopilotNotice } from "./copilot-flows";
 import {
   CONVERSATION_FAILED_HEADLINE,
@@ -21,16 +21,10 @@ import {
   type CopilotSeatId,
   type CopilotState,
   PROMOTION_FAILED_HEADLINE,
-  TRANSCRIPT_EMPTY,
-  TRANSCRIPT_LABEL,
-  type TranscriptReason,
   anchorDefinition,
   copilotSeatCopy,
   copilotState,
   seatElementId,
-  transcriptLines,
-  transcriptNote,
-  transcriptReason,
 } from "./copilot-view";
 
 import "../workflows.css";
@@ -61,21 +55,18 @@ import "./copilot.css";
  * to discard. Both are drawn for every reader and are inert, with the reason, for one who may not
  * act.
  *
- * ### What is seated rather than drawn
+ * ### The conversation is drawn; the other two regions are seated
  *
- * The conversation (CE.2, #566), the draft's stage list (CE.3, #567) and the dry-run card (CE.4,
- * #568) are later tickets. Each has a **labelled seat** in mockup 20's two columns — the
- * conversation on the left, the stage list over the dry run on the right — that says which issue
- * fills it. No bubble, stage row or result is faked. A later ticket mounts its card by passing it
- * to its seat.
+ * The conversation is CE.2's card (#566, `conversation-card.tsx`), in mockup 20's left column: it
+ * takes what this route read — the conversation and the service's readiness — and is the same
+ * card for every reader. One who may not write, and a conversation that is **closed** (promoted,
+ * or discarded with its draft), get it read-only: the bubbles and the answered chips, and in the
+ * composer's place the sentence saying why. A conversation that could not be read keeps a
+ * labelled seat under the banner that says so.
  *
- * ### The one thing the conversation's seat does draw
- *
- * A conversation that is **closed** — promoted, or discarded with its draft — is kept, and the
- * ticket's criterion is that it stays readable. So is an open one for a reader who may not edit.
- * In those cases the seat draws the transcript read-only: a note saying why, then a plain ordered
- * list of who said what and when. Deliberately plain — no bubbles, chips or traces — so CE.2 has
- * nothing to undo.
+ * The draft's stage list (CE.3, #567) and the dry-run card (CE.4, #568) are later tickets. Each
+ * has a **labelled seat** in the right column that says which issue fills it. No stage row or
+ * result is faked. A later ticket mounts its card by passing it to its seat.
  *
  * ### The role, and the states
  *
@@ -106,9 +97,6 @@ export interface CopilotScreenProps {
 export function CopilotScreen({ readings, mayAdminister = false, role = "viewer" }: CopilotScreenProps) {
   const state = copilotState(readings);
   const open = state.kind === "open" ? state : null;
-  // The conversation the seat may draw read-only, and why — `null` leaves the seat to CE.2 (#566).
-  const conversation = open !== null && open.conversation.ok ? open.conversation.value : null;
-  const readOnly = transcriptReason(conversation, mayAdminister);
   // The rail as served, or nothing for a rail nobody could read — the tile still draws.
   const entries = readings.rail.ok ? readings.rail.value : [];
 
@@ -155,16 +143,19 @@ export function CopilotScreen({ readings, mayAdminister = false, role = "viewer"
           </Card>
         ) : (
           <div className="copilot-view__body">
-            <Seat id="conversation">
-              {conversation !== null && readOnly !== null ? (
-                <Transcript
-                  conversation={conversation}
-                  name={open.entry.name}
-                  now={new Date(readings.now)}
-                  reason={readOnly}
-                />
-              ) : undefined}
-            </Seat>
+            {open.conversation.ok ? (
+              <ConversationCard
+                conversation={open.conversation.value}
+                mayAdminister={mayAdminister}
+                name={open.entry.name}
+                // Readiness that could not be read gates nothing: the service still refuses what it must.
+                readiness={open.readiness.ok ? open.readiness.value : null}
+                slug={open.entry.slug}
+                workflowId={open.entry.id}
+              />
+            ) : (
+              <Seat id="conversation" />
+            )}
 
             <div className="copilot-view__side">
               <Seat id="stages" />
@@ -181,8 +172,8 @@ export function CopilotScreen({ readings, mayAdminister = false, role = "viewer"
 }
 
 /**
- * One region a later ticket fills: a card with the region's heading, and — until its card is
- * mounted — one honest line saying what will be here and which issue builds it.
+ * One region without its card: the region's heading over one honest line — which issue builds
+ * what will be here, or, for the conversation, that it could not be read.
  *
  * The seat owns the element id (`copilot-view.ts`' `seatElementId`) and the heading, so a link to
  * the region lands on the same element before and after its card arrives.
@@ -201,54 +192,6 @@ function Seat({ id, children }: Readonly<{ id: CopilotSeatId; children?: ReactNo
       <CardHead title={seat.title} titleId={titleId} />
       {children ?? <EmptyState note={seat.note} variant="flush" />}
     </Card>
-  );
-}
-
-/**
- * A conversation that can be read and not continued: why, then who said what and when.
- *
- * Drawn only when `copilot-view.ts`' `transcriptReason` names a reason. A workflow with no
- * conversation, and an open conversation whose reader may edit, are CE.2's to draw — the seat's
- * placeholder says so.
- *
- * @param props.conversation The conversation.
- * @param props.reason Why it is read-only.
- * @param props.name The workflow's name, for the note.
- * @param props.now The instant the page was read — what *2h ago* is measured from.
- * @returns The note and the transcript.
- */
-function Transcript({
-  conversation,
-  reason,
-  name,
-  now,
-}: Readonly<{ conversation: CopilotConversation; reason: TranscriptReason; name: string; now: Date }>) {
-  const lines = transcriptLines(conversation.messages, now);
-
-  return (
-    <div className="copilot-view__transcript">
-      <p className="copilot-view__readonly" role="note">
-        {transcriptNote(reason, name)}
-      </p>
-
-      {lines.length === 0 ? (
-        <p className="copilot-view__silent">{TRANSCRIPT_EMPTY}</p>
-      ) : (
-        <ol aria-label={TRANSCRIPT_LABEL} className="copilot-view__messages">
-          {lines.map((line) => (
-            <li className="copilot-view__message" key={line.id}>
-              <p className="copilot-view__message-head">
-                <span className="copilot-view__speaker">{line.speaker}</span>{" "}
-                <time className="copilot-view__time" dateTime={line.at}>
-                  {line.ago}
-                </time>
-              </p>
-              <p className="copilot-view__message-body">{line.body}</p>
-            </li>
-          ))}
-        </ol>
-      )}
-    </div>
   );
 }
 

@@ -77,7 +77,7 @@ describe("the body", () => {
     expect(narrow).toMatch(/\.copilot-view__body\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/);
   });
 
-  it("scrolls nothing inside itself — the content pane is the page's one scroller", () => {
+  it("scrolls nothing inside itself — the conversation's own wrapper is conversation.css's, and the only one", () => {
     expect(CODE).not.toMatch(/overflow(?:-[xy])?:\s*(?:auto|scroll)/);
     expect(CODE).not.toMatch(/position:\s*(?:fixed|sticky)/);
   });
@@ -111,20 +111,6 @@ describe("the guards", () => {
     expect(unenforced).toMatch(/border-left:\s*3px dashed var\(--warn\)/);
     expect(unenforced).toMatch(/background:\s*var\(--warn-tint\)/);
     expect(unenforced).not.toMatch(/--ok/);
-  });
-});
-
-describe("the transcript", () => {
-  it("keeps a message's own line breaks and wraps a long token", () => {
-    const body = rule("\\.copilot-view__message-body");
-
-    expect(body).toMatch(/white-space:\s*pre-wrap/);
-    expect(body).toMatch(/overflow-wrap:\s*anywhere/);
-  });
-
-  it("is a plain list — the browser's markers undone, no bubbles", () => {
-    expect(rule("\\.copilot-view__messages")).toMatch(/list-style:\s*none/);
-    expect(rule("\\.copilot-view__message")).not.toMatch(/background|border-radius/);
   });
 });
 

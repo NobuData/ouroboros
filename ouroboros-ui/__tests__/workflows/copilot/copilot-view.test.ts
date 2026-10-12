@@ -19,6 +19,8 @@ import {
   DRY_RUN_IN_PROGRESS_MESSAGE,
   GUARD_ENFORCEMENT_WORDS,
   INTERRUPTED_BODY,
+  SPEAKER_WORDS,
+  TRANSCRIPT_EMPTY,
   NOTHING_TO_DISCARD_MESSAGE,
   NOTHING_TO_DISCARD_REASON,
   NO_DRAFT_REASON,
@@ -44,17 +46,14 @@ import {
   splitReferences,
   stageAnchorHref,
   stageAnchorId,
-  transcriptLines,
   transcriptNote,
   transcriptReason,
 } from "@/app/workflows/copilot/copilot-view";
 
 import {
   ADVISORY_REFERENCE,
-  COPILOT_REPLY,
   closedConversation,
   copilotConversation,
-  copilotMessage,
   copilotPromotion,
   copilotReadings,
   copilotReference,
@@ -62,7 +61,7 @@ import {
   securityPatchEntry,
   selectedCopilot,
 } from "../../helpers/workflow-copilot";
-import { READ_AT, railEntry } from "../../helpers/workflows";
+import { railEntry } from "../../helpers/workflows";
 
 /**
  * Every judgement the copilot's frame makes (CE.1, #565), as values.
@@ -384,7 +383,9 @@ describe("the document findings are anchored in", () => {
 
 describe("the seats", () => {
   it("names the issue that fills each, and fakes nothing", () => {
-    expect(COPILOT_SEATS.conversation.note).toMatch(/#566/);
+    // The conversation is drawn (#566): its seat is only what a failed read leaves, and says so.
+    expect(COPILOT_SEATS.conversation.note).toMatch(/could not be read/);
+    expect(COPILOT_SEATS.conversation.note).not.toMatch(/#\d/);
     expect(COPILOT_SEATS.stages.note).toMatch(/#567/);
     expect(COPILOT_SEATS["dry-run"].note).toMatch(/#568/);
     expect(Object.keys(COPILOT_SEATS)).toEqual(["conversation", "stages", "dry-run"]);
@@ -396,7 +397,7 @@ describe("the seats", () => {
   });
 });
 
-describe("the read-only transcript", () => {
+describe("the read-only conversation", () => {
   it("is drawn for a closed conversation, whoever is reading", () => {
     for (const mayAdminister of [true, false]) {
       expect(transcriptReason(closedConversation("discarded"), mayAdminister)).toBe("discarded");
@@ -423,22 +424,9 @@ describe("the read-only transcript", () => {
     expect(transcriptNote("role", "security-patch")).toBe(ROLE_TRANSCRIPT_NOTE);
   });
 
-  it("lists who said what and when, in the order it was said", () => {
-    const lines = transcriptLines([COPILOT_REPLY, copilotMessage()], new Date(READ_AT));
-
-    expect(lines.map((line) => [line.speaker, line.body, line.at])).toEqual([
-      ["You", copilotMessage().body, "2026-09-13T10:00:00.000Z"],
-      ["Copilot", COPILOT_REPLY.body, "2026-09-13T10:01:00.000Z"],
-    ]);
-    expect(lines[0]?.ago).toBe("2h ago");
-  });
-
-  it("says a reply was interrupted rather than drawing an empty line", () => {
-    const [line] = transcriptLines(
-      [copilotMessage({ role: "copilot", body: "  ", status: "interrupted" })],
-      new Date(READ_AT),
-    );
-
-    expect(line?.body).toBe(INTERRUPTED_BODY);
+  it("names each side of the conversation, and has words for a reply interrupted before it said anything", () => {
+    expect(SPEAKER_WORDS).toEqual({ user: "You", copilot: "Copilot" });
+    expect(INTERRUPTED_BODY).toBe("(This reply was interrupted before it said anything.)");
+    expect(TRANSCRIPT_EMPTY).toBe("Nothing was said in this conversation.");
   });
 });

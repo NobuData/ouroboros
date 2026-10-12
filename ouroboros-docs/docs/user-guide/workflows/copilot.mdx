@@ -2,7 +2,7 @@
 title: "Workflow Copilot"
 sidebar_label: "Copilot"
 sidebar_position: 3
-description: "The Copilot page: the Visual, Code and Copilot views of one draft, starting a workflow from a conversation, promoting and discarding a draft, and the deep dry run with its budget, history and suggestions."
+description: "The Copilot page: the Visual, Code and Copilot views of one draft, the conversation that edits it, promoting and discarding a draft, and the deep dry run with its budget, history and suggestions."
 ---
 
 The **Workflow Copilot** drafts a workflow with you in conversation and then proves the draft
@@ -26,9 +26,9 @@ The page head has two actions, **Discard draft** and **Promote draft → `<slug>
 
 :::info[The page is arriving in parts]
 
-The conversation, the list of draft stages and the dry-run card are not on the page yet. Their
-places are marked, each saying which piece is still to come. Until they arrive, a conversation,
-a dry run and its suggestions are started and read through the
+The [conversation](#the-conversation) is on the page. The list of draft stages and the
+dry-run card are not yet: their places are marked, each saying which piece is still to come.
+Until they arrive, a dry run and its suggestions are started and read through the
 [REST API](../../cli/rest-api.mdx#the-api-description) from a signed-in session; an API token
 cannot start one.
 
@@ -94,7 +94,157 @@ finish, or cancel it, and discard again.
 ### Who can promote and discard
 
 Owners and admins. Everyone else sees the page read-only, with a note saying so: the buttons
-are shown but unavailable, and a conversation can be read but not continued.
+are shown but unavailable, and a conversation can be
+[read but not continued](#who-can-take-part).
+
+## The conversation
+
+The **Conversation** card is where you describe the workflow and the Copilot edits the draft.
+Every change it makes is an ordinary edit to the draft, the same kind the canvas and the code
+view make. The card says so underneath: *Copilot edits compile to the same graph as the canvas
+and the code editor — nothing is a special case.*
+
+<Screenshot id="user-guide.workflows.copilot.conversation" />
+
+:::info[Not available yet]
+
+The Copilot replies through the invocation gateway, which is not delivered yet. Until it is,
+the card shows [The copilot needs the invocation gateway](#when-the-copilot-cannot-reply) and
+a message cannot be sent; a conversation already recorded can be read.
+
+:::
+
+### The head of the card
+
+- **The model pill** names the model the newest reply was actually routed to, for example
+  `claude-fable-5`. Hover it to see the alias it was routed through. It is read from the
+  conversation's own record, so there is no pill until the first reply has been recorded.
+- **The draft tag**, for example `draft: security-patch`, names the draft the conversation
+  edits.
+
+### Messages
+
+Your messages sit on the right and the Copilot's on the left. Each has a line above it saying
+who spoke and when, in your own time zone: **You · 15:02**, **Copilot · 15:02**.
+
+A reply can contain **bold** text, `inline code` and blocks of code. Nothing else is
+formatted; anything else in a reply is shown as the plain text it is.
+
+The conversation scrolls inside its card. It opens on the newest 30 messages; **Show earlier
+messages** adds the 30 before them without moving the message you were reading.
+
+### Watching a reply arrive
+
+A reply appears as it is written. As the Copilot changes the draft, each change is listed in
+the reply at the point it happened, in small type:
+
+| Marker | Meaning |
+| --- | --- |
+| `adding stage exploit-verify… ✓` | A stage was added. Updating and removing a stage read the same way. |
+| `connecting test → exploit-verify… ✓` | Two stages were connected. `disconnecting … ✓` removes a connection. |
+| `set trigger… ✓` | The workflow's trigger was changed. |
+| `set spend cap $5.00/run… proposed, not applied` | A guard was recorded. It is **not** part of the draft; see [Promoting a draft](#promoting-a-draft) for where a guard is enforced. |
+| `⚠ exploit-verify: …` | The change named something the workspace does not have yet. See [Unresolved references](#unresolved-references). |
+| `read catalog…` | The Copilot read something before answering: the draft, the stage catalog, the skills or the issues. |
+| `proposed a dry run on #489 — …` | The Copilot suggested an issue to [dry-run](#dry-runs) against. |
+| `draft changed elsewhere — …` | The draft was edited on the canvas or in the code view during the reply, and the Copilot read it again. |
+
+A `✓` means the change is in the draft.
+
+While a reply is arriving the card follows it, unless you have scrolled up to read something.
+Then it stays where you are and shows **New messages ↓**, which takes you back to the end.
+
+When you come back to the page later, a reply's changes are folded into one line under its
+text, such as **applied 6 operations · 1 corrected**. Choose it to see the list.
+
+### Corrected operations
+
+Sometimes a change the Copilot attempts is refused because it does not fit the draft, for
+example connecting to a stage whose name it misspelled. The Copilot is told why and corrects
+itself in the same reply. This is normal and needs nothing from you.
+
+The card notes it with one quiet line, **1 operation corrected**. Choose the line to see what
+was attempted and the reason it was refused.
+
+### Questions and choices
+
+When the Copilot would otherwise have to guess, it asks. Each question is a row of choices
+under the reply; a reply with more than one numbers them ① ②.
+
+Choose an option to answer. The answer is sent at once as your next message, the Copilot
+carries on from it, and the option you chose is marked with a `✓`. An answered question
+cannot be answered again: all of its choices become unavailable.
+
+Only the newest reply with an open question can be answered, and not while a reply is
+arriving or a dry run is in progress.
+
+### Sending a message
+
+Type in the box at the foot of the card — it reads *Refine the workflow — or ask for a dry
+run…* — and press **Enter** or **Send**. **Shift+Enter** starts a new line.
+
+What you have typed and not sent is kept for the workflow while the browser tab is open, so
+you can switch to **Visual** or **Code** and come back to it.
+
+The box is switched off, with the reason shown under it, when a message cannot be sent:
+
+| Reason shown | When |
+| --- | --- |
+| *The copilot is replying — you can send again when the reply finishes.* | A reply is arriving. |
+| *A dry run is in progress — the draft is held still until it finishes. You can send again then.* | A dry run of the draft has not ended. |
+| *A reply is still arriving in this conversation, started from another page. Reload to read it, then send.* | A reply was started from another tab or by someone else. |
+| *The copilot cannot reply: this deployment has no invocation gateway.* | See [When the Copilot cannot reply](#when-the-copilot-cannot-reply). |
+| *The copilot cannot reply: no model is routed for it yet.* | See [When the Copilot cannot reply](#when-the-copilot-cannot-reply). |
+
+If a message is refused before a reply starts, the reason is shown above the box and your
+text is put back so you can send it again.
+
+### Cost
+
+A reply that was priced shows what the exchange cost at the end of its line:
+**Copilot · 15:02 · $0.12**. A reply whose model has no price set shows no figure at all; it
+is never shown as `$0.00`.
+
+### An empty conversation
+
+A workflow that has no conversation yet shows **Describe the workflow you want** and three
+example briefs. Choosing an example puts it in the box; it is not sent until you send it. The
+conversation starts with your first message.
+
+### When the Copilot cannot reply
+
+Two things must be in place before the Copilot can answer. When one is missing, the card says
+which, above the messages, and the box is switched off. Messages already in the conversation
+stay readable.
+
+- **The copilot needs the invocation gateway** — this deployment cannot call a model. The
+  notice links to [Providers](../../administration/providers.mdx).
+- **The copilot has no model route** — the workspace has no route for the Copilot's task kind,
+  `copilot-workflow`, or the route does not resolve. The notice gives the reason and links to
+  **Model routing**, where an owner or admin adds the route.
+
+### When a reply fails
+
+A reply that could not be finished is marked **This reply did not finish**, with the reason.
+Whatever it had already changed in the draft is kept. **Retry** sends your message again as a
+new message; the conversation keeps both the reply that failed and the new one. **Retry** is
+offered on the newest reply only.
+
+If the draft is promoted or discarded while a reply is arriving, the reply stops and nothing
+further is changed. The card marks it **The conversation was closed while this reply was
+arriving**. There is nothing to retry.
+
+### Who can take part
+
+Owners and admins can send messages and answer questions.
+
+Members and viewers see the same card read-only: the messages, the answered choices and the
+costs, with no box. In its place the card says *This conversation is shown read-only:
+continuing it edits the workflow, which is for workspace owners and admins.*
+
+A conversation that was promoted or discarded is closed. Everyone can still read it, and the
+card says which happened. An owner or admin can choose **Start a new conversation** to begin
+again on the same workflow; the closed one is no longer shown once the new one has started.
 
 ## Dry runs
 

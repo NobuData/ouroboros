@@ -2,8 +2,9 @@
  * `/api/v1/workflows/{id}/copilot/…` — the conversation's routes.
  *
  * Starting a session, sending to it and discarding the draft change the draft, so they are
- * administrators' like the draft's own `PUT`; reading the conversation, and reading what a
- * promotion would publish, is every member's, like reading the draft. **Promote** itself has no
+ * administrators' like the draft's own `PUT`; reading the conversation, what a promotion would
+ * publish, and whether a reply could be made at all (CE.2, #566) is every member's, like
+ * reading the draft. **Promote** itself has no
  * route here: it is `POST /workflows/{id}/publish`, which closes the conversation as `promoted`
  * (CE.1, #565). The two sending routes answer `text/event-stream` written directly to the response — see
  * `copilot.stream.ts` for why the headers go out after the first event.
@@ -28,6 +29,7 @@ import type {
   CopilotConversationResource,
   CopilotDiscardResource,
   CopilotPromotionResource,
+  CopilotReadinessResource,
   CopilotSessionResource,
 } from "./copilot.resources";
 import { CopilotService } from "./copilot.service";
@@ -92,6 +94,22 @@ export class CopilotController {
     @Param() params: CopilotWorkflowParams,
   ): Promise<CopilotPromotionResource> {
     return this.copilot.promotion(tenant.id, params.id);
+  }
+
+  /**
+   * `GET /api/v1/workflows/{id}/copilot/readiness` — whether a message sent now could be
+   * answered: the invocation gateway, the `copilot-workflow` route, and the open dry run.
+   *
+   * @param tenant - The workspace.
+   * @param params - The workflow's id.
+   * @returns The readiness as it stands.
+   */
+  @Get("readiness")
+  readiness(
+    @CurrentTenant() tenant: Organization,
+    @Param() params: CopilotWorkflowParams,
+  ): Promise<CopilotReadinessResource> {
+    return this.copilot.readiness(tenant.id, params.id);
   }
 
   /**

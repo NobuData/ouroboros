@@ -11,6 +11,8 @@ import type {
   CopilotSession,
   CopilotToolTrace,
   DraftProvenanceSummary,
+  DryRun,
+  DryRunStatus,
   Workflow,
 } from "../db/schema";
 import type { UnresolvedReference } from "./copilot.references";
@@ -193,6 +195,58 @@ export function copilotSession(row: CopilotSession): CopilotSessionResource {
     createdAt: row.created_at.toISOString(),
     closedAt: row.closed_at === null ? null : row.closed_at.toISOString(),
     lastSeq: row.last_seq,
+  };
+}
+
+/**
+ * `GET …/copilot/readiness` — whether a message sent now could be answered (CE.2, #566).
+ *
+ * What the service knows without asking anybody: nothing here invokes a model.
+ */
+export interface CopilotReadinessResource {
+  /** Whether this deployment has the invocation gateway a reply is made through. */
+  readonly gateway: { readonly available: boolean };
+  /** What routing the next reply would find. */
+  readonly route: {
+    /** `copilot-workflow`. */
+    readonly taskKind: string;
+    readonly resolved: boolean;
+    /** The alias a reply would be routed to — a string exactly when `resolved`. */
+    readonly alias: string | null;
+    /** That alias's model id — a string exactly when `resolved`. */
+    readonly modelId: string | null;
+    /**
+     * Why not — `null` exactly when `resolved`. The sentence an unrouted reply gives, without
+     * its leading "I can't reach a model: ".
+     */
+    readonly reason: string | null;
+  };
+  /** The workflow's dry run that has not ended, or `null`. */
+  readonly dryRun: { readonly id: string; readonly status: DryRunStatus } | null;
+}
+
+/**
+ * The readiness, as the API shows it.
+ *
+ * @param gatewayAvailable - Whether the deployment has the invocation gateway.
+ * @param taskKind - The task kind the copilot is routed as.
+ * @param routed - The alias and model a reply would use, or the reason there is none.
+ * @param dryRun - The workflow's open dry run, when it has one.
+ * @returns The resource.
+ */
+export function copilotReadiness(
+  gatewayAvailable: boolean,
+  taskKind: string,
+  routed: { readonly alias: string; readonly modelId: string } | string,
+  dryRun: Pick<DryRun, "id" | "status"> | undefined,
+): CopilotReadinessResource {
+  return {
+    gateway: { available: gatewayAvailable },
+    route:
+      typeof routed === "string"
+        ? { taskKind, resolved: false, alias: null, modelId: null, reason: routed }
+        : { taskKind, resolved: true, alias: routed.alias, modelId: routed.modelId, reason: null },
+    dryRun: dryRun === undefined ? null : { id: dryRun.id, status: dryRun.status },
   };
 }
 

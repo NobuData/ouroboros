@@ -616,7 +616,7 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CE.1 | #565 ✅ | 🟢 Done | ouroboros-ui: [CE.1] Copilot route, head & promote/discard | Third-surface frame, live segment, the promote gate flow | mvp, copilot, ui, design | N (after WF-S.1, CD.4, BA-D.5) | Y | M | ouroboros-ui |
-| CE.2 | #566 | 🟡 Open | ouroboros-ui: [CE.2] Conversation card | Bubbles, choice chips, composer, streaming replies | mvp, copilot, ui, design | N (after CE.1, CD.1) | Y | L | ouroboros-ui |
+| CE.2 | #566 ✅ | 🟢 Done | ouroboros-ui: [CE.2] Conversation card | Bubbles, choice chips, composer, streaming replies | mvp, copilot, ui, design | N (after CE.1, CD.1) | Y | L | ouroboros-ui |
 | CE.3 | #567 | 🟡 Open | ouroboros-ui: [CE.3] Draft stage list | Numbered rows, tags, provenance pills, W7 warnings, edit links | mvp, copilot, ui, design | N (after CE.1, CC.2) | Y | M | ouroboros-ui |
 | CE.4 | #568 | 🟡 Open | ouroboros-ui: [CE.4] Dry-run card | Result rows, simulated diff, suggestion callouts, pickers | mvp, copilot, ui, design | N (after CE.1, CD.4/CD.5) | Y | L | ouroboros-ui |
 | CE.5 | #569 | 🟡 Open | ouroboros-ui: [CE.5] Safety strip, states & e2e leg | Mechanism-traced strip; cold/error states; the full-chain e2e | mvp, copilot, ui, ci | N (after CE.2–CE.4) | Y | M | ouroboros-ui, .github |
@@ -655,7 +655,9 @@ promote ─▶ "publishes v1 · never-auto-merge + $5/run guard compiled" ─▶
 
 ### Issue CE.2 — ouroboros-ui: [CE.2] Conversation card
 
-> **GitHub issue:** #566 · **Status:** 🟡 Open · **Parent epic:** #553
+> **GitHub issue:** #566 ✅ · **Status:** 🟢 Done · **Parent epic:** #553
+
+> **Delivered (#566 — `ouroboros-ui` 0.153.0, `ouroboros-rest` 0.41.20, `ouroboros-docs` 0.3.6; no DB change):** mockup 20's **CONVERSATION** card in its seat (`app/workflows/copilot/conversation-card.tsx`, `conversation-parts.tsx`, pure logic in `conversation.ts`): bubbles, the model pill from the session's recorded provenance, the `draft:` tag, replies streamed over three POST pass-through routes (`app/api/workflows/[id]/copilot/sessions/…`) with operation markers in arrival order, bounced operations as one quiet expandable line, chips that post their answer and go inert, a per-reply cost affix (absent when unpriced), client-side "Show earlier messages" paging and a scroller that follows the stream only while the reader is at its end. **REST, chosen by the user (2026-10-11):** `GET /workflows/{id}/copilot/readiness` (gateway, the copilot's route and why it does not resolve, the open dry run) is where the composer's disabled reasons and the gateway / unrouted notices come from; and a reply still streaming when its conversation is promoted or discarded now stops (`copilot_session_closed`, checked under the workflow row lock inside the apply's transaction). Placeholder is the issue's, not the mockup HTML's. Owners and admins converse; everyone else, and a closed conversation, read the same card read-only. `useCopilotLive(workflowId)` (`copilot-live.ts`) is what #567 subscribes to. **Not live-verified:** a real exchange — no stack can hold one until #235, #1744 and #1748.
 
 - **Problem Statement:** The conversation surface: bubbles with the
   mockup's treatments, working choice chips, streamed replies, and the
@@ -954,7 +956,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    CC.4 (#558)
 3. **Phase 2 — Services:** { CD.1 (#559) ⊕ CD.2 (#560) ✅ ⊕ CD.3 (#561) ✅ } →
    CD.4 (#562) ✅ → CD.5 (#563) ✅ → CD.6 (#564) ✅
-4. **Phase 3 — UI:** CE.1 (#565) ✅ → { CE.2 (#566) ⊕ CE.3 (#567) ⊕
+4. **Phase 3 — UI:** CE.1 (#565) ✅ → { CE.2 (#566) ✅ ⊕ CE.3 (#567) ⊕
    CE.4 (#568) } → **CE.5 (#569) ✅** *(MVP gate, amending #56)*
 5. **v2:** CF.1 (#570) ⊕ CF.2 (#571) ⊕ CF.3 (#572) ⊕ CF.4 (#573) ⊕
    CF.5 (#574) after their dependencies (CF.4 coordinated with BX.2, #523).
