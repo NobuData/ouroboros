@@ -356,6 +356,14 @@ jobs:
       - name: Assert one active copilot session per draft and ordered appends under concurrency
         run: ouroboros-db/tests/verify-copilot-sessions.sh --runner docker
 
+      # Chat connections (#531): *"at most one active Slack connection exists per org — enforced
+      # at the database and proven by a concurrent-insert test"*. Five interleavings against a
+      # database of its own; the third drops chat_connections_one_active_slack and must let two
+      # active Slack connections through — which is what proves the index is doing it — and the
+      # fifth shows a `teams` install neither waiting on a Slack one nor being counted.
+      - name: Assert one active Slack connection per org under concurrency
+        run: ouroboros-db/tests/verify-chat-connection-guard.sh --runner docker
+
       # ---------------------------------------------------------------------------
       # The drift check (#710). Everything above asks what the applied schema enforces;
       # this asks whether it is still the schema BetterAuth expects. Decision A3 makes
