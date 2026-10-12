@@ -42,9 +42,9 @@
 -- open card alone is stamped from its item, because it is live now.
 --
 -- **Routes are `custom:*` kinds**, so mockup 17's Settings rows (`weekly_insights` by email,
--- `loop_failures` by PagerDuty) are untouched; every one reads locked — *connect Slack first* —
--- until something publishes to Slack (#536). *Every stage transition* is seeded **disabled**:
--- noisy, off by default.
+-- `loop_failures` by PagerDuty) are untouched. Since V133 (#536) the workspace's active Slack
+-- connection unlocks them, so the four enabled ones deliver. *Every stage transition* is seeded
+-- **disabled**: noisy, off by default.
 --
 -- **Who is who (#533).** Ken and Maya have linked Slack identities, each confirmed in an app
 -- session; Ken is on call for decisions. Jorge's identity was linked by an admin and then

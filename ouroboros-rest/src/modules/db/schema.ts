@@ -7805,6 +7805,108 @@ export interface ChatIdentityLinksTable {
   updated_at: Stamped;
 }
 
+/** `chat_messages.kind` (V131) — what was said. */
+export type ChatMessageKind = "decision_card" | "event_card" | "command_reply" | "system_line";
+
+/** An event card's family (V131's closed check) — a new one is a migration. */
+export type ChatEventFamily = "loop_finished" | "build_green" | "build_failed" | "digest";
+
+/** `chat_messages.state` (V131) — a decision card's, and nothing else's. */
+export type ChatCardState = "open" | "resolved";
+
+/**
+ * `ouroboros.chat_messages` — what was published to a chat channel (V131,
+ * [#532](https://github.com/NobuData/ouroboros/issues/532)). Written by the publisher
+ * ([#536](https://github.com/NobuData/ouroboros/issues/536)): a row exists before the platform
+ * answers (`platform_ts` null), and `(channel_id, payload_digest, dedupe_bucket)` is unique.
+ */
+export interface ChatMessagesTable {
+  id: Generated<string>;
+  organization_id: string;
+  channel_id: string;
+  /** What `chat.update` addresses. Null until the platform has answered the post. */
+  platform_ts: string | null;
+  platform_message_id: string | null;
+  kind: ChatMessageKind;
+  /** A decision card's kind id, or an event card's family. */
+  card_kind: string | null;
+  decision_item_id: string | null;
+  /** Ordered typed refs `[{type: run|pr|ticket|path, id, label}]`. */
+  refs: ColumnType<unknown, string | undefined, string>;
+  /** The figures a renderer prints — facts, never prose. */
+  facts: ColumnType<Record<string, unknown>, string | undefined, string>;
+  state: ChatCardState | null;
+  /** The action id a resolved card was answered with. */
+  outcome: string | null;
+  resolved_by: string | null;
+  resolved_at: Date | null;
+  /** SHA-256 (hex) of what was about to be posted. */
+  payload_digest: string;
+  thread_ts: string | null;
+  escalated_at: Date | null;
+  posted_at: ColumnType<Date, Date | undefined, never>;
+  edited_at: Date | null;
+  /** `posted_at` binned to the UTC hour — generated. */
+  dedupe_bucket: ColumnType<Date, never, never>;
+}
+
+/** `chat_outbox.status` (V133). */
+export type ChatOutboxStatus = "pending" | "sent" | "absorbed" | "skipped" | "dead_lettered";
+
+/** `chat_outbox.operation` (V133) — a new message, or an edit of a stored one. */
+export type ChatOutboxOperation = "post" | "update";
+
+/**
+ * `ouroboros.chat_outbox` — what is about to be published (V133,
+ * [#536](https://github.com/NobuData/ouroboros/issues/536)): one row per (target, thing to say),
+ * unique on its `dedupe_key`, claimed `for update skip locked` and settled.
+ */
+export interface ChatOutboxTable {
+  id: Generated<string>;
+  organization_id: string;
+  connection_id: string;
+  /** The channel it goes to — or null for a DM. Exactly one of the two targets is set. */
+  channel_id: string | null;
+  dm_platform_user_id: string | null;
+  operation: Generated<ChatOutboxOperation>;
+  message_kind: Exclude<ChatMessageKind, "command_reply">;
+  card_kind: string;
+  decision_item_id: string | null;
+  /** What the renderer reads to compose the message — ids and instants, never prose. */
+  subject: ColumnType<Record<string, unknown>, string | undefined, string>;
+  /** The notification route whose binding sent it here. */
+  route_kind: string;
+  dedupe_key: string;
+  status: Generated<ChatOutboxStatus>;
+  attempts: Generated<number>;
+  /** When a pending row is next due; null exactly when it is settled. */
+  next_attempt_at: ColumnType<Date | null, Date | null | undefined, Date | null>;
+  last_error: string | null;
+  /** The message an update edits, or the one a post created. */
+  message_id: string | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+  settled_at: Date | null;
+}
+
+/**
+ * `ouroboros.on_call_assignments` — the human an escalation DMs (V132,
+ * [#533](https://github.com/NobuData/ouroboros/issues/533)). At most one active row per
+ * (workspace, scope). Read by the chat publisher's *DM on-call* routes (#536); written by nothing
+ * here yet.
+ */
+export interface OnCallAssignmentsTable {
+  id: Generated<string>;
+  organization_id: string;
+  member_id: string | null;
+  scope: Generated<string>;
+  active: Generated<boolean>;
+  assigned_by: string | null;
+  assigned_at: Generated<Date>;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
 export interface Database {
   user: UserTable;
   tenant_domains: TenantDomainsTable;
@@ -7968,6 +8070,9 @@ export interface Database {
   chat_connections_public: ChatConnectionsPublicView;
   chat_channels: ChatChannelsTable;
   chat_identity_links: ChatIdentityLinksTable;
+  chat_messages: ChatMessagesTable;
+  chat_outbox: ChatOutboxTable;
+  on_call_assignments: OnCallAssignmentsTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -8642,6 +8747,61 @@ export const TABLE_COLUMNS = {
     "linked_at",
     "revoked_at",
     "revoked_by",
+    "created_at",
+    "updated_at",
+  ],
+  chat_messages: [
+    "id",
+    "organization_id",
+    "channel_id",
+    "platform_ts",
+    "platform_message_id",
+    "kind",
+    "card_kind",
+    "decision_item_id",
+    "refs",
+    "facts",
+    "state",
+    "outcome",
+    "resolved_by",
+    "resolved_at",
+    "payload_digest",
+    "thread_ts",
+    "escalated_at",
+    "posted_at",
+    "edited_at",
+    "dedupe_bucket",
+  ],
+  chat_outbox: [
+    "id",
+    "organization_id",
+    "connection_id",
+    "channel_id",
+    "dm_platform_user_id",
+    "operation",
+    "message_kind",
+    "card_kind",
+    "decision_item_id",
+    "subject",
+    "route_kind",
+    "dedupe_key",
+    "status",
+    "attempts",
+    "next_attempt_at",
+    "last_error",
+    "message_id",
+    "created_at",
+    "updated_at",
+    "settled_at",
+  ],
+  on_call_assignments: [
+    "id",
+    "organization_id",
+    "member_id",
+    "scope",
+    "active",
+    "assigned_by",
+    "assigned_at",
     "created_at",
     "updated_at",
   ],
@@ -10641,3 +10801,9 @@ export type ChatConnectionPublic = Selectable<ChatConnectionsPublicView>;
 export type ChatChannel = Selectable<ChatChannelsTable>;
 /** A row of `ouroboros.chat_identity_links`, as a `select` returns it. */
 export type ChatIdentityLink = Selectable<ChatIdentityLinksTable>;
+
+/** A row of `ouroboros.chat_messages`, as a `select` returns it. */
+export type ChatMessage = Selectable<ChatMessagesTable>;
+
+/** A row of `ouroboros.chat_outbox`, as a `select` returns it. */
+export type ChatOutboxRow = Selectable<ChatOutboxTable>;

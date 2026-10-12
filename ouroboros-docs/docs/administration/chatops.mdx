@@ -2,7 +2,7 @@
 title: "Chat Ops — connecting Slack"
 sidebar_label: "Chat Ops (Slack)"
 sidebar_position: 15
-description: "Registering your deployment's Slack app, installing it into a workspace, and how its requests are verified."
+description: "Registering your deployment's Slack app, installing it into a workspace, where its messages go, and how delivery is retried and reported."
 ---
 
 Chat Ops brings Ouroboros into Slack. This page is for the person who sets it up. It covers:
@@ -10,18 +10,21 @@ Chat Ops brings Ouroboros into Slack. This page is for the person who sets it up
 - registering the deployment's own Slack app;
 - giving the deployment the app's credentials;
 - installing the app into a workspace, and checking that it works;
-- how Ouroboros verifies what Slack sends it.
+- how Ouroboros verifies what Slack sends it;
+- [where Ouroboros posts](#where-messages-go), and
+  [how delivery is retried and reported](#delivery-retries-and-failures).
 
-How each person links their own Slack identity is in the User Guide's
-[Chat Ops](../user-guide/chatops.mdx).
+What the cards look like, and how each person links their own Slack identity, are in the User
+Guide's [Chat Ops](../user-guide/chatops.mdx).
 
 :::info[What works today]
 
-Connecting Slack and linking identities work now. In Slack, `/ouro link`, `/ouro unlink` and
-`/ouro help` work. Every other `/ouro` command, and answering a decision with a button in
-Slack, replies that it is not available yet and changes nothing. The
-**Needs-you decisions → Slack DM** notification route stays locked until decisions can be
-delivered to Slack.
+Connecting Slack, linking identities and publishing cards work now. In Slack, `/ouro link`,
+`/ouro unlink` and `/ouro help` work. Every other `/ouro` command, and answering a decision with
+a button in Slack, replies that it is not available yet and changes nothing.
+
+Choosing which channel a route posts to, and designating the on-call person, cannot be done in
+the app yet — see [Where messages go](#where-messages-go).
 
 :::
 
@@ -165,6 +168,79 @@ Installing, and the connection being revoked, are both recorded in the
 - Removing the app from the Slack workspace turns the tile to **not connected**, with
   Slack's reason.
 
+## Where messages go
+
+What Ouroboros posts, and where, is decided by the workspace's **notification routes** — the
+same routes the **Notifications** section of <UiPath path="Settings" /> shows
+([Notifications, email & webhooks](./notifications-and-webhooks.mdx)). A route delivers to
+Slack only while Slack is connected: until then it reads **locked**, *connect Slack first*.
+
+| What is posted | Route, as the Notifications section lists it |
+| --- | --- |
+| A question a loop is waiting on | `custom:blocking-questions` — to a channel, and as a direct message to the on-call person when the route says so. **Needs-you decisions → Slack DM** sends the direct message alone. |
+| A loop that finished | `custom:loop-finished` |
+| The weekly digest | `custom:weekly-insights`, once a week at the route's day and time (UTC) |
+| A build that failed | `custom:build-failures` — not posted yet |
+| A build that went green | `custom:stage-transitions` — not posted yet |
+
+A message goes only to a route that is switched on, and each channel gets a given message
+once, even when two routes name the same channel.
+
+Three things are not in the app yet:
+
+- **Choosing a route's channel.** No screen creates a Slack route or binds one to a channel
+  yet. A Slack route that already exists is listed in the **Notifications** section with its
+  switch; switching one on while it has no channel is refused with *choose a Slack channel
+  first*.
+- **Designating the on-call person.** **Needs-you decisions → Slack DM** can be switched on in
+  Settings once Slack is connected, and it then sends each question to the workspace's on-call
+  person — but nobody can be designated on call in the app yet, so until someone is, it sends
+  nothing.
+- **Direct messages need a link.** The on-call person receives them only after
+  [linking their Slack identity](../user-guide/chatops.mdx#link-your-identity).
+
+The bot posts only in channels it has been added to. In Slack, add it with `/invite @Ouroboros`.
+
+## Delivery: retries and failures
+
+Ouroboros records each message it means to send before it sends it, so a message survives a
+restart, a network failure or a rate limit.
+
+- **Retries.** A message that fails for a passing reason — Slack unreachable, a server error, a
+  rate limit — is tried again: after 30 seconds, then twice as long each time, up to an hour
+  between attempts, for **eight attempts** in all.
+- **Rate limits.** When Slack says how long to wait (`Retry-After`), Ouroboros waits at least
+  that long, and holds back the other messages for that Slack workspace as well.
+- **No duplicates.** The same message is never posted to the same channel twice, however many
+  times it is retried or reported.
+- **Messages that cannot be delivered.** After eight attempts — or at once, if Slack will never
+  accept the message — the message is kept as a **dead letter** with Slack's error. It is not
+  retried again and not silently dropped.
+- **Nowhere to send it.** If the bot was removed from the channel, the channel was archived, or
+  the app was uninstalled, the message is set aside with that reason rather than retried.
+
+### Seeing how delivery stands
+
+`GET /api/v1/slack/connection` reports it under `delivery`:
+
+| `delivery.state` | It means |
+| --- | --- |
+| `idle` | Nothing has been published, and nothing is waiting. |
+| `healthy` | Messages are going out. |
+| `retrying` | At least one message failed and will be tried again. |
+| `dead_lettered` | At least one message was given up on in the last seven days. `lastError` carries Slack's error for the most recent one. |
+
+`pending`, `retrying` and `deadLettered` are the counts. No screen shows this yet. Dead letters
+are also written to the REST service's log, and are kept for 30 days.
+
+Common errors on a dead letter:
+
+- `channel_not_found`, `not_in_channel` — add the bot to the channel.
+- `missing_scope` — the app was installed before a scope was added; choose **Reinstall** on the
+  Slack tile.
+- `bot_token_unreadable` — the stored token could not be decrypted; check the deployment's
+  vault key, then **Reinstall**.
+
 ## How requests from Slack are verified
 
 Slack calls three addresses: events, button presses and the `/ouro` command. Ouroboros trusts
@@ -217,3 +293,8 @@ supported way to run it.
 - **The tile turned to not connected by itself.** The app was removed from the Slack
   workspace or its token was revoked. Choose **Connect** to install it again; people's links
   are kept.
+- **Nothing is posted to a channel.** The route is switched off, has no channel, or the bot is
+  not in the channel. Check `delivery` on `GET /api/v1/slack/connection` — see
+  [Delivery: retries and failures](#delivery-retries-and-failures).
+- **A card still shows answer buttons after the decision was answered.** The edit is waiting
+  behind a rate limit or a retry; it is applied when Slack accepts it.

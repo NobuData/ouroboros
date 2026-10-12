@@ -4667,10 +4667,13 @@ no connection form here.
 (workspace, kind) — `needs_you_dm | daily_digest | loop_failures | weekly_insights | custom:<slug>`
 — bound to `email | slack | pagerduty`, with `config` `{ time (HH:MM UTC), weekday, recipients }`.
 
-- **The locked-row rule is server-side.** A channel with no connection in this build (Slack,
-  PagerDuty) locks its route with the card's reason (`connect PagerDuty first`). A save that would
-  leave a locked route *enabled* is `409 notification_route_locked` with `details.reason`; a locked
-  route may still be stored disabled. The sender reads only `delivering` routes, so a lock holds
+- **The locked-row rule is server-side.** A channel that cannot deliver locks its route with the
+  card's reason: PagerDuty always (`connect PagerDuty first`), Slack exactly while the workspace
+  has no active Slack connection (`connect Slack first` — `V133`, #536). A save that would leave
+  a locked route *enabled* is `409 notification_route_locked` with `details.reason`; a locked
+  route may still be stored disabled. An enabled Slack route also needs somewhere to post — a
+  bound channel, the on-call DM, or the `needs_you_dm` kind — and is refused the same way without
+  one (`choose a Slack channel first`). The sender reads only `delivering` routes, so a lock holds
   even against a row written behind the API.
 - **Routes drive real sends.** `OrgRouteSender` (a one-minute jittered tick, booked only when SMTP
   is configured) mails the **daily digest** at the route's `time` — the workspace's open Needs-You
@@ -4777,6 +4780,48 @@ POST /api/v1/slack/connection/verify   owner/admin · auth.test + channel refres
 Audited as `chat.connection_installed`, `chat.connection_revoked`, `chat.identity_linked` and
 `chat.identity_unlinked` (webhook registry v10). Commands beyond `link`, `unlink` and `help`, and
 button presses by linked users, answer *not available yet* until #537 and #538.
+
+## The chat publisher
+
+> **Issue:** [#536](https://github.com/NobuData/ouroboros/issues/536) — *[BZ.2] Card renderer &
+> event publisher* · epic [#528](https://github.com/NobuData/ouroboros/issues/528) · schema
+> `V131`, `V133`
+
+`src/modules/chat/` is everything Ouroboros says in a channel: one card model, one publisher, and
+an outbox between the thing that happened and the message about it.
+
+```
+plane event ─▶ route evaluation ─▶ chat_outbox ─▶ dispatcher ─▶ ChatBackend ─▶ Slack
+                (chat.outbox.ts)                    │              (slack/slack.chat-backend.ts)
+                                                    └─▶ chat_messages (ts · kind · refs · state · digest)
+decision resolved ─▶ chat.update of each posted card ─▶ system line
+```
+
+- **One renderer, no platform in it.** `chat.card.ts` is the model — headline with severity, fact
+  lines, a mono stats line, actions, a footnote. `chat.cards.decision.ts` composes decision cards
+  from the kind registry's own question and why (#457), so the words are the inbox's; the buttons
+  are the kind's registered actions. `chat.cards.events.ts` composes `loop_finished`,
+  `build_green`, `build_failed` and `digest` (the #440 assembly). `ChatBackend` is the port;
+  Slack's Block Kit implementation is `slack/slack.blockkit.ts`, with a golden payload per
+  archetype (`slack.blockkit.golden.json`).
+- **Honesty holds in chat.** The stats line prints only figures that exist: cost only when every
+  usage event of the run was priced, the model only when one is on record.
+- **Buttons carry signed values.** `ouro1|item|action|nonce|keyRef|mac`, an HMAC under the
+  workspace's action-token key (`ActionTokenService.sign`). `ChatComposer.verifiedAction` is the
+  check #538 calls; a press still answers *not available yet* until then.
+- **The outbox is the discipline.** An intent is written in the caller's transaction
+  (`enqueueChatIntent`; the merge calls `enqueueLoopFinished`), unique per target on a dedupe
+  key. `ChatDispatcher` claims due rows `for update skip locked`, leases them, sends one message
+  at a time per connection, and settles each: `sent`, `absorbed` (`chat_messages_dedupe_key`
+  already held it), `skipped` (nowhere left to say it), retried with #487's backoff — honouring
+  `Retry-After`, which also parks the rest of that connection's batch — or `dead_lettered` after
+  eight attempts. Dead letters surface as `delivery` on `GET /api/v1/slack/connection`.
+- **Routes decide where.** Mockup 19's `custom:*` kinds (and the core kinds when bound to Slack):
+  blocking questions, loop finished, build failures, weekly insights, stage transitions. A
+  *DM on-call* route also DMs the on-call member's linked identity; a DM is recorded as a message
+  in a `chat_channels` row tagged `dm`.
+- **Not wired yet:** `enqueueBuildCard` has no caller — no plane reports a build's result as an
+  event. Routes cannot be bound to a channel through the API (#541/#542); the seed binds them.
 
 ## Build logs
 

@@ -2900,7 +2900,8 @@ export interface paths {
          * @description The connection status (#535) — one source for every surface that says whether Slack is
          *     connected: the workspace, the app version it was installed at, the scopes granted and any
          *     the app asks for that were not, when the token was last seen to work, and the platform's
-         *     reason when it does not. `state` separates a deployment with no Slack app
+         *     reason when it does not; `delivery` says how the cards and lines published through it are
+         *     faring (#536), dead letters included. `state` separates a deployment with no Slack app
          *     (`not_configured`) from a workspace that has not installed it (`not_connected`). **Never
          *     the bot token**, sealed or otherwise. Any member may read it.
          */
@@ -2983,8 +2984,10 @@ export interface paths {
          *     (`/api/v1/inbox/notifications`), which they never change. The four core kinds are always
          *     listed in the card's order — a kind nobody saved shows its default binding, switched off
          *     (`stored: false`) — then any stored `custom:*` kind, and every channel's availability.
-         *     A route whose channel has no connection in this build is `locked` with the reason the card
-         *     prints (`connect PagerDuty first`). Any member may read it.
+         *     A route whose channel cannot deliver is `locked` with the reason the card prints
+         *     (`connect PagerDuty first`). **A Slack route is locked exactly while the workspace has no
+         *     active Slack connection** ([#536](https://github.com/NobuData/ouroboros/issues/536)) —
+         *     `connect Slack first` — and unlocked once it has one. Any member may read it.
          */
         get: operations["listNotificationRoutes"];
         put?: never;
@@ -3018,9 +3021,12 @@ export interface paths {
          * @description Re-bind a route's channel, replace its `config`, or switch it
          *     ([#488](https://github.com/NobuData/ouroboros/issues/488)). Every field is optional; a body
          *     carrying none reads back the route. **The locked-row rule is enforced here**: a save that
-         *     would leave a route *enabled* on a channel that cannot deliver in this build is refused
+         *     would leave a route *enabled* on a channel that cannot deliver is refused
          *     `409 notification_route_locked`, with `details.reason` the sentence the card prints — a
-         *     locked route may still be stored disabled. The daily digest route mails the workspace's
+         *     locked route may still be stored disabled. A Slack route additionally needs somewhere to
+         *     post — a bound channel, the on-call DM, or the `needs_you_dm` kind, which DMs whoever is on
+         *     call — and is refused the same way without one (`choose a Slack channel first`); binding a
+         *     channel is not part of this body yet. The daily digest route mails the workspace's
          *     open decisions at `config.time`, and the weekly insights route the Insights digest at
          *     `config.weekday`/`config.time`, to `config.recipients` (else the owners and admins). Every
          *     change is audited as `notification_route.updated` with its before and after values.
@@ -8024,7 +8030,7 @@ export interface paths {
          *
          *     | channel | state |
          *     |---|---|
-         *     | `slack` | always `unavailable-until` `Chat Ops` — it arrives with mockup 19 (#536/#538) |
+         *     | `slack` | always `unavailable-until` `Chat Ops` — cards are published to Slack (#536), but answering from one arrives with #538 |
          *     | `email` | `connected` while this deployment has a mail server (`OURO_SMTP_URL`), else `available` with the reason |
          *     | `push` | always `unavailable-until` `BP.2` (#472) |
          *     | `github` | `connected` while the workspace has a source whose provider can comment on a PR through the SPI, else `available` |
@@ -23117,6 +23123,41 @@ export interface components {
             };
             /** @description Whether this deployment reaches Slack over Socket Mode — development only. */
             socketMode: boolean;
+            delivery: components["schemas"]["SlackDelivery"];
+        };
+        /**
+         * SlackDelivery
+         * @description How the messages Ouroboros publishes through the connection are faring
+         *     ([#536](https://github.com/NobuData/ouroboros/issues/536)) — the publisher's outbox, as
+         *     counts. Every message is retried with backoff (honouring Slack's `Retry-After`) and, when
+         *     its attempts run out, kept as a dead letter with its error rather than dropped.
+         */
+        SlackDelivery: {
+            /**
+             * @description `idle` — nothing published, nothing waiting. `healthy` — messages are going out.
+             *     `retrying` — at least one failed and will be tried again. `dead_lettered` — at least
+             *     one ran out of attempts in the last seven days and was not delivered.
+             * @enum {string}
+             */
+            state: "idle" | "healthy" | "retrying" | "dead_lettered";
+            /** @description Messages waiting for their first attempt. */
+            pending: number;
+            /** @description Messages that failed and will be retried. */
+            retrying: number;
+            /** @description Messages given up on in the last seven days. */
+            deadLettered: number;
+            /**
+             * @description The most recent dead letter's error.
+             * @example channel_not_found
+             */
+            lastError: string | null;
+            /** Format: date-time */
+            lastDeadLetteredAt: string | null;
+            /**
+             * Format: date-time
+             * @description When a message was last delivered.
+             */
+            lastSentAt: string | null;
         };
         /** SlackVerification */
         SlackVerification: {
@@ -23158,7 +23199,10 @@ export interface components {
             config: components["schemas"]["NotificationRouteConfig"];
             /** @description Whether the workspace wants the route. */
             enabled: boolean;
-            /** @description The route's channel has no connection in this build. */
+            /**
+             * @description The route's channel cannot deliver: PagerDuty always, Slack while the workspace has no
+             *     active Slack connection.
+             */
             locked: boolean;
             /** @example connect PagerDuty first */
             lockedReason: string | null;
@@ -44074,8 +44118,9 @@ export interface operations {
                 };
             };
             /**
-             * @description `notification_route_locked` — the route's channel cannot deliver in this build, so it
-             *     cannot be enabled; `details` carries `kind`, `channel`, `locked: true` and `reason`.
+             * @description `notification_route_locked` — the route's channel cannot deliver (or a Slack route
+             *     has no channel to post to), so it cannot be enabled; `details` carries `kind`,
+             *     `channel`, `locked: true` and `reason`.
              */
             409: {
                 headers: {

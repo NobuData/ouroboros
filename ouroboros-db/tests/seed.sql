@@ -7854,11 +7854,12 @@ select pg_temp.must_hold(
 
 -- The chat routes are custom kinds on Slack; mockup 17's rows are as the settings seed left them.
 select pg_temp.must_hold(
-  (select count(*) = 5 and bool_and(e.locked and not e.delivering and e.locked_reason = 'connect Slack first')
+  (select count(*) = 5 and bool_and(not e.locked and e.delivering = e.enabled)
+          and count(*) filter (where e.delivering) = 4
      from ouroboros.notification_routes_effective e
      join ouroboros.organization org on org."id" = e.organization_id and org."slug" = 'acme-robotics'
     where e.kind like 'custom:%' and e.channel = 'slack'),
-  'the five chat routes read locked — connect Slack first — until something publishes to Slack');
+  'the five chat routes are unlocked by the workspace''s Slack connection (V133, #536): four deliver, and stage transitions stay off');
 
 -- The mirror's read of the seeded channel's most recent days reaches the table through an index.
 set enable_seqscan = off;

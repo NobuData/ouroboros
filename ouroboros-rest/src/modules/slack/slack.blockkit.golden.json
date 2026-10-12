@@ -1,0 +1,505 @@
+{
+  "about": "The chat.postMessage payload of every card archetype (mockup 19) and system line, as the Slack backend renders it from the card model. Regenerate with: OURO_UPDATE_GOLDENS=1 yarn jest src/modules/slack/slack.blockkit",
+  "cases": {
+    "loop_finished": {
+      "text": "✓ Loop #1846 finished — PR #512 merged",
+      "payload": {
+        "blocks": [],
+        "attachments": [
+          {
+            "color": "#2f9e6b",
+            "fallback": "✓ Loop #1846 finished — PR #512 merged",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*✓ Loop #1846 finished — PR #512 merged*"
+                }
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "#474 Debounce e-stop interrupt handler"
+                }
+              },
+              {
+                "type": "context",
+                "elements": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "`14/14 checks · 11m cycle · $0.94 · claude-fable-5`"
+                  }
+                ]
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "action_id": "ouro_link:view_pr",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "View PR ↗",
+                      "emoji": true
+                    },
+                    "url": "https://app.example.test/prs/a1370000-0000-4000-8000-000000000512"
+                  },
+                  {
+                    "type": "button",
+                    "action_id": "ouro_link:run_console",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "Run console",
+                      "emoji": true
+                    },
+                    "url": "https://app.example.test/runs/a1360000-0000-4000-8000-000000001846"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "question": {
+      "text": "⏸ Allow a one-time edit to a protected path?",
+      "payload": {
+        "blocks": [],
+        "attachments": [
+          {
+            "color": "#d9a13a",
+            "fallback": "⏸ Allow a one-time edit to a protected path?",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*⏸ Allow a one-time edit to a protected path?*"
+                }
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "The OTA rollback fix wants to add one line to boot/rollback_flag.c — a protected path. Diff is 3 lines, shown in the run console.\nloop #1851 · issue #479 · boot/rollback_flag.c"
+                }
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "action_id": "ouro_answer:allow_once",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "Allow once",
+                      "emoji": true
+                    },
+                    "value": "signed:allow_once",
+                    "style": "primary"
+                  },
+                  {
+                    "type": "button",
+                    "action_id": "ouro_link:view_diff",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "View diff →",
+                      "emoji": true
+                    },
+                    "url": "https://app.example.test/runs/a1360000-0000-4000-8000-000000001851#run-changes"
+                  },
+                  {
+                    "type": "button",
+                    "action_id": "ouro_answer:deny",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "Deny",
+                      "emoji": true
+                    },
+                    "value": "signed:deny"
+                  },
+                  {
+                    "type": "button",
+                    "action_id": "ouro_link:edit_protected_paths",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "Edit protected paths →",
+                      "emoji": true
+                    },
+                    "url": "https://app.example.test/knowledge#repo-profile"
+                  }
+                ]
+              },
+              {
+                "type": "context",
+                "elements": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "paused 4m · escalates to the Needs-you inbox in 26m"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "question_resolved": {
+      "text": "✓ Allow a one-time edit to a protected path?",
+      "payload": {
+        "blocks": [],
+        "attachments": [
+          {
+            "color": "#8a94a3",
+            "fallback": "✓ Allow a one-time edit to a protected path?",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*✓ Allow a one-time edit to a protected path?*"
+                }
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "The OTA rollback fix wants to add one line to boot/rollback_flag.c — a protected path. Diff is 3 lines, shown in the run console.\nloop #1851 · issue #479 · boot/rollback_flag.c"
+                }
+              },
+              {
+                "type": "context",
+                "elements": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "Maya Chen answered: allowed once · in Slack"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "system_line": {
+      "text": "✓ Maya Chen answered: allow once — loop #1851",
+      "payload": {
+        "blocks": [
+          {
+            "type": "context",
+            "elements": [
+              {
+                "type": "mrkdwn",
+                "text": "✓ Maya Chen answered: allow once — loop #1851"
+              }
+            ]
+          }
+        ],
+        "attachments": []
+      }
+    },
+    "build_green": {
+      "text": "⟳ Loop #1847 build 3 green — 63/63 · publishing PR #514 rev 2",
+      "payload": {
+        "blocks": [],
+        "attachments": [
+          {
+            "color": "#3a8fd9",
+            "fallback": "⟳ Loop #1847 build 3 green — 63/63 · publishing PR #514 rev 2",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*⟳ Loop #1847 build 3 green — 63/63 · publishing PR #514 rev 2*"
+                }
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "action_id": "ouro_link:pr_verification",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "PR verification →",
+                      "emoji": true
+                    },
+                    "url": "https://app.example.test/prs/a1370000-0000-4000-8000-000000000514"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "build_failed": {
+      "text": "✕ Loop #1847 build 3 failed — 2 of 63 failing",
+      "payload": {
+        "blocks": [],
+        "attachments": [
+          {
+            "color": "#d9534f",
+            "fallback": "✕ Loop #1847 build 3 failed — 2 of 63 failing",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*✕ Loop #1847 build 3 failed — 2 of 63 failing*"
+                }
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "action_id": "ouro_link:run_console",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "Run console",
+                      "emoji": true
+                    },
+                    "url": "https://app.example.test/runs/a1360000-0000-4000-8000-000000001847"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "loop_finished_unpriced": {
+      "text": "✓ Loop #1846 finished — PR #512 merged",
+      "payload": {
+        "blocks": [],
+        "attachments": [
+          {
+            "color": "#2f9e6b",
+            "fallback": "✓ Loop #1846 finished — PR #512 merged",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*✓ Loop #1846 finished — PR #512 merged*"
+                }
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "#474 Debounce e-stop interrupt handler"
+                }
+              },
+              {
+                "type": "context",
+                "elements": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "`14/14 checks · 11m cycle · claude-fable-5`"
+                  }
+                ]
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "action_id": "ouro_link:view_pr",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "View PR ↗",
+                      "emoji": true
+                    },
+                    "url": "https://app.example.test/prs/a1370000-0000-4000-8000-000000000512"
+                  },
+                  {
+                    "type": "button",
+                    "action_id": "ouro_link:run_console",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "Run console",
+                      "emoji": true
+                    },
+                    "url": "https://app.example.test/runs/a1360000-0000-4000-8000-000000001846"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "digest": {
+      "text": "✦ Weekly insights — 27 PRs merged this week. 12 needed a human.",
+      "payload": {
+        "blocks": [],
+        "attachments": [
+          {
+            "color": "#8a94a3",
+            "fallback": "✦ Weekly insights — 27 PRs merged this week. 12 needed a human.",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*✦ Weekly insights — 27 PRs merged this week. 12 needed a human.*"
+                }
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "Autonomous merge rate: 92% (▲ 3pts vs prior week, better)\nMerged without human edits: 78% (▲ 3pts vs prior week, better)\nMedian cycle: 14m 20s (▼ 2m vs prior week, better)\nCost per merged PR: $4.37 (▼ $0.41 vs prior week, better)\nHuman interventions: 12 (▲ 3 vs prior week, worse)\nFlaky env / rig — 8 of 12 interventions.\ntests/hil/test_estop_release.py (helios-firmware) — fixed by loop #1847 · 8% flaky, falling\nring buffer drains under burst (helios-firmware) — watching · 25% flaky, rising on qemu_cortex_m3"
+                }
+              },
+              {
+                "type": "context",
+                "elements": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "`$118 this week across 31M tokens.`"
+                  }
+                ]
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "action_id": "ouro_link:open_insights",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "Open Insights",
+                      "emoji": true
+                    },
+                    "url": "https://app.example.test/insights?range=7d"
+                  }
+                ]
+              },
+              {
+                "type": "context",
+                "elements": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "Aug 2 – Aug 8, 2026"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "digest_unpriced": {
+      "text": "✦ Weekly insights — 27 PRs merged this week. 12 needed a human.",
+      "payload": {
+        "blocks": [],
+        "attachments": [
+          {
+            "color": "#8a94a3",
+            "fallback": "✦ Weekly insights — 27 PRs merged this week. 12 needed a human.",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*✦ Weekly insights — 27 PRs merged this week. 12 needed a human.*"
+                }
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "Autonomous merge rate: 92% (▲ 3pts vs prior week, better)\nMerged without human edits: 78% (▲ 3pts vs prior week, better)\nMedian cycle: 14m 20s (▼ 2m vs prior week, better)\nTokens per merged PR: 1.1M (▼ 442.8k vs prior week, better)\nHuman interventions: 12 (▲ 3 vs prior week, worse)\nFlaky env / rig — 8 of 12 interventions.\ntests/hil/test_estop_release.py (helios-firmware) — fixed by loop #1847 · 8% flaky, falling\nring buffer drains under burst (helios-firmware) — watching · 25% flaky, rising on qemu_cortex_m3"
+                }
+              },
+              {
+                "type": "context",
+                "elements": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "`31M tokens this week. No price is configured for this usage, so there is no dollar figure.`"
+                  }
+                ]
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "action_id": "ouro_link:open_insights",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "Open Insights",
+                      "emoji": true
+                    },
+                    "url": "https://app.example.test/insights?range=7d"
+                  }
+                ]
+              },
+              {
+                "type": "context",
+                "elements": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "Aug 2 – Aug 8, 2026"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "digest_empty": {
+      "text": "✦ Weekly insights — Nothing to report this week.",
+      "payload": {
+        "blocks": [],
+        "attachments": [
+          {
+            "color": "#8a94a3",
+            "fallback": "✦ Weekly insights — Nothing to report this week.",
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*✦ Weekly insights — Nothing to report this week.*"
+                }
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "action_id": "ouro_link:open_insights",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "Open Insights",
+                      "emoji": true
+                    },
+                    "url": "https://app.example.test/insights?range=7d"
+                  }
+                ]
+              },
+              {
+                "type": "context",
+                "elements": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "Aug 2 – Aug 8, 2026"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

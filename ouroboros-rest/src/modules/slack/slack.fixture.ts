@@ -12,6 +12,7 @@ import type {
   ChatIdentityLink,
   ChatIdentityVerification,
 } from "../db/schema";
+import type { ChatDeliveryHealthRow } from "../chat/chat.outbox";
 import type {
   SlackApi,
   SlackChannelSummary,
@@ -19,6 +20,8 @@ import type {
   SlackReply,
   SlackResult,
   SlackUserProfile,
+  SlackDelivery,
+  SlackMessage,
 } from "./slack.client";
 import type { InstallWrite, WorkspaceMember } from "./slack.repository";
 
@@ -150,6 +153,63 @@ export class FakeSlackApi implements SlackApi {
     this.replies.push({ responseUrl, reply });
 
     return this.respondResult;
+  }
+
+  /** Every message posted, in order. */
+  readonly posted: { channel: string; message: SlackMessage; ts: string }[] = [];
+  /** Every edit made, in order. */
+  readonly updated: { channel: string; ts: string; message: SlackMessage }[] = [];
+  /** Scripted answers for the next message calls; a call with none scripted succeeds. */
+  readonly deliveries: SlackDelivery<{ ts: string }>[] = [];
+  /** The DM conversation each user id opens; an unknown user is `user_not_found`. */
+  readonly dms = new Map<string, string>([
+    [SLACK_KEN, "D07KEN"],
+    [SLACK_MAYA, "D07MAYA"],
+  ]);
+
+  async postMessage(
+    botToken: string,
+    channel: string,
+    message: SlackMessage,
+  ): Promise<SlackDelivery<{ ts: string }>> {
+    this.tokensSeen.push(botToken);
+    const scripted = this.deliveries.shift();
+
+    if (scripted !== undefined && !scripted.ok) {
+      return scripted;
+    }
+
+    const ts = scripted?.ts ?? `1760000000.${String(this.posted.length + 1).padStart(6, "0")}`;
+    this.posted.push({ channel, message, ts });
+
+    return { ok: true, ts };
+  }
+
+  async updateMessage(
+    botToken: string,
+    channel: string,
+    ts: string,
+    message: SlackMessage,
+  ): Promise<SlackDelivery<{ ts: string }>> {
+    this.tokensSeen.push(botToken);
+    const scripted = this.deliveries.shift();
+
+    if (scripted !== undefined && !scripted.ok) {
+      return scripted;
+    }
+
+    this.updated.push({ channel, ts, message });
+
+    return { ok: true, ts };
+  }
+
+  async openDm(botToken: string, userId: string): Promise<SlackDelivery<{ channelId: string }>> {
+    this.tokensSeen.push(botToken);
+    const channelId = this.dms.get(userId);
+
+    return channelId === undefined
+      ? { ok: false, error: "user_not_found" }
+      : { ok: true, channelId };
   }
 }
 
@@ -338,7 +398,25 @@ export class FakeSlackStore {
   }
 
   async channels(connectionId: string): Promise<ChatChannel[]> {
-    return this.channelRows.filter((row) => row.connection_id === connectionId);
+    return this.channelRows.filter(
+      (row) => row.connection_id === connectionId && row.purpose_tag !== "dm",
+    );
+  }
+
+  /** What the publisher's outbox reports for each connection; absent means nothing published. */
+  readonly deliveries = new Map<string, ChatDeliveryHealthRow>();
+
+  async deliveryHealth(connectionId: string): Promise<ChatDeliveryHealthRow> {
+    return (
+      this.deliveries.get(connectionId) ?? {
+        pending: 0,
+        retrying: 0,
+        deadLettered: 0,
+        lastError: null,
+        lastDeadLetteredAt: null,
+        lastSentAt: null,
+      }
+    );
   }
 
   async member(organizationId: string, userId: string): Promise<WorkspaceMember | undefined> {

@@ -33,6 +33,7 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
 
 import type { ChatConnectionPublic } from "../db/schema";
+import { LINK_ACTION_PREFIX } from "./slack.blockkit";
 import { SLACK_COMMAND } from "./slack.app";
 import { SLACK_API, type SlackApi, type SlackReply } from "./slack.client";
 import { SeenEvents } from "./slack.dedupe";
@@ -63,6 +64,28 @@ export const REPLIES = {
   help: `\`${SLACK_COMMAND} link\` links your Slack identity to your Ouroboros account. \`${SLACK_COMMAND} unlink\` undoes it. More commands are coming.`,
   failed: "Something went wrong and nothing was changed. Try again.",
 } as const;
+
+/**
+ * Whether an interaction is nothing but presses of link buttons (#536).
+ *
+ * @param payload - The interaction payload.
+ * @returns True when it carries actions and every one is a card's link button.
+ */
+export function opensOnlyLinks(payload: unknown): boolean {
+  const actions = (payload as { actions?: unknown } | undefined)?.actions;
+
+  return (
+    Array.isArray(actions) &&
+    actions.length > 0 &&
+    actions.every(
+      (action) =>
+        typeof action === "object" &&
+        action !== null &&
+        typeof (action as { action_id?: unknown }).action_id === "string" &&
+        (action as { action_id: string }).action_id.startsWith(LINK_ACTION_PREFIX),
+    )
+  );
+}
 
 /**
  * A string field of an untyped object.
@@ -219,6 +242,12 @@ export class SlackInboundService {
     const teamId = field(part(payload, "team"), "id");
     const userId = field(part(payload, "user"), "id");
     const responseUrl = field(payload, "response_url");
+
+    // A card's link button opens a page in the browser; Slack reports the press all the same.
+    // There is nothing to answer, and answering would put a reply under every link followed.
+    if (opensOnlyLinks(payload)) {
+      return {};
+    }
 
     if (teamId !== undefined && userId !== undefined && responseUrl !== undefined) {
       this.detach("interaction", () =>

@@ -4,7 +4,7 @@
  */
 
 import type { NotificationRouteChannel, NotificationRouteConfig } from "../db/schema";
-import { ROUTE_CHANNELS, channelLock } from "./routes.catalog";
+import { ROUTE_CHANNELS, channelLock, type RouteReach } from "./routes.catalog";
 
 /** One org-level route, with its lock derived. */
 export interface NotificationRouteResource {
@@ -46,11 +46,12 @@ export interface NotificationRoutesResource {
 /**
  * Every channel with its availability.
  *
+ * @param reach - What the workspace has connected.
  * @returns The channel list, in V094's order.
  */
-export function channelsResource(): RouteChannelResource[] {
+export function channelsResource(reach: RouteReach): RouteChannelResource[] {
   return ROUTE_CHANNELS.map((channel) => {
-    const reason = channelLock(channel);
+    const reason = channelLock(channel, reach);
 
     return { channel, available: reason === null, reason };
   });

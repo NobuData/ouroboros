@@ -1,24 +1,87 @@
 ---
-title: "Chat Ops — linking your Slack identity"
+title: "Chat Ops — Ouroboros in Slack"
 sidebar_label: "Chat Ops"
 sidebar_position: 18
-description: "Linking your Slack identity to your Ouroboros account with /ouro link, the confirmation screen, and unlinking."
+description: "What Ouroboros posts to your Slack channels, and linking your Slack identity to your account with /ouro link."
 ---
 
-Chat Ops lets you work with Ouroboros from Slack. Before anything you do in Slack can count as
-*you*, Ouroboros has to know which account your Slack identity belongs to. That is **linking**,
-and you do it once.
+Chat Ops brings Ouroboros into Slack. This page covers two things:
 
-Your workspace's Owner or Maintainer connects Slack first — see
-[Chat Ops — connecting Slack](../administration/chatops.mdx).
+- [what Ouroboros posts](#what-ouroboros-posts) to your channels — the questions loops are
+  waiting on, finished loops and the weekly digest;
+- [linking your Slack identity](#why-you-link) to your Ouroboros account, which you do once.
+
+Your workspace's Owner or Maintainer connects Slack first and decides which channel gets what —
+see [Chat Ops — connecting Slack](../administration/chatops.mdx).
 
 :::info[What works today]
 
-Linking and unlinking work now: `/ouro link`, `/ouro unlink` and `/ouro help`. Every other
-`/ouro` command, and answering a decision with a button in Slack, replies that it is not
-available yet. Until then, answer decisions in the [Needs-you inbox](./inbox.mdx).
+Ouroboros posts cards to Slack, and linking works: `/ouro link`, `/ouro unlink` and
+`/ouro help`. **Answering a decision with a button in Slack is not available yet** — the button
+replies that it is not available and changes nothing — and neither is any other `/ouro` command.
+Until then, answer decisions in the [Needs-you inbox](./inbox.mdx); a card's link buttons take
+you to the right page.
 
 :::
+
+## What Ouroboros posts
+
+Every message is a **card**: a headline, the facts, sometimes a line of figures, and buttons.
+The coloured bar on its left says what kind of news it is — green for done, amber for a
+question, red for a failure.
+
+### A question a loop is waiting on
+
+When a loop reaches a decision only a person may make, Ouroboros posts it as a card:
+
+- The **headline** is the question, and the line under it says why it is being asked. These
+  are the same words the [Needs-you inbox](./inbox.mdx) shows for that decision.
+- The next line says what it is about — such as **loop #1851 · issue #479 ·
+  boot/rollback_flag.c**.
+- The **buttons** are that decision's own actions. Buttons that answer it — such as
+  **Allow once** and **Deny** — are not available in Slack yet. Buttons that open a page — such
+  as **View diff →** — open it in Ouroboros.
+- The last line says how long the loop has waited and when the decision escalates — such as
+  **paused 4m · escalates to the Needs-you inbox in 26m**. These times are as they stood when
+  the card was posted; the card does not count down.
+
+A workspace may also send each question as a direct message to the person on call.
+
+### The same card, once it is answered
+
+When the decision is answered — in Slack, in the inbox, by email or anywhere else — Ouroboros
+**edits the card in place**. Its buttons disappear and its last line says how it ended and who
+ended it, such as **Maya Chen answered: allowed once · in Slack**. A decision that was settled
+elsewhere reads **Closed — settled elsewhere**.
+
+A short line then follows in the channel, such as
+**✓ Maya Chen answered: allow once — loop #1851**.
+
+So a card in a channel is never a stale invitation: if it still has answer buttons, the
+decision is still open.
+
+### A loop that finished
+
+When a loop's pull request merges, the card reads **Loop #1846 finished — PR #512 merged**,
+with the issue under it, a line of figures, and **View PR ↗** and **Run console** buttons.
+
+The line of figures reads like **14/14 checks · 11m cycle · $0.94 · claude-fable-5**. Each part
+appears only when it is known:
+
+- **The cost appears only when all of the loop's usage was priced.** If any of it was not,
+  there is no cost on the card at all — never `$0.00`, and never an estimate.
+- The model appears only when one is on record.
+
+### The weekly digest
+
+Once a week Ouroboros posts the week's figures from [Insights](./insights.mdx): how many pull
+requests merged and how many needed a person, each headline figure against the week before,
+where loops most often needed a person, flaky tests that moved, and the cost. It is the same
+digest the weekly email carries, so the two always agree. **Open Insights** opens the page.
+
+### Not posted yet
+
+Cards for a build that went green or failed are not posted yet.
 
 ## Why you link
 

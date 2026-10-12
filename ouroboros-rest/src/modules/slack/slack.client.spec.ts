@@ -6,8 +6,20 @@ import { BOT_TOKEN } from "./slack.fixture";
  * Slack's own error code, and a reply goes only to Slack's hosts.
  */
 
+/** One scripted answer: a body, a thrown failure, or a body with a status and headers. */
+type Scripted = Record<string, unknown> | Error | Answer;
+
+/** A scripted answer that is not a plain 200. */
+class Answer {
+  constructor(
+    readonly body: Record<string, unknown>,
+    readonly status: number,
+    readonly headers: Record<string, string> = {},
+  ) {}
+}
+
 /** A fetch that answers from a script and records what it was asked. */
-function fakeFetch(...answers: (Record<string, unknown> | Error)[]) {
+function fakeFetch(...answers: Scripted[]) {
   const calls: { url: string; init: RequestInit }[] = [];
   const impl = ((url: string | URL, init: RequestInit = {}) => {
     calls.push({ url: String(url), init });
@@ -17,10 +29,13 @@ function fakeFetch(...answers: (Record<string, unknown> | Error)[]) {
       return Promise.reject(answer);
     }
 
+    const scripted = answer instanceof Answer ? answer : new Answer(answer, 200);
+
     return Promise.resolve({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve(answer),
+      ok: scripted.status < 400,
+      status: scripted.status,
+      headers: new Headers(scripted.headers),
+      json: () => Promise.resolve(scripted.body),
     } as Response);
   }) as typeof fetch;
 
@@ -270,5 +285,111 @@ describe("replying to a response_url", () => {
 
   it("omits the actions block when the reply offers no link", () => {
     expect(replyPayload({ ephemeral: true, text: "Done." }).blocks).toHaveLength(1);
+  });
+});
+
+describe("publishing a message (#536)", () => {
+  const message = {
+    text: "✓ Loop #1846 finished",
+    blocks: [],
+    attachments: [{ color: "#2f9e6b", blocks: [{ type: "section" }] }],
+  };
+
+  it("posts to a channel with blocks and attachments as JSON form fields, and answers the ts", async () => {
+    const { impl, calls } = fakeFetch({ ok: true, ts: "1760000000.000100", channel: "C071LOOPS" });
+
+    await expect(
+      new HttpSlackApi(impl).postMessage(BOT_TOKEN, "C071LOOPS", message),
+    ).resolves.toEqual({
+      ok: true,
+      ts: "1760000000.000100",
+    });
+
+    const form = new URLSearchParams(bodyOf(calls[0]));
+
+    expect(calls[0].url).toBe("https://slack.com/api/chat.postMessage");
+    expect(form.get("channel")).toBe("C071LOOPS");
+    expect(form.get("text")).toBe("✓ Loop #1846 finished");
+    expect(JSON.parse(form.get("attachments") ?? "")).toEqual(message.attachments);
+    expect(form.get("blocks")).toBe("[]");
+    // A card links to this product; Slack must not expand those links into previews.
+    expect(form.get("unfurl_links")).toBe("false");
+    expect(bodyOf(calls[0])).not.toContain(BOT_TOKEN);
+  });
+
+  it("edits by ts, always sending blocks and attachments so removed buttons are really removed", async () => {
+    const { impl, calls } = fakeFetch({ ok: true, ts: "1760000000.000100" });
+
+    await expect(
+      new HttpSlackApi(impl).updateMessage(BOT_TOKEN, "C071LOOPS", "1760000000.000100", {
+        text: "closed",
+      }),
+    ).resolves.toEqual({ ok: true, ts: "1760000000.000100" });
+
+    const form = new URLSearchParams(bodyOf(calls[0]));
+
+    expect(calls[0].url).toBe("https://slack.com/api/chat.update");
+    expect(form.get("ts")).toBe("1760000000.000100");
+    expect(form.get("blocks")).toBe("[]");
+    expect(form.get("attachments")).toBe("[]");
+  });
+
+  it("opens a DM and answers the conversation's id", async () => {
+    const { impl, calls } = fakeFetch({ ok: true, channel: { id: "D07KEN" } }, { ok: true });
+    const api = new HttpSlackApi(impl);
+
+    await expect(api.openDm(BOT_TOKEN, "U07KEN")).resolves.toEqual({
+      ok: true,
+      channelId: "D07KEN",
+    });
+    expect(calls[0].url).toBe("https://slack.com/api/conversations.open");
+    expect(new URLSearchParams(bodyOf(calls[0])).get("users")).toBe("U07KEN");
+    await expect(api.openDm(BOT_TOKEN, "U07KEN")).resolves.toEqual({
+      ok: false,
+      error: "incomplete_answer",
+    });
+  });
+
+  it("reports Retry-After, in seconds, with a rate limit", async () => {
+    const { impl } = fakeFetch(
+      new Answer({ ok: false, error: "ratelimited" }, 429, { "retry-after": "30" }),
+    );
+
+    await expect(new HttpSlackApi(impl).postMessage(BOT_TOKEN, "C1", message)).resolves.toEqual({
+      ok: false,
+      error: "ratelimited",
+      retryAfterSeconds: 30,
+    });
+  });
+
+  it("reports no wait when Slack names none, or names nonsense", async () => {
+    const { impl } = fakeFetch(
+      { ok: false, error: "channel_not_found" },
+      new Answer({ ok: false, error: "ratelimited" }, 429, { "retry-after": "soon" }),
+    );
+    const api = new HttpSlackApi(impl);
+
+    await expect(api.postMessage(BOT_TOKEN, "C1", message)).resolves.toEqual({
+      ok: false,
+      error: "channel_not_found",
+    });
+    await expect(api.postMessage(BOT_TOKEN, "C1", message)).resolves.toEqual({
+      ok: false,
+      error: "ratelimited",
+    });
+  });
+
+  it("is unreachable, not a rejection, when the network fails, and incomplete without a ts", async () => {
+    const { impl } = fakeFetch(new Error("ECONNRESET"), { ok: true });
+    const api = new HttpSlackApi(impl);
+
+    await expect(api.postMessage(BOT_TOKEN, "C1", message)).resolves.toEqual({
+      ok: false,
+      error: "unreachable",
+    });
+    await expect(api.postMessage(BOT_TOKEN, "C1", message)).resolves.toEqual({
+      ok: false,
+      error: "incomplete_answer",
+    });
   });
 });

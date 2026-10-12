@@ -114,6 +114,75 @@ describe("the connection status resource", () => {
       lastVerifiedAt: "2026-10-12T14:00:00.000Z",
       channels: { total: 3, joined: 2 },
       socketMode: false,
+      delivery: {
+        state: "idle",
+        pending: 0,
+        retrying: 0,
+        deadLettered: 0,
+        lastError: null,
+        lastDeadLetteredAt: null,
+        lastSentAt: null,
+      },
+    });
+  });
+
+  describe("how publishing stands (#536)", () => {
+    const quiet = {
+      pending: 0,
+      retrying: 0,
+      deadLettered: 0,
+      lastError: null,
+      lastDeadLetteredAt: null,
+      lastSentAt: null,
+    };
+    const sent = new Date("2026-10-12T14:00:00Z");
+
+    it.each([
+      ["idle when nothing was published and nothing waits", quiet, "idle"],
+      ["healthy once a message has gone out", { ...quiet, lastSentAt: sent }, "healthy"],
+      ["healthy while a first attempt is waiting", { ...quiet, pending: 2 }, "healthy"],
+      [
+        "retrying while something failed and will be tried again",
+        { ...quiet, lastSentAt: sent, retrying: 1 },
+        "retrying",
+      ],
+      [
+        "dead_lettered — the worst thing true — when a message was given up on",
+        {
+          ...quiet,
+          lastSentAt: sent,
+          retrying: 1,
+          deadLettered: 1,
+          lastError: "channel_not_found",
+          lastDeadLetteredAt: sent,
+        },
+        "dead_lettered",
+      ],
+    ])("is %s", (_label, delivery, state) => {
+      expect(connectionResource({ ...base, connection, delivery }).delivery.state).toBe(state);
+    });
+
+    it("surfaces the dead letter's error and when, so a banner can say what happened", () => {
+      const answer = connectionResource({
+        ...base,
+        connection,
+        delivery: {
+          ...quiet,
+          deadLettered: 3,
+          lastError: "channel_not_found",
+          lastDeadLetteredAt: sent,
+        },
+      });
+
+      expect(answer.delivery).toEqual({
+        state: "dead_lettered",
+        pending: 0,
+        retrying: 0,
+        deadLettered: 3,
+        lastError: "channel_not_found",
+        lastDeadLetteredAt: "2026-10-12T14:00:00.000Z",
+        lastSentAt: null,
+      });
     });
   });
 

@@ -41293,12 +41293,13 @@ select pg_temp.must_hold(
      from pg_constraint where conname = 'notification_routes_chat_channel_fk'),
   'the route''s channel key is deferred and takes no action on delete');
 
--- The lock is not lifted by a connection: nothing delivers to Slack yet.
+-- The lock follows the connection (V133, #536): an active one lifts it, and the route delivers
+-- exactly when it is enabled. V133's section takes the connection away again.
 select pg_temp.must_hold(
-  (select bool_and(locked and not delivering and locked_reason = 'connect Slack first')
+  (select bool_and(not locked and locked_reason is null and delivering = enabled)
      from ouroboros.notification_routes_effective
     where organization_id = 'org-v130' and channel = 'slack'),
-  'a Slack route still reads locked with an active connection and a joined channel — nothing publishes to Slack yet');
+  'a Slack route in a workspace with an active Slack connection is not locked, and delivers when enabled');
 
 -- --- the app role ------------------------------------------------------------------------------------
 set local role ouroboros_app;
@@ -42230,6 +42231,7 @@ insert into ouroboros.chat_identity_links (organization_id, connection_id, platf
 select 'org-v132b', 'c1320000-0000-4000-8000-000000000002', 'U' || lpad(i::text, 8, '0'), 'revoked', now()
   from generate_series(1, 4000) i;
 analyze ouroboros.chat_identity_links;
+analyze ouroboros.chat_outbox;
 
 -- Sequential scans left on: the planner picks the index by itself over a corpus.
 select pg_temp.must_use_index(
@@ -42479,6 +42481,267 @@ select pg_temp.must_hold(
   and (select count(*) = 0 from ouroboros.chat_commands where organization_id = 'org-v132c'),
   'a workspace takes its links, its on-call assignments and its commands with it');
 
+-- ===========================================================================
+-- V133 — the chat outbox, and the Slack route lock that follows the connection (#536, BZ.2)
+-- ===========================================================================
+-- V131's workspace, connection, channel and messages are the fixtures; the decision is filed
+-- again here, since V131's section deleted its own.
+create temporary table v133_item on commit drop as
+select ouroboros.decision_item_emit(
+         'org-v131', 'protected_path_allow_once',
+         '{"subject": "The OTA rollback fix", "edit_summary": "add one line",
+           "path": "boot/rollback_flag.c", "diff_lines": 3}',
+         '[{"type": "run",  "id": "a1360000-0000-0000-0000-000000001851", "label": "loop #1851"},
+           {"type": "path", "id": "boot/rollback_flag.c",                 "label": "boot/rollback_flag.c"}]',
+         'guardrails', 'run:a1360000-0000-0000-0000-000000001851:path:boot/rollback_flag.c:v133') as id;
+
+-- --- the intent, as the publisher writes it --------------------------------------------------------
+insert into ouroboros.chat_outbox
+  (id, organization_id, connection_id, channel_id, message_kind, card_kind, subject, route_kind, dedupe_key)
+values
+  ('c1330000-0000-4000-8000-000000000001', 'org-v131', 'c1310000-0000-4000-8000-000000000001',
+   'c1310000-0000-4000-8000-0000000000a1', 'event_card', 'loop_finished',
+   '{"run_id": "a1360000-0000-0000-0000-000000001846"}', 'custom:loop-finished', repeat('a', 64));
+
+select pg_temp.must_hold(
+  (select status = 'pending' and attempts = 0 and operation = 'post' and next_attempt_at is not null
+          and settled_at is null and last_error is null and message_id is null
+     from ouroboros.chat_outbox where id = 'c1330000-0000-4000-8000-000000000001'),
+  'a new intent is a pending post, due now, never tried');
+
+-- --- the same thing is intended once per target ----------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_outbox (organization_id, connection_id, channel_id, message_kind, card_kind,
+                                       route_kind, dedupe_key)
+    values ('org-v131', 'c1310000-0000-4000-8000-000000000001', 'c1310000-0000-4000-8000-0000000000a1',
+            'event_card', 'loop_finished', 'custom:loop-finished', repeat('a', 64))$$,
+  'the same intent for the same channel is refused', 'chat_outbox_channel_dedupe_key');
+
+insert into ouroboros.chat_outbox (organization_id, connection_id, channel_id, message_kind, card_kind,
+                                   route_kind, dedupe_key)
+values ('org-v131', 'c1310000-0000-4000-8000-000000000001', 'c1310000-0000-4000-8000-0000000000a1',
+        'event_card', 'loop_finished', 'custom:loop-finished', repeat('a', 64))
+on conflict do nothing;
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.chat_outbox
+    where channel_id = 'c1310000-0000-4000-8000-0000000000a1' and dedupe_key = repeat('a', 64)),
+  'a duplicate enqueue is absorbed: on conflict do nothing leaves one row');
+
+-- A DM is its own target: the same intent may also go to a person, once.
+insert into ouroboros.chat_outbox
+  (id, organization_id, connection_id, dm_platform_user_id, message_kind, card_kind, decision_item_id,
+   route_kind, dedupe_key)
+values
+  ('c1330000-0000-4000-8000-000000000002', 'org-v131', 'c1310000-0000-4000-8000-000000000001',
+   'U131KEN', 'decision_card', 'protected_path_allow_once', (select id from v133_item),
+   'custom:blocking-questions', repeat('b', 64));
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_outbox (organization_id, connection_id, dm_platform_user_id, message_kind,
+                                       card_kind, decision_item_id, route_kind, dedupe_key)
+    values ('org-v131', 'c1310000-0000-4000-8000-000000000001', 'U131KEN', 'decision_card',
+            'protected_path_allow_once', (select id from v133_item), 'custom:blocking-questions',
+            repeat('b', 64))$$,
+  'the same intent for the same person is refused', 'chat_outbox_dm_dedupe_key');
+
+-- --- a target is one channel or one person ---------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_outbox (organization_id, connection_id, message_kind, card_kind, route_kind, dedupe_key)
+    values ('org-v131', 'c1310000-0000-4000-8000-000000000001', 'event_card', 'digest',
+            'custom:weekly-insights', repeat('c', 64))$$,
+  'an intent with no target is refused', 'chat_outbox_one_target');
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_outbox (organization_id, connection_id, channel_id, dm_platform_user_id,
+                                       message_kind, card_kind, route_kind, dedupe_key)
+    values ('org-v131', 'c1310000-0000-4000-8000-000000000001', 'c1310000-0000-4000-8000-0000000000a1',
+            'U131KEN', 'event_card', 'digest', 'custom:weekly-insights', repeat('c', 64))$$,
+  'nor one with both', 'chat_outbox_one_target');
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_outbox (organization_id, connection_id, channel_id, message_kind, card_kind,
+                                       route_kind, dedupe_key)
+    values ('org-v131', 'c1310000-0000-4000-8000-000000000001', 'c1300000-0000-4000-8000-0000000000a1',
+            'event_card', 'digest', 'custom:weekly-insights', repeat('c', 64))$$,
+  'a channel of another connection is refused', 'chat_outbox_channel_fk');
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_outbox (organization_id, connection_id, channel_id, message_kind, card_kind,
+                                       route_kind, dedupe_key)
+    values ('org-v130', 'c1310000-0000-4000-8000-000000000001', 'c1310000-0000-4000-8000-0000000000a1',
+            'event_card', 'digest', 'custom:weekly-insights', repeat('c', 64))$$,
+  'a connection of another workspace is refused', 'chat_outbox_connection_fk');
+
+-- --- the vocabulary is chat_messages' own ----------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_outbox (organization_id, connection_id, channel_id, message_kind, card_kind,
+                                       route_kind, dedupe_key)
+    values ('org-v131', 'c1310000-0000-4000-8000-000000000001', 'c1310000-0000-4000-8000-0000000000a1',
+            'command_reply', 'status', 'custom:loop-finished', repeat('c', 64))$$,
+  'a command reply never passes through the outbox', 'chat_outbox_message_kind_known');
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_outbox (organization_id, connection_id, channel_id, message_kind, card_kind,
+                                       route_kind, dedupe_key)
+    values ('org-v131', 'c1310000-0000-4000-8000-000000000001', 'c1310000-0000-4000-8000-0000000000a1',
+            'event_card', 'stage_changed', 'custom:stage-transitions', repeat('c', 64))$$,
+  'an event card is one of the four families', 'chat_outbox_card_kind_by_kind');
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_outbox (organization_id, connection_id, channel_id, message_kind, card_kind,
+                                       route_kind, dedupe_key)
+    values ('org-v131', 'c1310000-0000-4000-8000-000000000001', 'c1310000-0000-4000-8000-0000000000a1',
+            'decision_card', 'protected_path_allow_once', 'custom:blocking-questions', repeat('c', 64))$$,
+  'a decision card names its decision', 'chat_outbox_decision_card_names_item');
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_outbox (organization_id, connection_id, channel_id, message_kind, card_kind,
+                                       decision_item_id, route_kind, dedupe_key)
+    values ('org-v131', 'c1310000-0000-4000-8000-000000000001', 'c1310000-0000-4000-8000-0000000000a1',
+            'event_card', 'loop_finished', (select id from v133_item), 'custom:loop-finished', repeat('c', 64))$$,
+  'an event card is not about a decision', 'chat_outbox_decision_item_placed');
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_outbox (organization_id, connection_id, channel_id, message_kind, card_kind,
+                                       decision_item_id, route_kind, dedupe_key)
+    values ('org-v131', 'c1310000-0000-4000-8000-000000000001', 'c1310000-0000-4000-8000-0000000000a1',
+            'decision_card', 'merge_approval', (select id from v133_item), 'custom:blocking-questions',
+            repeat('c', 64))$$,
+  'a decision card''s kind is its item''s kind', 'chat_outbox_decision_item_fk');
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_outbox (organization_id, connection_id, channel_id, message_kind, card_kind,
+                                       subject, route_kind, dedupe_key)
+    values ('org-v131', 'c1310000-0000-4000-8000-000000000001', 'c1310000-0000-4000-8000-0000000000a1',
+            'event_card', 'digest', '[]', 'custom:weekly-insights', repeat('c', 64))$$,
+  'a subject is an object', 'chat_outbox_subject_is_object');
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_outbox (organization_id, connection_id, channel_id, message_kind, card_kind,
+                                       route_kind, dedupe_key)
+    values ('org-v131', 'c1310000-0000-4000-8000-000000000001', 'c1310000-0000-4000-8000-0000000000a1',
+            'event_card', 'digest', 'custom:weekly-insights', 'not-a-digest')$$,
+  'a dedupe key is a SHA-256', 'chat_outbox_dedupe_key_sha256');
+
+-- --- an edit knows what it edits, and only a decision card is edited -------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_outbox (organization_id, connection_id, channel_id, operation, message_kind,
+                                       card_kind, decision_item_id, route_kind, dedupe_key)
+    values ('org-v131', 'c1310000-0000-4000-8000-000000000001', 'c1310000-0000-4000-8000-0000000000a1',
+            'update', 'decision_card', 'protected_path_allow_once', (select id from v133_item),
+            'custom:blocking-questions', repeat('d', 64))$$,
+  'an update without its message is refused', 'chat_outbox_update_is_a_decision_cards');
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_outbox (organization_id, connection_id, channel_id, operation, message_kind,
+                                       card_kind, route_kind, dedupe_key, message_id)
+    values ('org-v131', 'c1310000-0000-4000-8000-000000000001', 'c1310000-0000-4000-8000-0000000000a1',
+            'update', 'event_card', 'loop_finished', 'custom:loop-finished', repeat('d', 64),
+            'c1310000-0000-4000-8000-00000000d001')$$,
+  'an event card is never edited', 'chat_outbox_update_is_a_decision_cards');
+
+insert into ouroboros.chat_outbox
+  (id, organization_id, connection_id, channel_id, operation, message_kind, card_kind, decision_item_id,
+   route_kind, dedupe_key, message_id)
+values
+  ('c1330000-0000-4000-8000-000000000003', 'org-v131', 'c1310000-0000-4000-8000-000000000001',
+   'c1310000-0000-4000-8000-0000000000a1', 'update', 'decision_card', 'protected_path_allow_once',
+   (select id from v133_item), 'custom:blocking-questions', repeat('d', 64),
+   'c1310000-0000-4000-8000-00000000d002');
+
+-- --- pending is due; settled is stamped ------------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.chat_outbox set status = 'sent' where id = 'c1330000-0000-4000-8000-000000000001'$$,
+  'a settled row has no next attempt', 'chat_outbox_pending_is_due');
+select pg_temp.must_reject(
+  $$update ouroboros.chat_outbox set status = 'sent', next_attempt_at = null
+     where id = 'c1330000-0000-4000-8000-000000000001'$$,
+  'and says when it was settled', 'chat_outbox_settled_is_stamped');
+select pg_temp.must_reject(
+  $$update ouroboros.chat_outbox set next_attempt_at = null where id = 'c1330000-0000-4000-8000-000000000001'$$,
+  'a pending row is always due at some instant', 'chat_outbox_pending_is_due');
+select pg_temp.must_reject(
+  $$update ouroboros.chat_outbox set status = 'dead_lettered', next_attempt_at = null, settled_at = now()
+     where id = 'c1330000-0000-4000-8000-000000000001'$$,
+  'a dead letter says why', 'chat_outbox_dead_letter_explained');
+select pg_temp.must_reject(
+  $$update ouroboros.chat_outbox set status = 'lost', next_attempt_at = null, settled_at = now()
+     where id = 'c1330000-0000-4000-8000-000000000001'$$,
+  'a status is one of the five', 'chat_outbox_status_known');
+select pg_temp.must_reject(
+  $$update ouroboros.chat_outbox set attempts = -1 where id = 'c1330000-0000-4000-8000-000000000001'$$,
+  'attempts are counted from zero', 'chat_outbox_attempts_nonnegative');
+select pg_temp.must_reject(
+  $$update ouroboros.chat_outbox set last_error = '' where id = 'c1330000-0000-4000-8000-000000000001'$$,
+  'an error is text or absent', 'chat_outbox_last_error_present');
+
+-- A retry, then a dead letter, then a send — each a legal state.
+update ouroboros.chat_outbox
+   set attempts = 1, next_attempt_at = now() + interval '30 seconds', last_error = 'ratelimited'
+ where id = 'c1330000-0000-4000-8000-000000000001';
+update ouroboros.chat_outbox
+   set status = 'dead_lettered', attempts = 8, next_attempt_at = null, settled_at = now(),
+       last_error = 'channel_not_found'
+ where id = 'c1330000-0000-4000-8000-000000000002';
+update ouroboros.chat_outbox
+   set status = 'sent', attempts = 1, next_attempt_at = null, settled_at = now()
+ where id = 'c1330000-0000-4000-8000-000000000003';
+select pg_temp.must_hold(
+  (select array_agg(status || ':' || attempts || ':' || (next_attempt_at is not null) order by id)
+            = array['pending:1:true', 'dead_lettered:8:false', 'sent:1:false']
+     from ouroboros.chat_outbox where organization_id = 'org-v131'),
+  'a row retries, dead-letters or is sent, and each state is consistent');
+
+-- --- the dispatcher's claim reaches the table through the due index --------------------------------
+select pg_temp.must_hold(
+  (select indexdef like '%(next_attempt_at, id)%' and indexdef like '%WHERE (status = ''pending''::text)%'
+     from pg_indexes where schemaname = 'ouroboros' and indexname = 'chat_outbox_due_idx'),
+  'the due index covers pending rows by when they are next due');
+
+-- --- the application role writes and prunes --------------------------------------------------------
+set local role ouroboros_app;
+insert into ouroboros.chat_outbox (id, organization_id, connection_id, channel_id, message_kind, card_kind,
+                                   route_kind, dedupe_key, status, next_attempt_at, settled_at)
+values ('c1330000-0000-4000-8000-000000000004', 'org-v131', 'c1310000-0000-4000-8000-000000000001',
+        'c1310000-0000-4000-8000-0000000000a1', 'event_card', 'digest', 'custom:weekly-insights',
+        repeat('e', 64), 'absorbed', null, now());
+delete from ouroboros.chat_outbox where id = 'c1330000-0000-4000-8000-000000000004';
+reset role;
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.chat_outbox where id = 'c1330000-0000-4000-8000-000000000004'),
+  'the app role writes an outbox row and prunes a settled one');
+
+-- --- the Slack lock follows the connection ---------------------------------------------------------
+-- org-v130 has an active Slack connection and Slack routes (V130's section). Revoking the
+-- connection locks them again; PagerDuty is locked whatever is connected.
+select pg_temp.must_hold(
+  (select count(*) > 0 and bool_and(not locked and delivering = enabled)
+     from ouroboros.notification_routes_effective
+    where organization_id = 'org-v130' and channel = 'slack'),
+  'with an active Slack connection, Slack routes are unlocked and deliver when enabled');
+
+update ouroboros.chat_connections
+   set status = 'revoked', status_detail = 'app_uninstalled'
+ where organization_id = 'org-v130' and platform = 'slack' and status = 'active';
+select pg_temp.must_hold(
+  (select count(*) > 0 and bool_and(locked and not delivering and locked_reason = 'connect Slack first')
+     from ouroboros.notification_routes_effective
+    where organization_id = 'org-v130' and channel = 'slack'),
+  'once the connection is revoked every Slack route reads locked — connect Slack first — and none delivers');
+
+-- A workspace that never connected Slack reads as V094 defined it — asserted in V094's own
+-- section, which runs against this view.
+
+-- --- a workspace, a connection and a message each take their intents with them ----------------------
+delete from ouroboros.chat_outbox where id = 'c1330000-0000-4000-8000-000000000003';
+insert into ouroboros.chat_outbox
+  (id, organization_id, connection_id, channel_id, operation, message_kind, card_kind, decision_item_id,
+   route_kind, dedupe_key, message_id)
+values
+  ('c1330000-0000-4000-8000-000000000005', 'org-v131', 'c1310000-0000-4000-8000-000000000001',
+   'c1310000-0000-4000-8000-0000000000a1', 'update', 'decision_card', 'protected_path_allow_once',
+   (select id from v133_item), 'custom:blocking-questions', repeat('f', 64),
+   'c1310000-0000-4000-8000-00000000d002');
+delete from ouroboros.decision_items where id = (select id from v133_item);
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.chat_outbox
+    where id in ('c1330000-0000-4000-8000-000000000002', 'c1330000-0000-4000-8000-000000000005')),
+  'an intent about a deleted decision goes with it');
+
+delete from ouroboros.organization where "id" = 'org-v131';
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.chat_outbox where organization_id = 'org-v131'),
+  'a workspace takes its outbox with it');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------
@@ -42510,6 +42773,7 @@ analyze ouroboros.dry_runs;
 analyze ouroboros.chat_messages;
 analyze ouroboros.chat_commands;
 analyze ouroboros.chat_identity_links;
+analyze ouroboros.chat_outbox;
 
 \o
 \echo 'constraints.sql: all assertions passed'

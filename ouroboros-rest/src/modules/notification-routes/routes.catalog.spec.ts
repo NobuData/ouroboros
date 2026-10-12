@@ -32,10 +32,20 @@ describe("a route's kind", () => {
 });
 
 describe("the locked-row rule", () => {
+  const none = { slackConnected: false };
+  const slack = { slackConnected: true };
+
   it("lets email deliver and locks the channels with no connection, saying why", () => {
-    expect(channelLock("email")).toBeNull();
-    expect(channelLock("slack")).toBe("connect Slack first");
-    expect(channelLock("pagerduty")).toBe("connect PagerDuty first");
+    expect(channelLock("email", none)).toBeNull();
+    expect(channelLock("slack", none)).toBe("connect Slack first");
+    expect(channelLock("pagerduty", none)).toBe("connect PagerDuty first");
+  });
+
+  it("lifts the Slack lock exactly when the workspace has an active Slack connection (#536)", () => {
+    expect(channelLock("slack", slack)).toBeNull();
+    // Connecting Slack connects nothing else.
+    expect(channelLock("pagerduty", slack)).toBe("connect PagerDuty first");
+    expect(channelLock("email", slack)).toBeNull();
   });
 });
 

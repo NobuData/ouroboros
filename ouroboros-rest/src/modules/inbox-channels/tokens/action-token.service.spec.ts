@@ -100,4 +100,48 @@ describe("ActionTokenService (#463)", () => {
       revokeReason: "superseded",
     });
   });
+
+  describe("signing a value this service hands out (#536)", () => {
+    it("signs under the workspace key and recognises its own signature", async () => {
+      const { keyRef, mac } = await service.sign("org-1", "chat-action:v1:org-1:item-1:confirm:n");
+
+      expect(keyRef).toMatch(/^act\.[0-9a-f]{16}$/);
+      expect(mac).toMatch(/^[0-9a-f]{64}$/);
+      await expect(
+        service.verifySignature("org-1", keyRef, "chat-action:v1:org-1:item-1:confirm:n", mac),
+      ).resolves.toBe(true);
+    });
+
+    it("uses the key tokens are minted under, not a second one", async () => {
+      await service.mint("org-1", "item-1", "confirm", "user-a", "email");
+      await service.sign("org-1", "m");
+
+      expect(store.keys.size).toBe(1);
+    });
+
+    it("refuses a changed message, a changed MAC, another workspace and an unknown key", async () => {
+      const { keyRef, mac } = await service.sign("org-1", "message");
+      const flipped = `${mac.startsWith("0") ? "1" : "0"}${mac.slice(1)}`;
+
+      await expect(service.verifySignature("org-1", keyRef, "another", mac)).resolves.toBe(false);
+      await expect(service.verifySignature("org-1", keyRef, "message", flipped)).resolves.toBe(
+        false,
+      );
+      await expect(service.verifySignature("org-2", keyRef, "message", mac)).resolves.toBe(false);
+      await expect(
+        service.verifySignature("org-1", "act.0000000000000000", "message", mac),
+      ).resolves.toBe(false);
+      await expect(service.verifySignature("org-1", keyRef, "message", "not-hex")).resolves.toBe(
+        false,
+      );
+    });
+
+    it("never signs a token-shaped message into a token's hash by accident", async () => {
+      const token = await service.mint("org-1", "item-1", "confirm", "user-a", "email");
+      const { mac } = await service.sign("org-1", "chat-action:v1:org-1:item-1:confirm:n");
+
+      expect(store.tokens.map((stored) => stored.hash)).not.toContain(mac);
+      expect(token.startsWith("ouro_act_")).toBe(true);
+    });
+  });
 });
