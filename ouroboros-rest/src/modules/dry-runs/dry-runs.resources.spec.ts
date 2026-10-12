@@ -1,4 +1,5 @@
 import type { DryRun, DryRunArtifact, DryRunStage } from "../db/schema";
+import { REPLAY_FORMULAS, REPLAY_FORMULA_SUMMARIES } from "../replay-estimates/replay.formulas";
 import { effectiveBudget } from "./dry-runs.budget";
 import { rankCandidates } from "./dry-runs.picker";
 import { pickerTicket } from "./dry-runs.picker.service";
@@ -9,12 +10,14 @@ import {
   dryRunHistory,
   dryRunResource,
   dryRunStage,
+  stageEstimate,
   stageHowLabel,
   streamedStage,
 } from "./dry-runs.resources";
 import {
   DEFINITION,
   PINNED_SHA,
+  REPLAY_POLICY,
   TICKET_ID,
   WORKFLOW_ID,
   WORKSPACE,
@@ -45,6 +48,23 @@ const RUN = {
   finished_at: new Date("2026-10-06T15:07:41Z"),
 } as DryRun;
 
+/** A build's class as `build_similarity_class()` prints it. */
+const BUILD_CLASS =
+  "pool-a · helios-firmware · container · ghcr.io/acme/zephyr-sdk · west build -b helios_h7";
+/** A test run's class as `test_similarity_class()` prints it. */
+const TEST_CLASS = "helios-firmware · tests · hil + unit";
+
+const BUILD_FORMULA = {
+  id: "build_duration_replay",
+  version: REPLAY_FORMULAS.build.version,
+  summary: REPLAY_FORMULA_SUMMARIES.build,
+};
+const TEST_FORMULA = {
+  id: "test_duration_replay",
+  version: REPLAY_FORMULAS.test.version,
+  summary: REPLAY_FORMULA_SUMMARIES.test,
+};
+
 const STAGE: DryRunStage = {
   id: "s-1",
   organization_id: WORKSPACE,
@@ -55,7 +75,13 @@ const STAGE: DryRunStage = {
   verdict: "ok",
   how: "replayed",
   note: "est. 4m 02s (214 similar builds, ±20s)",
-  metrics: { estimate_ms: 242000, sample_count: 214, spread_ms: 20000, similarity_class: "x" },
+  metrics: {
+    estimate_ms: 242000,
+    sample_count: 214,
+    spread_ms: 20000,
+    similarity_class: BUILD_CLASS,
+    window_days: 30,
+  },
   skip_reason: null,
   skip_kind: null,
   skip_input: null,
@@ -79,7 +105,7 @@ describe("the dry run's wire shapes", () => {
   });
 
   it("gives a stored row and a streamed row one shape", () => {
-    expect(dryRunStage(STAGE)).toEqual({
+    expect(dryRunStage(STAGE, REPLAY_POLICY)).toEqual({
       seq: 4,
       stageKey: "build",
       displayName: "build",
@@ -88,6 +114,15 @@ describe("the dry run's wire shapes", () => {
       howLabel: "replayed from history",
       note: "est. 4m 02s (214 similar builds, ±20s)",
       metrics: STAGE.metrics,
+      estimate: {
+        status: "estimated",
+        estimateMs: 242000,
+        spreadMs: 20000,
+        sampleCount: 214,
+        sampleFloor: 20,
+        windowDays: 30,
+        formula: BUILD_FORMULA,
+      },
       skipReason: null,
       skipKind: null,
       skipInput: null,
@@ -104,15 +139,165 @@ describe("the dry run's wire shapes", () => {
         startedAt: null,
         finishedAt: "2026-10-06T15:07:00+00:00",
       }),
+      REPLAY_POLICY,
     );
-    expect(Object.keys(streamed)).toEqual(Object.keys(dryRunStage(STAGE)));
+    expect(Object.keys(streamed)).toEqual(Object.keys(dryRunStage(STAGE, REPLAY_POLICY)));
     expect(streamed).toMatchObject({
+      estimate: null,
       howLabel: "skipped",
       skipReason: 'Task kind "exploit-verify" has no route yet',
       skipKind: "unresolved_reference",
       skipInput: null,
       startedAt: null,
       finishedAt: "2026-10-06T15:07:00.000Z",
+    });
+  });
+
+  describe("a replayed row's estimate", () => {
+    it("reads a build estimate out of the row's metrics, with the build formula", () => {
+      expect(stageEstimate("replayed", STAGE.metrics, REPLAY_POLICY)).toEqual({
+        status: "estimated",
+        estimateMs: 242000,
+        spreadMs: 20000,
+        sampleCount: 214,
+        sampleFloor: 20,
+        windowDays: 30,
+        formula: BUILD_FORMULA,
+      });
+    });
+
+    it("reads a test estimate with the test formula — from the class, not the stage's name", () => {
+      const metrics = {
+        estimate_ms: 612000,
+        spread_ms: 41000,
+        sample_count: 58,
+        similarity_class: TEST_CLASS,
+        window_days: 30,
+      };
+
+      expect(stageEstimate("replayed", metrics, REPLAY_POLICY)).toEqual({
+        status: "estimated",
+        estimateMs: 612000,
+        spreadMs: 41000,
+        sampleCount: 58,
+        sampleFloor: 20,
+        windowDays: 30,
+        formula: TEST_FORMULA,
+      });
+      // The row's key and name play no part: a stage called `build` with a test class is a test.
+      expect(dryRunStage({ ...STAGE, metrics }, REPLAY_POLICY).estimate?.formula).toEqual(
+        TEST_FORMULA,
+      );
+    });
+
+    it("gives insufficient history no number anywhere", () => {
+      const estimate = stageEstimate(
+        "replayed",
+        {
+          insufficient_history: true,
+          sample_count: 12,
+          similarity_class: TEST_CLASS,
+          window_days: 30,
+        },
+        REPLAY_POLICY,
+      );
+
+      expect(estimate).toEqual({
+        status: "insufficient_history",
+        estimateMs: null,
+        spreadMs: null,
+        sampleCount: 12,
+        sampleFloor: 20,
+        windowDays: 30,
+        formula: TEST_FORMULA,
+      });
+    });
+
+    it("counts nothing found as insufficient history too", () => {
+      expect(
+        stageEstimate(
+          "replayed",
+          { insufficient_history: true, sample_count: 0, similarity_class: BUILD_CLASS },
+          REPLAY_POLICY,
+        ),
+      ).toMatchObject({ status: "insufficient_history", sampleCount: 0, estimateMs: null });
+    });
+
+    it.each(["llm", "deterministic", "skipped"] as const)(
+      "is null on a %s row, whatever its metrics hold",
+      (how) => {
+        expect(stageEstimate(how, STAGE.metrics, REPLAY_POLICY)).toBeNull();
+      },
+    );
+
+    it("takes the floor from the policy, and the window only when the row carries none", () => {
+      const policy = { windowDays: 45, sampleFloor: 25 };
+      const { window_days: _window, ...older } = STAGE.metrics;
+
+      expect(stageEstimate("replayed", STAGE.metrics, policy)).toMatchObject({
+        sampleFloor: 25,
+        windowDays: 30,
+      });
+      expect(stageEstimate("replayed", older, policy)).toMatchObject({
+        sampleFloor: 25,
+        windowDays: 45,
+      });
+    });
+
+    it("serves the stored status of a row even when the floor has since risen past it", () => {
+      expect(
+        stageEstimate("replayed", STAGE.metrics, { windowDays: 30, sampleFloor: 500 }),
+      ).toMatchObject({ status: "estimated", estimateMs: 242000, sampleCount: 214 });
+    });
+
+    it.each([
+      ["no sample count", { estimate_ms: 242000, spread_ms: 20000 }],
+      ["an estimate without its spread", { estimate_ms: 220000, sample_count: 204 }],
+      ["a spread without its estimate", { spread_ms: 20000, sample_count: 204 }],
+      ["an estimate on no samples", { estimate_ms: 242000, spread_ms: 20000, sample_count: 0 }],
+      ["a number as text", { estimate_ms: "242000", spread_ms: 20000, sample_count: 214 }],
+      ["a fractional estimate", { estimate_ms: 242000.5, spread_ms: 20000, sample_count: 214 }],
+      ["a negative spread", { estimate_ms: 242000, spread_ms: -1, sample_count: 214 }],
+      [
+        "the marker beside a number",
+        { insufficient_history: true, estimate_ms: 242000, spread_ms: 20000, sample_count: 12 },
+      ],
+      ["a marker that is not true", { insufficient_history: false, sample_count: 12 }],
+      ["a window of no days", { insufficient_history: true, sample_count: 12, window_days: 0 }],
+      ["nothing at all", {}],
+    ])("answers null — never an invented number — for %s", (_name, metrics) => {
+      expect(
+        stageEstimate("replayed", { similarity_class: BUILD_CLASS, ...metrics }, REPLAY_POLICY),
+      ).toBeNull();
+    });
+
+    it.each([
+      ["a class that is not a string", 7],
+      ["no class", undefined],
+      ["a class of neither shape", "x"],
+      ["a class that names no known executor", "helios-firmware · pool-a · docker · west build"],
+      // A build in a repository named `tests` reads as a test run of the suite `container · …`.
+      ["a class of both shapes", "pool-a · tests · container · ghcr.io/acme/sdk · make"],
+    ])("leaves the formula null for %s, and still serves the stored numbers", (_name, value) => {
+      expect(
+        stageEstimate(
+          "replayed",
+          { estimate_ms: 242000, spread_ms: 20000, sample_count: 214, similarity_class: value },
+          REPLAY_POLICY,
+        ),
+      ).toMatchObject({ status: "estimated", estimateMs: 242000, formula: null });
+    });
+
+    it("reads a shell build and a repository with no measured test run", () => {
+      const formulaOf = (similarityClass: string): unknown =>
+        stageEstimate(
+          "replayed",
+          { insufficient_history: true, sample_count: 0, similarity_class: similarityClass },
+          REPLAY_POLICY,
+        )?.formula;
+
+      expect(formulaOf("pool-b · helios-firmware · shell · make -j8")).toEqual(BUILD_FORMULA);
+      expect(formulaOf("helios-firmware · tests · no measured test run")).toEqual(TEST_FORMULA);
     });
   });
 
@@ -139,7 +324,7 @@ describe("the dry run's wire shapes", () => {
   });
 
   it("composes a dry run whole: the header, the totals, the rows — and the budget only when given", () => {
-    const resource = dryRunResource(RUN, ticketRow(), [STAGE], []);
+    const resource = dryRunResource(RUN, ticketRow(), [STAGE], [], REPLAY_POLICY);
 
     expect(resource).toMatchObject({
       id: RUN.id,
@@ -156,8 +341,11 @@ describe("the dry run's wire shapes", () => {
       finishedAt: "2026-10-06T15:07:41.000Z",
     });
     expect(resource.stages).toHaveLength(1);
+    expect(resource.stages[0]?.estimate).toMatchObject({ status: "estimated", sampleFloor: 20 });
     expect("budget" in resource).toBe(false);
-    expect(dryRunResource(RUN, ticketRow(), [], [], effectiveBudget(1000, 500)).budget).toEqual({
+    expect(
+      dryRunResource(RUN, ticketRow(), [], [], REPLAY_POLICY, effectiveBudget(1000, 500)).budget,
+    ).toEqual({
       capCents: 500,
       source: "draft_guard",
       workspaceCapCents: 1000,
@@ -178,6 +366,7 @@ describe("the dry run's wire shapes", () => {
       ticketRow(),
       [],
       [],
+      REPLAY_POLICY,
     );
 
     expect(open.totals).toEqual({ durationMs: null, costCents: null, tokens: null });

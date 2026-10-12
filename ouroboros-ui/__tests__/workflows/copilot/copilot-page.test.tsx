@@ -16,12 +16,13 @@ import {
   DISCARD_MEMBER_REASON,
   PROMOTE_MEMBER_REASON,
 } from "@/app/workflows/copilot/copilot-view";
+import { CONTROL_ROLE_REASON, RERUN_LABEL } from "@/app/workflows/copilot/dry-run";
 import { SKELETON_WORKFLOWS } from "@/app/workflows/studio-skeleton";
 import { COPILOT_NEEDS_WORKFLOW_NOTE, STUDIO_EYEBROW } from "@/app/workflows/view";
 
 import { membership, sessionUser } from "../../helpers/login";
 import { renderInBothPalettes } from "../../helpers/palettes";
-import { copilotReadings } from "../../helpers/workflow-copilot";
+import { copilotReadings, copilotReadingsWith, seededBoard, seededStageDraft } from "../../helpers/workflow-copilot";
 
 /**
  * The copilot route (CE.1, #565), its loading file and the skeleton behind it.
@@ -177,6 +178,35 @@ describe("the role, decided at the gate as the other two surfaces decide it", ()
       expect(screen.getByText(`Viewing the studio as a ${role}.`)).toBeInTheDocument();
     },
   );
+});
+
+describe("who may dry-run, decided at the same gate (#568)", () => {
+  /** The readings with the seeded dry run and a draft that has stages. */
+  function withDryRun() {
+    return copilotReadingsWith({
+      draft: { ok: true, value: seededStageDraft() },
+      dryRun: { ok: true, value: seededBoard() },
+    });
+  }
+
+  it.each(["owner", "admin", "member"] as const)("lets an %s re-run the dry run — contributors, not only admins", async (role) => {
+    requireWorkspace.mockResolvedValue(access([role]));
+    readStudioCopilot.mockResolvedValue(withDryRun());
+
+    render(await open("security-patch"));
+
+    expect(screen.getByRole("button", { name: RERUN_LABEL })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("shows a viewer the same card with its controls inert, and the reason", async () => {
+    requireWorkspace.mockResolvedValue(access(["viewer"]));
+    readStudioCopilot.mockResolvedValue(withDryRun());
+
+    render(await open("security-patch"));
+
+    expect(screen.getByRole("button", { name: RERUN_LABEL })).toHaveAttribute("title", CONTROL_ROLE_REASON);
+    expect(screen.getAllByRole("listitem").length).toBeGreaterThan(0);
+  });
 });
 
 describe("the route's loading file", () => {

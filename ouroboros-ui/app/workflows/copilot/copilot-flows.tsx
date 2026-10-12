@@ -73,12 +73,31 @@ import "./copilot.css";
  * `discarded`, and the page draws it read-only because that is what was read.
  */
 
+/** A link a notice carries — a stage the action changed, by its row's fragment. */
+export interface NoticeLink {
+  /** The in-page fragment — `#stage-plan` (`copilot-view.ts`' `stageAnchorHref`). */
+  readonly href: string;
+  /** What the link says. */
+  readonly label: string;
+}
+
+/** The sentence an action left, and the links that follow it. */
+interface Notice {
+  readonly text: string;
+  /** What leads the links — *Changed stages:*. */
+  readonly linksLabel: string | null;
+  readonly links: readonly NoticeLink[];
+}
+
+/** How an action leaves a sentence, with the stages it changed when it changed any. */
+export type Announce = (text: string, links?: readonly NoticeLink[], linksLabel?: string) => void;
+
 /** What the flows share between the head and the body. */
 interface CopilotFlowsValue {
-  /** The sentence the last action left, or `null`. */
-  readonly notice: string | null;
+  /** What the last action left, or `null`. */
+  readonly notice: Notice | null;
   /** Leave a sentence. */
-  readonly announce: (text: string) => void;
+  readonly announce: Announce;
   /** Dismiss it. */
   readonly dismiss: () => void;
 }
@@ -95,16 +114,40 @@ const CopilotFlowsContext = createContext<CopilotFlowsValue | null>(null);
  * @returns The page, inside the flows.
  */
 export function CopilotFlows({ children }: Readonly<{ children: ReactNode }>) {
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const dismiss = useCallback(() => setNotice(null), []);
-  const value = useMemo<CopilotFlowsValue>(() => ({ notice, announce: setNotice, dismiss }), [notice, dismiss]);
+  const announce = useCallback<Announce>(
+    (text, links = [], linksLabel) => setNotice({ text, links, linksLabel: linksLabel ?? null }),
+    [],
+  );
+  const value = useMemo<CopilotFlowsValue>(() => ({ notice, announce, dismiss }), [notice, announce, dismiss]);
 
   return <CopilotFlowsContext.Provider value={value}>{children}</CopilotFlowsContext.Provider>;
 }
 
 /**
+ * How a card on this page leaves a sentence in the page's notice (CE.4,
+ * [#568](https://github.com/NobuData/ouroboros/issues/568)) — the dry-run card's *Applied — the
+ * draft is now v0.4.*, with the stages it changed.
+ *
+ * @returns The announcer; outside the flows, one that does nothing.
+ */
+export function useCopilotAnnounce(): Announce {
+  const flows = useContext(CopilotFlowsContext);
+
+  return flows === null ? NO_ANNOUNCE : flows.announce;
+}
+
+/** The announcer of a card drawn outside the flows. */
+const NO_ANNOUNCE: Announce = () => {};
+
+/**
  * The sentence the last action left, above the grid — the studio toast's treatment. It stays
  * until dismissed, for `studio-toast.tsx`'s reason.
+ *
+ * A notice may carry links to the stages its action changed. They are plain fragment anchors,
+ * not router links: the stage list hears a press on one (`stage-target.ts`) and brings the row
+ * into view.
  *
  * @returns The notice while there is one; nothing otherwise, and nothing outside the flows.
  */
@@ -112,9 +155,26 @@ export function CopilotNotice() {
   const flows = useContext(CopilotFlowsContext);
   if (flows === null || flows.notice === null) return null;
 
+  const { text, links, linksLabel } = flows.notice;
+
   return (
     <div className="studio-toast" role="status">
-      <span className="studio-toast__text">{flows.notice}</span>
+      <span className="studio-toast__text">
+        {text}
+        {links.length > 0 && (
+          <span className="copilot-view__notice-links">
+            {linksLabel !== null && <> {linksLabel}</>}
+            {links.map((link) => (
+              <span key={link.href}>
+                {" "}
+                <a className="copilot-view__notice-link" href={link.href}>
+                  {link.label}
+                </a>
+              </span>
+            ))}
+          </span>
+        )}
+      </span>
       <Button aria-label={DISMISS_TOAST_LABEL} onClick={flows.dismiss} size="sm" tone="ghost">
         ×
       </Button>

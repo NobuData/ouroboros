@@ -28,6 +28,8 @@ import type {
   DryRunStatus,
 } from "../db/schema";
 import type { EngineDryRunStage } from "../engine/engine.dryruns";
+import { type ReplayPolicy, replayKindOfClass } from "../replay-estimates/replay.estimate";
+import { REPLAY_FORMULA_SUMMARIES, replayFormula } from "../replay-estimates/replay.formulas";
 import type { PublishFinding } from "../workflows/publish.gate";
 import type { DryRunBudget } from "./dry-runs.budget";
 import type { PickerCandidate } from "./dry-runs.picker";
@@ -43,6 +45,37 @@ export interface DryRunTicketResource {
   readonly url: string;
 }
 
+/** The formula a replayed row's estimate was computed with, as the row names it. */
+export interface DryRunStageFormulaResource {
+  /** `build_duration_replay` | `test_duration_replay`. */
+  readonly id: string;
+  readonly version: number;
+  /** The computation in one sentence, from the registry. */
+  readonly summary: string;
+}
+
+/**
+ * A replayed row's estimate with its basis, read out of the row's `metrics`.
+ *
+ * `estimated` carries the median and its spread; `insufficient_history` carries **no number** —
+ * only the count found and the floor it fell short of.
+ */
+export interface DryRunStageEstimateResource {
+  readonly status: "estimated" | "insufficient_history";
+  /** The median wall time of the sample; `null` without enough history. */
+  readonly estimateMs: number | null;
+  /** The median absolute deviation of the sample; `null` without enough history. */
+  readonly spreadMs: number | null;
+  /** How many samples matched. */
+  readonly sampleCount: number;
+  /** The fewest samples an estimate may rest on — the policy in force now. */
+  readonly sampleFloor: number;
+  /** The window the sample was read over: the row's own, else the policy's. */
+  readonly windowDays: number;
+  /** The registered formula, or `null` when the row's similarity class does not say which. */
+  readonly formula: DryRunStageFormulaResource | null;
+}
+
 /** One result row of the card. */
 export interface DryRunStageResource {
   readonly seq: number;
@@ -55,6 +88,8 @@ export interface DryRunStageResource {
   readonly howLabel: string | null;
   readonly note: string;
   readonly metrics: Readonly<Record<string, unknown>>;
+  /** The estimate of a `replayed` row, with its basis; `null` on every other row. */
+  readonly estimate: DryRunStageEstimateResource | null;
   readonly skipReason: string | null;
   /** Why it skipped, as a value — `null` unless the row skipped (and on rows older than V128). */
   readonly skipKind: DryRunSkipKind | null;
@@ -230,6 +265,88 @@ export function stageHowLabel(
 }
 
 /**
+ * Whether a stored metric is a whole number of at least `least`.
+ *
+ * @param value - The metric, as stored.
+ * @param least - The smallest value allowed.
+ * @returns `true` for a safe integer at or above it.
+ */
+function wholeAtLeast(value: unknown, least: number): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= least;
+}
+
+/**
+ * The formula a similarity class was sampled with.
+ *
+ * @param similarityClass - The row's `metrics.similarity_class`.
+ * @returns Its id, version and one-sentence summary, or `null` when the class is missing or
+ *   does not say whether a build or a test run was sampled.
+ */
+function stageFormula(similarityClass: unknown): DryRunStageFormulaResource | null {
+  const kind = typeof similarityClass === "string" ? replayKindOfClass(similarityClass) : null;
+
+  if (kind === null) return null;
+
+  const { id, version } = replayFormula(kind);
+
+  return { id, version, summary: REPLAY_FORMULA_SUMMARIES[kind] };
+}
+
+/**
+ * A replayed row's estimate, read out of its metrics — nothing here is computed, and nothing is
+ * filled in.
+ *
+ * The two shapes are the ones `dry_run_stage_metrics_valid()` (V121) accepts: `estimate_ms` with
+ * `spread_ms` and a `sample_count` of at least one, or `insufficient_history: true` with the
+ * count found and neither number. Metrics that are neither — a streamed row is not yet held to
+ * the table's CHECK — have no honest estimate to show, so the answer is `null`.
+ *
+ * @param how - How the row's result was produced.
+ * @param metrics - The row's metrics.
+ * @param policy - The window and floor in force, read once by the caller. The floor is not
+ *   stored on a row; the window is used only for a row that does not carry its own.
+ * @returns The estimate block; `null` for a row that is not replayed or whose metrics are not
+ *   one of the two shapes.
+ */
+export function stageEstimate(
+  how: DryRunStageHow,
+  metrics: Readonly<Record<string, unknown>>,
+  policy: ReplayPolicy,
+): DryRunStageEstimateResource | null {
+  if (how !== "replayed") return null;
+
+  const {
+    estimate_ms: estimateMs,
+    spread_ms: spreadMs,
+    sample_count: sampleCount,
+    window_days: storedWindow,
+  } = metrics;
+  const windowDays = storedWindow === undefined ? policy.windowDays : storedWindow;
+
+  if (!wholeAtLeast(sampleCount, 0) || !wholeAtLeast(windowDays, 1)) return null;
+
+  const basis = {
+    sampleCount,
+    sampleFloor: policy.sampleFloor,
+    windowDays,
+    formula: stageFormula(metrics.similarity_class),
+  };
+
+  if ("insufficient_history" in metrics) {
+    // The marker and a number together are a contradiction, not an estimate.
+    return metrics.insufficient_history === true &&
+      estimateMs === undefined &&
+      spreadMs === undefined
+      ? { status: "insufficient_history", estimateMs: null, spreadMs: null, ...basis }
+      : null;
+  }
+
+  return wholeAtLeast(estimateMs, 0) && wholeAtLeast(spreadMs, 0) && sampleCount >= 1
+    ? { status: "estimated", estimateMs, spreadMs, ...basis }
+    : null;
+}
+
+/**
  * A nullable `bigint` column as a number.
  *
  * @param value - What the driver returned.
@@ -243,9 +360,10 @@ function bigintOrNull(value: string | number | null): number | null {
  * A stored stage row, as the API shows it.
  *
  * @param row - The row.
+ * @param policy - The replay policy in force, for a replayed row's estimate.
  * @returns The resource.
  */
-export function dryRunStage(row: DryRunStage): DryRunStageResource {
+export function dryRunStage(row: DryRunStage, policy: ReplayPolicy): DryRunStageResource {
   return {
     seq: row.seq,
     stageKey: row.stage_key,
@@ -255,6 +373,7 @@ export function dryRunStage(row: DryRunStage): DryRunStageResource {
     howLabel: stageHowLabel(row.how, row.metrics),
     note: row.note,
     metrics: row.metrics,
+    estimate: stageEstimate(row.how, row.metrics, policy),
     skipReason: row.skip_reason,
     skipKind: row.skip_kind,
     skipInput: row.skip_input,
@@ -268,9 +387,10 @@ export function dryRunStage(row: DryRunStage): DryRunStageResource {
  * and the row a reload reads are one shape.
  *
  * @param stage - The harness's row.
+ * @param policy - The replay policy in force, for a replayed row's estimate.
  * @returns The resource.
  */
-export function streamedStage(stage: EngineDryRunStage): DryRunStageResource {
+export function streamedStage(stage: EngineDryRunStage, policy: ReplayPolicy): DryRunStageResource {
   return {
     seq: stage.seq,
     stageKey: stage.stageKey,
@@ -280,6 +400,7 @@ export function streamedStage(stage: EngineDryRunStage): DryRunStageResource {
     howLabel: stageHowLabel(stage.how, stage.metrics),
     note: stage.note,
     metrics: stage.metrics,
+    estimate: stageEstimate(stage.how, stage.metrics, policy),
     skipReason: stage.skipReason,
     skipKind: stage.skipKind,
     skipInput: stage.skipInput,
@@ -340,6 +461,7 @@ function totalsOf(run: DryRun): DryRunResource["totals"] {
  * @param ticket - The ticket it ran against.
  * @param stages - Its result rows.
  * @param artifacts - Its artifacts.
+ * @param policy - The replay policy in force, for the replayed rows' estimates.
  * @param budget - The budget it was started under, on a start's answer.
  * @returns The resource.
  */
@@ -348,6 +470,7 @@ export function dryRunResource(
   ticket: Pick<DryRunTicketRow, "id" | "external_key" | "title" | "external_url">,
   stages: readonly DryRunStage[],
   artifacts: readonly DryRunArtifact[],
+  policy: ReplayPolicy,
   budget?: DryRunBudget,
 ): DryRunResource {
   return {
@@ -375,7 +498,7 @@ export function dryRunResource(
     precheckFindings: run.precheck_findings as PublishFinding[] | null,
     startedAt: run.started_at.toISOString(),
     finishedAt: run.finished_at?.toISOString() ?? null,
-    stages: stages.map(dryRunStage),
+    stages: stages.map((stage) => dryRunStage(stage, policy)),
     artifacts: artifacts.map(dryRunArtifact),
     ...(budget === undefined ? {} : { budget: dryRunBudget(budget) }),
   };

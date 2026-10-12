@@ -15,6 +15,7 @@ import type {
   EngineDryRunStage,
 } from "../engine/engine.dryruns";
 import { engineUnavailable } from "../engine/engine.errors";
+import type { ReplayPolicy } from "../replay-estimates/replay.estimate";
 import type {
   DryRunEnding,
   DryRunSpendRow,
@@ -22,6 +23,9 @@ import type {
   DryRunsRepository,
   NewDryRun,
 } from "./dry-runs.repository";
+
+/** The replay policy the store answers — `replay_estimate_policy()` as V121 defines it. */
+export const REPLAY_POLICY: ReplayPolicy = { windowDays: 30, sampleFloor: 20 };
 
 export const WORKSPACE = "acme-robotics-id";
 export const WORKFLOW_ID = "5eed0089-0000-4000-8000-000000000001";
@@ -327,6 +331,10 @@ export class DryRunStore {
     return Promise.resolve(
       this.stageRows.filter((row) => row.dry_run_id === dryRunId).sort((a, b) => a.seq - b.seq),
     );
+  }
+
+  replayPolicy(): Promise<ReplayPolicy> {
+    return Promise.resolve(REPLAY_POLICY);
   }
 
   artifacts(dryRunId: string): Promise<DryRunArtifact[]> {

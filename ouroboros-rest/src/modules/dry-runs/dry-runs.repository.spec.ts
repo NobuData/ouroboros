@@ -304,6 +304,18 @@ describe("the dry-runs repository", () => {
     expect(history?.parameters).toEqual([WORKSPACE, WORKFLOW_ID, 50]);
   });
 
+  it("reads the replay policy from the database's own function, in one statement", async () => {
+    database.answers({ rows: [{ window_days: 30, sample_floor: 20 }] });
+
+    expect(await dryRuns.replayPolicy()).toEqual({ windowDays: 30, sampleFloor: 20 });
+    expect(only().sql).toContain('"ouroboros".replay_estimate_policy()');
+    expect(only().parameters).toEqual([]);
+
+    await expect(dryRuns.replayPolicy()).rejects.toThrow(
+      "replay_estimate_policy() answered no row",
+    );
+  });
+
   it("sums the dry-run accounting from dry_runs alone, keeping unpriced apart from free", async () => {
     database.answers({ rows: [{ runs: "3", cost_cents: "62", unpriced: "1" }] });
 

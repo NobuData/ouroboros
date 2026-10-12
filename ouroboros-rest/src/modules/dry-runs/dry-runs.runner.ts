@@ -312,6 +312,9 @@ export class DryRunRunner implements OnModuleDestroy {
     let ending: DryRunEnding;
 
     try {
+      // Read once for the run: what a replayed row's estimate is held to as it is relayed.
+      const policy = await this.dryRuns.replayPolicy();
+
       for await (const event of this.engine.dryRun(request, live.abort.signal)) {
         switch (event.kind) {
           case "stage_started":
@@ -319,7 +322,7 @@ export class DryRunRunner implements OnModuleDestroy {
             break;
           case "stage_finished":
             await this.dryRuns.insertStage(run, event.stage);
-            this.emit(live, { kind: "stage_finished", stage: streamedStage(event.stage) });
+            this.emit(live, { kind: "stage_finished", stage: streamedStage(event.stage, policy) });
             break;
           case "guard_blocked":
             this.emit(live, event);

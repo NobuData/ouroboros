@@ -29,16 +29,17 @@ export class DryRunRecords {
    *   impossible while the run exists.
    */
   async resource(run: DryRun, budget?: DryRunBudget): Promise<DryRunResource> {
-    const [ticket, stages, artifacts] = await Promise.all([
+    const [ticket, stages, artifacts, policy] = await Promise.all([
       this.dryRuns.ticket(run.organization_id, run.ticket_id),
       this.dryRuns.stages(run.id),
       this.dryRuns.artifacts(run.id),
+      this.dryRuns.replayPolicy(),
     ]);
 
     if (ticket === undefined) {
       throw new Error(`dry run ${run.id} names a ticket that no longer exists`);
     }
 
-    return dryRunResource(run, ticket, stages, artifacts, budget);
+    return dryRunResource(run, ticket, stages, artifacts, policy, budget);
   }
 }

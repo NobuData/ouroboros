@@ -5,7 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CopilotStageDraft } from "@/app/api/workflow-copilot";
 import { workflowCodePath, workflowNodePath, workflowPath } from "@/app/paths";
 import { DEFAULT_POLL_SECONDS, type PollAnswer } from "@/app/poll";
-import { publishDraft, publishOperation, publishStreaming, resetCopilotLive } from "@/app/workflows/copilot/copilot-live";
+import {
+  publishDraft,
+  publishOperation,
+  publishStreaming,
+  resetCopilotLive,
+  touchDraft,
+} from "@/app/workflows/copilot/copilot-live";
 import { stageAnchorHref, stageAnchorId } from "@/app/workflows/copilot/copilot-view";
 import {
   NOT_RUNNABLE,
@@ -34,6 +40,7 @@ import {
   copilotPromotion,
   freshDraft,
   seededAliases,
+  seededDraftDefinition,
   seededProvenance,
   seededStageDraft,
 } from "../../helpers/workflow-copilot";
@@ -631,6 +638,41 @@ describe("the poll", () => {
     await land();
 
     expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks at once when the dry-run card says it changed the draft, and shows what it reads (#568)", async () => {
+    renderCard();
+    await land();
+    expect(read).toHaveBeenCalledOnce();
+
+    // An applied suggestion made v0.4 with a new stage; nothing streamed, and no interval passed.
+    const definition = seededDraftDefinition();
+    answer = freshDraft(
+      seededStageDraft({
+        label: "v0.4",
+        definition: { ...definition, nodes: [...(definition.nodes as unknown[]), FUZZ] } as typeof definition,
+      }),
+    );
+    act(() => touchDraft(SECURITY_PATCH_ID));
+    await land();
+
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(card()).toHaveTextContent("draft v0.4");
+  });
+
+  it("asks once per change the card reports, and not at all for a workflow that was not touched", async () => {
+    renderCard();
+    await land();
+
+    act(() => touchDraft("another-workflow"));
+    await land();
+    expect(read).toHaveBeenCalledOnce();
+
+    act(() => touchDraft(SECURITY_PATCH_ID));
+    await land();
+    act(() => touchDraft(SECURITY_PATCH_ID));
+    await land();
+    expect(read).toHaveBeenCalledTimes(3);
   });
 
   it("does not ask while the tab is hidden, and asks at once when it is shown again", async () => {

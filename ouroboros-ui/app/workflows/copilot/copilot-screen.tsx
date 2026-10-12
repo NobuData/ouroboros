@@ -10,8 +10,10 @@ import { StudioFrame } from "../studio-frame";
 import { StudioReadOnlyNote } from "../studio-readonly-note";
 import { WorkflowRail } from "../workflow-rail";
 import { ConversationCard } from "./conversation-card";
+import { DryRunCard } from "./dry-run-card";
+import { DRY_RUN_FAILED_HEADLINE } from "./dry-run";
 import { StagesCard } from "./stages-card";
-import { DRAFT_FAILED_HEADLINE } from "./stages";
+import { DRAFT_FAILED_HEADLINE, stageOrder } from "./stages";
 import { CopilotFlows, CopilotHeadActions, CopilotNotice } from "./copilot-flows";
 import {
   CONVERSATION_FAILED_HEADLINE,
@@ -57,7 +59,7 @@ import "./copilot.css";
  * to discard. Both are drawn for every reader and are inert, with the reason, for one who may not
  * act.
  *
- * ### The conversation and the stage list are drawn; the dry run is seated
+ * ### The conversation, the stage list and the dry run
  *
  * The conversation is CE.2's card (#566, `conversation-card.tsx`), in mockup 20's left column: it
  * takes what this route read — the conversation and the service's readiness — and is the same
@@ -71,14 +73,17 @@ import "./copilot.css";
  * for every reader. A draft that could not be read keeps a labelled seat under the banner that
  * says so.
  *
- * The dry-run card (CE.4, #568) is a later ticket. It has a **labelled seat** under the stage
- * list that says which issue fills it. No result is faked.
+ * The dry run is CE.4's card (#568, `dry-run-card.tsx`), under the stage list: it takes the board
+ * this route read — the history, the newest run and its suggestions — follows a run in flight by
+ * itself, and is the same card for every reader. Its writes are for owners, admins **and
+ * members** (`mayContribute`), wider than the conversation's; a viewer reads it with its controls
+ * inert. A board that could not be read keeps a labelled seat under the banner that says so.
  *
  * ### The role, and the states
  *
  * The same `mayAdminister` and the same read-only note as the other two surfaces. A refused rail
  * and an empty workspace draw one seat in place of the three; a refused promotion summary,
- * conversation or draft wears the studio's banner and takes only its own region with it.
+ * conversation, draft or dry run wears the studio's banner and takes only its own region with it.
  */
 
 /** What the screen takes. */
@@ -92,6 +97,11 @@ export interface CopilotScreenProps {
   readonly mayAdminister?: boolean;
   /** The reader's strongest role, for the read-only note's one sentence. Defaults to `viewer`. */
   readonly role?: Role;
+  /**
+   * Whether this reader's role may start dry runs and settle suggestions — owners, admins and
+   * members. Defaults to `mayAdminister`, so a caller that says nothing grants nothing wider.
+   */
+  readonly mayContribute?: boolean;
 }
 
 /**
@@ -100,7 +110,12 @@ export interface CopilotScreenProps {
  * @param props See {@link CopilotScreenProps}.
  * @returns The screen.
  */
-export function CopilotScreen({ readings, mayAdminister = false, role = "viewer" }: CopilotScreenProps) {
+export function CopilotScreen({
+  readings,
+  mayAdminister = false,
+  role = "viewer",
+  mayContribute = mayAdminister,
+}: CopilotScreenProps) {
   const state = copilotState(readings);
   const open = state.kind === "open" ? state : null;
   // The rail as served, or nothing for a rail nobody could read — the tile still draws.
@@ -136,6 +151,9 @@ export function CopilotScreen({ readings, mayAdminister = false, role = "viewer"
       )}
       {open !== null && !open.draft.ok && (
         <StudioFailedBanner headline={DRAFT_FAILED_HEADLINE} reason={open.draft.reason} />
+      )}
+      {open !== null && !open.dryRun.ok && (
+        <StudioFailedBanner headline={DRY_RUN_FAILED_HEADLINE} reason={open.dryRun.reason} />
       )}
 
       <div className="studio__grid">
@@ -183,7 +201,22 @@ export function CopilotScreen({ readings, mayAdminister = false, role = "viewer"
               ) : (
                 <Seat id="stages" />
               )}
-              <Seat id="dry-run" />
+              {open.dryRun.ok ? (
+                <DryRunCard
+                  // Keyed by the workflow, so another workflow's page starts its own card.
+                  key={open.entry.id}
+                  board={open.dryRun.value}
+                  conversation={open.conversation.ok ? open.conversation.value : null}
+                  definition={anchorDefinition(open)}
+                  // A draft that could not be read gates nothing: the service refuses what it must.
+                  hasStages={!open.draft.ok || stageOrder(open.draft.value.definition).length > 0}
+                  mayContribute={mayContribute}
+                  now={readings.now}
+                  workflowId={open.entry.id}
+                />
+              ) : (
+                <Seat id="dry-run" />
+              )}
             </div>
           </div>
         )}
@@ -199,8 +232,8 @@ export function CopilotScreen({ readings, mayAdminister = false, role = "viewer"
 const NO_ALIASES: readonly never[] = [];
 
 /**
- * One region without its card: the region's heading over one honest line — which issue builds
- * what will be here, or, for the conversation and the stage list, that it could not be read.
+ * One region without its card: the region's heading over one honest line — that it could not
+ * be read.
  *
  * The seat owns the element id (`copilot-view.ts`' `seatElementId`) and the heading, so a link to
  * the region lands on the same element before and after its card arrives.

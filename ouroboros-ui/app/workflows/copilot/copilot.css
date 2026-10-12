@@ -258,6 +258,27 @@
   font-size: var(--t-xs);
 }
 
+/* ---------- the notice's links (CE.4, #568) ---------- */
+
+/* The stages an applied suggestion changed, after the sentence: mono, as a stage's id is everywhere. */
+.copilot-view__notice-links {
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+}
+
+.copilot-view__notice-link {
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  text-decoration: underline;
+  text-underline-offset: 0.1875rem;
+}
+
+.copilot-view__notice-link:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
 /* ---------- the loading skeleton ---------- */
 
 /* The body's two columns, on the body's own rule, with a block where each seat will be. */

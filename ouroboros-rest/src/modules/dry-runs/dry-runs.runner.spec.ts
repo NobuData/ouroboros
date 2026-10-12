@@ -87,7 +87,13 @@ const IMPLEMENT = harnessStage(2, "implement", { metrics: { tokens: 84000, simul
 const BUILD = harnessStage(3, "build", {
   how: "replayed",
   note: "est. 4m 02s (214 similar builds, ±20s)",
-  metrics: { estimate_ms: 242000, sample_count: 214, spread_ms: 20000, similarity_class: "x" },
+  metrics: {
+    estimate_ms: 242000,
+    sample_count: 214,
+    spread_ms: 20000,
+    similarity_class: "pool-a · helios-firmware · container · ghcr.io/acme/zephyr-sdk · west build",
+    window_days: 30,
+  },
 });
 
 describe("how a dry run ends", () => {
@@ -251,8 +257,22 @@ describe("a dry run in flight", () => {
     });
     expect(events[4]).toMatchObject({ stage: { stageKey: "implement", howLabel: "simulated" } });
     expect(events[6]).toMatchObject({
-      stage: { stageKey: "build", howLabel: "replayed from history" },
+      stage: {
+        stageKey: "build",
+        howLabel: "replayed from history",
+        // The relayed row carries its estimate as the reloaded one will: same block, same floor.
+        estimate: {
+          status: "estimated",
+          estimateMs: 242000,
+          spreadMs: 20000,
+          sampleCount: 214,
+          sampleFloor: 20,
+          windowDays: 30,
+          formula: { id: "build_duration_replay", version: 1 },
+        },
+      },
     });
+    expect(events[4]).toMatchObject({ stage: { estimate: null } });
 
     const done = events.at(-1);
     expect(done).toMatchObject({

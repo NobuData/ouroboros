@@ -1,0 +1,788 @@
+/*
+ * The workflow copilot's dry-run card — CE.4 (#568), docs/mockups/20-workflow-copilot.html's
+ * `.res-row`, simulated diff and `.suggest` callouts.
+ *
+ * The card, its head, the pill, the buttons and the dialogs' frames are the design system's
+ * primitives. What is here is what only a dry-run card draws: the result rows with their mark,
+ * the `how` label in its own treatment, the provenance a replayed row opens, the run's end
+ * states, the diff in its bounded scroller, the glowing callouts, the picker, and the footer.
+ *
+ * Every colour is a token, so the light and dark renderings are the token sheet's; every size is
+ * a token or a rem, so the font-size preference scales the surface (the 125% step included).
+ *
+ * Two things scroll inside themselves — the diff, and an operation's raw params — each bounded
+ * in rem; a long note wraps instead. Nothing is positioned out of the flow: a row's provenance
+ * and a confidence's basis open under their own line, where no scroller can clip them.
+ */
+
+/* ---------- the card ---------- */
+
+.copilot-dry {
+  /* The containing block for the card's visually hidden text (`.sr-only` is
+     `position: absolute`): without one it is laid out against the document and stretches it
+     past the viewport, which the shell forbids. */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The title, the pill and the totals wrap rather than clip at a large type size. */
+.copilot-dry__head {
+  flex-wrap: wrap;
+  row-gap: var(--sp-3);
+}
+
+/* A long ticket title wraps inside the card. A fixed one-line width would be wider than the
+   column at the larger type scales and push the pane sideways; the whole title stays in the
+   element's `title` too. */
+.copilot-dry__title {
+  overflow-wrap: anywhere;
+}
+
+.copilot-dry__totals {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+
+/* ---------- the result rows ---------- */
+
+.copilot-dry__rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.copilot-dry__row {
+  /* The containing block for the row's own visually hidden text. */
+  position: relative;
+  padding: var(--sp-4) 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--t-sm);
+}
+
+.copilot-dry__row:last-child {
+  border-bottom: 0;
+}
+
+/* A stage that has started and not finished: dimmed, since there is no result to read yet. */
+.copilot-dry__row--running {
+  color: var(--ink-mut);
+}
+
+.copilot-dry__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2) var(--sp-5);
+  min-width: 0;
+}
+
+.copilot-dry__mark {
+  flex: none;
+  width: 1rem;
+  font-family: var(--f-mono);
+  text-align: center;
+}
+
+.copilot-dry__mark--ok {
+  color: var(--ok);
+}
+
+.copilot-dry__mark--warn {
+  color: var(--warn);
+}
+
+.copilot-dry__mark--idle {
+  color: var(--ink-faint);
+}
+
+.copilot-dry__mark--err {
+  color: var(--err);
+}
+
+.copilot-dry__mark--live {
+  color: var(--accent);
+}
+
+.copilot-dry__stage {
+  color: var(--ink);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/*
+ * The `how` label — load-bearing typography. Mono and bracketed so it reads as a statement
+ * about the row rather than part of its name, in the muted ink (not the faint one: this is the
+ * line that says a build did not run) and on the warning hue for a skip.
+ */
+.copilot-dry__how {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+}
+
+.copilot-dry__how--warn {
+  color: var(--warn);
+}
+
+.copilot-dry__info {
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--accent);
+  font-size: var(--t-sm);
+  line-height: var(--lh-snug);
+  cursor: pointer;
+}
+
+.copilot-dry__info:hover {
+  color: var(--ink);
+}
+
+.copilot-dry__info:focus-visible,
+.copilot-dry__confidence:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: var(--sp-1);
+}
+
+/* The service's note, at the row's trailing edge; it wraps rather than widening the card. */
+.copilot-dry__note {
+  flex: 1 1 12rem;
+  min-width: 0;
+  margin-left: auto;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.copilot-dry__note--warn {
+  color: var(--warn);
+}
+
+/* Under the row's line, in the flow: the estimate with its sample, or that there was none. */
+.copilot-dry__provenance,
+.copilot-dry__basis {
+  margin: var(--sp-4) 0 var(--sp-2) 1.625rem;
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: var(--inset);
+}
+
+.copilot-dry__basis {
+  margin-left: 0;
+}
+
+.copilot-dry__provenance[hidden],
+.copilot-dry__basis[hidden] {
+  display: none;
+}
+
+.copilot-dry__provenance-lead {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.copilot-dry__formula {
+  margin: var(--sp-3) 0 0;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* Terms and values, as the service keyed them. */
+.copilot-dry__facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0 0;
+}
+
+.copilot-dry__fact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-5);
+  min-width: 0;
+}
+
+.copilot-dry__term {
+  flex: none;
+  min-width: 9rem;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.copilot-dry__value {
+  flex: 1 1 10rem;
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* A run in flight with nothing to show yet, a read still out, a list that came back empty. */
+.copilot-dry__waiting {
+  margin: var(--sp-5) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* ---------- how the run ended, and a refused start ---------- */
+
+.copilot-dry__state,
+.copilot-dry__guard,
+.copilot-dry__refusal {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  margin: 0 0 var(--sp-6);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ink-faint);
+  border-radius: var(--r-sm);
+  background: var(--inset);
+}
+
+.copilot-dry__state--err,
+.copilot-dry__refusal {
+  border-color: var(--err-line);
+  border-left-color: var(--err);
+  background: var(--err-tint);
+}
+
+.copilot-dry__state--warn {
+  border-color: var(--warn-line);
+  border-left-color: var(--warn);
+  background: var(--warn-tint);
+}
+
+.copilot-dry__state--quiet {
+  border-left-color: var(--ink-faint);
+}
+
+/*
+ * A guard that had to hold: not a failure among failures. A full error rim, a heavier rule and
+ * the error ink on its heading, so it cannot be read as the box a failed run gets.
+ */
+.copilot-dry__guard {
+  border: 1px solid var(--err);
+  border-left: 0.375rem solid var(--err);
+  background: var(--err-tint);
+}
+
+.copilot-dry__guard .copilot-dry__state-title {
+  color: var(--err);
+  font-size: var(--t-md);
+}
+
+.copilot-dry__state-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  line-height: var(--lh-snug);
+}
+
+.copilot-dry__state-text {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.copilot-dry__blocked {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.copilot-dry__blocked-call {
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- the simulated diff ---------- */
+
+/* The shared diff treatments — the PR page's well, type and line tokens (prs.css, runs.css). */
+.copilot-dry__diff {
+  margin-top: var(--sp-7);
+  border-radius: var(--r-sm);
+  background: var(--inset);
+}
+
+/* Inside the block: what this is, before a line of it is read. */
+.copilot-dry__diff-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-6);
+  margin: 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.copilot-dry__diff-what {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.copilot-dry__diff-file {
+  color: var(--ink-dim);
+  overflow-wrap: anywhere;
+}
+
+/* The block scrolls both ways in its own wrapper, so neither a long line nor a long diff moves the pane. */
+.copilot-dry__diff-scroll {
+  display: flex;
+  max-block-size: 22rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.copilot-dry__diff-scroll:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.copilot-dry__diff-block {
+  flex: 1 0 auto;
+  margin: 0;
+  padding: var(--sp-4) var(--sp-6);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-loose);
+}
+
+.copilot-dry__diff-line {
+  display: block;
+  white-space: pre;
+}
+
+.copilot-dry__diff-line--file,
+.copilot-dry__diff-line--ctx {
+  color: var(--ink-faint);
+}
+
+.copilot-dry__diff-line--hunk {
+  color: var(--accent);
+}
+
+.copilot-dry__diff-line--del {
+  background: var(--err-tint);
+  color: var(--err);
+}
+
+.copilot-dry__diff-line--add {
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+.copilot-dry__diff-truncated {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-6);
+  border-top: 1px solid var(--line);
+  color: var(--warn);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the suggestion callouts ---------- */
+
+.copilot-dry__suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  margin: var(--sp-8) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * Mockup 20's `.suggest`: the only accent glow on the page besides the primary buttons. The rim,
+ * the wash and the glow are the accent's own tokens, so both palettes carry it.
+ */
+.copilot-dry__suggest {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-5);
+  padding: var(--sp-7) var(--sp-8);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--accent-tint), var(--accent-wash));
+  box-shadow: 0 0 1.375rem -0.375rem var(--accent-glow);
+}
+
+.copilot-dry__spark {
+  flex: none;
+  color: var(--accent);
+  font-size: var(--t-lg);
+  line-height: var(--lh-snug);
+  text-shadow: 0 0 0.625rem var(--accent-glow);
+}
+
+.copilot-dry__suggest-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.copilot-dry__suggest-body {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.copilot-dry__suggest-title,
+.copilot-dry__strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.copilot-dry__code {
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--inset);
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* The confidence is a control: it opens how the number was scored. */
+.copilot-dry__confidence {
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.copilot-dry__confidence:hover {
+  color: var(--ink);
+}
+
+/* A suggestion the model made: a dashed mark in the model's hue, and never a percentage. */
+.copilot-dry__llm {
+  padding: 0 var(--sp-3);
+  border: 1px dashed var(--model);
+  border-radius: var(--r-xs);
+  color: var(--model);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+}
+
+.copilot-dry__source {
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.copilot-dry__suggest-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  margin-top: var(--sp-5);
+}
+
+.copilot-dry__advice {
+  margin: var(--sp-4) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.copilot-dry__failure {
+  margin: var(--sp-4) 0 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* Settled suggestions: one quiet line each — never a glow. */
+.copilot-dry__resolved {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: var(--sp-6) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.copilot-dry__resolved-line {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- the dialogs ---------- */
+
+.copilot-dry__dialog-heading {
+  margin: var(--sp-8) 0 var(--sp-3);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 600;
+  letter-spacing: 0.05rem;
+  text-transform: uppercase;
+}
+
+.copilot-dry__ops {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin: 0;
+  padding-left: var(--sp-9);
+}
+
+.copilot-dry__op {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.copilot-dry__op-phrase {
+  font-weight: 600;
+}
+
+.copilot-dry__op-raw {
+  margin-top: var(--sp-2);
+}
+
+.copilot-dry__op-summary {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+
+.copilot-dry__op-kind {
+  color: var(--accent);
+  font-family: var(--f-mono);
+}
+
+.copilot-dry__op-params {
+  max-block-size: 14rem;
+  margin: var(--sp-3) 0 0;
+  padding: var(--sp-4) var(--sp-5);
+  overflow: auto;
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-loose);
+}
+
+.copilot-dry__revision {
+  margin: var(--sp-6) 0 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.copilot-dry__dialog-refusal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-6);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--err-line);
+  border-left: 3px solid var(--err);
+  border-radius: var(--r-sm);
+  background: var(--err-tint);
+}
+
+.copilot-dry__dialog-refusal-text {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.copilot-dry__explain {
+  min-width: 0;
+}
+
+.copilot-dry__rule {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+}
+
+.copilot-dry__explain-text {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.copilot-dry__explain-text--model {
+  padding-left: var(--sp-5);
+  border-left: 3px solid var(--model);
+}
+
+/* ---------- the footer ---------- */
+
+.copilot-dry__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4) var(--sp-6);
+  margin-top: var(--sp-8);
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--line);
+}
+
+.copilot-dry__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+.copilot-dry__history {
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* Why a control cannot act, or what it will act on — in the page, not only as a tooltip. */
+.copilot-dry__why {
+  margin: var(--sp-4) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.copilot-dry__proposal {
+  margin: var(--sp-5) 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- the picker ---------- */
+
+/* In the flow, under the footer: a ranked list with reasons has no business in a clipped menu. */
+.copilot-dry__picker {
+  margin-top: var(--sp-6);
+  padding: var(--sp-6) var(--sp-7);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+  text-align: left;
+}
+
+.copilot-dry__picker-note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.copilot-dry__picker-missing {
+  margin: var(--sp-3) 0 0;
+  color: var(--warn);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.copilot-dry__candidates {
+  display: flex;
+  flex-direction: column;
+  margin: var(--sp-4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.copilot-dry__candidate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-3) var(--sp-5);
+  padding: var(--sp-5) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.copilot-dry__candidate:last-child {
+  border-bottom: 0;
+}
+
+.copilot-dry__rank {
+  flex: none;
+  width: 1.25rem;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.copilot-dry__candidate-main {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.copilot-dry__candidate-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.copilot-dry__key {
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* Why it ranks where it does — the picker's lesson, in the service's words. */
+.copilot-dry__reason {
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}

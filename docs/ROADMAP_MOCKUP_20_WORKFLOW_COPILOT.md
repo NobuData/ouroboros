@@ -618,7 +618,7 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 | CE.1 | #565 ✅ | 🟢 Done | ouroboros-ui: [CE.1] Copilot route, head & promote/discard | Third-surface frame, live segment, the promote gate flow | mvp, copilot, ui, design | N (after WF-S.1, CD.4, BA-D.5) | Y | M | ouroboros-ui |
 | CE.2 | #566 ✅ | 🟢 Done | ouroboros-ui: [CE.2] Conversation card | Bubbles, choice chips, composer, streaming replies | mvp, copilot, ui, design | N (after CE.1, CD.1) | Y | L | ouroboros-ui |
 | CE.3 | #567 ✅ | 🟢 Done | ouroboros-ui: [CE.3] Draft stage list | Numbered rows, tags, provenance pills, W7 warnings, edit links | mvp, copilot, ui, design | N (after CE.1, CC.2) | Y | M | ouroboros-ui |
-| CE.4 | #568 | 🟡 Open | ouroboros-ui: [CE.4] Dry-run card | Result rows, simulated diff, suggestion callouts, pickers | mvp, copilot, ui, design | N (after CE.1, CD.4/CD.5) | Y | L | ouroboros-ui |
+| CE.4 | #568 ✅ | 🟢 Done | ouroboros-ui: [CE.4] Dry-run card | Result rows, simulated diff, suggestion callouts, pickers | mvp, copilot, ui, design | N (after CE.1, CD.4/CD.5) | Y | L | ouroboros-ui |
 | CE.5 | #569 | 🟡 Open | ouroboros-ui: [CE.5] Safety strip, states & e2e leg | Mechanism-traced strip; cold/error states; the full-chain e2e | mvp, copilot, ui, ci | N (after CE.2–CE.4) | Y | M | ouroboros-ui, .github |
 
 ### Issue CE.1 — ouroboros-ui: [CE.1] Copilot route, head & promote/discard
@@ -720,7 +720,9 @@ promote ─▶ "publishes v1 · never-auto-merge + $5/run guard compiled" ─▶
 
 ### Issue CE.4 — ouroboros-ui: [CE.4] Dry-run card
 
-> **GitHub issue:** #568 · **Status:** 🟡 Open · **Parent epic:** #553
+> **GitHub issue:** #568 ✅ · **Status:** 🟢 Done · **Parent epic:** #553
+
+> **Delivered (#568 — `ouroboros-ui` 0.155.0, `ouroboros-rest` 0.41.22, `ouroboros-docs` 0.3.8; no DB change):** the dry-run card in its seat (`app/workflows/copilot/dry-run-card.tsx`, `dry-run-suggestions.tsx`, pure logic in `dry-run.ts`), over #562/#563's routes through ten pass-through handlers (`app/api/workflows/[id]/dry-runs/…`): the head with the verbatim `simulated — no writes · no PRs · no merges` pill and totals (cost absent when unpriced); result rows with their `how` label and the service's note; a replayed row's ⓘ with estimate, sample, spread, window and formula, or the honest not-enough-history sentence; rows filling in over the run's event stream (poll fallback), then the diff, then the suggestions; the diff headed `simulated diff (never written to repo)` with its summary and stated truncation; glowing suggestion callouts with **Apply to draft** (previews the operations, then a toast linking the changed stage rows and an immediate stage-list re-read), **Explain** (rule, version, evidence) and **Ignore**, model-sourced ones labelled and unscored; **Re-run dry run**, the ranked **Dry-run another issue ▾** picker with each reason, the history line; states for no run (naming the copilot's proposal), pre-check findings anchored to stage rows, failed, budget-stopped, cancelled, and a loud guard-violation alert. Owners, admins and members run and apply; viewers read. **REST (my call):** each stage gains `estimate` (`DryRunStageEstimate`), composed from its stored metrics and the formula registry — the formula told apart by the similarity class's shape. **Docs harness:** an element clip taller than the window now grows the window for the capture. **Not live-verified:** a run streaming — a start needs the workspace's GitHub token and the gateway (#235).
 
 - **Problem Statement:** The results surface: per-stage rows with their
   `how` truth, the simulated diff, the glowing suggestion callouts,
@@ -959,7 +961,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 3. **Phase 2 — Services:** { CD.1 (#559) ⊕ CD.2 (#560) ✅ ⊕ CD.3 (#561) ✅ } →
    CD.4 (#562) ✅ → CD.5 (#563) ✅ → CD.6 (#564) ✅
 4. **Phase 3 — UI:** CE.1 (#565) ✅ → { CE.2 (#566) ✅ ⊕ CE.3 (#567) ✅ ⊕
-   CE.4 (#568) } → **CE.5 (#569) ✅** *(MVP gate, amending #56)*
+   CE.4 (#568) ✅ } → **CE.5 (#569) ✅** *(MVP gate, amending #56)*
 5. **v2:** CF.1 (#570) ⊕ CF.2 (#571) ⊕ CF.3 (#572) ⊕ CF.4 (#573) ⊕
    CF.5 (#574) after their dependencies (CF.4 coordinated with BX.2, #523).
 
