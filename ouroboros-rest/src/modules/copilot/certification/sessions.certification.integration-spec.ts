@@ -665,6 +665,52 @@ describe("copilot certification — session flows (#564)", () => {
     });
   });
 
+  describe("who each stage is by", () => {
+    it("reports the stages a conversation added as the copilot's, in the document's order, on every read of the draft", async () => {
+      const { workflow, session } = await conversationOn("provenance");
+      const path = `/api/v1/workflows/${workflow.id}/copilot`;
+
+      // Before anything is said the draft is the blank canvas: a document with no stages.
+      const blank = await stage.as(stage.people.viewer, "get", `${path}/draft`).expect(200);
+      expect(blank.body).toMatchObject({ label: "v0.0", nodeProvenance: [] });
+
+      stage.engine.script(
+        [
+          toolCall("p1", "set_trigger", { trigger: TRIGGER }),
+          toolCall("p2", "add_stage", { node: IMPLEMENT_NODE }),
+          toolCall("p3", "add_stage", { node: TEST_NODE }),
+          done("tool_use"),
+        ],
+        [delta("Drafted."), done()],
+      );
+      const exchange = await stage.say(workflow.id, session, "Start a bug loop.");
+      const added = ofKind(exchange.events, "operation").filter(
+        (event) => event.op.kind === "add_stage",
+      );
+      const expected = [
+        { nodeId: IMPLEMENT_NODE.id, provenance: "copilot", addedRev: added[0]?.draftRev },
+        { nodeId: TEST_NODE.id, provenance: "copilot", addedRev: added[1]?.draftRev },
+      ];
+      expect(expected.map((entry) => entry.addedRev)).toEqual([2, 3]);
+
+      // The stream's last word, the stage list's own read — a viewer's — and the conversation
+      // read all say the same thing about the same draft.
+      const finished = only(ofKind(exchange.events, "done"), "done event").draft;
+      expect(finished.nodeProvenance).toEqual(expected);
+
+      const read = await stage.as(stage.people.viewer, "get", `${path}/draft`).expect(200);
+      expect(read.body).toEqual(finished);
+      expect((read.body as { definition: unknown }).definition).toMatchObject({
+        nodes: [IMPLEMENT_NODE, TEST_NODE],
+      });
+
+      const conversation = await stage
+        .as(stage.people.viewer, "get", `${path}/conversation`)
+        .expect(200);
+      expect((conversation.body as { draft: unknown }).draft).toEqual(finished);
+    });
+  });
+
   describe("etag conflict during a conversation", () => {
     it("does not apply over a studio save made between two turns, and tells the model to re-plan from it", async () => {
       const { workflow, session } = await conversationOn("conflict");

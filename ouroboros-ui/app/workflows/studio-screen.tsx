@@ -1,6 +1,7 @@
 import type { Role } from "@/app/api/membership";
 import { Card, EmptyState } from "@/app/ui";
 
+import { stageEntry } from "./canvas/graph";
 import { EmptyWorkspaceActions } from "./empty-workspace-actions";
 import {
   RAIL_FAILED_HEADLINE,
@@ -114,6 +115,13 @@ export interface StudioScreenProps {
    * role the page is already drawn for.
    */
   readonly role?: Role;
+  /**
+   * The stage the address asked the canvas to open focused on — `?node=` (CE.3,
+   * [#567](https://github.com/NobuData/ouroboros/issues/567)), where the copilot's stage list
+   * sends each row's **edit**. Input: it is honoured only when the draft the canvas opens on
+   * holds a stage with that id, and ignored otherwise.
+   */
+  readonly focusNode?: string | null;
 }
 
 /**
@@ -126,6 +134,7 @@ export function StudioScreen({
   readings,
   mayAdminister = false,
   role = "viewer",
+  focusNode = null,
 }: StudioScreenProps) {
   const state = studioState(readings);
   const head = studioHead(state, new Date(readings.now));
@@ -179,8 +188,18 @@ export function StudioScreen({
 
   if (state.kind !== "populated") return page;
 
+  // A stage the draft does not hold is no stage to focus: the canvas opens as it always does.
+  const initialFocus =
+    focusNode !== null && stageEntry(canvasDefinition(state.workflow), focusNode) !== null ? focusNode : null;
+
   return (
-    <StudioSession key={state.workflow.id} mayAdminister={mayAdminister} now={readings.now} workflow={state.workflow}>
+    <StudioSession
+      key={state.workflow.id}
+      initialFocus={initialFocus}
+      mayAdminister={mayAdminister}
+      now={readings.now}
+      workflow={state.workflow}
+    >
       {page}
     </StudioSession>
   );

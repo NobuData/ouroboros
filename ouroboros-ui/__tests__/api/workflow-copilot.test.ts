@@ -10,6 +10,7 @@ import {
   copilotPromotion,
   copilotReadiness,
   copilotSession,
+  seededStageDraft,
 } from "../helpers/workflow-copilot";
 
 // The facade sits on the server-side client — see `server.test.ts` for what each of these answers.
@@ -78,6 +79,34 @@ describe("workflowCopilot.readiness", () => {
     const { client } = clientAnswering({ code: "workflow_not_found", message: "No such workflow.", details: {} }, 404);
 
     const refused = await workflowCopilot.readiness(SECURITY_PATCH_ID, client).catch((error: unknown) => error);
+
+    expect(refused).toBeInstanceOf(ApiError);
+    expect(refused).toMatchObject({ status: 404, code: "workflow_not_found" });
+  });
+});
+
+describe("workflowCopilot.draft (#567)", () => {
+  it("reads the draft, with who each stage is by, by the workflow's id", async () => {
+    const { client, requests } = clientAnswering(seededStageDraft());
+
+    await expect(workflowCopilot.draft(SECURITY_PATCH_ID, client)).resolves.toEqual(seededStageDraft());
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].method).toBe("GET");
+    expect(requests[0].url).toBe(`${BASE}/draft`);
+  });
+
+  it("hands back a workflow with no draft as the service serves it — a state, not a failure", async () => {
+    const none = seededStageDraft({ etag: "none", label: "v0.0", definition: null, warnings: [], nodeProvenance: [] });
+    const { client } = clientAnswering(none);
+
+    await expect(workflowCopilot.draft(SECURITY_PATCH_ID, client)).resolves.toEqual(none);
+  });
+
+  it("rejects with the service's refusal for a workflow this workspace does not have", async () => {
+    const { client } = clientAnswering({ code: "workflow_not_found", message: "No such workflow.", details: {} }, 404);
+
+    const refused = await workflowCopilot.draft(SECURITY_PATCH_ID, client).catch((error: unknown) => error);
 
     expect(refused).toBeInstanceOf(ApiError);
     expect(refused).toMatchObject({ status: 404, code: "workflow_not_found" });

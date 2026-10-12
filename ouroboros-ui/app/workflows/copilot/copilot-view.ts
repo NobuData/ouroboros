@@ -16,17 +16,17 @@
  * ### What this ticket draws, and what it seats
  *
  * CE.1 is the frame: the route, the head, the live segment, and promote and discard. The
- * conversation is CE.2's card (#566, `conversation.ts`). The draft's stage list (CE.3, #567) and
- * the dry-run card (CE.4, #568) are later tickets, and each has a **labelled seat** here
- * ({@link COPILOT_SEATS}) that says which issue fills it rather than a picture of what it will
- * look like.
+ * conversation is CE.2's card (#566, `conversation.ts`) and the draft's stage list is CE.3's
+ * (#567, `stages.ts`). The dry-run card (CE.4, #568) is a later ticket, and has a **labelled
+ * seat** here ({@link COPILOT_SEATS}) that says which issue fills it rather than a picture of
+ * what it will look like.
  *
  * ### The anchor contract
  *
  * A validation finding a refused promote returns is anchored to its stage: {@link stageAnchorId}
  * is the element id the stage list gives each row and {@link stageAnchorHref} is the link a
- * finding carries. CE.3 (#567) draws the rows and must take their ids from here, so the two
- * cannot drift.
+ * finding carries. CE.3 (#567, `stages-card.tsx`) draws the rows and takes their ids from here,
+ * so the two cannot drift.
  */
 
 import type { ErrorEnvelope } from "@/app/api/errors";
@@ -38,12 +38,14 @@ import type {
   CopilotPromotion,
   CopilotReadiness,
   CopilotReference,
+  CopilotStageDraft,
 } from "@/app/api/workflow-copilot";
+import type { RoutingAlias } from "@/app/api/routing";
 import type { WorkflowDefinition, WorkflowDetail, WorkflowRailEntry } from "@/app/api/workflows";
 
 /* ------------------------------------------------------------------ what the page reads */
 
-/** The workflow the copilot is open on, and the four reads behind it. */
+/** The workflow the copilot is open on, and the six reads behind it. */
 export interface SelectedCopilot {
   /** Its row on the rail. */
   readonly entry: WorkflowRailEntry;
@@ -65,6 +67,17 @@ export interface SelectedCopilot {
    * service refuses what it must.
    */
   readonly readiness: Reading<CopilotReadiness>;
+  /**
+   * The shared draft with who each stage is by — what the stage list draws (CE.3, #567). Its own
+   * read, so the list does not depend on there being a conversation. A failed read costs the
+   * list and nothing else.
+   */
+  readonly draft: Reading<CopilotStageDraft>;
+  /**
+   * The workspace's model aliases, for the stage list's model tags (`coder-std` →
+   * `claude-sonnet-5`). A failed read costs only the resolution: a tag then names the alias.
+   */
+  readonly aliases: Reading<readonly RoutingAlias[]>;
 }
 
 /** Everything the copilot route was able to read, and why it could not read the rest. */
@@ -536,16 +549,16 @@ export function discardedNotice(draftDiscarded: boolean): string {
 
 /* ------------------------------------------------------------------ the seats */
 
-/** The three regions later tickets fill. */
+/** The page's three regions. */
 export type CopilotSeatId = "conversation" | "stages" | "dry-run";
 
-/** One seat: what the region is, and which issue draws it. */
+/** One seat: what the region is, and what it says when its card cannot be drawn. */
 export interface CopilotSeat {
   /** The region's id — the suffix of its element id, `copilot-conversation`. */
   readonly id: CopilotSeatId;
   /** The card's heading, as mockup 20 writes it. */
   readonly title: string;
-  /** What will be here, and which issue builds it. */
+  /** What is said in the card's place — that its read failed, or which issue builds it. */
   readonly note: string;
 }
 
@@ -559,7 +572,7 @@ export const COPILOT_SEATS: Readonly<Record<CopilotSeatId, CopilotSeat>> = {
   stages: {
     id: "stages",
     title: "Draft stages",
-    note: "The draft's stages, built as the conversation goes, arrive with #567. Validation findings will lead to their rows here.",
+    note: "The draft's stages could not be read, so there are no rows to show. The banner above carries the reason, and the retry.",
   },
   "dry-run": {
     id: "dry-run",

@@ -57,6 +57,7 @@ import {
   MESSAGES_LABEL,
   SEND_LABEL,
 } from "@/app/workflows/copilot/conversation";
+import { DRAFT_FAILED_HEADLINE, STAGES_LABEL, VIEW_AS_CODE_LABEL, stagesTitle } from "@/app/workflows/copilot/stages";
 import { CHANGE_NOTE_LABEL, DISMISS_TOAST_LABEL, FINDINGS_LABEL, PUBLISH_CANCEL } from "@/app/workflows/publish";
 import { RAIL_FAILED_HEADLINE } from "@/app/workflows/states";
 import { COPILOT_NEEDS_WORKFLOW_NOTE, NEW_WORKFLOW_LABEL, RAIL_LABEL, STUDIO_EYEBROW } from "@/app/workflows/view";
@@ -78,6 +79,7 @@ import {
   copilotReference,
   copilotSession,
   seededConversation,
+  seededStageDraft,
 } from "../../helpers/workflow-copilot";
 
 /**
@@ -115,6 +117,12 @@ vi.mock("@/app/workflows/copilot/copilot-actions", () => ({
 }));
 // The rail's tile and the empty seat's Start blank open S.1's create dialog, on a Server Action.
 vi.mock("@/app/workflows/create-actions", () => ({ createWorkflow: vi.fn() }));
+// The stage list's poll is its own suite's (`stages-card.test.tsx`); here it never asks.
+vi.mock("@/app/workflows/copilot/stages-poll", async () => {
+  const { inertStagesPoll } = await import("../../helpers/workflow-copilot");
+
+  return { createStagesPoll: inertStagesPoll };
+});
 // `next/link` wants the App Router; an anchor carries everything asserted here.
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
@@ -154,9 +162,11 @@ function discard(): HTMLElement {
   return screen.getByRole("button", { name: DISCARD_LABEL });
 }
 
-/** One seat, by the heading it carries. */
+/** One seat, by the heading it carries — the stage list's card is titled for its draft (#567). */
 function seat(id: keyof typeof COPILOT_SEATS): HTMLElement {
-  return screen.getByRole("region", { name: COPILOT_SEATS[id].title });
+  const name = id === "stages" ? stagesTitle("security-patch", null) : COPILOT_SEATS[id].title;
+
+  return screen.getByRole("region", { name });
 }
 
 /** Render the page as an owner sees it. */
@@ -264,11 +274,55 @@ describe("the seats", () => {
     ]);
   });
 
-  it("the two a later ticket fills each say which issue does, and fake nothing", () => {
+  it("the one a later ticket fills says which issue does, and fakes nothing", () => {
     renderOwner();
 
-    expect(seat("stages")).toHaveTextContent(/#567/);
     expect(seat("dry-run")).toHaveTextContent(/#568/);
+  });
+
+  it("draws the stage list in its seat, from the draft the route read (#567)", () => {
+    renderOwner(copilotReadingsWith({ draft: { ok: true, value: seededStageDraft() } }));
+
+    const rows = within(within(seat("stages")).getByRole("list", { name: STAGES_LABEL })).getAllByRole("listitem");
+
+    expect(rows).toHaveLength(9);
+    expect(rows[6]).toHaveTextContent("added by copilot");
+    expect(within(seat("stages")).getByRole("link", { name: VIEW_AS_CODE_LABEL })).toHaveAttribute(
+      "href",
+      workflowCodePath("security-patch"),
+    );
+  });
+
+  it("draws the stage list with no conversation at all — the draft is its own read", () => {
+    renderOwner(
+      copilotReadingsWith({ conversation: { ok: true, value: null }, draft: { ok: true, value: seededStageDraft() } }),
+    );
+
+    expect(within(seat("stages")).getAllByRole("listitem")).toHaveLength(9);
+  });
+
+  it("names models through the workspace's aliases, and names the alias when they could not be read", () => {
+    const { unmount } = renderOwner(copilotReadingsWith({ draft: { ok: true, value: seededStageDraft() } }));
+    expect(within(seat("stages")).getByText("claude-sonnet-5")).toBeInTheDocument();
+    unmount();
+
+    renderOwner(
+      copilotReadingsWith({
+        draft: { ok: true, value: seededStageDraft() },
+        aliases: { ok: false, reason: "The registry is unavailable." },
+      }),
+    );
+    expect(within(seat("stages")).getByText("coder-std")).toBeInTheDocument();
+    expect(screen.queryByText("The registry is unavailable.")).toBeNull();
+  });
+
+  it("is the same list for a viewer: nothing in it writes", () => {
+    render(
+      <CopilotScreen readings={copilotReadingsWith({ draft: { ok: true, value: seededStageDraft() } })} role="viewer" />,
+    );
+
+    expect(within(seat("stages")).getAllByRole("listitem")).toHaveLength(9);
+    expect(within(seat("stages")).getAllByRole("link", { name: /^Edit .* on the canvas$/ })).toHaveLength(9);
   });
 
   it("carry stable ids, so a link to a region lands on the same element whatever is mounted in it", () => {
@@ -902,6 +956,21 @@ describe("one failed read is one degraded region", () => {
     expect(discard()).toHaveAttribute("title", ACTIONS_NEED_PROMOTION);
     // The seats stand.
     expect(seat("stages")).toBeInTheDocument();
+  });
+
+  it("wears the banner for a draft that could not be read, and takes only the stage list's seat with it", () => {
+    renderOwner(copilotReadingsWith({ draft: { ok: false, reason: "The draft is unavailable." } }));
+
+    expect(screen.getByText(DRAFT_FAILED_HEADLINE)).toBeInTheDocument();
+    expect(screen.getByText("The draft is unavailable.")).toBeInTheDocument();
+
+    const failed = screen.getByRole("region", { name: COPILOT_SEATS.stages.title });
+    expect(failed).toHaveAttribute("id", "copilot-stages");
+    expect(failed).toHaveTextContent(COPILOT_SEATS.stages.note);
+    expect(within(failed).queryByRole("listitem")).toBeNull();
+    // The conversation and promote are untouched.
+    expect(seat("conversation")).toBeInTheDocument();
+    expect(promote()).not.toHaveAttribute("aria-disabled");
   });
 
   it("wears the banner for a conversation that could not be read, and leaves promote working", () => {

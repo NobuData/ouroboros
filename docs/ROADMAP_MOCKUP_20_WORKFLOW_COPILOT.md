@@ -617,7 +617,7 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CE.1 | #565 ✅ | 🟢 Done | ouroboros-ui: [CE.1] Copilot route, head & promote/discard | Third-surface frame, live segment, the promote gate flow | mvp, copilot, ui, design | N (after WF-S.1, CD.4, BA-D.5) | Y | M | ouroboros-ui |
 | CE.2 | #566 ✅ | 🟢 Done | ouroboros-ui: [CE.2] Conversation card | Bubbles, choice chips, composer, streaming replies | mvp, copilot, ui, design | N (after CE.1, CD.1) | Y | L | ouroboros-ui |
-| CE.3 | #567 | 🟡 Open | ouroboros-ui: [CE.3] Draft stage list | Numbered rows, tags, provenance pills, W7 warnings, edit links | mvp, copilot, ui, design | N (after CE.1, CC.2) | Y | M | ouroboros-ui |
+| CE.3 | #567 ✅ | 🟢 Done | ouroboros-ui: [CE.3] Draft stage list | Numbered rows, tags, provenance pills, W7 warnings, edit links | mvp, copilot, ui, design | N (after CE.1, CC.2) | Y | M | ouroboros-ui |
 | CE.4 | #568 | 🟡 Open | ouroboros-ui: [CE.4] Dry-run card | Result rows, simulated diff, suggestion callouts, pickers | mvp, copilot, ui, design | N (after CE.1, CD.4/CD.5) | Y | L | ouroboros-ui |
 | CE.5 | #569 | 🟡 Open | ouroboros-ui: [CE.5] Safety strip, states & e2e leg | Mechanism-traced strip; cold/error states; the full-chain e2e | mvp, copilot, ui, ci | N (after CE.2–CE.4) | Y | M | ouroboros-ui, .github |
 
@@ -688,7 +688,9 @@ promote ─▶ "publishes v1 · never-auto-merge + $5/run guard compiled" ─▶
 
 ### Issue CE.3 — ouroboros-ui: [CE.3] Draft stage list
 
-> **GitHub issue:** #567 · **Status:** 🟡 Open · **Parent epic:** #553
+> **GitHub issue:** #567 ✅ · **Status:** 🟢 Done · **Parent epic:** #553
+
+> **Delivered (#567 — `ouroboros-ui` 0.154.0, `ouroboros-rest` 0.41.21, `ouroboros-docs` 0.3.7; no DB change):** the draft's stage list in its seat (`app/workflows/copilot/stages-card.tsx`, pure composition in `stages.ts`): rows in flow order, parallel twins folded (`review ×2` — ten nodes, nine rows), the canvas's own glyphs, config tags composed from each stage's configuration and description, the `added by copilot` pill, W7 references in warn treatment with an explaining disclosure, a derived footer (stage count, the promotion's guards with a dry-run-only one qualified, the runnable line), `draft v0.3` and **View as code →** in the head, `#stage-<id>` targets for every node. **Live:** the conversation's operations (`useCopilotLive`) are applied to the document as they arrive; between replies the list polls the draft every 15 s and on window focus. **REST, chosen by the user (2026-10-11):** `GET /workflows/{id}/copilot/draft` — the draft with or without a conversation, plus `nodeProvenance` per stage from `workflow_draft_node_provenance` (#556), also on the conversation's draft and the stream's `done`. **Canvas:** `/workflows/<slug>?node=<id>` opens selected, inspected and centred on that stage — the row's **edit**. **Criterion not met, filed as #1751 (user's choice):** canvas and code saves record no draft operation, so the pill does not clear after a human edit yet (the list will show it the moment they do). Mockup departures: `composer-2` (the seed's model id), `pool-a` beside `twister full`, a `task:exploit-verify` warn tag, both guards in the footer.
 
 - **Problem Statement:** The live draft rendered as the mockup's stage
   rows — with provenance pills, W7 unresolved-reference warnings, and
@@ -956,7 +958,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    CC.4 (#558)
 3. **Phase 2 — Services:** { CD.1 (#559) ⊕ CD.2 (#560) ✅ ⊕ CD.3 (#561) ✅ } →
    CD.4 (#562) ✅ → CD.5 (#563) ✅ → CD.6 (#564) ✅
-4. **Phase 3 — UI:** CE.1 (#565) ✅ → { CE.2 (#566) ✅ ⊕ CE.3 (#567) ⊕
+4. **Phase 3 — UI:** CE.1 (#565) ✅ → { CE.2 (#566) ✅ ⊕ CE.3 (#567) ✅ ⊕
    CE.4 (#568) } → **CE.5 (#569) ✅** *(MVP gate, amending #56)*
 5. **v2:** CF.1 (#570) ⊕ CF.2 (#571) ⊕ CF.3 (#572) ⊕ CF.4 (#573) ⊕
    CF.5 (#574) after their dependencies (CF.4 coordinated with BX.2, #523).

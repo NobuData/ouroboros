@@ -162,6 +162,7 @@ function harness(
   const copilots = {
     workflow: jest.fn().mockImplementation(() => Promise.resolve(workflow({ draft_rev: rev }))),
     draftOf: jest.fn().mockImplementation(() => Promise.resolve(draft)),
+    nodeProvenance: jest.fn().mockResolvedValue([]),
     revision: jest
       .fn()
       .mockImplementation(() => Promise.resolve({ current_version: null, draft_rev: rev })),
@@ -354,9 +355,15 @@ describe("the continuity read", () => {
         ],
       }),
     );
+    copilots.nodeProvenance.mockResolvedValue([
+      { node_id: "exploit-verify", provenance: "copilot", added_rev: 1 },
+    ]);
 
     const conversation = await service.conversation(WORKSPACE, WORKFLOW);
 
+    expect(conversation.draft.nodeProvenance).toEqual([
+      { nodeId: "exploit-verify", provenance: "copilot", addedRev: 1 },
+    ]);
     expect(conversation.session.id).toBe(SESSION);
     expect(conversation.messages.map((row) => row.id)).toEqual(["m-1", "m-2"]);
     expect(conversation.draft.label).toBe("v0.1");
@@ -398,6 +405,7 @@ describe("the continuity read", () => {
     expect(conversation.messages.map((row) => row.id)).toEqual(["m-1", "m-2"]);
     expect(conversation.draft.definition).toBeNull();
     expect(conversation.draft.warnings).toEqual([]);
+    expect(conversation.draft.nodeProvenance).toEqual([]);
   });
 
   it("prefers the active session to any closed one", async () => {
@@ -610,6 +618,93 @@ describe("what a promotion would publish", () => {
 
     await expect(service.promotion(WORKSPACE, WORKFLOW)).rejects.toMatchObject({
       code: "workflow_not_found",
+    });
+  });
+});
+
+describe("the draft read (#567)", () => {
+  it("answers the draft with who each stage is by, in the document's order", async () => {
+    const { service, copilots, grounding } = harness();
+    copilots.workflow.mockResolvedValue(workflow({ draft_rev: 2 }));
+    copilots.draftOf.mockResolvedValue(
+      draftRow({ ...DRAFT_DOCUMENT, nodes: [TRIGGER_NODE, REVIEW_NODE] }),
+    );
+    // The view promises no order: here it answers the second stage first.
+    copilots.nodeProvenance.mockResolvedValue([
+      { node_id: REVIEW_NODE.id, provenance: "copilot", added_rev: 2 },
+      { node_id: TRIGGER_NODE.id, provenance: "human", added_rev: 1 },
+    ]);
+
+    const draft = await service.draft(WORKSPACE, WORKFLOW);
+
+    expect(copilots.workflow).toHaveBeenCalledWith(WORKSPACE, WORKFLOW);
+    expect(copilots.nodeProvenance).toHaveBeenCalledWith(WORKFLOW);
+    expect(grounding.grounding).toHaveBeenCalledWith(WORKSPACE);
+    expect(draft.label).toBe("v0.2");
+    expect(draft.etag).toHaveLength(64);
+    expect(draft.definition).toMatchObject({ nodes: [TRIGGER_NODE, REVIEW_NODE] });
+    expect(draft.nodeProvenance).toEqual([
+      { nodeId: TRIGGER_NODE.id, provenance: "human", addedRev: 1 },
+      { nodeId: REVIEW_NODE.id, provenance: "copilot", addedRev: 2 },
+    ]);
+  });
+
+  it("needs no conversation", async () => {
+    const { service, copilots } = harness();
+    copilots.activeSession.mockResolvedValue(undefined);
+
+    await expect(service.draft(WORKSPACE, WORKFLOW)).resolves.toMatchObject({ label: "v0.1" });
+    expect(copilots.activeSession).not.toHaveBeenCalled();
+    expect(copilots.lastClosedSession).not.toHaveBeenCalled();
+  });
+
+  it("answers no document and no stages for a workflow without a draft", async () => {
+    const { service, copilots } = harness();
+    copilots.workflow.mockResolvedValue(workflow({ current_version: 3, draft_rev: 0 }));
+    copilots.draftOf.mockResolvedValue(undefined);
+
+    await expect(service.draft(WORKSPACE, WORKFLOW)).resolves.toEqual({
+      etag: "none",
+      label: "v3.0",
+      definition: null,
+      provenanceSummary: workflow().provenance_summary,
+      warnings: [],
+      nodeProvenance: [],
+    });
+  });
+
+  it("is a 404 for a workflow the workspace does not have, before anything is read", async () => {
+    const { service, copilots, grounding } = harness();
+    copilots.workflow.mockResolvedValue(undefined);
+
+    await expect(service.draft(WORKSPACE, WORKFLOW)).rejects.toMatchObject({
+      code: "workflow_not_found",
+    });
+    expect(grounding.grounding).not.toHaveBeenCalled();
+    expect(copilots.draftOf).not.toHaveBeenCalled();
+    expect(copilots.nodeProvenance).not.toHaveBeenCalled();
+  });
+
+  it("ends a reply's stream on the same provenance", async () => {
+    const { service, copilots } = harness({
+      turns: [
+        [
+          { kind: "delta", text: "Nothing to change." },
+          { kind: "done", finishReason: "stop" },
+        ],
+      ],
+    });
+    copilots.nodeProvenance.mockResolvedValue([
+      { node_id: TRIGGER_NODE.id, provenance: "published", added_rev: null },
+    ]);
+
+    const events = await collect(service.send(WORKSPACE, WORKFLOW, SESSION, "user-1", "hello"));
+
+    expect(events.at(-1)).toMatchObject({
+      kind: "done",
+      draft: {
+        nodeProvenance: [{ nodeId: TRIGGER_NODE.id, provenance: "published", addedRev: null }],
+      },
     });
   });
 });

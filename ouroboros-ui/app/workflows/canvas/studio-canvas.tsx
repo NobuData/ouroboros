@@ -317,7 +317,11 @@ function Canvas({
   readOnlyReason,
   storage,
 }: StudioCanvasProps) {
-  const [nodes, setNodes] = useState<StageNodeType[]>(() => toNodes(definition));
+  // A stage asked for before the canvas mounted — the address's `?node=` (CE.3, #567) — is selected in
+  // the nodes the canvas opens with; a request made later is selected during render, below.
+  const [nodes, setNodes] = useState<StageNodeType[]>(() =>
+    toNodes(definition).map((node) => (focus !== null && node.id === focus.id ? { ...node, selected: true } : node)),
+  );
   const [edges, setEdges] = useState<StageEdgeType[]>(() => toEdges(definition));
   // The document the nodes were last built from. When the caller hands down a different one — an
   // edit recorded, an inspector Apply, an undo — the nodes and edges are reconciled during render
@@ -342,7 +346,10 @@ function Canvas({
   }, [nodes]);
 
   const [edited, setEdited] = useState(false);
-  const [selection, setSelection] = useState<CanvasSelection>(null);
+  const [selection, setSelection] = useState<CanvasSelection>(() => {
+    const opened = focus === null ? undefined : nodes.find((node) => node.id === focus.id);
+    return opened === undefined ? null : { kind: "node", id: opened.id, stage: opened.data.stage };
+  });
   const [zoom, setZoom] = useState(HOME_VIEWPORT.zoom);
   const [menuOpen, setMenuOpen] = useState(false);
   const [insertOn, setInsertOn] = useState<EdgeRef | null>(null);
@@ -522,13 +529,26 @@ function Canvas({
     [onSelectionChange],
   );
 
+  // The stage the canvas was opened focused on, if any — read once, for `onInit`.
+  const [openedFocus] = useState(focus);
+
   const onInit = useCallback(() => {
+    // Opened on a stage: that stage is where the reader asked to be, so it is centred once the
+    // viewport can be measured, and the place they last left this workflow is not restored over it.
+    const asked = openedFocus === null ? undefined : nodesRef.current.find((node) => node.id === openedFocus.id);
+    if (asked !== undefined) {
+      const width = asked.measured?.width ?? STAGE_BOX.width;
+      const height = asked.measured?.height ?? STAGE_BOX.height;
+      void setCenter(asked.position.x + width / 2, asked.position.y + height / 2, { zoom: getZoom() });
+      return;
+    }
+
     // Where this reader left this workflow, applied once the viewport exists. Read here rather
     // than as `defaultViewport` so the server and the browser render one transform and the
     // stored place is applied after hydration — storage is the browser's alone.
     const stored = readViewport(workflowId, storage);
     if (stored !== null) void setViewport(stored);
-  }, [workflowId, storage, setViewport]);
+  }, [workflowId, storage, setViewport, setCenter, getZoom, openedFocus]);
 
   const onMoveEnd = useCallback(
     (_event: MouseEvent | TouchEvent | null, viewport: Viewport) => {

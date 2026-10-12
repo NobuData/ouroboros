@@ -57,8 +57,11 @@ const BySlug = (await import("@/app/(app)/workflows/[slug]/page")).default;
  * @param slug What the URL carried.
  * @returns What the page rendered.
  */
-function openSlug(slug: string) {
-  return BySlug({ params: Promise.resolve({ slug }) });
+function openSlug(slug: string, query?: Record<string, string | string[]>) {
+  return BySlug({
+    params: Promise.resolve({ slug }),
+    ...(query === undefined ? {} : { searchParams: Promise.resolve(query) }),
+  });
 }
 
 /** What the gate hands back, in the seeded world. */
@@ -137,6 +140,27 @@ describe("a workflow by slug", () => {
     render(await openSlug("standard-fix"));
 
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("standard-fix");
+  });
+
+  it("opens the canvas focused on the stage `?node=` names, when the draft holds it (#567)", async () => {
+    const { container } = render(await openSlug("standard-fix", { node: "implement" }));
+
+    expect(container.querySelector('.react-flow__node[data-id="implement"]')).toHaveClass("selected");
+    expect(container.querySelectorAll(".react-flow__node.selected")).toHaveLength(1);
+  });
+
+  it("ignores a `?node=` the draft does not hold, one given twice, and one on a page with no workflow", async () => {
+    for (const node of ["nobody", ["implement", "plan"], ""]) {
+      const { container, unmount } = render(await openSlug("standard-fix", { node }));
+
+      expect(container.querySelector(".react-flow__node")).not.toBeNull();
+      expect(container.querySelector(".react-flow__node.selected")).toBeNull();
+      unmount();
+    }
+
+    readStudio.mockResolvedValue(readings({ requested: "gone", selected: null }));
+    render(await openSlug("gone", { node: "implement" }));
+    expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
   });
 
   it("draws the studio's own missing state, inside the shell, for a slug the rail does not hold", async () => {

@@ -1,0 +1,247 @@
+/*
+ * The workflow copilot's stage list — CE.3 (#567), docs/mockups/20-workflow-copilot.html's
+ * `.stage-row` card.
+ *
+ * The card, its head, the tags, the pill and the stale note are the design system's primitives.
+ * What is here is what only a stage list draws: the numbered rows with their glyph and name, the
+ * warning treatment's ⓘ and the note it opens, the quiet `edit` link at the row's trailing edge,
+ * and the mono footer.
+ *
+ * Every colour is a token, so the light and dark renderings are the token sheet's; every size is
+ * a token or a rem, so the font-size preference scales the surface (the 125% step included).
+ *
+ * A long list scrolls inside its own wrapper, bounded in rem so it grows with the type, and
+ * nothing but that wrapper scrolls. Nothing is positioned out of the flow: a warning's note opens
+ * under its row's line, where no scroller can clip it.
+ */
+
+/* ---------- the card ---------- */
+
+.copilot-stages {
+  /* The containing block for the rows' visually hidden text (`.sr-only` is
+     `position: absolute`): without one it is laid out against the document and stretches it
+     past the viewport, which the shell forbids. */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The title, the revision tag and the link wrap rather than clip at a large type size. */
+.copilot-stages__head {
+  flex-wrap: wrap;
+  row-gap: var(--sp-3);
+}
+
+.copilot-stages__code,
+.copilot-stages__open {
+  color: var(--accent);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.copilot-stages__open {
+  display: inline-block;
+  margin-top: var(--sp-4);
+  font-size: var(--t-sm);
+}
+
+/* A later read that failed: the last good list stays under this. */
+.copilot-stages__stale {
+  margin-bottom: var(--sp-5);
+}
+
+/* ---------- the wrapper the rows scroll inside ---------- */
+
+.copilot-stages__scroll {
+  max-block-size: 28rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.copilot-stages__scroll:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: var(--sp-1);
+  border-radius: var(--r-xs);
+}
+
+.copilot-stages__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---------- a row ---------- */
+
+.copilot-stages__row {
+  /* The containing block for the row's own visually hidden text, inside the scroller. */
+  position: relative;
+  padding: var(--sp-4) var(--sp-2);
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  font-size: var(--t-sm);
+  scroll-margin-block: var(--sp-4);
+}
+
+.copilot-stages__row:last-child {
+  border-bottom: 0;
+}
+
+/* The row a finding's link names: ringed for as long as the address points at it. */
+.copilot-stages__row--target,
+.copilot-stages__row:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  background: var(--accent-wash);
+}
+
+/* A folded twin's id: an empty anchor, so a link to either stage lands on the row. */
+.copilot-stages__anchor {
+  display: block;
+}
+
+.copilot-stages__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-5);
+  min-width: 0;
+}
+
+.copilot-stages__idx {
+  flex: none;
+  width: 1.25rem;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.copilot-stages__glyph {
+  flex: none;
+  width: 0.875rem;
+  color: var(--accent);
+  font-size: var(--t-xs);
+  text-align: center;
+}
+
+.copilot-stages__name {
+  color: var(--ink);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.copilot-stages__edit {
+  margin-left: auto;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+}
+
+.copilot-stages__edit:hover {
+  color: var(--accent);
+}
+
+/* ---------- an unresolved reference ---------- */
+
+.copilot-stages__warn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.copilot-stages__info {
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--warn);
+  font-size: var(--t-sm);
+  line-height: var(--lh-snug);
+  cursor: pointer;
+}
+
+.copilot-stages__info:hover {
+  color: var(--ink);
+}
+
+/* Under the row's line, in the flow: what is missing, then the service's own sentence. */
+.copilot-stages__note {
+  margin: var(--sp-4) 0 var(--sp-2) 2.75rem;
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--warn-line);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--r-sm);
+  background: var(--warn-tint);
+}
+
+.copilot-stages__note[hidden] {
+  display: none;
+}
+
+.copilot-stages__missing {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.copilot-stages__said {
+  margin: var(--sp-3) 0 0;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- the footer ---------- */
+
+.copilot-stages__foot {
+  margin: var(--sp-5) 0 0;
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.copilot-stages__fact {
+  overflow-wrap: anywhere;
+}
+
+/* A guard nothing holds a real run to, a draft that cannot run: never the ok hue. */
+.copilot-stages__fact--warn {
+  color: var(--warn);
+}
+
+/* ---------- a row the stream has just added or changed ---------- */
+
+/*
+ * A brief wash that fades to nothing — background only, so no row moves. A reader who asked for
+ * less motion gets the row with no fade at all: the rule is declared only where motion is welcome.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .copilot-stages__row--fresh {
+    animation: copilot-stages-fresh 1.6s ease-out 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .copilot-stages__row--fresh {
+    animation: none;
+  }
+}
+
+@keyframes copilot-stages-fresh {
+  from {
+    background: var(--accent-tint);
+  }
+
+  to {
+    background: transparent;
+  }
+}

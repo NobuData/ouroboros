@@ -545,6 +545,35 @@ describe("the viewport, remembered per workflow", () => {
     expect(readout()).toHaveTextContent("150%");
   });
 
+  it("opened on a stage, selects it, reports it, and centres it instead of restoring the place left (#567)", async () => {
+    const storage = memoryStorage({
+      [viewportKey(WORKFLOW)]: JSON.stringify({ x: 40, y: -20, zoom: 1.5 }),
+    });
+    const onSelectionChange = vi.fn();
+    const { container } = await open({
+      storage,
+      workflowId: WORKFLOW,
+      focus: { id: "implement", nonce: 0 },
+      onSelectionChange,
+    });
+
+    expect(stage(container, "implement")).toHaveClass("selected");
+    expect(container.querySelectorAll(".react-flow__node.selected")).toHaveLength(1);
+    expect(onSelectionChange).toHaveBeenCalledWith(expect.objectContaining({ kind: "node", id: "implement" }));
+    // The stored place is the reader's last; the stage is where they asked to be now.
+    expect(viewport(container)).not.toContain("translate(40px,-20px) scale(1.5)");
+  });
+
+  it("opened on a stage the document does not hold, opens as it always does", async () => {
+    const storage = memoryStorage({
+      [viewportKey(WORKFLOW)]: JSON.stringify({ x: 40, y: -20, zoom: 1.5 }),
+    });
+    const { container } = await open({ storage, workflowId: WORKFLOW, focus: { id: "nobody", nonce: 0 } });
+
+    expect(container.querySelector(".react-flow__node.selected")).toBeNull();
+    expect(viewport(container)).toContain("translate(40px,-20px) scale(1.5)");
+  });
+
   it("remembers every move under the workflow's id", async () => {
     const storage = memoryStorage();
     await open({ storage, workflowId: WORKFLOW });

@@ -2,7 +2,7 @@
 title: "Workflow Copilot"
 sidebar_label: "Copilot"
 sidebar_position: 3
-description: "The Copilot page: the Visual, Code and Copilot views of one draft, the conversation that edits it, promoting and discarding a draft, and the deep dry run with its budget, history and suggestions."
+description: "The Copilot page: the Visual, Code and Copilot views of one draft, the conversation that edits it, the draft's stage list, promoting and discarding a draft, and the deep dry run with its budget, history and suggestions."
 ---
 
 The **Workflow Copilot** drafts a workflow with you in conversation and then proves the draft
@@ -26,9 +26,9 @@ The page head has two actions, **Discard draft** and **Promote draft → `<slug>
 
 :::info[The page is arriving in parts]
 
-The [conversation](#the-conversation) is on the page. The list of draft stages and the
-dry-run card are not yet: their places are marked, each saying which piece is still to come.
-Until they arrive, a dry run and its suggestions are started and read through the
+The [conversation](#the-conversation) and [the draft's stage list](#the-draft) are on the
+page. The dry-run card is not yet: its place is marked, saying which piece is still to come.
+Until it arrives, a dry run and its suggestions are started and read through the
 [REST API](../../cli/rest-api.mdx#the-api-description) from a signed-in session; an API token
 cannot start one.
 
@@ -60,7 +60,9 @@ A guard marked **Not enforced on real runs yet** is not a protection once publis
 confirmation says so. To cap what real runs spend, use the
 [spend guard](../../administration/policies.mdx) in the workspace's policies.
 
-If the checks find problems, nothing is published. Each finding names the stage it is about.
+If the checks find problems, nothing is published. Each finding names the stage it is about;
+choose one to go to that stage's row in [the draft](#the-draft), which is outlined and brought
+into view.
 
 When a promote succeeds, runs queued from then on use the new version, and the conversation
 that produced it is closed and kept **read-only**.
@@ -245,6 +247,130 @@ continuing it edits the workflow, which is for workspace owners and admins.*
 A conversation that was promoted or discarded is closed. Everyone can still read it, and the
 card says which happened. An owner or admin can choose **Start a new conversation** to begin
 again on the same workflow; the closed one is no longer shown once the new one has started.
+
+## The draft
+
+The card beside the conversation lists the draft's stages, in the order a run walks them. Its
+title names the workflow — **Draft — security-patch · unpublished** — and says **unpublished**
+only while the workflow has never been published.
+
+<Screenshot id="user-guide.workflows.copilot.stages" />
+
+The list is read from the draft itself, not from the conversation, so it is there for a
+workflow nobody has talked to the Copilot about, and it is the same list for every role.
+
+### Stage rows
+
+Each row is one stage: its number, a mark for its kind (the same marks the
+[canvas](./studio.mdx#stage-kinds) uses), its name, and its **config tags**.
+
+Two stages with the same name and kind that follow the same stage are one step done twice, and
+are shown as one row: **review ×2**, with both stages' tags.
+
+A stage that nothing leads to from the trigger is still listed, after the others.
+
+### Config tags
+
+A tag is a setting of the stage, read from the draft each time the list is drawn. Nobody types
+them, so they cannot drift from the stage:
+
+| Tag | What it tells you |
+| --- | --- |
+| `label:security`, `effort ≤ M`, `source:github` | On the trigger: what an issue must match to start a run. One tag per condition. |
+| `skill:advisory-db` | The skill the stage loads. |
+| `claude-sonnet-5` | The model the stage is pinned to. The stage names a model alias; the tag shows the model that alias currently points at, or the alias itself if the workspace has no such alias. |
+| `routed by task` | The stage is not pinned: its model comes from [model routing](../../administration/providers.mdx). |
+| `pool-a` | The runner pool the stage runs on. |
+| `twister full`, `sandboxed` | The stage's description. Parts separated by ` · ` become one tag each. |
+| `never auto-merge`, `auto-merge`, `back to queue` | On the last stage: how the run ends. |
+
+Change a stage on the canvas or in the code view and its tags follow. You do not need to
+reload: the list re-reads the draft every 15 seconds while the tab is visible, and at once
+when you come back to the window.
+
+### Added by copilot
+
+A row carries **added by copilot** when the Copilot added that stage. It is the draft's own
+record of who added what, so it does not depend on the conversation still being open. A stage
+added by applying a dry-run suggestion carries **added by suggestion** in the same way.
+
+The mark is meant to clear once a person edits the stage: a stage you have reconfigured is no
+longer the Copilot's.
+
+:::info[Not available yet]
+
+An edit made on the canvas or in the code view does not clear **added by copilot** yet. The
+stage's tags do follow the edit; only the mark stays.
+
+:::
+
+### Warning tags
+
+A stage can name a skill, a task kind or a model alias the workspace does not have yet. The
+row does not present it as a working setting. Its tag is drawn as a warning, with `⚠` and what
+is wrong in a few words:
+
+| Tag | Meaning |
+| --- | --- |
+| `skill:advisory-db ⚠ skill does not exist` | No skill with that name exists in the workspace. |
+| `task:exploit-verify ⚠ kind not in catalog` | The stage takes its model from a task kind that does not exist. |
+| `fast-triage ⚠ alias does not exist` | The stage is pinned to a model alias that does not exist. |
+
+Choose the **ⓘ** beside the tag — or Tab to it and press Enter — to read what is missing, what
+resolves it, and the service's own message. Choose it again, or press Escape, to close it.
+
+While any reference is unresolved, the stage that names it cannot do its work, and the foot of
+the card says **draft not yet runnable on real issues**. Which references also stop a promote
+is described under [Unresolved references](#unresolved-references) above.
+
+### The revision
+
+The tag beside the title, for example `draft v0.3`, is the draft's revision: the published
+version the draft started from, then the number of batches of changes applied since. A
+workflow that has never been published starts from `v0`. While a reply is arriving the number
+moves with each batch the Copilot applies.
+
+### Watching the draft build
+
+The rows change while the Copilot is still replying. A stage appears the moment the Copilot
+adds it, a row's tags change when its stage is changed, and rows move as stages are connected.
+A row that has just been added or changed is briefly highlighted; if your system asks for
+reduced motion, it changes without the highlight.
+
+### Edit and View as code
+
+- **edit**, at the end of each row, opens the [canvas](./studio.mdx#the-canvas) with that
+  stage selected, centred, and open in the inspector. On a **×2** row it opens the first of
+  the two stages. Everyone can follow it; whether you can change the stage there depends on
+  your role.
+- **View as code →**, at the top of the card, opens the same draft in the
+  [code view](./code.mdx).
+
+### The foot of the card
+
+One line, all of it read from the draft:
+
+- **How many stages** — rows, so a **×2** row counts once.
+- **Each guard** a promote would carry, as the [promote confirmation](#promoting-a-draft)
+  names it. A guard that is not enforced on real runs says so here too: `spend cap $5.00/run
+  (not enforced on real runs yet)`.
+- **Whether the draft could run**: **draft not yet runnable on real issues** while any
+  reference is unresolved, otherwise **draft runnable once promoted**.
+
+### An empty draft
+
+A workflow with no draft, or a draft with no stages, shows **No stages yet** and a link,
+**Open the canvas**. The stages appear as the conversation builds them, or as you add them on
+the canvas.
+
+### When the list cannot be refreshed
+
+If a later read of the draft fails, the list stays as it was last read, under a note: **These
+stages may be out of date**, with the reason and **Read again**. If the draft cannot be read
+when the page opens, the page says **The draft's stages could not be read** with a **Retry**,
+and the rest of the page still works.
+
+A long list scrolls inside the card.
 
 ## Dry runs
 

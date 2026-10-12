@@ -14,6 +14,8 @@ import {
   copilotReadiness,
   securityPatchDetail,
   securityPatchEntry,
+  seededAliases,
+  seededStageDraft,
 } from "../../helpers/workflow-copilot";
 
 /**
@@ -43,6 +45,12 @@ const conversation = vi.fn();
 /** What the readiness endpoint answers, by id. */
 const readiness = vi.fn();
 
+/** What the draft endpoint answers, by id. */
+const draft = vi.fn();
+
+/** What the registry's alias list answers. */
+const aliases = vi.fn();
+
 vi.mock("@/app/api/workflows", () => ({
   workflows: { list: () => list(), read: (id: string) => read(id) },
 }));
@@ -51,8 +59,10 @@ vi.mock("@/app/api/workflow-copilot", () => ({
     promotion: (id: string) => promotion(id),
     conversation: (id: string) => conversation(id),
     readiness: (id: string) => readiness(id),
+    draft: (id: string) => draft(id),
   },
 }));
+vi.mock("@/app/api/routing", () => ({ routing: { aliases: () => aliases() } }));
 
 const { readStudioCopilot } = await import("@/app/workflows/copilot/copilot-data");
 
@@ -77,6 +87,60 @@ beforeEach(() => {
   promotion.mockReset().mockResolvedValue(copilotPromotion());
   conversation.mockReset().mockResolvedValue(copilotConversation());
   readiness.mockReset().mockResolvedValue(copilotReadiness());
+  draft.mockReset().mockResolvedValue(seededStageDraft());
+  aliases.mockReset().mockResolvedValue(seededAliases());
+});
+
+describe("the stage list's reads (#567)", () => {
+  it("reads the draft by the id the rail gave, and the workspace's aliases, with the other reads", async () => {
+    const readings = await readStudioCopilot(ACCESS, "security-patch");
+
+    expect(draft).toHaveBeenCalledExactlyOnceWith(SECURITY_PATCH_ID);
+    expect(aliases).toHaveBeenCalledOnce();
+    expect(readings.selected?.draft).toEqual({ ok: true, value: seededStageDraft() });
+    expect(readings.selected?.aliases).toEqual({ ok: true, value: seededAliases() });
+  });
+
+  it("reads the draft for a workflow that never had a conversation — the list does not hang off it", async () => {
+    conversation.mockResolvedValue(null);
+
+    const readings = await readStudioCopilot(ACCESS, "security-patch");
+
+    expect(readings.selected?.conversation).toEqual({ ok: true, value: null });
+    expect(readings.selected?.draft).toEqual({ ok: true, value: seededStageDraft() });
+  });
+
+  it("keeps a refused draft as its own degraded reading, and every other read as it was", async () => {
+    draft.mockRejectedValue(REFUSED);
+
+    const readings = await readStudioCopilot(ACCESS, "security-patch");
+
+    expect(readings.selected?.draft).toEqual({ ok: false, reason: "The service could not answer." });
+    expect(readings.selected?.conversation).toEqual({ ok: true, value: copilotConversation() });
+    expect(readings.selected?.aliases).toMatchObject({ ok: true });
+  });
+
+  it("keeps refused aliases as their own degraded reading — the draft still reads", async () => {
+    aliases.mockRejectedValue(REFUSED);
+
+    const readings = await readStudioCopilot(ACCESS, "security-patch");
+
+    expect(readings.selected?.aliases).toEqual({ ok: false, reason: "The service could not answer." });
+    expect(readings.selected?.draft).toMatchObject({ ok: true });
+  });
+
+  it("lets what is not a refusal from the draft read keep travelling", async () => {
+    draft.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
+
+    await expect(readStudioCopilot(ACCESS, "security-patch")).rejects.toThrow("NEXT_REDIRECT /login");
+  });
+
+  it("makes neither read for a slug the rail does not hold", async () => {
+    await readStudioCopilot(ACCESS, "no-such-workflow");
+
+    expect(draft).not.toHaveBeenCalled();
+    expect(aliases).not.toHaveBeenCalled();
+  });
 });
 
 describe("a workflow the rail holds", () => {

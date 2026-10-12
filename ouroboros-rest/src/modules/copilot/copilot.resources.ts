@@ -10,10 +10,12 @@ import type {
   CopilotMessage,
   CopilotSession,
   CopilotToolTrace,
+  DraftNodeProvenance,
   DraftProvenanceSummary,
   DryRun,
   DryRunStatus,
   Workflow,
+  WorkflowDraftNodeProvenance,
 } from "../db/schema";
 import type { UnresolvedReference } from "./copilot.references";
 
@@ -90,6 +92,20 @@ export interface CopilotWarningResource {
   readonly message: string;
 }
 
+/** Who one stage of the draft is by — the stage list's `added by copilot` pill (CE.3, #567). */
+export interface CopilotNodeProvenanceResource {
+  /** The stage's `id` in `definition.nodes`. */
+  readonly nodeId: string;
+  /**
+   * `copilot` or `suggestion` for a stage the conversation or an Apply added and nobody has
+   * edited since; `human` for one a person added or has since edited; `published` for one the
+   * draft inherited from the version it started from.
+   */
+  readonly provenance: DraftNodeProvenance;
+  /** The draft revision that added the stage; `null` for a `published` one. */
+  readonly addedRev: number | null;
+}
+
 /** The shared draft as the conversation sees it. */
 export interface CopilotDraftResource {
   /** The draft slot's etag — what the canvas sends as `If-Match`, so the two surfaces agree on what is current. */
@@ -102,6 +118,8 @@ export interface CopilotDraftResource {
   readonly provenanceSummary: DraftProvenanceSummary;
   /** W7's unresolved references, in document order. */
   readonly warnings: readonly CopilotWarningResource[];
+  /** Who each stage is by, one entry per stage in the document's order; empty without a draft. */
+  readonly nodeProvenance: readonly CopilotNodeProvenanceResource[];
 }
 
 /** The whole conversation, for a surface switching back to it (decision W9). */
@@ -323,4 +341,34 @@ export function copilotWarning(reference: UnresolvedReference): CopilotWarningRe
     path: reference.path,
     message: reference.message,
   };
+}
+
+/**
+ * Who each stage of a draft is by, as the API shows it — in the document's order, whatever
+ * order the view answered in.
+ *
+ * A stage the view has no row for, and a row for a stage the document does not have, are both
+ * left out: the document and the view are two reads, and a batch may land between them.
+ *
+ * @param definition - The stored draft document, or `null` when there is none.
+ * @param rows - The view's rows for the workflow.
+ * @returns One entry per stage the two reads agree on, in `definition.nodes` order.
+ */
+export function copilotNodeProvenance(
+  definition: unknown,
+  rows: readonly Pick<WorkflowDraftNodeProvenance, "added_rev" | "node_id" | "provenance">[],
+): readonly CopilotNodeProvenanceResource[] {
+  const nodes = (definition as { nodes?: unknown } | null)?.nodes;
+  if (!Array.isArray(nodes)) return [];
+
+  const byNode = new Map(rows.map((row) => [row.node_id, row]));
+  const entries: CopilotNodeProvenanceResource[] = [];
+  for (const node of nodes as readonly unknown[]) {
+    const id = (node as { id?: unknown } | null)?.id;
+    const row = typeof id === "string" ? byNode.get(id) : undefined;
+    if (row === undefined) continue;
+    byNode.delete(row.node_id);
+    entries.push({ nodeId: row.node_id, provenance: row.provenance, addedRev: row.added_rev });
+  }
+  return entries;
 }

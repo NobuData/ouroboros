@@ -27,6 +27,7 @@ import {
   SETTINGS_PATH,
   SOURCES_PATH,
   WORKFLOWS_PATH,
+  WORKFLOW_NODE_PARAM,
   loginPath,
   playbookAnchor,
   playbookPath,
@@ -40,6 +41,7 @@ import {
   testsPath,
   safeReturnTo,
   settingsSectionPath,
+  workflowNodePath,
   workflowPath,
 } from "@/app/paths";
 
@@ -151,6 +153,13 @@ describe("the paths themselves", () => {
 
   it("encode a workflow's slug, because a segment built from a value is built from input", () => {
     expect(workflowPath("a/b?c")).toBe("/workflows/a%2Fb%3Fc");
+  });
+
+  it("address the canvas focused on one stage, by a query parameter the studio reads once (#567)", () => {
+    expect(WORKFLOW_NODE_PARAM).toBe("node");
+    expect(workflowNodePath("security-patch", "exploit-verify")).toBe("/workflows/security-patch?node=exploit-verify");
+    // A node id is input too: it cannot spell a second parameter or a fragment.
+    expect(workflowNodePath("a/b", "x&y=1#z")).toBe("/workflows/a%2Fb?node=x%26y%3D1%23z");
   });
 
   it("address one run's console, carrying where it was opened from (#309)", () => {
