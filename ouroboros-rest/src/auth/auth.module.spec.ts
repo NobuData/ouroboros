@@ -1,6 +1,7 @@
 import type { Server } from "node:http";
 
 import type { INestApplication } from "@nestjs/common";
+import { captureSlackRawBody } from "../modules/slack/slack.raw-body";
 import { AuthService } from "@thallesp/nestjs-better-auth";
 import { Pool } from "pg";
 import request from "supertest";
@@ -103,6 +104,16 @@ describe("the options handed to the library", () => {
     const options = betterAuthOptions(stubConfig(), stubDatabase(new Pool()));
 
     expect(options.bodyParser.json.limit).toBe(REQUEST_BODY_LIMIT);
+  });
+
+  it("gives both parsers the hook that keeps Slack's raw bytes (#535)", () => {
+    // Slack signs the body as it was sent; its events are JSON and its commands and button
+    // presses are forms. The library hands each parser's options straight to express, so the
+    // hook has to be on both — one parser without it is one endpoint that cannot be verified.
+    const options = betterAuthOptions(stubConfig(), stubDatabase(new Pool()));
+
+    expect(options.bodyParser.json.verify).toBe(captureSlackRawBody);
+    expect(options.bodyParser.urlencoded.verify).toBe(captureSlackRawBody);
   });
 
   it("publishes a limit above the DSL's own ceiling", () => {

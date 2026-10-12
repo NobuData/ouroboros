@@ -48,6 +48,12 @@ export const SECRET_VARIABLES: ReadonlySet<string> = new Set([
   // valuable string this service holds after the database password.
   VARIABLES.betterAuthSecret,
   VARIABLES.githubClientSecret,
+  // The Slack app's three ([#535](https://github.com/NobuData/ouroboros/issues/535)): whoever
+  // holds the signing secret can forge a button press, the client secret an install, and the
+  // app-level token a Socket Mode connection.
+  VARIABLES.slackClientSecret,
+  VARIABLES.slackSigningSecret,
+  VARIABLES.slackAppToken,
   // The vault's key-encryption key ([#222](https://github.com/NobuData/ouroboros/issues/222)),
   // and the one value here whose exposure is not recoverable by rotating it: it seals every
   // workspace's data-encryption key, so a copy of this line beside a copy of `tenant_keys`

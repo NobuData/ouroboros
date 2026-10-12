@@ -55,6 +55,7 @@
  */
 
 import { Module } from "@nestjs/common";
+import { captureSlackRawBody } from "../modules/slack/slack.raw-body";
 import { APP_GUARD } from "@nestjs/core";
 import { AuthModule as NestBetterAuth } from "@thallesp/nestjs-better-auth";
 
@@ -96,7 +97,12 @@ export interface BetterAuthOptions {
   /** Whether the library applies a CORS policy of its own — never; see {@link betterAuthOptions}. */
   readonly disableTrustedOriginsCors: true;
   /** The parser the library re-adds for every path outside `/api/auth` — see {@link REQUEST_BODY_LIMIT}. */
-  readonly bodyParser: { readonly json: { readonly limit: string } };
+  readonly bodyParser: {
+    readonly json: { readonly limit: string; readonly verify: typeof captureSlackRawBody };
+    // The library's type for these options omits `verify`, which it nonetheless hands straight
+    // to `express.urlencoded` — hence the open record; `auth.module.spec.ts` holds the hook there.
+    readonly urlencoded: Readonly<Record<string, unknown>>;
+  };
 }
 
 /**
@@ -127,7 +133,14 @@ export function betterAuthOptions(
     // `application.ts` turns Nest's own parser off so BetterAuth can sign the bytes it was
     // sent; the library re-adds `express.json()` for every other path, and this is the one
     // option this service has about it.
-    bodyParser: { json: { limit: REQUEST_BODY_LIMIT } },
+    //
+    // Both parsers also keep the raw bytes of a request to the Slack family (#535): Slack signs
+    // the body as it was sent, and its events are JSON while its commands and button presses
+    // are forms. The hook is path-scoped, so no other request is retained twice.
+    bodyParser: {
+      json: { limit: REQUEST_BODY_LIMIT, verify: captureSlackRawBody },
+      urlencoded: { verify: captureSlackRawBody },
+    },
   };
 }
 

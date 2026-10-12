@@ -91,9 +91,9 @@
       ],
       "caption": "Smart defaults: what is already set up for you, and what you can add later.",
       "alt": "The Smart defaults card, listing models through your own keys, builds on an enrolled runner, the nightly estimator and Slack after your first pull request.",
-      "capturedAt": "2026-10-08T21:14:45.631Z",
-      "uiVersion": "0.144.1",
-      "seedRef": "010fb287e1c459cdc1d703473959cc3bb408a31f"
+      "capturedAt": "2026-10-12T20:40:36.681Z",
+      "uiVersion": "0.156.1",
+      "seedRef": "bcd3a87050d0c3e29b0692b61f8c446e46be2746"
     },
     {
       "id": "user-guide.wizard.dry-run",

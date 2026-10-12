@@ -91,6 +91,10 @@ import {
   NOTIFICATION_ROUTE_UPDATED_EVENT,
   RESEARCH_WATCH_POLICY_UPDATED_EVENT,
   ROADMAP_POLICY_UPDATED_EVENT,
+  CHAT_CONNECTION_INSTALLED_EVENT,
+  CHAT_CONNECTION_REVOKED_EVENT,
+  CHAT_IDENTITY_LINKED_EVENT,
+  CHAT_IDENTITY_UNLINKED_EVENT,
   ROADMAP_SUGGESTION_DISMISSED_EVENT,
 } from "./audit.events";
 
@@ -240,6 +244,10 @@ describe("the vocabulary", () => {
       "regression_watch.policy_updated",
       "roadmap.suggestion_dismissed",
       "roadmap.policy_updated",
+      "chat.connection_installed",
+      "chat.connection_revoked",
+      "chat.identity_linked",
+      "chat.identity_unlinked",
     ]);
   });
 
@@ -283,6 +291,7 @@ describe("the vocabulary", () => {
       "analysis_suggestion",
       "analyzer",
       "audit",
+      "chat",
       "credential",
       "decision",
       "github",
@@ -399,6 +408,10 @@ describe("the vocabulary", () => {
       RESEARCH_WATCH_POLICY_UPDATED_EVENT,
       ROADMAP_SUGGESTION_DISMISSED_EVENT,
       ROADMAP_POLICY_UPDATED_EVENT,
+      CHAT_CONNECTION_INSTALLED_EVENT,
+      CHAT_CONNECTION_REVOKED_EVENT,
+      CHAT_IDENTITY_LINKED_EVENT,
+      CHAT_IDENTITY_UNLINKED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

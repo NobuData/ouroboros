@@ -528,7 +528,12 @@ describe("TABLE_COLUMNS", () => {
     //
     // The hundred-and-seventy-third is V110's `workflow_draft_node_provenance` view, which the
     // copilot's draft read (#567) is the first code to read: who added each stage of a draft.
-    expect(TABLE_NAMES).toHaveLength(173);
+    //
+    // The hundred-and-seventy-fourth to seventh are BZ.1's (#535): V130's `chat_connections`, its
+    // `chat_connections_public` view (the connection without its sealed bot token) and
+    // `chat_channels`, and V132's `chat_identity_links` — what the Slack app installs into, lists
+    // and links through.
+    expect(TABLE_NAMES).toHaveLength(177);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
@@ -715,7 +720,7 @@ describe("TABLE_COLUMNS", () => {
     for (const view of READ_ONLY_VIEWS) {
       expect(TABLE_NAMES).toContain(view);
     }
-    expect(READ_ONLY_VIEWS).toHaveLength(15);
+    expect(READ_ONLY_VIEWS).toHaveLength(16);
   });
 
   it("makes runs_with_stage the same shape as runs, so the stage read moves by one word", () => {

@@ -88,7 +88,7 @@ body{margin:0;padding:var(--gap);background:var(--bg);color:var(--ink);font:15px
  * @param body - The `.answer` section's inner HTML.
  * @returns The document.
  */
-function documentOf(title: string, body: string): string {
+export function documentOf(title: string, body: string): string {
   return [
     "<!doctype html>",
     '<html lang="en"><head><meta charset="utf-8">',

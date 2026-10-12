@@ -24,6 +24,12 @@ const PLANTED = {
   // The artifact store's S3 credential (#330) — set even with the local driver, because a
   // deployment switching drivers sets it before it flips OURO_ARTIFACT_STORE.
   OURO_ARTIFACT_S3_SECRET_ACCESS_KEY: "s3-secret-that-must-not-leak",
+  // The Slack app's three (#535). The client id travels with them because the app's settings
+  // are set together or not at all; it is not a secret and is printed.
+  OURO_SLACK_CLIENT_ID: "1234567890.1234567890123",
+  OURO_SLACK_CLIENT_SECRET: "slack-client-secret-that-must-not-leak",
+  OURO_SLACK_SIGNING_SECRET: "slack-signing-secret-that-must-not-leak",
+  OURO_SLACK_APP_TOKEN: "xapp-slack-app-token-that-must-not-leak",
 };
 
 /**
@@ -101,12 +107,15 @@ describe("redactedEnvironment", () => {
   // *leaving* it — one fewer case is still a green run. This names the set instead, which
   // is what makes dropping `BETTER_AUTH_SECRET` from it a failing test rather than a
   // quieter suite. Written against `VARIABLES` so a rename moves both at once.
-  it("classifies exactly the six values that must never be printed", () => {
+  it("classifies exactly the nine values that must never be printed", () => {
     expect([...SECRET_VARIABLES]).toEqual([
       VARIABLES.engineSharedSecret,
       VARIABLES.runSimulatorSecret,
       VARIABLES.betterAuthSecret,
       VARIABLES.githubClientSecret,
+      VARIABLES.slackClientSecret,
+      VARIABLES.slackSigningSecret,
+      VARIABLES.slackAppToken,
       VARIABLES.vaultMasterKey,
       VARIABLES.artifactS3SecretAccessKey,
     ]);

@@ -381,9 +381,14 @@ test.describe("the settings hub", () => {
     await expect(
       seat(page, "audit").getByRole("button", { name: AUDIT.exportButton }),
     ).toBeVisible();
+    // The seeded workspace's Slack install (#534), read through the hub since #535 — the tile
+    // that used to say *not built yet*.
     await expect(
-      seat(page, "integrations").getByText("not built yet", { exact: true }),
-    ).toBeVisible();
+      seat(page, "integrations")
+        .locator(".integrations__tile")
+        .filter({ has: page.getByText("Slack", { exact: true }) })
+        .locator(".integrations__line"),
+    ).toHaveText("acme-robotics");
     await expect(seat(page, "notifications")).toContainText("connect PagerDuty first");
     await expect(seat(page, "danger")).toContainText(DANGER.pauseWhy);
     await expect(seat(page, "danger").getByRole("switch", { name: DANGER.pause })).toHaveAttribute(
@@ -431,9 +436,14 @@ test.describe("the settings hub", () => {
     // ---- Every section is still there to be read — and says why where it cannot be.
     await expect(page.locator(".settings__grid > .settings__seat")).toHaveCount(SEATS.length);
     await expect(seat(page, "audit").getByRole("note")).toHaveText(READ_ONLY.audit);
+    // The seeded workspace's Slack install (#534), read through the hub since #535 — the tile
+    // that used to say *not built yet*.
     await expect(
-      seat(page, "integrations").getByText("not built yet", { exact: true }),
-    ).toBeVisible();
+      seat(page, "integrations")
+        .locator(".integrations__tile")
+        .filter({ has: page.getByText("Slack", { exact: true }) })
+        .locator(".integrations__line"),
+    ).toHaveText("acme-robotics");
     await expect(seat(page, "notifications")).toContainText("connect PagerDuty first");
     await expect(seat(page, "danger")).toContainText(DANGER.pauseRole);
     await expect(seat(page, "danger")).toContainText(DANGER.ownerOnly);

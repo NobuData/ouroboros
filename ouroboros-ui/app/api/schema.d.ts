@@ -2713,6 +2713,231 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/slack/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Slack's Events API request URL
+         * @description Where Slack delivers events ([#535](https://github.com/NobuData/ouroboros/issues/535)).
+         *     **Slack is the caller**: there is no session, and the request is authenticated by its
+         *     signature alone — `X-Slack-Signature` is `v0=` and the HMAC-SHA256, under the app's signing
+         *     secret (`OURO_SLACK_SIGNING_SECRET`), of `v0:{X-Slack-Request-Timestamp}:{raw body}`,
+         *     compared in constant time over the bytes as they arrived. A timestamp more than five
+         *     minutes from this service's clock is refused as a replay. Every refusal is the same `401`
+         *     and a security log line; a deployment with no signing secret refuses everything.
+         *
+         *     Answers Slack's **URL verification** handshake with its `challenge`. Every other event is
+         *     acknowledged at once (`{}`) and handled after the answer; a redelivered `event_id` is
+         *     acknowledged and handled once. `app_uninstalled` and `tokens_revoked` mark the workspace's
+         *     connection `revoked` (audited as `chat.connection_revoked`).
+         */
+        post: operations["receiveSlackEvent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/slack/interactivity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Slack's interactivity request URL
+         * @description Where Slack delivers a button press (#535): a form whose `payload` field is JSON. Verified
+         *     exactly as `POST /api/v1/slack/events` is, acknowledged at once, and answered afterwards
+         *     through the payload's `response_url`.
+         *
+         *     A press from a Slack user with **no linked Ouroboros account** is answered with an
+         *     ephemeral prompt to link, and does nothing else. A press from a linked user is answered
+         *     *not available yet*: the actions themselves arrive with the Chat Ops command surface.
+         */
+        post: operations["receiveSlackInteraction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/slack/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Slack's slash-command request URL
+         * @description Where Slack delivers `/ouro` (#535). Verified exactly as `POST /api/v1/slack/events` is and
+         *     acknowledged at once with an ephemeral *Working on it…* — inside Slack's three seconds
+         *     whatever the command goes on to do; the result follows through the command's
+         *     `response_url`, visible only to the person who typed it.
+         *
+         *     `/ouro link` answers with a single-use link to the confirmation page
+         *     (`GET /api/v1/slack/link/{token}`); `/ouro unlink` revokes the caller's link
+         *     (`chat.identity_unlinked`); `/ouro help` lists both. Every other subcommand is answered
+         *     *not available yet* and changes nothing.
+         */
+        post: operations["receiveSlackCommand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/slack/oauth/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Begin installing the Slack app
+         * @description Sends an owner or admin's browser to Slack's consent screen (#535) for the app's bot
+         *     scopes, with a random `state` bound to this browser and workspace by an `HttpOnly` cookie
+         *     that lives ten minutes. **A navigation, not an API call**: linked on the UI origin, whose
+         *     proxy forwards the Slack family here.
+         */
+        get: operations["beginSlackInstall"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/slack/oauth/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Complete installing the Slack app
+         * @description Where Slack sends the browser back (#535) — the redirect URL the app's manifest registers,
+         *     on the UI origin. Checks `state` against the cookie the install began with (spent whatever
+         *     happens next), exchanges `code` for the bot token, **seals the token in the vault** and
+         *     stores the connection, reads the workspace's channels, and records
+         *     `chat.connection_installed`. The token is never returned by any route and never logged.
+         *
+         *     **Every outcome is a redirect to Settings** carrying `slack=connected` or the refusal's
+         *     code — `slack_oauth_state_invalid`, `slack_install_denied` (the person declined),
+         *     `slack_install_failed` (Slack refused the exchange, or granted no bot token),
+         *     `slack_already_connected` (that Slack workspace is installed in another Ouroboros
+         *     workspace) or `slack_not_configured`.
+         */
+        get: operations["completeSlackInstall"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/slack/link/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The page that confirms linking a Slack identity
+         * @description `/ouro link` answers, to its caller alone, with a link to this page (#535) — on the **UI
+         *     origin**, forwarded here by `ouroboros-ui`'s proxy so the browser's session cookie
+         *     arrives. It answers **an HTML page** naming the Slack user and workspace, the Ouroboros
+         *     workspace and the signed-in account, with one button.
+         *
+         *     **Opening the link binds nothing** — this `GET` only reads; the button's `POST` is the
+         *     link. Without a session the page offers *Sign in*, returning here. The token is the proof
+         *     of *which Slack user asked* (it was delivered ephemerally to them); the session is the
+         *     proof of *which Ouroboros account* — neither a display name nor a matching email binds
+         *     anything by itself. Single-use, fifteen minutes, stored only as a hash.
+         */
+        get: operations["openSlackLink"];
+        put?: never;
+        /**
+         * Link a Slack identity to the signed-in account
+         * @description The confirm page's button (#535). Spends the token (atomic, once) and binds the Slack user
+         *     to the signed-in member — `chat.identity_linked`, with how it was verified
+         *     (`email_match_confirmed` when Slack's profile email is the account's, otherwise
+         *     `oauth_session`). Answers an HTML receipt, or a page saying why nothing was linked. The
+         *     body is ignored.
+         */
+        post: operations["confirmSlackLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/slack/connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where Slack stands for this workspace
+         * @description The connection status (#535) — one source for every surface that says whether Slack is
+         *     connected: the workspace, the app version it was installed at, the scopes granted and any
+         *     the app asks for that were not, when the token was last seen to work, and the platform's
+         *     reason when it does not. `state` separates a deployment with no Slack app
+         *     (`not_configured`) from a workspace that has not installed it (`not_connected`). **Never
+         *     the bot token**, sealed or otherwise. Any member may read it.
+         */
+        get: operations["getSlackConnection"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/slack/connection/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Slack whether the connection still works
+         * @description Calls Slack's `auth.test` with the stored token (#535) and refreshes the workspace's
+         *     channel list. `verified` stamps `lastVerifiedAt`; `revoked` — Slack says the token or the
+         *     app is gone — marks the connection `revoked` with Slack's reason and records
+         *     `chat.connection_revoked`; `unreachable` changes nothing, because a network failure is not
+         *     evidence about the grant; `not_connected` means there was nothing to check. Owners and
+         *     admins.
+         */
+        post: operations["verifySlackConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/integrations": {
         parameters: {
             query?: never;
@@ -2726,10 +2951,13 @@ export interface paths {
          *     a **status hub composed on every request from the plane that owns each connection**, never
          *     a second store: GitHub from its token, App installation and sources; Jira and Linear from
          *     their ticket sources; webhooks from the active endpoints (*2 active*); the build farm from
-         *     its runners. `availability` separates *not connected* (`disconnected`) from *does not exist
-         *     yet*: Slack is `unavailable_unbuilt` until Chat Ops (mockup 19) lands, and Teams, Datadog
-         *     and PagerDuty are `unavailable_v2`. Every `deepLink` is the surface that owns the
-         *     connection — this page has no connection form. `connectedCount` (*4 connected*) is counted
+         *     its runners; Slack from the workspace's install
+         *     ([#535](https://github.com/NobuData/ouroboros/issues/535)) — connected with the Slack
+         *     workspace's name, `disconnected` with Slack's reason once revoked, and without an action on
+         *     a deployment that registered no Slack app. `availability` separates *not connected*
+         *     (`disconnected`) from *does not exist yet*: Teams, Datadog and PagerDuty are
+         *     `unavailable_v2`. Every `deepLink` is the surface that owns the connection — for Slack the
+         *     install route, `/api/v1/slack/oauth/install` — and this page has no connection form. `connectedCount` (*4 connected*) is counted
          *     from the tiles. Any member may read it.
          */
         get: operations["listIntegrations"];
@@ -16278,7 +16506,8 @@ export interface components {
             /** @description The nightly job's schedule and last run — only on `nightly_estimator`. */
             estimator?: components["schemas"]["PlanningReestimationStatus"];
             /**
-             * @description What the row waits for — only on `slack_future`.
+             * @description What the row waits for. The Slack row carried it until its install was built (#535)
+             *     and carries a `link` instead; no row sets it today.
              * @example ChatOps
              */
             arrivesWith?: string;
@@ -22785,7 +23014,8 @@ export interface components {
             label: string;
             /**
              * @description `disconnected` — you have not connected this. `unavailable_unbuilt` — the surface does
-             *     not exist yet (Slack, until Chat Ops). `unavailable_v2` — a v2 connector kind (BT.3).
+             *     not exist yet (Slack's, until #535; no tile answers it today). `unavailable_v2` — a v2
+             *     connector kind (BT.3).
              * @enum {string}
              */
             availability: "connected" | "disconnected" | "unavailable_v2" | "unavailable_unbuilt";
@@ -22810,6 +23040,89 @@ export interface components {
             tiles: components["schemas"]["IntegrationTile"][];
             /** @description *N connected* — counted from the tiles, never stored. */
             connectedCount: number;
+        };
+        /**
+         * SlackEventAcknowledgement
+         * @description What an event is answered with — the handshake's challenge, or nothing.
+         */
+        SlackEventAcknowledgement: {
+            /** @description Echoed for Slack's `url_verification` handshake only. */
+            challenge?: string;
+        };
+        /**
+         * SlackCommandAcknowledgement
+         * @description The immediate answer to a slash command; the result follows separately.
+         */
+        SlackCommandAcknowledgement: {
+            /** @enum {string} */
+            response_type: "ephemeral";
+            /** @example Working on it… */
+            text: string;
+        };
+        /**
+         * SlackConnection
+         * @description Where Slack stands for a workspace. Never carries the bot token.
+         */
+        SlackConnection: {
+            /**
+             * @description `not_configured` — this deployment has registered no Slack app. `not_connected` — the
+             *     app exists and this workspace has not installed it. `connected` — installed, and the
+             *     token worked when last checked. `revoked` — the app was removed from the Slack
+             *     workspace, or its token revoked. `error` — installed, but failing for another reason.
+             * @enum {string}
+             */
+            state: "not_configured" | "not_connected" | "connected" | "revoked" | "error";
+            /** @description Whether this deployment has a Slack app registered at all. */
+            configured: boolean;
+            /**
+             * @description Where an owner or admin starts the install, on the UI origin; null when not configured.
+             * @example /api/v1/slack/oauth/install
+             */
+            installPath: string | null;
+            /** Format: uuid */
+            connectionId: string | null;
+            /** @description The Slack workspace; null when never installed. */
+            workspace: null | {
+                /** @example T024AB */
+                id: string;
+                /** @example acme-robotics */
+                name: string;
+            };
+            appId: string | null;
+            /**
+             * @description The manifest version the app was installed at.
+             * @example v1.0
+             */
+            appVersion: string | null;
+            /** @description The bot scopes Slack granted. */
+            scopes: string[];
+            /** @description Scopes the app asks for that a live connection was not granted. */
+            missingScopes: string[];
+            /**
+             * @description The platform's reason the connection is not working.
+             * @example app_uninstalled
+             */
+            statusDetail: string | null;
+            /** Format: date-time */
+            installedAt: string | null;
+            /**
+             * Format: date-time
+             * @description When the token was last seen to work.
+             */
+            lastVerifiedAt: string | null;
+            channels: {
+                total: number;
+                /** @description Channels the bot is a member of. */
+                joined: number;
+            };
+            /** @description Whether this deployment reaches Slack over Socket Mode — development only. */
+            socketMode: boolean;
+        };
+        /** SlackVerification */
+        SlackVerification: {
+            /** @enum {string} */
+            result: "verified" | "revoked" | "unreachable" | "not_connected";
+            connection: components["schemas"]["SlackConnection"];
         };
         /**
          * NotificationRouteChannel
@@ -31099,6 +31412,25 @@ export interface components {
          * @example ouro_act_9c41d2e07a3b5f68_PHT7LFFHxLVDamqdOm-8S2U2CURNlADGcrwkr9sZBB8
          */
         ActionToken: string;
+        /**
+         * @description A link token from `/ouro link` ([#535](https://github.com/NobuData/ouroboros/issues/535)):
+         *     `ouro_lnk_` and 43 URL-safe characters. Anything else is answered as an invalid link
+         *     without a lookup.
+         * @example ouro_lnk_PHT7LFFHxLVDamqdOm-8S2U2CURNlADGcrwkr9sZBB8
+         */
+        SlackLinkToken: string;
+        /**
+         * @description `v0=` and the hex HMAC-SHA256 of `v0:{timestamp}:{raw body}` under the app's signing
+         *     secret. Optional in the schema only so that its absence is answered by this service's
+         *     own `401` rather than a validator's.
+         * @example v0=a2114d57b48eac39b9ad189dd8316235a7b4a8d21a10bd27519666489c69b503
+         */
+        SlackSignature: string;
+        /**
+         * @description The Unix time Slack signed the request at; refused beyond five minutes either way.
+         * @example 1531420618
+         */
+        SlackRequestTimestamp: string;
         /**
          * @description The window ending now the report covers, over merge instants — mockup 15's range segment
          *     ([#435](https://github.com/NobuData/ouroboros/issues/435)). `30d` when absent.
@@ -42568,6 +42900,761 @@ export interface operations {
             };
             /** @description `validation_failed` — an id is not a uuid. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    receiveSlackEvent: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description `v0=` and the hex HMAC-SHA256 of `v0:{timestamp}:{raw body}` under the app's signing
+                 *     secret. Optional in the schema only so that its absence is answered by this service's
+                 *     own `401` rather than a validator's.
+                 * @example v0=a2114d57b48eac39b9ad189dd8316235a7b4a8d21a10bd27519666489c69b503
+                 */
+                "X-Slack-Signature"?: components["parameters"]["SlackSignature"];
+                /**
+                 * @description The Unix time Slack signed the request at; refused beyond five minutes either way.
+                 * @example 1531420618
+                 */
+                "X-Slack-Request-Timestamp"?: components["parameters"]["SlackRequestTimestamp"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Slack's event envelope, read as Slack sends it rather than validated as a contract. */
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description The handshake's `challenge`, or an empty acknowledgement. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SlackEventAcknowledgement"];
+                };
+            };
+            /**
+             * @description `slack_signature_invalid` — unsigned, signed with another secret, changed after signing,
+             *     or older than the replay window. The answer does not say which.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    receiveSlackInteraction: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description `v0=` and the hex HMAC-SHA256 of `v0:{timestamp}:{raw body}` under the app's signing
+                 *     secret. Optional in the schema only so that its absence is answered by this service's
+                 *     own `401` rather than a validator's.
+                 * @example v0=a2114d57b48eac39b9ad189dd8316235a7b4a8d21a10bd27519666489c69b503
+                 */
+                "X-Slack-Signature"?: components["parameters"]["SlackSignature"];
+                /**
+                 * @description The Unix time Slack signed the request at; refused beyond five minutes either way.
+                 * @example 1531420618
+                 */
+                "X-Slack-Request-Timestamp"?: components["parameters"]["SlackRequestTimestamp"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Slack's form, read as Slack sends it rather than validated as a contract. */
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": {
+                    /** @description The interaction, as JSON. */
+                    payload?: string;
+                } & {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description An empty acknowledgement; the result follows as a separate message. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description `slack_signature_invalid` — see `POST /api/v1/slack/events`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    receiveSlackCommand: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description `v0=` and the hex HMAC-SHA256 of `v0:{timestamp}:{raw body}` under the app's signing
+                 *     secret. Optional in the schema only so that its absence is answered by this service's
+                 *     own `401` rather than a validator's.
+                 * @example v0=a2114d57b48eac39b9ad189dd8316235a7b4a8d21a10bd27519666489c69b503
+                 */
+                "X-Slack-Signature"?: components["parameters"]["SlackSignature"];
+                /**
+                 * @description The Unix time Slack signed the request at; refused beyond five minutes either way.
+                 * @example 1531420618
+                 */
+                "X-Slack-Request-Timestamp"?: components["parameters"]["SlackRequestTimestamp"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Slack's form, read as Slack sends it rather than validated as a contract. */
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": {
+                    team_id?: string;
+                    user_id?: string;
+                    /** @example /ouro */
+                    command?: string;
+                    /** @example link */
+                    text?: string;
+                    response_url?: string;
+                } & {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description The immediate acknowledgement. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SlackCommandAcknowledgement"];
+                };
+            };
+            /** @description `slack_signature_invalid` — see `POST /api/v1/slack/events`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    beginSlackInstall: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description To Slack's consent screen. */
+            302: {
+                headers: {
+                    /** @description `https://slack.com/oauth/v2/authorize`, with the client id, scopes, redirect URI and state. */
+                    Location?: string;
+                    /** @description `ouro_slack_oauth` — the state, scoped to `/api/v1/slack/oauth`. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+             *     this route is for people.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — no such workspace, or none you are a member of.
+             *     `slack_not_configured` — this deployment has registered no Slack app.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    completeSlackInstall: {
+        parameters: {
+            query?: {
+                /** @description Slack's authorization code. */
+                code?: string;
+                /** @description The value issued when the install began, echoed back for checking. */
+                state?: string;
+                /** @description Slack's error when the person declined — `access_denied`. */
+                error?: string;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Back to Settings, with the outcome. */
+            302: {
+                headers: {
+                    /** @description `/settings?slack=<connected or a refusal code>#integrations` on the UI origin. */
+                    Location?: string;
+                    /** @description Clears `ouro_slack_oauth`. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+             *     this route is for people.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found` — no such workspace, or none you are a member of. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    openSlackLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A link token from `/ouro link` ([#535](https://github.com/NobuData/ouroboros/issues/535)):
+                 *     `ouro_lnk_` and 43 URL-safe characters. Anything else is answered as an invalid link
+                 *     without a lookup.
+                 * @example ouro_lnk_PHT7LFFHxLVDamqdOm-8S2U2CURNlADGcrwkr9sZBB8
+                 */
+                token: components["parameters"]["SlackLinkToken"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The confirm page, or — with no session — the sign-in page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description A page saying the signed-in account is not a member of the workspace. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /**
+             * @description A page saying the link is not valid — already used, replaced by a newer one, or never
+             *     issued. Nothing is looked up for a malformed token.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /**
+             * @description A page saying this account is already linked to another Slack user in that workspace,
+             *     or that Slack is no longer connected.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description A page saying the link expired — links work for fifteen minutes. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    confirmSlackLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A link token from `/ouro link` ([#535](https://github.com/NobuData/ouroboros/issues/535)):
+                 *     `ouro_lnk_` and 43 URL-safe characters. Anything else is answered as an invalid link
+                 *     without a lookup.
+                 * @example ouro_lnk_PHT7LFFHxLVDamqdOm-8S2U2CURNlADGcrwkr9sZBB8
+                 */
+                token: components["parameters"]["SlackLinkToken"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The receipt, and how to undo it (`/ouro unlink`). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /**
+             * @description No session — the sign-in page. Nothing was linked. A post the browser reports as made
+             *     from another site (`Sec-Fetch-Site`) is answered the same way, whatever session it carries.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description A page saying the signed-in account is not a member of the workspace. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description A page saying the link is not valid — already used, replaced, or never issued. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Already linked to another Slack user, or Slack is no longer connected. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Expired. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getSlackConnection: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SlackConnection"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `service_scope_missing` — a service token without `api.read`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found` — no such workspace, or none you are a member of. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    verifySlackConnection: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What Slack said, and the status after it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SlackVerification"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+             *     this route is for people.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found` — no such workspace, or none you are a member of. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

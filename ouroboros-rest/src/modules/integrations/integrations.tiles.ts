@@ -8,15 +8,16 @@
  * **deep-links** to the surface that owns the flow, and the grid has no connection form of its own.
  *
  * **A tile never shows a ✓ it did not earn.** `availability` separates *you have not connected
- * this* (`disconnected`) from *this does not exist yet* — Slack waits on mockup 19
- * (`unavailable_unbuilt`); Teams, Datadog and PagerDuty are v2 connector kinds (`unavailable_v2`)
- * — so the UI never has to guess from a null, and a greyed tile says why it is grey.
+ * this* (`disconnected`) from *this does not exist yet* — Teams, Datadog and PagerDuty are v2
+ * connector kinds (`unavailable_v2`) — so the UI never has to guess from a null, and a greyed tile
+ * says why it is grey. `unavailable_unbuilt` was Slack's until BZ.1 (#535) built the install; no
+ * tile answers it today, and it stays in the vocabulary for the next surface that is not there yet.
  *
  * ```
  * tile        owner                                     connected when
  * github      sources page · K.4 token · App state      App installed, a token stored, or an
  *                                                       unpaused GitHub source with a credential
- * slack       mockup 19 (Chat Ops)                      never, in this build
+ * slack       the Slack app's install (BZ.1)            the workspace's install is active or failing
  * jira        sources page                              an unpaused Jira source with a credential
  * linear      sources page                              an unpaused Linear source with a credential
  * teams       BT.3 (v2)                                 never, in this build
@@ -30,6 +31,7 @@
 import { ONLINE_STATUSES } from "../farm/fleet/fleet.stats";
 import { BUILD_FARM_PATH, SOURCES_PATH } from "../onboarding/defaults.resources";
 import { SETTINGS_PATH } from "../onboarding/resources";
+import { SLACK_PATH_PREFIX } from "../slack/slack.app";
 import type { IntegrationFacts, SourceFact } from "./integrations.repository";
 
 /** Every tile the grid shows, in the mockup's order (the build farm after it). */
@@ -93,8 +95,16 @@ export const WEBHOOKS_PATH = `${SETTINGS_PATH}#integrations`;
 /** Why a v2 connector kind cannot be connected yet. */
 export const V2_REASON = "Arrives with the v2 connectors (BT.3).";
 
-/** Why Slack cannot be connected yet. */
-export const SLACK_REASON = "Slack arrives with Chat Ops (mockup 19), which is not built yet.";
+/**
+ * Where Slack is connected: the install route (BZ.1, #535), which sends the browser to Slack's
+ * consent screen. An API path, not a page — the UI's proxy forwards the Slack family, and the
+ * tile's action is a plain link, so following it is a navigation.
+ */
+export const SLACK_INSTALL_PATH = `${SLACK_PATH_PREFIX}oauth/install`;
+
+/** Why Slack cannot be connected on a deployment that registered no Slack app. */
+export const SLACK_NOT_CONFIGURED_REASON =
+  "No Slack app is registered on this deployment (OURO_SLACK_CLIENT_ID).";
 
 /**
  * The GitHub login a source names in its config, when it names one.
@@ -200,6 +210,48 @@ export function githubTile(facts: IntegrationFacts): IntegrationTileResource {
     contextLine: login === undefined ? via : `${login} · ${via}`,
     deepLink: { label: "Manage", path: SOURCES_PATH },
     reason: failing === undefined ? null : (failing.statusReason ?? "A GitHub source is failing."),
+  };
+}
+
+/**
+ * The Slack tile: the workspace's install, as `chat_connections` holds it.
+ *
+ * A revoked install is `disconnected`, with Slack's reason — the grant is gone, so it does not
+ * count as connected — and a failing one is connected and needs a look. The action is the
+ * install route, offered only where the deployment has an app to install.
+ *
+ * @param facts - The workspace's facts.
+ * @returns The tile.
+ */
+export function slackTile(facts: IntegrationFacts): IntegrationTileResource {
+  const { configured, connection } = facts.slack;
+  const base = { kind: "slack", label: "Slack" } as const;
+
+  if (connection === null || connection.status === "revoked") {
+    return {
+      ...base,
+      availability: "disconnected",
+      state: "off",
+      contextLine: null,
+      deepLink: configured ? { label: "Connect", path: SLACK_INSTALL_PATH } : null,
+      reason:
+        connection !== null
+          ? `Slack revoked the app (${connection.statusDetail ?? "revoked"}).`
+          : configured
+            ? null
+            : SLACK_NOT_CONFIGURED_REASON,
+    };
+  }
+
+  const failing = connection.status === "error";
+
+  return {
+    ...base,
+    availability: "connected",
+    state: failing ? "attention" : "ok",
+    contextLine: connection.workspaceName,
+    deepLink: configured ? { label: "Reinstall", path: SLACK_INSTALL_PATH } : null,
+    reason: failing ? (connection.statusDetail ?? "The Slack connection is failing.") : null,
   };
 }
 
@@ -320,7 +372,7 @@ export function buildFarmTile(facts: IntegrationFacts): IntegrationTileResource 
 export function composeIntegrations(facts: IntegrationFacts): IntegrationsResource {
   const tiles: IntegrationTileResource[] = [
     githubTile(facts),
-    unavailable("slack", "Slack", "unavailable_unbuilt", SLACK_REASON),
+    slackTile(facts),
     trackerTile(facts, "jira", "Jira"),
     trackerTile(facts, "linear", "Linear"),
     unavailable("teams", "MS Teams", "unavailable_v2", V2_REASON),

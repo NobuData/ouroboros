@@ -35,7 +35,10 @@ const REST = "http://rest.test:4000";
  * @param headers Anything the caller sent — used by the case about a forged one.
  * @returns The request, as Next.js would hand it to {@link proxy}.
  */
-function request(path: string, headers: Record<string, string> = {}): NextRequest {
+function request(
+  path: string,
+  headers: Record<string, string> = {},
+): NextRequest {
   return new NextRequest(new URL(path, "http://localhost:3000"), { headers });
 }
 
@@ -52,7 +55,10 @@ function request(path: string, headers: Record<string, string> = {}): NextReques
  * @returns The stamped address, or `undefined` when nothing was stamped.
  */
 function stamped(response: NextResponse): string | undefined {
-  return response.headers.get(`x-middleware-request-${REQUEST_PATH_HEADER}`) ?? undefined;
+  return (
+    response.headers.get(`x-middleware-request-${REQUEST_PATH_HEADER}`) ??
+    undefined
+  );
 }
 
 /**
@@ -68,14 +74,13 @@ function stamped(response: NextResponse): string | undefined {
  * @returns A predicate per entry of {@link config.matcher}, in order.
  */
 async function compiledMatchers(): Promise<((path: string) => boolean)[]> {
-  const { getMiddlewareMatchers } = (await import(
-    "next/dist/build/analysis/get-page-static-info"
-  )) as unknown as {
-    getMiddlewareMatchers: (
-      matcher: readonly string[],
-      config: object,
-    ) => { regexp: string }[];
-  };
+  const { getMiddlewareMatchers } =
+    (await import("next/dist/build/analysis/get-page-static-info")) as unknown as {
+      getMiddlewareMatchers: (
+        matcher: readonly string[],
+        config: object,
+      ) => { regexp: string }[];
+    };
 
   return getMiddlewareMatchers(config.matcher, {}).map(({ regexp }) => {
     const compiled = new RegExp(regexp);
@@ -114,7 +119,9 @@ describe("the auth family, forwarded to ouroboros-rest", () => {
   it("carries the query string, which for the OAuth callback is the whole point", () => {
     // The callback *is* its query string: dropping it strips the `code` and the `state` and
     // fails the exchange at the last hop.
-    const response = proxy(request("/api/auth/callback/github?code=abc&state=xyz"));
+    const response = proxy(
+      request("/api/auth/callback/github?code=abc&state=xyz"),
+    );
 
     expect(response.headers.get("x-middleware-rewrite")).toBe(
       `${REST}/api/auth/callback/github?code=abc&state=xyz`,
@@ -153,14 +160,64 @@ describe("the decision answer page, forwarded to ouroboros-rest (#463)", () => {
   });
 
   it("forwards nothing else under /api/v1", () => {
-    for (const path of ["/api/v1/inbox", "/api/v1/inbox/answers", "/api/v1/inbox/answer"]) {
-      expect(proxy(request(path)).headers.get("x-middleware-rewrite")).toBeNull();
+    for (const path of [
+      "/api/v1/inbox",
+      "/api/v1/inbox/answers",
+      "/api/v1/inbox/answer",
+    ]) {
+      expect(
+        proxy(request(path)).headers.get("x-middleware-rewrite"),
+      ).toBeNull();
     }
   });
 
   it("is one of the matcher's entries, compiled by Next.js", async () => {
     expect(await runsOn(`/api/v1/inbox/answer/${TOKEN}`)).toBe(true);
     expect(await runsOn("/api/v1/inbox/channels")).toBe(false);
+  });
+});
+
+describe("the Slack app, forwarded to ouroboros-rest (#535)", () => {
+  const TOKEN = `ouro_lnk_${"a".repeat(43)}`;
+
+  it.each([
+    "/api/v1/slack/oauth/install",
+    "/api/v1/slack/oauth/callback?code=abc&state=xyz",
+    `/api/v1/slack/link/${TOKEN}`,
+    "/api/v1/slack/events",
+    "/api/v1/slack/interactivity",
+    "/api/v1/slack/commands",
+  ])("rewrites %s onto the service, path and query unchanged", (path) => {
+    // The install and the link page need this origin's session cookie; Slack's three request
+    // URLs ride along so the app's manifest names one origin.
+    const response = proxy(request(path));
+
+    expect(response.headers.get("x-middleware-rewrite")).toBe(`${REST}${path}`);
+    expect(stamped(response)).toBeUndefined();
+  });
+
+  it("does not forward the family's JSON routes, or a path that merely starts like one", () => {
+    for (const path of [
+      "/api/v1/slack",
+      "/api/v1/slack/connection",
+      "/api/v1/slack/connection/verify",
+      "/api/v1/slack/events/extra",
+      "/api/v1/slack/commandsx",
+      "/api/v1/slack/link",
+    ]) {
+      expect(
+        proxy(request(path)).headers.get("x-middleware-rewrite"),
+      ).toBeNull();
+    }
+  });
+
+  it("is in the matcher, compiled by Next.js — and the JSON routes are not", async () => {
+    expect(await runsOn("/api/v1/slack/oauth/callback")).toBe(true);
+    expect(await runsOn(`/api/v1/slack/link/${TOKEN}`)).toBe(true);
+    expect(await runsOn("/api/v1/slack/events")).toBe(true);
+    expect(await runsOn("/api/v1/slack/interactivity")).toBe(true);
+    expect(await runsOn("/api/v1/slack/commands")).toBe(true);
+    expect(await runsOn("/api/v1/slack/connection")).toBe(false);
   });
 });
 
@@ -204,35 +261,39 @@ describe("every other request, carried on with its address", () => {
 
 describe("requestAddress", () => {
   it("keeps the query, because a deep link is often the query", () => {
-    expect(requestAddress(new URL("http://localhost:3000/runs?status=failed"))).toBe(
-      "/runs?status=failed",
-    );
+    expect(
+      requestAddress(new URL("http://localhost:3000/runs?status=failed")),
+    ).toBe("/runs?status=failed");
   });
 
   it("drops Next.js's own _rsc parameter", () => {
     // The router appends it to a navigation; nobody typed it. `?next=/dashboard?_rsc=1a2b`
     // would put the framework's internals in a person's address bar.
-    expect(requestAddress(new URL("http://localhost:3000/dashboard?_rsc=1a2b"))).toBe(
-      "/dashboard",
-    );
+    expect(
+      requestAddress(new URL("http://localhost:3000/dashboard?_rsc=1a2b")),
+    ).toBe("/dashboard");
   });
 
   it("keeps the rest of a query it appears in", () => {
     expect(
-      requestAddress(new URL("http://localhost:3000/runs?status=failed&_rsc=1a2b")),
+      requestAddress(
+        new URL("http://localhost:3000/runs?status=failed&_rsc=1a2b"),
+      ),
     ).toBe("/runs?status=failed");
   });
 
   it("leaves no trailing question mark when there is no query left", () => {
-    expect(requestAddress(new URL("http://localhost:3000/dashboard?"))).toBe("/dashboard");
+    expect(requestAddress(new URL("http://localhost:3000/dashboard?"))).toBe(
+      "/dashboard",
+    );
   });
 
   it("is origin-relative, which is all a return-to may ever be", () => {
     // `safeReturnTo` in `app/paths.ts` refuses anything else, so an absolute URL composed
     // here would be a value guaranteed to be thrown away.
-    expect(requestAddress(new URL("http://localhost:3000/dashboard"))).not.toContain(
-      "localhost",
-    );
+    expect(
+      requestAddress(new URL("http://localhost:3000/dashboard")),
+    ).not.toContain("localhost");
   });
 });
 
@@ -270,7 +331,11 @@ describe("what the matcher runs on, compiled by Next.js's own function", () => {
   });
 
   it("does not run on the framework's build output", async () => {
-    for (const path of ["/_next/static/chunks/main.js", "/_next/image", "/_next/data/b/x.json"]) {
+    for (const path of [
+      "/_next/static/chunks/main.js",
+      "/_next/image",
+      "/_next/data/b/x.json",
+    ]) {
       expect(await runsOn(path)).toBe(false);
     }
   });
@@ -305,7 +370,9 @@ describe("the gate this file deliberately does not hold", () => {
   it("reads no cookie at all, so a prefetch costs nothing", async () => {
     // Proxy runs on every prefetched route. A session read here would be a call to
     // `ouroboros-rest` per prefetch, for an answer the render is about to fetch anyway.
-    const signedIn = proxy(request("/dashboard", { cookie: "better-auth.session_token=x" }));
+    const signedIn = proxy(
+      request("/dashboard", { cookie: "better-auth.session_token=x" }),
+    );
     const signedOut = proxy(request("/dashboard"));
 
     expect(stamped(signedIn)).toBe(stamped(signedOut));

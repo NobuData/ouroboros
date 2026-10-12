@@ -61,6 +61,7 @@ import { GithubCredentialStore } from "../github/github.secrets";
 import { ProviderCredentialStore } from "../registry/registry.secrets";
 import { RegistryModule } from "../registry/registry.module";
 import { ServiceTokenHintStore } from "../service-accounts/service-accounts.secrets";
+import { ChatConnectionTokenStore } from "../slack/slack.secrets";
 import { KEY_WRAPPER } from "./key.wrapper";
 import { MasterKeyWrapper } from "./master.key.wrapper";
 import { VAULT_SECRET_STORES, VaultRotation, type VaultSecretStore } from "./vault.rotation";
@@ -82,6 +83,7 @@ export const REGISTERED_SECRET_STORES = [
   ProviderCredentialStore,
   GithubCredentialStore,
   ServiceTokenHintStore,
+  ChatConnectionTokenStore,
 ] as const;
 
 @Module({
@@ -92,6 +94,8 @@ export const REGISTERED_SECRET_STORES = [
     GithubCredentialStore,
     // V091's sealed token hints (#485) — named here for `GithubCredentialStore`'s reason.
     ServiceTokenHintStore,
+    // V130's sealed Slack bot tokens (#535) — named here for `GithubCredentialStore`'s reason.
+    ChatConnectionTokenStore,
     VaultRepository,
     VaultService,
     VaultRotation,

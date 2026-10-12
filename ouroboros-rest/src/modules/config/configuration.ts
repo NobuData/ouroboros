@@ -1149,6 +1149,27 @@ export interface Configuration {
    */
   readonly webhookInternalAllowlist: readonly string[];
   /**
+   * This deployment's Slack app (BZ.1, #535, decision C1): the OAuth client id from its *Basic
+   * Information* page. From `OURO_SLACK_CLIENT_ID`, absent when the deployment has registered no
+   * Slack app — every Slack route then refuses.
+   */
+  readonly slackClientId?: string;
+  /** The app's OAuth client secret, exchanged for a bot token at install. From `OURO_SLACK_CLIENT_SECRET`. */
+  readonly slackClientSecret?: string;
+  /**
+   * The app's signing secret: what every request Slack sends is verified against. From
+   * `OURO_SLACK_SIGNING_SECRET`.
+   */
+  readonly slackSigningSecret?: string;
+  /**
+   * Whether Slack is reached over Socket Mode instead of the three HTTPS endpoints — a development
+   * convenience for a stack with no public URL. From `OURO_SLACK_SOCKET_MODE`; refused in
+   * production.
+   */
+  readonly slackSocketMode: boolean;
+  /** The app-level token (`xapp-…`) Socket Mode connects with. From `OURO_SLACK_APP_TOKEN`. */
+  readonly slackAppToken?: string;
+  /**
    * The SearXNG instance the web research tool searches through when a workspace's configuration
    * names none. From `OURO_RESEARCH_SEARXNG_URL`, {@link DEFAULT_RESEARCH_SEARXNG_URL} when unset
    * (#615).
@@ -1399,6 +1420,11 @@ export const VARIABLES = {
   webhookDispatchSeconds: "OURO_WEBHOOK_DISPATCH_SECONDS",
   webhookMaxAttempts: "OURO_WEBHOOK_MAX_ATTEMPTS",
   webhookInternalAllowlist: "OURO_WEBHOOK_INTERNAL_ALLOWLIST",
+  slackClientId: "OURO_SLACK_CLIENT_ID",
+  slackClientSecret: "OURO_SLACK_CLIENT_SECRET",
+  slackSigningSecret: "OURO_SLACK_SIGNING_SECRET",
+  slackSocketMode: "OURO_SLACK_SOCKET_MODE",
+  slackAppToken: "OURO_SLACK_APP_TOKEN",
   researchSearxngUrl: "OURO_RESEARCH_SEARXNG_URL",
   researchFetchTimeoutMs: "OURO_RESEARCH_FETCH_TIMEOUT_MS",
   researchFetchMaxBytes: "OURO_RESEARCH_FETCH_MAX_BYTES",
@@ -2035,6 +2061,18 @@ const environmentShape = z.object({
         "collector.internal,10.20.0.0/16",
     ),
 
+  // BZ.1's (#535) five: this deployment's own Slack app (decision C1). All optional — a
+  // deployment that registered none sets none — and the three HTTPS ones travel together,
+  // checked below.
+  OURO_SLACK_CLIENT_ID: z.string().min(1, "expected the Slack app's client id").optional(),
+  OURO_SLACK_CLIENT_SECRET: secret.optional(),
+  OURO_SLACK_SIGNING_SECRET: secret.optional(),
+  OURO_SLACK_SOCKET_MODE: capabilityFlag(),
+  OURO_SLACK_APP_TOKEN: z
+    .string()
+    .regex(/^xapp-/, "expected an app-level token, which starts with xapp-")
+    .optional(),
+
   // CL.2's (#615) six: where the web research tool searches by default, and the politeness and
   // safety bounds of the page reader every provider shares.
   OURO_RESEARCH_SEARXNG_URL: z
@@ -2316,6 +2354,44 @@ const environmentSchema = environmentShape
       "share one secret",
   })
   .superRefine((values, context) => {
+    // A Slack app (#535) is its client id, client secret and signing secret together: a
+    // deployment with two of the three would install and then refuse every request Slack sends.
+    const slackApp = [
+      VARIABLES.slackClientId,
+      VARIABLES.slackClientSecret,
+      VARIABLES.slackSigningSecret,
+    ] as const;
+    if (slackApp.some((name) => values[name] !== undefined)) {
+      for (const name of slackApp) {
+        if (values[name] === undefined) {
+          context.addIssue({
+            code: "custom",
+            path: [name],
+            message: "is required when any of the Slack app's settings is set",
+          });
+        }
+      }
+    }
+    // Socket Mode is a development transport: it needs the app-level token, and production
+    // is served over the signed HTTPS endpoints only.
+    if (values.OURO_SLACK_SOCKET_MODE) {
+      if (values.OURO_SLACK_APP_TOKEN === undefined) {
+        context.addIssue({
+          code: "custom",
+          path: [VARIABLES.slackAppToken],
+          message: "is required when OURO_SLACK_SOCKET_MODE is true",
+        });
+      }
+      if (values.NODE_ENV === "production") {
+        context.addIssue({
+          code: "custom",
+          path: [VARIABLES.slackSocketMode],
+          message: "Socket Mode is for development — production uses the HTTPS endpoints",
+        });
+      }
+    }
+  })
+  .superRefine((values, context) => {
     // The S3 driver (#330) needs all four of its settings; a store that boots and then fails its
     // first upload would be a build whose results are lost for a configuration mistake.
     if (values.OURO_ARTIFACT_STORE === "s3") {
@@ -2490,6 +2566,11 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     webhookDispatchSeconds: values.OURO_WEBHOOK_DISPATCH_SECONDS,
     webhookMaxAttempts: values.OURO_WEBHOOK_MAX_ATTEMPTS,
     webhookInternalAllowlist: values.OURO_WEBHOOK_INTERNAL_ALLOWLIST,
+    slackClientId: values.OURO_SLACK_CLIENT_ID,
+    slackClientSecret: values.OURO_SLACK_CLIENT_SECRET,
+    slackSigningSecret: values.OURO_SLACK_SIGNING_SECRET,
+    slackSocketMode: values.OURO_SLACK_SOCKET_MODE,
+    slackAppToken: values.OURO_SLACK_APP_TOKEN,
     researchSearxngUrl: values.OURO_RESEARCH_SEARXNG_URL,
     researchFetchTimeoutMs: values.OURO_RESEARCH_FETCH_TIMEOUT_MS,
     researchFetchMaxBytes: values.OURO_RESEARCH_FETCH_MAX_BYTES,

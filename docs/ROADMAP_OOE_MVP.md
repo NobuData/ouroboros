@@ -1781,7 +1781,7 @@ Requires a test Slack workspace — provision it during P14 so this phase is not
 | 441 | **BY.2** | ✅ [#532](https://github.com/NobuData/ouroboros/issues/532) | Message & command records | ouroboros-db | M | BM.1, BY.1 |
 | 442 | **BY.3** | ✅ [#533](https://github.com/NobuData/ouroboros/issues/533) | Identity links & on-call | ouroboros-db | S | BR.1, BY.1 |
 | 443 | **BY.4** | ✅ [#534](https://github.com/NobuData/ouroboros/issues/534) | Chat seeds — mockup-19 parity + probes | ouroboros-db, .github | S | 3.6, BY.2, BY.3 |
-| 444 | **BZ.1** | [#535](https://github.com/NobuData/ouroboros/issues/535) | Slack app — install, endpoints & identity | ouroboros-rest | L | BY.1, BY.3 |
+| 444 | **BZ.1** | ✅ [#535](https://github.com/NobuData/ouroboros/issues/535) | Slack app — install, endpoints & identity | ouroboros-rest | L | BY.1, BY.3 |
 | 445 | **BZ.2** | [#536](https://github.com/NobuData/ouroboros/issues/536) | Card renderer & event publisher | ouroboros-rest | L | BN.1, BR.3, BY.2 |
 | 446 | **BZ.3** | [#537](https://github.com/NobuData/ouroboros/issues/537) | `/ouro` grammar & dispatcher | ouroboros-rest | L | BZ.1 |
 | 447 | **BZ.4** | [#538](https://github.com/NobuData/ouroboros/issues/538) | Interactive answers & escalation | ouroboros-rest | M | BN.2, BZ.2 |

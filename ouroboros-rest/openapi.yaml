@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.23"
+  version: "0.41.24"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -742,6 +742,12 @@ tags:
     description: |-
       **The integrations grid** (mockup 17, issue [#488](https://github.com/NobuData/ouroboros/issues/488))
       — a status hub composed from the planes that own each connection, never a second store.
+  - name: chatops
+    description: |-
+      **The Slack app** (mockup 19, issue [#535](https://github.com/NobuData/ouroboros/issues/535))
+      — its install, the three request URLs Slack calls (each verified by signature, each
+      acknowledged before its work is done), the page that links a Slack identity to an account,
+      and the connection status every surface reads. Setup: `docs/CHATOPS_SETUP.md`.
   - name: notification-routes
     description: |-
       **Org notification routes** (mockup 17, issue [#488](https://github.com/NobuData/ouroboros/issues/488))
@@ -8719,6 +8725,525 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/v1/slack/events:
+    post:
+      tags: [chatops]
+      summary: Slack's Events API request URL
+      description: |-
+        Where Slack delivers events ([#535](https://github.com/NobuData/ouroboros/issues/535)).
+        **Slack is the caller**: there is no session, and the request is authenticated by its
+        signature alone — `X-Slack-Signature` is `v0=` and the HMAC-SHA256, under the app's signing
+        secret (`OURO_SLACK_SIGNING_SECRET`), of `v0:{X-Slack-Request-Timestamp}:{raw body}`,
+        compared in constant time over the bytes as they arrived. A timestamp more than five
+        minutes from this service's clock is refused as a replay. Every refusal is the same `401`
+        and a security log line; a deployment with no signing secret refuses everything.
+
+        Answers Slack's **URL verification** handshake with its `challenge`. Every other event is
+        acknowledged at once (`{}`) and handled after the answer; a redelivered `event_id` is
+        acknowledged and handled once. `app_uninstalled` and `tokens_revoked` mark the workspace's
+        connection `revoked` (audited as `chat.connection_revoked`).
+      operationId: receiveSlackEvent
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/SlackSignature"
+        - $ref: "#/components/parameters/SlackRequestTimestamp"
+      requestBody:
+        required: true
+        description: Slack's event envelope, read as Slack sends it rather than validated as a contract.
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: The handshake's `challenge`, or an empty acknowledgement.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SlackEventAcknowledgement"
+        "401":
+          description: |-
+            `slack_signature_invalid` — unsigned, signed with another secret, changed after signing,
+            or older than the replay window. The answer does not say which.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/slack/interactivity:
+    post:
+      tags: [chatops]
+      summary: Slack's interactivity request URL
+      description: |-
+        Where Slack delivers a button press (#535): a form whose `payload` field is JSON. Verified
+        exactly as `POST /api/v1/slack/events` is, acknowledged at once, and answered afterwards
+        through the payload's `response_url`.
+
+        A press from a Slack user with **no linked Ouroboros account** is answered with an
+        ephemeral prompt to link, and does nothing else. A press from a linked user is answered
+        *not available yet*: the actions themselves arrive with the Chat Ops command surface.
+      operationId: receiveSlackInteraction
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/SlackSignature"
+        - $ref: "#/components/parameters/SlackRequestTimestamp"
+      requestBody:
+        required: true
+        description: Slack's form, read as Slack sends it rather than validated as a contract.
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: true
+              properties:
+                payload:
+                  type: string
+                  description: The interaction, as JSON.
+      responses:
+        "200":
+          description: An empty acknowledgement; the result follows as a separate message.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+        "401":
+          description: |-
+            `slack_signature_invalid` — see `POST /api/v1/slack/events`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/slack/commands:
+    post:
+      tags: [chatops]
+      summary: Slack's slash-command request URL
+      description: |-
+        Where Slack delivers `/ouro` (#535). Verified exactly as `POST /api/v1/slack/events` is and
+        acknowledged at once with an ephemeral *Working on it…* — inside Slack's three seconds
+        whatever the command goes on to do; the result follows through the command's
+        `response_url`, visible only to the person who typed it.
+
+        `/ouro link` answers with a single-use link to the confirmation page
+        (`GET /api/v1/slack/link/{token}`); `/ouro unlink` revokes the caller's link
+        (`chat.identity_unlinked`); `/ouro help` lists both. Every other subcommand is answered
+        *not available yet* and changes nothing.
+      operationId: receiveSlackCommand
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/SlackSignature"
+        - $ref: "#/components/parameters/SlackRequestTimestamp"
+      requestBody:
+        required: true
+        description: Slack's form, read as Slack sends it rather than validated as a contract.
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: true
+              properties:
+                team_id:
+                  type: string
+                user_id:
+                  type: string
+                command:
+                  type: string
+                  examples: ["/ouro"]
+                text:
+                  type: string
+                  examples: ["link"]
+                response_url:
+                  type: string
+      responses:
+        "200":
+          description: The immediate acknowledgement.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SlackCommandAcknowledgement"
+        "401":
+          description: |-
+            `slack_signature_invalid` — see `POST /api/v1/slack/events`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/slack/oauth/install:
+    get:
+      tags: [chatops]
+      summary: Begin installing the Slack app
+      description: |-
+        Sends an owner or admin's browser to Slack's consent screen (#535) for the app's bot
+        scopes, with a random `state` bound to this browser and workspace by an `HttpOnly` cookie
+        that lives ten minutes. **A navigation, not an API call**: linked on the UI origin, whose
+        proxy forwards the Slack family here.
+      operationId: beginSlackInstall
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "302":
+          description: To Slack's consent screen.
+          headers:
+            Location:
+              description: "`https://slack.com/oauth/v2/authorize`, with the client id, scopes, redirect URI and state."
+              schema:
+                type: string
+            Set-Cookie:
+              description: "`ouro_slack_oauth` — the state, scoped to `/api/v1/slack/oauth`."
+              schema:
+                type: string
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            this route is for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+            `slack_not_configured` — this deployment has registered no Slack app.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/slack/oauth/callback:
+    get:
+      tags: [chatops]
+      summary: Complete installing the Slack app
+      description: |-
+        Where Slack sends the browser back (#535) — the redirect URL the app's manifest registers,
+        on the UI origin. Checks `state` against the cookie the install began with (spent whatever
+        happens next), exchanges `code` for the bot token, **seals the token in the vault** and
+        stores the connection, reads the workspace's channels, and records
+        `chat.connection_installed`. The token is never returned by any route and never logged.
+
+        **Every outcome is a redirect to Settings** carrying `slack=connected` or the refusal's
+        code — `slack_oauth_state_invalid`, `slack_install_denied` (the person declined),
+        `slack_install_failed` (Slack refused the exchange, or granted no bot token),
+        `slack_already_connected` (that Slack workspace is installed in another Ouroboros
+        workspace) or `slack_not_configured`.
+      operationId: completeSlackInstall
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: code
+          in: query
+          required: false
+          description: Slack's authorization code.
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          description: The value issued when the install began, echoed back for checking.
+          schema:
+            type: string
+        - name: error
+          in: query
+          required: false
+          description: Slack's error when the person declined — `access_denied`.
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Back to Settings, with the outcome.
+          headers:
+            Location:
+              description: "`/settings?slack=<connected or a refusal code>#integrations` on the UI origin."
+              schema:
+                type: string
+            Set-Cookie:
+              description: Clears `ouro_slack_oauth`.
+              schema:
+                type: string
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            this route is for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/slack/link/{token}:
+    get:
+      tags: [chatops]
+      summary: The page that confirms linking a Slack identity
+      description: |-
+        `/ouro link` answers, to its caller alone, with a link to this page (#535) — on the **UI
+        origin**, forwarded here by `ouroboros-ui`'s proxy so the browser's session cookie
+        arrives. It answers **an HTML page** naming the Slack user and workspace, the Ouroboros
+        workspace and the signed-in account, with one button.
+
+        **Opening the link binds nothing** — this `GET` only reads; the button's `POST` is the
+        link. Without a session the page offers *Sign in*, returning here. The token is the proof
+        of *which Slack user asked* (it was delivered ephemerally to them); the session is the
+        proof of *which Ouroboros account* — neither a display name nor a matching email binds
+        anything by itself. Single-use, fifteen minutes, stored only as a hash.
+      operationId: openSlackLink
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/SlackLinkToken"
+      responses:
+        "200":
+          description: The confirm page, or — with no session — the sign-in page.
+          content:
+            text/html:
+              schema:
+                type: string
+        "403":
+          description: A page saying the signed-in account is not a member of the workspace.
+          content:
+            text/html:
+              schema:
+                type: string
+        "404":
+          description: |-
+            A page saying the link is not valid — already used, replaced by a newer one, or never
+            issued. Nothing is looked up for a malformed token.
+          content:
+            text/html:
+              schema:
+                type: string
+        "409":
+          description: |-
+            A page saying this account is already linked to another Slack user in that workspace,
+            or that Slack is no longer connected.
+          content:
+            text/html:
+              schema:
+                type: string
+        "410":
+          description: A page saying the link expired — links work for fifteen minutes.
+          content:
+            text/html:
+              schema:
+                type: string
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [chatops]
+      summary: Link a Slack identity to the signed-in account
+      description: |-
+        The confirm page's button (#535). Spends the token (atomic, once) and binds the Slack user
+        to the signed-in member — `chat.identity_linked`, with how it was verified
+        (`email_match_confirmed` when Slack's profile email is the account's, otherwise
+        `oauth_session`). Answers an HTML receipt, or a page saying why nothing was linked. The
+        body is ignored.
+      operationId: confirmSlackLink
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/SlackLinkToken"
+      responses:
+        "200":
+          description: The receipt, and how to undo it (`/ouro unlink`).
+          content:
+            text/html:
+              schema:
+                type: string
+        "401":
+          description: |-
+            No session — the sign-in page. Nothing was linked. A post the browser reports as made
+            from another site (`Sec-Fetch-Site`) is answered the same way, whatever session it carries.
+          content:
+            text/html:
+              schema:
+                type: string
+        "403":
+          description: A page saying the signed-in account is not a member of the workspace.
+          content:
+            text/html:
+              schema:
+                type: string
+        "404":
+          description: A page saying the link is not valid — already used, replaced, or never issued.
+          content:
+            text/html:
+              schema:
+                type: string
+        "409":
+          description: Already linked to another Slack user, or Slack is no longer connected.
+          content:
+            text/html:
+              schema:
+                type: string
+        "410":
+          description: Expired.
+          content:
+            text/html:
+              schema:
+                type: string
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/slack/connection:
+    get:
+      tags: [chatops]
+      summary: Where Slack stands for this workspace
+      description: |-
+        The connection status (#535) — one source for every surface that says whether Slack is
+        connected: the workspace, the app version it was installed at, the scopes granted and any
+        the app asks for that were not, when the token was last seen to work, and the platform's
+        reason when it does not. `state` separates a deployment with no Slack app
+        (`not_configured`) from a workspace that has not installed it (`not_connected`). **Never
+        the bot token**, sealed or otherwise. Any member may read it.
+      operationId: getSlackConnection
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SlackConnection"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `service_scope_missing` — a service token without `api.read`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/slack/connection/verify:
+    post:
+      tags: [chatops]
+      summary: Ask Slack whether the connection still works
+      description: |-
+        Calls Slack's `auth.test` with the stored token (#535) and refreshes the workspace's
+        channel list. `verified` stamps `lastVerifiedAt`; `revoked` — Slack says the token or the
+        app is gone — marks the connection `revoked` with Slack's reason and records
+        `chat.connection_revoked`; `unreachable` changes nothing, because a network failure is not
+        evidence about the grant; `not_connected` means there was nothing to check. Owners and
+        admins.
+      operationId: verifySlackConnection
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: What Slack said, and the status after it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SlackVerification"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            this route is for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/settings/integrations:
     get:
       tags: [integrations]
@@ -8728,10 +9253,13 @@ paths:
         a **status hub composed on every request from the plane that owns each connection**, never
         a second store: GitHub from its token, App installation and sources; Jira and Linear from
         their ticket sources; webhooks from the active endpoints (*2 active*); the build farm from
-        its runners. `availability` separates *not connected* (`disconnected`) from *does not exist
-        yet*: Slack is `unavailable_unbuilt` until Chat Ops (mockup 19) lands, and Teams, Datadog
-        and PagerDuty are `unavailable_v2`. Every `deepLink` is the surface that owns the
-        connection — this page has no connection form. `connectedCount` (*4 connected*) is counted
+        its runners; Slack from the workspace's install
+        ([#535](https://github.com/NobuData/ouroboros/issues/535)) — connected with the Slack
+        workspace's name, `disconnected` with Slack's reason once revoked, and without an action on
+        a deployment that registered no Slack app. `availability` separates *not connected*
+        (`disconnected`) from *does not exist yet*: Teams, Datadog and PagerDuty are
+        `unavailable_v2`. Every `deepLink` is the surface that owns the connection — for Slack the
+        install route, `/api/v1/slack/oauth/install` — and this page has no connection form. `connectedCount` (*4 connected*) is counted
         from the tiles. Any member may read it.
       operationId: listIntegrations
       parameters:
@@ -41068,6 +41596,36 @@ components:
       schema:
         type: string
       example: ouro_act_9c41d2e07a3b5f68_PHT7LFFHxLVDamqdOm-8S2U2CURNlADGcrwkr9sZBB8
+    SlackLinkToken:
+      name: token
+      in: path
+      required: true
+      description: |-
+        A link token from `/ouro link` ([#535](https://github.com/NobuData/ouroboros/issues/535)):
+        `ouro_lnk_` and 43 URL-safe characters. Anything else is answered as an invalid link
+        without a lookup.
+      schema:
+        type: string
+      example: ouro_lnk_PHT7LFFHxLVDamqdOm-8S2U2CURNlADGcrwkr9sZBB8
+    SlackSignature:
+      name: X-Slack-Signature
+      in: header
+      required: false
+      description: |-
+        `v0=` and the hex HMAC-SHA256 of `v0:{timestamp}:{raw body}` under the app's signing
+        secret. Optional in the schema only so that its absence is answered by this service's
+        own `401` rather than a validator's.
+      schema:
+        type: string
+      example: v0=a2114d57b48eac39b9ad189dd8316235a7b4a8d21a10bd27519666489c69b503
+    SlackRequestTimestamp:
+      name: X-Slack-Request-Timestamp
+      in: header
+      required: false
+      description: The Unix time Slack signed the request at; refused beyond five minutes either way.
+      schema:
+        type: string
+      example: "1531420618"
     CalibrationWindow:
       name: window
       in: query
@@ -47765,7 +48323,9 @@ components:
           description: The nightly job's schedule and last run — only on `nightly_estimator`.
         arrivesWith:
           type: string
-          description: What the row waits for — only on `slack_future`.
+          description: |-
+            What the row waits for. The Slack row carried it until its install was built (#535)
+            and carries a `link` instead; no row sets it today.
           examples: [ChatOps]
 
     OnboardingReassureClaim:
@@ -56645,7 +57205,8 @@ components:
           enum: [connected, disconnected, unavailable_v2, unavailable_unbuilt]
           description: |-
             `disconnected` — you have not connected this. `unavailable_unbuilt` — the surface does
-            not exist yet (Slack, until Chat Ops). `unavailable_v2` — a v2 connector kind (BT.3).
+            not exist yet (Slack's, until #535; no tile answers it today). `unavailable_v2` — a v2
+            connector kind (BT.3).
         state:
           type: string
           enum: [ok, attention, "off"]
@@ -56676,6 +57237,125 @@ components:
           type: integer
           minimum: 0
           description: "*N connected* — counted from the tiles, never stored."
+
+    SlackEventAcknowledgement:
+      type: object
+      title: SlackEventAcknowledgement
+      description: What an event is answered with — the handshake's challenge, or nothing.
+      additionalProperties: false
+      properties:
+        challenge:
+          type: string
+          description: Echoed for Slack's `url_verification` handshake only.
+
+    SlackCommandAcknowledgement:
+      type: object
+      title: SlackCommandAcknowledgement
+      description: The immediate answer to a slash command; the result follows separately.
+      additionalProperties: false
+      required: [response_type, text]
+      properties:
+        response_type:
+          type: string
+          enum: [ephemeral]
+        text:
+          type: string
+          examples: ["Working on it…"]
+
+    SlackConnection:
+      type: object
+      title: SlackConnection
+      description: Where Slack stands for a workspace. Never carries the bot token.
+      additionalProperties: false
+      required:
+        [state, configured, installPath, connectionId, workspace, appId, appVersion, scopes, missingScopes, statusDetail, installedAt, lastVerifiedAt, channels, socketMode]
+      properties:
+        state:
+          type: string
+          enum: [not_configured, not_connected, connected, revoked, error]
+          description: |-
+            `not_configured` — this deployment has registered no Slack app. `not_connected` — the
+            app exists and this workspace has not installed it. `connected` — installed, and the
+            token worked when last checked. `revoked` — the app was removed from the Slack
+            workspace, or its token revoked. `error` — installed, but failing for another reason.
+        configured:
+          type: boolean
+          description: Whether this deployment has a Slack app registered at all.
+        installPath:
+          type: [string, "null"]
+          description: Where an owner or admin starts the install, on the UI origin; null when not configured.
+          examples: ["/api/v1/slack/oauth/install"]
+        connectionId:
+          type: [string, "null"]
+          format: uuid
+        workspace:
+          description: The Slack workspace; null when never installed.
+          oneOf:
+            - type: "null"
+            - type: object
+              additionalProperties: false
+              required: [id, name]
+              properties:
+                id:
+                  type: string
+                  examples: ["T024AB"]
+                name:
+                  type: string
+                  examples: ["acme-robotics"]
+        appId:
+          type: [string, "null"]
+        appVersion:
+          type: [string, "null"]
+          description: The manifest version the app was installed at.
+          examples: ["v1.0"]
+        scopes:
+          type: array
+          description: The bot scopes Slack granted.
+          items:
+            type: string
+        missingScopes:
+          type: array
+          description: Scopes the app asks for that a live connection was not granted.
+          items:
+            type: string
+        statusDetail:
+          type: [string, "null"]
+          description: The platform's reason the connection is not working.
+          examples: ["app_uninstalled"]
+        installedAt:
+          type: [string, "null"]
+          format: date-time
+        lastVerifiedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When the token was last seen to work.
+        channels:
+          type: object
+          additionalProperties: false
+          required: [total, joined]
+          properties:
+            total:
+              type: integer
+              minimum: 0
+            joined:
+              type: integer
+              minimum: 0
+              description: Channels the bot is a member of.
+        socketMode:
+          type: boolean
+          description: Whether this deployment reaches Slack over Socket Mode — development only.
+
+    SlackVerification:
+      type: object
+      title: SlackVerification
+      additionalProperties: false
+      required: [result, connection]
+      properties:
+        result:
+          type: string
+          enum: [verified, revoked, unreachable, not_connected]
+        connection:
+          $ref: "#/components/schemas/SlackConnection"
 
     NotificationRouteChannel:
       type: string
