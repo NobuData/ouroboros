@@ -402,7 +402,7 @@ seeds: session(6 msgs, chips ✓) · draft v0.3 (9 stages, 2 copilot ops, W7 war
 | CD.3 | #561 ✅ | 🟢 Done | ouroboros-rest: [CD.3] Infra replay estimators | Similar-build/test statistics with sample counts + spread | mvp, copilot, rest | N (after AH.1, BI.2) | Y | M | ouroboros-rest |
 | CD.4 | #562 ✅ | 🟢 Done | ouroboros-rest: [CD.4] Dry-run orchestration & guards | Pre-check, budget caps, guard enforcement audit, records | mvp, copilot, rest | N (after CD.2/CD.3, WF-R.2) | Y | M | ouroboros-rest |
 | CD.5 | #563 ✅ | 🟢 Done | ouroboros-rest: [CD.5] Suggestion rules & apply flow | Deterministic post-run rules, edge-case picker, op application | mvp, copilot, rest | N (after CD.4, CC.4) | Y | M | ouroboros-rest |
-| CD.6 | #564 | 🟡 Open | ouroboros-rest: [CD.6] Copilot integration tests | Op parity, harness guards, estimator math, promote gate | mvp, copilot, rest, ci | N (after CD.1–CD.5) | Y | M | ouroboros-rest |
+| CD.6 | #564 ✅ | 🟢 Done | ouroboros-rest: [CD.6] Copilot integration tests | Op parity, harness guards, estimator math, promote gate | mvp, copilot, rest, ci | N (after CD.1–CD.5) | Y | M | ouroboros-rest |
 
 ### Issue CD.1 — ouroboros-engine: [CD.1] Copilot conversation service
 
@@ -579,7 +579,9 @@ rule(skipped, nothing-to-do) ─▶ suggest{ops: [set_predicate(exploit-verify,
 
 ### Issue CD.6 — ouroboros-rest: [CD.6] Copilot integration tests
 
-> **GitHub issue:** #564 · **Status:** 🟡 Open · **Parent epic:** #552
+> **GitHub issue:** #564 ✅ · **Status:** 🟢 Done · **Parent epic:** #552
+
+> **Delivered (#564 — `ouroboros-rest` 0.41.19, `ouroboros-engine` 0.7.29; suites only, no product change):** the copilot certification suites. **REST** (`src/modules/copilot/certification/`): `parity.certification.spec.ts` (unit, schema-driven — every construct `dsl.schema.ts` declares is offered to every operation; a doctored vocabulary with an extra key, node type, edge kind, trigger event, predicate or ending is reported by name; round trip over the golden and seeded documents; the validator shown load-bearing) and six integration suites over the development seeds and a **scripted engine** speaking the engine's wire format to the process's own `EngineClient` (`scripted-engine.fixture.ts`, `certification.fixture.ts`): session flows (streaming order, chips, bounce → correction, bounce and turn budgets, an etag conflict mid-exchange, cost, provenance, roles, unrouted); the dry-run plane (guard matrix generated from the engine's committed harness description, whole-schema footprint, the read token persisted nowhere, safety strip with ten doctored descriptions, overlay artifact byte equality, dry-run ⟂ run read-models and metrics, budget); the rule matrix (17 rows, every rule a positive and an honest absence, completeness control, Apply/Explain/Ignore, unscored LLM suggestions); replay-estimator math (median, MAD, floor, window, similarity class, registered formula — build and test); the promote gate (asserted on the merge executor and the guardrail plane; spend cap pinned `dry_run_only` — chosen by the user, 2026-10-11, over the issue's "compiled guards"); cross-org isolation (19 routes, completeness from the route table). **Engine:** `tests/test_dryrun_certification.py` and `tests/test_copilot_certification.py` — the guard matrix through the real harness with each guard switched off in turn, overlay fidelity with an in-test patch applier, read-only git host, truncation at the real limits, turn goldens. ~40 s added (125 integration + 75 unit + 191 pytest). **Defects found and filed, worked around in the suites:** #1744 (a copilot draft on a blank workflow cannot be published or dry-run), #1745 (the promote dialog never reports an unknown alias), #1746 (diff ≠ overlay in four edge cases), #1747 (excerpts cut without the truncated flag), #1748 (no `copilot-workflow` task kind or route).
 
 - **Problem Statement:** Op-DSL parity, harness guards, and the
   promote gate are the safety core of a page that writes workflows by
@@ -951,7 +953,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 2. **Phase 1 — Domain:** CC.1 (#555) ✅ → { CC.2 (#556) ✅ ⊕ CC.3 (#557) ✅ } →
    CC.4 (#558)
 3. **Phase 2 — Services:** { CD.1 (#559) ⊕ CD.2 (#560) ✅ ⊕ CD.3 (#561) ✅ } →
-   CD.4 (#562) ✅ → CD.5 (#563) ✅ → CD.6 (#564)
+   CD.4 (#562) ✅ → CD.5 (#563) ✅ → CD.6 (#564) ✅
 4. **Phase 3 — UI:** CE.1 (#565) ✅ → { CE.2 (#566) ⊕ CE.3 (#567) ⊕
    CE.4 (#568) } → **CE.5 (#569) ✅** *(MVP gate, amending #56)*
 5. **v2:** CF.1 (#570) ⊕ CF.2 (#571) ⊕ CF.3 (#572) ⊕ CF.4 (#573) ⊕
