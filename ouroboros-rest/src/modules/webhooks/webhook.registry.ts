@@ -254,6 +254,11 @@ export const WEBHOOK_REGISTRY: readonly WebhookRegistryVersion[] = [
       "audit.chat.identity_unlinked",
     ],
   },
+  {
+    version: 11,
+    // BZ.3 (#537): somebody typed an `/ouro` command — its chat provenance and how it ended.
+    adds: ["audit.chat.command_invoked"],
+  },
 ];
 
 /** The newest registry version — what a new endpoint subscribes under. */

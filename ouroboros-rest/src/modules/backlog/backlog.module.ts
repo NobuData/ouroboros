@@ -82,9 +82,13 @@
  * the paragraph above makes about writers — and here there is a second reason: the honesty
  * rules about that vocabulary (active only, and what an empty registry answers) have one home.
  *
- * **Nothing is exported**, for the queue and dashboard modules' reason: the routes are the
- * surface. A second module wanting the freshness stamp should call the endpoint or import
- * `BacklogSyncRepository`, not reach through this one.
+ * **Three things are exported, and none of them is the sync.** The routes are the surface, and a
+ * second module wanting the freshness stamp should call the endpoint or import
+ * `BacklogSyncRepository`, not reach through this one. What is exported is the queue write
+ * (`BacklogQueueService`, for AL.4's hook and `/ouro queue`), the side panel's read
+ * (`BacklogDetailService`, for `/ouro estimate`) and `TicketLookupRepository` — the exact,
+ * read-only `#485` → issue read the `/ouro` grammar's ticket arguments resolve through (BZ.3,
+ * [#537](https://github.com/NobuData/ouroboros/issues/537)).
  */
 
 import { Module } from "@nestjs/common";
@@ -105,6 +109,7 @@ import { BacklogQueueRepository } from "./queue.repository";
 import { BacklogQueueService } from "./queue.service";
 import { SyncStatusService } from "./sync-status.service";
 import { SyncTriggerService } from "./sync-trigger.service";
+import { TicketLookupRepository } from "./ticket.lookup.repository";
 
 @Module({
   imports: [BacklogSyncModule, DbModule, GithubModule, WorkflowsModule],
@@ -125,10 +130,14 @@ import { SyncTriggerService } from "./sync-trigger.service";
     BacklogDetailService,
     BacklogQueueRepository,
     BacklogQueueService,
+    TicketLookupRepository,
   ],
-  // M.3's queue write, and nothing else: AL.4's `queue_small` hook
+  // M.3's queue write: AL.4's `queue_small` hook
   // ([#280](https://github.com/NobuData/ouroboros/issues/280), decision N7) composes it rather than
-  // growing a second queue path, so the sized-only rule stays one rule.
-  exports: [BacklogQueueService],
+  // growing a second queue path, so the sized-only rule stays one rule. And, for the `/ouro`
+  // grammar (BZ.3, [#537](https://github.com/NobuData/ouroboros/issues/537)): the side panel's
+  // read, which `/ouro estimate` answers from, and the exact, read-only `#485` → issue lookup its
+  // ticket arguments resolve through. Neither can write.
+  exports: [BacklogQueueService, BacklogDetailService, TicketLookupRepository],
 })
 export class BacklogModule {}

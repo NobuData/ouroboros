@@ -79,13 +79,13 @@ describe("the estimation module", () => {
     expect(trigger.orchestrator).toBe(module.get(EstimationOrchestrator));
   });
 
-  it("exports the orchestrator and nothing else", () => {
-    // Unchanged by L.4: the limiter stays private because a counter another module could spend
-    // is not a limit, and the trigger stays private because its callers are this module's own
-    // routes.
+  it("exports the orchestrator and the trigger, and nothing else", () => {
+    // The limiter stays private because a counter another module could spend is not a limit.
+    // The trigger is exported for `/ouro estimate` (#537), which must start an estimate through
+    // the button's own call so the rate limit and the already-estimating refusal are one rule.
     const exported = Reflect.getMetadata("exports", EstimationModule) as unknown[];
 
-    expect(exported).toEqual([EstimationOrchestrator]);
+    expect(exported).toEqual([EstimationOrchestrator, EstimationTriggerService]);
   });
 
   it("gives the orchestrator the concurrency the environment asked for", async () => {

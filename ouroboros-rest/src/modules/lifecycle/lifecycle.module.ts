@@ -13,6 +13,11 @@
  *
  * Consumers that only *read* the state — farm dispatch, run ingestion, the tenant freeze —
  * import `LifecycleStateModule` instead, which can write nothing.
+ *
+ * `LifecycleService` is exported for one caller: `/ouro pause all confirm` (BZ.3,
+ * [#537](https://github.com/NobuData/ouroboros/issues/537)), which is the Danger zone's *Pause all
+ * loops* typed in chat and so calls the same `pause()` — its confirmation, its state check and its
+ * audit event. The owner/admin gate the route carries is the dispatcher's there.
  */
 
 import { Module } from "@nestjs/common";
@@ -51,6 +56,6 @@ import { LifecycleStateModule } from "./lifecycle-state.module";
     LifecyclePurgeScheduler,
     { provide: WORKSPACE_AUTH_STORE, useClass: BetterAuthWorkspaceStore },
   ],
-  exports: [LifecyclePurge],
+  exports: [LifecyclePurge, LifecycleService],
 })
 export class LifecycleModule {}

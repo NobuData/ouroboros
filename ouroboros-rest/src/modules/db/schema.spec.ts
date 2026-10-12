@@ -533,7 +533,11 @@ describe("TABLE_COLUMNS", () => {
     // `chat_connections_public` view (the connection without its sealed bot token) and
     // `chat_channels`, and V132's `chat_identity_links` — what the Slack app installs into, lists
     // and links through.
-    expect(TABLE_NAMES).toHaveLength(177);
+    //
+    // The hundred-and-seventy-eighth and ninth are V131's `chat_messages` and `chat_commands`,
+    // which the `/ouro` dispatcher (#537) is the first code to write: every command invoked, and
+    // the reply it was answered with.
+    expect(TABLE_NAMES).toHaveLength(179);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

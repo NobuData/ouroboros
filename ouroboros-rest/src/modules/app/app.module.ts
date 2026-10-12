@@ -55,6 +55,7 @@ import { WebhooksModule } from "../webhooks/webhooks.module";
 import { IntegrationsModule } from "../integrations/integrations.module";
 import { NotificationRoutesModule } from "../notification-routes/notification-routes.module";
 import { SlackModule } from "../slack/slack.module";
+import { ChatopsModule } from "../chatops/chatops.module";
 import { RetentionModule } from "../retention/retention.module";
 import { AuditPlaneModule } from "../audit-plane/audit-plane.module";
 import { SettingsModule } from "../settings/settings.module";
@@ -417,6 +418,11 @@ export class AppModule {
         // calls, the identity-linking pages and the connection's status. The inbound routes are
         // anonymous to the session guard and guarded by the signature instead.
         SlackModule,
+        // BZ.3 ([#537](https://github.com/NobuData/ouroboros/issues/537)) — the `/ouro` grammar:
+        // `GET /api/v1/chat/grammar` and `GET /api/v1/chat/completions`, and the dispatcher the
+        // Slack adapter above hands every command to. Its bindings call the planes' own services
+        // (`chatops/planes/`), so it comes after them.
+        ChatopsModule,
         // K.4 ([#102](https://github.com/NobuData/ouroboros/issues/102)) — the poller that
         // fills `github_issues`. After `GithubModule`, which it imports for the client and
         // for the *which workspaces have a token* question; it declares no route at all, so

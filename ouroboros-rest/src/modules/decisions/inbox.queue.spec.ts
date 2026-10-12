@@ -29,6 +29,7 @@ function item(
 ): InboxItemRow {
   return {
     id: `item-${kindId}`,
+    shortSeq: 231,
     kindId,
     kindVersion: 1,
     severity: SHIPPED_KINDS[kindId].severityDefault,
@@ -121,6 +122,8 @@ describe("InboxQueueService.queue", () => {
       ["protected_path_allow_once", 1260, "warn"],
       ["claim_waiver", 2040, "warn"],
     ]);
+    // Every card carries the short id `/ouro answer` takes (#537).
+    expect(page.items.map((card) => card.shortId)).toEqual(["q-231", "q-231", "q-231"]);
 
     for (const card of page.items) {
       expect({ question: card.question, why: card.why, tags: card.tags }).toEqual(
@@ -209,6 +212,7 @@ describe("InboxQueueService.queue", () => {
     expect(page.head.count).toBe(3);
     expect(page.snoozed).toEqual([
       expect.objectContaining({
+        shortId: "q-231",
         kindId: "fact_review",
         ageSeconds: 7200,
         snoozedUntil: "2026-10-05T09:00:00.000Z",
@@ -254,6 +258,7 @@ describe("InboxQueueService.resolved", () => {
     repository.resolved.mockResolvedValue([
       {
         itemId: "item-1",
+        shortSeq: 231,
         kindId: "resize_review",
         kindVersion: 1,
         payload: { ticket_key: "#486", from_effort: "L", to_effort: "M", confidence: 82 },
@@ -282,6 +287,7 @@ describe("InboxQueueService.resolved", () => {
       nextDay: null,
     });
     expect(day.rows[0]).toMatchObject({
+      shortId: "q-231",
       summary: "Estimator re-size #486 L→M — auto-accepted by policy",
       // The line's two halves, so the page can set the resolver affix apart (#468)…
       subject: "Estimator re-size #486 L→M",
@@ -300,6 +306,7 @@ describe("InboxQueueService.resolved", () => {
     const { queue, repository } = service();
     const row = {
       itemId: "item-2",
+      shortSeq: 231,
       kindId: "split_approval",
       kindVersion: 1,
       payload: { subject: "Telemetry v2", draft_count: 6, target: "acme-robotics/helios-firmware" },

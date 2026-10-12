@@ -43,8 +43,11 @@ import { DashboardService } from "./dashboard.service";
   imports: [DbModule, InsightsModule],
   controllers: [DashboardController],
   providers: [DashboardService, DashboardRepository],
-  // Nothing is exported. #71, #73 and #74 publish their own endpoints over the same rows
-  // rather than reaching through this module — a shared service would make the dashboard's
-  // card-sized limits and window choices theirs too, and they are not.
+  // `DashboardService` is exported for exactly one caller: `/ouro status` (#537), which is the
+  // dashboard's own stat row said in one line and so must be the dashboard's own read. It is not
+  // an invitation to #71, #73 or #74 — they publish their own endpoints over the same rows rather
+  // than reaching through this module, because a shared service would make the dashboard's
+  // card-sized limits and window choices theirs too, and they are not. The repository stays private.
+  exports: [DashboardService],
 })
 export class DashboardModule {}

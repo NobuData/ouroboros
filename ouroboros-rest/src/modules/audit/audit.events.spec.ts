@@ -95,6 +95,7 @@ import {
   CHAT_CONNECTION_REVOKED_EVENT,
   CHAT_IDENTITY_LINKED_EVENT,
   CHAT_IDENTITY_UNLINKED_EVENT,
+  CHAT_COMMAND_INVOKED_EVENT,
   ROADMAP_SUGGESTION_DISMISSED_EVENT,
 } from "./audit.events";
 
@@ -248,6 +249,7 @@ describe("the vocabulary", () => {
       "chat.connection_revoked",
       "chat.identity_linked",
       "chat.identity_unlinked",
+      "chat.command_invoked",
     ]);
   });
 
@@ -412,6 +414,7 @@ describe("the vocabulary", () => {
       CHAT_CONNECTION_REVOKED_EVENT,
       CHAT_IDENTITY_LINKED_EVENT,
       CHAT_IDENTITY_UNLINKED_EVENT,
+      CHAT_COMMAND_INVOKED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

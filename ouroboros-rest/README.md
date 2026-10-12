@@ -4747,7 +4747,7 @@ GET  /api/v1/slack/oauth/install       owner/admin · 302 to Slack's consent · 
 GET  /api/v1/slack/oauth/callback      owner/admin · exchange, seal, store · 302 to /settings?slack=…
 POST /api/v1/slack/events              Slack · signed · URL verification, app_uninstalled, tokens_revoked
 POST /api/v1/slack/interactivity       Slack · signed · a button press
-POST /api/v1/slack/commands            Slack · signed · /ouro link | unlink | help
+POST /api/v1/slack/commands            Slack · signed · /ouro link | unlink here, every other command → the dispatcher
 GET  /api/v1/slack/link/{token}        the token's holder · HTML confirm page · binds nothing
 POST /api/v1/slack/link/{token}        the token's holder + a session · binds the identity
 GET  /api/v1/slack/connection          any member · state, workspace, scopes, last verified
@@ -4775,8 +4775,64 @@ POST /api/v1/slack/connection/verify   owner/admin · auth.test + channel refres
   two variables, and the app's three, are described in `.env.example` § Slack.
 
 Audited as `chat.connection_installed`, `chat.connection_revoked`, `chat.identity_linked` and
-`chat.identity_unlinked` (webhook registry v10). Commands beyond `link`, `unlink` and `help`, and
-button presses by linked users, answer *not available yet* until #537 and #538.
+`chat.identity_unlinked` (webhook registry v10). Every `/ouro` command but `link` and `unlink` is
+handed, whole, to the dispatcher below; button presses by linked users answer *not available
+yet* until #538.
+
+## The `/ouro` grammar
+
+> **Issue:** [#537](https://github.com/NobuData/ouroboros/issues/537) — *[BZ.3] `/ouro` grammar &
+> dispatcher* · epic [#528](https://github.com/NobuData/ouroboros/issues/528) · schema `V131`,
+> `V133` · reference: [`chat-grammar.json`](chat-grammar.json), `ouroboros-docs/docs/cli/ouro.mdx`
+
+`src/modules/chatops/` is the one place a chat command is defined, and the one path every
+surface's commands take.
+
+```
+GET /api/v1/chat/grammar             any member · the registry as a document
+GET /api/v1/chat/completions?text=   any member (a person) · what could be typed next
+
+grammar.registry.ts   the versioned registry: id, aliases, arguments, requirement, confirm, mode, stage
+grammar.parser.ts     tokens → command (longest name wins) → arguments, with errors that name the argument
+grammar.help.ts       /ouro help and the reference document, generated from the registry
+dispatcher.service.ts connection → help? → who → which → arguments → v2? → may they? → confirmed? → binding
+planes/               one binding per available command, the argument resolvers, the completion sources
+```
+
+- **One definition.** A command is a registry entry plus a binding. The dispatcher refuses to
+  start when a binding serves a command the grammar lacks or an available command has none, so
+  nothing is dispatchable outside the registry. `GRAMMAR_VERSION` moves with any command,
+  argument or requirement.
+- **Not a new control path.** A binding makes the one call the UI's route makes, as the person
+  who typed the command — `ControlsService`, the backlog queue write, `InboxActionsService`, the
+  dry-run service, routing management, estimation, `LifecycleService`, the dashboard read model.
+  The dispatcher imports no plane; `planes/` imports no plane's repository but three read-only
+  lookups (`#485`, `1847`, `q-231` → ids), and neither Slack nor the dispatcher. Three
+  `chatops-*` rules in `.dependency-cruiser.cjs` fail `yarn lint` otherwise.
+- **The person's permissions, never the app's.** The Slack user is resolved through their
+  identity link to a member; the command's `requires` is checked against that member's roles and
+  capability. Unlinked is its own outcome, with the link button; a refusal names what the command
+  takes.
+- **Destructive commands describe first.** `abort loop` and `pause all` run only with `confirm`;
+  without it the binding is not called and the reply is the registry's `confirmPrompt`, filled
+  with what was named.
+- **A slow command does not lie.** `dry-run` acknowledges with *"Dry run started — no writes, no
+  PRs…"*, is recorded `async_pending`, and its result follows as its own message through the
+  command's `response_url`; the row then settles `ok` or `error`. Pending results are awaited at
+  shutdown; they do not survive a crash — there is no shared queue.
+- **`explain pr` is `stage: "v2"`**: listed, parsed, answered with its honest reply naming CB.1
+  (#546), and bound to nothing.
+- **Every invocation with a connection is one `chat_commands` row and one `chat.command_invoked`
+  audit event** (webhook registry v11) carrying its chat provenance — surface, command, outcome,
+  connection, channel, platform user, grammar version; never the arguments or the text. `help`
+  runs nothing and records nothing.
+- **`q-231`** is `decision_items.short_seq` (`V133`), assigned by the database per workspace.
+- **`chat-grammar.json` is committed**, like `openapi.json`: `yarn chat-grammar` re-renders it,
+  `yarn chat-grammar --check` (run by `grammar.help.spec.ts`) fails when it has drifted, and the
+  docs site's `tests/ouro.test.ts` holds the reference page to it.
+
+The console surface is #539: `DispatchInput` carries a Slack identity only, and a console
+dispatch answers *"Commands cannot be run from here yet."*
 
 ## Build logs
 

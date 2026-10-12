@@ -110,7 +110,7 @@ describe("the three seeded cards", () => {
     expect(article().querySelector(".inbox-card__age")).toHaveTextContent("8m");
     expect(
       [...article().querySelectorAll(".inbox-card__refs .ou-tag")].map((tag) => tag.textContent),
-    ).toEqual(["loop #1830", "PR #504", "issue #465", "refactor"]);
+    ).toEqual(["Short id q-231", "loop #1830", "PR #504", "issue #465", "refactor"]);
     expect(article().querySelector(".inbox-card__why")).toHaveTextContent(
       "Policy: anything labeled refactor needs a human. 13/13 checks green, verification matrix all ✓, +214 −180 across 6 files.",
     );
@@ -130,7 +130,7 @@ describe("the three seeded cards", () => {
     expect(article().querySelector(".inbox-card__age")).toHaveTextContent("21m");
     expect(
       [...article().querySelectorAll(".inbox-card__refs .ou-tag")].map((tag) => tag.textContent),
-    ).toEqual(["loop #1844", "issue #479", "boot/rollback_flag.c"]);
+    ).toEqual(["Short id q-231", "loop #1844", "issue #479", "boot/rollback_flag.c"]);
     expect([...article().querySelectorAll(".inbox-card__mono")].map((span) => span.textContent)).toEqual([
       "boot/rollback_flag.c",
     ]);
@@ -146,7 +146,7 @@ describe("the three seeded cards", () => {
     expect(article().querySelector(".inbox-card__age")).toHaveTextContent("34m");
     expect(
       [...article().querySelectorAll(".inbox-card__refs .ou-tag")].map((tag) => tag.textContent),
-    ).toEqual(["PR #514", "verification"]);
+    ).toEqual(["Short id q-231", "PR #514", "verification"]);
     expect(article().querySelector(".inbox-card__why")).toHaveTextContent("Waiving annotates the PR publicly.");
     expect(article().querySelectorAll(".inbox-card__mono")).toHaveLength(0);
     expect(

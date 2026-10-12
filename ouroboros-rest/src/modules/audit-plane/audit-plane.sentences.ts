@@ -188,6 +188,16 @@ const TEMPLATES: Readonly<Record<string, Template>> = {
       : "the Slack connection stopped working",
   "chat.identity_linked": () => "linked their Slack identity",
   "chat.identity_unlinked": () => "unlinked their Slack identity",
+  "chat.command_invoked": (f) => {
+    const command = text(f, "command");
+    const outcome = text(f, "outcome");
+    const where = text(f, "surface") === "console" ? "in the console" : "in Slack";
+    const how =
+      outcome === undefined || outcome === "ok" ? "" : ` (${outcome.replaceAll("_", " ")})`;
+    return command === undefined
+      ? "typed an /ouro command"
+      : `typed /ouro ${command} ${where}${how}`;
+  },
 };
 
 /**

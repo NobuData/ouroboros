@@ -12,6 +12,7 @@ import { BacklogModule } from "./backlog.module";
 import { BacklogDetailController } from "./detail.controller";
 import { BacklogDetailRepository } from "./detail.repository";
 import { BacklogDetailService } from "./detail.service";
+import { TicketLookupRepository } from "./ticket.lookup.repository";
 import { BacklogListingController } from "./listing.controller";
 import { BacklogListingRepository } from "./listing.repository";
 import { BacklogListingService } from "./listing.service";
@@ -83,14 +84,20 @@ describe("the backlog module", () => {
     await module.close();
   });
 
-  it("exports M.3's queue write and nothing else", () => {
+  it("exports M.3's queue write, the panel's read and the read-only ticket lookup", () => {
     // The routes are the surface — the queue and dashboard modules' rule. A module wanting
-    // the freshness stamp calls the endpoint or imports the sync's repository. The one
-    // exception is AL.4's `queue_small` hook (#280, decision N7), which composes M.3's write
-    // rather than growing a second queue path — so the sized-only rule stays one rule.
+    // the freshness stamp calls the endpoint or imports the sync's repository. The exceptions
+    // are AL.4's `queue_small` hook (#280, decision N7), which composes M.3's write rather than
+    // growing a second queue path — so the sized-only rule stays one rule — and the `/ouro`
+    // grammar (#537), which queues through that same write, answers `estimate` from the side
+    // panel's read and resolves `#485` through a lookup that can only read.
     const exports = Reflect.getMetadata("exports", BacklogModule) as unknown[] | undefined;
 
-    expect(exports ?? []).toEqual([BacklogQueueService]);
+    expect(exports ?? []).toEqual([
+      BacklogQueueService,
+      BacklogDetailService,
+      TicketLookupRepository,
+    ]);
   });
 
   it("runs no loop of its own", () => {
@@ -111,6 +118,8 @@ describe("the backlog module", () => {
       "BacklogDetailService",
       "BacklogQueueRepository",
       "BacklogQueueService",
+      // BZ.3 (#537): the read-only lookup behind `/ouro queue #485`.
+      "TicketLookupRepository",
     ]);
     expect(providers).not.toContain("BacklogSyncScheduler");
   });

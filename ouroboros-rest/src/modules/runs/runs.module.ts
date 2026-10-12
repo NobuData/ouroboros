@@ -40,6 +40,7 @@ import { DbModule } from "../db/db.module";
 import { RetentionModule } from "../retention/retention.module";
 import { ConsoleRepository } from "./console.repository";
 import { ConsoleService } from "./console.service";
+import { LoopLookupRepository } from "./loop.lookup.repository";
 import { RunsController } from "./runs.controller";
 import { RunsRepository } from "./runs.repository";
 import { RunsService } from "./runs.service";
@@ -58,8 +59,11 @@ import { TranscriptRetentionSweeper } from "./transcript.retention";
     ConsoleRepository,
     TranscriptRetentionRepository,
     TranscriptRetentionSweeper,
+    LoopLookupRepository,
   ],
-  // Nothing is exported, for the dashboard module's own reason: the routes are the surface,
-  // and the queue (#73) and settings (#74) drill-ins publish their own.
+  // The routes are the surface, and the queue (#73) and settings (#74) drill-ins publish their
+  // own. The one export is `LoopLookupRepository` (#537): the exact, read-only loop number → run
+  // read `/ouro pause loop 1847` needs before it can call `ControlsService`. It holds no write.
+  exports: [LoopLookupRepository],
 })
 export class RunsModule {}

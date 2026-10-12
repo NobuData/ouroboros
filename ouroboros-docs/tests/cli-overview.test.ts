@@ -106,7 +106,8 @@ describe("the CLI overview page (#1201)", () => {
     for (const name of named) expect(scripts).toContain(name);
   });
 
-  it("describes chat commands as not available yet", () => {
-    expect(PAGE).toMatch(/:::info\[Not available yet\]\n\nChat commands \(`\/ouro …`/);
+  it("lists the /ouro chat commands as a tool, now that they run (#537)", () => {
+    expect(PAGE).toContain("| [`/ouro`](./ouro.mdx) — chat commands |");
+    expect(PAGE).not.toContain("Not available yet");
   });
 });

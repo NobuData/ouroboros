@@ -368,7 +368,7 @@ seeds: connection(app v2.4) · 3 channels · 6-message stream (refs live) ·
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BZ.1 | #535 ✅ | 🟢 Done | ouroboros-rest: [BZ.1] Slack app — install, endpoints & identity | OAuth install, signature-verified events/interactivity/slash, linking | mvp, chatops, rest | N (after BY.1/BY.3) | Y | L | ouroboros-rest |
 | BZ.2 | #536 | 🟡 Open | ouroboros-rest: [BZ.2] Card renderer & event publisher | Block Kit kinds, outbox publishing, chat.update lifecycle | mvp, chatops, rest, inbox | N (after BY.2, BN.1, BR.3) | Y | L | ouroboros-rest |
-| BZ.3 | #537 | 🟡 Open | ouroboros-rest: [BZ.3] `/ouro` grammar & dispatcher | The command registry + nine bindings; console mount contract | mvp, chatops, rest | N (after BZ.1, plane APIs) | Y | L | ouroboros-rest |
+| BZ.3 | #537 ✅ | 🟢 Done | ouroboros-rest: [BZ.3] `/ouro` grammar & dispatcher | The command registry + nine bindings; console mount contract | mvp, chatops, rest | N (after BZ.1, plane APIs) | Y | L | ouroboros-rest |
 | BZ.4 | #538 | 🟡 Open | ouroboros-rest: [BZ.4] Interactive answers & escalation | Button→BN.2 flows, session-confirm gating, timers (C5) | mvp, chatops, rest, inbox | N (after BZ.2, BN.2) | Y | M | ouroboros-rest |
 | BZ.5 | #539 | 🟡 Open | ouroboros-ui: [BZ.5] In-app command console | The `/ouro` surface in ⌘K (H.3 extension) with completions | mvp, chatops, ui | N (after BZ.3, H.3) | Y | M | ouroboros-ui |
 | BZ.6 | #540 | 🟡 Open | ouroboros-rest: [BZ.6] ChatOps integration tests | Signatures, renderer goldens, command matrix, escalation | mvp, chatops, rest, ci | N (after BZ.1–BZ.5) | Y | M | ouroboros-rest |
@@ -447,7 +447,7 @@ item(protected_path) + route ─▶ outbox ─▶ Block Kit card {⏸ headline, 
 
 ### Issue BZ.3 — ouroboros-rest: [BZ.3] `/ouro` grammar & dispatcher
 
-> **GitHub issue:** #537 · **Status:** 🟡 Open · **Parent epic:** #528
+> **GitHub issue:** #537 ✅ · **Status:** 🟢 Done · **Parent epic:** #528
 
 - **Problem Statement:** One versioned command registry (C3) binding nine
   deterministic commands to their planes — identically for Slack and the
@@ -881,7 +881,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    (#79), #41/#46/#16, driver + sandbox + test Slack workspace.
 2. **Phase 1 — Domain:** BY.1 (#531) ✅ → { BY.2 (#532) ✅ ⊕ BY.3 (#533) ✅ } →
    BY.4 (#534) ✅
-3. **Phase 2 — App & services:** BZ.1 (#535) ✅ → { BZ.2 (#536) ⊕ BZ.3 (#537) }
+3. **Phase 2 — App & services:** BZ.1 (#535) ✅ → { BZ.2 (#536) ⊕ BZ.3 (#537) ✅ }
    → { BZ.4 (#538) ⊕ BZ.5 (#539) } → BZ.6 (#540)
 4. **Phase 3 — UI:** CA.1 (#541) → { CA.2 (#542) ⊕ CA.3 (#543) ⊕
    CA.4 (#544) } → **CA.5 (#545) ✅** *(MVP gate, amending #56)*
