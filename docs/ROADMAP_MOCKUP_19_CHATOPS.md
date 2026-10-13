@@ -371,7 +371,7 @@ seeds: connection(app v2.4) · 3 channels · 6-message stream (refs live) ·
 | BZ.3 | #537 ✅ | 🟢 Done | ouroboros-rest: [BZ.3] `/ouro` grammar & dispatcher | The command registry + nine bindings; console mount contract | mvp, chatops, rest | N (after BZ.1, plane APIs) | Y | L | ouroboros-rest |
 | BZ.4 | #538 ✅ | 🟢 Done | ouroboros-rest: [BZ.4] Interactive answers & escalation | Button→BN.2 flows, session-confirm gating, timers (C5) | mvp, chatops, rest, inbox | N (after BZ.2, BN.2) | Y | M | ouroboros-rest |
 | BZ.5 | #539 ✅ | 🟢 Done | ouroboros-ui: [BZ.5] In-app command console | The `/ouro` surface in ⌘K (H.3 extension) with completions | mvp, chatops, ui | N (after BZ.3, H.3) | Y | M | ouroboros-ui |
-| BZ.6 | #540 | 🟡 Open | ouroboros-rest: [BZ.6] ChatOps integration tests | Signatures, renderer goldens, command matrix, escalation | mvp, chatops, rest, ci | N (after BZ.1–BZ.5) | Y | M | ouroboros-rest |
+| BZ.6 | #540 ✅ | 🟢 Done | ouroboros-rest: [BZ.6] ChatOps integration tests | Signatures, renderer goldens, command matrix, escalation | mvp, chatops, rest, ci | N (after BZ.1–BZ.5) | Y | M | ouroboros-rest |
 
 ### Issue BZ.1 — ouroboros-rest: [BZ.1] Slack app — install, endpoints & identity
 
@@ -561,7 +561,11 @@ unanswered 30m ─▶ escalate: inbox ↑ + DM on-call + card "⚠ escalated"
 
 ### Issue BZ.6 — ouroboros-rest: [BZ.6] ChatOps integration tests
 
-> **GitHub issue:** #540 · **Status:** 🟡 Open · **Parent epic:** #528
+> **GitHub issue:** #540 ✅ · **Status:** 🟢 Done · **Parent epic:** #528
+>
+> **Delivered (#540 — tests only: no production change, no version bump, no migration):** a **Slack fixture harness** (`ouroboros-rest/src/testing/slack.harness.fixture.ts`) — a loopback HTTP receiver that answers the Web API methods the service calls and its `response_url` posts, records every one, scripts `429` + `Retry-After`, errors and delays, and an emitter that signs exactly as Slack does (and can tamper, replay and redeliver). The application gets the real `HttpSlackApi` over the harness's `fetch`, which refuses every non-Slack address, so no test reaches the network. **`ChatBench`** (`src/testing/chatops.bench.fixture.ts`) arranges a workspace the way a person does — OAuth install, channel binding, `/ouro link` — and owns the clock (`tick(now)`, `digestPass(now)`). **Nine suites, 203 tests, ~82 s including the container start**, picked up by `ci/rest`'s existing `yarn test:integration`: `slack.signature` (signature, replay, raw-body, handshake, redelivery), `chatops.ack` (every command acks while its work is held; the async `dry-run` correlates), `slack.goldens` (+ `.golden.json`: seven archetypes, update lifecycle, countdown), `chatops.matrix` (every registry command × ok/denied/unlinked/bad args/confirm × Slack and console — fails when a command has no row), `slack.answers` (driver-backed allow-once chain, double press, merge gate, forged/lifted/replayed values), `slack.escalation`, `slack.outbox` (backoff, `Retry-After`, dedupe, dead letter + health), `slack.linking`, `slack.isolation`. **Negative controls, run and restored:** the signature guard admitting everything, the capability check removed (press path and command path), and the dedupe digest made per-call (outbox key and message digest) each turn their suite red.
+>
+> **Not delivered, and why:** the harness is a real server but the e2e leg cannot point REST at it yet — the Web API base is a constant, and that setting is #545's. `ci/rest` runs the suites against the integration run's own migrated PostgreSQL, as every integration suite there does, not the compose stack. The **build-green/build-failed** goldens call `enqueueBuildCard` directly (no plane reports a build result yet) and **loop-finished** is driven through the merge store method, not the whole merge executor. The command matrix and ack suites stand on the **development seeds** (loop numbers, `q-1`–`q-3`, issue numbers), so a seed change can fail them. The press path's capability check exists twice (`chat.answers.ts` and the inbox action executor): removing only the first stays green, because the executor still refuses. **Found, not fixed:** one Slack workspace can be actively installed into two Ouroboros workspaces, after which its commands and presses move to the newer install with no signal to the first (`slack.isolation` pins the behaviour and that nothing of the first follows).
 
 - **Problem Statement:** Signatures, renderer fidelity, command
   permissions, and escalation are the integration's correctness core.
@@ -926,7 +930,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 2. **Phase 1 — Domain:** BY.1 (#531) ✅ → { BY.2 (#532) ✅ ⊕ BY.3 (#533) ✅ } →
    BY.4 (#534) ✅
 3. **Phase 2 — App & services:** BZ.1 (#535) ✅ → { BZ.2 (#536) ✅ ⊕ BZ.3 (#537) ✅ }
-   → { BZ.4 (#538) ✅ ⊕ BZ.5 (#539) ✅ } → BZ.6 (#540)
+   → { BZ.4 (#538) ✅ ⊕ BZ.5 (#539) ✅ } → BZ.6 (#540) ✅
 4. **Phase 3 — UI:** CA.1 (#541) ✅ → { CA.2 (#542) ✅ ⊕ CA.3 (#543) ✅ ⊕
    CA.4 (#544) ✅ } → **CA.5 (#545) ✅** *(MVP gate, amending #56)*
 5. **v2:** CB.1 (#546) after AF.2 (#235); CB.2 (#547) ⊕ CB.3 (#548) ⊕
