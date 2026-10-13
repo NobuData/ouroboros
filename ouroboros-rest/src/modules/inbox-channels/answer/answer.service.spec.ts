@@ -49,6 +49,7 @@ describe("AnswerService (#463)", () => {
         snoozedUntil: null,
         snoozedBy: null,
         snoozeReason: null,
+        escalatedAt: null,
       },
     ]),
   );

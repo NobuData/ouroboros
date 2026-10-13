@@ -33,8 +33,50 @@ describe("InboxRepository", () => {
 
     expect(statement.sql).toContain('"organization_id" = $1');
     expect(statement.sql).toContain('"snoozed_until" <= $');
-    expect(statement.sql).toContain('order by "created_at" desc');
+    expect(statement.sql).toContain('"created_at" desc');
     expect(statement.parameters).toEqual(expect.arrayContaining([ORG, "open", "snoozed", NOW]));
+  });
+
+  it("lists escalated items before the rest of the open queue (#538)", async () => {
+    await repository.open(ORG, NOW);
+
+    expect(database.statements[0].sql).toContain(
+      'order by escalated_at is not null desc, "created_at" desc, "id" desc',
+    );
+  });
+
+  it("reads when each item escalated, and maps it — a date or null (#538)", async () => {
+    const row = {
+      id: "item-1",
+      short_seq: 231,
+      kind_id: "protected_path_allow_once",
+      kind_version: 1,
+      severity: "warn",
+      status: "open",
+      payload: {},
+      refs: [],
+      source_ref: "test:path",
+      created_at: new Date(NOW.getTime() - 31 * 60_000),
+      snoozed_until: null,
+      snoozed_by: null,
+      snooze_reason: null,
+      escalated_at: NOW,
+    };
+    database.answers(
+      { rows: [row, { ...row, id: "item-2", escalated_at: null }] },
+      { rows: [row] },
+      { rows: [row] },
+    );
+
+    const open = await repository.open(ORG, NOW);
+    const [snoozed] = await repository.snoozed(ORG, NOW);
+    const one = await repository.item(ORG, "item-1");
+
+    for (const statement of database.statements) {
+      expect(statement.sql).toContain('"escalated_at"');
+    }
+    expect(open.map((item) => item.escalatedAt)).toEqual([NOW, null]);
+    expect([snoozed.escalatedAt, one?.escalatedAt]).toEqual([NOW, NOW]);
   });
 
   it("reads each item's short number beside it, and maps it (#537)", async () => {
@@ -52,6 +94,7 @@ describe("InboxRepository", () => {
       snoozed_until: null,
       snoozed_by: null,
       snooze_reason: null,
+      escalated_at: null,
     };
     database.answers({ rows: [row] }, { rows: [row] }, { rows: [row] });
 

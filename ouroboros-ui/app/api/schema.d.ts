@@ -2759,9 +2759,19 @@ export interface paths {
          *     exactly as `POST /api/v1/slack/events` is, acknowledged at once, and answered afterwards
          *     through the payload's `response_url`.
          *
-         *     A press from a Slack user with **no linked Ouroboros account** is answered with an
-         *     ephemeral prompt to link, and does nothing else. A press from a linked user is answered
-         *     *not available yet*: the actions themselves arrive with the Chat Ops command surface.
+         *     A press on a **decision card's button** answers the decision as the person who pressed
+         *     it (#538), through the same action executor as
+         *     `POST /api/v1/inbox/items/{id}/actions/{actionId}` with the channel `slack`. Every reply
+         *     is ephemeral — only the presser sees it — and every outcome but the last changes nothing:
+         *
+         *     | the press | the reply |
+         *     |---|---|
+         *     | the button's value is not this workspace's signature, or is not on the card it was issued for (forged or replayed) | rejected |
+         *     | the Slack user has **no linked Ouroboros account** | a prompt to link |
+         *     | the decision was already answered | who answered it, and how |
+         *     | the decision is merge-class | a link to confirm it in the app — chat never completes a merge |
+         *     | the presser lacks what the action asks for | the capability (`can_approve_loops`) or role it needs |
+         *     | otherwise | the action executes; the card is edited to its resolved form, a system line follows, and an audit event `chat.decision_answered` records the person, what permitted it and the message it came from |
          */
         post: operations["receiveSlackInteraction"];
         delete?: never;
@@ -7960,7 +7970,9 @@ export interface paths {
          * The Needs-You queue — asking items, snoozed items and the head
          * @description Everything the page's main column reads (#464, BN.4). **Items** are the workspace's asking
          *     decisions — open, or snoozed with the snooze already elapsed (elapsed snoozes are woken
-         *     first) — newest first, each with its **question, why and tags rendered server-side** at the
+         *     first) — **escalated ones first** (#538: `escalatedAt` is set once an item went unanswered
+         *     past its escalation window), then newest first, each with its **question, why and tags
+         *     rendered server-side** at the
          *     kind version it pinned, the structured `facts` they were composed from, typed `refs`, its
          *     age (counted through any snooze), and its **actions resolved against the caller**: every
          *     declared action comes back, a disallowed one with `allowed: false` and a `disabledReason`
@@ -8086,7 +8098,7 @@ export interface paths {
          *
          *     | channel | state |
          *     |---|---|
-         *     | `slack` | always `unavailable-until` `Chat Ops` — cards are published to Slack (#536), but answering from one arrives with #538 |
+         *     | `slack` | `connected` while the workspace has an active Slack connection — a decision's card carries buttons that answer it (#538) — else `available` with the reason |
          *     | `email` | `connected` while this deployment has a mail server (`OURO_SMTP_URL`), else `available` with the reason |
          *     | `push` | always `unavailable-until` `BP.2` (#472) |
          *     | `github` | `connected` while the workspace has a source whose provider can comment on a PR through the SPI, else `available` |
@@ -28325,6 +28337,13 @@ export interface components {
             createdAt: string;
             /** @description Seconds since it was asked, counted through any snooze. */
             ageSeconds: number;
+            /**
+             * Format: date-time
+             * @description When the item escalated (#538) — nobody answered within its kind's escalation
+             *     window, so its chat card was annotated, the on-call person was sent a DM and the
+             *     queue lists it first. Null for an item that has not escalated.
+             */
+            escalatedAt: string | null;
             snooze: {
                 allowed: boolean;
             };
@@ -69917,9 +69936,9 @@ export interface operations {
                      *           "id": "slack",
                      *           "label": "Slack",
                      *           "summary": "Approve with a button, right in the thread.",
-                     *           "state": "unavailable-until",
-                     *           "until": "Chat Ops",
-                     *           "reason": "Arrives with Chat Ops."
+                     *           "state": "connected",
+                     *           "until": null,
+                     *           "reason": null
                      *         },
                      *         {
                      *           "id": "email",
@@ -71025,7 +71044,10 @@ export interface operations {
              * @description `decision_action_forbidden` — the action's declared `required_role` (or, for
              *     `approver`, `can_approve_loops`) is not held; `decision_action_needs_person` — a
              *     service account cannot answer; or the owning plane's own refusal (`forbidden` for an
-             *     AP.4 control the role may not ask for, `merge_not_policy_eligible`).
+             *     AP.4 control the role may not ask for, `merge_not_policy_eligible`). This route never
+             *     answers `decision_action_confirm_in_app`: that is the executor's refusal of a
+             *     merge-class decision pressed from chat (#538), which `/ouro answer` and a Slack card's
+             *     button relay.
              */
             403: {
                 headers: {

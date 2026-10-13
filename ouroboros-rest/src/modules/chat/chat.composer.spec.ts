@@ -8,6 +8,7 @@ import { ActionTokenService } from "../inbox-channels/tokens/action-token.servic
 import { DIGEST_STATES, weekPage } from "../insights/digest/digest.fixture";
 import type { InsightsPageService } from "../insights/page/page.service";
 import type { ChatCard } from "./chat.card";
+import { ESCALATED_ANNOTATION, type EscalationTimerState } from "./chat.cards.decision";
 import { ChatComposer, buildFactsOf, type ComposedChatMessage } from "./chat.composer";
 import {
   ASKED_AT,
@@ -16,15 +17,19 @@ import {
   LOOP_1846,
   ORGANIZATION,
   QUESTION_REFS,
+  QUESTION_TIMER,
   RUN_1846,
   RUN_1851,
   UI_URL,
 } from "./chat.fixture";
+import type { ChatEscalationRepository } from "./chat.escalation.repository";
 import type { ChatRepository, ChatResolutionRow, ClaimedChatRow } from "./chat.repository";
 
 /**
  * The composer (#536): an outbox row says what is true when it is sent — from the kind registry,
  * the item's facts and its resolution — and its buttons carry values only this service signs.
+ * Since #538 an open card's footnote is read off the item's escalation timer, and the one edit
+ * that leaves a card open is its escalation annotation.
  */
 
 const ITEM_ROW: InboxItemRow = {
@@ -41,6 +46,7 @@ const ITEM_ROW: InboxItemRow = {
   snoozedUntil: null,
   snoozedBy: null,
   snoozeReason: null,
+  escalatedAt: null,
 };
 
 const RESOLVED: ChatResolutionRow = {
@@ -73,19 +79,33 @@ function row(overrides: Partial<ClaimedChatRow> = {}): ClaimedChatRow {
   };
 }
 
+/** The question's timer once it has fired, and the item as the firing leaves it. */
+const FIRED_AT = new Date(ASKED_AT.getTime() + 30 * 60_000);
+const FIRED_TIMER: EscalationTimerState = { ...QUESTION_TIMER, firedAt: FIRED_AT };
+const ESCALATED_ROW: InboxItemRow = { ...ITEM_ROW, escalatedAt: FIRED_AT };
+
 /** A composer over stubs of what it reads, with a real signer. */
 function harness(
-  state: { item?: InboxItemRow; resolution?: ChatResolutionRow } = { item: ITEM_ROW },
+  state: {
+    item?: InboxItemRow;
+    resolution?: ChatResolutionRow;
+    /** The item's escalation timer; pending and due at the end of the window unless given. */
+    timer?: EscalationTimerState | null;
+  } = { item: ITEM_ROW },
 ) {
   const store = new FakeTokenStore();
   const tokens = new ActionTokenService(store.repository(), new FakeVault().service());
   const loopFinishedFacts = jest.fn().mockResolvedValue(LOOP_1846);
   const read = jest.fn().mockResolvedValue(weekPage(DIGEST_STATES.priced()));
+  const timer = jest.fn((_itemId: string) =>
+    Promise.resolve(state.timer === null ? undefined : (state.timer ?? QUESTION_TIMER)),
+  );
   const composer = new ChatComposer(
     {
       resolution: () => Promise.resolve(state.resolution),
       loopFinishedFacts,
     } as unknown as ChatRepository,
+    { timer } as unknown as ChatEscalationRepository,
     { item: () => Promise.resolve(state.item) } as unknown as InboxRepository,
     {
       pinnedKind: (kindId: string) => Promise.resolve(SHIPPED_KINDS[kindId]),
@@ -96,7 +116,7 @@ function harness(
     { uiUrl: UI_URL } as AppConfigService,
   );
 
-  return { composer, tokens, loopFinishedFacts, read, state };
+  return { composer, tokens, loopFinishedFacts, read, timer, state };
 }
 
 /** A composition that is a message, or a failure of the test. */
@@ -136,6 +156,8 @@ describe("a waiting decision", () => {
       await expect(composer.verifiedAction(ORGANIZATION, button.value)).resolves.toEqual({
         itemId: ITEM,
         actionId: button.id,
+        // The nonce the value was signed with — its fourth field.
+        nonce: button.value.split("|")[3],
       });
       await expect(composer.verifiedAction("org-other", button.value)).resolves.toBeUndefined();
     }
@@ -163,6 +185,121 @@ describe("a waiting decision", () => {
     const second = message(await composer.compose(row(), DRAWN_AT)).model as ChatCard;
 
     expect(JSON.stringify(first.actions)).not.toBe(JSON.stringify(second.actions));
+  });
+});
+
+describe("a waiting decision's countdown (#538)", () => {
+  it("is read off the item's escalation timer, as it is when the card is composed", async () => {
+    const { composer, timer } = harness({
+      item: ITEM_ROW,
+      timer: { ...QUESTION_TIMER, dueAt: new Date(ASKED_AT.getTime() + 10 * 60_000) },
+    });
+
+    const card = message(await composer.compose(row(), DRAWN_AT)).model as ChatCard;
+
+    expect(timer).toHaveBeenCalledWith(ITEM);
+    expect(card.footnote).toBe("paused 4m · escalates to the Needs-you inbox in 6m");
+  });
+
+  it("promises no escalation for a decision with no timer, or a cancelled one", async () => {
+    const none = harness({ item: ITEM_ROW, timer: null });
+    const cancelled = harness({
+      item: ITEM_ROW,
+      timer: { ...QUESTION_TIMER, cancelledAt: DRAWN_AT },
+    });
+
+    for (const { composer } of [none, cancelled]) {
+      const card = message(await composer.compose(row(), DRAWN_AT)).model as ChatCard;
+
+      expect(card.footnote).toBe("paused 4m");
+    }
+  });
+
+  it("does not read the timer for a card that is posted resolved, or for a system line", async () => {
+    const { composer, timer } = harness({ item: ITEM_ROW, resolution: RESOLVED });
+
+    await composer.compose(row(), DRAWN_AT);
+    await composer.compose(row({ messageKind: "system_line" }), DRAWN_AT);
+
+    expect(timer).not.toHaveBeenCalled();
+  });
+});
+
+describe("an escalated decision (#538)", () => {
+  const LATER = new Date(ASKED_AT.getTime() + 31 * 60_000);
+
+  it("composes the update as the same open card, annotated", async () => {
+    const { composer } = harness({ item: ESCALATED_ROW, timer: FIRED_TIMER });
+
+    const composed = message(await composer.compose(row({ operation: "update" }), LATER));
+    const card = composed.model as ChatCard;
+
+    expect(card.footnote).toBe(`paused 31m · ${ESCALATED_ANNOTATION}`);
+    expect(card.headline).toBe("Allow a one-time edit to a protected path?");
+    expect(composed).toMatchObject({
+      state: "open",
+      resolution: null,
+      // The same message it was: the digest does not change with the annotation.
+      digestParts: ["decision_card", ITEM],
+    });
+  });
+
+  it("keeps the annotated card's buttons signed — it can still be answered from chat", async () => {
+    const { composer } = harness({ item: ESCALATED_ROW, timer: FIRED_TIMER });
+
+    const card = message(await composer.compose(row({ operation: "update" }), LATER))
+      .model as ChatCard;
+    const buttons = card.actions.flatMap((action) => (action.type === "answer" ? [action] : []));
+
+    expect(buttons.map((button) => button.id)).toEqual(["allow_once", "deny"]);
+
+    for (const button of buttons) {
+      await expect(composer.verifiedAction(ORGANIZATION, button.value)).resolves.toMatchObject({
+        itemId: ITEM,
+        actionId: button.id,
+      });
+    }
+  });
+
+  it("composes the on-call person's DM — a post — in the escalated form too", async () => {
+    const { composer } = harness({ item: ESCALATED_ROW, timer: FIRED_TIMER });
+
+    const composed = message(
+      await composer.compose(
+        row({ channelId: null, dmPlatformUserId: "U07KEN", routeKind: "needs_you_dm" }),
+        LATER,
+      ),
+    );
+
+    expect((composed.model as ChatCard).footnote).toBe(`paused 31m · ${ESCALATED_ANNOTATION}`);
+    expect(composed.state).toBe("open");
+  });
+
+  it("composes the resolved card instead when it was answered before the edit went out", async () => {
+    const { composer } = harness({
+      item: { ...ESCALATED_ROW, status: "resolved" },
+      resolution: RESOLVED,
+      timer: { ...FIRED_TIMER, cancelledAt: LATER },
+    });
+
+    const composed = message(await composer.compose(row({ operation: "update" }), LATER));
+
+    expect(composed.state).toBe("resolved");
+    expect((composed.model as ChatCard).actions).toEqual([]);
+    expect((composed.model as ChatCard).footnote).toBe(
+      "Maya Chen answered: allowed once · in Slack",
+    );
+  });
+
+  it("says nothing for an escalated decision that has since expired", async () => {
+    const { composer } = harness({
+      item: { ...ESCALATED_ROW, status: "expired" },
+      timer: FIRED_TIMER,
+    });
+
+    await expect(composer.compose(row({ operation: "update" }), LATER)).resolves.toEqual({
+      skip: "the decision expired unanswered",
+    });
   });
 });
 
@@ -238,7 +375,7 @@ describe("nothing to say", () => {
   it.each([
     ["a decision that no longer exists", {}, row(), "the decision no longer exists"],
     [
-      "an update of an unresolved decision",
+      "an update of an unresolved decision that has not escalated",
       { item: ITEM_ROW },
       row({ operation: "update" }),
       "the decision is not resolved",

@@ -54,6 +54,6 @@ import { SlackStoreModule } from "./slack.store.module";
     { provide: SLACK_API, useFactory: (): HttpSlackApi => new HttpSlackApi() },
   ],
   // `SlackStoreModule` is re-exported for `SlackRepository`, which this module used to provide.
-  exports: [SLACK_API, SlackInstallService, SlackStoreModule],
+  exports: [SLACK_API, SlackInstallService, SlackInboundService, SlackStoreModule],
 })
 export class SlackModule {}

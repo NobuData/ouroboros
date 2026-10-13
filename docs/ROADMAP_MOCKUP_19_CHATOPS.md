@@ -369,7 +369,7 @@ seeds: connection(app v2.4) · 3 channels · 6-message stream (refs live) ·
 | BZ.1 | #535 ✅ | 🟢 Done | ouroboros-rest: [BZ.1] Slack app — install, endpoints & identity | OAuth install, signature-verified events/interactivity/slash, linking | mvp, chatops, rest | N (after BY.1/BY.3) | Y | L | ouroboros-rest |
 | BZ.2 | #536 ✅ | 🟢 Done | ouroboros-rest: [BZ.2] Card renderer & event publisher | Block Kit kinds, outbox publishing, chat.update lifecycle | mvp, chatops, rest, inbox | N (after BY.2, BN.1, BR.3) | Y | L | ouroboros-rest |
 | BZ.3 | #537 ✅ | 🟢 Done | ouroboros-rest: [BZ.3] `/ouro` grammar & dispatcher | The command registry + nine bindings; console mount contract | mvp, chatops, rest | N (after BZ.1, plane APIs) | Y | L | ouroboros-rest |
-| BZ.4 | #538 | 🟡 Open | ouroboros-rest: [BZ.4] Interactive answers & escalation | Button→BN.2 flows, session-confirm gating, timers (C5) | mvp, chatops, rest, inbox | N (after BZ.2, BN.2) | Y | M | ouroboros-rest |
+| BZ.4 | #538 ✅ | 🟢 Done | ouroboros-rest: [BZ.4] Interactive answers & escalation | Button→BN.2 flows, session-confirm gating, timers (C5) | mvp, chatops, rest, inbox | N (after BZ.2, BN.2) | Y | M | ouroboros-rest |
 | BZ.5 | #539 | 🟡 Open | ouroboros-ui: [BZ.5] In-app command console | The `/ouro` surface in ⌘K (H.3 extension) with completions | mvp, chatops, ui | N (after BZ.3, H.3) | Y | M | ouroboros-ui |
 | BZ.6 | #540 | 🟡 Open | ouroboros-rest: [BZ.6] ChatOps integration tests | Signatures, renderer goldens, command matrix, escalation | mvp, chatops, rest, ci | N (after BZ.1–BZ.5) | Y | M | ouroboros-rest |
 
@@ -490,7 +490,13 @@ item(protected_path) + route ─▶ outbox ─▶ Block Kit card {⏸ headline, 
 
 ### Issue BZ.4 — ouroboros-rest: [BZ.4] Interactive answers & escalation
 
-> **GitHub issue:** #538 · **Status:** 🟡 Open · **Parent epic:** #528
+> **GitHub issue:** #538 ✅ · **Status:** 🟢 Done · **Parent epic:** #528
+>
+> **Delivered (#538 — `V135__decision_escalation_timers.sql`, `ouroboros-rest` 0.41.27, `ouroboros-ui` 0.156.4, `ouroboros-docs` 0.5.2):** **answers** — a press on a decision card is checked against this workspace's signature *and* the stored card it was issued for (`chat.answers.ts`), then identity link → already answered → merge-class → capability → `InboxActionsService.execute(…, "slack")`; every outcome is an ephemeral reply, and only `answered` changes anything. An executed press writes the audit event `chat.decision_answered` (person, `permittedBy`, connection, message, platform ids). A second press reports who answered; the executor's own races map to the same reply. **Merge-class (X5)** is refused inside the executor for the `slack` channel (`decision_action_confirm_in_app`), so the card button and `/ouro answer` both stop there; a merge card renders one **Confirm in Ouroboros ↗** link and a line saying why. **Escalation** — `decision_escalation_timers` (one per item, started in the transaction that intends its card, due at filing + window, cancelled by a trigger when the item is answered, snoozed or withdrawn), `decision_escalation_overrides` (per workspace and kind), `decision_items.escalated_at` (stamped once; the queue lists escalated items first; `escalatedAt` on `InboxItem`). The pass (`chat.escalation.ts`, on the dispatcher's five-second tick) claims due timers `for update skip locked`, fires each in its own transaction, edits every posted open card to **⚠ escalated — now in the Needs-you inbox** and DMs the on-call designee. **Countdown** — the footnote is computed from the timer row at render time (`waitingFootnote`). The inbox's *Answer from anywhere* Slack row is `connected` while the workspace has an active Slack connection.
+>
+> **Decided with the user:** escalation raises an item through a new `escalated_at` column (severity is left as declared); timers and overrides are **two new tables** (V135), so this ticket also touches `ouroboros-db`.
+>
+> **Not delivered, and why:** nothing was run against a real Slack workspace — the chain is verified with unit specs over fakes and the database rules in `constraints.sql`; the acceptance criteria's end-to-end run is CA.5's (#545). No API or screen sets an escalation override or designates the on-call person (#541/#542/#548): both are rows an operator writes. A decision that is snoozed and wakes does not get a new timer. A single-use *nonce* is not stored: a reference is spent with its decision (the item resolves once), which is what makes a replay inert. The on-call person who already holds the card as a DM gets it edited, not a second DM. The `user-guide.inbox` screenshot shows the Slack row as it was before this ticket (not recaptured).
 
 - **Problem Statement:** The page's soul: buttons that resume loops (via
   the inbox executor) and timers that escalate honestly (C4/C5).
@@ -888,7 +894,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 2. **Phase 1 — Domain:** BY.1 (#531) ✅ → { BY.2 (#532) ✅ ⊕ BY.3 (#533) ✅ } →
    BY.4 (#534) ✅
 3. **Phase 2 — App & services:** BZ.1 (#535) ✅ → { BZ.2 (#536) ✅ ⊕ BZ.3 (#537) ✅ }
-   → { BZ.4 (#538) ⊕ BZ.5 (#539) } → BZ.6 (#540)
+   → { BZ.4 (#538) ✅ ⊕ BZ.5 (#539) } → BZ.6 (#540)
 4. **Phase 3 — UI:** CA.1 (#541) → { CA.2 (#542) ⊕ CA.3 (#543) ⊕
    CA.4 (#544) } → **CA.5 (#545) ✅** *(MVP gate, amending #56)*
 5. **v2:** CB.1 (#546) after AF.2 (#235); CB.2 (#547) ⊕ CB.3 (#548) ⊕

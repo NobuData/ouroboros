@@ -188,11 +188,11 @@ a day and **Today** returns. A day with nothing resolved says so in one line.
 **Answer from anywhere** lists the channels a decision can reach you on, and how each one
 stands in your deployment. Only a channel that can deliver is marked **✓ connected**:
 
-- **Slack** — **not yet**. Answering from Slack arrives with Chat Ops; the **Chat Ops**
-  button beside the title is marked **soon**. Decisions are already
-  [posted to Slack as cards](./chatops.mdx#what-ouroboros-posts), and you can
-  [link your Slack identity](./chatops.mdx#link-your-identity); this row stays **not yet**
-  until a card's buttons can answer.
+- **Slack** — decisions are [posted to Slack as cards](./chatops.mdx#what-ouroboros-posts)
+  whose buttons [answer them](./chatops.mdx#answer-a-decision-from-slack). **✓ connected** once
+  the workspace has connected Slack; until then it reads **not connected**, with **Connect
+  Slack in Settings to answer from a decision's card.** The **Chat Ops** button beside the
+  title is marked **soon**: that page is not built yet.
 - **Email** — instant mail for each blocking decision, and an optional daily digest (see
   [Answering by email](#answering-by-email)). It reads **not connected** until the deployment
   has a mail server; the row then says **This deployment has no mail server: set
@@ -278,9 +278,14 @@ In every case, nothing was done — answer the decision in the inbox instead.
 ## Time limits and escalation
 
 - **A decision waits until it is answered.** Each kind has an escalation window — 30 minutes
-  for most, a day for splits and re-sizes, a week for facts — but nothing escalates an
-  unanswered decision yet; escalation arrives with Chat Ops. Snoozing never extends anything:
-  the wait keeps counting.
+  for most, a day for splits and re-sizes, a week for facts.
+- **An unanswered decision escalates.** When a decision that was posted to Slack reaches the
+  end of its window with no answer, it **moves to the top of the queue**, above newer
+  decisions, and stays there until it is answered. Its Slack card is marked **⚠ escalated — now
+  in the Needs-you inbox** and the person on call is sent it directly — see
+  [When nobody answers](./chatops.mdx#when-nobody-answers). A decision that was never posted
+  to Slack does not escalate. Snoozing a decision stops its countdown for good: a snoozed
+  decision never escalates, even after it wakes.
 - **A one-time allowance is narrow.** **Allow once** covers one file on one run. It is used up
   as soon as the run checks that path again, and lapses if it is not used within a day.
 - **Mail links are short-lived.** They stop working after 48 hours by default, and as soon as

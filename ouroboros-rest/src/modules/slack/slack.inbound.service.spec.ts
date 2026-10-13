@@ -1,4 +1,5 @@
 import type { AuditService } from "../audit/audit.service";
+import type { ChatPress, ChatPressOutcome } from "../chat/chat.answers";
 import { CHAT_REPLIES } from "../chatops/chatops.replies";
 import type { ChatDispatcher } from "../chatops/dispatcher.service";
 import type { DispatchInput, DispatchResult } from "../chatops/grammar.types";
@@ -23,7 +24,10 @@ import {
   SlackInboundService,
   interactionPayload,
   opensOnlyLinks,
+  pressReply,
+  pressedButton,
   slackReply,
+  type SlackPressPort,
   subcommandOf,
 } from "./slack.inbound.service";
 import { SlackInstallService } from "./slack.install.service";
@@ -37,6 +41,10 @@ import type { SlackRepository } from "./slack.repository";
  * For commands it is a thin adapter (#537): everything but `link` and `unlink` goes to the
  * dispatcher as typed, and the dispatcher's reply comes back as an ephemeral message. What a
  * command *is* is asserted in `chatops/dispatcher.service.spec.ts`, not here.
+ *
+ * For button presses it is as thin (#538): it resolves who pressed, hands the press to whatever
+ * the chat module registered, and says how it ended to the presser alone. What a press *does* is
+ * asserted in `chat/chat.answers.spec.ts`.
  */
 
 const RESPONSE_URL = "https://hooks.slack.com/commands/T024AB/1/abc";
@@ -130,6 +138,10 @@ function command(text: string, overrides: Record<string, string> = {}): Record<s
   };
 }
 
+/** The value on the pressed button, and the message it is on. */
+const VALUE = "ouro1|5eed0082-0000-4000-8000-000000000002|allow_once|nonce|key|mac";
+const MESSAGE_TS = "1760000000.000001";
+
 /** An interactivity form, parsed. */
 function press(
   userId: string = SLACK_MAYA,
@@ -141,9 +153,52 @@ function press(
       team: { id: TEAM },
       user: { id: userId },
       response_url: RESPONSE_URL,
-      actions: actionIds.map((action_id) => ({ action_id })),
+      channel: { id: CHANNEL },
+      message: { ts: MESSAGE_TS },
+      actions: actionIds.map((action_id) => ({
+        action_id,
+        ...(action_id.startsWith("ouro_link:") ? {} : { value: VALUE }),
+      })),
     }),
   };
+}
+
+/** A press port that answers what a spec scripted, and remembers what it was handed. */
+class FakePressPort implements SlackPressPort {
+  /** What every press ends as. */
+  outcome: ChatPressOutcome = {
+    kind: "answered",
+    action: "Allow once",
+    effects: ["allowed the write once", "loop #1851 resumed"],
+  };
+  /** When set, every press rejects with it. */
+  failure: Error | undefined;
+  /** Every press handed over, in order. */
+  readonly presses: ChatPress[] = [];
+
+  press(pressed: ChatPress): Promise<ChatPressOutcome> {
+    this.presses.push(pressed);
+
+    return this.failure === undefined
+      ? Promise.resolve(this.outcome)
+      : Promise.reject(this.failure);
+  }
+}
+
+/** The handlers with a press port registered, and Maya linked unless a spec says otherwise. */
+async function setupWithPort(options: { linked?: boolean } = {}) {
+  const context = await setup();
+  const port = new FakePressPort();
+
+  context.inbound.answerPressesWith(port);
+
+  if (options.linked !== false) {
+    const offer = await context.links.offer(context.connection, SLACK_MAYA);
+    await context.links.confirm((offer as { url: string }).url.split("/link/")[1], MAYA);
+    context.audit.events.length = 0;
+  }
+
+  return { ...context, port };
 }
 
 /** An Events API delivery. */
@@ -622,7 +677,8 @@ describe("interactivity", () => {
     expect(store.links[0]).toMatchObject({ state: "linked", member_id: "mem-maya" });
   });
 
-  it("tells a linked person honestly that answering from Slack is not available yet", async () => {
+  it("tells a linked person honestly that answering is not available when nothing answers presses", async () => {
+    // No port registered: a deployment without the chat module, or a press before it started.
     const { inbound, links, slack, connection } = await setup();
     const offer = await links.offer(connection, SLACK_MAYA);
     await links.confirm((offer as { url: string }).url.split("/link/")[1], MAYA);
@@ -631,6 +687,9 @@ describe("interactivity", () => {
     await inbound.idle();
 
     expect(slack.replies[0].reply).toEqual({ ephemeral: true, text: REPLIES.actionUnavailable });
+    expect(REPLIES.actionUnavailable).toBe(
+      "Answering from Slack is not available right now. Open the item in Ouroboros to answer it.",
+    );
   });
 
   it("acknowledges a payload it cannot read and starts nothing", async () => {
@@ -641,6 +700,396 @@ describe("interactivity", () => {
     await inbound.idle();
 
     expect(slack.replies).toEqual([]);
+  });
+});
+
+describe("a button press, answered (#538)", () => {
+  it("hands a linked person's press to the port: workspace, connection, who, where and the value", async () => {
+    const { inbound, port, connection } = await setupWithPort();
+
+    expect(inbound.interaction(press())).toEqual({});
+    await inbound.idle();
+
+    expect(port.presses).toEqual([
+      {
+        organizationId: ORG,
+        connectionId: connection.id,
+        platformUserId: SLACK_MAYA,
+        userId: MAYA.userId,
+        value: VALUE,
+        platformChannelId: CHANNEL,
+        platformTs: MESSAGE_TS,
+      },
+    ]);
+  });
+
+  it("says how it ended to the presser alone, in a separate message", async () => {
+    const { inbound, slack, port, store, audit } = await setupWithPort();
+    const links = store.links.length;
+
+    inbound.interaction(press());
+    await inbound.idle();
+
+    expect(slack.replies).toEqual([
+      {
+        responseUrl: RESPONSE_URL,
+        reply: {
+          ephemeral: true,
+          text: "Answered: Allow once — allowed the write once · loop #1851 resumed",
+        },
+      },
+    ]);
+    expect(port.presses).toHaveLength(1);
+    // It decides and records nothing itself.
+    expect(store.links).toHaveLength(links);
+    expect(audit.events).toEqual([]);
+  });
+
+  it("acknowledges at once — the answer is worked on after the ack", async () => {
+    const { inbound, slack, port } = await setupWithPort();
+
+    expect(inbound.interaction(press())).toEqual({});
+    expect(slack.replies).toEqual([]);
+    expect(port.presses).toEqual([]);
+
+    await inbound.idle();
+
+    expect(slack.replies).toHaveLength(1);
+  });
+
+  it("hands an unlinked person's press over with no user, and answers `unlinked` with the link prompt", async () => {
+    const { inbound, slack, port, store } = await setupWithPort({ linked: false });
+    port.outcome = { kind: "unlinked" };
+
+    inbound.interaction(press());
+    await inbound.idle();
+
+    expect(port.presses).toEqual([expect.objectContaining({ userId: undefined, value: VALUE })]);
+    const { reply } = slack.replies[0];
+
+    expect(slack.replies).toHaveLength(1);
+    expect(reply.ephemeral).toBe(true);
+    expect(reply.text).toBe(REPLIES.needsLink);
+    expect(reply.link?.label).toBe(REPLIES.linkButton);
+    expect(reply.link?.url).toMatch(/\/api\/v1\/slack\/link\/ouro_lnk_/);
+    // Read-only: the press did nothing but open a handshake.
+    expect(store.links).toEqual([
+      expect.objectContaining({ state: "pending", platform_user_id: SLACK_MAYA }),
+    ]);
+  });
+
+  it("offers no link to an unlinked person whose press was rejected — the port decides", async () => {
+    const { inbound, slack, port, store } = await setupWithPort({ linked: false });
+    port.outcome = { kind: "rejected" };
+
+    inbound.interaction(press());
+    await inbound.idle();
+
+    expect(slack.replies.map(({ reply }) => reply)).toEqual([
+      { ephemeral: true, text: REPLIES.pressRejected },
+    ]);
+    expect(store.links).toEqual([]);
+  });
+
+  it("treats a link that is only pending as no link", async () => {
+    const { inbound, links, port, connection } = await setupWithPort({ linked: false });
+
+    // Pending: offered, never confirmed.
+    await links.offer(connection, SLACK_MAYA);
+    inbound.interaction(press());
+    await inbound.idle();
+
+    expect(port.presses[0].userId).toBeUndefined();
+  });
+
+  it("hands over whatever the button carried, and no channel or message when Slack named none", async () => {
+    const { inbound, port } = await setupWithPort();
+
+    inbound.interaction({
+      payload: JSON.stringify({
+        type: "block_actions",
+        team: { id: TEAM },
+        user: { id: SLACK_MAYA },
+        response_url: RESPONSE_URL,
+        actions: [{ action_id: "ouro_answer:allow_once" }],
+      }),
+    });
+    await inbound.idle();
+
+    expect(port.presses[0]).toMatchObject({
+      value: undefined,
+      platformChannelId: undefined,
+      platformTs: undefined,
+    });
+  });
+
+  it("answers the button that is not a link when a press carries both", async () => {
+    const { inbound, port } = await setupWithPort();
+
+    inbound.interaction(press(SLACK_MAYA, ["ouro_link:view_diff", "ouro_answer:deny"]));
+    await inbound.idle();
+
+    expect(port.presses).toEqual([expect.objectContaining({ value: VALUE })]);
+  });
+
+  it("never reaches the port for a press of nothing but link buttons", async () => {
+    const { inbound, slack, port } = await setupWithPort();
+
+    expect(inbound.interaction(press(SLACK_MAYA, ["ouro_link:confirm_in_app"]))).toEqual({});
+    await inbound.idle();
+
+    expect(port.presses).toEqual([]);
+    expect(slack.replies).toEqual([]);
+  });
+
+  it("never reaches the port for a Slack workspace that is no longer connected", async () => {
+    const { inbound, installs, slack, port, connection } = await setupWithPort();
+    await installs.revoke(connection, "app_uninstalled", "event");
+
+    inbound.interaction(press());
+    await inbound.idle();
+
+    expect(port.presses).toEqual([]);
+    expect(slack.replies.map(({ reply }) => reply)).toEqual([
+      { ephemeral: true, text: REPLIES.notConnected },
+    ]);
+  });
+
+  it("says something went wrong, and nothing else, when the port fails", async () => {
+    const { inbound, slack, port } = await setupWithPort();
+    port.failure = new Error("the database went away");
+
+    expect(inbound.interaction(press())).toEqual({});
+    await inbound.idle();
+
+    expect(slack.replies.map(({ reply }) => reply)).toEqual([
+      { ephemeral: true, text: REPLIES.failed },
+    ]);
+  });
+
+  it.each<[ChatPressOutcome, string]>([
+    [{ kind: "rejected" }, REPLIES.pressRejected],
+    [{ kind: "not_a_member" }, REPLIES.pressNotAMember],
+    [{ kind: "in_progress" }, REPLIES.pressInProgress],
+    [{ kind: "closed" }, REPLIES.pressClosed],
+    [
+      { kind: "already_answered", summary: "Priya Nair answered: allowed once · in Ouroboros" },
+      "This was already answered — Priya Nair answered: allowed once · in Ouroboros. Nothing was changed by your press.",
+    ],
+    [
+      { kind: "denied", action: "Allow once", needs: "the `can_approve_loops` capability" },
+      "Allow once needs the `can_approve_loops` capability, which your account does not have. Nothing was changed.",
+    ],
+    [
+      { kind: "refused", message: "The path is still blocked by an organisation policy." },
+      "The path is still blocked by an organisation policy. Nothing was answered.",
+    ],
+  ])("says what a %j press came to, ephemerally", async (outcome, text) => {
+    const { inbound, slack, port } = await setupWithPort();
+    port.outcome = outcome;
+
+    inbound.interaction(press());
+    await inbound.idle();
+
+    expect(slack.replies.map(({ reply }) => reply)).toEqual([{ ephemeral: true, text }]);
+  });
+
+  it("answers a merge-class press with the link into the app", async () => {
+    const { inbound, slack, port } = await setupWithPort();
+    const url = "https://app.example.test/inbox?item=5eed0082-0000-4000-8000-000000000001";
+    port.outcome = { kind: "confirm_in_app", url };
+
+    inbound.interaction(press());
+    await inbound.idle();
+
+    expect(slack.replies.map(({ reply }) => reply)).toEqual([
+      {
+        ephemeral: true,
+        text: REPLIES.pressConfirmInApp,
+        link: { label: REPLIES.pressConfirmButton, url },
+      },
+    ]);
+  });
+
+  it("routes presses to whichever port was registered last", async () => {
+    const { inbound, port } = await setupWithPort();
+    const later = new FakePressPort();
+
+    inbound.answerPressesWith(later);
+    inbound.interaction(press());
+    await inbound.idle();
+
+    expect(port.presses).toEqual([]);
+    expect(later.presses).toHaveLength(1);
+  });
+});
+
+describe("what a press's outcome reads as", () => {
+  it("says what was answered and what the plane did", () => {
+    expect(
+      pressReply({
+        kind: "answered",
+        action: "Allow once",
+        effects: ["allowed the write once", "loop #1851 resumed"],
+      }),
+    ).toEqual({
+      ephemeral: true,
+      text: "Answered: Allow once — allowed the write once · loop #1851 resumed",
+    });
+  });
+
+  it("says who answered first when that is on record, and only that it was answered when not", () => {
+    expect(pressReply({ kind: "already_answered", summary: "Closed — settled elsewhere" })).toEqual(
+      {
+        ephemeral: true,
+        text: "This was already answered — Closed — settled elsewhere. Nothing was changed by your press.",
+      },
+    );
+    expect(pressReply({ kind: "already_answered", summary: undefined })).toEqual({
+      ephemeral: true,
+      text: "This was already answered, so nothing was changed by your press.",
+    });
+  });
+
+  it("names the capability, or the role, a denied press needed", () => {
+    expect(
+      pressReply({
+        kind: "denied",
+        action: "Allow once",
+        needs: "the `can_approve_loops` capability",
+      }).text,
+    ).toBe(
+      "Allow once needs the `can_approve_loops` capability, which your account does not have. Nothing was changed.",
+    );
+    expect(
+      pressReply({ kind: "denied", action: "Return to loop with note", needs: "the member role" })
+        .text,
+    ).toContain("needs the member role");
+  });
+
+  it("carries the link for a merge, and says chat cannot answer it", () => {
+    const url = "https://app.example.test/inbox?item=item-1";
+
+    expect(pressReply({ kind: "confirm_in_app", url })).toEqual({
+      ephemeral: true,
+      text: REPLIES.pressConfirmInApp,
+      link: { label: "Confirm in Ouroboros", url },
+    });
+    expect(REPLIES.pressConfirmInApp).toMatch(/cannot be answered from Slack/);
+  });
+
+  it("sends a note-taking answer to the app, with the link", () => {
+    expect(
+      pressReply({
+        kind: "needs_note",
+        action: "Return to loop with note",
+        url: "https://app.example.test/inbox?item=i",
+      }),
+    ).toEqual({
+      ephemeral: true,
+      text: "Return to loop with note needs a note, which a Slack button cannot take. Nothing was changed — give the answer in Ouroboros.",
+      link: { label: REPLIES.pressOpenButton, url: "https://app.example.test/inbox?item=i" },
+    });
+  });
+
+  it("gives a refusal in the plane's words", () => {
+    expect(pressReply({ kind: "refused", message: "The merge plan is not armable." })).toEqual({
+      ephemeral: true,
+      text: "The merge plan is not armable. Nothing was answered.",
+    });
+  });
+
+  it.each<[Exclude<ChatPressOutcome, { kind: "unlinked" }>, string]>([
+    [{ kind: "in_progress" }, REPLIES.pressInProgress],
+    [{ kind: "closed" }, REPLIES.pressClosed],
+    [{ kind: "not_a_member" }, REPLIES.pressNotAMember],
+    [{ kind: "rejected" }, REPLIES.pressRejected],
+  ])("has a fixed sentence for %j, with no link", (outcome, text) => {
+    expect(pressReply(outcome)).toEqual({ ephemeral: true, text });
+  });
+
+  it.each<[Exclude<ChatPressOutcome, { kind: "unlinked" }>]>([
+    [{ kind: "answered", action: "Deny", effects: ["denied the write"] }],
+    [{ kind: "already_answered", summary: undefined }],
+    [{ kind: "denied", action: "Deny", needs: "the admin role" }],
+    [{ kind: "confirm_in_app", url: "https://app.example.test/inbox?item=i" }],
+    [{ kind: "refused", message: "No." }],
+    [{ kind: "in_progress" }],
+    [{ kind: "closed" }],
+    [{ kind: "not_a_member" }],
+    [{ kind: "rejected" }],
+  ])("is ephemeral for every outcome, and only `answered` claims a change: %j", (outcome) => {
+    const reply = pressReply(outcome);
+
+    expect(reply.ephemeral).toBe(true);
+    expect(reply.text.length).toBeGreaterThan(0);
+    expect(/^Answered: /.test(reply.text)).toBe(outcome.kind === "answered");
+  });
+});
+
+describe("the pressed button", () => {
+  const answer = { action_id: "ouro_answer:allow_once", value: VALUE };
+
+  it("reads the value, the channel and the message from where Slack puts them", () => {
+    expect(
+      pressedButton({
+        actions: [answer],
+        channel: { id: CHANNEL, name: "loops" },
+        message: { ts: MESSAGE_TS, text: "…" },
+      }),
+    ).toEqual({ value: VALUE, platformChannelId: CHANNEL, platformTs: MESSAGE_TS });
+  });
+
+  it("falls back to the container, which is all some payloads carry", () => {
+    expect(
+      pressedButton({
+        actions: [answer],
+        container: { type: "message", channel_id: "D0DIRECT", message_ts: "1760000000.000777" },
+      }),
+    ).toEqual({ value: VALUE, platformChannelId: "D0DIRECT", platformTs: "1760000000.000777" });
+  });
+
+  it("prefers the message itself over the container when both are there", () => {
+    expect(
+      pressedButton({
+        actions: [answer],
+        channel: { id: CHANNEL },
+        message: { ts: MESSAGE_TS },
+        container: { channel_id: "D0DIRECT", message_ts: "1760000000.000777" },
+      }),
+    ).toMatchObject({ platformChannelId: CHANNEL, platformTs: MESSAGE_TS });
+  });
+
+  it("skips link buttons: the value is the first answering button's", () => {
+    expect(
+      pressedButton({
+        actions: [
+          { action_id: "ouro_link:view_diff", value: "not-this" },
+          answer,
+          { action_id: "ouro_answer:deny", value: "nor-this" },
+        ],
+      }).value,
+    ).toBe(VALUE);
+    expect(
+      pressedButton({ actions: [{ action_id: "ouro_link:view_diff", value: "not-this" }] }).value,
+    ).toBeUndefined();
+  });
+
+  it.each([
+    undefined,
+    null,
+    "text",
+    {},
+    { actions: "nonsense" },
+    { actions: [] },
+    { actions: [{ action_id: "ouro_answer:allow_once" }] },
+    { actions: [{ action_id: "ouro_answer:allow_once", value: 7 }], channel: "C1", message: 3 },
+  ])("reads nothing it cannot trust from %j, without throwing", (payload) => {
+    expect(pressedButton(payload)).toEqual({
+      value: undefined,
+      platformChannelId: undefined,
+      platformTs: undefined,
+    });
   });
 });
 

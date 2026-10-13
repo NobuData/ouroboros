@@ -47,6 +47,7 @@ import {
   loopFinishedCard,
   type BuildFacts,
 } from "./chat.cards.events";
+import { ChatEscalationRepository } from "./chat.escalation.repository";
 import { ChatRepository, type ChatMessageResolution, type ClaimedChatRow } from "./chat.repository";
 
 /** A message ready to render, and what its `chat_messages` row records. */
@@ -73,6 +74,7 @@ export interface ChatNothingToSay {
 export class ChatComposer {
   /**
    * @param repository - Resolutions and run facts.
+   * @param escalations - A decision's escalation timer, which its card counts down from.
    * @param inbox - Decision items.
    * @param registry - The kinds, pinned, and their rendering.
    * @param tokens - Signs a button's value under the workspace's key.
@@ -81,6 +83,7 @@ export class ChatComposer {
    */
   constructor(
     private readonly repository: ChatRepository,
+    private readonly escalations: ChatEscalationRepository,
     private readonly inbox: InboxRepository,
     private readonly registry: DecisionKindRegistry,
     private readonly tokens: ActionTokenService,
@@ -123,7 +126,7 @@ export class ChatComposer {
   async verifiedAction(
     organizationId: string,
     presented: unknown,
-  ): Promise<{ itemId: string; actionId: string } | undefined> {
+  ): Promise<{ itemId: string; actionId: string; nonce: string } | undefined> {
     const value = parseActionValue(presented);
 
     if (value === undefined) {
@@ -137,7 +140,9 @@ export class ChatComposer {
       value.mac,
     );
 
-    return genuine ? { itemId: value.itemId, actionId: value.actionId } : undefined;
+    return genuine
+      ? { itemId: value.itemId, actionId: value.actionId, nonce: value.nonce }
+      : undefined;
   }
 
   /**
@@ -164,6 +169,7 @@ export class ChatComposer {
     const kind = await this.registry.pinnedKind(item.kindId, item.kindVersion);
     const refs = refsOf(item.refs);
     const subject: DecisionCardSubject = {
+      itemId: item.id,
       kind,
       rendered: this.registry.render(kind, item.payload),
       severity: item.severity,
@@ -206,7 +212,8 @@ export class ChatComposer {
       };
     }
 
-    if (row.operation === "update") {
+    // The one edit of a card that leaves it open is its escalation annotation (#538).
+    if (row.operation === "update" && item.escalatedAt === null) {
       return { skip: "the decision is not resolved" };
     }
 
@@ -219,6 +226,8 @@ export class ChatComposer {
         uiUrl: this.config.uiUrl,
         values: await this.signedValues(row.organizationId, item.id, kind),
         now,
+        // The countdown is read off the timer as it is now, never off what a card once said.
+        timer: await this.escalations.timer(item.id),
       }),
       refs,
       facts: {},

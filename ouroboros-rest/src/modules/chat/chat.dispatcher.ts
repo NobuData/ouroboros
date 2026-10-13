@@ -39,6 +39,7 @@ import { describeForLog } from "../errors/failure";
 import { retryDelayMs } from "../webhooks/webhook.backoff";
 import { CHAT_BACKEND, type ChatBackend, type ChatSendFailure } from "./chat.backend";
 import { ChatComposer, type ComposedChatMessage } from "./chat.composer";
+import { ChatEscalationRepository } from "./chat.escalation.repository";
 import { ChatRepository, type ChatChannelTarget, type ClaimedChatRow } from "./chat.repository";
 
 /** How many rows one tick claims. */
@@ -94,12 +95,14 @@ export class ChatDispatcher {
   /**
    * @param repository - The outbox and the message records.
    * @param composer - What each row says.
+   * @param escalations - Records the edit that annotates an escalated card.
    * @param backend - The platform.
    * @param random - The backoff's jitter; `Math.random` unless a spec fixes it.
    */
   constructor(
     private readonly repository: ChatRepository,
     private readonly composer: ChatComposer,
+    private readonly escalations: ChatEscalationRepository,
     @Inject(CHAT_BACKEND) private readonly backend: ChatBackend,
     @Optional() @Inject(CHAT_RANDOM) private readonly random: () => number = Math.random,
   ) {}
@@ -383,10 +386,6 @@ export class ChatDispatcher {
       return this.settled(row, "absorbed", { messageId: message.id }, now);
     }
 
-    if (composed.resolution === null) {
-      return this.skip(row, "the decision is not resolved", now);
-    }
-
     const sent = await this.backend.update({
       connectionId: row.connectionId,
       channelId: channel.platformChannelId,
@@ -398,12 +397,17 @@ export class ChatDispatcher {
       return this.failed(row, sent, now, { channel, messageId: message.id });
     }
 
-    await this.repository.recordResolved(
-      message.id,
-      composed.resolution,
-      payloadDigest(channel.id, composed.digestParts),
-      now,
-    );
+    if (composed.resolution === null) {
+      // The card is still open: this edit was its escalation annotation (#538).
+      await this.escalations.recordEdited(message.id, now);
+    } else {
+      await this.repository.recordResolved(
+        message.id,
+        composed.resolution,
+        payloadDigest(channel.id, composed.digestParts),
+        now,
+      );
+    }
 
     return this.settled(row, "sent", { messageId: message.id, attempts: row.attempts + 1 }, now);
   }

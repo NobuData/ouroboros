@@ -20,6 +20,7 @@ import {
   resolvedDecisionCard,
   type DecisionCardResolution,
   type DecisionCardSubject,
+  type EscalationTimerState,
 } from "./chat.cards.decision";
 import {
   buildFailedCard,
@@ -90,12 +91,20 @@ export const DRAWN_AT = new Date("2026-10-11T14:11:00.000Z");
 
 /** The protected-path question, as the kind registry declares and renders it. */
 export const QUESTION: DecisionCardSubject = {
+  itemId: ITEM,
   kind: SHIPPED_KINDS.protected_path_allow_once,
   rendered: MOCKUP_PROSE.protected_path_allow_once,
   severity: "warn",
   refs: QUESTION_REFS,
   sourceRef: `run:${RUN_1851}:path:boot/rollback_flag.c`,
   askedAt: ASKED_AT,
+};
+
+/** The question's escalation timer (#538): pending, due when the kind's 30-minute window ends. */
+export const QUESTION_TIMER: EscalationTimerState = {
+  dueAt: new Date(ASKED_AT.getTime() + 30 * 60_000),
+  firedAt: null,
+  cancelledAt: null,
 };
 
 /** A signed value per answering action — opaque here; `chat.composer.spec.ts` signs real ones. */
@@ -116,7 +125,12 @@ export const MAYA_ALLOWED: DecisionCardResolution = {
 /** Mockup 19's archetypes, as card models — what every backend must be able to draw. */
 export const ARCHETYPES = {
   loop_finished: loopFinishedCard(LOOP_1846, UI_URL),
-  question: decisionCard(QUESTION, { uiUrl: UI_URL, values: QUESTION_VALUES, now: DRAWN_AT }),
+  question: decisionCard(QUESTION, {
+    uiUrl: UI_URL,
+    values: QUESTION_VALUES,
+    now: DRAWN_AT,
+    timer: QUESTION_TIMER,
+  }),
   question_resolved: resolvedDecisionCard(QUESTION, MAYA_ALLOWED),
   system_line: decisionSystemLine(QUESTION, MAYA_ALLOWED),
   build_green: buildGreenCard(BUILD_1847, UI_URL),

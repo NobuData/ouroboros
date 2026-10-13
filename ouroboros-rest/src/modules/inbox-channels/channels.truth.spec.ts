@@ -10,8 +10,8 @@ const states = (facts: Parameters<typeof channelTruth>[0]) =>
 
 describe("the channel truth payload (#463)", () => {
   it("is correct on a default self-hosted install — no fake ✓", () => {
-    expect(states({ commentingSources: 1, mailTransport: "smtp" })).toEqual([
-      { id: "slack", state: "unavailable-until", until: "Chat Ops" },
+    expect(states({ commentingSources: 1, mailTransport: "smtp", slackConnected: false })).toEqual([
+      { id: "slack", state: "available", until: null },
       { id: "email", state: "connected", until: null },
       { id: "push", state: "unavailable-until", until: "BP.2" },
       { id: "github", state: "connected", until: null },
@@ -19,9 +19,11 @@ describe("the channel truth payload (#463)", () => {
   });
 
   it("says Email is only available, and why, without a mail server", () => {
-    const email = channelTruth({ commentingSources: 1, mailTransport: "none" }).channels.find(
-      (row) => row.id === "email",
-    );
+    const email = channelTruth({
+      commentingSources: 1,
+      mailTransport: "none",
+      slackConnected: false,
+    }).channels.find((row) => row.id === "email");
 
     expect(email).toMatchObject({
       state: "available",
@@ -30,18 +32,22 @@ describe("the channel truth payload (#463)", () => {
   });
 
   it("says GitHub is only available, and why, without a git host that can comment", () => {
-    const github = channelTruth({ commentingSources: 0, mailTransport: "smtp" }).channels.find(
-      (row) => row.id === "github",
-    );
+    const github = channelTruth({
+      commentingSources: 0,
+      mailTransport: "smtp",
+      slackConnected: false,
+    }).channels.find((row) => row.id === "github");
 
     expect(github?.state).toBe("available");
     expect(github?.reason).toMatch(/git host/);
   });
 
   it("explains the GitHub comment's whole life — posted when asked, edited when answered (#469)", () => {
-    const github = channelTruth({ commentingSources: 1, mailTransport: "smtp" }).channels.find(
-      (row) => row.id === "github",
-    );
+    const github = channelTruth({
+      commentingSources: 1,
+      mailTransport: "smtp",
+      slackConnected: false,
+    }).channels.find((row) => row.id === "github");
 
     expect(github?.summary).toBe(
       "Every decision is mirrored as a PR comment — posted when it is asked, edited when it is answered.",
@@ -49,38 +55,67 @@ describe("the channel truth payload (#463)", () => {
   });
 
   it("says what each channel does in the card's own words, connected or not", () => {
-    for (const row of channelTruth({ commentingSources: 0, mailTransport: "none" }).channels) {
+    for (const row of channelTruth({
+      commentingSources: 0,
+      mailTransport: "none",
+      slackConnected: false,
+    }).channels) {
       expect(row.label).not.toBe("");
       expect(row.summary).toMatch(/\.$/);
     }
   });
 
-  it("never connects Slack or Push, whatever else is configured", () => {
-    const rows = channelTruth({ commentingSources: 5, mailTransport: "smtp" }).channels;
+  it("never connects Push, whatever else is configured", () => {
+    const rows = channelTruth({
+      commentingSources: 5,
+      mailTransport: "smtp",
+      slackConnected: true,
+    }).channels;
 
-    for (const id of ["slack", "push"]) {
-      expect(rows.find((row) => row.id === id)?.state).toBe("unavailable-until");
-    }
+    expect(rows.find((row) => row.id === "push")?.state).toBe("unavailable-until");
+  });
+
+  it("connects Slack exactly while the workspace has an active Slack connection (#538)", () => {
+    const slack = (slackConnected: boolean) =>
+      channelTruth({ commentingSources: 0, mailTransport: "none", slackConnected }).channels.find(
+        (row) => row.id === "slack",
+      );
+
+    expect(slack(true)).toMatchObject({ state: "connected", until: null, reason: null });
+    expect(slack(false)).toMatchObject({
+      state: "available",
+      until: null,
+      reason: expect.stringContaining("Connect Slack") as string,
+    });
   });
 
   it("gives a connected row no reason and every other row one", () => {
-    for (const row of channelTruth({ commentingSources: 0, mailTransport: "none" }).channels) {
+    for (const row of channelTruth({
+      commentingSources: 0,
+      mailTransport: "none",
+      slackConnected: false,
+    }).channels) {
       expect(row.reason).not.toBeNull();
     }
 
-    for (const row of channelTruth({ commentingSources: 1, mailTransport: "smtp" }).channels) {
+    for (const row of channelTruth({
+      commentingSources: 1,
+      mailTransport: "smtp",
+      slackConnected: false,
+    }).channels) {
       expect(row.reason === null).toBe(row.state === "connected");
     }
   });
 });
 
 describe("ChannelsService (#463)", () => {
-  /** A database answering the workspace's unpaused sources. */
-  function database(kinds: string[]): DatabaseService {
+  /** A database answering the workspace's unpaused sources and its active Slack connection. */
+  function database(kinds: string[], slack = false): DatabaseService {
     const chain = {
       select: () => chain,
       where: () => chain,
       execute: () => Promise.resolve(kinds.map((kind) => ({ kind }))),
+      executeTakeFirst: () => Promise.resolve(slack ? { id: "connection-1" } : undefined),
     };
 
     return { db: { selectFrom: () => chain } } as unknown as DatabaseService;
@@ -113,5 +148,17 @@ describe("ChannelsService (#463)", () => {
 
     expect(rows.find((row) => row.id === "github")?.state).toBe("available");
     expect(rows.find((row) => row.id === "email")?.state).toBe("available");
+  });
+
+  it("reads Slack as connected from the workspace's active connection (#538)", async () => {
+    const state = async (slack: boolean) =>
+      (
+        await new ChannelsService(database([], slack), registry, new RecordingMailer()).truth(
+          "org-1",
+        )
+      ).channels.find((row) => row.id === "slack")?.state;
+
+    expect(await state(true)).toBe("connected");
+    expect(await state(false)).toBe("available");
   });
 });

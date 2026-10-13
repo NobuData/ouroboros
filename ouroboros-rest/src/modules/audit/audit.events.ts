@@ -672,6 +672,16 @@ export const CHAT_IDENTITY_UNLINKED_EVENT = "chat.identity_unlinked";
  */
 export const CHAT_COMMAND_INVOKED_EVENT = "chat.command_invoked";
 
+/**
+ * A decision was answered with a button on its chat card (BZ.4, #538). Subject `decision_item`.
+ * The actor is the person whose linked identity pressed it. The detail is what let them and
+ * where it came from, flat: `surface`, `actionId`, `permittedBy` (`can_approve_loops`, or
+ * `role:<role>` for an action that asks for a role), `attemptId` (the executor's attempt),
+ * `connectionId`, `messageId` (the `chat_messages` row), `platformChannelId`, `platformTs` and
+ * `platformUserId`. What the answer *did* is the owning plane's own event, unchanged.
+ */
+export const CHAT_DECISION_ANSWERED_EVENT = "chat.decision_answered";
+
 /* ---------------------------------------------------------------------------
  * The audit plane itself — BR.2 ([#486](https://github.com/NobuData/ouroboros/issues/486)).
  *
@@ -791,6 +801,7 @@ export const AUDIT_ACTIONS = [
   CHAT_IDENTITY_LINKED_EVENT,
   CHAT_IDENTITY_UNLINKED_EVENT,
   CHAT_COMMAND_INVOKED_EVENT,
+  CHAT_DECISION_ANSWERED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

@@ -168,9 +168,11 @@ delivers the commands: `/ouro status`, `queue`, `pause loop`, `resume loop`, `ab
 `answer`, `dry-run`, `route`, `estimate`, `pause all` and `help` run as the linked person who
 typed them — the reference is `ouroboros-docs/docs/cli/ouro.mdx`.
 
-**Pressing a button on a decision card** replies *not available yet* and changes nothing — that
-arrives with #538. Until then a card's link buttons open the product, where the decision is
-answered, and `/ouro answer` answers it from Slack.
+BZ.4 (#538) delivers answering: **pressing a button on a decision card** answers the decision
+as the linked person who pressed it, through the inbox's action executor — except a merge, which
+the card links into the product to confirm. An unanswered decision escalates when its window
+ends: the card is annotated, the item moves to the top of the Needs-you inbox and the on-call
+person is sent a DM.
 
 Where a message goes is the workspace's notification routes. A route is bound to a channel in
 the database today; the screen that binds one arrives with #541 and #542. Build-green and

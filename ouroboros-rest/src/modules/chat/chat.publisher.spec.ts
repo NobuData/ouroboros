@@ -1,13 +1,15 @@
 import type { DatabaseService } from "../db/db.service";
 import type { DecisionKindRegistry } from "../decisions/decision-kind.registry";
 import { DecisionLifecycle } from "../decisions/decision.lifecycle";
+import type { ChatEscalationRepository } from "./chat.escalation.repository";
 import * as outbox from "./chat.outbox";
 import { ChatPublisher, SYSTEM_LINE_DELAY_MS } from "./chat.publisher";
 import type { ChatRepository, DecisionCardPlacement, DigestRouteRow } from "./chat.repository";
 
 /**
  * The publisher (#536): the decision lifecycle and the weekly slot become intents — and a
- * listener that fails costs a message, never the decision.
+ * listener that fails costs a message, never the decision. Since #538 a decision's card is
+ * intended together with the escalation timer its footnote counts down from.
  */
 
 jest.mock("./chat.outbox", () => ({
@@ -17,6 +19,7 @@ jest.mock("./chat.outbox", () => ({
 
 const enqueue = outbox.enqueueChatIntent as jest.MockedFunction<typeof outbox.enqueueChatIntent>;
 const DB = { marker: "db" };
+const TRANSACTION = { marker: "transaction" };
 const ORG = "org-acme";
 const ITEM = "5eed0082-0000-4000-8000-000000000002";
 
@@ -38,16 +41,39 @@ function harness(routes: DigestRouteRow[] = []) {
     digestRoutes: jest.fn().mockResolvedValue(routes),
   };
   const lifecycle = new DecisionLifecycle();
+  // What happened, in order — so "in the same transaction" is something a spec can read.
+  const order: string[] = [];
+  const escalations = {
+    transaction: jest.fn(async (work: (transaction: unknown) => Promise<unknown>) => {
+      order.push("begin");
+
+      try {
+        const result = await work(TRANSACTION);
+        order.push("commit");
+
+        return result;
+      } catch (error) {
+        order.push("rollback");
+        throw error;
+      }
+    }),
+    start: jest.fn((_transaction: unknown, _itemId: string) => {
+      order.push("start");
+
+      return Promise.resolve(new Date("2026-10-11T14:37:00.000Z") as Date | undefined);
+    }),
+  };
   const publisher = new ChatPublisher(
     { db: DB } as unknown as DatabaseService,
     repository as unknown as ChatRepository,
+    escalations as unknown as ChatEscalationRepository,
     {
       isDormant: (kindId: string) => kindId === "spend_approval",
     } as unknown as DecisionKindRegistry,
     lifecycle,
   );
 
-  return { publisher, repository, lifecycle };
+  return { publisher, repository, lifecycle, escalations, order };
 }
 
 /** Let detached handlers finish. */
@@ -89,7 +115,7 @@ describe("hearing the decision lifecycle", () => {
 
     await expect(publisher.decisionFiled(ORG, ITEM, "protected_path_allow_once")).resolves.toBe(1);
 
-    expect(enqueue).toHaveBeenCalledWith(DB, {
+    expect(enqueue).toHaveBeenCalledWith(TRANSACTION, {
       organizationId: ORG,
       messageKind: "decision_card",
       cardKind: "protected_path_allow_once",
@@ -100,11 +126,69 @@ describe("hearing the decision lifecycle", () => {
     });
   });
 
-  it("says nothing for a dormant kind, which files no decision", async () => {
-    const { publisher } = harness();
+  it("says nothing for a dormant kind, which files no decision — and starts no timer", async () => {
+    const { publisher, escalations } = harness();
 
     await expect(publisher.decisionFiled(ORG, ITEM, "spend_approval")).resolves.toBe(0);
     expect(enqueue).not.toHaveBeenCalled();
+    expect(escalations.transaction).not.toHaveBeenCalled();
+    expect(escalations.start).not.toHaveBeenCalled();
+  });
+
+  it("starts the decision's escalation timer in the transaction that intended its card (#538)", async () => {
+    const { publisher, escalations, order } = harness();
+    enqueue.mockImplementationOnce(() => {
+      order.push("enqueue");
+
+      return Promise.resolve(2);
+    });
+
+    await expect(publisher.decisionFiled(ORG, ITEM, "protected_path_allow_once")).resolves.toBe(2);
+
+    expect(escalations.transaction).toHaveBeenCalledTimes(1);
+    expect(escalations.start).toHaveBeenCalledTimes(1);
+    expect(escalations.start).toHaveBeenCalledWith(TRANSACTION, ITEM);
+    expect(enqueue.mock.calls[0][0]).toBe(TRANSACTION);
+    // One timer however many targets the card goes to, started before the commit.
+    expect(order).toEqual(["begin", "enqueue", "start", "commit"]);
+  });
+
+  it("starts no timer for a decision no route delivers to chat", async () => {
+    const { publisher, escalations, order } = harness();
+    enqueue.mockResolvedValueOnce(0);
+
+    await expect(publisher.decisionFiled(ORG, ITEM, "protected_path_allow_once")).resolves.toBe(0);
+
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(escalations.start).not.toHaveBeenCalled();
+    expect(order).toEqual(["begin", "commit"]);
+  });
+
+  it("intends no card without its timer: a timer that cannot start takes the card with it", async () => {
+    const { publisher, escalations, order } = harness();
+    escalations.start.mockRejectedValueOnce(new Error("the database went away"));
+
+    await expect(publisher.decisionFiled(ORG, ITEM, "protected_path_allow_once")).resolves.toBe(0);
+
+    expect(order).toEqual(["begin", "rollback"]);
+  });
+
+  it("starts no timer when a decision is resolved, and none for the digest", async () => {
+    const { publisher, escalations } = harness([
+      {
+        organizationId: ORG,
+        kind: "custom:weekly-insights",
+        config: { weekday: "monday", time: "09:00" },
+        lastSlot: undefined,
+      },
+    ]);
+
+    await publisher.decisionResolved(ITEM, "allow_once");
+    await publisher.digestPass(new Date("2026-10-05T09:00:30.000Z"));
+
+    expect(enqueue).toHaveBeenCalledWith(DB, expect.objectContaining({ cardKind: "digest" }));
+    expect(escalations.transaction).not.toHaveBeenCalled();
+    expect(escalations.start).not.toHaveBeenCalled();
   });
 
   it("says nothing on a refresh — the card is re-composed when it is next written", async () => {
@@ -167,6 +251,14 @@ describe("hearing the decision lifecycle", () => {
 
     await expect(publisher.decisionFiled(ORG, ITEM, "fact_review")).resolves.toBe(0);
     await expect(publisher.decisionResolved(ITEM, "confirm")).resolves.toBe(0);
+  });
+
+  it("never throws when the transaction itself cannot begin", async () => {
+    const { publisher, escalations } = harness();
+    escalations.transaction.mockRejectedValueOnce(new Error("no connection"));
+
+    await expect(publisher.decisionFiled(ORG, ITEM, "fact_review")).resolves.toBe(0);
+    expect(enqueue).not.toHaveBeenCalled();
   });
 });
 

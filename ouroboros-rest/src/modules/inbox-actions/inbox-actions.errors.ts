@@ -25,6 +25,7 @@ export const INBOX_ACTION_ERRORS = {
   notAnAnswer: "decision_action_not_an_answer",
   forbidden: "decision_action_forbidden",
   needsPerson: "decision_action_needs_person",
+  confirmInApp: "decision_action_confirm_in_app",
   noteRequired: "decision_note_required",
   noteNotTaken: "decision_note_not_taken",
   alreadyAnswered: "decision_already_answered",
@@ -105,6 +106,21 @@ export function decisionActionNeedsPerson(): ForbiddenError {
   return new ForbiddenError(
     INBOX_ACTION_ERRORS.needsPerson,
     "A decision is answered by a signed-in person; a service account cannot answer one.",
+  );
+}
+
+/**
+ * A merge-class decision pressed from chat (#538, decision X5): chat identity rests on a
+ * workspace membership, which is not enough to approve a merge.
+ *
+ * @param itemId - The item, for the link the caller offers.
+ * @returns The error.
+ */
+export function decisionActionConfirmInApp(itemId: string): ForbiddenError {
+  return new ForbiddenError(
+    INBOX_ACTION_ERRORS.confirmInApp,
+    "A merge is confirmed in Ouroboros, signed in — it cannot be answered from chat. Open the item in the Needs-you inbox.",
+    { itemId },
   );
 }
 

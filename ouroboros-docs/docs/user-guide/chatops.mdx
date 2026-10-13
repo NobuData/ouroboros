@@ -16,11 +16,10 @@ see [Chat Ops — connecting Slack](../administration/chatops.mdx).
 
 :::info[What works today]
 
-Ouroboros posts cards to Slack, and linking, unlinking and the `/ouro` commands work — see
-[Commands](#commands). **Answering a decision with a button in Slack is not available yet** — the
-button replies that it is not available and changes nothing. Until then, answer it with
-`/ouro answer`, or in the [Needs-you inbox](./inbox.mdx); a card's link buttons take you to the
-right page.
+Ouroboros posts cards to Slack; linking, unlinking and the `/ouro` commands work — see
+[Commands](#commands); and a card's buttons answer the decision — see
+[Answer a decision from Slack](#answer-a-decision-from-slack). An unanswered decision escalates
+when its countdown ends.
 
 :::
 
@@ -39,11 +38,13 @@ When a loop reaches a decision only a person may make, Ouroboros posts it as a c
 - The next line says what it is about — such as **loop #1851 · issue #479 ·
   boot/rollback_flag.c**.
 - The **buttons** are that decision's own actions. Buttons that answer it — such as
-  **Allow once** and **Deny** — are not available in Slack yet. Buttons that open a page — such
+  **Allow once** and **Deny** — answer it as you; see
+  [Answer a decision from Slack](#answer-a-decision-from-slack). Buttons that open a page — such
   as **View diff →** — open it in Ouroboros.
 - The last line says how long the loop has waited and when the decision escalates — such as
-  **paused 4m · escalates to the Needs-you inbox in 26m**. These times are as they stood when
-  the card was posted; the card does not count down.
+  **paused 4m · escalates to the Needs-you inbox in 26m**. The times are as they stood when the
+  card was last written; the card does not tick, but it is rewritten when the decision
+  escalates or is answered.
 
 A workspace may also send each question as a direct message to the person on call.
 
@@ -59,6 +60,55 @@ A short line then follows in the channel, such as
 
 So a card in a channel is never a stale invitation: if it still has answer buttons, the
 decision is still open.
+
+## Answer a decision from Slack
+
+Press a button on the card — such as **Allow once** or **Deny**. Ouroboros does exactly what
+the same button in the [Needs-you inbox](./inbox.mdx) does, as you: the loop resumes or is
+sent back, the answer is recorded under your name with **in Slack** as where it came from, and
+the audit log records it. You get a message only you can see, such as
+**Answered: Allow once — exception granted · resume sent to loop #1851**, and the card closes
+as described above.
+
+**Who may press a button.** You must have [linked your Slack identity](#link-your-identity),
+and your account must be allowed to give that answer — the same rule as in the inbox. Most
+answers need the `can_approve_loops` capability; see
+[Roles](../administration/roles.mdx). If you are not allowed, Ouroboros tells you — only you —
+what the button needs, such as *Allow once needs the `can_approve_loops` capability*, and
+nothing changes.
+
+**If someone answered first.** In a busy channel two people can press within seconds. The
+first press answers; the second does nothing, and its presser is told who answered — such as
+*This was already answered — Maya Chen answered: allowed once · in Slack*. The card is edited
+to its answered form for everyone.
+
+**Merges are confirmed in Ouroboros.** A card that asks you to approve a merge has no answer
+buttons. It has one button, **Confirm in Ouroboros ↗**, which opens the decision in the inbox
+where you answer it signed in, and it says why: *A merge is confirmed in Ouroboros, signed in
+— it cannot be answered from chat.* `/ouro answer` refuses a merge the same way.
+
+**Answers that need a note.** Some answers come with a note — such as returning a plan to
+the loop with what to change. Slack's button cannot take one, so pressing it answers, to you
+alone, that the answer *needs a note, which a Slack button cannot take*, with an **Open in
+Ouroboros** button. Give the answer there.
+
+**A button that does nothing.** If a button answers *That button is not valid for this
+message*, the press did not come from the card Ouroboros posted — nothing was changed. Open
+the decision in the inbox instead.
+
+### When nobody answers
+
+Each decision has an escalation window — 30 minutes for most kinds. The card counts it down
+from when the question was asked. If the window ends with no answer:
+
+- the card's last line changes to **⚠ escalated — now in the Needs-you inbox**, so the channel
+  can see it was escalated, not ignored;
+- the decision moves to the top of the [Needs-you inbox](./inbox.mdx#time-limits-and-escalation);
+- the person on call for decisions gets the card as a direct message, if someone is on call
+  and has linked their Slack identity.
+
+The buttons keep working after an escalation. Answering a decision, snoozing it in the inbox,
+or its loop no longer needing it stops the countdown: the decision then never escalates.
 
 ### A loop that finished
 

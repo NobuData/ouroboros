@@ -42964,6 +42964,497 @@ select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.chat_outbox where organization_id = 'org-v131'),
   'a workspace takes its outbox with it');
 
+-- ===========================================================================
+-- V135 — decision escalation timers, and what escalating does to an item (#538, BZ.4)
+-- ===========================================================================
+--
+-- `escalates to the Needs-you inbox in 26m` as rows. Asked here: the window is the kind's unless
+-- the workspace set its own; a timer is started once, due at the item's filing instant plus the
+-- window it copied; an item that is snoozed, answered or expired cancels its timer in the same
+-- statement, and a cancelled timer never fires; a due timer fires once, stamping itself, the item
+-- and the item's open cards together; and an escalation, like an ending, is never moved or undone.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v135',  'Timer Works', 'timer-works-v135', now()),
+  ('org-v135b', 'Timer Two',   'timer-two-v135',   now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v135-maya', 'Maya Chen', 'maya@timer-works-v135.dev', true);
+
+insert into ouroboros.chat_connections
+  (id, organization_id, platform, workspace_id, workspace_name, bot_token_sealed)
+values
+  ('c1350000-0000-4000-8000-000000000001', 'org-v135', 'slack', 'T135AB', 'timer-works', 'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA');
+insert into ouroboros.chat_channels (id, organization_id, connection_id, platform, channel_id, channel_name, joined, joined_at)
+values
+  ('c1350000-0000-4000-8000-0000000000a1', 'org-v135', 'c1350000-0000-4000-8000-000000000001', 'slack', 'C135LOOPS', 'ouroboros-loops', true, now()),
+  ('c1350000-0000-4000-8000-0000000000a2', 'org-v135', 'c1350000-0000-4000-8000-000000000001', 'slack', 'C135ALERT', 'helios-alerts',   true, now());
+
+-- Files a fact-review question (a kind whose own window is 7 days) and returns its id.
+create function pg_temp.v135_ask(key text, org text default 'org-v135') returns uuid language sql as $$
+  select ouroboros.decision_item_emit(
+           org, 'fact_review',
+           jsonb_build_object('reason', 'awaiting review', 'text', 'CAN frames are DMA-backed',
+                              'provenance_line', 'from PR #514 review cycle'),
+           '[]', 'facts', 'fact:' || key || ':proposed')
+$$;
+
+-- An item of this section, by the key it was filed under.
+create function pg_temp.v135(key text) returns uuid language sql stable as $$
+  select id from ouroboros.decision_items
+   where organization_id like 'org-v135%' and source_ref = 'fact:' || key || ':proposed'
+$$;
+
+-- An item's timer, as one line: pending | fired | cancelled:<why>.
+create function pg_temp.v135_timer(key text) returns text language sql stable as $$
+  select case
+           when t.fired_at is not null then 'fired'
+           when t.cancelled_at is not null then 'cancelled:' || t.cancel_reason
+           else 'pending'
+         end
+    from ouroboros.decision_escalation_timers t where t.decision_item_id = pg_temp.v135(key)
+$$;
+
+select pg_temp.v135_ask(key)
+  from unnest(array['fire', 'late', 'snooze', 'answer', 'expire', 'asleep', 'closed']) as key;
+select pg_temp.v135_ask('other', 'org-v135b');
+
+-- --- the window: the kind's, unless the workspace says otherwise ----------------------------------
+select pg_temp.must_hold(
+  ouroboros.decision_escalation_window('org-v135', 'fact_review', 1) = interval '7 days'
+  and ouroboros.decision_escalation_window('org-v135', 'fact_review', 1)
+        = (select escalation_window from ouroboros.decision_kinds
+            where kind_id = 'fact_review' and version = 1),
+  'with no override, a workspace''s window is the kind version''s own');
+
+select pg_temp.must_hold(
+  ouroboros.decision_escalation_window('org-v135', 'fact_review', 99) is null
+  and ouroboros.decision_escalation_window('org-v135', 'no_such_kind', 1) is null,
+  'a kind version that does not exist has no window');
+
+-- --- starting: one pending timer, due at the filing instant plus the window ------------------------
+select pg_temp.must_hold(
+  ouroboros.decision_escalation_timer_start(pg_temp.v135('fire'))
+    = (select created_at + interval '7 days' from ouroboros.decision_items where id = pg_temp.v135('fire')),
+  'starting a timer answers when it is due: the item''s filing instant plus its window');
+
+select pg_temp.must_hold(
+  (select count(*) = 1
+          and bool_and(t.organization_id = 'org-v135' and t.kind_id = 'fact_review'
+                       and t.escalation_window = interval '7 days'
+                       and t.started_at = i.created_at and t.due_at = i.created_at + interval '7 days'
+                       and t.fired_at is null and t.cancelled_at is null and t.cancel_reason is null)
+     from ouroboros.decision_escalation_timers t
+     join ouroboros.decision_items i on i.id = t.decision_item_id
+    where t.decision_item_id = pg_temp.v135('fire')),
+  'the started timer is one pending row carrying the item''s workspace, kind, window and both instants');
+
+select pg_temp.must_hold(
+  ouroboros.decision_escalation_timer_start(pg_temp.v135('fire'))
+    = (select due_at from ouroboros.decision_escalation_timers where decision_item_id = pg_temp.v135('fire'))
+  and (select count(*) = 1 from ouroboros.decision_escalation_timers
+        where decision_item_id = pg_temp.v135('fire')),
+  'starting it again — a second card for the same decision — adds no row and answers the same instant');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_escalation_timers
+      (organization_id, decision_item_id, kind_id, escalation_window, started_at, due_at)
+    values ('org-v135', pg_temp.v135('fire'), 'fact_review', interval '1 hour', now(), now() + interval '1 hour')$$,
+  'an item has one escalation timer', 'decision_escalation_timers_decision_item_key');
+
+-- --- the override wins, and is held to a kind's own bounds ----------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_escalation_overrides (organization_id, kind_id, escalation_window)
+    values ('org-v135', 'fact_review', interval '0')$$,
+  'an override of no time at all is refused', 'decision_escalation_overrides_window_positive');
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_escalation_overrides (organization_id, kind_id, escalation_window)
+    values ('org-v135', 'fact_review', interval '-5 minutes')$$,
+  'nor a negative one', 'decision_escalation_overrides_window_positive');
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_escalation_overrides (organization_id, kind_id, escalation_window)
+    values ('org-v135', 'fact_review', interval '7 days 1 second')$$,
+  'nor one past seven days', 'decision_escalation_overrides_window_positive');
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_escalation_overrides (organization_id, kind_id, escalation_window)
+    values ('org-v135', 'no_such_kind', interval '1 hour')$$,
+  'an override for a kind nobody declared is refused', 'decision_escalation_overrides_kind_known');
+
+insert into ouroboros.decision_escalation_overrides (organization_id, kind_id, escalation_window, updated_by)
+values ('org-v135', 'fact_review', interval '2 hours', 'user-v135-maya'),
+       ('org-v135', 'merge_approval', interval '7 days', 'user-v135-maya');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_escalation_overrides (organization_id, kind_id, escalation_window)
+    values ('org-v135', 'fact_review', interval '3 hours')$$,
+  'a workspace holds one override per kind', 'decision_escalation_overrides_pkey');
+select pg_temp.must_reject(
+  $$update ouroboros.decision_escalation_overrides set kind_id = 'no_such_kind'
+     where organization_id = 'org-v135' and kind_id = 'merge_approval'$$,
+  'an override cannot be moved to an undeclared kind either', 'decision_escalation_overrides_kind_known');
+
+select pg_temp.must_hold(
+  ouroboros.decision_escalation_window('org-v135', 'fact_review', 1) = interval '2 hours'
+  and ouroboros.decision_escalation_window('org-v135', 'merge_approval', 1) = interval '7 days',
+  'a workspace''s override wins over the kind''s window');
+select pg_temp.must_hold(
+  ouroboros.decision_escalation_window('org-v135b', 'fact_review', 1) = interval '7 days'
+  and ouroboros.decision_escalation_window('org-v135', 'claim_waiver', 1) = interval '30 minutes',
+  'and reaches no other workspace and no other kind');
+
+-- A timer copied its window when it started: the override moves only the timers started after it.
+select pg_temp.must_hold(
+  (select t.escalation_window = interval '7 days' and t.due_at = i.created_at + interval '7 days'
+     from ouroboros.decision_escalation_timers t
+     join ouroboros.decision_items i on i.id = t.decision_item_id
+    where t.decision_item_id = pg_temp.v135('fire'))
+  and ouroboros.decision_escalation_timer_start(pg_temp.v135('fire'))
+        = (select created_at + interval '7 days' from ouroboros.decision_items where id = pg_temp.v135('fire')),
+  'an override added afterwards moves no running timer');
+
+select pg_temp.must_hold(
+  ouroboros.decision_escalation_timer_start(pg_temp.v135(key))
+    = (select created_at + interval '2 hours' from ouroboros.decision_items where id = pg_temp.v135(key)),
+  'a timer started after the override is due by the override: ' || key)
+  from unnest(array['late', 'snooze', 'answer', 'expire']) as key;
+
+select pg_temp.must_hold(
+  (select count(*) = 5 and count(*) filter (where escalation_window = interval '2 hours') = 4
+     from ouroboros.decision_escalation_timers where organization_id = 'org-v135'),
+  'five items have a timer each, four of them on the override''s window');
+
+-- --- a pending timer keeps the window it started with ---------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.decision_escalation_timers set due_at = due_at + interval '1 hour'
+     where decision_item_id = pg_temp.v135('late')$$,
+  'a pending timer''s due instant cannot be pushed back', 'decision_escalation_timers_settled_fixed');
+select pg_temp.must_reject(
+  $$update ouroboros.decision_escalation_timers set escalation_window = interval '3 hours'
+     where decision_item_id = pg_temp.v135('late')$$,
+  'nor its window edited', 'decision_escalation_timers_settled_fixed');
+select pg_temp.must_reject(
+  $$update ouroboros.decision_escalation_timers set started_at = started_at - interval '1 hour'
+     where decision_item_id = pg_temp.v135('late')$$,
+  'nor its start moved', 'decision_escalation_timers_settled_fixed');
+select pg_temp.must_reject(
+  $$update ouroboros.decision_escalation_timers set decision_item_id = pg_temp.v135('asleep')
+     where decision_item_id = pg_temp.v135('late')$$,
+  'nor handed to another item', 'decision_escalation_timers_settled_fixed');
+
+-- --- it ends one way, and a cancellation says why -------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.decision_escalation_timers
+       set fired_at = now(), cancelled_at = now(), cancel_reason = 'resolved'
+     where decision_item_id = pg_temp.v135('late')$$,
+  'a timer cannot both fire and be cancelled', 'decision_escalation_timers_one_ending');
+select pg_temp.must_reject(
+  $$update ouroboros.decision_escalation_timers set cancelled_at = now()
+     where decision_item_id = pg_temp.v135('late')$$,
+  'a cancellation says why', 'decision_escalation_timers_cancel_explained');
+select pg_temp.must_reject(
+  $$update ouroboros.decision_escalation_timers set cancel_reason = 'resolved'
+     where decision_item_id = pg_temp.v135('late')$$,
+  'and a reason belongs to a cancellation', 'decision_escalation_timers_cancel_explained');
+select pg_temp.must_reject(
+  $$update ouroboros.decision_escalation_timers set cancelled_at = now(), cancel_reason = 'bored'
+     where decision_item_id = pg_temp.v135('late')$$,
+  'a cancel reason is one of the three', 'decision_escalation_timers_cancel_reason_known');
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_escalation_timers
+      (organization_id, decision_item_id, kind_id, escalation_window, started_at, due_at)
+    values ('org-v135', pg_temp.v135('asleep'), 'fact_review', interval '1 hour', now(), now())$$,
+  'a timer is due after it starts', 'decision_escalation_timers_due_after_start');
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_escalation_timers
+      (organization_id, decision_item_id, kind_id, escalation_window, started_at, due_at)
+    values ('org-v135', pg_temp.v135('asleep'), 'fact_review', interval '0', now(), now() + interval '1 hour')$$,
+  'and waits some time', 'decision_escalation_timers_window_positive');
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_escalation_timers
+      (organization_id, decision_item_id, kind_id, escalation_window, started_at, due_at)
+    values ('org-v135b', pg_temp.v135('asleep'), 'fact_review', interval '1 hour', now(), now() + interval '1 hour')$$,
+  'a timer is its item''s workspace''s', 'decision_escalation_timers_decision_item_fk');
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_escalation_timers
+      (organization_id, decision_item_id, kind_id, escalation_window, started_at, due_at)
+    values ('org-v135', pg_temp.v135('asleep'), 'merge_approval', interval '1 hour', now(), now() + interval '1 hour')$$,
+  'and of its item''s kind', 'decision_escalation_timers_decision_item_fk');
+
+select pg_temp.must_hold(
+  (select array_agg(pg_temp.v135_timer(key) order by key) = array['pending', 'pending', 'pending', 'pending', 'pending']
+     from unnest(array['fire', 'late', 'snooze', 'answer', 'expire']) as key),
+  'the refused statements above ended no timer');
+
+-- --- an item that stops waiting cancels its timer -------------------------------------------------
+select ouroboros.decision_item_snooze(pg_temp.v135('snooze'), now() + interval '1 hour', 'user-v135-maya');
+select pg_temp.must_hold(
+  (select status = 'snoozed' from ouroboros.decision_items where id = pg_temp.v135('snooze'))
+  and pg_temp.v135_timer('snooze') = 'cancelled:snoozed',
+  'snoozing an item cancels its timer, reason snoozed');
+
+insert into ouroboros.decision_resolutions
+  (item_id, organization_id, action_id, resolver, resolved_by_user, channel)
+values (pg_temp.v135('answer'), 'org-v135', 'confirm', 'human', 'user-v135-maya', 'slack');
+select pg_temp.must_hold(
+  (select status = 'resolved' from ouroboros.decision_items where id = pg_temp.v135('answer'))
+  and pg_temp.v135_timer('answer') = 'cancelled:resolved',
+  'answering an item cancels its timer, reason resolved');
+
+update ouroboros.decision_items set status = 'expired' where id = pg_temp.v135('expire');
+select pg_temp.must_hold(
+  pg_temp.v135_timer('expire') = 'cancelled:withdrawn',
+  'an item that expires cancels its timer, reason withdrawn');
+
+select pg_temp.must_hold(
+  (select count(*) = 3 and bool_and(cancelled_at is not null and fired_at is null)
+     from ouroboros.decision_escalation_timers
+    where decision_item_id in (pg_temp.v135('snooze'), pg_temp.v135('answer'), pg_temp.v135('expire')))
+  and pg_temp.v135_timer('fire') = 'pending' and pg_temp.v135_timer('late') = 'pending',
+  'each cancellation is stamped, and reaches only its own item''s timer');
+
+-- --- a cancelled timer never fires, and never changes ---------------------------------------------
+select pg_temp.must_hold(
+  not ouroboros.decision_escalation_fire(t.id, t.due_at + interval '1 day'),
+  'a cancelled timer does not fire, however overdue: ' || t.cancel_reason)
+  from ouroboros.decision_escalation_timers t
+ where t.decision_item_id in (pg_temp.v135('snooze'), pg_temp.v135('answer'), pg_temp.v135('expire'));
+
+select pg_temp.must_hold(
+  (select bool_and(i.escalated_at is null and t.fired_at is null)
+     from ouroboros.decision_escalation_timers t
+     join ouroboros.decision_items i on i.id = t.decision_item_id
+    where t.cancelled_at is not null and t.organization_id = 'org-v135'),
+  'and the refused firing stamped neither the timer nor its item');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_escalation_timers set cancelled_at = null, cancel_reason = null
+     where decision_item_id = pg_temp.v135('snooze')$$,
+  'a cancelled timer cannot be revived', 'decision_escalation_timers_settled_fixed');
+select pg_temp.must_reject(
+  $$update ouroboros.decision_escalation_timers set fired_at = now(), cancelled_at = null, cancel_reason = null
+     where decision_item_id = pg_temp.v135('answer')$$,
+  'nor turned into a firing', 'decision_escalation_timers_settled_fixed');
+select pg_temp.must_reject(
+  $$update ouroboros.decision_escalation_timers set cancel_reason = 'resolved'
+     where decision_item_id = pg_temp.v135('expire')$$,
+  'nor given another reason', 'decision_escalation_timers_settled_fixed');
+
+-- --- nothing starts for an item that is not asking ------------------------------------------------
+select ouroboros.decision_item_snooze(pg_temp.v135('asleep'), now() + interval '1 hour', 'user-v135-maya');
+insert into ouroboros.decision_resolutions
+  (item_id, organization_id, action_id, resolver, resolved_by_user, channel)
+values (pg_temp.v135('closed'), 'org-v135', 'confirm', 'human', 'user-v135-maya', 'web');
+
+select pg_temp.must_hold(
+  ouroboros.decision_escalation_timer_start(pg_temp.v135('asleep')) is null
+  and ouroboros.decision_escalation_timer_start(pg_temp.v135('closed')) is null
+  and (select count(*) = 0 from ouroboros.decision_escalation_timers
+        where decision_item_id in (pg_temp.v135('asleep'), pg_temp.v135('closed'))),
+  'starting a timer for a snoozed or an answered item creates nothing and answers null');
+
+select pg_temp.must_hold(
+  ouroboros.decision_escalation_timer_start(pg_temp.v135('snooze')) is null
+  and ouroboros.decision_escalation_timer_start(pg_temp.v135('answer')) is null
+  and ouroboros.decision_escalation_timer_start('00000000-0000-4000-8000-000000000135') is null
+  and pg_temp.v135_timer('snooze') = 'cancelled:snoozed'
+  and pg_temp.v135_timer('answer') = 'cancelled:resolved',
+  'nor does it restart an ended timer, or start one for an item that does not exist');
+
+-- --- firing: not before it is due -----------------------------------------------------------------
+-- The fired item has an open card in each of two channels and one already-resolved card; a
+-- second item's open card shares the first channel.
+insert into ouroboros.chat_messages
+  (id, organization_id, channel_id, platform_ts, kind, card_kind, decision_item_id, state,
+   outcome, resolved_at, payload_digest)
+values
+  ('c1350000-0000-4000-8000-00000000d001', 'org-v135', 'c1350000-0000-4000-8000-0000000000a1',
+   '1723210440.011', 'decision_card', 'fact_review', pg_temp.v135('fire'), 'open', null, null, repeat('1', 64)),
+  ('c1350000-0000-4000-8000-00000000d002', 'org-v135', 'c1350000-0000-4000-8000-0000000000a2',
+   '1723210440.012', 'decision_card', 'fact_review', pg_temp.v135('fire'), 'open', null, null, repeat('2', 64)),
+  ('c1350000-0000-4000-8000-00000000d003', 'org-v135', 'c1350000-0000-4000-8000-0000000000a2',
+   '1723210440.013', 'decision_card', 'fact_review', pg_temp.v135('fire'), 'resolved', 'confirm', now(),
+   repeat('3', 64)),
+  ('c1350000-0000-4000-8000-00000000d004', 'org-v135', 'c1350000-0000-4000-8000-0000000000a1',
+   '1723210440.014', 'decision_card', 'fact_review', pg_temp.v135('late'), 'open', null, null, repeat('4', 64)),
+  ('c1350000-0000-4000-8000-00000000d005', 'org-v135', 'c1350000-0000-4000-8000-0000000000a1',
+   '1723210440.015', 'system_line', 'fact_review', pg_temp.v135('fire'), null, null, null, repeat('5', 64));
+
+select pg_temp.must_hold(
+  not ouroboros.decision_escalation_fire(t.id)
+  and not ouroboros.decision_escalation_fire(t.id, t.due_at - interval '1 microsecond'),
+  'a timer does not fire before it is due — now, or a microsecond short')
+  from ouroboros.decision_escalation_timers t where t.decision_item_id = pg_temp.v135('fire');
+
+select pg_temp.must_hold(
+  pg_temp.v135_timer('fire') = 'pending'
+  and (select escalated_at is null from ouroboros.decision_items where id = pg_temp.v135('fire'))
+  and (select count(*) = 0 from ouroboros.chat_messages
+        where organization_id = 'org-v135' and escalated_at is not null),
+  'and an early firing changes nothing: timer pending, item and cards unstamped');
+
+-- --- firing: once, stamping timer, item and open cards together -----------------------------------
+create temporary table v135_fired on commit drop as
+select t.id, t.due_at, ouroboros.decision_escalation_fire(t.id, t.due_at) as fired
+  from ouroboros.decision_escalation_timers t where t.decision_item_id = pg_temp.v135('fire');
+
+select pg_temp.must_hold(
+  (select fired from v135_fired),
+  'a timer fires at the instant it is due');
+
+select pg_temp.must_hold(
+  (select t.fired_at = f.due_at and t.cancelled_at is null and t.cancel_reason is null
+     from ouroboros.decision_escalation_timers t join v135_fired f on f.id = t.id)
+  and (select i.escalated_at = (select due_at from v135_fired) and i.status = 'open'
+         from ouroboros.decision_items i where i.id = pg_temp.v135('fire')),
+  'firing stamps the timer and the item''s escalated_at with the same instant, and leaves the item open');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 and bool_and(escalated_at = (select due_at from v135_fired))
+     from ouroboros.chat_messages
+    where id in ('c1350000-0000-4000-8000-00000000d001', 'c1350000-0000-4000-8000-00000000d002')),
+  'and each of the item''s open cards, in every channel, with it');
+
+select pg_temp.must_hold(
+  (select count(*) = 3 and bool_and(escalated_at is null)
+     from ouroboros.chat_messages
+    where id in ('c1350000-0000-4000-8000-00000000d003', 'c1350000-0000-4000-8000-00000000d004',
+                 'c1350000-0000-4000-8000-00000000d005')),
+  'but not a card already resolved, the item''s system line, or another item''s card');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.decision_items
+    where organization_id like 'org-v135%' and escalated_at is not null)
+  and pg_temp.v135_timer('late') = 'pending',
+  'one firing escalates one item');
+
+select pg_temp.must_hold(
+  (select not ouroboros.decision_escalation_fire(f.id, f.due_at + interval '1 hour') from v135_fired f)
+  and (select t.fired_at = f.due_at from ouroboros.decision_escalation_timers t join v135_fired f on f.id = t.id)
+  and (select escalated_at = (select due_at from v135_fired)
+         from ouroboros.decision_items where id = pg_temp.v135('fire'))
+  and (select bool_and(escalated_at = (select due_at from v135_fired))
+         from ouroboros.chat_messages
+        where id in ('c1350000-0000-4000-8000-00000000d001', 'c1350000-0000-4000-8000-00000000d002')),
+  'firing it a second time answers false and moves no stamp');
+
+select pg_temp.must_hold(
+  not ouroboros.decision_escalation_fire('00000000-0000-4000-8000-000000000135', now() + interval '30 days'),
+  'firing a timer that does not exist answers false');
+
+-- A timer missed while the process was down is still pending, and fires once on recovery.
+select pg_temp.must_hold(
+  ouroboros.decision_escalation_fire(t.id, t.due_at + interval '3 days')
+  and not ouroboros.decision_escalation_fire(t.id, t.due_at + interval '4 days'),
+  'an overdue timer fires once, late')
+  from ouroboros.decision_escalation_timers t where t.decision_item_id = pg_temp.v135('late');
+select pg_temp.must_hold(
+  (select i.escalated_at = t.due_at + interval '3 days' and t.fired_at = i.escalated_at
+          and (select m.escalated_at = i.escalated_at from ouroboros.chat_messages m
+                where m.id = 'c1350000-0000-4000-8000-00000000d004')
+     from ouroboros.decision_items i
+     join ouroboros.decision_escalation_timers t on t.decision_item_id = i.id
+    where i.id = pg_temp.v135('late')),
+  'and stamps the instant it actually fired, not the instant it was due');
+
+-- --- an escalation is never moved or undone -------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.decision_items set escalated_at = escalated_at + interval '1 hour'
+     where id = pg_temp.v135('fire')$$,
+  'an item''s escalated_at cannot be moved', 'decision_items_escalated_at_fixed');
+select pg_temp.must_reject(
+  $$update ouroboros.decision_items set escalated_at = null where id = pg_temp.v135('fire')$$,
+  'nor cleared', 'decision_items_escalated_at_fixed');
+select pg_temp.must_reject(
+  $$update ouroboros.decision_escalation_timers set fired_at = null
+     where decision_item_id = pg_temp.v135('fire')$$,
+  'a fired timer cannot be un-fired', 'decision_escalation_timers_settled_fixed');
+select pg_temp.must_reject(
+  $$update ouroboros.decision_escalation_timers
+       set fired_at = null, cancelled_at = now(), cancel_reason = 'resolved'
+     where decision_item_id = pg_temp.v135('fire')$$,
+  'nor rewritten as a cancellation', 'decision_escalation_timers_settled_fixed');
+
+select pg_temp.must_hold(
+  ouroboros.decision_escalation_timer_start(pg_temp.v135('fire')) is null
+  and (select count(*) = 1 from ouroboros.decision_escalation_timers
+        where decision_item_id = pg_temp.v135('fire')),
+  'an escalated item starts no second timer');
+
+-- Answering an escalated item still works, and leaves its timer the record of what happened.
+insert into ouroboros.decision_resolutions
+  (item_id, organization_id, action_id, resolver, resolved_by_user, channel)
+values (pg_temp.v135('fire'), 'org-v135', 'confirm', 'human', 'user-v135-maya', 'web');
+select pg_temp.must_hold(
+  (select status = 'resolved' and escalated_at = (select due_at from v135_fired)
+     from ouroboros.decision_items where id = pg_temp.v135('fire'))
+  and pg_temp.v135_timer('fire') = 'fired',
+  'an escalated item is answered like any other: it stays escalated and its timer stays fired');
+
+-- --- the pass's claim reaches the table through the due index -------------------------------------
+select pg_temp.must_hold(
+  (select indexdef like '%(due_at, id)%'
+          and indexdef like '%WHERE ((fired_at IS NULL) AND (cancelled_at IS NULL))%'
+     from pg_indexes where schemaname = 'ouroboros' and indexname = 'decision_escalation_timers_due_idx'),
+  'the due index covers pending timers by when they are due');
+
+-- --- under the service role -----------------------------------------------------------------------
+set local role ouroboros_app;
+
+insert into ouroboros.decision_escalation_overrides (organization_id, kind_id, escalation_window)
+values ('org-v135b', 'fact_review', interval '45 minutes');
+update ouroboros.decision_escalation_overrides set escalation_window = interval '15 minutes'
+ where organization_id = 'org-v135b' and kind_id = 'fact_review';
+delete from ouroboros.decision_escalation_overrides
+ where organization_id = 'org-v135' and kind_id = 'merge_approval';
+
+select pg_temp.must_hold(
+  ouroboros.decision_escalation_window('org-v135b', 'fact_review', 1) = interval '15 minutes'
+  and ouroboros.decision_escalation_timer_start(pg_temp.v135('other'))
+        = (select created_at + interval '15 minutes' from ouroboros.decision_items
+            where id = pg_temp.v135('other')),
+  'the application role sets a workspace''s window and starts a timer by it');
+select pg_temp.must_hold(
+  ouroboros.decision_escalation_fire(t.id, t.due_at),
+  'and fires it')
+  from ouroboros.decision_escalation_timers t where t.decision_item_id = pg_temp.v135('other');
+select pg_temp.must_hold(
+  (select i.escalated_at = t.fired_at
+     from ouroboros.decision_items i
+     join ouroboros.decision_escalation_timers t on t.decision_item_id = i.id
+    where i.id = pg_temp.v135('other')),
+  'which escalates the item');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_items set escalated_at = null where id = pg_temp.v135('other')$$,
+  'the application role cannot undo an escalation', 'decision_items_escalated_at_fixed');
+
+select pg_temp.must_raise(
+  $$delete from ouroboros.decision_escalation_timers where organization_id = 'org-v135b'$$,
+  '42501', 'the application role cannot delete a timer — its ending is the record of what happened');
+
+reset role;
+
+-- --- a decision and a workspace each take their timers with them ----------------------------------
+delete from ouroboros.decision_items where id = pg_temp.v135('expire');
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.decision_escalation_timers where organization_id = 'org-v135')
+  and pg_temp.v135_timer('expire') is null,
+  'a timer for a deleted decision goes with it');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.decision_escalation_overrides where organization_id like 'org-v135%')
+  and (select count(*) = 5 from ouroboros.decision_escalation_timers where organization_id like 'org-v135%'),
+  'before the workspaces go: two overrides and five timers between them');
+
+-- The cards go first: a card written in this transaction is re-checked against its channel when
+-- its item's delete nulls the pointer, and by then the workspace's cascade has taken the channel.
+delete from ouroboros.chat_messages where organization_id = 'org-v135';
+delete from ouroboros.organization where "id" in ('org-v135', 'org-v135b');
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.decision_escalation_overrides where organization_id like 'org-v135%')
+  and (select count(*) = 0 from ouroboros.decision_escalation_timers where organization_id like 'org-v135%')
+  and (select count(*) = 0 from ouroboros.decision_items where organization_id like 'org-v135%'),
+  'a workspace takes its escalation overrides and its timers with it');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

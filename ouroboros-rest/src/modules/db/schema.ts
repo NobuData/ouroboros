@@ -7331,6 +7331,54 @@ export interface DecisionItemsTable {
    * what `/ouro answer` addresses. Assigned by the database on insert; never written here.
    */
   short_seq: ColumnType<number, never, never>;
+  /**
+   * When the item's escalation timer fired (V135,
+   * [#538](https://github.com/NobuData/ouroboros/issues/538)) — nobody answered within the
+   * window. Stamped once, by `decision_escalation_fire`; never written here.
+   */
+  escalated_at: ColumnType<Date | null, never, never>;
+}
+
+/** `decision_escalation_timers.cancel_reason` (V135) — why a timer will never fire. */
+export type EscalationCancelReason = "resolved" | "snoozed" | "withdrawn";
+
+/**
+ * `ouroboros.decision_escalation_timers` — the timer behind a decision card's countdown (V135,
+ * [#538](https://github.com/NobuData/ouroboros/issues/538)). One per item, started by
+ * `decision_escalation_timer_start`, ended exactly once: fired by `decision_escalation_fire`, or
+ * cancelled by the database when the item leaves `open`. Read here; written only through those
+ * two functions.
+ */
+export interface DecisionEscalationTimersTable {
+  id: Generated<string>;
+  organization_id: string;
+  decision_item_id: string;
+  kind_id: string;
+  /** The window it started with — the workspace's override, or the pinned kind's. */
+  escalation_window: ColumnType<PgInterval, string, never>;
+  /** The item's filing instant. */
+  started_at: ColumnType<Date, Date, never>;
+  /** `started_at` + the window: when the item escalates if nobody has answered. */
+  due_at: ColumnType<Date, Date, never>;
+  fired_at: Date | null;
+  cancelled_at: Date | null;
+  cancel_reason: EscalationCancelReason | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.decision_escalation_overrides` — a workspace's own escalation window for a decision
+ * kind (V135, [#538](https://github.com/NobuData/ouroboros/issues/538)). Read by
+ * `decision_escalation_window` when a timer starts.
+ */
+export interface DecisionEscalationOverridesTable {
+  organization_id: string;
+  kind_id: string;
+  escalation_window: ColumnType<PgInterval, string, string>;
+  updated_by: string | null;
+  created_at: Stamped;
+  updated_at: Stamped;
 }
 
 /** `webhook_deliveries.status` (V094). */
@@ -8115,6 +8163,8 @@ export interface Database {
   chat_messages: ChatMessagesTable;
   chat_outbox: ChatOutboxTable;
   on_call_assignments: OnCallAssignmentsTable;
+  decision_escalation_timers: DecisionEscalationTimersTable;
+  decision_escalation_overrides: DecisionEscalationOverridesTable;
   chat_commands: ChatCommandsTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
@@ -8863,6 +8913,28 @@ export const TABLE_COLUMNS = {
     "active",
     "assigned_by",
     "assigned_at",
+    "created_at",
+    "updated_at",
+  ],
+  decision_escalation_timers: [
+    "id",
+    "organization_id",
+    "decision_item_id",
+    "kind_id",
+    "escalation_window",
+    "started_at",
+    "due_at",
+    "fired_at",
+    "cancelled_at",
+    "cancel_reason",
+    "created_at",
+    "updated_at",
+  ],
+  decision_escalation_overrides: [
+    "organization_id",
+    "kind_id",
+    "escalation_window",
+    "updated_by",
     "created_at",
     "updated_at",
   ],
@@ -10055,6 +10127,7 @@ export const TABLE_COLUMNS = {
     "snoozed_by",
     "snooze_reason",
     "short_seq",
+    "escalated_at",
   ],
   decision_resolutions: [
     "item_id",

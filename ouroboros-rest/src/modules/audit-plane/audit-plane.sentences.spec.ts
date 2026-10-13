@@ -115,6 +115,18 @@ describe("composing the audit card's lines", () => {
       "purged 1 audit row older than 400d",
     );
   });
+
+  it("says a decision was answered from Slack, with the action when it is on record (#538)", () => {
+    expect(
+      eventSentence({ action: "chat.decision_answered", detail: { actionId: "allow_once" } }),
+    ).toBe("answered a decision from Slack (allow once)");
+    expect(eventSentence({ action: "chat.decision_answered", detail: {} })).toBe(
+      "answered a decision from Slack",
+    );
+    expect(eventSentence({ action: "chat.decision_answered", detail: { actionId: 7 } })).toBe(
+      "answered a decision from Slack",
+    );
+  });
 });
 
 describe("the actor column", () => {

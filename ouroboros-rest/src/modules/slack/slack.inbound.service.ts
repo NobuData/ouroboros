@@ -24,7 +24,7 @@
  * | `/ouro link`, `/ouro unlink` | here — linking is a Slack matter |
  * | any other `/ouro …`, `help` included | the dispatcher of BZ.3 (#537), with the whole text |
  * | a button press by somebody unlinked | read-only: a *link your account* prompt |
- * | a button press by somebody linked | an honest *not available yet* — BZ.4's (#538) |
+ * | a button press on a decision card | the answering service of BZ.4 (#538), as the presser |
  *
  * **This is a thin adapter for commands.** It turns the slash payload into the dispatcher's
  * input — the text after `/ouro`, the Slack workspace, user and channel — and the dispatcher's
@@ -44,6 +44,7 @@ import { CHAT_REPLIES } from "../chatops/chatops.replies";
 import { ChatDispatcher } from "../chatops/dispatcher.service";
 import type { CommandReply } from "../chatops/grammar.types";
 import type { ChatConnectionPublic } from "../db/schema";
+import type { ChatPress, ChatPressOutcome } from "../chat/chat.answers";
 import { LINK_ACTION_PREFIX } from "./slack.blockkit";
 import { SLACK_API, type SlackApi, type SlackReply } from "./slack.client";
 import { SeenEvents } from "./slack.dedupe";
@@ -67,9 +68,106 @@ export const REPLIES = {
   needsLink: CHAT_REPLIES.unlinked,
   notConnected: CHAT_REPLIES.notConnected,
   actionUnavailable:
-    "Answering from Slack is not available yet. Open the item in Ouroboros to answer it.",
+    "Answering from Slack is not available right now. Open the item in Ouroboros to answer it.",
+  pressRejected:
+    "That button is not valid for this message, so nothing was changed. Open the item in Ouroboros to answer it.",
+  pressNotAMember:
+    "Your linked account is no longer a member of this workspace, so nothing was changed.",
+  pressInProgress: "Somebody else is answering this right now. Nothing was changed by your press.",
+  pressClosed: "This question is no longer waiting for an answer. Nothing was changed.",
+  pressConfirmInApp:
+    "A merge is confirmed in Ouroboros, signed in — it cannot be answered from Slack. Nothing was changed.",
+  pressConfirmButton: "Confirm in Ouroboros",
+  pressOpenButton: "Open in Ouroboros",
   failed: "Something went wrong and nothing was changed. Try again.",
 } as const;
+
+/** What answers a button press — `ChatAnswers`, registered by `SlackPressHandler` (#538). */
+export interface SlackPressPort {
+  /**
+   * @param press - The press.
+   * @returns How it ended.
+   */
+  press(press: ChatPress): Promise<ChatPressOutcome>;
+}
+
+/**
+ * What a press's outcome reads as, to the person who pressed.
+ *
+ * `unlinked` is not here: it is answered with the link prompt, which only this service can make.
+ *
+ * @param outcome - How the press ended.
+ * @returns The ephemeral reply.
+ */
+export function pressReply(outcome: Exclude<ChatPressOutcome, { kind: "unlinked" }>): SlackReply {
+  switch (outcome.kind) {
+    case "answered":
+      return {
+        ephemeral: true,
+        text: `Answered: ${outcome.action} — ${outcome.effects.join(" · ")}`,
+      };
+    case "already_answered":
+      return {
+        ephemeral: true,
+        text:
+          outcome.summary === undefined
+            ? "This was already answered, so nothing was changed by your press."
+            : `This was already answered — ${outcome.summary}. Nothing was changed by your press.`,
+      };
+    case "denied":
+      return {
+        ephemeral: true,
+        text: `${outcome.action} needs ${outcome.needs}, which your account does not have. Nothing was changed.`,
+      };
+    case "confirm_in_app":
+      return {
+        ephemeral: true,
+        text: REPLIES.pressConfirmInApp,
+        link: { label: REPLIES.pressConfirmButton, url: outcome.url },
+      };
+    case "needs_note":
+      return {
+        ephemeral: true,
+        text: `${outcome.action} needs a note, which a Slack button cannot take. Nothing was changed — give the answer in Ouroboros.`,
+        link: { label: REPLIES.pressOpenButton, url: outcome.url },
+      };
+    case "refused":
+      return { ephemeral: true, text: `${outcome.message} Nothing was answered.` };
+    case "in_progress":
+      return { ephemeral: true, text: REPLIES.pressInProgress };
+    case "closed":
+      return { ephemeral: true, text: REPLIES.pressClosed };
+    case "not_a_member":
+      return { ephemeral: true, text: REPLIES.pressNotAMember };
+    case "rejected":
+      return { ephemeral: true, text: REPLIES.pressRejected };
+  }
+}
+
+/**
+ * The first answering button an interaction carries, and the message it is on.
+ *
+ * @param payload - A `block_actions` payload.
+ * @returns The button's value with the platform's channel id and message timestamp — each
+ *   undefined when the payload does not carry it.
+ */
+export function pressedButton(payload: unknown): {
+  value: unknown;
+  platformChannelId: string | undefined;
+  platformTs: string | undefined;
+} {
+  const actions: unknown = (payload as { actions?: unknown } | undefined)?.actions;
+  const pressed = (Array.isArray(actions) ? (actions as unknown[]) : []).find(
+    (action: unknown) => !(field(action, "action_id") ?? "").startsWith(LINK_ACTION_PREFIX),
+  );
+  const container = part(payload, "container");
+
+  return {
+    value: field(pressed, "value"),
+    platformChannelId: field(part(payload, "channel"), "id") ?? field(container, "channel_id"),
+    platformTs: field(part(payload, "message"), "ts") ?? field(container, "message_ts"),
+  };
+}
 
 /**
  * Whether an interaction is nothing but presses of link buttons (#536).
@@ -202,6 +300,9 @@ export class SlackInboundService {
   /** Work started and not yet finished, so a test — and shutdown — can wait for it. */
   private readonly running = new Set<Promise<void>>();
 
+  /** What answers a button press; unset until the chat module registers it. */
+  private presses?: SlackPressPort;
+
   /**
    * @param slack - Replies to a `response_url`.
    * @param repository - Finds the connection a Slack workspace belongs to, and identity links.
@@ -216,6 +317,16 @@ export class SlackInboundService {
     private readonly links: SlackLinkService,
     private readonly dispatcher: ChatDispatcher,
   ) {}
+
+  /**
+   * Say what answers button presses from now on (#538). Until this is called a press by
+   * somebody linked is told answering is not available, and changes nothing.
+   *
+   * @param presses - The handler.
+   */
+  answerPressesWith(presses: SlackPressPort): void {
+    this.presses = presses;
+  }
 
   /**
    * An Events API delivery.
@@ -290,7 +401,7 @@ export class SlackInboundService {
 
     if (teamId !== undefined && userId !== undefined && responseUrl !== undefined) {
       this.detach("interaction", () =>
-        this.answer(responseUrl, () => this.handleInteraction(teamId, userId)),
+        this.answer(responseUrl, () => this.handleInteraction(teamId, userId, payload)),
       );
     }
 
@@ -403,14 +514,20 @@ export class SlackInboundService {
   }
 
   /**
-   * What a button press does.
+   * What a button press does: resolve who pressed, hand the press to the answering service
+   * (#538), and say how it ended — to the presser alone.
    *
    * @param teamId - The Slack workspace.
    * @param userId - Who pressed it.
-   * @returns What to tell them: a link prompt for somebody unlinked, otherwise the honest state
-   *   of things.
+   * @param payload - The interaction payload: the button's value and the message it is on.
+   * @returns What to tell them: a link prompt for somebody unlinked, otherwise how the press
+   *   ended.
    */
-  private async handleInteraction(teamId: string, userId: string): Promise<SlackReply> {
+  private async handleInteraction(
+    teamId: string,
+    userId: string,
+    payload: unknown,
+  ): Promise<SlackReply> {
     const connection = await this.repository.activeByWorkspace(teamId);
 
     if (connection === undefined) {
@@ -418,10 +535,25 @@ export class SlackInboundService {
     }
 
     const link = await this.repository.liveLink(connection.id, userId);
+    const linkedUserId = link?.state === "linked" ? (link.user_id ?? undefined) : undefined;
 
-    return link?.state === "linked"
-      ? { ephemeral: true, text: REPLIES.actionUnavailable }
-      : this.offerLink(connection, userId, REPLIES.needsLink);
+    if (this.presses === undefined) {
+      return linkedUserId === undefined
+        ? this.offerLink(connection, userId, REPLIES.needsLink)
+        : { ephemeral: true, text: REPLIES.actionUnavailable };
+    }
+
+    const outcome = await this.presses.press({
+      organizationId: connection.organization_id,
+      connectionId: connection.id,
+      platformUserId: userId,
+      userId: linkedUserId,
+      ...pressedButton(payload),
+    });
+
+    return outcome.kind === "unlinked"
+      ? this.offerLink(connection, userId, REPLIES.needsLink)
+      : pressReply(outcome);
   }
 
   /**
