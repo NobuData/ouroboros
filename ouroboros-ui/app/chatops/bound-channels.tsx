@@ -10,6 +10,8 @@ import {
   BOUND_TITLE,
   OPEN_LABEL,
   PRIVATE_MARK,
+  SHOWING_MIRROR_LABEL,
+  SHOW_MIRROR_LABEL,
   UNBINDING_LABEL,
   UNBIND_FAILED,
   UNBIND_LABEL,
@@ -21,6 +23,7 @@ import {
   refusalText,
   refused,
   routesText,
+  showMirrorName,
   unbindName,
 } from "./view";
 
@@ -34,6 +37,14 @@ export interface BoundChannelsProps {
   readonly titleId: string;
   /** Called with the channels as they stand after an unbind. */
   readonly onChanged: (channels: SlackChannels) => void;
+  /** The channel whose mirror is showing, or null when none is (CA.2, #542). */
+  readonly shown?: string | null;
+  /**
+   * Show a channel's mirror. A row offers it only when this is given.
+   *
+   * @param id The channel.
+   */
+  readonly onShow?: (id: string) => void;
 }
 
 /**
@@ -41,8 +52,10 @@ export interface BoundChannelsProps {
  * channel with a purpose: its name, what it is for, who is in it, the route kinds pointed at it,
  * and the way out to the real conversation in Slack.
  *
- * A plain list on purpose: the channel *mirror* — our own record of what was said there — is
- * CA.2's card ([#542](https://github.com/NobuData/ouroboros/issues/542)), not this one.
+ * A plain list on purpose: the channel *mirror* — our own record of what was published there —
+ * is CA.2's card ([#542](https://github.com/NobuData/ouroboros/issues/542)), beside this one.
+ * Each row's **Show mirror** is how that card is pointed at the row's channel; the row whose
+ * mirror is showing says so, and is pressed.
  *
  * *Open ↗* is the service's own deep link. *Unbind* is an owner's or an admin's; while one is
  * in flight only the pressed row says so, and a refusal is printed under the list in the
@@ -51,7 +64,14 @@ export interface BoundChannelsProps {
  * @param props See {@link BoundChannelsProps}.
  * @returns The list's card.
  */
-export function BoundChannels({ channels, mayAdminister, titleId, onChanged }: BoundChannelsProps) {
+export function BoundChannels({
+  channels,
+  mayAdminister,
+  titleId,
+  onChanged,
+  shown = null,
+  onShow,
+}: BoundChannelsProps) {
   const [unbinding, setUnbinding] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -104,6 +124,17 @@ export function BoundChannels({ channels, mayAdminister, titleId, onChanged }: B
                 </span>
               </div>
               <div className="chatops__channel-actions">
+                {onShow !== undefined && (
+                  <Button
+                    aria-label={showMirrorName(channel)}
+                    aria-pressed={shown === channel.id}
+                    onClick={() => onShow(channel.id)}
+                    size="sm"
+                    tone="ghost"
+                  >
+                    {shown === channel.id ? SHOWING_MIRROR_LABEL : SHOW_MIRROR_LABEL}
+                  </Button>
+                )}
                 {channel.url !== "" && (
                   <a
                     aria-label={openName(channel)}

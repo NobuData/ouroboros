@@ -19,7 +19,7 @@ import {
   deltaNote,
   windowText,
 } from "../insights/digest/digest.copy";
-import type { DigestAssembly } from "../insights/digest/digest.assembly";
+import { headlineOf, type DigestAssembly } from "../insights/digest/digest.assembly";
 import { insightsUrl } from "../insights/digest/digest.render";
 import { shortDuration, statsLine, type ChatCard, type ChatCardAction } from "./chat.card";
 
@@ -267,5 +267,39 @@ export function digestCard(assembly: DigestAssembly, uiUrl: string): ChatCard {
     stats: assembly.empty ? null : assembly.cost.text,
     actions: [{ type: "link", id: "open_insights", label: OPEN_INSIGHTS, url: insightsUrl(uiUrl) }],
     footnote: windowText(assembly.window),
+  };
+}
+
+/** What a digest's message row keeps of it (`chat.record.ts`): the week and its two counts. */
+export interface DigestRecordFacts {
+  readonly window: DigestAssembly["window"];
+  readonly mergedPrs: number;
+  readonly interventions: number;
+}
+
+/**
+ * The weekly digest as its **record** can still say it (CA.2,
+ * [#542](https://github.com/NobuData/ouroboros/issues/542)) — for the channel mirror, which draws
+ * from `chat_messages` and never assembles the week again.
+ *
+ * A digest's row keeps the window and the head's two counts and none of the KPI, cause, flaky or
+ * cost lines, so this card has the posted card's title, headline sentence, window footnote and
+ * *Open Insights* link — written by the same functions — and **no** lines or stats: a figure the
+ * record does not hold is not recomputed from a week that has since moved.
+ *
+ * @param facts - The recorded week.
+ * @param uiUrl - The UI origin.
+ * @returns The card.
+ */
+export function digestRecordCard(facts: DigestRecordFacts, uiUrl: string): ChatCard {
+  return {
+    kind: "card",
+    severity: "info",
+    mark: EVENT_MARKS.digest,
+    headline: `${DIGEST_TITLE} — ${headlineOf(facts.mergedPrs, facts.interventions)}`,
+    lines: [],
+    stats: null,
+    actions: [{ type: "link", id: "open_insights", label: OPEN_INSIGHTS, url: insightsUrl(uiUrl) }],
+    footnote: windowText(facts.window),
   };
 }

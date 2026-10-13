@@ -992,6 +992,8 @@ describe("an async command", () => {
       command: "dry-run",
       args: { ticket: "acme/helios#485" },
       ended: { outcome: "async_pending" },
+      // The acknowledgement is the row's `reply`; the result will be its `settled_reply`.
+      reply: ACK,
       ref: { dryRun: "dr-1" },
       withReplyMessage: true,
     });
@@ -1138,6 +1140,8 @@ describe("recording", () => {
       args: { ticket: "acme/helios#485", workflow: "standard-fix" },
       rawText: "/ouro queue #485 standard-fix",
       ended: { outcome: "ok" },
+      // What it said at once, kept on the row (#542).
+      reply: { text: "ran queue" },
       ref: { made: "queue" },
       invokedAt: expect.any(Date) as Date,
       completedAt: expect.any(Date) as Date,
@@ -1344,6 +1348,72 @@ describe("recording", () => {
   });
 });
 
+describe("what a command said at once is recorded (#542)", () => {
+  it.each([
+    ["slack", (text: string) => slackInput(text)],
+    ["console", (text: string) => consoleInput(text)],
+  ] as const)("on %s, for every outcome that says something", async (_surface, input) => {
+    const { build, records } = world();
+    const dispatcher = build();
+
+    // ok · bad arguments · unknown command · a destructive command's preview
+    const results = [
+      await dispatcher.dispatch(input("queue #485 standard-fix")),
+      await dispatcher.dispatch(input("queue")),
+      await dispatcher.dispatch(input("frobnicate")),
+      await dispatcher.dispatch(input("pause all")),
+    ];
+
+    expect(results.map((result) => result.outcome)).toEqual(["ok", "error", "error", "error"]);
+    // The row holds the very reply the surface was handed — no second wording.
+    expect(records.map((record) => record.reply)).toEqual(results.map((result) => result.reply));
+    expect(records.every((record) => (record.reply?.text ?? "") !== "")).toBe(true);
+  });
+
+  it("records the refusal a viewer is given, and the prompt somebody unlinked is given", async () => {
+    const denied = world({ roles: ["viewer"] });
+    const refused = await denied.build().dispatch(slackInput("pause all confirm"));
+    const unlinked = world({ link: undefined });
+    const prompted = await unlinked.build().dispatch(slackInput("status"));
+
+    expect(refused.outcome).toBe("denied");
+    expect(denied.records[0].reply).toEqual(refused.reply);
+    expect(prompted.outcome).toBe("unlinked");
+    expect(unlinked.records[0].reply).toEqual({ text: CHAT_REPLIES.unlinked });
+  });
+
+  it("records the channel a console command was typed under, and nothing else of Slack's", async () => {
+    const { build, records, slack, commands } = world();
+
+    await build().dispatch(
+      consoleInput("status", {
+        console: { organizationId: ORG, userId: MAYA, channelId: CHANNEL_ROW },
+      }),
+    );
+
+    expect(records[0]).toMatchObject({
+      surface: "console",
+      channelId: CHANNEL_ROW,
+      connectionId: null,
+      invokerLinkId: null,
+      platformUserId: null,
+      // Nothing was posted to the channel: the mirror reads the reply off the row.
+      withReplyMessage: false,
+    });
+    // The route has already checked the channel: the dispatcher looks nothing up.
+    expect(slack.activeByWorkspace).not.toHaveBeenCalled();
+    expect(commands.joinedChannel).not.toHaveBeenCalled();
+  });
+
+  it("records no channel for the palette's console command", async () => {
+    const { build, records } = world();
+
+    await build().dispatch(consoleInput("status"));
+
+    expect(records[0].channelId).toBeNull();
+  });
+});
+
 describe("when a binding fails", () => {
   /** A world whose `queue` binding rejects. */
   function failing(error: unknown) {
@@ -1534,6 +1604,7 @@ describe("the console (#539)", () => {
         args: { ticket: "acme/helios#485", workflow: "standard-fix" },
         rawText: "/ouro queue #485 standard-fix",
         ended: { outcome: "ok" },
+        reply: { text: "ran queue" },
         ref: { made: "queue" },
         invokedAt: expect.any(Date) as Date,
         completedAt: expect.any(Date) as Date,

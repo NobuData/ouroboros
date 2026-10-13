@@ -32,6 +32,11 @@ vi.mock("@/app/chatops/chatops-actions", () => ({
   unbindChannel: () => Promise.resolve({ error: "x" }),
 }));
 
+// The channel mirror's composer (#542) is the console's: its Server Actions and the session it
+// keys its history by are stubbed, as the palette's suites stub them.
+vi.mock("@/app/api/auth-client", async () => (await import("../helpers/account")).authClientModule());
+vi.mock("@/app/shell/console-actions", async () => (await import("../helpers/console")).consoleActionsModule());
+
 const Page = (await import("@/app/(app)/chatops/page")).default;
 
 /**
@@ -79,6 +84,21 @@ describe("/chatops", () => {
     expect(screen.getByRole("region", { name: HEALTH_LABEL })).toHaveTextContent("verified 2m ago");
     expect(screen.getByRole("link", { name: "Open #ouroboros-loops ↗" })).toBeInTheDocument();
     expect(readChatOps).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the mirror of the channel the address names, and of the first bound one otherwise", async () => {
+    const alerts = boundChannelList()[1]!;
+
+    const { unmount } = render(await Page({ searchParams: Promise.resolve({ channel: alerts.id }) }));
+    expect(screen.getByRole("region", { name: "Mirror of #helios-alerts" })).toBeInTheDocument();
+    unmount();
+
+    render(await Page({ searchParams: Promise.resolve({ channel: ["a", "b"] }) }));
+    expect(screen.getByRole("region", { name: "Mirror of #ouroboros-loops" })).toBeInTheDocument();
+    cleanup();
+
+    render(await Page());
+    expect(screen.getByRole("region", { name: "Mirror of #ouroboros-loops" })).toBeInTheDocument();
   });
 
   it.each<[Role[], boolean]>([

@@ -1,0 +1,553 @@
+/*
+ * The channel mirror (#542) — mockup 19's `.chat-card`: the `.chan-head`, the `.stream` with its
+ * `.msg` / `.msg-av` / `.msg-rich` / `.sys-line` / `.chat-mono` treatments and the boxed command
+ * reply, and the `.composer`.
+ *
+ * A sheet of its own, beside chatops.css, because of the one thing that sheet promises never to
+ * do: the stream scrolls. It scrolls inside its own wrapper — bounded, so the pane under it
+ * never does on its account — and so does the composer's list of completions. Nothing else here
+ * scrolls, and nothing is fixed or sticky.
+ *
+ * The mockup is dark-only and sized in px. Held to the two rules every sheet here is
+ * (docs/CONVENTIONS.md § 6): every colour is a token from app/tokens.css, which is what makes
+ * both palettes one sheet, and every length is rem — or a 1px hairline — which is what makes the
+ * 125% step correct. Type sizes are the scale's nearest step to the mockup's.
+ *
+ * Long mono lines wrap inside their own box; nothing here can push the pane sideways.
+ */
+
+/* ---------- the card ---------- */
+
+.chatops-mirror {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+/* ---------- the head (`.chan-head`) ---------- */
+
+.chatops-mirror__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4) var(--sp-5);
+  padding: var(--sp-6) var(--sp-8);
+  border-bottom: 1px solid var(--line);
+  background: var(--raised);
+}
+
+.chatops-mirror__channel {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--f-disp);
+  font-size: var(--t-md);
+  font-weight: 600;
+  letter-spacing: var(--tr-wide);
+  overflow-wrap: anywhere;
+}
+
+.chatops-mirror__seg {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.chatops-mirror__seg-item {
+  padding: 0.1875rem var(--sp-5);
+  border: 0;
+  background: transparent;
+  color: var(--ink-faint);
+  font: inherit;
+}
+
+.chatops-mirror__seg-item--on {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+/* Unavailable, and it looks it: struck through, with the reason in words beside the segment. */
+.chatops-mirror__seg-item--off {
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+
+.chatops-mirror__seg-note {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/* The meta line, the label and the ways out, at the trailing edge — under the name when narrow. */
+.chatops-mirror__trail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-5);
+  min-width: 0;
+  margin-left: auto;
+}
+
+.chatops-mirror__members {
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+}
+
+.chatops-mirror__label {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+/* What the card is, in the accent: the one thing in the head that must not be missed. */
+.chatops-mirror__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--sp-1) var(--sp-4);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-sm);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+}
+
+.chatops-mirror__fresh {
+  cursor: pointer;
+}
+
+.chatops-mirror__out {
+  color: var(--accent);
+  font-size: var(--t-xs);
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+/* ---------- what stands over the stream ---------- */
+
+.chatops-mirror__warning {
+  margin: 0;
+  padding: var(--sp-5) var(--sp-8);
+  border-bottom: 1px solid var(--warn-line);
+  background: var(--warn-tint);
+  color: var(--warn);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.chatops-mirror__stale {
+  margin: var(--sp-6) var(--sp-8) 0;
+}
+
+/* ---------- the stream (`.stream`) ---------- */
+
+/* The card's one scroller: bounded, so a long history is read here and the pane stays put. */
+.chatops-mirror__stream {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  min-width: 0;
+  min-height: 12rem;
+  max-height: 44rem;
+  padding: 1.125rem var(--sp-8);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.chatops-mirror__stream:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -0.0625rem;
+}
+
+.chatops-mirror__reading,
+.chatops-mirror__sending {
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* A line on its way: set where a message's text would be, and quiet — it is not a record yet. */
+.chatops-mirror__sending {
+  padding-left: 2.3125rem;
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
+.chatops-mirror__earlier {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.chatops-mirror__day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  min-width: 0;
+}
+
+.chatops-mirror__day-rule,
+.chatops-mirror__sys {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  padding: 0 var(--sp-2);
+  font-family: var(--f-mono);
+  overflow-wrap: anywhere;
+}
+
+.chatops-mirror__day-rule {
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+/* The mockup's `.sys-line`. */
+.chatops-mirror__sys {
+  color: var(--ok);
+  font-size: var(--t-xs);
+}
+
+.chatops-mirror__day-rule::before,
+.chatops-mirror__day-rule::after,
+.chatops-mirror__sys::before,
+.chatops-mirror__sys::after {
+  flex: 1;
+  min-width: var(--sp-6);
+  height: 1px;
+  background: var(--line);
+  content: "";
+}
+
+/* ---------- a message (`.msg`) ---------- */
+
+.chatops-mirror__msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6875rem;
+  min-width: 0;
+}
+
+.chatops-mirror__avatar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.625rem;
+  height: 1.625rem;
+  margin-top: 1px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--inset);
+}
+
+/* The app mark has real alpha and one drawing per palette; the mockup's blend mode is dark-only. */
+.chatops-mirror__mark {
+  width: 1.375rem;
+  height: 1.375rem;
+}
+
+.chatops-mirror__mark--dark {
+  display: none;
+}
+
+:root[data-theme="dark"] .chatops-mirror__mark--light {
+  display: none;
+}
+
+:root[data-theme="dark"] .chatops-mirror__mark--dark {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .chatops-mirror__mark--light {
+    display: none;
+  }
+
+  :root:not([data-theme="light"]) .chatops-mirror__mark--dark {
+    display: block;
+  }
+}
+
+.chatops-mirror__avatar--human {
+  background: linear-gradient(135deg, var(--accent-deep), var(--accent-panel));
+  color: var(--accent-panel-ink);
+  font-family: var(--f-disp);
+  font-size: var(--t-2xs);
+  font-weight: 600;
+}
+
+/* Nobody we can name: no colour of anybody's. */
+.chatops-mirror__avatar--unknown {
+  background: var(--inset);
+  color: var(--ink-faint);
+}
+
+.chatops-mirror__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.chatops-mirror__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-4);
+  margin-bottom: 0.1875rem;
+}
+
+.chatops-mirror__name {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.chatops-mirror__name--bot {
+  color: var(--accent);
+}
+
+.chatops-mirror__app,
+.chatops-mirror__surface {
+  padding: 0 0.3125rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 400;
+}
+
+.chatops-mirror__app {
+  margin-left: 0.3125rem;
+  vertical-align: 1px;
+}
+
+.chatops-mirror__ts {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/* ---------- a card inside a message (`.msg-rich`) ---------- */
+
+.chatops-mirror__rich {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+  margin-top: 0.3125rem;
+  padding: var(--sp-6) var(--sp-7);
+  border: 1px solid var(--line);
+  border-left-width: 0.1875rem;
+  border-radius: var(--r-md);
+  background: var(--inset);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.chatops-mirror__rich--ok {
+  border-left-color: var(--ok);
+}
+
+/* The one that waits for a person glows. */
+.chatops-mirror__rich--warn {
+  border-left-color: var(--warn);
+  box-shadow: 0 0 1rem -0.25rem var(--warn-line);
+}
+
+.chatops-mirror__rich--accent {
+  border-left-color: var(--accent);
+}
+
+.chatops-mirror__rich--err {
+  border-left-color: var(--err);
+}
+
+.chatops-mirror__rich--info {
+  border-left-color: var(--line-strong);
+}
+
+.chatops-mirror__headline {
+  font-size: var(--t-md);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.chatops-mirror__headline--ok {
+  color: var(--ok);
+}
+
+.chatops-mirror__headline--warn {
+  color: var(--warn);
+}
+
+.chatops-mirror__headline--accent {
+  color: var(--accent);
+}
+
+.chatops-mirror__headline--err {
+  color: var(--err);
+}
+
+.chatops-mirror__headline--info {
+  color: var(--ink);
+}
+
+.chatops-mirror__line {
+  overflow-wrap: anywhere;
+}
+
+/* The mockup's `.chat-mono`. */
+.chatops-mirror__mono,
+.chatops-mirror__resolution,
+.chatops-mirror__escalated,
+.chatops-mirror__footnote,
+.chatops-mirror__pending {
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-loose);
+  overflow-wrap: anywhere;
+}
+
+.chatops-mirror__mono,
+.chatops-mirror__resolution {
+  color: var(--ink-dim);
+}
+
+.chatops-mirror__cmd {
+  color: var(--accent);
+}
+
+.chatops-mirror__escalated {
+  color: var(--warn);
+}
+
+.chatops-mirror__footnote,
+.chatops-mirror__pending {
+  color: var(--ink-faint);
+}
+
+.chatops-mirror__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+/* ---------- a command's reply ---------- */
+
+.chatops-mirror__answer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4375rem;
+  min-width: 0;
+}
+
+/* A column item sized to its words and no wider than the column: long lines wrap inside it. */
+.chatops-mirror__reply {
+  min-width: 0;
+  padding: var(--sp-4) 0.6875rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-loose);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* Refused, or went wrong. The words are the stored ones; the hue is beside them. */
+.chatops-mirror__reply--err {
+  border-color: var(--err-line);
+  background: var(--err-tint);
+  color: var(--err);
+}
+
+/* ---------- the composer (`.composer`) ---------- */
+
+.chatops-mirror__composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding: var(--sp-6) var(--sp-8);
+  border-top: 1px solid var(--line);
+  background: var(--raised);
+}
+
+.chatops-mirror__send {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+
+.chatops-mirror__input {
+  flex: 1;
+  min-width: 0;
+}
+
+.chatops-mirror__hint,
+.chatops-mirror__alert,
+.chatops-mirror__note {
+  margin: 0;
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.chatops-mirror__hint,
+.chatops-mirror__note {
+  color: var(--ink-faint);
+}
+
+/* The reason plain text cannot be sent: said plainly, so it is read rather than guessed at. */
+.chatops-mirror__hint--plain {
+  color: var(--ink);
+}
+
+.chatops-mirror__alert {
+  color: var(--err);
+}
+
+/* The console's list, in the flow above the box — nothing to position and nothing to clip. */
+.chatops-mirror__complete {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.chatops-mirror__options {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.chatops-mirror__note {
+  padding: 0 var(--sp-4);
+}

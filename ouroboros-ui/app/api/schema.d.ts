@@ -3156,8 +3156,16 @@ export interface paths {
          *     the text to send to really do it.
          *
          *     Every invocation except `help` is recorded (`chat_commands`, `surface = console`) and
-         *     audited (`chat.command_invoked`), whatever came of it. `text` may carry the `/ouro`
+         *     audited (`chat.command_invoked`), whatever came of it — with what it said at once, which
+         *     `GET /api/v1/chat/commands/{id}` answers as `reply`. `text` may carry the `/ouro`
          *     prefix or not. Any member may call this; what they may run is the dispatcher's to say.
+         *
+         *     **Typed under a channel's mirror** ([#542](https://github.com/NobuData/ouroboros/issues/542)).
+         *     A command typed in the composer of a channel's mirror names that channel in `channelId`;
+         *     the command is recorded with it, which is what makes it an entry of
+         *     `GET /api/v1/chat/channels/{id}/mirror`. Nothing is posted to Slack. The channel must be
+         *     a **bound** channel of this workspace; it is checked before anything runs. The command
+         *     palette sends no `channelId`, and its commands appear in no mirror.
          */
         post: operations["runChatCommand"];
         delete?: never;
@@ -3180,12 +3188,60 @@ export interface paths {
          *     what the command finally said — the text and its one link, the message Slack is sent for
          *     the same command — whether it finished (`ok`) or failed (`error`, with `errorDetail`).
          *     A command that answered at once has no `settledReply`; its reply was the response to
-         *     `POST /api/v1/chat/commands`.
+         *     `POST /api/v1/chat/commands`, and is kept as `reply` — as an async command's
+         *     acknowledgement is.
          *
          *     Only the caller's own console commands are here. Somebody else's command, one typed in
          *     Slack, one in another workspace and an id that names nothing are all the same `404`.
          */
         get: operations["getChatCommand"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/channels/{id}/mirror": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A channel's stream, redrawn from our records
+         * @description One page of what Ouroboros said in a channel and what people typed at it
+         *     ([#542](https://github.com/NobuData/ouroboros/issues/542)) — the Chat Ops page's channel
+         *     mirror. **Nothing is fetched from Slack and nothing is a sample**: every entry is a
+         *     record of this service (`chat_messages`, `chat_commands`), and every card is composed by
+         *     the functions the publisher posts to Slack with, from the record's stored facts and
+         *     refs. A figure that was not printed in Slack is not printed here — a run that was not
+         *     fully priced has no cost in its stats line.
+         *
+         *     `entries` are **oldest first**: cards (`type: card`), the system lines an answer leaves
+         *     (`type: line`), and commands with what they said (`type: command`). A command typed in
+         *     Slack and one typed under this mirror in the console (`surface`) are both here; the
+         *     command palette's are not. A command's reply is on the command — the marker rows a reply
+         *     leaves in the message table are never entries of their own.
+         *
+         *     **Nothing is answered from the mirror.** An open question's answer buttons keep their
+         *     labels and lead to the item in the Needs-you inbox; every `href` on a card is a path
+         *     inside the app. A resolved question has no actions and says how it ended (`resolution`).
+         *     A waiting question's `footnote` counts down from its escalation timer as of this request.
+         *
+         *     **Paging.** The newest page is answered without `before`; `olderCursor` is the `before`
+         *     of the page before it, and null at the start of the channel's history. A record that can
+         *     no longer be drawn — a question whose item is gone, an event family this version has no
+         *     card for — is left out and still counts towards its page, so a page may hold fewer than
+         *     `limit` entries; `olderCursor` is what says whether there is more. A weekly digest is
+         *     drawn from what its record keeps: its headline, window and link, without the KPI lines.
+         *
+         *     Any member may read it, for any channel of the workspace — bound or not — except the
+         *     direct-message conversations the publisher opens, which are not channels.
+         */
+        get: operations["getChatChannelMirror"];
         put?: never;
         post?: never;
         delete?: never;
@@ -23594,6 +23650,13 @@ export interface components {
              * @example queue #485 standard-fix
              */
             text: string;
+            /**
+             * Format: uuid
+             * @description The bound channel whose mirror the command was typed under
+             *     ([#542](https://github.com/NobuData/ouroboros/issues/542)) — the channel's `id` from
+             *     `GET /api/v1/slack/channels`. Left out, or null, by the command palette.
+             */
+            channelId?: string | null;
         };
         /**
          * ChatCommandReply
@@ -23661,6 +23724,12 @@ export interface components {
              */
             completedAt: string | null;
             /**
+             * @description What the command said at once — an answer, a refusal, or an async command's
+             *     acknowledgement ([#542](https://github.com/NobuData/ouroboros/issues/542)). Null for
+             *     a command recorded before replies were kept.
+             */
+            reply: components["schemas"]["ChatCommandReply"] | null;
+            /**
              * @description What an async command said when it finished or failed. Null while it is pending, and
              *     for a command that answered at once.
              */
@@ -23671,6 +23740,206 @@ export interface components {
              *     otherwise.
              */
             errorDetail: string | null;
+        };
+        /**
+         * ChatMirror
+         * @description One page of a channel's stream, composed from this service's own records.
+         */
+        ChatMirror: {
+            channel: components["schemas"]["SlackChannel"];
+            /** @enum {string} */
+            platform: "slack";
+            /**
+             * @description The Slack app's manifest version the connection was installed at.
+             * @example v2.4
+             */
+            appVersion: string | null;
+            /** @description One page, oldest first. */
+            entries: components["schemas"]["ChatMirrorEntry"][];
+            /** @description `before` for the page before this one; null at the start of the channel's history. */
+            olderCursor: string | null;
+        };
+        /**
+         * ChatMirrorEntry
+         * @description One entry of a channel's stream — told apart by `type`.
+         */
+        ChatMirrorEntry: components["schemas"]["ChatMirrorCard"] | components["schemas"]["ChatMirrorLine"] | components["schemas"]["ChatMirrorCommand"];
+        /**
+         * ChatMirrorCard
+         * @description A card, in the words the Slack card was posted with: a headline with a severity, fact
+         *     lines, one mono stats line, actions and a footnote.
+         */
+        ChatMirrorCard: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "card";
+            /**
+             * Format: uuid
+             * @description The message's id.
+             */
+            id: string;
+            /**
+             * Format: date-time
+             * @description When it was posted.
+             */
+            at: string;
+            /**
+             * @description `loop_finished`, `build_green`, `build_failed` or `digest` for an event card; a
+             *     decision kind's id (`protected_path_allow_once`) for a question.
+             */
+            family: string;
+            /**
+             * @description How the card reads at a glance. A waiting question carries its decision's severity;
+             *     a resolved one is `info`, as the edit leaves the Slack card.
+             * @enum {string}
+             */
+            severity: "ok" | "warn" | "accent" | "err" | "info";
+            /**
+             * @description The glyph before the headline.
+             * @example ✓
+             * @example ⏸
+             * @example ⟳
+             * @example ✕
+             * @example ✦
+             */
+            mark: string;
+            headline: string;
+            /** @description Fact lines under the headline, in order. Plain text. */
+            lines: string[];
+            /**
+             * @description The mono stats line; only figures that exist are in it, and a run that was not fully
+             *     priced has no cost.
+             * @example 14/14 checks · 11m cycle · $0.94 · claude-fable-5
+             */
+            stats: string | null;
+            /** @description Links only. Empty for a resolved question. */
+            actions: components["schemas"]["ChatMirrorAction"][];
+            /**
+             * @description The dim line under the actions: a waiting question's countdown as of this request, a
+             *     resolved question's outcome, a digest's window.
+             */
+            footnote: string | null;
+            /**
+             * @description A question's state, as its card in the channel stands. Null for an event card.
+             * @enum {string|null}
+             */
+            state: "open" | "resolved" | null;
+            /** @description How a resolved question ended; null for anything else. */
+            resolution: components["schemas"]["ChatMirrorResolution"] | null;
+            /**
+             * Format: date-time
+             * @description When the question's escalation was noted on its card; null when it never was.
+             */
+            escalatedAt: string | null;
+        };
+        /** ChatMirrorAction */
+        ChatMirrorAction: {
+            /** @description The card's own id for the action — `view_pr`, or a decision action's id. */
+            id: string;
+            label: string;
+            /**
+             * @description A path inside the app, never an absolute URL: a PR page, a run console, or — for an
+             *     answer — the question's item in the Needs-you inbox.
+             */
+            href: string;
+            /** @enum {string} */
+            style: "primary" | "danger" | "default";
+        };
+        /** ChatMirrorResolution */
+        ChatMirrorResolution: {
+            /**
+             * @description The answer in words — the kind's own label for the action, lower-cased.
+             * @example allow once
+             */
+            outcome: string;
+            /** @description The person who answered; null for a policy, or a person since removed. */
+            actor: string | null;
+            /** Format: date-time */
+            at: string;
+        };
+        /**
+         * ChatMirrorLine
+         * @description A compact one-line message — what an answer leaves under its card.
+         */
+        ChatMirrorLine: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "line";
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            at: string;
+            /** @example ✓ Maya Chen answered: allow once — loop #1851 */
+            text: string;
+        };
+        /**
+         * ChatMirrorCommand
+         * @description A command typed in the channel, with what it said.
+         */
+        ChatMirrorCommand: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "command";
+            /**
+             * Format: uuid
+             * @description The command's id.
+             */
+            id: string;
+            /**
+             * Format: date-time
+             * @description When it was typed.
+             */
+            at: string;
+            /**
+             * @description Typed in Slack, or under this mirror in the app.
+             * @enum {string}
+             */
+            surface: "slack" | "console";
+            /**
+             * @description As typed, with its prefix.
+             * @example /ouro status
+             */
+            text: string;
+            /** @description Who it acted as. Null for somebody who was not linked, or a person since deleted. */
+            author: {
+                name: string;
+            } | null;
+            /** @enum {string} */
+            outcome: "ok" | "error" | "denied" | "unlinked" | "async_pending";
+            /**
+             * @description What it said at once — an answer, a refusal, or an async command's acknowledgement.
+             *     Null for a command recorded before replies were kept.
+             */
+            reply: components["schemas"]["ChatMirrorReply"] | null;
+            /**
+             * @description What an async command said when it finished or failed. Null until then, and for a
+             *     command that answered at once.
+             */
+            result: components["schemas"]["ChatMirrorReply"] | null;
+        };
+        /** ChatMirrorReply */
+        ChatMirrorReply: {
+            text: string;
+            link: {
+                label: string;
+                /**
+                 * @description A path inside the app when the reply's link is on the UI origin; otherwise
+                 *     the absolute URL.
+                 */
+                href: string;
+            } | null;
+            /**
+             * Format: date-time
+             * @description When it was said: for `reply`, when the command finished — or when it was typed, for
+             *     an async command's acknowledgement; for `result`, when the command finished.
+             */
+            at: string | null;
         };
         /** ChatCompletions */
         ChatCompletions: {
@@ -45177,7 +45446,12 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description `tenant_not_found` — no such workspace, or none you are a member of. */
+            /**
+             * @description `chat_channel_not_found` — `channelId` is not a bound channel of this workspace: it
+             *     names nothing, another workspace's channel, a channel bound for nothing, or a
+             *     direct-message conversation. Nothing was run. `tenant_not_found` — no such workspace,
+             *     or none you are a member of.
+             */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -45188,7 +45462,8 @@ export interface operations {
             };
             /**
              * @description `validation_failed` — `text` is missing, not a string, blank, or longer than 2000
-             *     characters once trimmed; or the body carries a field other than `text`.
+             *     characters once trimmed; `channelId` is not a UUID; or the body carries a field other
+             *     than `text` and `channelId`.
              */
             422: {
                 headers: {
@@ -45299,6 +45574,272 @@ export interface operations {
              *     you are a member of.
              */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getChatChannelMirror: {
+        parameters: {
+            query?: {
+                /** @description A previous page's `olderCursor` — answer the page before it. Opaque. */
+                before?: string;
+                /** @description Page size. */
+                limit?: number;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The channel's `id` from `GET /api/v1/slack/channels`. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The channel and one page of its stream. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "channel": {
+                     *         "id": "5eed009c-0000-4000-8000-0000000000a1",
+                     *         "platformChannelId": "C071LOOPS",
+                     *         "name": "ouroboros-loops",
+                     *         "isPrivate": false,
+                     *         "joined": true,
+                     *         "memberCount": 24,
+                     *         "purpose": "loops",
+                     *         "archived": false,
+                     *         "url": "https://app.slack.com/client/T024AB/C071LOOPS",
+                     *         "routes": [
+                     *           "custom:blocking-questions",
+                     *           "custom:loop-finished"
+                     *         ]
+                     *       },
+                     *       "platform": "slack",
+                     *       "appVersion": "v2.4",
+                     *       "olderCursor": null,
+                     *       "entries": [
+                     *         {
+                     *           "type": "card",
+                     *           "id": "5eed009c-0000-4000-8000-000000000101",
+                     *           "at": "2026-10-11T13:58:00.000Z",
+                     *           "family": "loop_finished",
+                     *           "severity": "ok",
+                     *           "mark": "✓",
+                     *           "headline": "Loop #1846 finished — PR #512 merged",
+                     *           "lines": [
+                     *             "#474 Debounce e-stop interrupt handler"
+                     *           ],
+                     *           "stats": "14/14 checks · 11m cycle · $0.94 · claude-fable-5",
+                     *           "actions": [
+                     *             {
+                     *               "id": "view_pr",
+                     *               "label": "View PR ↗",
+                     *               "href": "/prs/5eed003a-0000-4000-8000-000000000512",
+                     *               "style": "default"
+                     *             },
+                     *             {
+                     *               "id": "run_console",
+                     *               "label": "Run console",
+                     *               "href": "/runs/5eed0009-0000-4000-8000-000000000474",
+                     *               "style": "default"
+                     *             }
+                     *           ],
+                     *           "footnote": null,
+                     *           "state": null,
+                     *           "resolution": null,
+                     *           "escalatedAt": null
+                     *         },
+                     *         {
+                     *           "type": "card",
+                     *           "id": "5eed009c-0000-4000-8000-000000000103",
+                     *           "at": "2026-10-11T14:07:00.000Z",
+                     *           "family": "protected_path_allow_once",
+                     *           "severity": "info",
+                     *           "mark": "✓",
+                     *           "headline": "Allow a one-time edit to a protected path?",
+                     *           "lines": [
+                     *             "The OTA rollback fix wants to add one line to boot/rollback_flag.c — a protected path. Diff is 3 lines, shown in the run console.",
+                     *             "loop #1851 · issue #479 · boot/rollback_flag.c"
+                     *           ],
+                     *           "stats": null,
+                     *           "actions": [],
+                     *           "footnote": "Maya Chen answered: allowed once · in Slack",
+                     *           "state": "resolved",
+                     *           "resolution": {
+                     *             "outcome": "allow once",
+                     *             "actor": "Maya Chen",
+                     *             "at": "2026-10-11T14:11:00.000Z"
+                     *           },
+                     *           "escalatedAt": null
+                     *         },
+                     *         {
+                     *           "type": "line",
+                     *           "id": "5eed009c-0000-4000-8000-000000000104",
+                     *           "at": "2026-10-11T14:11:01.000Z",
+                     *           "text": "✓ Maya Chen answered: allow once — loop #1851"
+                     *         },
+                     *         {
+                     *           "type": "command",
+                     *           "id": "5eed009c-0000-4000-8000-000000000202",
+                     *           "at": "2026-10-11T14:13:00.000Z",
+                     *           "surface": "slack",
+                     *           "text": "/ouro dry-run #486 feature-loop",
+                     *           "author": {
+                     *             "name": "Ken Suenobu"
+                     *           },
+                     *           "outcome": "ok",
+                     *           "reply": {
+                     *             "text": "Rehearsing feature-loop on #486 with no writes — the result follows.",
+                     *             "link": {
+                     *               "label": "Workflow Copilot",
+                     *               "href": "/workflows/feature-loop/copilot"
+                     *             },
+                     *             "at": "2026-10-11T14:13:00.000Z"
+                     *           },
+                     *           "result": {
+                     *             "text": "Dry run of feature-loop on #486 passed in 3m — no writes, guards clean.",
+                     *             "link": null,
+                     *             "at": "2026-10-11T14:16:00.000Z"
+                     *           }
+                     *         },
+                     *         {
+                     *           "type": "card",
+                     *           "id": "5eed009c-0000-4000-8000-000000000102",
+                     *           "at": "2026-10-11T14:40:00.000Z",
+                     *           "family": "protected_path_allow_once",
+                     *           "severity": "warn",
+                     *           "mark": "⏸",
+                     *           "headline": "Allow a one-time edit to a protected path?",
+                     *           "lines": [
+                     *             "The OTA rollback fix wants to add one line to boot/rollback_flag.c — a protected path. Diff is 3 lines, shown in the run console.",
+                     *             "loop #1851 · issue #479 · boot/rollback_flag.c"
+                     *           ],
+                     *           "stats": null,
+                     *           "actions": [
+                     *             {
+                     *               "id": "allow_once",
+                     *               "label": "Allow once",
+                     *               "href": "/inbox?item=5eed0082-0000-4000-8000-000000000002",
+                     *               "style": "primary"
+                     *             },
+                     *             {
+                     *               "id": "view_diff",
+                     *               "label": "View diff →",
+                     *               "href": "/runs/5eed0009-0000-4000-8000-000000000479#run-changes",
+                     *               "style": "default"
+                     *             },
+                     *             {
+                     *               "id": "deny",
+                     *               "label": "Deny",
+                     *               "href": "/inbox?item=5eed0082-0000-4000-8000-000000000002",
+                     *               "style": "default"
+                     *             }
+                     *           ],
+                     *           "footnote": "paused 4m · escalates to the Needs-you inbox in 26m",
+                     *           "state": "open",
+                     *           "resolution": null,
+                     *           "escalatedAt": null
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ChatMirror"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `service_scope_missing` — a service token without `api.read`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `chat_channel_not_found` — the workspace has no channel by that id: it is not a UUID,
+             *     names nothing, is another workspace's, or is a direct-message conversation.
+             *     `tenant_not_found` — no such workspace, or none you are a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `limit` is not a whole number from 1 to 100, or `before` is
+             *     empty or too long to be a cursor. `chat_cursor_invalid` — `before` is not a cursor
+             *     this service issued; start again from the newest page.
+             */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

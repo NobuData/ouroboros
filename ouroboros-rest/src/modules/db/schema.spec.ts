@@ -565,6 +565,9 @@ describe("TABLE_COLUMNS", () => {
       "completed_at",
       "invoker_user_id",
       "settled_reply",
+      // V137 (#542): what the command said at once. `channel_id` was already here; what changed
+      // is that a console row may now name one, which only `ChatCommandsTable` can say.
+      "reply",
     ]);
   });
 

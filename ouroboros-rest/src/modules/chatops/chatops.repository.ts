@@ -5,7 +5,7 @@
  *
  * ```
  * record   one transaction: the reply's message row (when the channel is one of ours), then the
- *          command row naming it in result_ref
+ *          command row naming it in result_ref and keeping what it said at once (reply, V137)
  * settle   async_pending → ok | error, with completed_at and what it finally said — and only
  *          from pending
  * audit    the command's audit event id, once the event exists
@@ -14,16 +14,19 @@
  *
  * **Only rows V131 and V136 accept.** `outcome = 'error'` always carries `error_detail`; `ok` and
  * `async_pending` never do; `completed_at` is null exactly while pending; a Slack row always
- * carries its connection and the platform user, and a console row carries neither — nor a
- * channel or an identity link (`chat_commands_surface_shape`). {@link CommandRecord} is shaped
+ * carries its connection and the platform user, and a console row carries neither — nor an
+ * identity link (`chat_commands_surface_shape`); since V137 it may name the channel whose mirror
+ * it was typed under (#542), and nothing else of Slack's. {@link CommandRecord} is shaped
  * so a caller cannot build the combinations the CHECKs refuse, and `chatops.repository.spec.ts`
  * holds each write to them.
  *
  * **Who it acted as is a column on both surfaces** (`invoker_user_id`, V136): the linked person
  * in Slack, the session's person in the console.
  *
- * **A late result is kept** (`settled_reply`, V136): what an async command said when it
- * finished, on both surfaces. Slack is also told through its `response_url`; the console has no
+ * **Every reply is kept** (#542). What a command said at once is `reply` (V137) — on both
+ * surfaces, for every outcome that said something; it is what the channel mirror draws under the
+ * command. **A late result is kept too** (`settled_reply`, V136): what an async command said when
+ * it finished, on both surfaces. Slack is also told through its `response_url`; the console has no
  * such address and reads it back with {@link ChatopsRepository.ownConsoleCommand}.
  *
  * **What a reply's message row holds, and what it does not.** A `command_reply` row is facts,
@@ -33,7 +36,8 @@
  * `sha256('command_reply:' || command id)`. `platform_ts` stays null: a reply sent to a
  * `response_url` is never given one. Only a channel the connection has **joined** gets a row —
  * a DM or a channel the app is not in is not a `chat_channels` row the mirror draws, and
- * `chat_commands.channel_id` stays null there.
+ * `chat_commands.channel_id` stays null there. A console command never gets one, whatever
+ * channel it names: nothing was posted to Slack, and the mirror reads its reply off the command.
  *
  * **Nothing here deletes.** The application role holds no `delete` on either table.
  */
@@ -73,13 +77,15 @@ export interface SlackCommandOrigin {
 }
 
 /**
- * Where a console command came from: nowhere but the session (V136). The four are spelled out
- * as nulls rather than left off, so a console record and a Slack record have the same keys.
+ * Where a console command came from: nowhere but the session (V136) — and, when it was typed in
+ * a channel mirror's composer, that channel (V137, #542). The rest are spelled out as nulls
+ * rather than left off, so a console record and a Slack record have the same keys.
  */
 export interface ConsoleCommandOrigin {
   readonly surface: "console";
   readonly connectionId: null;
-  readonly channelId: null;
+  /** The bound channel whose mirror it was typed under; null for the palette's. */
+  readonly channelId: string | null;
   readonly invokerLinkId: null;
   readonly platformUserId: null;
 }
@@ -98,16 +104,21 @@ export type CommandRecord = (SlackCommandOrigin | ConsoleCommandOrigin) & {
   /** The text as typed, with its prefix. */
   readonly rawText: string;
   readonly ended: RecordedOutcome;
+  /**
+   * What it said at once (V137) — a refusal's words as much as an answer's. A reply with no
+   * text keeps nothing: `chat_commands_reply_shape` refuses an empty one.
+   */
+  readonly reply: SettledReply | null;
   /** What the binding said it made or changed. */
   readonly ref?: Readonly<Record<string, string | number>>;
   readonly invokedAt: Date;
   /** When it finished — ignored for `async_pending`, which has not. */
   readonly completedAt: Date;
-  /** Whether the reply is recorded as a message. Needs a channel, so never true in the console. */
+  /** Whether the reply is recorded as a message. Needs a Slack channel; ignored for the console. */
   readonly withReplyMessage: boolean;
 };
 
-/** What a command says, as `settled_reply` keeps it: the text and its one link, nothing else. */
+/** What a command says, as `reply` and `settled_reply` keep it: the text and its one link, nothing else. */
 export type SettledReply = ChatSettledReply;
 
 /** A console command as the person who typed it reads it back. */
@@ -119,6 +130,7 @@ export type OwnConsoleCommand = Pick<
   | "raw_text"
   | "invoked_at"
   | "completed_at"
+  | "reply"
   | "settled_reply"
   | "error_detail"
 >;
@@ -157,8 +169,9 @@ function bounded(text: string, limit: number): string {
 }
 
 /**
- * A reply as `chat_commands_settled_reply_shape` accepts it: `text`, and `link` only when there
- * is one — never a key the CHECK does not know, and never a link with half its fields.
+ * A reply as `chat_commands_reply_shape` and `chat_commands_settled_reply_shape` accept it:
+ * `text`, and `link` only when there is one — never a key the CHECKs do not know, and never a
+ * link with half its fields.
  *
  * @param reply - The reply.
  * @returns The object to store.
@@ -239,7 +252,11 @@ export class ChatopsRepository {
    */
   async record(command: CommandRecord): Promise<RecordedCommand> {
     const pending = command.ended.outcome === "async_pending";
-    const messageId = command.withReplyMessage && command.channelId !== null ? randomUUID() : null;
+    // Only Slack's: a console command posted nothing, whatever channel it names (#542).
+    const messageId =
+      command.withReplyMessage && command.surface === "slack" && command.channelId !== null
+        ? randomUUID()
+        : null;
     const channelId = command.channelId;
     const produced = { ...command.ref, ...(messageId === null ? {} : { message: messageId }) };
 
@@ -281,6 +298,10 @@ export class ChatopsRepository {
               : null,
           invoked_at: command.invokedAt,
           completed_at: pending ? null : command.completedAt,
+          reply:
+            command.reply === null || command.reply.text === ""
+              ? null
+              : JSON.stringify(settledReply(command.reply)),
         })
         .execute();
     });
@@ -293,8 +314,9 @@ export class ChatopsRepository {
    *
    * Only a row still `async_pending` moves, so a result that settles twice — or after a
    * restart's sweep — changes nothing the second time. The result is its own message: when the
-   * command was typed in a joined channel a second `command_reply` row is written and named in
-   * `result_ref.result_message`. What it said is kept in `settled_reply` on every surface: it is
+   * command was typed **in Slack** in a joined channel a second `command_reply` row is written
+   * and named in `result_ref.result_message`. A console command posted nothing, whatever channel
+   * it names (#542), so it gets no message row. What it said is kept in `settled_reply` on every surface: it is
    * the only way the console learns the result.
    *
    * @param commandId - The command.
@@ -312,7 +334,7 @@ export class ChatopsRepository {
     return this.database.db.transaction().execute(async (transaction) => {
       const row = await transaction
         .selectFrom("chat_commands")
-        .select(["organization_id", "channel_id", "result_ref"])
+        .select(["organization_id", "channel_id", "surface", "result_ref"])
         .where("id", "=", commandId)
         .where("outcome", "=", "async_pending")
         .forUpdate()
@@ -324,7 +346,7 @@ export class ChatopsRepository {
 
       let produced = row.result_ref;
 
-      if (row.channel_id !== null) {
+      if (row.channel_id !== null && row.surface === "slack") {
         const messageId = randomUUID();
 
         await transaction
@@ -386,6 +408,7 @@ export class ChatopsRepository {
         "raw_text",
         "invoked_at",
         "completed_at",
+        "reply",
         "settled_reply",
         "error_detail",
       ])

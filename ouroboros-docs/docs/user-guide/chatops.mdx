@@ -7,8 +7,8 @@ description: "The Chat Ops page, what Ouroboros posts to your Slack channels, li
 
 Chat Ops brings Ouroboros into Slack. This page covers three things:
 
-- [the Chat Ops page](#the-chat-ops-page) in Ouroboros — how Slack is connected, and which
-  channels it posts to;
+- [the Chat Ops page](#the-chat-ops-page) in Ouroboros — how Slack is connected, which
+  channels it posts to, and [a mirror](#the-channel-mirror) of what it published there;
 - [what Ouroboros posts](#what-ouroboros-posts) to your channels — the questions loops are
   waiting on, finished loops and the weekly digest;
 - [linking your Slack identity](#why-you-link) to your Ouroboros account, which you do once.
@@ -69,7 +69,8 @@ channel has been bound for Loops; until then there is nothing to open, so it is 
 
 **Bound channels** lists each channel Ouroboros posts to: its name, what it is for
 (**Loops**, **Alerts** or **Leads**), how many members it has, and which notification routes
-point at it. **Open ↗** opens that channel in Slack.
+point at it. **Open ↗** opens that channel in Slack, and **Show mirror** shows that channel in
+[the channel mirror](#the-channel-mirror) beside the list — the row then reads **Showing**.
 
 ### Add a channel
 
@@ -101,6 +102,71 @@ are left without a channel.
 **Manage in Settings →** at the foot of the page opens the **Notifications** section, where
 each route has its switch — see
 [Notifications, email & webhooks](../administration/notifications-and-webhooks.mdx).
+
+### The channel mirror
+
+Beside the bound channels, the page shows one channel as Ouroboros recorded it: every card it
+published there and every `/ouro` command that was run there, oldest at the top.
+<Since version="0.159.0" module="ouroboros-ui" />
+
+<Screenshot id="user-guide.chatops.mirror" />
+
+**It is a mirror, not Slack.** The **mirror** chip in the heading says so: *this is Ouroboros's
+record of what it published — the conversation lives in Slack*. What your team writes to each
+other in the channel is not here, and nothing is shown that Ouroboros did not record.
+**Open ↗** opens the real channel in Slack.
+
+The heading also carries:
+
+- the channel's name and **Slack**, with the member count and the installed app's version when
+  Slack has reported them — such as **24 members · Ouroboros app v2.4**;
+- a **Slack** / **Teams** switch. **Teams** cannot be chosen: it is not available yet, and is
+  marked **arrives with CB.2 (#547)**;
+- when the mirror was last read, such as **updated 12s ago**. The mirror re-reads itself every
+  few seconds, so a card published a moment ago appears by itself; press the time to read
+  again at once.
+
+The mirror opens on your first bound channel. **Show mirror** on another row changes it, and
+the address keeps your choice (`/chatops?channel=…`), so you can share the link.
+
+#### What each entry looks like
+
+| Entry | How it is drawn |
+| --- | --- |
+| A finished loop | A card with a green bar: the headline, the issue, a line of figures, and buttons that open the pull request and the run console in Ouroboros. |
+| A question a loop is waiting on | A card with a glowing amber bar. While it is open, its buttons — such as **Allow once** and **Deny** — open that decision in the [Needs-you inbox](./inbox.mdx), where you answer it. Nothing is answered from the mirror. |
+| The same question, answered | The card with no buttons and a line such as **resolved: allow once — Maya Chen (14:11)**. |
+| An escalated question | The card, marked **⚠ escalated** with the time. |
+| A build that went green | A card with an accent bar and a button to the pull request's verification. |
+| A build that failed | A card with a red bar. |
+| A one-line notice | A short line between two rules, such as who answered a question. |
+| A command | The person's initials and name, then the command as typed — `/ouro status`. A command typed in Ouroboros rather than in Slack is marked **console**. Ouroboros's answer follows in a box; a command that takes a while reads **still running — the result appears here when it finishes**, and then shows its result. |
+
+Entries are grouped by day — **Today**, **Yesterday**, then the date. **Load earlier** at the
+top reads the entries before the ones shown. A channel with nothing recorded yet reads
+**Nothing has been published to this channel yet**.
+
+If Ouroboros was removed from the channel, the mirror says so — *Ouroboros was removed
+from #ouroboros-loops, so nothing new is being posted there* — and how to bring it back:
+send `/invite @Ouroboros` in the channel. An archived channel says that it is archived.
+
+#### Run a command from the mirror
+
+The box under the stream runs `/ouro` commands — the same [commands](#commands), with the same
+rules about who may run them, as Slack and
+[the command console](./finding-your-way.mdx#the-command-console):
+
+1. Type `/ouro` and a command, such as `/ouro status`. Suggestions appear as you type;
+   <kbd>Tab</kbd> completes one and <kbd>↑</kbd> recalls what you ran before.
+2. Choose **Send**, or press <kbd>Enter</kbd>.
+
+The command and its answer then appear in the stream, marked **console**, for everyone who
+opens this channel's mirror. They are recorded in Ouroboros only: nothing is posted to Slack.
+If the command is refused, the reason appears under the box and what you typed stays there.
+
+**The box does not send messages.** Type anything that is not a command and **Send** is
+switched off, with the reason beside it: **messages live in Slack — commands work here**, and
+**Open ↗** to write in the channel itself.
 
 ### When Slack is not connected yet
 
@@ -299,7 +365,9 @@ them and the same answers, word for word. The differences are only these:
 - It completes what you type from your workspace's real issues, loops, workflows and models.
 - A command that takes a while tells you its result with a notification in Ouroboros.
 
-See [The command console](./finding-your-way.mdx#the-command-console).
+See [The command console](./finding-your-way.mdx#the-command-console). On the Chat Ops page
+you can also run a command under a channel's mirror — see
+[Run a command from the mirror](#run-a-command-from-the-mirror).
 
 ## If you press a button before linking
 

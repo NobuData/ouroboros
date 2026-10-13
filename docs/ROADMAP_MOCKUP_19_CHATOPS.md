@@ -594,7 +594,7 @@ the #16 tokens (both themes; the mockup is dark-only).
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CA.1 | #541 ✅ | 🟢 Done | ouroboros-ui: [CA.1] ChatOps route, head & connection flow | Frame, add-channel, open-channel, install/setup states | mvp, chatops, ui, design | N (after #41, BZ.1, BA-D.5) | Y | M | ouroboros-ui |
-| CA.2 | #542 | 🟡 Open | ouroboros-ui: [CA.2] Channel mirror card | The truthful stream (C7): all archetypes + composer console | mvp, chatops, ui, design | N (after CA.1, BZ.2) | Y | L | ouroboros-ui |
+| CA.2 | #542 ✅ | 🟢 Done | ouroboros-ui: [CA.2] Channel mirror card | The truthful stream (C7): all archetypes + composer console | mvp, chatops, ui, design | N (after CA.1, BZ.2) | Y | L | ouroboros-ui |
 | CA.3 | #543 | 🟡 Open | ouroboros-ui: [CA.3] Commands & routing cards | Registry-driven command list; BR.4 binding editors | mvp, chatops, ui, design | N (after CA.1, BZ.3, BR.4) | Y | M | ouroboros-ui |
 | CA.4 | #544 | 🟡 Open | ouroboros-ui: [CA.4] AI-presence card & honest preview | The C8 designed preview + the CB.1 activation slot | mvp, chatops, ui, design | N (after CA.1) | Y | S | ouroboros-ui |
 | CA.5 | #545 | 🟡 Open | ouroboros-ui: [CA.5] ChatOps states & e2e leg | No-connection/unlinked/error states; full-chain e2e | mvp, chatops, ui, ci | N (after CA.2–CA.4) | Y | M | ouroboros-ui, .github |
@@ -633,7 +633,13 @@ the #16 tokens (both themes; the mockup is dark-only).
 
 ### Issue CA.2 — ouroboros-ui: [CA.2] Channel mirror card
 
-> **GitHub issue:** #542 · **Status:** 🟡 Open · **Parent epic:** #529
+> **GitHub issue:** #542 ✅ · **Status:** 🟢 Done · **Parent epic:** #529
+>
+> **Delivered (#542 — `V137__chat_commands_reply_channel.sql`, `ouroboros-rest` 0.41.30, `ouroboros-ui` 0.159.0, `ouroboros-docs` 0.5.5):** **the mirror card** on `/chatops` (`app/chatops/mirror-*.tsx`, `chatops-mirror.css`) — head (channel, `Slack` tag, the Slack/Teams segment with Teams disabled and marked `arrives with CB.2 (#547)`, members · app version, the **mirror** chip with its tooltip, a freshness tag, **Open ↗**), a stream that scrolls in its own wrapper and is drawn only from records, day dividers, **Load earlier**, the page's 15 s poll, and a **composer** that runs `/ouro` through #539's path with the channel and refuses plain text with `messages live in Slack — commands work here`. The channel is `?channel=<id>`, else the first bound one; each bound row has **Show mirror**. **REST:** `GET /api/v1/chat/channels/{id}/mirror` (new module `chat-mirror/`) recomposes every card from the stored row through the publisher's own card model (`chat/chat.record.ts` is what the composer writes and the mirror reads), with in-app `href`s; `POST /chat/commands` takes an optional `channelId`. **DB (V137):** `chat_commands.reply` — what a command said at once, on both surfaces — and a console command may name the channel it was typed under (`chat_commands_channel_organization_fk`).
+>
+> **Decided with the user:** a composer command **records its channel** (palette commands stay channel-less and are not mirrored); **every reply is stored** (`reply`, beside `settled_reply` for an async result); an open question card's answer buttons **open the inbox item** — nothing is answered from the mirror.
+>
+> **Not delivered, and why:** *pixel-close to the mockup by screenshot comparison* was judged by eye on the docs captures (both themes), not by an automated comparison — and the seeded stream is the seed's own (#534): loop #1839 rather than #1846, no cost figure (the row stores no `cost_cents`), no **View PR** (run #474 has no mirrored pull request), and the answered card is the re-size question. *A live publish appears within one poll* was shown with a console command against the seeded stack and by the poll's jsdom test — the seeded connection cannot post to Slack. `build_failed` and escalated cards are covered by specs only: no seeded row has either. The mirror has no ETag (the neighbouring chat reads have none). e2e is CA.5's (#545).
 
 - **Problem Statement:** The centerpiece: the mockup's chat stream rendered
   from real records (C7) — labeled a mirror, never a counterfeit — plus a
@@ -907,7 +913,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    BY.4 (#534) ✅
 3. **Phase 2 — App & services:** BZ.1 (#535) ✅ → { BZ.2 (#536) ✅ ⊕ BZ.3 (#537) ✅ }
    → { BZ.4 (#538) ✅ ⊕ BZ.5 (#539) ✅ } → BZ.6 (#540)
-4. **Phase 3 — UI:** CA.1 (#541) ✅ → { CA.2 (#542) ⊕ CA.3 (#543) ⊕
+4. **Phase 3 — UI:** CA.1 (#541) ✅ → { CA.2 (#542) ✅ ⊕ CA.3 (#543) ⊕
    CA.4 (#544) } → **CA.5 (#545) ✅** *(MVP gate, amending #56)*
 5. **v2:** CB.1 (#546) after AF.2 (#235); CB.2 (#547) ⊕ CB.3 (#548) ⊕
    CB.4 (#549) ⊕ CB.5 (#550) after their dependencies.

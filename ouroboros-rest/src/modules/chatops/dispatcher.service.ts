@@ -57,7 +57,10 @@
  * which is not a command of the grammar, runs nothing and is answered for anybody. A Slack
  * workspace with no active connection has no organisation to record under: it is told so, and
  * nothing is written. A reply is a `chat_messages` row only where there is a channel for it to
- * be a message of — never in the console.
+ * be a message of — never in the console. **What it said is on the row either way** (`reply`,
+ * V137, [#542](https://github.com/NobuData/ouroboros/issues/542)): the words answered at once,
+ * for every outcome, on both surfaces — and `settled_reply` beside it for an async command's
+ * later word. A console command typed under a channel's mirror records that channel.
  *
  * **Recording never changes what is said.** By the time the row is written the command has run;
  * a failure to record it is logged loudly and the truthful reply still goes out, because
@@ -140,14 +143,22 @@ const COMMAND_WORD = /^[a-z][a-z0-9-]*$/;
 type Origin =
   (SlackCommandOrigin & { readonly platformChannelId: string | null }) | ConsoleCommandOrigin;
 
-/** The console's origin: the same for every command typed there. */
-const CONSOLE_ORIGIN: ConsoleCommandOrigin = {
-  surface: "console",
-  connectionId: null,
-  channelId: null,
-  invokerLinkId: null,
-  platformUserId: null,
-};
+/**
+ * The console's origin: the same for every command typed there, but for the channel whose
+ * mirror it was typed under (#542).
+ *
+ * @param channelId - That channel's row, or null for the palette.
+ * @returns The origin.
+ */
+function consoleOrigin(channelId: string | null): ConsoleCommandOrigin {
+  return {
+    surface: "console",
+    connectionId: null,
+    channelId,
+    invokerLinkId: null,
+    platformUserId: null,
+  };
+}
 
 /** Where a command came from, and the person it acts as — nobody, for an unlinked Slack user. */
 interface Identity {
@@ -356,11 +367,11 @@ export class ChatDispatcher implements OnApplicationShutdown {
       };
     } else {
       // The session is the identity: no connection to find, no link to follow.
-      const { organizationId, userId } = input.console;
+      const { organizationId, userId, channelId } = input.console;
 
       source = {
         organizationId,
-        identify: () => Promise.resolve({ origin: CONSOLE_ORIGIN, userId }),
+        identify: () => Promise.resolve({ origin: consoleOrigin(channelId ?? null), userId }),
       };
     }
 
@@ -578,12 +589,15 @@ export class ChatDispatcher implements OnApplicationShutdown {
         ),
         rawText: invocation.rawText,
         ended: ending.ended,
+        // Every reply is kept, whatever the outcome and the surface (#542): a refusal's words
+        // are what the channel mirror shows under the command, as much as an answer's.
+        reply: ending.reply,
         ref: ending.ref,
         invokedAt: invocation.invokedAt,
         completedAt: at,
         // A reply is a message of the channel only when the command was answered: a refusal
-        // produced nothing (`result_ref` stays null). The console has no channel for a reply
-        // to be a message of, so it never writes one.
+        // produced nothing (`result_ref` stays null). The console posted nothing to a channel
+        // — even when it names the one whose mirror it was typed under — so it never writes one.
         withReplyMessage:
           origin.surface === "slack" && (outcome === "ok" || outcome === "async_pending"),
       });

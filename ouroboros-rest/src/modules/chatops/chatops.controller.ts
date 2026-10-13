@@ -39,7 +39,8 @@ import { currentUser, type ActiveMembership } from "../tenancy/tenant.context";
 import { CurrentMember, CurrentTenant } from "../tenancy/tenant.decorators";
 import { complete, type ChatCompletionsResource } from "./chatops.completions";
 import { ChatCommandRequest, ChatCompletionsQuery, commandText } from "./chatops.dto";
-import { chatCommandNotFound, chatPersonRequired } from "./chatops.errors";
+import { SlackRepository } from "../slack/slack.repository";
+import { chatChannelNotFound, chatCommandNotFound, chatPersonRequired } from "./chatops.errors";
 import { ChatopsRepository } from "./chatops.repository";
 import {
   callerGrammar,
@@ -68,6 +69,7 @@ export class ChatopsController {
    * @param capabilities - The caller's explicit capability, for the invoker a source is shown.
    * @param dispatcher - Runs a command — the one path every surface's commands take.
    * @param commands - The command trail, for a caller reading their own command back.
+   * @param channels - The workspace's channels, for a command typed under one's mirror.
    */
   constructor(
     @Inject(CHAT_GRAMMAR) private readonly grammar: Grammar,
@@ -75,6 +77,7 @@ export class ChatopsController {
     private readonly capabilities: CapabilityRepository,
     private readonly dispatcher: ChatDispatcher,
     private readonly commands: ChatopsRepository,
+    private readonly channels: SlackRepository,
   ) {}
 
   /**
@@ -146,10 +149,17 @@ export class ChatopsController {
    * `reply` is what Slack would have said. An async command answers `async_pending`; its result
    * is read from `GET /api/v1/chat/commands/{id}`.
    *
+   * A command typed in a channel mirror's composer (#542) names that channel; it is recorded on
+   * the command's row, which is what puts the command in that mirror. The channel is checked
+   * before anything is dispatched, so a command is never run under a channel it cannot be
+   * shown in. The palette names none.
+   *
    * @param tenant - The workspace.
-   * @param body - The text typed, with or without its `/ouro` prefix.
+   * @param body - The text typed, with or without its `/ouro` prefix, and the channel if any.
    * @returns The dispatcher's result.
    * @throws {ForbiddenError} `403 chat_person_required` for a service account.
+   * @throws {NotFoundError} `404 chat_channel_not_found` when `channelId` is not a bound channel
+   *   of this workspace — another workspace's, an unbound one, or a DM conversation.
    */
   @Post("commands")
   @HttpCode(HttpStatus.OK)
@@ -163,11 +173,22 @@ export class ChatopsController {
       throw chatPersonRequired("commands");
     }
 
+    const typedUnder = body.channelId ?? null;
+    const channelId =
+      typedUnder === null
+        ? null
+        : ((await this.channels.boundChannel(tenant.id, typedUnder)) ?? null);
+
+    // Before anything runs, and before the row's own foreign key would refuse it (V137).
+    if (typedUnder !== null && channelId === null) {
+      throw chatChannelNotFound();
+    }
+
     return toCommandResult(
       await this.dispatcher.dispatch({
         surface: "console",
         text: commandText(body.text),
-        console: { organizationId: tenant.id, userId: user.id },
+        console: { organizationId: tenant.id, userId: user.id, channelId },
       }),
     );
   }
@@ -176,7 +197,7 @@ export class ChatopsController {
    * `GET /api/v1/chat/commands/{id}` — a console command the caller ran, as it stands now.
    *
    * What the console asks until `outcome` leaves `async_pending`; `settledReply` is then what
-   * the command finally said.
+   * the command finally said, beside `reply` — what it said at once.
    *
    * @param tenant - The workspace.
    * @param id - The command's id.

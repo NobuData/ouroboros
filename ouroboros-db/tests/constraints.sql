@@ -41796,10 +41796,11 @@ select pg_temp.must_reject(
   $$update ouroboros.chat_commands set platform_user_id = null where id = 'c1310000-0000-4000-8000-00000000e004'$$,
   'a Slack invocation keeps who typed it', 'chat_commands_surface_shape');
 
+-- (Until V137 a console invocation had no channel either; it may name one now — #542, asserted there.)
 select pg_temp.must_reject(
-  $$update ouroboros.chat_commands set channel_id = 'c1310000-0000-4000-8000-0000000000a1'
+  $$update ouroboros.chat_commands set platform_user_id = 'U131KEN'
      where id = 'c1310000-0000-4000-8000-00000000e015'$$,
-  'a console invocation has no channel', 'chat_commands_surface_shape');
+  'a console invocation has no platform user', 'chat_commands_surface_shape');
 
 select pg_temp.must_reject(
   $$update ouroboros.chat_commands set invoker_link_id = 'c1310000-0000-4000-8000-0000000000f1'
@@ -43546,15 +43547,12 @@ select pg_temp.must_reject(
      where id = 'c1360000-0000-4000-8000-00000000e001'$$,
   'nor can one be given a connection afterwards', 'chat_commands_surface_shape');
 
-select pg_temp.must_reject(
-  $$update ouroboros.chat_commands set channel_id = 'c1360000-0000-4000-8000-0000000000a1'
-     where id = 'c1360000-0000-4000-8000-00000000e001'$$,
-  'a console command has no channel', 'chat_commands_surface_shape');
-
+-- (V136 also refused it a channel. Since V137 a console command may be typed under one — #542,
+-- asserted in that section.)
 select pg_temp.must_reject(
   $$update ouroboros.chat_commands set platform_user_id = 'U136KEN'
      where id = 'c1360000-0000-4000-8000-00000000e001'$$,
-  'no platform user', 'chat_commands_surface_shape');
+  'it has no platform user', 'chat_commands_surface_shape');
 
 select pg_temp.must_reject(
   $$update ouroboros.chat_commands set invoker_link_id = 'c1360000-0000-4000-8000-0000000000f1'
@@ -43827,6 +43825,215 @@ select pg_temp.must_hold(
   (select count(*) = 4 from ouroboros.chat_commands where organization_id = 'org-v136')
   and (select count(*) = 1 from ouroboros.chat_commands where organization_id = 'org-v136b'),
   'and nobody else''s');
+
+-- ===========================================================================
+-- V137 — a command keeps what it said at once, and a console command may be typed under a channel (#542, CA.2)
+-- ===========================================================================
+--
+-- The channel mirror shows a channel's commands with what each answered. Asked here: `reply` is a
+-- text with at most one whole link, on both surfaces, and a pending command has one where it has
+-- no settled reply yet; a console row may name a channel of its own workspace and nobody else's,
+-- nor one that does not exist — the hole a null connection leaves in V131's channel key; it is
+-- still not of a connection, even the channel's; and a console command outlives the channel it
+-- was typed under, where a Slack command goes with it.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v137',  'Mirror Works', 'mirror-works-v137', now()),
+  ('org-v137b', 'Mirror Other', 'mirror-other-v137', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v137-ken', 'Ken S', 'ken@mirror-works-v137.dev', true);
+
+insert into ouroboros.chat_connections
+  (id, organization_id, platform, workspace_id, workspace_name, bot_token_sealed)
+values
+  ('c1370000-0000-4000-8000-000000000001', 'org-v137',  'slack', 'T137AB', 'mirror-works', 'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA'),
+  ('c1370000-0000-4000-8000-000000000002', 'org-v137b', 'slack', 'T137CD', 'mirror-other', 'ouro.v1.1.bm9uY2U.Y2lwaGVydGV4dA');
+insert into ouroboros.chat_channels (id, organization_id, connection_id, platform, channel_id, channel_name, joined, joined_at)
+values
+  ('c1370000-0000-4000-8000-0000000000a1', 'org-v137',  'c1370000-0000-4000-8000-000000000001', 'slack', 'C137LOOPS',  'ouroboros-loops',  true, now()),
+  ('c1370000-0000-4000-8000-0000000000a2', 'org-v137',  'c1370000-0000-4000-8000-000000000001', 'slack', 'C137BUILDS', 'ouroboros-builds', true, now()),
+  ('c1370000-0000-4000-8000-0000000000b1', 'org-v137b', 'c1370000-0000-4000-8000-000000000002', 'slack', 'C137OTHER',  'other',            true, now());
+
+-- One command of each surface, a pending one, and a palette command typed under no channel.
+insert into ouroboros.chat_commands
+  (id, organization_id, connection_id, channel_id, invoker_user_id, platform_user_id, surface,
+   command, raw_text, outcome, invoked_at, completed_at)
+values
+  ('c1370000-0000-4000-8000-00000000e001', 'org-v137', 'c1370000-0000-4000-8000-000000000001',
+   'c1370000-0000-4000-8000-0000000000a1', 'user-v137-ken', 'U137KEN', 'slack',
+   'status', '/ouro status', 'ok', timestamptz '2026-10-01 09:00:00+00', timestamptz '2026-10-01 09:00:01+00'),
+  ('c1370000-0000-4000-8000-00000000e002', 'org-v137', null,
+   null, 'user-v137-ken', null, 'console',
+   'status', '/ouro status', 'ok', timestamptz '2026-10-01 09:01:00+00', timestamptz '2026-10-01 09:01:01+00'),
+  ('c1370000-0000-4000-8000-00000000e003', 'org-v137', null,
+   null, 'user-v137-ken', null, 'console',
+   'dry-run', '/ouro dry-run 486', 'async_pending', timestamptz '2026-10-01 09:02:00+00', null);
+
+-- --- what a command said at once ---------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 3 and bool_and(reply is null)
+     from ouroboros.chat_commands where organization_id = 'org-v137'),
+  'a command may have no reply recorded — a row from before V137, or one that said nothing');
+
+update ouroboros.chat_commands
+   set reply = '{"text": "3 loops live · 12 queued · farm 4/5 online · spend today $18.60 · needs-you: 3"}'
+ where id in ('c1370000-0000-4000-8000-00000000e001', 'c1370000-0000-4000-8000-00000000e002');
+update ouroboros.chat_commands
+   set reply = '{"text": "Dry run started — no writes, no PRs.",
+                 "link": {"label": "Workflow Copilot", "url": "/workflows/feature-loop/copilot"}}'
+ where id = 'c1370000-0000-4000-8000-00000000e003';
+select pg_temp.must_hold(
+  (select array_agg(surface || ':' || outcome || ':' || (reply ->> 'text' <> '')::text || ':'
+                    || coalesce(reply #>> '{link,url}', '-') order by id)
+            = array['slack:ok:true:-', 'console:ok:true:-',
+                    'console:async_pending:true:/workflows/feature-loop/copilot']
+     from ouroboros.chat_commands where organization_id = 'org-v137'),
+  'a reply is a text, or a text and a link, on either surface — and a pending command has its acknowledgement');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set settled_reply = '{"text": "Dry run of #486 complete"}'
+     where id = 'c1370000-0000-4000-8000-00000000e003'$$,
+  'what it said at once is not what it finally said: a pending command still has no settled reply',
+  'chat_commands_settled_reply_when_complete');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set reply = '"3 loops live"' where id = 'c1370000-0000-4000-8000-00000000e002'$$,
+  'a reply is an object, not a bare string', 'chat_commands_reply_shape');
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set reply = '[{"text": "3 loops live"}]' where id = 'c1370000-0000-4000-8000-00000000e002'$$,
+  'nor an array', 'chat_commands_reply_shape');
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set reply = 'null' where id = 'c1370000-0000-4000-8000-00000000e002'$$,
+  'nor a JSON null — no reply is the column left null', 'chat_commands_reply_shape');
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set reply = '{}' where id = 'c1370000-0000-4000-8000-00000000e002'$$,
+  'a reply has a text', 'chat_commands_reply_shape');
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set reply = '{"text": ""}' where id = 'c1370000-0000-4000-8000-00000000e002'$$,
+  'which is not empty', 'chat_commands_reply_shape');
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set reply = '{"text": 7}' where id = 'c1370000-0000-4000-8000-00000000e001'$$,
+  'and is a string — on a Slack row as on a console one', 'chat_commands_reply_shape');
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set reply = '{"text": "Dry run started", "link": "/workflows/feature-loop/copilot"}'
+     where id = 'c1370000-0000-4000-8000-00000000e002'$$,
+  'a reply''s link is an object', 'chat_commands_reply_shape');
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set reply = '{"text": "Dry run started", "link": {"label": "Workflow Copilot"}}'
+     where id = 'c1370000-0000-4000-8000-00000000e002'$$,
+  'a link missing its url is refused', 'chat_commands_reply_shape');
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set reply = '{"text": "Dry run started", "link": {"url": "/workflows/feature-loop/copilot"}}'
+     where id = 'c1370000-0000-4000-8000-00000000e002'$$,
+  'and one missing its label', 'chat_commands_reply_shape');
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set reply = '{"text": "Dry run started", "link": {"label": "Workflow Copilot", "url": 1}}'
+     where id = 'c1370000-0000-4000-8000-00000000e002'$$,
+  'a link''s url is a string', 'chat_commands_reply_shape');
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set reply = '{"text": "Dry run started", "link": {"label": 1, "url": "/workflows/feature-loop/copilot"}}'
+     where id = 'c1370000-0000-4000-8000-00000000e002'$$,
+  'and so is its label', 'chat_commands_reply_shape');
+
+-- --- a console command typed under a channel ---------------------------------------------------------
+insert into ouroboros.chat_commands
+  (id, organization_id, channel_id, invoker_user_id, surface, command, raw_text, outcome, reply, invoked_at, completed_at)
+values
+  ('c1370000-0000-4000-8000-00000000e011', 'org-v137', 'c1370000-0000-4000-8000-0000000000a1', 'user-v137-ken',
+   'console', 'status', '/ouro status', 'ok', '{"text": "3 loops live"}',
+   timestamptz '2026-10-01 09:10:00+00', timestamptz '2026-10-01 09:10:01+00'),
+  ('c1370000-0000-4000-8000-00000000e012', 'org-v137', 'c1370000-0000-4000-8000-0000000000a2', 'user-v137-ken',
+   'console', 'status', '/ouro status', 'ok', '{"text": "3 loops live"}',
+   timestamptz '2026-10-01 09:11:00+00', timestamptz '2026-10-01 09:11:01+00');
+
+select pg_temp.must_hold(
+  (select count(*) = 2
+          and bool_and(c.connection_id is null and c.platform_user_id is null and c.invoker_link_id is null
+                       and ch.organization_id = c.organization_id)
+     from ouroboros.chat_commands c
+     join ouroboros.chat_channels ch on ch.id = c.channel_id
+    where c.organization_id = 'org-v137' and c.surface = 'console'),
+  'a console command may name the channel it was typed under — one of its own workspace''s, and still no connection');
+
+select pg_temp.must_hold(
+  (select array_agg(surface order by invoked_at) = array['slack', 'console']
+     from ouroboros.chat_commands where channel_id = 'c1370000-0000-4000-8000-0000000000a1'),
+  'so a channel''s commands are those typed in Slack and those typed in its mirror, in order');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_commands (organization_id, channel_id, invoker_user_id, surface, command, raw_text, outcome, completed_at)
+    values ('org-v137', 'c1370000-0000-4000-8000-0000000000b1', 'user-v137-ken', 'console', 'status', '/ouro status', 'ok', now())$$,
+  'a console command cannot be typed under another workspace''s channel', 'chat_commands_channel_organization_fk');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set channel_id = 'c1370000-0000-4000-8000-0000000000b1'
+     where id = 'c1370000-0000-4000-8000-00000000e002'$$,
+  'nor moved under one afterwards', 'chat_commands_channel_organization_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_commands (organization_id, channel_id, invoker_user_id, surface, command, raw_text, outcome, completed_at)
+    values ('org-v137', '00000000-0000-0000-0000-000000000000', 'user-v137-ken', 'console', 'status', '/ouro status', 'ok', now())$$,
+  'nor under a channel that does not exist — a null connection no longer leaves the channel unchecked',
+  'chat_commands_channel_organization_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.chat_commands (organization_id, connection_id, channel_id, invoker_user_id, surface, command, raw_text, outcome, completed_at)
+    values ('org-v137', 'c1370000-0000-4000-8000-000000000001', 'c1370000-0000-4000-8000-0000000000a1',
+            'user-v137-ken', 'console', 'status', '/ouro status', 'ok', now())$$,
+  'a console command under a channel is still not of that channel''s connection', 'chat_commands_surface_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set connection_id = 'c1370000-0000-4000-8000-000000000001'
+     where id = 'c1370000-0000-4000-8000-00000000e011'$$,
+  'nor can it be given one afterwards', 'chat_commands_surface_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.chat_commands set platform_user_id = 'U137KEN'
+     where id = 'c1370000-0000-4000-8000-00000000e011'$$,
+  'and it has no platform user', 'chat_commands_surface_shape');
+
+-- The application role writes such a row, and its reply, itself.
+set local role ouroboros_app;
+insert into ouroboros.chat_commands
+  (id, organization_id, channel_id, invoker_user_id, surface, command, raw_text, outcome, reply, invoked_at, completed_at)
+values
+  ('c1370000-0000-4000-8000-00000000e013', 'org-v137', 'c1370000-0000-4000-8000-0000000000a1', 'user-v137-ken',
+   'console', 'queue', '/ouro queue 486', 'ok', '{"text": "queued at position 2 (pinned standard-fix@v14)"}',
+   timestamptz '2026-10-01 09:12:00+00', timestamptz '2026-10-01 09:12:01+00');
+reset role;
+select pg_temp.must_hold(
+  (select channel_id = 'c1370000-0000-4000-8000-0000000000a1' and reply ->> 'text' like 'queued at position 2%'
+     from ouroboros.chat_commands where id = 'c1370000-0000-4000-8000-00000000e013'),
+  'the application role records a console command under a channel, with what it said');
+
+-- --- a console command outlives the channel it was typed under ----------------------------------------
+delete from ouroboros.chat_channels where id = 'c1370000-0000-4000-8000-0000000000a1';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.chat_commands where id = 'c1370000-0000-4000-8000-00000000e001'),
+  'a channel takes the Slack commands typed in it');
+select pg_temp.must_hold(
+  (select count(*) = 2 and bool_and(channel_id is null and reply is not null)
+     from ouroboros.chat_commands
+    where id in ('c1370000-0000-4000-8000-00000000e011', 'c1370000-0000-4000-8000-00000000e013')),
+  'and lets go of the console commands typed under it — kept, reply and all, under no channel');
+select pg_temp.must_hold(
+  (select channel_id = 'c1370000-0000-4000-8000-0000000000a2'
+     from ouroboros.chat_commands where id = 'c1370000-0000-4000-8000-00000000e012'),
+  'a console command under another channel is not touched');
+
+delete from ouroboros.chat_connections where id = 'c1370000-0000-4000-8000-000000000001';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.chat_channels where organization_id = 'org-v137')
+  and (select count(*) = 5 and bool_and(surface = 'console' and channel_id is null)
+         from ouroboros.chat_commands where organization_id = 'org-v137'),
+  'removing the connection removes its channels and still leaves the console''s trail — V136''s promise, kept for a command typed under a channel');
+
+delete from ouroboros.organization where "id" = 'org-v137';
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.chat_commands where organization_id = 'org-v137'),
+  'and the workspace takes them with it');
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.

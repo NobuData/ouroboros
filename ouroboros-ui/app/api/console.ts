@@ -75,6 +75,12 @@ export type ConsoleLink = NonNullable<ConsoleReply["link"]>;
 /** One of the caller's own console commands, as `GET /chat/commands/{id}` answers. */
 export type ConsoleCommandRecord = components["schemas"]["ChatCommand"];
 
+/** Where a line is run from, when that is somewhere in particular. */
+export interface ConsoleRunOptions {
+  /** The bound channel whose mirror the line was typed under. */
+  readonly channelId?: string;
+}
+
 /* ----------------------------------------------------------------- calls */
 
 /** The `/ouro` grammar and its dispatcher, as `ouroboros-rest` serves them. */
@@ -115,14 +121,26 @@ export const consoleApi = {
    * Run a line through the dispatcher, as the session's member.
    *
    * @param text What was typed after `/ouro`.
+   * @param options.channelId The bound channel the line was typed under — the Chat Ops mirror's
+   *   composer (CA.2, [#542](https://github.com/NobuData/ouroboros/issues/542)) — so the command
+   *   is recorded against it and shows in that channel's mirror. Omitted by the palette, whose
+   *   commands belong to no channel.
    * @param client The client to call through.
    * @returns What the dispatcher answered — for anything typed, a refusal and an unknown
    *   command included.
    * @throws {ApiError} `422 validation_failed` for an empty line or one over 2000 characters;
+   *   `404 chat_channel_not_found` for a channel that is not a bound one of this workspace;
    *   `403` for a caller that is not a person.
    */
-  async run(text: string, client: ApiClient = api()): Promise<ConsoleCommandResult> {
-    return unwrap(await client.POST("/api/v1/chat/commands", { body: { text } }));
+  async run(
+    text: string,
+    options: ConsoleRunOptions = {},
+    client: ApiClient = api(),
+  ): Promise<ConsoleCommandResult> {
+    const body: ConsoleCommandRequest =
+      options.channelId === undefined ? { text } : { text, channelId: options.channelId };
+
+    return unwrap(await client.POST("/api/v1/chat/commands", { body }));
   },
 
   /**

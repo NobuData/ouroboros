@@ -6,6 +6,7 @@ import type { ChannelPurpose, SlackChannels, SlackConnection, SlackVerification 
 import type { Reading } from "@/app/api/reading";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
 import { Button, Card, EmptyState, RetryBanner } from "@/app/ui";
+import { cx } from "@/app/ui/class-names";
 
 import { BoundChannels } from "./bound-channels";
 import { ChannelPicker } from "./channel-picker";
@@ -14,6 +15,8 @@ import { type ChatOpsPollOptions, createChatOpsPoll } from "./chatops-poll";
 import { FirstChannels } from "./first-channels";
 import { HealthStrip } from "./health-strip";
 import { InstallJourney } from "./install-journey";
+import { MirrorCard } from "./mirror-card";
+import type { MirrorPollOptions } from "./mirror-poll";
 import {
   CHANNELS_UNREAD,
   CHATOPS_ENDPOINT,
@@ -24,6 +27,8 @@ import {
   UNREAD_HEADLINE,
   channelsBody,
   journeyFor,
+  mirrorAddress,
+  mirrorChannel,
   offersAddChannel,
   openChannelLink,
   showsHealth,
@@ -41,6 +46,10 @@ export interface ChatOpsScreenProps {
   readonly readAt: string;
   /** Test seams for the page's poll. */
   readonly poll?: ChatOpsPollOptions;
+  /** The channel the address names (`?channel=<id>`), whose mirror is shown — or none. */
+  readonly channel?: string | null;
+  /** Test seams for the channel mirror's poll and its earlier read. */
+  readonly mirror?: MirrorPollOptions;
 }
 
 /** What a write on this page answered, held until the poll's next answer replaces it. */
@@ -67,7 +76,14 @@ interface Written {
  * - no app on the deployment, or an app this workspace has not installed → the install journey;
  * - a connection that exists — working, revoked or failing → the health strip under the head;
  * - connected, and no channel has a purpose → the post-install step, *Bind your first channels*;
- * - connected, with bound channels → the list of them, each with its way out to Slack.
+ * - connected, with bound channels → the **channel mirror** (CA.2,
+ *   [#542](https://github.com/NobuData/ouroboros/issues/542)) in the main column — our record of
+ *   what was published to one of them — and the list of them beside it, each with its way out to
+ *   Slack and its way to show its own mirror.
+ *
+ * **Which mirror shows is in the address.** `?channel=<id>` names it; without one, or with one
+ * that is not a bound channel, it is the first bound channel's. Choosing a row rewrites the
+ * address in place, so a reload — and a link sent to somebody — shows the same channel.
  *
  * **It stays true without a reload.** One poll re-reads the connection and the channels every
  * cadence, so a connection Slack revoked shows on the strip by itself. A write made here — a
@@ -78,10 +94,18 @@ interface Written {
  * @param props See {@link ChatOpsScreenProps}.
  * @returns The screen.
  */
-export function ChatOpsScreen({ page: initial, mayAdminister, readAt, poll }: ChatOpsScreenProps) {
+export function ChatOpsScreen({
+  page: initial,
+  mayAdminister,
+  readAt,
+  poll,
+  channel: named = null,
+  mirror,
+}: ChatOpsScreenProps) {
   const { snapshot, refresh } = useKeyedPoll(CHATOPS_ENDPOINT, () => createChatOpsPoll(poll));
   const [written, setWritten] = useState<Written | null>(null);
   const [picker, setPicker] = useState<{ readonly preset: ChannelPurpose | null } | null>(null);
+  const [wanted, setWanted] = useState<string | null>(named);
   const journeyTitle = useId();
   const channelsTitle = useId();
 
@@ -107,6 +131,16 @@ export function ChatOpsScreen({ page: initial, mayAdminister, readAt, poll }: Ch
     refresh();
   }
 
+  /**
+   * Show a channel's mirror, and say so in the address.
+   *
+   * @param id The channel.
+   */
+  function showMirror(id: string): void {
+    setWanted(id);
+    window.history.replaceState(window.history.state, "", mirrorAddress(id));
+  }
+
   const onChannels = (channels: SlackChannels) => land({ channels });
   const onVerified = (verification: SlackVerification) => land({ connection: verification.connection });
 
@@ -128,6 +162,8 @@ export function ChatOpsScreen({ page: initial, mayAdminister, readAt, poll }: Ch
 
   const journey = journeyFor(page.connection);
   const body = channelsBody(page);
+  // An unbound page has no mirror: that is the post-install step's journey, not this card's.
+  const mirrored = body === "bound" && page.channels.ok ? mirrorChannel(page.channels.value.channels, wanted) : null;
 
   return (
     <main className="chatops">
@@ -142,7 +178,7 @@ export function ChatOpsScreen({ page: initial, mayAdminister, readAt, poll }: Ch
         <HealthStrip connection={page.connection} mayAdminister={mayAdminister} now={now} onVerified={onVerified} />
       )}
 
-      <div className="chatops__body">
+      <div className={cx("chatops__body", mirrored !== null && "chatops__body--wide")}>
         {journey !== null && (
           <InstallJourney
             connection={page.connection}
@@ -159,12 +195,29 @@ export function ChatOpsScreen({ page: initial, mayAdminister, readAt, poll }: Ch
           />
         )}
         {body === "bound" && page.channels.ok && (
-          <BoundChannels
-            channels={page.channels.value.channels}
-            mayAdminister={mayAdminister}
-            onChanged={onChannels}
-            titleId={channelsTitle}
-          />
+          <div className="chatops__columns">
+            {mirrored !== null && (
+              <div className="chatops__main">
+                <MirrorCard
+                  appVersion={page.connection.appVersion}
+                  channel={mirrored}
+                  key={mirrored.id}
+                  poll={mirror}
+                  readAt={readAt}
+                />
+              </div>
+            )}
+            <div className="chatops__side">
+              <BoundChannels
+                channels={page.channels.value.channels}
+                mayAdminister={mayAdminister}
+                onChanged={onChannels}
+                onShow={showMirror}
+                shown={mirrored?.id ?? null}
+                titleId={channelsTitle}
+              />
+            </div>
+          </div>
         )}
         {body === "unread" && !page.channels.ok && (
           <Card>

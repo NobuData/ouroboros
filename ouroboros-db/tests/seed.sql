@@ -7865,6 +7865,30 @@ select pg_temp.must_hold(
     where c.id = '5eed009c-0000-4000-8000-000000000202'),
   'the dry-run command''s reply names issue #486 as a live ref and the feature-loop workflow, which exists');
 
+-- What each command said at once is kept on its row (#542, V137): the status line is built from
+-- the figures its reply message stores, and the dry run's acknowledgement links the Copilot page.
+select pg_temp.must_hold(
+  (select c.reply ->> 'text'
+            = format('%s %s live · %s queued · farm %s/%s online · spend today $%s · needs-you: %s',
+                     m.facts ->> 'loops_live',
+                     case (m.facts ->> 'loops_live')::bigint when 1 then 'loop' else 'loops' end,
+                     m.facts ->> 'queued',
+                     (select count(*) from ouroboros.runners r
+                       where r.organization_id = c.organization_id
+                         and r.status in ('online', 'building', 'draining')),
+                     (select count(*) from ouroboros.runners r
+                       where r.organization_id = c.organization_id and r.status <> 'removed'),
+                     to_char(coalesce((m.facts ->> 'spend_today_cents')::numeric, 0) / 100, 'FM999999990.00'),
+                     m.facts ->> 'needs_you')
+          and not c.reply ? 'link'
+     from ouroboros.chat_commands c
+     join ouroboros.chat_messages m on m.id = (c.result_ref ->> 'message')::uuid
+    where c.id = '5eed009c-0000-4000-8000-000000000201')
+  and (select c.reply ->> 'text' like 'Dry run started — no writes, no PRs.%'
+              and c.reply -> 'link' = '{"label": "Workflow Copilot", "url": "/workflows/feature-loop/copilot"}'::jsonb
+         from ouroboros.chat_commands c where c.id = '5eed009c-0000-4000-8000-000000000202'),
+  'each seeded command keeps what it said at once: the status line from its reply''s own figures, and the dry run''s acknowledgement with its Workflow Copilot link (#542)');
+
 select pg_temp.must_hold(
   (select (m.facts ->> 'passed')::int = tr.passed and (m.facts ->> 'total')::int = tr.total and tr.passed = tr.total
      from ouroboros.chat_messages m

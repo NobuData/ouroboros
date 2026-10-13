@@ -163,11 +163,23 @@ describe("a console command on the wire", () => {
             command: "dry-run",
             raw_text: "/ouro dry-run #486",
             invoked_at: new Date("2026-10-12T16:00:00.000Z"),
+            reply: { text: "Rehearsing standard-fix on #486 with no writes — the result follows." },
             ...state,
           }),
         ),
       ),
     ).toBeUndefined();
+  });
+
+  it("documents the channel a command typed under a mirror names (#542)", () => {
+    const body = validatorFor("ChatCommandRequest");
+
+    expect(
+      body({ text: "status", channelId: "5eed009c-0000-4000-8000-0000000000a1" }),
+    ).toBeUndefined();
+    expect(body({ text: "status", channelId: null })).toBeUndefined();
+    expect(body({ text: "status", channelId: "loops" })).toBeDefined();
+    expect(body({ text: "status", channel: "loops" })).toBeDefined();
   });
 
   it("documents the body's bound as the route enforces it", () => {

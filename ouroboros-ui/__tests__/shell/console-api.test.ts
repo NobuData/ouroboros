@@ -63,7 +63,7 @@ describe("running a line", () => {
   it("posts what was typed after the prefix", async () => {
     const one = client(result());
 
-    expect(await consoleApi.run("status", one.client)).toEqual(result());
+    expect(await consoleApi.run("status", {}, one.client)).toEqual(result());
     expect(one.verbs.POST.mock.calls[0]).toEqual([
       "/api/v1/chat/commands",
       { body: { text: "status" } },

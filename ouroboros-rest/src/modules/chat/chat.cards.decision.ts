@@ -295,18 +295,39 @@ export function resolvedDecisionCard(
 }
 
 /**
+ * An answer, as a sentence says it: the kind's own label for the action, without its arrow and
+ * lower-cased — or the action id in words, for an action the kind does not declare.
+ *
+ * @param kind - The kind the decision is pinned to.
+ * @param actionId - The action it was answered with.
+ * @returns `allow once`.
+ */
+export function answeredWords(
+  kind: Pick<PublishedDecisionKind, "actions">,
+  actionId: string,
+): string {
+  const action = kind.actions.find((candidate) => candidate.id === actionId);
+
+  return action === undefined
+    ? actionId.replace(/_/g, " ")
+    : action.label.replace(/\s*[→↗]\s*$/, "").toLowerCase();
+}
+
+/**
  * The line posted under a card once it is answered.
  *
  * It names the action by the kind's own label, lower-cased as a sentence reads it, and what the
  * decision was about. It claims no effect — *resumed*, *merged* — that this service did not
  * observe.
  *
- * @param subject - The decision.
+ * @param subject - The decision: its kind's actions, for the label, and its refs.
  * @param resolution - How it ended.
  * @returns `✓ Maya Chen answered: allow once — loop #1851`.
  */
 export function decisionSystemLine(
-  subject: Pick<DecisionCardSubject, "kind" | "refs">,
+  subject: Pick<DecisionCardSubject, "refs"> & {
+    readonly kind: Pick<PublishedDecisionKind, "actions">;
+  },
   resolution: DecisionCardResolution,
 ): ChatSystemLine {
   const about = (subject.refs.find((ref) => ref.type === "run") ?? subject.refs[0])?.label;
@@ -316,14 +337,10 @@ export function decisionSystemLine(
     return { kind: "line", text: `${ANSWERED_MARK} ${resolutionFootnote(resolution)}${tail}` };
   }
 
-  const action = subject.kind.actions.find((candidate) => candidate.id === resolution.actionId);
-  const said =
-    action === undefined
-      ? resolution.actionId.replace(/_/g, " ")
-      : action.label.replace(/\s*[→↗]\s*$/, "").toLowerCase();
-
   return {
     kind: "line",
-    text: `${ANSWERED_MARK} ${resolution.actorName ?? "Someone"} answered: ${said}${tail}`,
+    text:
+      `${ANSWERED_MARK} ${resolution.actorName ?? "Someone"} answered: ` +
+      `${answeredWords(subject.kind, resolution.actionId)}${tail}`,
   };
 }

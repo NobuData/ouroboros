@@ -14,6 +14,8 @@
  * chat.composer.ts           what an intent says, from current facts
  * chat.escalation.ts         due timers ─▶ item escalated, cards annotated, on-call DMed (#538)
  * chat.answers.ts            a button press ─▶ the inbox's action executor, as its presser (#538)
+ * chat.record.ts             what an event card's row records, and how it is read back — by the
+ *                            channel mirror (`chat-mirror/`, #542), which redraws these cards
  * ```
  *
  * The backend is bound to Slack's here and nowhere else: a second platform (#547) is a second

@@ -182,6 +182,10 @@ health, and binding a channel to a purpose — which points that purpose's defau
 The bot is not given `channels:join`: add it to a channel with `/invite @Ouroboros` before
 binding.
 
+CA.2 (#542) delivers the **channel mirror** on that page: Ouroboros's own record of what it
+published to a bound channel and the commands run there, with a box that runs `/ouro` commands
+(recorded with the channel, never posted to Slack).
+
 Where a message goes is the workspace's notification routes. A route is bound to a channel on the
 Chat Ops page (#541). Build-green and
 build-failed cards are rendered and tested but nothing reports a build result to publish yet.
