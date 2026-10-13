@@ -624,6 +624,25 @@ check_break 'a variable a module documents but the template omits is reported' \
   'declares OURO_LOG_LEVEL' \
   'sed -i "/OURO_LOG_LEVEL=/d" "$root/.env.example"'
 
+# Optional variables whose safe default is "unset" are offered as a commented-out
+# assignment, since the parser refuses an empty value. That satisfies a README — but not
+# the compose stack, which interpolates what a copied template actually carries.
+check_holds 'a documented variable the template offers commented out passes' \
+  'sed -i "s/^OURO_LOG_LEVEL=/# OURO_LOG_LEVEL=/" "$root/.env.example"
+   sed -i "/OURO_LOG_LEVEL/d" "$root/docker-compose.yml"'
+
+check_break 'a variable the compose stack reads cannot be left commented out' \
+  'declares OURO_DB_SCHEMA' \
+  'sed -i "s/^OURO_DB_SCHEMA=/# OURO_DB_SCHEMA=/" "$root/.env.example"'
+
+check_break 'a variable that is only mentioned in a comment is still undeclared' \
+  'declares OURO_LOG_LEVEL' \
+  'sed -i "s/^OURO_LOG_LEVEL=.*/# See OURO_LOG_LEVEL in the README./" "$root/.env.example"
+   sed -i "/OURO_LOG_LEVEL/d" "$root/docker-compose.yml"'
+
+check_holds 'a name a README spells out that is not configuration passes' \
+  'printf "\n\`OURO_WORKFLOW_SKILL_SUGGESTIONS\` is retired.\n    OURO_UPDATE_GOLDENS=1 yarn jest\n" >> "$root/ouroboros-db/README.md"'
+
 check_break 'a .gitignore that would commit a real .env is reported' \
   'keeps real \.env files out of git' \
   'sed -i "/^\.env$/d" "$root/.gitignore"'

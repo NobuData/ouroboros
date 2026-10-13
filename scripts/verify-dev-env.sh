@@ -325,9 +325,30 @@ done
 # § 4 lets a library's own canonical variable keep its own name, and a pattern that only
 # knew about OURO_ would stop checking a variable the moment it became an exception —
 # which is the moment it most needs checking (issue #700).
+#
+# A documented variable need not be *set* by the template, only offered by it. The parser
+# refuses an empty value, so a variable whose only safe default is "unset" — an SSRF
+# allowlist, a header the service would trust — is written as a commented-out assignment
+# under its prose, and that counts here. It does not count for the compose loop above:
+# what the stack interpolates has to be a value a copied template really carries.
+offered=$(grep -oE '^#[[:space:]]*(OURO_|BETTER_AUTH_)[A-Z0-9_]+=' "$ENV_EXAMPLE" 2>/dev/null |
+  grep -oE '[A-Z][A-Z0-9_]+' | sort -u || true)
+
+# Names a README spells out that are not configuration, so the template owes them nothing:
+# a switch only the test runner reads, set on the one command that regenerates goldens,
+# and a variable named in order to say it is retired. A list rather than a pattern, so
+# that a variable leaves the template through a decision.
+NOT_CONFIGURATION='OURO_UPDATE_GOLDENS OURO_WORKFLOW_SKILL_SUGGESTIONS'
+
 for name in $(cat ouroboros-*/README.md docs/CONVENTIONS.md 2>/dev/null |
   grep -oE '(OURO_|BETTER_AUTH_)[A-Z0-9_]+' | sort -u); do
-  check_declared "$name" 'documented by a module'
+  case " $NOT_CONFIGURATION " in *" $name "*) continue ;; esac
+  if printf '%s\n' "$declared" | grep -qx -- "$name" ||
+    ! printf '%s\n' "$offered" | grep -qx -- "$name"; then
+    check_declared "$name" 'documented by a module'
+  else
+    pass "$ENV_EXAMPLE declares $name (documented by a module, left unset)"
+  fi
 done
 
 printf '\nSecret hygiene\n'
