@@ -1,0 +1,297 @@
+{
+  "about": "What Slack receives for each chat archetype, from real rows through the outbox, the composer and the Block Kit backend (#540). Regenerate with OURO_UPDATE_GOLDENS=1 yarn test:integration src/modules/slack/slack.goldens.integration-spec.ts",
+  "cases": {
+    "blocking_question_open": {
+      "text": "⏸ Allow a one-time edit to a protected path?",
+      "blocks": [],
+      "attachments": [
+        {
+          "color": "#d9a13a",
+          "fallback": "⏸ Allow a one-time edit to a protected path?",
+          "blocks": [
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*⏸ Allow a one-time edit to a protected path?*"
+              }
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "Fix flaky CAN-bus telemetry test wants to change three lines to boot/rollback_flag.c — a protected path. Diff is 3 lines, shown in the run console.\nloop #1 · boot/rollback_flag.c"
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "action_id": "ouro_answer:allow_once",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Allow once",
+                    "emoji": true
+                  },
+                  "value": "<signed>",
+                  "style": "primary"
+                },
+                {
+                  "type": "button",
+                  "action_id": "ouro_link:view_diff",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "View diff →",
+                    "emoji": true
+                  },
+                  "url": "http://localhost:3000/runs/<uuid>#run-changes"
+                },
+                {
+                  "type": "button",
+                  "action_id": "ouro_answer:deny",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Deny",
+                    "emoji": true
+                  },
+                  "value": "<signed>"
+                },
+                {
+                  "type": "button",
+                  "action_id": "ouro_link:edit_protected_paths",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Edit protected paths →",
+                    "emoji": true
+                  },
+                  "url": "http://localhost:3000/knowledge#repo-profile"
+                }
+              ]
+            },
+            {
+              "type": "context",
+              "elements": [
+                {
+                  "type": "mrkdwn",
+                  "text": "paused 4m · escalates to the Needs-you inbox in 26m"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "blocking_question_resolved": {
+      "text": "✓ Allow a one-time edit to a protected path?",
+      "blocks": [],
+      "attachments": [
+        {
+          "color": "#8a94a3",
+          "fallback": "✓ Allow a one-time edit to a protected path?",
+          "blocks": [
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*✓ Allow a one-time edit to a protected path?*"
+              }
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "Fix flaky CAN-bus telemetry test wants to change three lines to boot/rollback_flag.c — a protected path. Diff is 3 lines, shown in the run console.\nloop #1 · boot/rollback_flag.c"
+              }
+            },
+            {
+              "type": "context",
+              "elements": [
+                {
+                  "type": "mrkdwn",
+                  "text": "Maya Chen answered: allowed once · in Ouroboros"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "system_line": {
+      "text": "✓ Maya Chen answered: allow once — loop #1",
+      "blocks": [
+        {
+          "type": "context",
+          "elements": [
+            {
+              "type": "mrkdwn",
+              "text": "✓ Maya Chen answered: allow once — loop #1"
+            }
+          ]
+        }
+      ],
+      "attachments": []
+    },
+    "loop_finished": {
+      "text": "✓ Loop #1 finished — PR #512 merged",
+      "blocks": [],
+      "attachments": [
+        {
+          "color": "#2f9e6b",
+          "fallback": "✓ Loop #1 finished — PR #512 merged",
+          "blocks": [
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*✓ Loop #1 finished — PR #512 merged*"
+              }
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "#482 Fix flaky CAN-bus telemetry test"
+              }
+            },
+            {
+              "type": "context",
+              "elements": [
+                {
+                  "type": "mrkdwn",
+                  "text": "`14/14 checks · 11m cycle · claude-fable-5`"
+                }
+              ]
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "action_id": "ouro_link:run_console",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Run console",
+                    "emoji": true
+                  },
+                  "url": "http://localhost:3000/runs/<uuid>"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "build_green": {
+      "text": "⟳ Loop #1847 build 3 green — 63/63 · publishing PR #514 rev 2",
+      "blocks": [],
+      "attachments": [
+        {
+          "color": "#3a8fd9",
+          "fallback": "⟳ Loop #1847 build 3 green — 63/63 · publishing PR #514 rev 2",
+          "blocks": [
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*⟳ Loop #1847 build 3 green — 63/63 · publishing PR #514 rev 2*"
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "action_id": "ouro_link:run_console",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Run console",
+                    "emoji": true
+                  },
+                  "url": "http://localhost:3000/runs/<uuid>"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "build_failed": {
+      "text": "✕ Loop #1847 build 3 failed — 2 of 63 failing",
+      "blocks": [],
+      "attachments": [
+        {
+          "color": "#d9534f",
+          "fallback": "✕ Loop #1847 build 3 failed — 2 of 63 failing",
+          "blocks": [
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*✕ Loop #1847 build 3 failed — 2 of 63 failing*"
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "action_id": "ouro_link:run_console",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Run console",
+                    "emoji": true
+                  },
+                  "url": "http://localhost:3000/runs/<uuid>"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "digest": {
+      "text": "✦ Weekly insights — Nothing to report this week.",
+      "blocks": [],
+      "attachments": [
+        {
+          "color": "#8a94a3",
+          "fallback": "✦ Weekly insights — Nothing to report this week.",
+          "blocks": [
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*✦ Weekly insights — Nothing to report this week.*"
+              }
+            },
+            {
+              "type": "actions",
+              "elements": [
+                {
+                  "type": "button",
+                  "action_id": "ouro_link:open_insights",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "Open Insights",
+                    "emoji": true
+                  },
+                  "url": "http://localhost:3000/insights?range=7d"
+                }
+              ]
+            },
+            {
+              "type": "context",
+              "elements": [
+                {
+                  "type": "mrkdwn",
+                  "text": "Dec 26 – Jan 1, 2024"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
