@@ -80,7 +80,7 @@ function box(): HTMLInputElement {
 }
 
 describe("where the cards sit", () => {
-  it("is the side column: commands, then what gets published where, then the bound channels", () => {
+  it("is the side column: commands, what gets published where, AI presence, then the bound channels", () => {
     render(<Screen />);
 
     const side = document.querySelector(".chatops__side")!;
@@ -88,8 +88,26 @@ describe("where the cards sit", () => {
     expect([...side.children].map((card) => card.getAttribute("aria-labelledby")).map((id) => document.getElementById(id!)!.textContent)).toEqual([
       "COMMANDS",
       "WHAT GETS PUBLISHED WHERE",
+      "AI PRESENCE",
       BOUND_TITLE,
     ]);
+  });
+
+  it("points the AI-presence preview at the commands card that is on the page", () => {
+    render(<Screen />);
+
+    const pointer = within(screen.getByRole("region", { name: "AI PRESENCE" })).getByRole("link", {
+      name: "today, the /ouro commands do this deterministically →",
+    });
+    const target = document.getElementById(pointer.getAttribute("href")!.slice(1));
+
+    expect(target).toBe(screen.getByRole("region", { name: "COMMANDS" }));
+  });
+
+  it("keeps the AI-presence preview when no mirror can be shown", () => {
+    render(<Screen page={{ ok: true, value: { ...BOUND, grammar: { ok: false, reason: "The grammar could not be loaded." } } }} />);
+
+    expect(screen.getByRole("region", { name: "AI PRESENCE" })).toBeInTheDocument();
   });
 
   it("shows Manage in Settings once — in the routing card", () => {
@@ -106,6 +124,7 @@ describe("where the cards sit", () => {
 
     expect(screen.queryByRole("region", { name: "COMMANDS" })).toBeNull();
     expect(screen.queryByRole("region", { name: "WHAT GETS PUBLISHED WHERE" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "AI PRESENCE" })).toBeNull();
     expect(screen.getByRole("link", { name: "Manage in Settings →" }).closest(".chatops__foot")).not.toBeNull();
   });
 

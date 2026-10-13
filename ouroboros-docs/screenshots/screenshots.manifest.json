@@ -702,6 +702,18 @@
       "seedRef": "5f173b1ea15e6858e9fc639f74e2e0048959526a"
     },
     {
+      "id": "user-guide.chatops.ai-preview",
+      "route": "/chatops",
+      "workspace": "acme-robotics",
+      "ready": ".chatops-presence .chatops-mirror__msg",
+      "clip": ".chatops-presence",
+      "caption": "The AI presence card: a preview of asking Ouroboros in plain words, which is not available yet.",
+      "alt": "The AI PRESENCE card, marked preview and arrives with AI presence (#546): inside a dashed frame, Ken asking why did #479 take 38 minutes? at 14:36 and Ouroboros answering that 11 of those minutes were queue time on pool-a, with a dimmed Apply button, an Open Analyzer link and the note Apply is part of the preview — it arrives with AI presence (#546); a faint line reading applied, policy-checked, audit-logged between dashed rules; then the caption When it lands: anything the UI can do, a sentence can do — same permissions, same audit trail, and the link today, the /ouro commands do this deterministically.",
+      "capturedAt": "2026-10-13T14:44:57.052Z",
+      "uiVersion": "0.161.0",
+      "seedRef": "0841e110257416a38b0da4f21c42e1109c180fbc"
+    },
+    {
       "id": "user-guide.chatops.console",
       "route": "/dashboard",
       "workspace": "acme-robotics",

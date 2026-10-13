@@ -1,0 +1,137 @@
+/*
+ * The Chat Ops page's AI-presence card (CA.4,
+ * [#544](https://github.com/NobuData/ouroboros/issues/544)) — mockup 19's `.mini-thread` and its
+ * `.caption`, in the #16 tokens, and the treatments that mark it a preview.
+ *
+ * The messages themselves are the mirror's (`chatops-mirror.css`, through `message.tsx`); this
+ * sheet is only what the card adds around them. Every length is a rem or a hairline, every size
+ * and hue a token, and every line wraps. Nothing here scrolls, and nothing is positioned.
+ */
+
+.chatops-presence {
+  min-width: 0;
+}
+
+/* ---------- the watermark: the chip and the arrival label, against the title ---------- */
+
+.chatops-presence__mark {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
+  min-width: 0;
+}
+
+/* In the warning hue: the mirror's chip is the accent, and this card is not that kind of real. */
+.chatops-presence__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--sp-1) var(--sp-4);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-sm);
+  background: var(--warn-tint);
+  color: var(--warn);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.chatops-presence__arrives {
+  min-width: 0;
+  color: var(--warn);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- the thread (`.mini-thread`) ---------- */
+
+.chatops-presence__thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  min-width: 0;
+}
+
+/* An illustration sits in a dashed frame: no live surface on the page has one. */
+.chatops-presence__thread--preview {
+  padding: var(--sp-6);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+}
+
+.chatops-presence__said {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.chatops-presence__text {
+  min-width: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* Why Apply is inert, in words: a keyboard and a touch screen have no hover to read a tooltip on. */
+.chatops-presence__why {
+  min-width: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/*
+ * The illustrated system line. The mirror's is green between solid rules, because it happened;
+ * this one is faint and italic between dashed rules, because it did not.
+ */
+.chatops-presence__sys {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  padding: 0 var(--sp-2);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
+.chatops-presence__sys::before,
+.chatops-presence__sys::after {
+  flex: 1;
+  min-width: var(--sp-6);
+  border-top: 1px dashed var(--line-strong);
+  content: "";
+}
+
+/* ---------- the caption (`.caption`) and the pointer to today ---------- */
+
+.chatops-presence__caption,
+.chatops-presence__today {
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.chatops-presence__caption {
+  margin: var(--sp-6) 0 0;
+  color: var(--ink-faint);
+}
+
+.chatops-presence__today {
+  margin: var(--sp-2) 0 0;
+}
+
+.chatops-presence__today-link {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.chatops-presence__code {
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}

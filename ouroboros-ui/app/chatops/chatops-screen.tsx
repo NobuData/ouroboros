@@ -15,6 +15,7 @@ import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
 import { Button, Card, EmptyState, RetryBanner } from "@/app/ui";
 import { cx } from "@/app/ui/class-names";
 
+import { AiPresenceCard } from "./ai-presence-card";
 import { BoundChannels } from "./bound-channels";
 import { ChannelPicker } from "./channel-picker";
 import { ChatOpsHead } from "./chatops-head";
@@ -94,7 +95,8 @@ interface Written {
  *   [#542](https://github.com/NobuData/ouroboros/issues/542)) in the main column — our record of
  *   what was published to one of them — and beside it the **commands** generated from the
  *   registry, **what gets published where** (CA.3,
- *   [#543](https://github.com/NobuData/ouroboros/issues/543)) and the list of the channels, each
+ *   [#543](https://github.com/NobuData/ouroboros/issues/543)), the **AI-presence** preview (CA.4,
+ *   [#544](https://github.com/NobuData/ouroboros/issues/544)) and the list of the channels, each
  *   with its way out to Slack and its way to show its own mirror.
  *
  * **Which mirror shows is in the address.** `?channel=<id>` names it; without one, or with one
@@ -127,6 +129,7 @@ export function ChatOpsScreen({
   const channelsTitle = useId();
   const commandsTitle = useId();
   const routingTitle = useId();
+  const presenceTitle = useId();
   /** The mirror's composer, for the commands card's **Try it**. */
   const composer = useRef<MirrorComposerHandle>(null);
 
@@ -260,6 +263,8 @@ export function ChatOpsScreen({
                 routes={page.routes}
                 titleId={routingTitle}
               />
+              {/* The designed preview until #546 hands it a live source — see presence-view.ts. */}
+              <AiPresenceCard titleId={presenceTitle} />
               <BoundChannels
                 channels={page.channels.value.channels}
                 mayAdminister={mayAdminister}

@@ -1788,6 +1788,6 @@ Requires a test Slack workspace — provision it during P14 so this phase is not
 | 449 | **BZ.5** | ✅ [#539](https://github.com/NobuData/ouroboros/issues/539) | In-app command console | ouroboros-ui | M | H.3, BZ.3 |
 | 450 | **CA.2** | ✅ [#542](https://github.com/NobuData/ouroboros/issues/542) | Channel mirror card | ouroboros-ui | L | BZ.2, CA.1 |
 | 451 | **CA.3** | ✅ [#543](https://github.com/NobuData/ouroboros/issues/543) | Commands & routing cards | ouroboros-ui | M | BR.4, BZ.3, CA.1 |
-| 452 | **CA.4** | [#544](https://github.com/NobuData/ouroboros/issues/544) | AI-presence card & honest preview | ouroboros-ui | S | CA.1 |
+| 452 | **CA.4** | ✅ [#544](https://github.com/NobuData/ouroboros/issues/544) | AI-presence card & honest preview | ouroboros-ui | S | CA.1 |
 | 453 | **BZ.6** | [#540](https://github.com/NobuData/ouroboros/issues/540) | ChatOps integration tests | ouroboros-rest | M | BZ.1, BZ.5 |
 | 454 | **CA.5** | [#545](https://github.com/NobuData/ouroboros/issues/545) | ChatOps states & e2e leg | ouroboros-ui, .github | M | CA.2, CA.4 |
