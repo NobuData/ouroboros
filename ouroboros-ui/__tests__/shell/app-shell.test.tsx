@@ -32,6 +32,11 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/app/shell/actions", () => ({ signOutOfSession: vi.fn() }));
+
+/** The console's Server Actions, which sit over a `server-only` client (#539). */
+vi.mock("@/app/shell/console-actions", async () =>
+  (await import("../helpers/console")).consoleActionsModule(),
+);
 // The paused banner's resume is a Server Action over the server-only client (#496). What the
 // banner does with it is `__tests__/lifecycle/lifecycle-banner.test.tsx`'s.
 vi.mock("@/app/lifecycle/lifecycle-actions", () => ({ resumeWorkspace: vi.fn() }));
@@ -69,6 +74,19 @@ describe("the app shell", () => {
     expect(screen.getByRole("banner")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Primary" })).toBeInTheDocument();
     expect(document.getElementById(CONTENT_ID)).not.toBeNull();
+  });
+
+  it("seats the results of commands outside the pane, empty until one arrives (#539)", () => {
+    renderThemed(
+      <AppShell>
+        <p>page</p>
+      </AppShell>,
+    );
+
+    const seat = screen.getByRole("status", { name: "Command results" });
+
+    expect(seat).toBeEmptyDOMElement();
+    expect(document.getElementById(CONTENT_ID)).not.toContainElement(seat);
   });
 
   it("renders the page inside the scrolling pane", () => {

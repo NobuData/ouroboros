@@ -7967,6 +7967,12 @@ export type ChatCommandSurface = "slack" | "console";
 /** `chat_commands.outcome` (V131) — `async_pending` exactly while `completed_at` is null. */
 export type ChatCommandOutcome = "ok" | "error" | "denied" | "unlinked" | "async_pending";
 
+/** `chat_commands.settled_reply` (V136) — a reply's text and its one link, as every surface draws it. */
+export interface ChatSettledReply {
+  text: string;
+  link?: { label: string; url: string };
+}
+
 /**
  * `ouroboros.chat_commands` — every `/ouro` command invoked (V131,
  * [#532](https://github.com/NobuData/ouroboros/issues/532)); written by the dispatcher
@@ -7976,13 +7982,22 @@ export type ChatCommandOutcome = "ok" | "error" | "denied" | "unlinked" | "async
 export interface ChatCommandsTable {
   id: Generated<string>;
   organization_id: string;
-  connection_id: string;
-  /** The `chat_channels` row it was typed in; null for a DM or a channel the app has not joined. */
+  /** The connection a Slack command arrived through; null for a console command (V136, #539). */
+  connection_id: string | null;
+  /**
+   * The `chat_channels` row it was typed in; null for a DM or a channel the app has not joined,
+   * and always for a console command.
+   */
   channel_id: string | null;
-  /** The invoker's identity link; null for an unlinked attempt. */
+  /** The invoker's identity link; null for an unlinked attempt, and always for a console command. */
   invoker_link_id: string | null;
-  /** The platform's id for whoever typed it — always present on the slack surface. */
+  /** The platform's id for whoever typed it — always on the slack surface, never on the console. */
   platform_user_id: string | null;
+  /**
+   * The person the command acted as (V136): the session's person in the console, the linked
+   * person in Slack. Null for an unlinked Slack attempt, and once the person is deleted.
+   */
+  invoker_user_id: string | null;
   surface: ChatCommandSurface;
   /** The command as dispatched — `status`, `pause all`. */
   command: string;
@@ -7995,6 +8010,11 @@ export interface ChatCommandsTable {
   audit_event_id: string | null;
   invoked_at: ColumnType<Date, Date | undefined, Date>;
   completed_at: Date | null;
+  /**
+   * What an asynchronous command said when it finished (V136) — written when an `async_pending`
+   * row settles; null for a command that answered at once.
+   */
+  settled_reply: ColumnType<ChatSettledReply | null, string | null | undefined, string | null>;
 }
 
 export interface Database {
@@ -8882,6 +8902,8 @@ export const TABLE_COLUMNS = {
     "audit_event_id",
     "invoked_at",
     "completed_at",
+    "invoker_user_id",
+    "settled_reply",
   ],
   chat_outbox: [
     "id",

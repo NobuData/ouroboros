@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { commandContext } from "../helpers/command";
 import { navEntry } from "../helpers/nav";
+import { matchCommandActions } from "@/app/shell/command";
 import { commandSources } from "@/app/shell/command-registry";
 import {
   ACTIONS_GROUP,
   NAVIGATION_GROUP,
   SEEDED_COMMAND_SOURCES,
+  consoleCommands,
   navigationCommands,
   sessionCommands,
 } from "@/app/shell/command-sources";
@@ -169,6 +171,44 @@ describe("the sign-out command", () => {
 
     for (const row of sessionCommands.list?.(context) ?? []) {
       expect(row.group).toBe(ACTIONS_GROUP);
+    }
+  });
+});
+
+describe("the way into command mode (#539)", () => {
+  it("is one row, under its own heading, between the screens and the shell's commands", () => {
+    const { context } = commandContext();
+    const [row, ...rest] = consoleCommands.list!(context);
+
+    expect(rest).toEqual([]);
+    expect(row).toMatchObject({
+      id: "console:enter",
+      label: "Run a command",
+      group: "Commands",
+      hint: "/ouro",
+    });
+    expect(navigationCommands.sort).toBeLessThan(consoleCommands.sort);
+    expect(consoleCommands.sort).toBeLessThan(sessionCommands.sort);
+    expect(SEEDED_COMMAND_SOURCES).toContain(consoleCommands);
+  });
+
+  it("fills the prefix into the box, and keeps the palette open behind itself", () => {
+    const { context, fill, navigate } = commandContext();
+    const [row] = consoleCommands.list!(context);
+
+    row.run?.();
+
+    expect(fill).toHaveBeenCalledWith("/ouro ");
+    expect(navigate).not.toHaveBeenCalled();
+    expect(row).toMatchObject({ stays: true });
+  });
+
+  it("is reachable by the prefix itself, and by the words a reader would reach for", () => {
+    const { context } = commandContext();
+    const [row] = consoleCommands.list!(context);
+
+    for (const query of ["/ouro", "/ou", "command", "slack", "console"]) {
+      expect(matchCommandActions(query, [row])).toEqual([row]);
     }
   });
 });

@@ -52,7 +52,7 @@ check_matches "$out" 'PGPASSWORD' 'and names the variable that would fix it'
 printf '\nThe probes and the plants agree\n'
 
 marker_count=$(grep -c '^expect_red ' "$VERIFIER")
-check_equals 18 "$marker_count" 'the verifier plants eighteen violations'
+check_equals 19 "$marker_count" 'the verifier plants nineteen violations'
 
 # Every probe the issue lists, each named in the fragment and aimed at by a plant.
 for invariant in \
@@ -68,6 +68,7 @@ for invariant in \
   token_sealed \
   resolved_card_fixture \
   links_seeded \
+  command_invoker_recorded \
   stage_transitions_off; do
   check_contains "$FRAGMENT" "'$invariant: " "the fragment names the $invariant invariant"
   check_contains "$VERIFIER" "'$invariant: " "and the verifier plants a violation of it"

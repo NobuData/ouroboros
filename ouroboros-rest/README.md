@@ -4792,14 +4792,18 @@ yet* until #538.
 surface's commands take.
 
 ```
-GET /api/v1/chat/grammar             any member · the registry as a document
-GET /api/v1/chat/completions?text=   any member (a person) · what could be typed next
+GET  /api/v1/chat/grammar             any member · the registry as a document, with what the caller may run
+GET  /api/v1/chat/completions?text=   any member (a person) · what could be typed next
+POST /api/v1/chat/commands            any member (a person) · run what was typed in the console (#539)
+GET  /api/v1/chat/commands/{id}       the person who typed it · their own console command, for an async result
 
 grammar.registry.ts   the versioned registry: id, aliases, arguments, requirement, confirm, mode, stage
 grammar.parser.ts     tokens → command (longest name wins) → arguments, with errors that name the argument
 grammar.help.ts       /ouro help and the reference document, generated from the registry
-dispatcher.service.ts connection → help? → who → which → arguments → v2? → may they? → confirmed? → binding
+dispatcher.service.ts where from → help? → who → which → arguments → v2? → may they? → confirmed? → binding
+chatops.resources.ts  the caller's standing on each command, and the console routes' answers
 planes/               one binding per available command, the argument resolvers, the completion sources
+parity.fixture.ts     the invocations parity.spec.ts runs on both surfaces
 ```
 
 - **One definition.** A command is a registry entry plus a binding. The dispatcher refuses to
@@ -4825,17 +4829,63 @@ planes/               one binding per available command, the argument resolvers,
   shutdown; they do not survive a crash — there is no shared queue.
 - **`explain pr` is `stage: "v2"`**: listed, parsed, answered with its honest reply naming CB.1
   (#546), and bound to nothing.
-- **Every invocation with a connection is one `chat_commands` row and one `chat.command_invoked`
-  audit event** (webhook registry v11) carrying its chat provenance — surface, command, outcome,
-  connection, channel, platform user, grammar version; never the arguments or the text. `help`
-  runs nothing and records nothing.
+- **Every invocation is one `chat_commands` row and one `chat.command_invoked` audit event**
+  (webhook registry v11) carrying its provenance — surface, command, outcome, grammar version,
+  and for Slack the connection, channel and platform user; never the arguments or the text.
+  `invoker_user_id` (`V136`) is the person it acted as on both surfaces. `help` runs nothing and
+  records nothing, and a Slack workspace with no active connection has nowhere to record.
 - **`q-231`** is `decision_items.short_seq` (`V133`), assigned by the database per workspace.
 - **`chat-grammar.json` is committed**, like `openapi.json`: `yarn chat-grammar` re-renders it,
   `yarn chat-grammar --check` (run by `grammar.help.spec.ts`) fails when it has drifted, and the
   docs site's `tests/ouro.test.ts` holds the reference page to it.
 
-The console surface is #539: `DispatchInput` carries a Slack identity only, and a console
-dispatch answers *"Commands cannot be run from here yet."*
+### The in-app console
+
+> **Issue:** [#539](https://github.com/NobuData/ouroboros/issues/539) — *[BZ.5] In-app command
+> console* · schema `V136`
+
+The console is the second surface, and the only one with no adapter: `POST /api/v1/chat/commands`
+hands the text and the session to `ChatDispatcher.dispatch` — the call the Slack adapter makes.
+
+```
+slack    team ─▶ active connection ─▶ identity link ─▶ person ─▶ member ─┐
+console  session (workspace, person) ───────────────────────────▶ member ─┴─▶ the same path
+```
+
+- **Identity is the only difference.** `DispatchInput` is a Slack identity *or* a console session.
+  The console finds no connection and follows no link, so it has no `unlinked` outcome and works
+  in a workspace that never installed the Slack app. From the member onwards — arguments, the
+  `v2` reply, the permission check, the confirm rule, the binding, the reply — one code path.
+- **The route decides nothing about a command.** A command the caller may not run is a `200`
+  with `outcome: "denied"` and the sentence Slack gives, recorded and audited; so is an unknown
+  command, a bad argument, and a plane's refusal (`outcome: "error"`). `text` may carry the
+  `/ouro` prefix or not (1–2000 characters, trimmed); a bare `/ouro` is help.
+- **`confirmWith`.** A destructive command typed without `confirm` answers its preview and the
+  text that really does it — what was typed, then `confirm`. The dispatcher sets it on both
+  surfaces; Slack's reply already ends with the same text.
+- **What is recorded** (`V136`): `surface = 'console'`, `invoker_user_id` the session's person,
+  and no connection, channel, platform user or identity link. A reply is a `chat_messages` row
+  only where there is a channel, so the console writes none. The audit detail is `surface`,
+  `command`, `outcome`, `grammarVersion` — its provenance is the actor.
+- **An async result is kept on the row.** When `dry-run` settles, what it said is written to
+  `settled_reply` on both surfaces. Slack is also told through its `response_url`; the console
+  has no such address and polls `GET /api/v1/chat/commands/{id}` until `outcome` leaves
+  `async_pending`. That route answers only the caller's own console commands — anybody else's,
+  a Slack command and another workspace's are the same `404 chat_command_not_found`. A dry run
+  that fails *resolves*: the row settles `ok` and `settled_reply` says it failed; `error` is for
+  a result the plane refused or that never arrived.
+- **Denied commands are listed, not hidden.** `GET /api/v1/chat/grammar` adds `allowed` and
+  `deniedReason` to every command, computed per caller with the dispatcher's own `permitted`;
+  the reason is the phrase the refusal uses (*for workspace owners and admins*). They are laid
+  over the reference per request and never written to `chat-grammar.json`.
+- **An empty completion list says why.** `source` names the vocabulary that was asked, so
+  `argument` + `source` + `[]` is *nothing matches*, and `argument: null` is *nothing left to
+  type*.
+- **Parity is a test.** `parity.spec.ts` runs every invocation of `parity.fixture.ts` through
+  the dispatcher as a linked Slack user and as the same person's console session, and holds the
+  two to the same outcome, reply, recorded command, settled reply, audit event and binding
+  context — differing only in where the command came from. The one text that differs is the
+  `help` list, which prints each surface's own built-ins: `link` and `unlink` are Slack's.
 
 ## The chat publisher
 

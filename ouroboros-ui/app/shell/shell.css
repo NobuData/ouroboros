@@ -1668,3 +1668,299 @@ a.shell-nav__item--active:hover {
 .shell-palette__gap {
   padding-inline: var(--sp-2);
 }
+
+/* ---------- command mode ---------- */
+
+/*
+ * The palette in command mode (issue 539 — written without its hash for the reason the rail
+ * rule gives): the box starts with the prefix, the rows are the grammar's commands or an
+ * argument's completions, and the reply is drawn in a box under them.
+ *
+ * The rows are .shell-palette__option's in everything the keyboard cares about — the highlight
+ * above is the one they wear — so what is here is only what a command row *says*: mockup 19's
+ * COMMANDS card, the command in the mono face and the accent ink with its summary beside it.
+ *
+ * Nothing below has a height. Every one of these holds text, and text at the 125% font-size
+ * preference has to be able to take the room it needs (§ 4).
+ */
+
+/* A line is out: the box is held still and says so in its own border, as well as in words. */
+.shell-palette__box--pending {
+  border-style: dashed;
+  color: var(--ink-mut);
+}
+
+/*
+ * One command, or one completion. It wraps where the palette's ordinary row truncates: a usage
+ * line and a summary are both the point of the row, and at a narrow panel or a large type
+ * scale an ellipsis would hide whichever came second.
+ */
+.shell-console__row {
+  flex-wrap: wrap;
+  align-items: baseline;
+  row-gap: var(--sp-1);
+}
+
+/*
+ * A command the caller may not run: dimmed, and still a row the arrows land on. The reason
+ * beside it is what carries the meaning — the ink only agrees with it.
+ */
+.shell-console__row--denied {
+  color: var(--ink-faint);
+}
+
+/* What would be typed, in the face a command line is typed in. */
+.shell-console__usage {
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.shell-console__row--denied .shell-console__usage,
+.shell-console__named--denied .shell-console__usage {
+  color: var(--ink-mut);
+}
+
+/* What it does, against the right edge when the row has the room and under it when not. */
+.shell-console__summary {
+  flex: 1;
+  min-width: 10rem;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  text-align: end;
+}
+
+/* A command's stage, exactly as the grammar words it. */
+.shell-console__tag {
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/* Why the caller may not run it. The warning triple: nothing failed, and it should be read. */
+.shell-console__tag--denied {
+  border-color: var(--warn-line);
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+/* The command the line names, above its completions: the row's own arrangement, not a row. */
+.shell-console__named {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-4);
+  margin: 0;
+  padding-inline: var(--sp-4);
+}
+
+/* What the list says instead of rows. */
+.shell-console__note {
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The reply's seat: a live region that is there before its content, and no box until then. */
+.shell-console__seat:empty {
+  display: none;
+}
+
+.shell-console__running {
+  margin: 0;
+  padding-inline: var(--sp-4);
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/*
+ * The reply — mockup 19's boxed mono treatment: the inset ground, a hairline, the mono face
+ * in the dim ink. A column, so the mark, the reply, its link and its action each get a line.
+ */
+.shell-console__reply {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.shell-console__line,
+.shell-console__text,
+.shell-console__aside {
+  margin: 0;
+}
+
+/* The dispatcher's own words, with the line breaks it sent them with. */
+.shell-console__text {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* The line that was run. */
+.shell-console__ran {
+  color: var(--accent);
+  font-family: inherit;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * How it came out, as a word in a hairline box. The hue agrees with the word and is never the
+ * only thing saying it.
+ */
+.shell-console__mark {
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 500;
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.shell-console__mark--ok {
+  border-color: var(--ok-line);
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+.shell-console__mark--error {
+  border-color: var(--err-line);
+  background: var(--err-tint);
+  color: var(--err);
+}
+
+.shell-console__mark--denied,
+.shell-console__mark--preview {
+  border-color: var(--warn-line);
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+.shell-console__mark--pending {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+.shell-console__link {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* What the reader should know about the reply above it, in the body face. */
+.shell-console__aside {
+  color: var(--ink-mut);
+  font-family: var(--f-ui);
+  font-size: var(--t-2xs);
+}
+
+/* The confirm rule's one action and the sentence that says it has run nothing. */
+.shell-console__confirm {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+/* The dialog's own dismissal treatment: a quiet control, not the primary action of anything. */
+.shell-console__fill {
+  padding: var(--sp-2) var(--sp-4);
+  border: 1px solid var(--line-control);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  color: var(--ink-dim);
+  font: inherit;
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.shell-console__fill:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---------- command results ---------- */
+
+/*
+ * Where a command's result turns up when it arrives after the command was acknowledged
+ * (issue 539). The shell's own seat, because the result is no page's: placed against the
+ * viewport as an overlay is, and above one (80), so a result that lands while a dialog is open
+ * is not dimmed with the page behind it.
+ *
+ * Always mounted, so the live region exists before it has something to say; empty, it is no
+ * box at all — the page toasts' arrangement (the build farm's submit toast states it).
+ */
+.shell-toasts {
+  position: fixed;
+  z-index: 90;
+  inset-block-end: var(--sp-10);
+  inset-inline-end: var(--sp-10);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  width: min(26rem, calc(100vw - var(--sp-10) * 2));
+}
+
+.shell-toasts:empty {
+  display: none;
+}
+
+/* One result: the accent triple says *this happened*, not *alarm* — the mark says how. */
+.shell-toast {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.shell-toast__line,
+.shell-toast__text {
+  margin: 0;
+}
+
+.shell-toast__command {
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.shell-toast__text {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* The deep link, then the dismissal against the far edge. */
+.shell-toast__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}

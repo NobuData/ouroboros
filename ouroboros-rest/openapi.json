@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.41.28",
+    "version": "0.41.29",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -179,7 +179,7 @@
     },
     {
       "name": "chatops",
-      "description": "**The Slack app** (mockup 19, issue [#535](https://github.com/NobuData/ouroboros/issues/535))\n— its install, the three request URLs Slack calls (each verified by signature, each\nacknowledged before its work is done), the page that links a Slack identity to an account,\nand the connection status every surface reads. Setup: `docs/CHATOPS_SETUP.md`.\n\n**The `/ouro` grammar** (issue [#537](https://github.com/NobuData/ouroboros/issues/537)) —\none versioned registry of commands that Slack and the in-app console both run through one\ndispatcher: the grammar itself and completion hints are read here; a command is typed in\nSlack (`POST /api/v1/slack/commands`). A command calls the API the UI calls, as the person\nwho typed it — never a path of its own, and never with the app's permissions."
+      "description": "**The Slack app** (mockup 19, issue [#535](https://github.com/NobuData/ouroboros/issues/535))\n— its install, the three request URLs Slack calls (each verified by signature, each\nacknowledged before its work is done), the page that links a Slack identity to an account,\nand the connection status every surface reads. Setup: `docs/CHATOPS_SETUP.md`.\n\n**The `/ouro` grammar** (issue [#537](https://github.com/NobuData/ouroboros/issues/537)) —\none versioned registry of commands that Slack and the in-app console both run through one\ndispatcher: the grammar itself and completion hints are read here; a command is typed in\nSlack (`POST /api/v1/slack/commands`) or in the app's console (`POST /api/v1/chat/commands`,\nissue [#539](https://github.com/NobuData/ouroboros/issues/539)). A command calls the API the\nUI calls, as the person who typed it — never a path of its own, and never with the app's\npermissions. The two surfaces differ only in who typed it — a linked Slack identity, or the\nsigned-in session — and answer the same text with the same outcome, words, recorded\ncommand and audit event."
     },
     {
       "name": "notification-routes",
@@ -10310,7 +10310,7 @@
           "chatops"
         ],
         "summary": "The `/ouro` grammar",
-        "description": "Every `/ouro` command (#537), from the one registry the dispatcher runs: its id and\naliases, the usage line as mockup 19 prints it, each argument with its type and the\nvocabulary that completes it, who may run it, whether it needs `confirm`, whether its\nresult is immediate or follows as its own message, and the existing API it calls. A\ncommand with `stage: \"v2\"` is listed and answers `unavailableReply` instead of running.\n`builtins` are the words that are not commands of the grammar — `help` everywhere, `link`\nand `unlink` in Slack. The same document as the committed `chat-grammar.json`; the\nin-app console and the commands card list from it, so neither can show a command the\ndispatcher does not have. It runs nothing. Any member may read it.",
+        "description": "Every `/ouro` command (#537), from the one registry the dispatcher runs: its id and\naliases, the usage line as mockup 19 prints it, each argument with its type and the\nvocabulary that completes it, who may run it, whether it needs `confirm`, whether its\nresult is immediate or follows as its own message, and the existing API it calls. A\ncommand with `stage: \"v2\"` is listed and answers `unavailableReply` instead of running.\n`builtins` are the words that are not commands of the grammar — `help` everywhere, `link`\nand `unlink` in Slack. The same document as the committed `chat-grammar.json`; the\nin-app console and the commands card list from it, so neither can show a command the\ndispatcher does not have. It runs nothing. Any member may read it.\n\nLaid over that document, and in no committed file, is the caller's own standing (#539) —\non every command `allowed`, and `deniedReason` when it is false. They are computed with\nthe rule the dispatcher enforces, so a command listed as allowed is not then refused for\nwho the caller is, and `deniedReason` is the phrase the dispatcher's refusal uses (*`/ouro\nroute` is for workspace owners and admins.*). Every command is listed whatever the\ncaller may run — a surface dims what is not allowed and says why; it never hides it. A\n`v2` command is allowed for everybody, because it runs nothing. A service account is\nallowed none.",
         "operationId": "getChatGrammar",
         "parameters": [
           {
@@ -10319,7 +10319,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The grammar.",
+            "description": "The grammar, with what the caller may run.",
             "content": {
               "application/json": {
                 "schema": {
@@ -10377,7 +10377,7 @@
           "chatops"
         ],
         "summary": "What could be typed next",
-        "description": "Completion hints for a command being typed (#537). `text` is what follows `/ouro`, as\ntyped — a trailing space says the last word is finished. While the command's name is\nbeing typed the completions are command ids; after it they are the vocabulary of the\nargument being typed, read from the plane that owns it (open issues, live loops, offered\nworkflows, model aliases, task kinds, open questions and the answers the named question\ntakes), narrowed by what was typed and cut at ten (commands are never cut). An argument with no vocabulary, or a\nfinished command, answers an empty list. The text is read exactly as the dispatcher reads\nit, so what is offered is what would be accepted — and nothing is resolved, validated or\nrun. Any member may ask; a source may offer only what the caller can see.",
+        "description": "Completion hints for a command being typed (#537). `text` is what follows `/ouro`, as\ntyped — a trailing space says the last word is finished. While the command's name is\nbeing typed the completions are command ids; after it they are the vocabulary of the\nargument being typed, read from the plane that owns it (open issues, live loops, offered\nworkflows, model aliases, task kinds, open questions and the answers the named question\ntakes), narrowed by what was typed and cut at ten (commands are never cut). An argument with no vocabulary, or a\nfinished command, answers an empty list. The text is read exactly as the dispatcher reads\nit, so what is offered is what would be accepted — and nothing is resolved, validated or\nrun. Any member may ask; a source may offer only what the caller can see.\n\nAn empty `completions` says which kind of empty it is (#539), so a surface can say *no\nopen tickets match* instead of showing an empty menu. `command` null — no command starts\nthat way. `argument` and `source` both set — the plane that owns `source` was asked and\nnothing matches. `argument` set and `source` null — the argument has no vocabulary to\noffer (a pull request number). `command` set and `argument` null — nothing is left to\ntype.",
         "operationId": "getChatCompletions",
         "parameters": [
           {
@@ -10440,6 +10440,280 @@
           },
           "422": {
             "description": "`validation_failed` — `text` is longer than 4000 characters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/commands": {
+      "post": {
+        "tags": [
+          "chatops"
+        ],
+        "summary": "Run an `/ouro` command from the console",
+        "description": "Run what was typed in the app's console (#539), as the signed-in person. The text goes\nto the dispatcher Slack's commands go to — the same grammar, the same argument\nresolution, the same permission check, the same confirm rule, the same bindings — and the\nanswer is what Slack would have been told. The only difference is who typed it — the\nsession, so there is no identity link to follow and `unlinked` is never answered here.\n\n**A command a person typed is always `200`**; `outcome` says how it went. `ok` — it ran\n(or a `v2` command, or `help`, answered). `async_pending` — it started (`dry-run`); ask\n`GET /api/v1/chat/commands/{commandId}` until `outcome` leaves `async_pending`, then read\n`settledReply`. `denied` — the caller may not run it; `reply` says who may. `error` —\nthe text names no command, its arguments are wrong, a destructive command was typed\nwithout `confirm`, or the plane it calls refused; `reply` says which, in the plane's own\nwords when it was the plane.\n\n**Destructive commands describe first.** `abort loop` and `pause all` typed without\n`confirm` change nothing; `reply` says exactly what would happen and `confirmWith` is\nthe text to send to really do it.\n\nEvery invocation except `help` is recorded (`chat_commands`, `surface = console`) and\naudited (`chat.command_invoked`), whatever came of it. `text` may carry the `/ouro`\nprefix or not. Any member may call this; what they may run is the dispatcher's to say.",
+        "operationId": "runChatCommand",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCommandRequest"
+              },
+              "examples": {
+                "bare": {
+                  "summary": "The text after the prefix",
+                  "value": {
+                    "text": "queue #485 standard-fix"
+                  }
+                },
+                "prefixed": {
+                  "summary": "With the prefix, as the palette shows it",
+                  "value": {
+                    "text": "/ouro pause all"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "How the command went, and what it said.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCommandResult"
+                },
+                "examples": {
+                  "ran": {
+                    "summary": "A command that ran",
+                    "value": {
+                      "commandId": "0b0c6a9e-6f0b-4c53-9d6f-0d1c6f8a1b11",
+                      "command": "queue",
+                      "outcome": "ok",
+                      "reply": {
+                        "text": "Queued #485 on standard-fix.",
+                        "link": {
+                          "label": "Open in the backlog",
+                          "url": "https://ouroboros.example/backlog?ticket=485"
+                        }
+                      }
+                    }
+                  },
+                  "preview": {
+                    "summary": "A destructive command typed without confirm",
+                    "value": {
+                      "commandId": "5d0f3c1e-2a44-4f0e-8a51-3c7f1d0b9e22",
+                      "command": "pause all",
+                      "outcome": "error",
+                      "reply": {
+                        "text": "Add `confirm` to pause everything — this stops every loop in Acme Robotics from starting anything new. Stages already running finish, and queued work stays queued until an owner or admin resumes the workspace. `/ouro pause all confirm`"
+                      },
+                      "confirmWith": "pause all confirm"
+                    }
+                  },
+                  "denied": {
+                    "summary": "A command the caller may not run",
+                    "value": {
+                      "commandId": "9a1b7f60-0c1d-4b9e-9f3a-6f2d4e8c7a33",
+                      "command": "route",
+                      "outcome": "denied",
+                      "reply": {
+                        "text": "`/ouro route` is for workspace owners and admins."
+                      }
+                    }
+                  },
+                  "started": {
+                    "summary": "An async command, acknowledged",
+                    "value": {
+                      "commandId": "3f2e1d0c-9b8a-4c7d-8e6f-5a4b3c2d1e44",
+                      "command": "dry-run",
+                      "outcome": "async_pending",
+                      "reply": {
+                        "text": "Rehearsing standard-fix on #486 with no writes — the result follows."
+                      }
+                    }
+                  },
+                  "help": {
+                    "summary": "Help, which records nothing",
+                    "value": {
+                      "commandId": null,
+                      "command": null,
+                      "outcome": "ok",
+                      "reply": {
+                        "text": "Ouroboros commands (grammar v1) …"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session. `service_token_invalid` — a\nservice token that was rotated, revoked or never existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`service_principal_refused` — a service token; a command acts as the person who\ntyped it. `chat_person_required` — the same refusal from the route itself, for a\ncaller that is admitted and is not a person. A command the caller may not run is not\na `403` — it is a `200` with `outcome` `denied`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no such workspace, or none you are a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `text` is missing, not a string, blank, or longer than 2000\ncharacters once trimmed; or the body carries a field other than `text`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed before the command was read. A failure\ninside a command is a `200` with `outcome` `error`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chat/commands/{id}": {
+      "get": {
+        "tags": [
+          "chatops"
+        ],
+        "summary": "A console command the caller ran",
+        "description": "One command the caller typed in the console (#539), as it stands now — what the console\nasks until an async command's `outcome` leaves `async_pending`. `settledReply` is then\nwhat the command finally said — the text and its one link, the message Slack is sent for\nthe same command — whether it finished (`ok`) or failed (`error`, with `errorDetail`).\nA command that answered at once has no `settledReply`; its reply was the response to\n`POST /api/v1/chat/commands`.\n\nOnly the caller's own console commands are here. Somebody else's command, one typed in\nSlack, one in another workspace and an id that names nothing are all the same `404`.",
+        "operationId": "getChatCommand",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The command's id — `commandId` of `POST /api/v1/chat/commands`.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The command.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCommand"
+                },
+                "examples": {
+                  "pending": {
+                    "summary": "Still running",
+                    "value": {
+                      "id": "3f2e1d0c-9b8a-4c7d-8e6f-5a4b3c2d1e44",
+                      "command": "dry-run",
+                      "outcome": "async_pending",
+                      "rawText": "/ouro dry-run #486",
+                      "invokedAt": "2026-10-12T16:00:00.000Z",
+                      "completedAt": null,
+                      "settledReply": null,
+                      "errorDetail": null
+                    }
+                  },
+                  "settled": {
+                    "summary": "Finished",
+                    "value": {
+                      "id": "3f2e1d0c-9b8a-4c7d-8e6f-5a4b3c2d1e44",
+                      "command": "dry-run",
+                      "outcome": "ok",
+                      "rawText": "/ouro dry-run #486",
+                      "invokedAt": "2026-10-12T16:00:00.000Z",
+                      "completedAt": "2026-10-12T16:00:41.000Z",
+                      "settledReply": {
+                        "text": "Dry run of standard-fix on #486 passed in 41s — no writes, guards clean.",
+                        "link": {
+                          "label": "Open in Copilot",
+                          "url": "https://ouroboros.example/copilot/standard-fix"
+                        }
+                      },
+                      "errorDetail": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session. `service_token_invalid` — a\nservice token that was rotated, revoked or never existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`chat_person_required` — a service account; a console command belongs to the person\nwho typed it. `service_scope_missing` — a service token without `api.read`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`chat_command_not_found` — no console command of the caller's has that id in this\nworkspace, or the id is not a UUID. `tenant_not_found` — no such workspace, or none\nyou are a member of.",
             "content": {
               "application/json": {
                 "schema": {
@@ -74824,7 +75098,9 @@
           "mode",
           "stage",
           "unavailableReply",
-          "binds"
+          "binds",
+          "allowed",
+          "deniedReason"
         ],
         "properties": {
           "id": {
@@ -74980,6 +75256,193 @@
           "binds": {
             "type": "string",
             "description": "The existing API the command calls."
+          },
+          "allowed": {
+            "type": "boolean",
+            "description": "Whether the caller would get past the dispatcher's permission check for this command\n(#539). The caller's own — not part of `chat-grammar.json`. True for a `v2` command,\nwhich runs nothing."
+          },
+          "deniedReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What is missing when `allowed` is false, as the dispatcher's refusal words it; null\nwhen allowed.",
+            "examples": [
+              "for workspace owners and admins"
+            ]
+          }
+        }
+      },
+      "ChatCommandRequest": {
+        "type": "object",
+        "title": "ChatCommandRequest",
+        "additionalProperties": false,
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "What was typed, with or without the `/ouro` prefix. Trimmed before it is measured; a\nbare `/ouro` asks for help, as in Slack.",
+            "examples": [
+              "queue #485 standard-fix"
+            ]
+          }
+        }
+      },
+      "ChatCommandReply": {
+        "type": "object",
+        "title": "ChatCommandReply",
+        "description": "What a command says — plain text and at most one link, on every surface.",
+        "additionalProperties": false,
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The reply. Backticks mark what is typed; lines are separated by newlines."
+          },
+          "link": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "label",
+              "url"
+            ],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string",
+                "description": "Absolute."
+              }
+            }
+          }
+        }
+      },
+      "ChatCommandResult": {
+        "type": "object",
+        "title": "ChatCommandResult",
+        "additionalProperties": false,
+        "required": [
+          "commandId",
+          "command",
+          "outcome",
+          "reply"
+        ],
+        "properties": {
+          "commandId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The recorded command — the id `GET /api/v1/chat/commands/{id}` takes. Null for\n`help`, which records nothing, and when the command ran and could not be recorded."
+          },
+          "command": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The grammar command the text named — its id, whatever alias or case was typed. Null\nfor `help` and for text that names no command.",
+            "examples": [
+              "pause all"
+            ]
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "error",
+              "denied",
+              "async_pending"
+            ],
+            "description": "`ok` ran, or answered; `async_pending` started, result to follow; `denied` the\ncaller may not; `error` unknown command, bad arguments, confirmation needed, or the\nplane refused."
+          },
+          "reply": {
+            "$ref": "#/components/schemas/ChatCommandReply"
+          },
+          "confirmWith": {
+            "type": "string",
+            "description": "Present only when `reply` is a destructive command's describe-first preview — the\ntext to send to really do it, without the prefix — what was typed, then `confirm`.",
+            "examples": [
+              "abort loop 1847 confirm"
+            ]
+          }
+        }
+      },
+      "ChatCommand": {
+        "type": "object",
+        "title": "ChatCommand",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "command",
+          "outcome",
+          "rawText",
+          "invokedAt",
+          "completedAt",
+          "settledReply",
+          "errorDetail"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "command": {
+            "type": "string",
+            "description": "The command's id as recorded — or, for text that named no command, its first word\n(`unknown` when that is not a word)."
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "error",
+              "denied",
+              "async_pending"
+            ]
+          },
+          "rawText": {
+            "type": "string",
+            "description": "The text as typed, with its `/ouro` prefix.",
+            "examples": [
+              "/ouro dry-run #486"
+            ]
+          },
+          "invokedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Null exactly while `outcome` is `async_pending`."
+          },
+          "settledReply": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ChatCommandReply"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What an async command said when it finished or failed. Null while it is pending, and\nfor a command that answered at once."
+          },
+          "errorDetail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The stable reason of an `error` outcome — `unknown_command`, `bad_arguments`,\n`confirmation_required`, `internal_error`, or the refusing plane's error code. Null\notherwise."
           }
         }
       },
@@ -74991,6 +75454,7 @@
           "grammarVersion",
           "command",
           "argument",
+          "source",
           "completions"
         ],
         "properties": {
@@ -75011,6 +75475,23 @@
               "null"
             ],
             "description": "The argument being typed; null while the command is, or when nothing is left to type."
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "tickets",
+              "loops",
+              "workflows",
+              "aliases",
+              "questions",
+              "actions",
+              "task_kinds",
+              null
+            ],
+            "description": "The vocabulary the argument being typed is completed from; null when no argument is\nbeing typed or it has none. With an empty `completions`, a source says the plane was\nasked and nothing matches."
           },
           "completions": {
             "type": "array",

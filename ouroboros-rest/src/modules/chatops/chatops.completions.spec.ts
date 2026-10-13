@@ -136,6 +136,7 @@ describe("every argument that has a completion source", () => {
         grammarVersion: GRAMMAR_VERSION,
         command: id,
         argument: name,
+        source,
         completions: VOCABULARY[source as CompletionSource],
       });
       expect(answer.completions.length).toBeGreaterThan(0);
@@ -198,8 +199,30 @@ describe("every argument that has a completion source", () => {
       grammarVersion: GRAMMAR_VERSION,
       command: "pause loop",
       argument: "loop",
+      // The plane was asked and nothing matches — which is what lets a surface say so.
+      source: "loops",
       completions: [],
     });
+  });
+
+  it("tells the four kinds of empty apart (#539)", async () => {
+    const { port } = sources({ ...VOCABULARY, tickets: [] });
+    const shape = async (text: string): Promise<(string | null)[]> => {
+      const answer = await complete(GRAMMAR, port, ORG, MAYA, text);
+
+      expect(answer.completions).toEqual([]);
+
+      return [answer.command, answer.argument, answer.source];
+    };
+
+    // No command starts that way.
+    expect(await shape("frobnicate")).toEqual([null, null, null]);
+    // A vocabulary was asked, and nothing in it matches.
+    expect(await shape("queue #99")).toEqual(["queue", "ticket", "tickets"]);
+    // An argument with no vocabulary to offer.
+    expect(await shape("explain pr 5")).toEqual(["explain pr", "pr", null]);
+    // Nothing left to type.
+    expect(await shape("status ")).toEqual(["status", null, null]);
   });
 });
 
@@ -216,6 +239,7 @@ describe("arguments the grammar settles itself", () => {
           grammarVersion: GRAMMAR_VERSION,
           command: definition.id,
           argument: "confirm",
+          source: null,
           completions: [{ value: "confirm", label: confirm.description }],
         });
       }
@@ -275,6 +299,7 @@ describe("arguments the grammar settles itself", () => {
       grammarVersion: GRAMMAR_VERSION,
       command: "explain pr",
       argument: "pr",
+      source: null,
       completions: [],
     });
     expect(asked).toEqual([]);
@@ -378,6 +403,7 @@ describe("past the last argument", () => {
         grammarVersion: GRAMMAR_VERSION,
         command: id,
         argument: null,
+        source: null,
         completions: [],
       });
       expect(asked).toEqual([]);

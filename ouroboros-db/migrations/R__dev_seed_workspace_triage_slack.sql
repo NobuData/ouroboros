@@ -243,13 +243,15 @@ select '5eed009c-0000-4000-8000-000000000104'::uuid, card.organization_id, card.
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
--- 14:12 and 14:13 — Ken's two commands, typed in the channel. The invoker is his identity link.
+-- 14:12 and 14:13 — Ken's two commands, typed in the channel. The invoker is his identity link,
+-- and the person they acted as is the link's (#539).
 -- ---------------------------------------------------------------------------
 insert into ouroboros.chat_commands (id, organization_id, connection_id, channel_id, invoker_link_id,
-                                     platform_user_id, surface, command, args, raw_text, outcome,
-                                     result_ref, invoked_at, completed_at)
+                                     invoker_user_id, platform_user_id, surface, command, args,
+                                     raw_text, outcome, result_ref, invoked_at, completed_at)
 select ('5eed009c-0000-4000-8000-0000000002' || seed.n)::uuid, ch.organization_id, ch.connection_id,
-       ch.id, link.id, link.platform_user_id, 'slack', seed.command, seed.args, seed.raw_text, 'ok',
+       ch.id, link.id, link.user_id, link.platform_user_id, 'slack', seed.command, seed.args,
+       seed.raw_text, 'ok',
        jsonb_build_object('message', '5eed009c-0000-4000-8000-0000000001' || seed.reply),
        date_trunc('day', now() - interval '1 day') + seed.at,
        date_trunc('day', now() - interval '1 day') + seed.at + seed.took
@@ -274,6 +276,17 @@ update ouroboros.chat_commands cmd
    and cmd.invoker_link_id is null
    and link.id = '5eed009c-0000-4000-8000-000000000301'
    and link.connection_id = cmd.connection_id
+   and ${ouro_dev_seed};
+
+-- A database seeded before #539 holds both commands with no invoker. Each is given the person its
+-- identity link names — and only while it has none, so applying this twice writes nothing.
+update ouroboros.chat_commands cmd
+   set invoker_user_id = link.user_id
+  from ouroboros.chat_identity_links link
+ where cmd.id in ('5eed009c-0000-4000-8000-000000000201', '5eed009c-0000-4000-8000-000000000202')
+   and cmd.invoker_user_id is null
+   and link.id = cmd.invoker_link_id
+   and link.user_id is not null
    and ${ouro_dev_seed};
 
 -- ---------------------------------------------------------------------------

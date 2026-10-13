@@ -25,6 +25,7 @@ export interface ContextFixture {
   readonly setTheme: ReturnType<typeof vi.fn>;
   /** Whether the session was ended. */
   readonly signOut: ReturnType<typeof vi.fn>;
+  readonly fill: ReturnType<typeof vi.fn>;
 }
 
 /**
@@ -37,12 +38,14 @@ export function commandContext(overrides: Partial<CommandContext> = {}): Context
   const navigate = vi.fn();
   const setTheme = vi.fn();
   const signOut = vi.fn();
+  const fill = vi.fn();
 
   return {
-    context: { nav: [], navigate, theme: "light", setTheme, signOut, ...overrides },
+    context: { nav: [], navigate, theme: "light", setTheme, signOut, fill, ...overrides },
     navigate,
     setTheme,
     signOut,
+    fill,
   };
 }
 

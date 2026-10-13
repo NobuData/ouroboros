@@ -36,6 +36,16 @@ const signOutOfSession = vi.fn();
 
 vi.mock("@/app/shell/actions", () => ({ signOutOfSession: () => signOutOfSession() }));
 
+/** The session the palette's command mode keys its history by (#539). */
+vi.mock("@/app/api/auth-client", async () =>
+  (await import("../helpers/account")).authClientModule(),
+);
+
+/** The console's Server Actions, which sit over a `server-only` client (#539). */
+vi.mock("@/app/shell/console-actions", async () =>
+  (await import("../helpers/console")).consoleActionsModule(),
+);
+
 const { CommandPalette } = await import("@/app/shell/command-palette");
 
 /** Told when the palette dismisses itself. */

@@ -72,6 +72,8 @@ describe("the shell's components and its stylesheet", () => {
     "shell/overlay.tsx",
     "shell/search-pill.tsx",
     "shell/command-palette.tsx",
+    "shell/console-view.tsx",
+    "shell/console-toasts.tsx",
     "shell/tenant-chip.tsx",
     "shell/loop-pills.tsx",
   ])("%s asks for no class the sheet does not define", (file) => {
@@ -84,6 +86,120 @@ describe("the shell's components and its stylesheet", () => {
     // modifier composed through `cx`.
     expect(classesOf("shell/user-menu.tsx")).toContain("shell-menu__submenu");
     expect(classesOf("shell/sidebar-nav.tsx")).toContain("shell-nav--open");
+  });
+});
+
+/**
+ * Command mode (BZ.5, [#539](https://github.com/NobuData/ouroboros/issues/539)) and the seat a
+ * command's later result is shown in.
+ *
+ * The criterion is *"rem-based type against the tokens; both themes; type scales correctly at
+ * the 125% font-size preference"*. The generic suite (`__tests__/styles.test.ts`) already
+ * refuses a colour literal or a pixel type size anywhere in this sheet; what is here is what
+ * that suite cannot know to ask of these rules in particular.
+ */
+describe("command mode", () => {
+  /** Every rule the mode and its toasts declare, as selector and body. */
+  const RULES = [...SHEET.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .map((match) => ({ selector: match[1].trim(), body: match[2] }))
+    .filter(({ selector }) => /\.shell-(console|toast)/.test(selector) || selector.includes("box--pending"));
+
+  /** The classes the mode's components may render, by the file that renders them. */
+  const RENDERED = new Set(
+    ["shell/console-view.tsx", "shell/console-toasts.tsx", "shell/command-palette.tsx"].flatMap(
+      (file) => [
+        ...readFileSync(join(UI, "app", file), "utf8").matchAll(/"((?:shell-[A-Za-z0-9_-]+\s*)+)"/g),
+      ].flatMap((match) => match[1].split(/\s+/)),
+    ),
+  );
+
+  /**
+   * The declarations of one rule.
+   *
+   * @param selector The selector, exactly as the sheet writes it.
+   * @returns The rule's body, or an empty string when the sheet has no such rule.
+   */
+  function rule(selector: string): string {
+    return SHEET.match(new RegExp(`(?:^|\\})\\s*\\${selector}\\s*\\{([^}]*)\\}`))?.[1] ?? "";
+  }
+
+  it("has rules to check", () => {
+    expect(RULES.length).toBeGreaterThan(20);
+    expect(RENDERED).toContain("shell-console__mark--denied");
+  });
+
+  it("declares no class nothing renders", () => {
+    const declared = new Set(
+      RULES.flatMap(({ selector }) =>
+        [...selector.matchAll(/\.(shell-(?:console|toast)[A-Za-z0-9_-]*)/g)].map((match) => match[1]),
+      ),
+    );
+
+    expect([...declared].filter((name) => !RENDERED.has(name))).toEqual([]);
+  });
+
+  it("fixes no height on anything, so text can grow with the font-size preference", () => {
+    for (const { selector, body } of RULES) {
+      expect(body, selector).not.toMatch(/(?:^|[\s;])(?:min-|max-)?height\s*:/);
+      expect(body, selector).not.toMatch(/(?:^|[\s;])(?:min-|max-)?block-size\s*:/);
+    }
+  });
+
+  it("takes every length but a hairline from a token or in rem", () => {
+    for (const { selector, body } of RULES) {
+      expect(body.replace(/\b1px solid\b/g, ""), selector).not.toMatch(/\d(?:px|pt|%)/);
+    }
+  });
+
+  it("takes every colour from a token, which is what gives it both themes", () => {
+    for (const { selector, body } of RULES) {
+      for (const declaration of body.matchAll(/(?:^|[\s;])(color|background|border-color)\s*:\s*([^;]+)/g)) {
+        expect(declaration[2].trim(), `${selector} ${declaration[1]}`).toMatch(/^(var\(--[a-z-]+\)|inherit|none)$/);
+      }
+    }
+  });
+
+  it("sizes its type from the scale", () => {
+    for (const { selector, body } of RULES) {
+      for (const size of body.matchAll(/font-size\s*:\s*([^;]+)/g)) {
+        expect(size[1].trim(), selector).toMatch(/^var\(--t-[a-z0-9]+\)$/);
+      }
+    }
+  });
+
+  it("adds no scroll container to the palette's one", () => {
+    for (const { selector, body } of RULES) {
+      expect(body, selector).not.toMatch(/overflow(?:-[xy])?\s*:\s*(?:auto|scroll)/);
+    }
+  });
+
+  it("draws the reply as mockup 19's box: inset ground, a hairline, the mono face", () => {
+    const reply = rule(".shell-console__reply");
+
+    expect(reply).toMatch(/background:\s*var\(--inset\)/);
+    expect(reply).toMatch(/border:\s*1px solid var\(--line\)/);
+    expect(reply).toMatch(/font-family:\s*var\(--f-mono\)/);
+  });
+
+  it("keeps the dispatcher's own line breaks, and lets a long reply wrap", () => {
+    expect(rule(".shell-console__text")).toMatch(/white-space:\s*pre-wrap/);
+    expect(rule(".shell-console__text")).toMatch(/overflow-wrap:\s*anywhere/);
+  });
+
+  it("wraps a command row rather than truncating it", () => {
+    expect(rule(".shell-console__row")).toMatch(/flex-wrap:\s*wrap/);
+  });
+
+  it("takes an empty seat out of the layout, so a live region is not a gap", () => {
+    expect(SHEET).toMatch(/\.shell-console__seat:empty\s*\{\s*display:\s*none/);
+    expect(SHEET).toMatch(/\.shell-toasts:empty\s*\{\s*display:\s*none/);
+  });
+
+  it("places the results against the viewport, above an overlay", () => {
+    const layers = (selector: string) => Number(rule(selector).match(/z-index:\s*(\d+)/)?.[1]);
+
+    expect(rule(".shell-toasts")).toMatch(/position:\s*fixed/);
+    expect(layers(".shell-toasts")).toBeGreaterThan(layers(".shell-overlay"));
   });
 });
 

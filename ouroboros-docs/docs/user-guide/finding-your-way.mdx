@@ -83,9 +83,51 @@ The palette finds **screens and commands**:
   **Go to Research**, **Go to Insights**, **Go to Needs You** and **Go to Settings**.
 - **Actions** — **Toggle theme** switches between light and dark, and **Sign out** signs
   you out.
+- **Commands** — **Run a command** puts `/ouro` in the box and switches the palette to the
+  [command console](#the-command-console).
 
 Searching issues, runs and the queue from the palette is not available yet; use the
 [Issues](./issues.mdx) screen and the [dashboard](./dashboard.mdx) for those.
+
+### The command console
+
+Type `/ouro` and a space at the start of the palette — or choose **Run a command** — and the
+palette becomes a command console. It runs the same `/ouro` commands you can type in Slack,
+as you, in the workspace you are in. Slack does not need to be connected, and there is
+nothing to link.
+
+<Screenshot id="user-guide.chatops.console" />
+
+1. **Pick a command.** The list shows every command with what it does, such as
+   `/ouro status`. Type to narrow it. <kbd>↵</kbd> or <kbd>Tab</kbd> puts the highlighted
+   command in the box.
+   - A command your role does not include stays in the list, dimmed, with what it needs —
+     such as **needs admin**. It cannot be run.
+   - A command marked **v2** is not built yet; running it says so.
+2. **Fill in what it takes.** As you type an issue, loop, workflow, model alias, question or
+   answer, the palette offers real ones from your workspace — such as `#485` with its title.
+   <kbd>Tab</kbd> takes the highlighted one. When nothing fits, it says so, such as
+   **No open tickets match “#9”.**
+3. **Press <kbd>↵</kbd> to run it.** The answer appears in a box under the list, marked
+   **Done**, **Error** or **Denied**, with a link when there is somewhere to go. The palette
+   stays open for the next command.
+
+Three things work as they do in Slack:
+
+- **`abort loop` and `pause all` need the word `confirm`.** Without it the box reads **Not run
+  yet** and describes what would happen. **Put “/ouro … confirm” in the box** fills the full
+  command in; press <kbd>↵</kbd> to run it.
+- **A command that takes a while** — `dry-run` — answers **Started** at once. Its result
+  follows as a notification at the foot of the screen, with a link, even after you close the
+  palette. The notification stays until you dismiss it.
+- **Every command is recorded** in the audit trail under your name.
+
+**History.** On an empty line, <kbd>↑</kbd> recalls the commands you ran, newest first;
+<kbd>↓</kbd> moves back towards what you were typing. History is kept in this browser, per
+person and workspace — the last 50 commands — and does not follow you to another device.
+
+Delete `/ouro` from the box to return to screens and commands. Every command, what it takes
+and who may run it is in [/ouro chat commands](../cli/ouro.mdx).
 
 ## Appearance
 
@@ -117,6 +159,9 @@ Open the full list from the account menu, **Keyboard shortcuts**.
 | Anywhere | <kbd>Esc</kbd> | Close a menu, drawer or dialog |
 | Search palette | <kbd>↑</kbd> <kbd>↓</kbd> | Move between actions, wrapping at the ends |
 | Search palette | <kbd>↵</kbd> | Run the highlighted action |
+| Command console | <kbd>Tab</kbd> | Take the highlighted command or completion |
+| Command console | <kbd>↵</kbd> | Take the highlighted command or completion; with none highlighted, run the command |
+| Command console | <kbd>↑</kbd> on an empty line | Recall the commands you ran |
 | Sidebar | <kbd>↑</kbd> <kbd>↓</kbd> | Move between entries, wrapping at the ends |
 | Sidebar | <kbd>Home</kbd> <kbd>End</kbd> | Jump to the first or last entry |
 | Sidebar | <kbd>Enter</kbd> | Open the entry |

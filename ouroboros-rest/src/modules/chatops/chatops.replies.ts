@@ -29,9 +29,20 @@ export const CHAT_REPLIES = {
   /** An async command whose result never arrived as a result. */
   asyncFailed: (command: string): string =>
     `\`${COMMAND_PREFIX} ${command}\` started but did not finish: something went wrong. Check in Ouroboros before trying again.`,
-  /** A surface the dispatcher cannot name an invoker for yet. */
-  surfaceUnavailable: "Commands cannot be run from here yet.",
+  /** Somebody who is not a person asked what they may run (#539): a service account types nothing. */
+  notAPerson: "for signed-in workspace members",
 } as const;
+
+/**
+ * Why a member may not run a command, as a phrase to put beside it in a list (#539) — the very
+ * words {@link deniedText} refuses with, so the list and the refusal cannot disagree.
+ *
+ * @param definition - The command.
+ * @returns `for workspace owners and admins`
+ */
+export function deniedReason(definition: Pick<CommandDefinition, "requires">): string {
+  return `for ${requirementWords(definition.requires)}`;
+}
 
 /**
  * What a member who may not run a command is told — naming what it takes, in words.
@@ -40,7 +51,7 @@ export const CHAT_REPLIES = {
  * @returns `` `/ouro route` is for workspace owners and admins. ``
  */
 export function deniedText(definition: CommandDefinition): string {
-  return `\`${COMMAND_PREFIX} ${definition.id}\` is for ${requirementWords(definition.requires)}.`;
+  return `\`${COMMAND_PREFIX} ${definition.id}\` is ${deniedReason(definition)}.`;
 }
 
 /**

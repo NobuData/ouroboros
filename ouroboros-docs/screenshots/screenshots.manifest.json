@@ -147,9 +147,9 @@
       "clip": "[role=\"dialog\"][aria-label=\"Search\"]",
       "caption": "The search palette: type to find a screen or a command, then press Enter.",
       "alt": "The search palette open, with the Search screens and commands field, the Navigation group of Go to commands and the Actions group with Toggle theme and Sign out.",
-      "capturedAt": "2026-10-10T01:38:17.145Z",
-      "uiVersion": "0.145.0",
-      "seedRef": "7349bd6fa267d18bf070fc00d32a8e15b6c57b82"
+      "capturedAt": "2026-10-13T02:59:17.850Z",
+      "uiVersion": "0.158.0",
+      "seedRef": "ded8d3f7946af3746a47b1c15d0f13e22dc60092"
     },
     {
       "id": "user-guide.appearance",
@@ -658,6 +658,30 @@
       "capturedAt": "2026-10-13T02:09:08.959Z",
       "uiVersion": "0.157.0",
       "seedRef": "c6994c0a81655b77a6c4ba67b509d3d367379838"
+    },
+    {
+      "id": "user-guide.chatops.console",
+      "route": "/dashboard",
+      "workspace": "acme-robotics",
+      "actions": [
+        {
+          "click": ".shell-search"
+        },
+        {
+          "fill": "input.shell-palette__input",
+          "value": "/ouro status"
+        },
+        {
+          "press": "Enter"
+        }
+      ],
+      "ready": ".shell-console__reply",
+      "clip": "[role=\"dialog\"][aria-label=\"Search\"]",
+      "caption": "The command console: the palette after /ouro status, with the answer in its box.",
+      "alt": "The palette as a command console: /ouro in the box, the note that commands run as you in this workspace with the same /ouro grammar as Slack, the list of commands — status, queue, pause loop, resume loop, abort loop, answer, dry-run, route and explain pr marked v2, each with what it does — and under it a box marked Done for /ouro status reading 3 loops live, 12 queued, farm 4/5 online, spend today $18.60, needs-you: 3; then the keys to move, Tab to complete, Enter to run and Esc to close.",
+      "capturedAt": "2026-10-13T02:59:13.739Z",
+      "uiVersion": "0.158.0",
+      "seedRef": "ded8d3f7946af3746a47b1c15d0f13e22dc60092"
     },
     {
       "id": "user-guide.inbox",

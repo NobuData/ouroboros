@@ -7830,11 +7830,13 @@ select pg_temp.must_hold(
      from ouroboros.chat_messages m where m.id = '5eed009c-0000-4000-8000-000000000105'),
   'the status reply''s loops live, queued and needs-you are the workspace''s own counts');
 
--- Both commands are Ken's by his identity link, and each names the reply it produced.
+-- Both commands are Ken's by his identity link, and each names the reply it produced. Who they
+-- acted as is recorded on the row too (#539): the link's person.
 select pg_temp.must_hold(
   (select count(*) = 2
           and bool_and(m.kind = 'command_reply' and link.state = 'linked'
                        and link.platform_user_id = c.platform_user_id
+                       and c.invoker_user_id is not distinct from link.user_id
                        and person."email" = 'ken@acme-robotics.dev' and c.outcome = 'ok')
      from ouroboros.chat_commands c
      join ouroboros.chat_messages m on m.id = (c.result_ref ->> 'message')::uuid
@@ -7842,6 +7844,16 @@ select pg_temp.must_hold(
      join ouroboros."user" person on person."id" = link.user_id
     where c.channel_id = '5eed009c-0000-4000-8000-0000000000a1'),
   '/ouro status and /ouro dry-run are Ken''s by his identity link, and each names the reply it produced');
+
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from ouroboros.chat_commands c
+     join ouroboros.chat_identity_links link on link.id = c.invoker_link_id
+    where c.surface = 'slack' and link.user_id is not null
+      and c.invoker_user_id is distinct from link.user_id)
+  and (select count(*) = 0 from ouroboros.chat_commands
+        where surface = 'console' and (connection_id is not null or invoker_link_id is not null)),
+  'every Slack command with an identity link records the link''s person, and the seed holds no console command of a connection (#539)');
 
 select pg_temp.must_hold(
   (select c.args = '{"issue": 486, "workflow": "feature-loop"}'::jsonb
