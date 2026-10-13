@@ -235,6 +235,54 @@ module.exports = {
     },
 
     {
+      name: "chatops-core-reaches-planes-through-bindings",
+      severity: "error",
+      comment:
+        "A chat command is not a new control path (BZ.3, #537). The grammar, the parser and the " +
+        "dispatcher know no plane: they call a CommandBinding through the ports in " +
+        "grammar.ports.ts, and only src/modules/chatops/planes/ holds the bindings. So the core " +
+        "may import identity (tenancy, the Slack repository), the audit plane, config, the " +
+        "database and errors — and nothing that could start, stop, queue or answer anything.",
+      from: { path: "^src/modules/chatops/[^/]+\\.ts$", pathNot: "spec\\.ts$|\\.fixture\\.ts$" },
+      to: {
+        path: "^src/modules/",
+        pathNot:
+          "^src/modules/(chatops|audit|config|db|errors|tenancy)/|" +
+          "^src/modules/slack/slack\\.(repository|store\\.module)\\.ts$",
+      },
+    },
+    {
+      name: "chatops-planes-call-services-not-tables",
+      severity: "error",
+      comment:
+        "A binding makes the call the UI's route makes — a plane's service, which checks, audits " +
+        "and stores (BZ.3, #537). It may not import a plane's repository, the way to its tables; " +
+        "the three read-only lookups that turn `#485`, `1847` and `q-231` into ids are the " +
+        "exception, and each lives in the plane that owns the table.",
+      from: { path: "^src/modules/chatops/planes/", pathNot: "spec\\.ts$|\\.fixture\\.ts$" },
+      to: {
+        path: "\\.repository\\.ts$",
+        pathNot:
+          "^src/modules/(backlog/ticket|runs/loop|decisions/question)\\.lookup\\.repository\\.ts$",
+      },
+    },
+    {
+      name: "chatops-planes-know-no-surface",
+      severity: "error",
+      comment:
+        "A binding is the same command in Slack and in the console (BZ.3, #537), so it may not " +
+        "know which surface it ran on: nothing under src/modules/chatops/planes/ imports the " +
+        "Slack app, the dispatcher or the chat routes. The dispatcher calls bindings; an import " +
+        "back would also be a cycle.",
+      from: { path: "^src/modules/chatops/planes/", pathNot: "spec\\.ts$|\\.fixture\\.ts$" },
+      to: {
+        path:
+          "^src/modules/slack/|" +
+          "^src/modules/chatops/(dispatcher\\.service|chatops\\.(module|controller|repository))\\.ts$",
+      },
+    },
+
+    {
       name: "no-circular",
       severity: "error",
       comment:

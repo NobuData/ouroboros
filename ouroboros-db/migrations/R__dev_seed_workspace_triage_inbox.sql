@@ -573,6 +573,9 @@ select ('5eed0082-0000-4000-8000-' || lpad((100 + seed.n)::text, 12, '0'))::uuid
  where (seed.loop_seq is null or run.id is not null)
    and (seed.ticket_number is null or ticket.id is not null)
    and ${ouro_dev_seed}
+ -- Filed in table order, so the short numbers V133 assigns (#537) are the same in every freshly
+ -- seeded database: the three open cards are q-1…q-3 and these are q-4…q-14.
+ order by seed.n
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------

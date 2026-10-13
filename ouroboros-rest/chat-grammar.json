@@ -1,0 +1,383 @@
+{
+  "version": 1,
+  "prefix": "/ouro",
+  "confirmRule": "Runs only with `confirm` as its last word. Without it nothing happens: the reply describes exactly what would.",
+  "commands": [
+    {
+      "id": "status",
+      "aliases": [],
+      "usage": "status",
+      "syntax": "/ouro status",
+      "summary": "everything live, in one line",
+      "arguments": [],
+      "requires": {
+        "roles": [],
+        "capability": null,
+        "words": "every workspace member"
+      },
+      "destructive": false,
+      "confirmPrompt": null,
+      "mode": "sync",
+      "stage": "available",
+      "unavailableReply": null,
+      "binds": "GET /api/v1/dashboard · GET /api/v1/farm · GET /api/v1/inbox"
+    },
+    {
+      "id": "queue",
+      "aliases": [],
+      "usage": "queue #485 [workflow]",
+      "syntax": "/ouro queue <ticket> [workflow]",
+      "summary": "send an issue into the loop",
+      "arguments": [
+        {
+          "name": "ticket",
+          "type": "ticket",
+          "optional": false,
+          "description": "the issue to queue — `#485`, `485`, `repo#485` or its GitHub URL",
+          "completion": "tickets"
+        },
+        {
+          "name": "workflow",
+          "type": "workflow",
+          "optional": true,
+          "description": "the workflow to pin; left out, the workspace's triggers choose",
+          "completion": "workflows"
+        }
+      ],
+      "requires": {
+        "roles": [
+          "owner",
+          "admin",
+          "member"
+        ],
+        "capability": null,
+        "words": "workspace owners, admins and members"
+      },
+      "destructive": false,
+      "confirmPrompt": null,
+      "mode": "sync",
+      "stage": "available",
+      "unavailableReply": null,
+      "binds": "POST /api/v1/backlog/queue"
+    },
+    {
+      "id": "pause loop",
+      "aliases": [],
+      "usage": "pause loop 1847",
+      "syntax": "/ouro pause loop <loop>",
+      "summary": "hold a loop mid-flight",
+      "arguments": [
+        {
+          "name": "loop",
+          "type": "loop",
+          "optional": false,
+          "description": "the loop's number — `1847` or `#1847`",
+          "completion": "loops"
+        }
+      ],
+      "requires": {
+        "roles": [
+          "owner",
+          "admin"
+        ],
+        "capability": null,
+        "words": "workspace owners and admins"
+      },
+      "destructive": false,
+      "confirmPrompt": null,
+      "mode": "sync",
+      "stage": "available",
+      "unavailableReply": null,
+      "binds": "POST /api/v1/runs/{id}/controls (pause)"
+    },
+    {
+      "id": "resume loop",
+      "aliases": [],
+      "usage": "resume loop 1847",
+      "syntax": "/ouro resume loop <loop>",
+      "summary": "let a held loop continue",
+      "arguments": [
+        {
+          "name": "loop",
+          "type": "loop",
+          "optional": false,
+          "description": "the loop's number — `1847` or `#1847`",
+          "completion": "loops"
+        }
+      ],
+      "requires": {
+        "roles": [
+          "owner",
+          "admin"
+        ],
+        "capability": null,
+        "words": "workspace owners and admins"
+      },
+      "destructive": false,
+      "confirmPrompt": null,
+      "mode": "sync",
+      "stage": "available",
+      "unavailableReply": null,
+      "binds": "POST /api/v1/runs/{id}/controls (resume)"
+    },
+    {
+      "id": "abort loop",
+      "aliases": [],
+      "usage": "abort loop 1847",
+      "syntax": "/ouro abort loop <loop> confirm",
+      "summary": "stop and clean up",
+      "arguments": [
+        {
+          "name": "loop",
+          "type": "loop",
+          "optional": false,
+          "description": "the loop's number — `1847` or `#1847`",
+          "completion": "loops"
+        },
+        {
+          "name": "confirm",
+          "type": "confirm",
+          "optional": true,
+          "description": "the word `confirm` — without it nothing is aborted",
+          "completion": null
+        }
+      ],
+      "requires": {
+        "roles": [
+          "owner",
+          "admin"
+        ],
+        "capability": null,
+        "words": "workspace owners and admins"
+      },
+      "destructive": true,
+      "confirmPrompt": "Add `confirm` to abort — this stops loop {loop} for good and closes its run as canceled. Its branch is kept; nothing is reverted or deleted. `/ouro abort loop {loop} confirm`",
+      "mode": "sync",
+      "stage": "available",
+      "unavailableReply": null,
+      "binds": "POST /api/v1/runs/{id}/controls (abort)"
+    },
+    {
+      "id": "answer",
+      "aliases": [],
+      "usage": "answer q-231 allow_once",
+      "syntax": "/ouro answer <question> <action>",
+      "summary": "answer a blocking question",
+      "arguments": [
+        {
+          "name": "question",
+          "type": "question",
+          "optional": false,
+          "description": "the question's short id, as its card shows it — `q-231`",
+          "completion": "questions"
+        },
+        {
+          "name": "action",
+          "type": "action",
+          "optional": false,
+          "description": "one of the answers that question takes — `allow_once`",
+          "completion": "actions"
+        }
+      ],
+      "requires": {
+        "roles": [],
+        "capability": null,
+        "words": "every workspace member"
+      },
+      "destructive": false,
+      "confirmPrompt": null,
+      "mode": "sync",
+      "stage": "available",
+      "unavailableReply": null,
+      "binds": "POST /api/v1/inbox/items/{id}/actions/{actionId}"
+    },
+    {
+      "id": "dry-run",
+      "aliases": [
+        "dryrun"
+      ],
+      "usage": "dry-run #486 [workflow]",
+      "syntax": "/ouro dry-run <ticket> [workflow]",
+      "summary": "rehearse with no writes",
+      "arguments": [
+        {
+          "name": "ticket",
+          "type": "ticket",
+          "optional": false,
+          "description": "the issue to rehearse — `#486`, `486`, `repo#486` or its GitHub URL",
+          "completion": "tickets"
+        },
+        {
+          "name": "workflow",
+          "type": "workflow",
+          "optional": true,
+          "description": "the workflow to rehearse; left out, the one the triggers would pin",
+          "completion": "workflows"
+        }
+      ],
+      "requires": {
+        "roles": [
+          "owner",
+          "admin",
+          "member"
+        ],
+        "capability": null,
+        "words": "workspace owners, admins and members"
+      },
+      "destructive": false,
+      "confirmPrompt": null,
+      "mode": "async",
+      "stage": "available",
+      "unavailableReply": null,
+      "binds": "POST /api/v1/workflows/{id}/dry-runs"
+    },
+    {
+      "id": "route",
+      "aliases": [],
+      "usage": "route implement claude-fable-5",
+      "syntax": "/ouro route <task> <alias>",
+      "summary": "repin a stage's model",
+      "arguments": [
+        {
+          "name": "task",
+          "type": "task_kind",
+          "optional": false,
+          "description": "the task kind to repin — `implement`",
+          "completion": "task_kinds"
+        },
+        {
+          "name": "alias",
+          "type": "alias",
+          "optional": false,
+          "description": "the model alias its primary hop should use — never a raw model id",
+          "completion": "aliases"
+        }
+      ],
+      "requires": {
+        "roles": [
+          "owner",
+          "admin"
+        ],
+        "capability": null,
+        "words": "workspace owners and admins"
+      },
+      "destructive": false,
+      "confirmPrompt": null,
+      "mode": "sync",
+      "stage": "available",
+      "unavailableReply": null,
+      "binds": "PUT /api/v1/routing/routes/{taskKind}"
+    },
+    {
+      "id": "explain pr",
+      "aliases": [],
+      "usage": "explain pr 514",
+      "syntax": "/ouro explain pr <pr>",
+      "summary": "plain-language summary of a PR",
+      "arguments": [
+        {
+          "name": "pr",
+          "type": "pr",
+          "optional": false,
+          "description": "the pull request's number — `514` or `#514`",
+          "completion": null
+        }
+      ],
+      "requires": {
+        "roles": [],
+        "capability": null,
+        "words": "every workspace member"
+      },
+      "destructive": false,
+      "confirmPrompt": null,
+      "mode": "sync",
+      "stage": "v2",
+      "unavailableReply": "Plain-language PR summaries arrive with AI presence (CB.1, #546). `/ouro explain pr` is listed so you know it is coming; it does not summarise anything yet.",
+      "binds": "none yet — AI presence (#546, CB.1)"
+    },
+    {
+      "id": "estimate",
+      "aliases": [],
+      "usage": "estimate #490",
+      "syntax": "/ouro estimate <ticket>",
+      "summary": "effort, cost, and cycle guess",
+      "arguments": [
+        {
+          "name": "ticket",
+          "type": "ticket",
+          "optional": false,
+          "description": "the issue to estimate — `#490`, `490`, `repo#490` or its GitHub URL",
+          "completion": "tickets"
+        }
+      ],
+      "requires": {
+        "roles": [],
+        "capability": null,
+        "words": "every workspace member"
+      },
+      "destructive": false,
+      "confirmPrompt": null,
+      "mode": "sync",
+      "stage": "available",
+      "unavailableReply": null,
+      "binds": "GET /api/v1/backlog/{id} · POST /api/v1/backlog/{id}/estimate"
+    },
+    {
+      "id": "pause all",
+      "aliases": [],
+      "usage": "pause all",
+      "syntax": "/ouro pause all confirm",
+      "summary": "the big red button",
+      "arguments": [
+        {
+          "name": "confirm",
+          "type": "confirm",
+          "optional": true,
+          "description": "the word `confirm` — without it nothing is paused",
+          "completion": null
+        }
+      ],
+      "requires": {
+        "roles": [
+          "owner",
+          "admin"
+        ],
+        "capability": null,
+        "words": "workspace owners and admins"
+      },
+      "destructive": true,
+      "confirmPrompt": "Add `confirm` to pause everything — this stops every loop in {workspace} from starting anything new. Stages already running finish, and queued work stays queued until an owner or admin resumes the workspace. `/ouro pause all confirm`",
+      "mode": "sync",
+      "stage": "available",
+      "unavailableReply": null,
+      "binds": "POST /api/v1/settings/lifecycle/pause"
+    }
+  ],
+  "builtins": [
+    {
+      "id": "help",
+      "usage": "help [command]",
+      "summary": "this list, or one command in detail",
+      "surfaces": [
+        "slack",
+        "console"
+      ]
+    },
+    {
+      "id": "link",
+      "usage": "link",
+      "summary": "link your Slack identity to your Ouroboros account",
+      "surfaces": [
+        "slack"
+      ]
+    },
+    {
+      "id": "unlink",
+      "usage": "unlink",
+      "summary": "undo the link",
+      "surfaces": [
+        "slack"
+      ]
+    }
+  ]
+}

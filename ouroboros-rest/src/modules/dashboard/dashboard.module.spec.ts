@@ -29,13 +29,14 @@ describe("the dashboard module", () => {
     await moduleRef.close();
   });
 
-  it("exports nothing", () => {
+  it("exports the service for `/ouro status`, and nothing below it", () => {
     // #71, #73 and #74 publish their own endpoints over the same rows rather than reaching
-    // through this module: an exported service would make the dashboard's card-sized limits
-    // and its choice of windows theirs too, and they are not.
+    // through this module: a shared service would make the dashboard's card-sized limits
+    // and its choice of windows theirs too, and they are not. The one in-process caller is
+    // `/ouro status` (#537) — the stat row in one line, which has to be the stat row's read.
     const exports = Reflect.getMetadata("exports", DashboardModule) as unknown[] | undefined;
 
-    expect(exports ?? []).toEqual([]);
+    expect(exports ?? []).toEqual([DashboardService]);
   });
 
   it("says who may reach the read-model by importing DbModule", () => {

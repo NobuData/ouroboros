@@ -4,6 +4,7 @@ import { ConfigurationModule } from "../config/config.module";
 import { testConfiguration } from "../config/configuration.fixture";
 import { ConsoleRepository } from "./console.repository";
 import { ConsoleService } from "./console.service";
+import { LoopLookupRepository } from "./loop.lookup.repository";
 import { RunsController } from "./runs.controller";
 import { RunsModule } from "./runs.module";
 import { RunsRepository } from "./runs.repository";
@@ -30,11 +31,12 @@ describe("the runs module", () => {
     await moduleRef.close();
   });
 
-  it("exports nothing", () => {
+  it("exports the read-only loop lookup and nothing else", () => {
     // The routes are the surface — the dashboard module's own rule, kept here so the queue
-    // and settings drill-ins publish their own statements rather than reaching through.
+    // and settings drill-ins publish their own statements rather than reaching through. The
+    // exception is the loop number → run read the `/ouro` grammar resolves `1847` with (#537).
     const exports = Reflect.getMetadata("exports", RunsModule) as unknown[] | undefined;
 
-    expect(exports ?? []).toEqual([]);
+    expect(exports ?? []).toEqual([LoopLookupRepository]);
   });
 });

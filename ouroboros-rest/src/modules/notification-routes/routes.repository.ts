@@ -142,7 +142,7 @@ export class NotificationRoutesRepository {
 
   /**
    * What the workspace has connected — the fact `notification_routes_effective` derives the
-   * Slack lock from (V133), asked directly for a route with no stored row.
+   * Slack lock from (V134), asked directly for a route with no stored row.
    *
    * @param organizationId - The workspace.
    * @param trx - A save's transaction, when the read belongs to one.

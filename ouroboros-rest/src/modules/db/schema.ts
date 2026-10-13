@@ -7325,6 +7325,12 @@ export interface DecisionItemsTable {
   snoozed_until: Date | null;
   snoozed_by: string | null;
   snooze_reason: string | null;
+  /**
+   * The item's short number in its workspace (V133,
+   * [#537](https://github.com/NobuData/ouroboros/issues/537)) — shown to people as `q-231` and
+   * what `/ouro answer` addresses. Assigned by the database on insert; never written here.
+   */
+  short_seq: ColumnType<number, never, never>;
 }
 
 /** `webhook_deliveries.status` (V094). */
@@ -7844,20 +7850,20 @@ export interface ChatMessagesTable {
   payload_digest: string;
   thread_ts: string | null;
   escalated_at: Date | null;
-  posted_at: ColumnType<Date, Date | undefined, never>;
+  posted_at: ColumnType<Date, Date | undefined, Date>;
   edited_at: Date | null;
   /** `posted_at` binned to the UTC hour — generated. */
   dedupe_bucket: ColumnType<Date, never, never>;
 }
 
-/** `chat_outbox.status` (V133). */
+/** `chat_outbox.status` (V134). */
 export type ChatOutboxStatus = "pending" | "sent" | "absorbed" | "skipped" | "dead_lettered";
 
-/** `chat_outbox.operation` (V133) — a new message, or an edit of a stored one. */
+/** `chat_outbox.operation` (V134) — a new message, or an edit of a stored one. */
 export type ChatOutboxOperation = "post" | "update";
 
 /**
- * `ouroboros.chat_outbox` — what is about to be published (V133,
+ * `ouroboros.chat_outbox` — what is about to be published (V134,
  * [#536](https://github.com/NobuData/ouroboros/issues/536)): one row per (target, thing to say),
  * unique on its `dedupe_key`, claimed `for update skip locked` and settled.
  */
@@ -7905,6 +7911,42 @@ export interface OnCallAssignmentsTable {
   assigned_at: Generated<Date>;
   created_at: Stamped;
   updated_at: Stamped;
+}
+
+/** `chat_commands.surface` (V131). */
+export type ChatCommandSurface = "slack" | "console";
+
+/** `chat_commands.outcome` (V131) — `async_pending` exactly while `completed_at` is null. */
+export type ChatCommandOutcome = "ok" | "error" | "denied" | "unlinked" | "async_pending";
+
+/**
+ * `ouroboros.chat_commands` — every `/ouro` command invoked (V131,
+ * [#532](https://github.com/NobuData/ouroboros/issues/532)); written by the dispatcher
+ * ([#537](https://github.com/NobuData/ouroboros/issues/537)). An audit trail: the application
+ * role holds no `delete`.
+ */
+export interface ChatCommandsTable {
+  id: Generated<string>;
+  organization_id: string;
+  connection_id: string;
+  /** The `chat_channels` row it was typed in; null for a DM or a channel the app has not joined. */
+  channel_id: string | null;
+  /** The invoker's identity link; null for an unlinked attempt. */
+  invoker_link_id: string | null;
+  /** The platform's id for whoever typed it — always present on the slack surface. */
+  platform_user_id: string | null;
+  surface: ChatCommandSurface;
+  /** The command as dispatched — `status`, `pause all`. */
+  command: string;
+  args: ColumnType<Record<string, unknown>, string | undefined, string>;
+  raw_text: string;
+  outcome: ChatCommandOutcome;
+  /** What it produced, as an object of ids — `{"message": …}`; null when nothing. */
+  result_ref: ColumnType<Record<string, unknown> | null, string | null | undefined, string | null>;
+  error_detail: string | null;
+  audit_event_id: string | null;
+  invoked_at: ColumnType<Date, Date | undefined, Date>;
+  completed_at: Date | null;
 }
 
 export interface Database {
@@ -8073,6 +8115,7 @@ export interface Database {
   chat_messages: ChatMessagesTable;
   chat_outbox: ChatOutboxTable;
   on_call_assignments: OnCallAssignmentsTable;
+  chat_commands: ChatCommandsTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -8771,6 +8814,24 @@ export const TABLE_COLUMNS = {
     "posted_at",
     "edited_at",
     "dedupe_bucket",
+  ],
+  chat_commands: [
+    "id",
+    "organization_id",
+    "connection_id",
+    "channel_id",
+    "invoker_link_id",
+    "platform_user_id",
+    "surface",
+    "command",
+    "args",
+    "raw_text",
+    "outcome",
+    "result_ref",
+    "error_detail",
+    "audit_event_id",
+    "invoked_at",
+    "completed_at",
   ],
   chat_outbox: [
     "id",
@@ -9993,6 +10054,7 @@ export const TABLE_COLUMNS = {
     "snoozed_until",
     "snoozed_by",
     "snooze_reason",
+    "short_seq",
   ],
   decision_resolutions: [
     "item_id",
@@ -10807,3 +10869,6 @@ export type ChatMessage = Selectable<ChatMessagesTable>;
 
 /** A row of `ouroboros.chat_outbox`, as a `select` returns it. */
 export type ChatOutboxRow = Selectable<ChatOutboxTable>;
+
+/** A row of `ouroboros.chat_commands`, as a `select` returns it. */
+export type ChatCommand = Selectable<ChatCommandsTable>;

@@ -18,7 +18,7 @@
  * or nobody on call contributes no row, and the call writes nothing.
  *
  * **The same thing is intended once.** Each row carries the SHA-256 of what it is about
- * ({@link chatDedupeKey}); V133's unique indexes make a second enqueue of it for the same target a
+ * ({@link chatDedupeKey}); V134's unique indexes make a second enqueue of it for the same target a
  * no-op, so a plane that reports twice, or two replicas that both notice a due digest, produce
  * one message.
  *

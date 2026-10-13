@@ -41,6 +41,7 @@ import {
   estimateSeconds,
   formatDuration,
   inboxActions,
+  decisionShortId,
   inboxHead,
   outcomeWords,
   refsOf,
@@ -69,6 +70,8 @@ export interface InboxViewer {
 /** One asking item, as the card renders it. */
 export interface InboxItemResource {
   readonly id: string;
+  /** The item's short id — `q-231` — which `/ouro answer` takes (#537). */
+  readonly shortId: string;
   readonly kindId: string;
   readonly kindVersion: number;
   readonly severity: DecisionSeverity;
@@ -92,6 +95,8 @@ export interface InboxItemResource {
 /** One snoozed item. */
 export interface InboxSnoozedResource {
   readonly id: string;
+  /** The item's short id — `q-231` (#537). */
+  readonly shortId: string;
   readonly kindId: string;
   readonly severity: DecisionSeverity;
   readonly question: string;
@@ -116,6 +121,8 @@ export interface InboxQueueResource {
 /** One resolved row. */
 export interface InboxResolvedRowResource {
   readonly itemId: string;
+  /** The item's short id — `q-231` (#537). */
+  readonly shortId: string;
   readonly kindId: string;
   /** `Split #490 into 6 tickets — approved` — {@link subject}, a dash, {@link verdict}. */
   readonly summary: string;
@@ -243,6 +250,7 @@ export class InboxQueueService {
 
       items.push({
         id: row.id,
+        shortId: decisionShortId(row.shortSeq),
         kindId: row.kindId,
         kindVersion: row.kindVersion,
         severity: row.severity,
@@ -313,6 +321,7 @@ export class InboxQueueService {
 
       lines.push({
         itemId: row.itemId,
+        shortId: decisionShortId(row.shortSeq),
         kindId: row.kindId,
         summary: `${subject} — ${verdict}`,
         subject,
@@ -524,6 +533,7 @@ export class InboxQueueService {
 
     return {
       id: row.id,
+      shortId: decisionShortId(row.shortSeq),
       kindId: row.kindId,
       severity: row.severity,
       question: this.registry.render(kind, row.payload).question,

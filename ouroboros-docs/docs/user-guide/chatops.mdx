@@ -2,7 +2,7 @@
 title: "Chat Ops — Ouroboros in Slack"
 sidebar_label: "Chat Ops"
 sidebar_position: 18
-description: "What Ouroboros posts to your Slack channels, and linking your Slack identity to your account with /ouro link."
+description: "What Ouroboros posts to your Slack channels, linking your Slack identity to your account with /ouro link, and the /ouro commands you can then type."
 ---
 
 Chat Ops brings Ouroboros into Slack. This page covers two things:
@@ -16,11 +16,11 @@ see [Chat Ops — connecting Slack](../administration/chatops.mdx).
 
 :::info[What works today]
 
-Ouroboros posts cards to Slack, and linking works: `/ouro link`, `/ouro unlink` and
-`/ouro help`. **Answering a decision with a button in Slack is not available yet** — the button
-replies that it is not available and changes nothing — and neither is any other `/ouro` command.
-Until then, answer decisions in the [Needs-you inbox](./inbox.mdx); a card's link buttons take
-you to the right page.
+Ouroboros posts cards to Slack, and linking, unlinking and the `/ouro` commands work — see
+[Commands](#commands). **Answering a decision with a button in Slack is not available yet** — the
+button replies that it is not available and changes nothing. Until then, answer it with
+`/ouro answer`, or in the [Needs-you inbox](./inbox.mdx); a card's link buttons take you to the
+right page.
 
 :::
 
@@ -119,6 +119,32 @@ In Slack, type `/ouro unlink`. Ouroboros answers that your identity is unlinked.
 while it was linked stays in the audit trail under your name.
 
 To link again, type `/ouro link`.
+
+## Commands
+
+Once you are linked, type `/ouro` and a command in any channel or direct message. The answer is
+shown to you alone. <Since version="0.41.25" module="ouroboros-rest" />
+
+| Type | To |
+| --- | --- |
+| `/ouro status` | see loops live, the queue, the build farm, today's spend and what needs you, in one line |
+| `/ouro queue #485` | send an issue into the loop |
+| `/ouro pause loop 1847` | hold a loop — `/ouro resume loop 1847` lets it continue |
+| `/ouro abort loop 1847 confirm` | stop a loop for good |
+| `/ouro answer q-231 allow_once` | answer a question that is blocking a loop |
+| `/ouro dry-run #486` | rehearse a workflow with no writes and no pull requests |
+| `/ouro route implement claude-fable-5` | repin the model a task kind uses |
+| `/ouro estimate #490` | see an issue's effort, cost and cycle estimate |
+| `/ouro pause all confirm` | pause every loop in the workspace |
+| `/ouro help` | list the commands |
+
+Each command does what the matching button in Ouroboros does, with your role: a command your
+role does not include answers with who it is for, and does nothing. `abort loop` and
+`pause all` run only when you add the word `confirm`. Without it they describe what would
+happen.
+
+The full reference — every argument, who may run each command and what it answers — is
+[/ouro chat commands](../cli/ouro.mdx).
 
 ## If you press a button before linking
 

@@ -39,6 +39,9 @@ Each card has the same parts, whatever it asks:
   card's left edge show how urgent it is: **Blocking** (red), **Waiting** (amber) or **FYI**.
 - **How long it has waited** — at the right, such as **6m**. It keeps counting while the page
   is open, and a snooze does not stop it.
+- **Its short id** — the first tag, such as **q-231**. It is what you type to answer the
+  decision from Slack with [`/ouro answer`](../cli/ouro.mdx).
+  <Since version="0.156.2" module="ouroboros-ui" />
 - **What it is about** — tags for the loop, issue, pull request or file, such as **loop
   #1844**, **issue #479** and **boot/rollback_flag.c**. A tag you can open is a link: a loop
   opens its run console, a pull request its verification page, an issue the

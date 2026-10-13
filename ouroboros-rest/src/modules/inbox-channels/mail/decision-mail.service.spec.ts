@@ -186,6 +186,7 @@ function item(
 ): InboxItemRow {
   return {
     id,
+    shortSeq: 231,
     kindId,
     kindVersion: 1,
     severity,

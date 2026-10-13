@@ -29,6 +29,7 @@ import type { ChatRepository, ChatResolutionRow, ClaimedChatRow } from "./chat.r
 
 const ITEM_ROW: InboxItemRow = {
   id: ITEM,
+  shortSeq: 2,
   kindId: "protected_path_allow_once",
   kindVersion: 1,
   severity: "warn",

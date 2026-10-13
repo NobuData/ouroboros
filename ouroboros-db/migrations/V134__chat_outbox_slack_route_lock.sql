@@ -1,4 +1,4 @@
--- V133__chat_outbox_slack_route_lock.sql — what is about to be said in a channel, and when a
+-- V134__chat_outbox_slack_route_lock.sql — what is about to be said in a channel, and when a
 -- Slack route may deliver (#536, BZ.2).
 --
 -- `chat_messages` (V131) records what *was* published. Nothing recorded what was *meant* to be:

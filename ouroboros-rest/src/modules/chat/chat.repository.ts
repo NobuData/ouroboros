@@ -3,7 +3,7 @@
  * [#536](https://github.com/NobuData/ouroboros/issues/536)).
  *
  * ```
- * chat_outbox     claimed for update skip locked · leased · settled        (V133)
+ * chat_outbox     claimed for update skip locked · leased · settled        (V134)
  * chat_messages   a row before the post, its platform ts after              (V131)
  * chat_channels   a DM conversation is a channel too, tagged `dm`           (V130)
  * ```

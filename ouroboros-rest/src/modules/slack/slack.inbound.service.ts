@@ -21,10 +21,18 @@
  * |---|---|
  * | `url_verification` | the challenge is echoed |
  * | `app_uninstalled`, `tokens_revoked` (bot) | the connection is flipped to `revoked` |
- * | `/ouro link`, `/ouro unlink`, `/ouro help` | here |
- * | any other `/ouro …` | an honest *not available yet* — the registry is BZ.3's (#537) |
+ * | `/ouro link`, `/ouro unlink` | here — linking is a Slack matter |
+ * | any other `/ouro …`, `help` included | the dispatcher of BZ.3 (#537), with the whole text |
  * | a button press by somebody unlinked | read-only: a *link your account* prompt |
  * | a button press by somebody linked | an honest *not available yet* — BZ.4's (#538) |
+ *
+ * **This is a thin adapter for commands.** It turns the slash payload into the dispatcher's
+ * input — the text after `/ouro`, the Slack workspace, user and channel — and the dispatcher's
+ * reply into an ephemeral message. It decides nothing about a command: not what it is, not who
+ * may run it, not what it says. Two things only are Slack's own: somebody unlinked gets the
+ * link *button* under the dispatcher's sentence, and an async command's later result is posted
+ * to the same `response_url` (valid for thirty minutes), which is what the dispatcher's
+ * `followUp` is given.
  *
  * Detached work never rejects: every failure is logged and, where there is somebody to tell,
  * said in a reply.
@@ -32,9 +40,11 @@
 
 import { Inject, Injectable, Logger } from "@nestjs/common";
 
+import { CHAT_REPLIES } from "../chatops/chatops.replies";
+import { ChatDispatcher } from "../chatops/dispatcher.service";
+import type { CommandReply } from "../chatops/grammar.types";
 import type { ChatConnectionPublic } from "../db/schema";
 import { LINK_ACTION_PREFIX } from "./slack.blockkit";
-import { SLACK_COMMAND } from "./slack.app";
 import { SLACK_API, type SlackApi, type SlackReply } from "./slack.client";
 import { SeenEvents } from "./slack.dedupe";
 import { SlackInstallService } from "./slack.install.service";
@@ -53,15 +63,11 @@ export const REPLIES = {
   unlinked:
     "Your Slack identity is unlinked. What you did while it was linked stays in the audit log under your name.",
   notLinked: "Your Slack identity is not linked, so there is nothing to unlink.",
-  needsLink:
-    "You're not linked — buttons and commands here act with your Ouroboros permissions, so link your account first.",
-  notConnected:
-    "This Slack workspace is not connected to Ouroboros any more. An owner or admin can connect it again in Settings.",
-  commandUnavailable: (command: string): string =>
-    `\`${SLACK_COMMAND} ${command}\` is not available yet. Today \`${SLACK_COMMAND} link\`, \`${SLACK_COMMAND} unlink\` and \`${SLACK_COMMAND} help\` work.`,
+  // The dispatcher's two sentences, so a button press and a command say the same thing.
+  needsLink: CHAT_REPLIES.unlinked,
+  notConnected: CHAT_REPLIES.notConnected,
   actionUnavailable:
     "Answering from Slack is not available yet. Open the item in Ouroboros to answer it.",
-  help: `\`${SLACK_COMMAND} link\` links your Slack identity to your Ouroboros account. \`${SLACK_COMMAND} unlink\` undoes it. More commands are coming.`,
   failed: "Something went wrong and nothing was changed. Try again.",
 } as const;
 
@@ -162,6 +168,30 @@ export function interactionPayload(body: unknown): Record<string, unknown> | und
   }
 }
 
+/** A slash command, as far as this module reads it. */
+interface TypedCommand {
+  readonly teamId: string;
+  readonly userId: string;
+  /** Where it was typed — Slack's channel id, a DM's included. */
+  readonly channelId: string | null;
+  /** Everything after `/ouro`. */
+  readonly text: string;
+  readonly responseUrl: string;
+}
+
+/**
+ * The dispatcher's reply as Slack shows it — to the person who typed the command, and nobody
+ * else.
+ *
+ * @param reply - The reply.
+ * @returns The ephemeral message.
+ */
+export function slackReply(reply: CommandReply): SlackReply {
+  return reply.link === undefined
+    ? { ephemeral: true, text: reply.text }
+    : { ephemeral: true, text: reply.text, link: reply.link };
+}
+
 @Injectable()
 export class SlackInboundService {
   private readonly logger = new Logger(SlackInboundService.name);
@@ -177,12 +207,14 @@ export class SlackInboundService {
    * @param repository - Finds the connection a Slack workspace belongs to, and identity links.
    * @param installs - Flips a connection to revoked.
    * @param links - Issues and revokes identity links.
+   * @param dispatcher - Runs every `/ouro` command but `link` and `unlink`.
    */
   constructor(
     @Inject(SLACK_API) private readonly slack: SlackApi,
     private readonly repository: SlackRepository,
     private readonly installs: SlackInstallService,
     private readonly links: SlackLinkService,
+    private readonly dispatcher: ChatDispatcher,
   ) {}
 
   /**
@@ -212,7 +244,7 @@ export class SlackInboundService {
   /**
    * A slash command.
    *
-   * @param body - The parsed form: `team_id`, `user_id`, `text`, `response_url`.
+   * @param body - The parsed form: `team_id`, `user_id`, `channel_id`, `text`, `response_url`.
    * @returns {@link COMMAND_ACK} — the result follows as a separate message.
    */
   command(body: unknown): typeof COMMAND_ACK {
@@ -221,10 +253,17 @@ export class SlackInboundService {
     const responseUrl = field(body, "response_url");
 
     if (teamId !== undefined && userId !== undefined && responseUrl !== undefined) {
-      const subcommand = subcommandOf(field(body, "text"));
+      const typed: TypedCommand = {
+        teamId,
+        userId,
+        channelId: field(body, "channel_id") ?? null,
+        text: field(body, "text") ?? "",
+        responseUrl,
+      };
 
-      this.detach(`command ${subcommand}`, () =>
-        this.answer(responseUrl, () => this.handleCommand(teamId, userId, subcommand)),
+      // Only the first word reaches the log: the rest may name things.
+      this.detach(`command ${subcommandOf(typed.text)}`, () =>
+        this.answer(responseUrl, () => this.handleCommand(typed)),
       );
     }
 
@@ -259,7 +298,8 @@ export class SlackInboundService {
   }
 
   /**
-   * Wait for every piece of detached work started so far.
+   * Wait for every piece of detached work started so far — an async command's later result
+   * included.
    *
    * @returns When nothing is running.
    */
@@ -267,6 +307,8 @@ export class SlackInboundService {
     while (this.running.size > 0) {
       await Promise.all(this.running);
     }
+
+    await this.dispatcher.idle();
   }
 
   /**
@@ -300,44 +342,63 @@ export class SlackInboundService {
   }
 
   /**
-   * What a slash command does.
+   * What a slash command does: `link` and `unlink` here, everything else through the dispatcher.
    *
-   * @param teamId - The Slack workspace.
-   * @param userId - Who typed it.
-   * @param subcommand - The first word after `/ouro`.
+   * @param typed - The command as Slack delivered it.
    * @returns What to tell them.
    */
-  private async handleCommand(
-    teamId: string,
-    userId: string,
-    subcommand: string,
-  ): Promise<SlackReply> {
-    const connection = await this.repository.activeByWorkspace(teamId);
+  private async handleCommand(typed: TypedCommand): Promise<SlackReply> {
+    const subcommand = subcommandOf(typed.text);
 
-    if (connection === undefined) {
-      return { ephemeral: true, text: REPLIES.notConnected };
+    if (subcommand === "link" || subcommand === "unlink") {
+      const connection = await this.repository.activeByWorkspace(typed.teamId);
+
+      if (connection === undefined) {
+        return { ephemeral: true, text: REPLIES.notConnected };
+      }
+
+      return subcommand === "link"
+        ? this.offerLink(connection, typed.userId, REPLIES.linkOffer)
+        : {
+            ephemeral: true,
+            text: (await this.links.unlink(connection, typed.userId))
+              ? REPLIES.unlinked
+              : REPLIES.notLinked,
+          };
     }
 
-    switch (subcommand) {
-      case "link":
-        return this.offerLink(connection, userId, REPLIES.linkOffer);
-      case "unlink":
-        return {
-          ephemeral: true,
-          text: (await this.links.unlink(connection, userId))
-            ? REPLIES.unlinked
-            : REPLIES.notLinked,
-        };
-      case "help":
-        return { ephemeral: true, text: REPLIES.help };
-      default:
-        // Only the first word is echoed, and only what matched a command's shape.
-        return {
-          ephemeral: true,
-          text: REPLIES.commandUnavailable(
-            /^[a-z][a-z0-9-]{0,31}$/.test(subcommand) ? subcommand : "…",
-          ),
-        };
+    const result = await this.dispatcher.dispatch({
+      surface: "slack",
+      text: typed.text,
+      slack: { teamId: typed.teamId, userId: typed.userId, channelId: typed.channelId },
+      followUp: (reply) => this.followUp(typed.responseUrl, reply),
+    });
+
+    if (result.outcome === "unlinked") {
+      // The dispatcher's sentence, with the one thing only Slack can add: the way to link.
+      const connection = await this.repository.activeByWorkspace(typed.teamId);
+
+      if (connection !== undefined) {
+        return this.offerLink(connection, typed.userId, result.reply.text);
+      }
+    }
+
+    return slackReply(result.reply);
+  }
+
+  /**
+   * Post an async command's later result to where its acknowledgement went.
+   *
+   * @param responseUrl - The command's `response_url`.
+   * @param reply - The result.
+   * @throws {Error} When Slack did not take it — the dispatcher logs that; the outcome is
+   *   already recorded.
+   */
+  private async followUp(responseUrl: string, reply: CommandReply): Promise<void> {
+    const sent = await this.slack.respond(responseUrl, slackReply(reply));
+
+    if (!sent.ok) {
+      throw new Error(`Slack did not take the reply: ${sent.error}`);
     }
   }
 

@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.25"
+  version: "0.41.26"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -748,6 +748,12 @@ tags:
       — its install, the three request URLs Slack calls (each verified by signature, each
       acknowledged before its work is done), the page that links a Slack identity to an account,
       and the connection status every surface reads. Setup: `docs/CHATOPS_SETUP.md`.
+
+      **The `/ouro` grammar** (issue [#537](https://github.com/NobuData/ouroboros/issues/537)) —
+      one versioned registry of commands that Slack and the in-app console both run through one
+      dispatcher: the grammar itself and completion hints are read here; a command is typed in
+      Slack (`POST /api/v1/slack/commands`). A command calls the API the UI calls, as the person
+      who typed it — never a path of its own, and never with the app's permissions.
   - name: notification-routes
     description: |-
       **Org notification routes** (mockup 17, issue [#488](https://github.com/NobuData/ouroboros/issues/488))
@@ -9227,6 +9233,128 @@ paths:
           description: |-
             `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
             this route is for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/chat/grammar:
+    get:
+      tags: [chatops]
+      summary: The `/ouro` grammar
+      description: |-
+        Every `/ouro` command (#537), from the one registry the dispatcher runs: its id and
+        aliases, the usage line as mockup 19 prints it, each argument with its type and the
+        vocabulary that completes it, who may run it, whether it needs `confirm`, whether its
+        result is immediate or follows as its own message, and the existing API it calls. A
+        command with `stage: "v2"` is listed and answers `unavailableReply` instead of running.
+        `builtins` are the words that are not commands of the grammar — `help` everywhere, `link`
+        and `unlink` in Slack. The same document as the committed `chat-grammar.json`; the
+        in-app console and the commands card list from it, so neither can show a command the
+        dispatcher does not have. It runs nothing. Any member may read it.
+      operationId: getChatGrammar
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The grammar.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatGrammar"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `service_scope_missing` — a service token without `api.read`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/chat/completions:
+    get:
+      tags: [chatops]
+      summary: What could be typed next
+      description: |-
+        Completion hints for a command being typed (#537). `text` is what follows `/ouro`, as
+        typed — a trailing space says the last word is finished. While the command's name is
+        being typed the completions are command ids; after it they are the vocabulary of the
+        argument being typed, read from the plane that owns it (open issues, live loops, offered
+        workflows, model aliases, task kinds, open questions and the answers the named question
+        takes), narrowed by what was typed and cut at ten (commands are never cut). An argument with no vocabulary, or a
+        finished command, answers an empty list. The text is read exactly as the dispatcher reads
+        it, so what is offered is what would be accepted — and nothing is resolved, validated or
+        run. Any member may ask; a source may offer only what the caller can see.
+      operationId: getChatCompletions
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: text
+          in: query
+          required: false
+          description: The text after `/ouro`, as typed. Absent or empty asks for the commands.
+          schema:
+            type: string
+            maxLength: 4000
+            examples: ["queue #485 st"]
+      responses:
+        "200":
+          description: The command and argument being typed, and the completions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatCompletions"
+        "422":
+          description: |-
+            `validation_failed` — `text` is longer than 4000 characters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `chat_person_required` — a service account; completions are offered to a signed-in
+            member. `service_scope_missing` — a service token without `api.read`.
           content:
             application/json:
               schema:
@@ -57408,6 +57536,186 @@ components:
         connection:
           $ref: "#/components/schemas/SlackConnection"
 
+    ChatGrammar:
+      type: object
+      title: ChatGrammar
+      additionalProperties: false
+      required: [version, prefix, confirmRule, commands, builtins]
+      properties:
+        version:
+          type: integer
+          minimum: 1
+          description: Bumped whenever a command, an argument or a requirement changes.
+        prefix:
+          type: string
+          examples: ["/ouro"]
+        confirmRule:
+          type: string
+          description: The rule every destructive command follows.
+        commands:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatGrammarCommand"
+        builtins:
+          type: array
+          description: Words that are not commands of the grammar — `help`, `link`, `unlink`.
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, usage, summary, surfaces]
+            properties:
+              id:
+                type: string
+              usage:
+                type: string
+                description: As typed after the prefix.
+              summary:
+                type: string
+              surfaces:
+                type: array
+                items:
+                  type: string
+                  enum: [slack, console]
+
+    ChatGrammarCommand:
+      type: object
+      title: ChatGrammarCommand
+      additionalProperties: false
+      required:
+        - id
+        - aliases
+        - usage
+        - syntax
+        - summary
+        - arguments
+        - requires
+        - destructive
+        - confirmPrompt
+        - mode
+        - stage
+        - unavailableReply
+        - binds
+      properties:
+        id:
+          type: string
+          description: The words that name it — `pause loop`, `dry-run`.
+        aliases:
+          type: array
+          items:
+            type: string
+        usage:
+          type: string
+          description: An example as mockup 19 prints it, without the prefix.
+          examples: ["queue #485 [workflow]"]
+        syntax:
+          type: string
+          description: What each position takes, with the prefix.
+          examples: ["/ouro queue <ticket> [workflow]"]
+        summary:
+          type: string
+        arguments:
+          type: array
+          description: In the order they are typed.
+          items:
+            type: object
+            additionalProperties: false
+            required: [name, type, optional, description, completion]
+            properties:
+              name:
+                type: string
+              type:
+                type: string
+                enum:
+                  - ticket
+                  - loop
+                  - workflow
+                  - alias
+                  - task_kind
+                  - question
+                  - action
+                  - pr
+                  - keyword
+                  - confirm
+              optional:
+                type: boolean
+              description:
+                type: string
+              completion:
+                type: [string, "null"]
+                enum: [tickets, loops, workflows, aliases, questions, actions, task_kinds, null]
+                description: The vocabulary that completes it; null when there is none to offer.
+        requires:
+          type: object
+          additionalProperties: false
+          required: [roles, capability, words]
+          properties:
+            roles:
+              type: array
+              description: Any one suffices; empty admits every member.
+              items:
+                type: string
+            capability:
+              type: [string, "null"]
+              description: The member capability also required, if any.
+            words:
+              type: string
+              description: The same requirement as a phrase.
+              examples: ["workspace owners and admins"]
+        destructive:
+          type: boolean
+          description: Whether it runs only with `confirm` as its last word.
+        confirmPrompt:
+          type: [string, "null"]
+          description: |-
+            What the first attempt says, with `{argument}` and `{workspace}` placeholders; null
+            unless destructive.
+        mode:
+          type: string
+          enum: [sync, async]
+          description: "`async` acknowledges; the result follows as its own message."
+        stage:
+          type: string
+          enum: [available, v2]
+        unavailableReply:
+          type: [string, "null"]
+          description: What a `v2` command says instead of running; null for an available one.
+        binds:
+          type: string
+          description: The existing API the command calls.
+
+    ChatCompletions:
+      type: object
+      title: ChatCompletions
+      additionalProperties: false
+      required: [grammarVersion, command, argument, completions]
+      properties:
+        grammarVersion:
+          type: integer
+          minimum: 1
+        command:
+          type: [string, "null"]
+          description: The command the text names; null while the command is being typed.
+        argument:
+          type: [string, "null"]
+          description: |-
+            The argument being typed; null while the command is, or when nothing is left to type.
+        completions:
+          type: array
+          description: |-
+            Command ids while the command is being typed — all that match, there are few; an
+            argument's vocabulary afterwards, at most ten.
+          items:
+            type: object
+            additionalProperties: false
+            required: [value, label]
+            properties:
+              value:
+                type: string
+                description: What to insert — `#485`, `standard-fix`, `q-231`.
+              label:
+                type: string
+                description: What to show beside it — the issue's title, the alias's model.
+
     NotificationRouteChannel:
       type: string
       title: NotificationRouteChannel
@@ -64249,11 +64557,18 @@ components:
       type: object
       description: One asking decision, rendered (#464).
       additionalProperties: false
-      required: [id, kindId, kindVersion, severity, status, question, why, tags, facts, refs, mergeClass, actions, createdAt, ageSeconds, snooze]
+      required: [id, kindId, kindVersion, severity, status, question, why, tags, facts, refs, mergeClass, actions, createdAt, ageSeconds, snooze, shortId]
       properties:
         id:
           type: string
           format: uuid
+        shortId:
+          type: string
+          pattern: "^q-[1-9][0-9]*$"
+          description: |-
+            The item's short id in its workspace (#537) — what a card prints and
+            `/ouro answer` takes.
+          examples: ["q-231"]
         kindId:
           type: string
         kindVersion:
@@ -64302,11 +64617,18 @@ components:
     InboxSnoozedItem:
       type: object
       additionalProperties: false
-      required: [id, kindId, severity, question, refs, createdAt, ageSeconds, snoozedUntil, snoozedBy, reason, snooze]
+      required: [id, kindId, severity, question, refs, createdAt, ageSeconds, snoozedUntil, snoozedBy, reason, snooze, shortId]
       properties:
         id:
           type: string
           format: uuid
+        shortId:
+          type: string
+          pattern: "^q-[1-9][0-9]*$"
+          description: |-
+            The item's short id in its workspace (#537) — what a card prints and
+            `/ouro answer` takes.
+          examples: ["q-231"]
         kindId:
           type: string
         severity:
@@ -64360,11 +64682,18 @@ components:
     InboxResolvedRow:
       type: object
       additionalProperties: false
-      required: [itemId, kindId, summary, subject, verdict, actionId, resolver, policy, policyHref, actor, channel, note, outcome, resolvedAt, answerLatencySeconds, loopWaitSeconds]
+      required: [itemId, kindId, summary, subject, verdict, actionId, resolver, policy, policyHref, actor, channel, note, outcome, resolvedAt, answerLatencySeconds, loopWaitSeconds, shortId]
       properties:
         itemId:
           type: string
           format: uuid
+        shortId:
+          type: string
+          pattern: "^q-[1-9][0-9]*$"
+          description: |-
+            The item's short id in its workspace (#537) — what a card prints and
+            `/ouro answer` takes.
+          examples: ["q-231"]
         kindId:
           type: string
         summary:

@@ -41293,8 +41293,8 @@ select pg_temp.must_hold(
      from pg_constraint where conname = 'notification_routes_chat_channel_fk'),
   'the route''s channel key is deferred and takes no action on delete');
 
--- The lock follows the connection (V133, #536): an active one lifts it, and the route delivers
--- exactly when it is enabled. V133's section takes the connection away again.
+-- The lock follows the connection (V134, #536): an active one lifts it, and the route delivers
+-- exactly when it is enabled. V134's section takes the connection away again.
 select pg_temp.must_hold(
   (select bool_and(not locked and locked_reason is null and delivering = enabled)
      from ouroboros.notification_routes_effective
@@ -42482,18 +42482,240 @@ select pg_temp.must_hold(
   'a workspace takes its links, its on-call assignments and its commands with it');
 
 -- ===========================================================================
--- V133 — the chat outbox, and the Slack route lock that follows the connection (#536, BZ.2)
+-- V133 — a decision item's short number (#537, BZ.3)
+-- ===========================================================================
+--
+-- `q-231` is 'q-' || short_seq: per workspace from 1, assigned by the database when the item is
+-- filed, never supplied, never changed, and not spent by an emission that only refreshes an item.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v133',  'Short Works', 'short-works-v133', now()),
+  ('org-v133b', 'Short Two',   'short-two-v133',   now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v133-maya', 'Maya Chen', 'maya@short-works-v133.dev', true);
+
+-- Files a fact-review question in a workspace, the way the facts plane does, and returns its id.
+create function pg_temp.v133_ask(org text, key text, said text default 'CAN frames are DMA-backed')
+returns uuid language sql as $$
+  select ouroboros.decision_item_emit(
+           org, 'fact_review',
+           jsonb_build_object('reason', 'awaiting review', 'text', said,
+                              'provenance_line', 'from PR #514 review cycle'),
+           '[]', 'facts', 'fact:' || key || ':proposed')
+$$;
+
+-- The numbers a workspace's items hold, in the order they were filed.
+create function pg_temp.v133_numbers(org text) returns text language sql stable as $$
+  select string_agg(split_part(source_ref, ':', 2) || '=q-' || short_seq, ' ' order by short_seq)
+    from ouroboros.decision_items where organization_id = org
+$$;
+
+-- --- numbers start at 1 per workspace and rise ------------------------------------------------------------
+select pg_temp.v133_ask('org-v133', 'a');
+select pg_temp.v133_ask('org-v133', 'b');
+select pg_temp.v133_ask('org-v133b', 'x');
+select pg_temp.v133_ask('org-v133', 'c');
+
+select pg_temp.must_hold(
+  pg_temp.v133_numbers('org-v133') = 'a=q-1 b=q-2 c=q-3',
+  'a workspace''s decision items are numbered from 1 in the order they are filed');
+
+select pg_temp.must_hold(
+  pg_temp.v133_numbers('org-v133b') = 'x=q-1',
+  'two workspaces number independently — each has its own q-1');
+
+-- --- a refresh spends no number ---------------------------------------------------------------------------------
+-- decision_item_emit is an upsert, and the allocator fires for the proposed row before the
+-- conflict is found. A plane re-emitting an open item must not move the counter.
+select pg_temp.must_hold(
+  pg_temp.v133_ask('org-v133', 'a', 'CAN frames are DMA-backed on both buses')
+    = (select id from ouroboros.decision_items
+        where organization_id = 'org-v133' and short_seq = 1),
+  're-emitting an item returns the same item, found by its number');
+select pg_temp.v133_ask('org-v133', 'a', 'CAN frames are DMA-backed on every bus');
+
+select pg_temp.must_hold(
+  (select payload ->> 'text' = 'CAN frames are DMA-backed on every bus' and short_seq = 1
+     from ouroboros.decision_items
+    where organization_id = 'org-v133' and source_ref = 'fact:a:proposed'),
+  'a refreshed item keeps its number while its facts change');
+
+select pg_temp.v133_ask('org-v133', 'd');
+select pg_temp.must_hold(
+  pg_temp.v133_numbers('org-v133') = 'a=q-1 b=q-2 c=q-3 d=q-4',
+  'two refreshes of q-1 spent no number: the next item is q-4');
+
+-- --- the database assigns it; a caller cannot ---------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_items
+      (organization_id, kind_id, kind_version, payload, refs, emitted_by, source_ref, short_seq)
+    select organization_id, kind_id, kind_version, payload, refs, emitted_by, 'fact:mine:proposed', 231
+      from ouroboros.decision_items where organization_id = 'org-v133' and short_seq = 1$$,
+  'an insert cannot bring its own short number', 'decision_items_short_seq_allocate');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_items
+      (organization_id, kind_id, kind_version, payload, refs, emitted_by, source_ref, short_seq)
+    select organization_id, kind_id, kind_version, payload, refs, emitted_by, 'fact:next:proposed', 5
+      from ouroboros.decision_items where organization_id = 'org-v133' and short_seq = 1$$,
+  'not even the number it would have been given', 'decision_items_short_seq_allocate');
+
+-- --- and it never changes ---------------------------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.decision_items set short_seq = 231
+     where organization_id = 'org-v133' and short_seq = 2$$,
+  'an item''s short number cannot be changed', 'decision_items_short_seq_fixed');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_items set short_seq = null
+     where organization_id = 'org-v133' and short_seq = 2$$,
+  'nor cleared', 'decision_items_short_seq_fixed');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_items a set short_seq = b.short_seq
+      from ouroboros.decision_items b
+     where a.organization_id = 'org-v133' and b.organization_id = 'org-v133'
+       and a.short_seq + b.short_seq = 5 and a.short_seq in (2, 3)$$,
+  'nor swapped with another item''s', 'decision_items_short_seq_fixed');
+
+-- Snoozing and waking an item are updates, and leave it the question it was.
+select ouroboros.decision_item_snooze(
+         (select id from ouroboros.decision_items where organization_id = 'org-v133' and short_seq = 3),
+         now() + interval '1 hour', 'user-v133-maya');
+select pg_temp.must_hold(
+  (select status = 'snoozed' from ouroboros.decision_items
+    where organization_id = 'org-v133' and short_seq = 3)
+  and pg_temp.v133_numbers('org-v133') = 'a=q-1 b=q-2 c=q-3 d=q-4',
+  'a snoozed item is still q-3, and the refused statements above moved and spent nothing');
+
+-- --- under the service role ---------------------------------------------------------------------------------
+set local role ouroboros_app;
+
+select pg_temp.v133_ask('org-v133', 'e');
+select pg_temp.must_hold(
+  (select id = (select i.id from ouroboros.decision_items i
+                 where i.organization_id = 'org-v133' and i.source_ref = 'fact:e:proposed')
+     from ouroboros.decision_items where organization_id = 'org-v133' and short_seq = 5),
+  'the application role files q-5, and reads an item back by (workspace, number)');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_items set short_seq = 6
+     where organization_id = 'org-v133' and short_seq = 5$$,
+  'the application role cannot renumber an item', 'decision_items_short_seq_fixed');
+
+-- Never reused rests on this: `max + 1` gives a number out again only if its item is deleted.
+select pg_temp.must_raise(
+  $$delete from ouroboros.decision_items where organization_id = 'org-v133' and short_seq = 5$$,
+  '42501', 'the application role cannot delete an item — which is what keeps a number from being reused');
+
+reset role;
+
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select id from ouroboros.decision_items where organization_id = 'org-v133' and short_seq = 231$$,
+  'decision_items_organization_short_seq_key');
+reset enable_seqscan;
+
+-- --- the two constraints, with the allocator out of the way ---------------------------------------
+-- The allocator never proposes a taken number or a zero, so both rules are probed with the
+-- table's triggers off — which is also how the migration's back-fill runs. Deferred checks
+-- queued by the inserts above are settled first: a table with pending trigger events cannot be
+-- altered.
+set constraints all immediate;
+set constraints all deferred;
+alter table ouroboros.decision_items disable trigger user;
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_items
+      (organization_id, kind_id, kind_version, payload, severity, refs, emitted_by, source_ref, short_seq)
+    select organization_id, kind_id, kind_version, payload, severity, refs, emitted_by, 'fact:twin:proposed', 2
+      from ouroboros.decision_items where organization_id = 'org-v133' and short_seq = 1$$,
+  'a workspace holds a short number once', 'decision_items_organization_short_seq_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_items
+      (organization_id, kind_id, kind_version, payload, severity, refs, emitted_by, source_ref, short_seq)
+    select organization_id, kind_id, kind_version, payload, severity, refs, emitted_by, 'fact:zero:proposed', 0
+      from ouroboros.decision_items where organization_id = 'org-v133' and short_seq = 1$$,
+  'q-0 is not a short number', 'decision_items_short_seq_positive');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_items
+      (organization_id, kind_id, kind_version, payload, severity, refs, emitted_by, source_ref)
+    select organization_id, kind_id, kind_version, payload, severity, refs, emitted_by, 'fact:none:proposed'
+      from ouroboros.decision_items where organization_id = 'org-v133' and short_seq = 1$$,
+  'and an item cannot exist without one');
+
+-- --- the back-fill numbers existing items in the order they were asked -------------------------
+-- The migration's own statement, run again over items whose ages are the reverse of the order
+-- they were filed in (and two of them asked in the same instant, so `id` has to decide): the
+-- oldest question becomes q-1, per workspace.
+update ouroboros.decision_items
+   set created_at = case source_ref
+                      when 'fact:e:proposed' then timestamptz '2026-01-01 09:00+00'
+                      when 'fact:d:proposed' then timestamptz '2026-01-01 10:00+00'
+                      when 'fact:c:proposed' then timestamptz '2026-01-01 11:00+00'
+                      else timestamptz '2026-01-01 12:00+00'
+                    end
+ where organization_id = 'org-v133';
+
+alter table ouroboros.decision_items alter column short_seq drop not null;
+update ouroboros.decision_items set short_seq = null where organization_id like 'org-v133%';
+
+update ouroboros.decision_items i
+   set short_seq = numbered.seq
+  from (select id,
+               row_number() over (partition by organization_id
+                                  order by created_at, id) as seq
+          from ouroboros.decision_items
+         where organization_id like 'org-v133%') numbered
+ where numbered.id = i.id;
+
+alter table ouroboros.decision_items alter column short_seq set not null;
+alter table ouroboros.decision_items enable trigger user;
+
+select pg_temp.must_hold(
+  (select array_agg(source_ref order by short_seq)
+            = array['fact:e:proposed', 'fact:d:proposed', 'fact:c:proposed']
+              || (select array_agg(tied.source_ref order by tied.id)
+                    from ouroboros.decision_items tied
+                   where tied.organization_id = 'org-v133'
+                     and tied.source_ref in ('fact:a:proposed', 'fact:b:proposed'))
+     from ouroboros.decision_items where organization_id = 'org-v133')
+  and (select array_agg(short_seq order by short_seq) = array[1, 2, 3, 4, 5]
+         from ouroboros.decision_items where organization_id = 'org-v133'),
+  'the back-fill numbers a workspace''s items oldest first, and breaks a tie on id');
+
+select pg_temp.must_hold(
+  pg_temp.v133_numbers('org-v133b') = 'x=q-1',
+  'and numbers each workspace on its own');
+
+-- The allocator carries on from wherever the back-fill left a workspace.
+select pg_temp.v133_ask('org-v133', 'f');
+select pg_temp.must_hold(
+  (select short_seq = 6 from ouroboros.decision_items
+    where organization_id = 'org-v133' and source_ref = 'fact:f:proposed'),
+  'the first item filed after a back-fill takes the next number');
+
+-- --- a workspace takes its numbers with it ---------------------------------------------------------------
+delete from ouroboros.organization where "id" in ('org-v133', 'org-v133b');
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.decision_items where organization_id like 'org-v133%'),
+  'a workspace takes its decision items, and their numbers, with it');
+
+-- ===========================================================================
+-- V134 — the chat outbox, and the Slack route lock that follows the connection (#536, BZ.2)
 -- ===========================================================================
 -- V131's workspace, connection, channel and messages are the fixtures; the decision is filed
 -- again here, since V131's section deleted its own.
-create temporary table v133_item on commit drop as
+create temporary table v134_item on commit drop as
 select ouroboros.decision_item_emit(
          'org-v131', 'protected_path_allow_once',
          '{"subject": "The OTA rollback fix", "edit_summary": "add one line",
            "path": "boot/rollback_flag.c", "diff_lines": 3}',
          '[{"type": "run",  "id": "a1360000-0000-0000-0000-000000001851", "label": "loop #1851"},
            {"type": "path", "id": "boot/rollback_flag.c",                 "label": "boot/rollback_flag.c"}]',
-         'guardrails', 'run:a1360000-0000-0000-0000-000000001851:path:boot/rollback_flag.c:v133') as id;
+         'guardrails', 'run:a1360000-0000-0000-0000-000000001851:path:boot/rollback_flag.c:v134') as id;
 
 -- --- the intent, as the publisher writes it --------------------------------------------------------
 insert into ouroboros.chat_outbox
@@ -42533,13 +42755,13 @@ insert into ouroboros.chat_outbox
    route_kind, dedupe_key)
 values
   ('c1330000-0000-4000-8000-000000000002', 'org-v131', 'c1310000-0000-4000-8000-000000000001',
-   'U131KEN', 'decision_card', 'protected_path_allow_once', (select id from v133_item),
+   'U131KEN', 'decision_card', 'protected_path_allow_once', (select id from v134_item),
    'custom:blocking-questions', repeat('b', 64));
 select pg_temp.must_reject(
   $$insert into ouroboros.chat_outbox (organization_id, connection_id, dm_platform_user_id, message_kind,
                                        card_kind, decision_item_id, route_kind, dedupe_key)
     values ('org-v131', 'c1310000-0000-4000-8000-000000000001', 'U131KEN', 'decision_card',
-            'protected_path_allow_once', (select id from v133_item), 'custom:blocking-questions',
+            'protected_path_allow_once', (select id from v134_item), 'custom:blocking-questions',
             repeat('b', 64))$$,
   'the same intent for the same person is refused', 'chat_outbox_dm_dedupe_key');
 
@@ -42591,13 +42813,13 @@ select pg_temp.must_reject(
   $$insert into ouroboros.chat_outbox (organization_id, connection_id, channel_id, message_kind, card_kind,
                                        decision_item_id, route_kind, dedupe_key)
     values ('org-v131', 'c1310000-0000-4000-8000-000000000001', 'c1310000-0000-4000-8000-0000000000a1',
-            'event_card', 'loop_finished', (select id from v133_item), 'custom:loop-finished', repeat('c', 64))$$,
+            'event_card', 'loop_finished', (select id from v134_item), 'custom:loop-finished', repeat('c', 64))$$,
   'an event card is not about a decision', 'chat_outbox_decision_item_placed');
 select pg_temp.must_reject(
   $$insert into ouroboros.chat_outbox (organization_id, connection_id, channel_id, message_kind, card_kind,
                                        decision_item_id, route_kind, dedupe_key)
     values ('org-v131', 'c1310000-0000-4000-8000-000000000001', 'c1310000-0000-4000-8000-0000000000a1',
-            'decision_card', 'merge_approval', (select id from v133_item), 'custom:blocking-questions',
+            'decision_card', 'merge_approval', (select id from v134_item), 'custom:blocking-questions',
             repeat('c', 64))$$,
   'a decision card''s kind is its item''s kind', 'chat_outbox_decision_item_fk');
 select pg_temp.must_reject(
@@ -42618,7 +42840,7 @@ select pg_temp.must_reject(
   $$insert into ouroboros.chat_outbox (organization_id, connection_id, channel_id, operation, message_kind,
                                        card_kind, decision_item_id, route_kind, dedupe_key)
     values ('org-v131', 'c1310000-0000-4000-8000-000000000001', 'c1310000-0000-4000-8000-0000000000a1',
-            'update', 'decision_card', 'protected_path_allow_once', (select id from v133_item),
+            'update', 'decision_card', 'protected_path_allow_once', (select id from v134_item),
             'custom:blocking-questions', repeat('d', 64))$$,
   'an update without its message is refused', 'chat_outbox_update_is_a_decision_cards');
 select pg_temp.must_reject(
@@ -42635,7 +42857,7 @@ insert into ouroboros.chat_outbox
 values
   ('c1330000-0000-4000-8000-000000000003', 'org-v131', 'c1310000-0000-4000-8000-000000000001',
    'c1310000-0000-4000-8000-0000000000a1', 'update', 'decision_card', 'protected_path_allow_once',
-   (select id from v133_item), 'custom:blocking-questions', repeat('d', 64),
+   (select id from v134_item), 'custom:blocking-questions', repeat('d', 64),
    'c1310000-0000-4000-8000-00000000d002');
 
 -- --- pending is due; settled is stamped ------------------------------------------------------------
@@ -42729,9 +42951,9 @@ insert into ouroboros.chat_outbox
 values
   ('c1330000-0000-4000-8000-000000000005', 'org-v131', 'c1310000-0000-4000-8000-000000000001',
    'c1310000-0000-4000-8000-0000000000a1', 'update', 'decision_card', 'protected_path_allow_once',
-   (select id from v133_item), 'custom:blocking-questions', repeat('f', 64),
+   (select id from v134_item), 'custom:blocking-questions', repeat('f', 64),
    'c1310000-0000-4000-8000-00000000d002');
-delete from ouroboros.decision_items where id = (select id from v133_item);
+delete from ouroboros.decision_items where id = (select id from v134_item);
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.chat_outbox
     where id in ('c1330000-0000-4000-8000-000000000002', 'c1330000-0000-4000-8000-000000000005')),

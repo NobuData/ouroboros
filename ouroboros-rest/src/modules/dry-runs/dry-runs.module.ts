@@ -30,7 +30,11 @@
  * `ContextAssemblyModule` (what each model stage is sent), `WorkflowsModule` (the catalogue of
  * names that exist) and `GithubModule` (the pinned commit and the read token).
  *
- * **It exports three things, all for `CopilotModule`**, which imports this module:
+ * **It exports {@link DryRunsService} for `/ouro dry-run`** (BZ.3,
+ * [#537](https://github.com/NobuData/ouroboros/issues/537)) — the command starts a run through
+ * the method `POST /workflows/:slug/dry-runs` calls, so the harness's guards, the budget and the
+ * one-at-a-time rule are the same ones — **and three things for `CopilotModule`**, which imports
+ * this module:
  * {@link DryRunPickerService} (the copilot's `lookup_tickets` must rank with the scorer the
  * **Dry-run another issue ▾** menu uses), {@link DryRunSuggestionsService} (the copilot's
  * `propose_suggestion` is recorded through it) and {@link DryRunAftermath} (the copilot
@@ -82,6 +86,6 @@ import { DryRunSuggestionsService } from "./suggestions.service";
     DryRunSuggestionsService,
     DryRunSuggestionsRepository,
   ],
-  exports: [DryRunPickerService, DryRunSuggestionsService, DryRunAftermath],
+  exports: [DryRunPickerService, DryRunSuggestionsService, DryRunAftermath, DryRunsService],
 })
 export class DryRunsModule {}

@@ -205,6 +205,34 @@ export function inboxActions(
   }));
 }
 
+/** What a short id starts with — `q-231`. */
+const SHORT_ID_PREFIX = "q-";
+
+/** A short id as typed: `q-231`, any case, or the bare number. Nine digits bound it to `integer`. */
+const SHORT_ID = /^(?:q-?)?(\d{1,9})$/i;
+
+/**
+ * An item's short id — the form a card prints and `/ouro answer` takes (#537).
+ *
+ * @param shortSeq - `decision_items.short_seq`, the workspace's own number for the item.
+ * @returns `q-231`.
+ */
+export function decisionShortId(shortSeq: number): string {
+  return `${SHORT_ID_PREFIX}${String(shortSeq)}`;
+}
+
+/**
+ * Read a short id back into its number.
+ *
+ * @param text - What was typed — `q-231`, `Q-231`, `q231` or `231`.
+ * @returns The `short_seq`, or `undefined` when the text is not a short id.
+ */
+export function parseDecisionShortId(text: string): number | undefined {
+  const match = SHORT_ID.exec(text.trim());
+
+  return match === null ? undefined : Number(match[1]);
+}
+
 /**
  * The item's typed refs, or none for a malformed value.
  *

@@ -6821,6 +6821,15 @@ select pg_temp.must_hold(
    = array[4, 9, 1, 1, 1, 14, 14, 3, 3, 16, 8, 11, 1, 0]::bigint[]),
   'the inbox seed wrote 4 tickets, 9 files, 1 stop, PR #504 with 1 revision, 14 gates, 3 criteria, and 16 items, 8 blocks, 11 answers, 1 snooze — once');
 
+-- V133 (#537): the database numbered them — the seed supplies no short number. Dense from 1,
+-- whether the items were filed after V133 (the allocator) or were already there (its back-fill).
+select pg_temp.must_hold(
+  (select array_agg(item.short_seq order by item.short_seq)
+            = (select array_agg(n) from generate_series(1, 16) n)
+     from ouroboros.decision_items item
+    where item.id::text like '5eed0082-%'),
+  'the sixteen seeded decision items are q-1…q-16, each number once');
+
 select pg_temp.must_hold(
   (select array_agg(t.external_key || ':' || t.state || ':' || t.sizing_status order by t.external_key)
           = array['#465:open:unsized', '#479:open:unsized', '#486:open:sized', '#490:open:needs_human']
@@ -7859,7 +7868,7 @@ select pg_temp.must_hold(
      from ouroboros.notification_routes_effective e
      join ouroboros.organization org on org."id" = e.organization_id and org."slug" = 'acme-robotics'
     where e.kind like 'custom:%' and e.channel = 'slack'),
-  'the five chat routes are unlocked by the workspace''s Slack connection (V133, #536): four deliver, and stage transitions stay off');
+  'the five chat routes are unlocked by the workspace''s Slack connection (V134, #536): four deliver, and stage transitions stay off');
 
 -- The mirror's read of the seeded channel's most recent days reaches the table through an index.
 set enable_seqscan = off;

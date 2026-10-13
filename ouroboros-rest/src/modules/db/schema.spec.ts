@@ -534,10 +534,11 @@ describe("TABLE_COLUMNS", () => {
     // `chat_channels`, and V132's `chat_identity_links` — what the Slack app installs into, lists
     // and links through.
     //
-    // The hundred-and-seventy-eighth to eightieth are BZ.2's (#536): V131's `chat_messages`, which
-    // the chat publisher is the first code to write; V133's `chat_outbox`, the intent behind each
-    // message; and V132's `on_call_assignments`, which a *DM on-call* route reads.
-    expect(TABLE_NAMES).toHaveLength(180);
+    // The hundred-and-seventy-eighth and ninth are V131's `chat_messages` and `chat_commands`,
+    // which the `/ouro` dispatcher (#537) and the chat publisher (#536) are the first code to
+    // write. The next two are BZ.2's (#536): V134's `chat_outbox`, the intent behind each message,
+    // and V132's `on_call_assignments`, which a *DM on-call* route reads.
+    expect(TABLE_NAMES).toHaveLength(181);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

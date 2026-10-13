@@ -45,6 +45,7 @@ const NOW = new Date("2026-10-04T10:00:00Z");
 function row(kindId: string, overrides: Partial<InboxItemRow> = {}): InboxItemRow {
   return {
     id: "5eed0082-0000-4000-8000-000000000001",
+    shortSeq: 231,
     kindId,
     kindVersion: 1,
     severity: SHIPPED_KINDS[kindId].severityDefault,
@@ -91,6 +92,7 @@ function queue(week: boolean): InboxQueueService {
       Promise.resolve([
         {
           itemId: "5eed0082-0000-4000-8000-000000000101",
+          shortSeq: 7,
           kindId: "resize_review",
           kindVersion: 1,
           payload: SEEDED_PAYLOADS.resize_review,

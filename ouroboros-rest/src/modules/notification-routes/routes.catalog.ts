@@ -13,7 +13,7 @@
  * {@link channelLock} states the same rule for a route that is about to be written (so an enable
  * can be refused before it is stored) and for a kind with no stored row yet. The two say the same
  * thing because they are the same three cases: email delivers; Slack delivers exactly while the
- * workspace has an active Slack connection (V133, #536 — until then, *connect Slack first*); and
+ * workspace has an active Slack connection (V134, #536 — until then, *connect Slack first*); and
  * PagerDuty waits on the v2 connector (BT.3). When that lands, its ticket replaces the view's
  * branch and this one together.
  *

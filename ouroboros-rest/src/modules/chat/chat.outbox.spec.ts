@@ -20,7 +20,7 @@ import {
 /**
  * Writing the outbox (#536): which routes a message rides, what makes an intent the same intent,
  * and the one statement that evaluates routes and writes rows. The statement's behaviour against
- * a real database is `ouroboros-db/tests/constraints.sql` (V133's section).
+ * a real database is `ouroboros-db/tests/constraints.sql` (V134's section).
  */
 
 /** A Kysely that compiles for PostgreSQL and records what it would run. */

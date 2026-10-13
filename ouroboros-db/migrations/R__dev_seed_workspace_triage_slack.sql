@@ -42,7 +42,7 @@
 -- open card alone is stamped from its item, because it is live now.
 --
 -- **Routes are `custom:*` kinds**, so mockup 17's Settings rows (`weekly_insights` by email,
--- `loop_failures` by PagerDuty) are untouched. Since V133 (#536) the workspace's active Slack
+-- `loop_failures` by PagerDuty) are untouched. Since V134 (#536) the workspace's active Slack
 -- connection unlocks them, so the four enabled ones deliver. *Every stage transition* is seeded
 -- **disabled**: noisy, off by default.
 --

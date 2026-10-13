@@ -34,8 +34,11 @@
  *     that wrote `last_seen_at`.
  *   * `AuditModule` — AD.4's one writer, through this module's own `FarmAudit`.
  *
- * **It exports nothing.** Its routes are its surface, and there is no second caller: the UI
- * tickets it feeds (AI.1–AI.5) are clients over HTTP, not modules.
+ * **It exports `FleetService`, and only that.** The UI tickets it feeds (AI.1–AI.5) are clients
+ * over HTTP, not modules; the one in-process caller is `/ouro status` (BZ.3,
+ * [#537](https://github.com/NobuData/ouroboros/issues/537)), whose *farm 4/5 online* is this
+ * page's *Runners online* card and so has to be this page's read. The lifecycle services
+ * (`RunnersService`, `PoolsService`) and the repository stay private.
  */
 
 import { Module } from "@nestjs/common";
@@ -57,5 +60,6 @@ import { RunnersService } from "./runners.service";
   imports: [DbModule, AuditModule, FarmModule, FarmGatewayModule],
   controllers: [FleetController, FarmRunnersController, FarmPoolsController],
   providers: [FleetRepository, FleetService, RunnersService, PoolsService, FarmAudit],
+  exports: [FleetService],
 })
 export class FarmFleetModule {}
