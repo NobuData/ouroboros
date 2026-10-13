@@ -205,6 +205,20 @@ describe("api", () => {
     expect(requests[0]?.headers.get("Cookie")).toBe(`${SESSION_COOKIE}=signed.value`);
   });
 
+  it("forwards the session a deployment sets, under its https names", async () => {
+    // Over `https://` the service names both cookies `__Secure-…`; the bare names never
+    // reach a deployment's browser, so reading only those found nobody signed in.
+    jar.set(`__Secure-${SESSION_COOKIE}`, "signed.value");
+    jar.set(`__Secure-${SESSION_CACHE_COOKIE}`, "cached.snapshot");
+    respondWith(new Response(JSON.stringify({ items: [], total: 0, limit: 25, offset: 0 })));
+
+    await api().GET("/api/v1/orgs");
+
+    expect(requests[0]?.headers.get("Cookie")).toBe(
+      `__Secure-${SESSION_COOKIE}=signed.value; __Secure-${SESSION_CACHE_COOKIE}=cached.snapshot`,
+    );
+  });
+
   it("sends no X-Ouro-Tenant, whatever the hint cookie holds", async () => {
     // #719: the header is an *override* of the session's active organization (#713), and an
     // override this application never means to exercise is one it should not send. A stale

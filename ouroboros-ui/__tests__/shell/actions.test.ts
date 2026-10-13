@@ -27,13 +27,14 @@ import { LOGIN_PATH } from "@/app/paths";
 /** The cookies of the request under test. */
 const jar = new Map<string, string>();
 const deleteCookie = vi.fn<(name: string) => void>();
+const setCookie = vi.fn<(cookie: Record<string, unknown>) => void>();
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({
   cookies: () =>
     Promise.resolve({
       get: (name: string) => (jar.has(name) ? { name, value: jar.get(name) } : undefined),
-      set: () => {},
+      set: setCookie,
       delete: deleteCookie,
     }),
   // A Server Action's request always carries one, and `app/api/auth-server.ts` forwards it so
@@ -71,6 +72,7 @@ beforeEach(() => {
   jar.set(ACTIVE_TENANT_COOKIE, "acme-robotics");
 
   deleteCookie.mockClear();
+  setCookie.mockClear();
   redirect.mockClear();
   urls = [];
   answer = { status: 200, body: {} };
@@ -116,8 +118,20 @@ describe("signOutOfSession", () => {
     // made by the server. Nothing but this clears them.
     await signOut();
 
+    // The `https://` names are cleared by a `Secure` write, the only kind a browser accepts
+    // for a `__Secure-` cookie; the bare names by a plain deletion.
     for (const name of AUTH_COOKIES) {
-      expect(deleteCookie).toHaveBeenCalledWith(name);
+      if (name.startsWith("__Secure-")) {
+        expect(setCookie).toHaveBeenCalledWith({
+          name,
+          value: "",
+          maxAge: 0,
+          path: "/",
+          secure: true,
+        });
+      } else {
+        expect(deleteCookie).toHaveBeenCalledWith(name);
+      }
     }
   });
 

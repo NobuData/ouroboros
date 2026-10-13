@@ -70,6 +70,7 @@ import { redirect } from "next/navigation";
 import {
   AUTH_BASE_PATH,
   AUTH_COOKIES,
+  SECURE_AUTH_COOKIE_PREFIX,
   AuthError,
   type AuthResult,
   isoTimestamp,
@@ -121,7 +122,7 @@ export interface AuthFetchOptions {
 /**
  * The `Cookie` header for this request, carrying only the auth cookies.
  *
- * Only those two: a cookie the service has no use for is a cookie forwarded to a service
+ * Only those: a cookie the service has no use for is a cookie forwarded to a service
  * that might log it.
  *
  * @returns The header value, or `undefined` when the browser sent neither — in which case no
@@ -349,7 +350,13 @@ export async function signOutSession(
 
   const jar = await cookies();
   for (const name of AUTH_COOKIES) {
-    jar.delete(name);
+    // A `__Secure-` cookie is only replaced by one that is itself `Secure`: a browser drops
+    // the plain deletion `jar.delete` writes, and the session would outlive the sign-out.
+    if (name.startsWith(SECURE_AUTH_COOKIE_PREFIX)) {
+      jar.set({ name, value: "", maxAge: 0, path: "/", secure: true });
+    } else {
+      jar.delete(name);
+    }
   }
   await forgetWorkspace();
 
