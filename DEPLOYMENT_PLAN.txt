@@ -1,0 +1,635 @@
+================================================================================
+OUROBOROS - PRODUCTION DEPLOYMENT PLAN (ouroboros.build)
+Written 2026-10-13 from HOSTING.md, ouroboros-docs/docs/administration/deploy/*,
+docker-compose.yml, and a DNS/HTTPS probe of the live hostnames.
+================================================================================
+
+Layout chosen: ONE host (172.234.233.226), Docker Compose for the stack, and the
+nginx already installed on that host as the only thing listening on 80/443.
+Containers publish on 127.0.0.1 only; nginx forwards to them.
+
+Items marked [VERIFY] are assumptions about the server that could not be checked
+from here. Items marked [DECISION] are choices made for you that you may reverse.
+
+
+--------------------------------------------------------------------------------
+0. WHAT IS LIVE TODAY (probed 2026-10-13)
+--------------------------------------------------------------------------------
+
+  ouroboros.build        A 172.234.233.226   no vhost; TLS answers with the
+                                              ai-dev.apiome.dev certificate
+  app.ouroboros.build    A 172.234.233.226   same - no vhost yet
+  api.ouroboros.build    A 172.234.233.226   same - no vhost yet
+  docs.ouroboros.build   A 172.234.233.226   LIVE - nginx 1.28.3 (Ubuntu),
+                                              Let's Encrypt cert, docs site
+  www.ouroboros.build    A 50.190.96.33      LIVE - marketing site, on a
+                                              DIFFERENT server
+  farm.ouroboros.build   (no record)         must be created (step 1.1)
+
+  The host is shared: its default TLS vhost is ai-dev.apiome.dev. Check for port
+  collisions before bringing anything up (step 2.3).
+
+
+--------------------------------------------------------------------------------
+A. DOMAIN MAP
+--------------------------------------------------------------------------------
+
+  Hostname               Purpose                         nginx forwards to
+  ---------------------  ------------------------------  -----------------------
+  app.ouroboros.build    The product (browser, GitHub    127.0.0.1:3000  (ui)
+                         OAuth callback, Slack URLs)     everything, no path rules
+  farm.ouroboros.build   Build-farm gateway for          127.0.0.1:4000  (rest)
+                         ouroboros-runner (mTLS)         FIVE farm paths only,
+                                                         everything else 404
+  docs.ouroboros.build   Documentation site              127.0.0.1:8080  (docs)
+  www.ouroboros.build    Marketing site                  stays on 50.190.96.33
+                                                         (not part of this stack)
+  ouroboros.build        Apex                            301 -> https://www.ouroboros.build
+  api.ouroboros.build    RESERVED - answers 404          nothing            [DECISION]
+
+  Why api.ouroboros.build forwards nothing: the REST service is internal by
+  design. The browser reaches it only through the app's own server, and it serves
+  the engine surface /internal/* on the same port. Nothing in the product needs a
+  public REST hostname today. Do NOT point api.ouroboros.build at rest:4000
+  wholesale. If you later want API-token clients (orb_svc_ tokens) to call REST
+  from outside, that is the hostname to use, with an explicit path allowlist and
+  /internal/, /health/ and /install.sh refused. Alternatively delete the record.
+
+
+--------------------------------------------------------------------------------
+B. PORT ASSIGNMENTS
+--------------------------------------------------------------------------------
+
+  Service    Image                                 Container  Host bind         Public
+  ---------  ------------------------------------  ---------  ----------------  ------
+  nginx      (host package, already installed)     -          0.0.0.0:80, :443  YES
+  ui         registry.apiome.dev/ouroboros-ui      3000       127.0.0.1:3000    via app.
+  rest       registry.apiome.dev/ouroboros-rest    4000       127.0.0.1:4000    farm paths
+                                                                                only
+  docs       registry.apiome.dev/ouroboros-docs    8080       127.0.0.1:8080    via docs.
+  engine     registry.apiome.dev/ouroboros-engine  8000       none              NEVER
+  db         postgres:17-alpine                    5432       none              NEVER
+  migrate    registry.apiome.dev/ouroboros-db      -          none (one-shot)   NEVER
+  searxng    searxng/searxng                       8080       none              NEVER
+  ollama     ollama/ollama (optional, not below)   11434      none              NEVER
+
+  Inside the compose network the services use names, never host ports:
+  rest:4000, engine:8000, db:5432, searxng:8080.
+
+  Firewall (ufw or the Linode cloud firewall): allow 22, 80, 443 inbound; nothing
+  else. Docker bypasses ufw for published ports, which is why every bind above is
+  127.0.0.1 and not 0.0.0.0.
+
+  Trade-off to know [DECISION]: the repo's guide runs nginx as a container so REST
+  publishes no port at all. Because this host already runs nginx on 443, REST is
+  published on loopback instead. Any process on the host can therefore reach REST
+  on 127.0.0.1:4000, including /internal/* (still protected by the shared secret)
+  and the client-certificate header. Acceptable on a host you alone control; if
+  other tenants have shell access there, move the stack to its own machine.
+
+
+--------------------------------------------------------------------------------
+PHASE 1 - PREREQUISITES (nothing on the server changes yet)
+--------------------------------------------------------------------------------
+
+1.1 DNS. Create the missing record, leave the rest as they are:
+        farm.ouroboros.build.   A   172.234.233.226
+    Wait until `getent hosts farm.ouroboros.build` answers from the server.
+
+1.2 GitHub OAuth app (github.com -> Settings -> Developer settings -> OAuth Apps):
+        Homepage URL:                 https://app.ouroboros.build
+        Authorization callback URL:   https://app.ouroboros.build/api/auth/callback/github
+    Keep the Client ID and Client Secret for step 3.2. REST refuses to start
+    without them, so this comes before the first bring-up.
+
+1.3 Registry credentials for registry.apiome.dev (the same DOCKER_USERNAME /
+    DOCKER_PASSWORD the GitHub workflows push with).
+
+1.4 Confirm CI is green on the commit you are deploying and that its images were
+    pushed. Each image is rebuilt only when its own module changes, so each
+    carries its own commit-sha tag. Note the sha tag of each for step 3.2.
+
+1.5 Download the runner release (only if you run build machines):
+        gh release download ouroboros-runner-v0.8.0 -R NobuData/ouroboros -D ./0.8.0
+        (cd 0.8.0 && sha256sum -c SHA256SUMS)
+
+
+--------------------------------------------------------------------------------
+PHASE 2 - PREPARE THE HOST
+--------------------------------------------------------------------------------
+
+2.1 Docker Engine + compose plugin installed; `docker compose version` answers.
+
+2.2 Create the deployment directory, owned by the account that runs the stack:
+        /srv/ouroboros/
+        |-- compose.yml            (section C)
+        |-- .env                   (section D)  chmod 600
+        |-- searxng/settings.yml   (section E)
+        |-- runner-releases/0.8.0/ (the files from step 1.5)
+        `-- backups/
+
+2.3 [VERIFY] Check the loopback ports are free and see what serves docs today:
+        sudo ss -ltnp | grep -E ':(3000|4000|8080)\s'
+        docker ps
+    If 8080 is already the running docs container, either keep it and delete the
+    `docs` service from compose.yml, or stop it and let compose own it. If 3000
+    or 4000 are taken, change the LEFT side of the port mapping in compose.yml
+    and the matching proxy_pass in section F - nothing else.
+
+2.4 Firewall: allow 22/80/443 only (see section B).
+
+2.5 docker login registry.apiome.dev
+
+
+--------------------------------------------------------------------------------
+PHASE 3 - WRITE THE CONFIGURATION
+--------------------------------------------------------------------------------
+
+3.1 Generate the secrets, once, on the host:
+        openssl rand -hex 32       -> OURO_DB_PASSWORD   (hex: it goes inside a
+                                      postgresql:// URL, where base64's + / = break)
+        openssl rand -base64 32    -> OURO_ENGINE_SHARED_SECRET
+        openssl rand -base64 32    -> BETTER_AUTH_SECRET
+        openssl rand -base64 32    -> OURO_VAULT_MASTER_KEY  (must be exactly this)
+        openssl rand -hex 32       -> OURO_SEARXNG_SECRET
+
+3.2 Write /srv/ouroboros/.env (section D) with those values, the GitHub OAuth
+    credentials from 1.2 and the image tags from 1.4.
+
+3.3 COPY OURO_VAULT_MASTER_KEY TO A PASSWORD MANAGER NOW, somewhere that is not
+    this server and not where database backups go. Losing it loses every stored
+    provider credential, permanently.
+
+3.4 Write compose.yml (section C) and searxng/settings.yml (section E).
+
+3.5 docker compose config -q      (must print nothing: every ${...} resolved)
+
+
+--------------------------------------------------------------------------------
+PHASE 4 - BRING THE STACK UP (order of execution)
+--------------------------------------------------------------------------------
+
+One command does it; compose enforces the order through health checks, with no
+sleeps:
+
+        cd /srv/ouroboros
+        docker compose pull
+        docker compose up -d --wait
+
+The order the containers come up in, and what each waits for:
+
+  1. db        postgres:17-alpine          waits for: nothing
+                                           ready when: pg_isready passes
+  2. migrate   ouroboros-db                waits for: db healthy
+                                           done when: exits 0 (schema applied,
+                                           NO development seed)
+  3. engine    ouroboros-engine            waits for: nothing (starts alongside db)
+                                           ready when: GET /healthz
+  3. searxng   searxng                     waits for: nothing
+                                           ready when: GET /healthz
+  4. rest      ouroboros-rest              waits for: db healthy + migrate exited 0
+                                           + engine healthy
+                                           ready when: GET /health/live
+  5. ui        ouroboros-ui                waits for: rest healthy
+                                           ready when: GET /
+  6. docs      ouroboros-docs              waits for: nothing (talks to nothing)
+  7. nginx     host service                Phase 5 - only after ui and rest are up
+
+To watch it step by step the first time instead:
+        docker compose up -d --wait db
+        docker compose run --rm migrate          # must end "Successfully applied"
+        docker compose up -d --wait engine searxng
+        docker compose up -d --wait rest
+        docker compose up -d --wait ui docs
+
+4.1 Check before touching nginx:
+        docker compose ps        # healthy: db engine searxng rest ui docs
+                                 # exited (0): migrate
+        curl -sI http://127.0.0.1:3000/login | head -1                 # 200
+        curl -s  http://127.0.0.1:4000/health/ready                    # db + engine "up"
+        curl -s  http://127.0.0.1:8080/healthz                         # ok
+        docker compose ps --format '{{.Name}} {{.Ports}}' | grep 0.0.0.0   # nothing
+
+
+--------------------------------------------------------------------------------
+PHASE 5 - TLS CERTIFICATES AND NGINX
+--------------------------------------------------------------------------------
+
+Certificates first: nginx refuses to load a server block whose certificate file
+does not exist yet.
+
+5.1 Issue one certificate per hostname (docs already has one - leave it):
+        sudo certbot certonly --nginx -d app.ouroboros.build
+        sudo certbot certonly --nginx -d farm.ouroboros.build
+        sudo certbot certonly --nginx -d ouroboros.build
+        sudo certbot certonly --nginx -d api.ouroboros.build
+    [VERIFY] this assumes docs' certificate came from certbot on this host
+    (`sudo certbot certificates`). If another ACME client issued it, use that one.
+
+5.2 Install /etc/nginx/sites-available/ouroboros.conf (section F) and link it
+    into sites-enabled. Leave the existing docs.ouroboros.build vhost in place if
+    it already forwards to 127.0.0.1:8080; the docs block in section F is only
+    for replacing it.
+
+5.3 sudo nginx -t && sudo systemctl reload nginx
+
+5.4 sudo certbot renew --dry-run       (renewal reloads nginx on its own timer)
+
+
+--------------------------------------------------------------------------------
+PHASE 6 - GO-LIVE VERIFICATION (run from a machine that is NOT the server)
+--------------------------------------------------------------------------------
+
+  curl -sI https://app.ouroboros.build/login | head -1          # 200
+  curl -s  -o /dev/null -w '%{http_code}\n' https://app.ouroboros.build/internal/runs   # 404 (the app's)
+  curl -sI https://ouroboros.build | grep -i location           # https://www.ouroboros.build/
+  curl -s  -o /dev/null -w '%{http_code}\n' https://api.ouroboros.build/api/v1/runs     # 404
+  curl -s  https://docs.ouroboros.build/healthz                 # ok
+  curl -s  -m 5 http://172.234.233.226:4000/health/live         # must FAIL to connect
+  curl -s  -m 5 http://172.234.233.226:8000/healthz             # must FAIL to connect
+  nc -zv -w 5 172.234.233.226 5432                              # must FAIL to connect
+
+  Build farm:
+  curl -sI https://farm.ouroboros.build/install.sh | head -1    # 200
+  curl -s  -o /dev/null -w '%{http_code}\n' https://farm.ouroboros.build/api/v1/runs     # 404
+  curl -s  -o /dev/null -w '%{http_code}\n' https://farm.ouroboros.build/internal/runs   # 404
+
+  In a browser:
+  [ ] https://app.ouroboros.build shows the sign-in page with "Continue with
+      GitHub" and NO email/password form.
+  [ ] A full GitHub sign-in lands on the dashboard. You get a personal workspace.
+  [ ] The session cookie is named __Secure-better-auth.session_token, for
+      app.ouroboros.build.
+  [ ] No demo data: no acme-robotics workspace, no ken@acme-robotics.dev.
+      If you see them the seed ran - destroy the db volume and start again.
+
+
+--------------------------------------------------------------------------------
+PHASE 7 - FIRST-USE SETUP (inside the app, in this order)
+--------------------------------------------------------------------------------
+
+7.1 Settings -> Providers: add a model provider and its key.
+7.2 Policies: leave dry-run ON, so the first loops open draft pull requests and
+    merge nothing.
+7.3 Queue one small issue and confirm the run starts. This is the only test that
+    proves the two copies of OURO_ENGINE_SHARED_SECRET match.
+7.4 Build farm: on the Build Farm page mint an enroll command, run it on one
+    build machine, and confirm the runner shows ONLINE. That proves nginx is
+    passing the client certificate through. The runner dials out to
+    https://farm.ouroboros.build; nothing connects to the build machine.
+7.5 Invite the rest of the team.
+
+
+--------------------------------------------------------------------------------
+PHASE 8 - OPTIONAL INTEGRATIONS (after go-live)
+--------------------------------------------------------------------------------
+
+8.1 Slack (docs/CHATOPS_SETUP.md). All four URLs are on the APP hostname - the
+    app forwards them to REST, no nginx change needed:
+        Events:         https://app.ouroboros.build/api/v1/slack/events
+        Interactivity:  https://app.ouroboros.build/api/v1/slack/interactivity
+        Slash /ouro:    https://app.ouroboros.build/api/v1/slack/commands
+        OAuth redirect: https://app.ouroboros.build/api/v1/slack/oauth/callback
+    Add OURO_SLACK_CLIENT_ID, OURO_SLACK_CLIENT_SECRET, OURO_SLACK_SIGNING_SECRET
+    to .env and to the rest service's environment (all three or none), then
+    `docker compose up -d --wait rest`. Slack verifies the Events URL when you
+    save it, so REST must be running with the signing secret first.
+
+8.2 Email digest (OURO_SMTP_URL + OURO_MAIL_FROM, both or neither). Leave unset
+    at launch: the digest's unsubscribe links are built from OURO_REST_URL, which
+    is the internal http://rest:4000 in this layout and would not open for a
+    reader. Resolve that before turning mail on.
+
+8.3 Local models: add an `ollama/ollama` service (volume /root/.ollama, no
+    ports) and OURO_LOCAL_PROVIDER_URLS=ollama=http://ollama:11434 on rest.
+
+
+--------------------------------------------------------------------------------
+PHASE 9 - OPERATIONS
+--------------------------------------------------------------------------------
+
+9.1 Nightly backup (cron on the host), copied off the server afterwards:
+        cd /srv/ouroboros && docker compose exec -T db \
+          pg_dump -U "$OURO_DB_USER" --format=custom ouroboros \
+          > backups/ouroboros-$(date -u +%F).dump
+    Also back up the `ouroboros-artifacts` volume (the database rows point at its
+    files). The vault key is backed up separately (step 3.3) - never beside the
+    dumps.
+
+9.2 Upgrade:
+        take a backup (migrations only move forward)
+        edit the image tags in .env
+        docker compose pull && docker compose up -d --wait
+    A changed ouroboros-db image reruns `migrate` before the new rest starts.
+    Pending/applied migrations:  docker compose run --rm migrate info
+
+9.3 New runner version: copy the release into runner-releases/<version>/,
+    verify SHA256SUMS; no restart needed for the files.
+
+9.4 Logs:  docker compose logs -f rest   (or engine, ui, migrate)
+
+
+================================================================================
+C. /srv/ouroboros/compose.yml
+================================================================================
+
+name: ouroboros
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${OURO_DB_USER}
+      POSTGRES_PASSWORD: ${OURO_DB_PASSWORD}
+      POSTGRES_DB: ouroboros
+    volumes:
+      - ouroboros-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${OURO_DB_USER} -d ouroboros"]
+      interval: 2s
+      retries: 30
+    restart: unless-stopped
+    # No ports: internal only.
+
+  migrate:
+    image: registry.apiome.dev/ouroboros-db:${OURO_DB_TAG}
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      OURO_DB_HOST: db
+      OURO_DB_USER: ${OURO_DB_USER}
+      OURO_DB_PASSWORD: ${OURO_DB_PASSWORD}
+    restart: "no"
+
+  engine:
+    image: registry.apiome.dev/ouroboros-engine:${OURO_ENGINE_TAG}
+    environment:
+      OURO_ENGINE_SHARED_SECRET: ${OURO_ENGINE_SHARED_SECRET}
+      OURO_LOG_LEVEL: info
+      OURO_ENGINE_CLONE_DIR: /var/lib/ouroboros-engine/clones
+    volumes:
+      - ouroboros-engine-clones:/var/lib/ouroboros-engine/clones
+    restart: unless-stopped
+    # No ports: internal only.
+
+  rest:
+    image: registry.apiome.dev/ouroboros-rest:${OURO_REST_TAG}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      engine:
+        condition: service_healthy
+    environment:
+      OURO_DATABASE_URL: postgresql://${OURO_DB_USER}:${OURO_DB_PASSWORD}@db:5432/ouroboros
+      OURO_ENGINE_URL: http://engine:8000
+      OURO_ENGINE_SHARED_SECRET: ${OURO_ENGINE_SHARED_SECRET}
+      OURO_REST_URL: http://rest:4000
+      OURO_UI_URL: https://app.ouroboros.build
+      BETTER_AUTH_URL: https://app.ouroboros.build
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      OURO_CORS_ORIGINS: https://app.ouroboros.build
+      OURO_GITHUB_CLIENT_ID: ${OURO_GITHUB_CLIENT_ID}
+      OURO_GITHUB_CLIENT_SECRET: ${OURO_GITHUB_CLIENT_SECRET}
+      OURO_VAULT_MASTER_KEY: ${OURO_VAULT_MASTER_KEY}
+      # Build farm - remove these four (and the farm server block) with no runners.
+      OURO_FARM_PUBLIC_URL: https://farm.ouroboros.build
+      OURO_FARM_CLIENT_CERT_HEADER: x-ouro-client-cert
+      OURO_FARM_RELEASES_DIR: /runner-releases
+      OURO_FARM_MIN_AGENT_VERSION: 0.8.0
+      # Web search for research investigations.
+      OURO_RESEARCH_SEARXNG_URL: http://searxng:8080
+    volumes:
+      - ./runner-releases:/runner-releases:ro
+      - ouroboros-artifacts:/app/.artifacts
+    ports:
+      - "127.0.0.1:4000:4000"     # loopback only - host nginx's farm gateway
+    restart: unless-stopped
+
+  searxng:
+    image: searxng/searxng:2026.9.29-896ec8d3a
+    environment:
+      SEARXNG_SECRET: ${OURO_SEARXNG_SECRET}
+      SEARXNG_BASE_URL: http://searxng:8080/
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 10s
+      retries: 6
+    restart: unless-stopped
+    # No ports: internal only.
+
+  ui:
+    image: registry.apiome.dev/ouroboros-ui:${OURO_UI_TAG}
+    depends_on:
+      rest:
+        condition: service_healthy
+    environment:
+      OURO_REST_URL: http://rest:4000
+    ports:
+      - "127.0.0.1:3000:3000"     # loopback only - host nginx's app host
+    restart: unless-stopped
+
+  docs:
+    image: registry.apiome.dev/ouroboros-docs:${OURO_DOCS_TAG}
+    ports:
+      - "127.0.0.1:8080:8080"     # loopback only - host nginx's docs host
+    read_only: true
+    tmpfs: [/tmp]
+    restart: unless-stopped
+
+volumes:
+  ouroboros-db-data:
+  ouroboros-artifacts:
+  ouroboros-engine-clones:
+
+
+================================================================================
+D. /srv/ouroboros/.env        (chmod 600, never committed)
+================================================================================
+
+# Image tags. `latest` for the first bring-up; then pin each to the commit sha
+# its own workflow pushed (they usually differ per image).
+OURO_DB_TAG=latest
+OURO_ENGINE_TAG=latest
+OURO_REST_TAG=latest
+OURO_UI_TAG=latest
+OURO_DOCS_TAG=latest
+
+OURO_DB_USER=ouroboros
+OURO_DB_PASSWORD=<openssl rand -hex 32>
+OURO_ENGINE_SHARED_SECRET=<openssl rand -base64 32>
+BETTER_AUTH_SECRET=<openssl rand -base64 32>
+OURO_VAULT_MASTER_KEY=<openssl rand -base64 32>
+OURO_GITHUB_CLIENT_ID=<from the OAuth app, step 1.2>
+OURO_GITHUB_CLIENT_SECRET=<from the OAuth app, step 1.2>
+OURO_SEARXNG_SECRET=<openssl rand -hex 32>
+
+Do not copy anything from the repository's .env.example: those are development
+placeholders, and its BETTER_AUTH_URL (REST's address) is wrong for production,
+where it must be the app's public address as set in compose.yml.
+
+
+================================================================================
+E. /srv/ouroboros/searxng/settings.yml
+================================================================================
+
+use_default_settings: true
+
+server:
+  limiter: false
+  public_instance: false
+  image_proxy: false
+
+search:
+  safe_search: 1
+  formats:
+    - html
+    - json
+
+
+================================================================================
+F. /etc/nginx/sites-available/ouroboros.conf   (nginx forwarding entries)
+================================================================================
+
+# ---- port 80: everything redirects to HTTPS ---------------------------------
+server {
+  listen 80;
+  listen [::]:80;
+  server_name ouroboros.build app.ouroboros.build api.ouroboros.build
+              farm.ouroboros.build;
+  return 301 https://$host$request_uri;
+}
+
+# ---- app.ouroboros.build -> ui (127.0.0.1:3000) -----------------------------
+# Nothing path-specific, on purpose. Never add a location that forwards /api/ to
+# REST here: that would expose /internal/*.
+server {
+  listen 443 ssl;
+  listen [::]:443 ssl;
+  http2 on;
+  server_name app.ouroboros.build;
+  ssl_certificate     /etc/letsencrypt/live/app.ouroboros.build/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/app.ouroboros.build/privkey.pem;
+
+  location / {
+    proxy_http_version 1.1;
+    proxy_buffering    off;                      # the app streams its pages
+    proxy_set_header Host              $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_pass http://127.0.0.1:3000;
+  }
+}
+
+# ---- farm.ouroboros.build -> rest (127.0.0.1:4000), farm paths only ---------
+server {
+  listen 443 ssl;
+  listen [::]:443 ssl;
+  http2 on;
+  server_name farm.ouroboros.build;
+  ssl_certificate     /etc/letsencrypt/live/farm.ouroboros.build/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/farm.ouroboros.build/privkey.pem;
+  # Ask for a client certificate; REST decides whether the farm CA signed it.
+  ssl_verify_client   optional_no_ca;
+
+  # Always overwrite the header, so a client can never supply its own.
+  proxy_set_header X-Ouro-Client-Cert $ssl_client_escaped_cert;
+  proxy_set_header X-Forwarded-Proto  https;
+  proxy_set_header Host               $host;
+
+  location = /install.sh               { proxy_pass http://127.0.0.1:4000; }
+  location /runner/                    { proxy_pass http://127.0.0.1:4000; }
+  location /api/v1/farm/registrations  { proxy_pass http://127.0.0.1:4000; }
+
+  # The agent's WebSocket. Headers are restated: a location that sets any
+  # proxy_set_header stops inheriting the server-level ones.
+  location = /api/v1/farm/agent {
+    proxy_http_version 1.1;
+    proxy_set_header   Upgrade            $http_upgrade;
+    proxy_set_header   Connection         "upgrade";
+    proxy_set_header   Host               $host;
+    proxy_set_header   X-Forwarded-Proto  https;
+    proxy_set_header   X-Ouro-Client-Cert $ssl_client_escaped_cert;
+    proxy_read_timeout 120s;
+    proxy_pass http://127.0.0.1:4000;
+  }
+
+  # Artifact uploads: the 256 MiB per-job cap plus multipart framing.
+  location ~ ^/api/v1/farm/jobs/[0-9a-f-]+/artifacts$ {
+    client_max_body_size    300m;
+    proxy_request_buffering off;
+    proxy_read_timeout      900s;
+    proxy_pass http://127.0.0.1:4000;
+  }
+
+  location / { return 404; }
+}
+
+# ---- ouroboros.build (apex) -> www ------------------------------------------
+server {
+  listen 443 ssl;
+  listen [::]:443 ssl;
+  http2 on;
+  server_name ouroboros.build;
+  ssl_certificate     /etc/letsencrypt/live/ouroboros.build/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/ouroboros.build/privkey.pem;
+  return 301 https://www.ouroboros.build$request_uri;
+}
+
+# ---- api.ouroboros.build - reserved, forwards nothing -----------------------
+server {
+  listen 443 ssl;
+  listen [::]:443 ssl;
+  http2 on;
+  server_name api.ouroboros.build;
+  ssl_certificate     /etc/letsencrypt/live/api.ouroboros.build/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/api.ouroboros.build/privkey.pem;
+  return 404;
+}
+
+# ---- docs.ouroboros.build -> docs (127.0.0.1:8080) --------------------------
+# ONLY if you are replacing the vhost that serves docs today. No add_header
+# lines: the image sends its own CSP and Cache-Control and they must pass through.
+#
+# server {
+#   listen 443 ssl;
+#   listen [::]:443 ssl;
+#   http2 on;
+#   server_name docs.ouroboros.build;
+#   ssl_certificate     /etc/letsencrypt/live/docs.ouroboros.build/fullchain.pem;
+#   ssl_certificate_key /etc/letsencrypt/live/docs.ouroboros.build/privkey.pem;
+#   location / {
+#     proxy_set_header Host $host;
+#     proxy_pass http://127.0.0.1:8080;
+#   }
+# }
+
+
+================================================================================
+G. IF SOMETHING GOES WRONG
+================================================================================
+
+  up --wait fails on migrate        docker compose logs migrate - wrong DB user or
+                                    password. Fix .env, rerun; migrations repeat safely.
+  rest exits naming a variable      that variable is missing or malformed in .env.
+  rest healthy, ui never healthy    ui cannot reach http://rest:4000.
+  Sign-in redirects to localhost    BETTER_AUTH_URL / OURO_UI_URL are not
+                                    https://app.ouroboros.build.
+  GitHub "redirect_uri is not       the OAuth app's callback is not exactly
+  associated"                       https://app.ouroboros.build/api/auth/callback/github
+  Signed in, then signed out        the app was reached over http, so the browser
+                                    dropped the __Secure- cookie.
+  502 on app.ouroboros.build        ui is down, or nginx points at the wrong port.
+  Browser shows the wrong cert      no server block matched that hostname; it fell
+  (ai-dev.apiome.dev)               through to the host's default vhost.
+  Runner enrolls, then offline:     nginx is not forwarding X-Ouro-Client-Cert, or
+  "gateway received no client       the header name differs from
+  certificate"                      OURO_FARM_CLIENT_CERT_HEADER.
+  Artifact upload 413               client_max_body_size on the artifacts location.
+  Build Farm refuses to mint        runner-releases/ is empty, or
+                                    OURO_FARM_PUBLIC_URL is unset.
+  Every run fails at once           the two OURO_ENGINE_SHARED_SECRET values differ.
