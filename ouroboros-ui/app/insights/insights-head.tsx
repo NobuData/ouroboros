@@ -24,9 +24,10 @@ import {
  * **The actions are honest.** *Email weekly digest* opens its subscribe sheet (BK.6,
  * [#447](https://github.com/NobuData/ouroboros/issues/447), `app/insights/digest-sheet.tsx`);
  * *✦ Build Analyzer* links to the analyzer (BW.1,
- * [#516](https://github.com/NobuData/ouroboros/issues/516)); the one with nothing to open yet is
- * an inert button carrying a *soon* mark, its tooltip naming the issue that builds it
- * (`INSIGHTS_ACTIONS`).
+ * [#516](https://github.com/NobuData/ouroboros/issues/516)); *Weekly digest in Slack →* links to
+ * Chat Ops (CA.1, [#541](https://github.com/NobuData/ouroboros/issues/541)). An action with
+ * nothing to open would be an inert button carrying a *soon* mark, its tooltip naming the issue
+ * that builds it (`INSIGHTS_ACTIONS`) — none is today.
  *
  * @returns The head.
  */
@@ -51,7 +52,7 @@ export function InsightsHead() {
             <DigestAction key={action.id} label={action.label} />
           ) : (
             <Button key={action.id} reason={action.soonNote ?? undefined} tone="ghost">
-              {/* The space keeps the accessible name words apart — "Send to Slack soon". */}
+              {/* The space keeps the accessible name words apart — "Label soon". */}
               {action.label}{" "}
               <span className="insights__soon">{SOON_MARK}</span>
             </Button>

@@ -23,8 +23,8 @@ Connecting Slack, linking identities, publishing cards, the
 [`/ouro` commands](../cli/ouro.mdx), answering a decision with a card's button and
 [escalation](#escalation) work now.
 
-Choosing which channel a route posts to, and designating the on-call person, cannot be done in
-the app yet — see [Where messages go](#where-messages-go).
+Designating the on-call person cannot be done in the app yet — see
+[Where messages go](#where-messages-go).
 
 :::
 
@@ -133,14 +133,53 @@ press.
 
 ## Install the app into a workspace
 
-An Owner or Maintainer installs it:
+An Owner or Maintainer installs it, from the Chat Ops page:
 
-1. Open the **Integrations** section of <UiPath path="Settings" />.
-2. On the **Slack** tile, choose **Connect**.
+1. Open the **Integrations** section of <UiPath path="Settings" /> and, on the **Slack** tile,
+   choose **Chat Ops →**. The page is at `/chatops`.
+2. The page reads **Install the Slack app into your workspace**. Choose **Install**.
 3. Slack shows what the app asks for. Approve it.
+4. Back in Ouroboros, [bind your first channels](#bind-the-first-channels).
 
-You return to Settings, and the Slack tile shows the Slack workspace's name. **Reinstall** on
-the tile runs the same steps again — use it after the app's scopes change.
+<Screenshot id="administration.chatops.install" />
+
+Until the deployment has its Slack app, the same page reads **This deployment has no Slack app
+yet** and lists what to do: create the app from the manifest, give the deployment
+`OURO_SLACK_CLIENT_ID`, `OURO_SLACK_CLIENT_SECRET` and `OURO_SLACK_SIGNING_SECRET`, restart
+it, and come back to install. There is no **Install** button in that state — there is nothing
+to install yet. A member who is not an Owner or a Maintainer sees what is missing and who can
+fix it, and no **Install**.
+
+**Connect** on the Slack tile in Settings starts the same installation. **Reinstall** on the
+tile, and **Re-install** on the Chat Ops page, run it again — use them after the app's scopes
+change, or after Slack revoked the app.
+
+### Bind the first channels
+
+After installing, the Chat Ops page reads **Bind your first channels**. Binding a channel says
+what it is for, and switches on that purpose's default routes:
+
+| Purpose | Default routes |
+| --- | --- |
+| **Loops** | `custom:blocking-questions`, with a direct message to the on-call person; `custom:loop-finished`; `custom:stage-transitions`, switched off |
+| **Alerts** | `custom:build-failures` |
+| **Leads** | `custom:weekly-insights` |
+
+1. In Slack, add the bot to each channel: `/invite @Ouroboros`. Ouroboros can only post where
+   it is a member, and it cannot join a channel on its own — public or private.
+2. On the Chat Ops page choose **Choose a Loops channel** (or **Alerts**, or **Leads**), pick
+   the channel, and choose **Bind**.
+
+A route the workspace already has keeps its switch as you left it and is pointed at the new
+channel; a route it does not have is created. The steps for adding more channels later are in
+the User Guide's [Add a channel](../user-guide/chatops.mdx#add-a-channel). Binding and
+unbinding a channel are recorded in the [audit trail](./retention-audit-lifecycle.mdx).
+
+### After Slack revokes the app
+
+When the app is removed from the Slack workspace, or its token is revoked, the Chat Ops page's
+connection strip reads **revoked** with Slack's reason, and nothing reaches your channels.
+Choose **Re-install** there. Your bound channels and routes are kept.
 
 One Slack workspace connects to one Ouroboros workspace. The token Slack grants is encrypted
 before it is stored, is never shown again, and is never written to a log.
@@ -186,12 +225,12 @@ Slack only while Slack is connected: until then it reads **locked**, *connect Sl
 A message goes only to a route that is switched on, and each channel gets a given message
 once, even when two routes name the same channel.
 
-Three things are not in the app yet:
+A route's channel is chosen by [binding a channel](#bind-the-first-channels) on the Chat Ops
+page. A Slack route is listed in the **Notifications** section with its switch; switching one
+on while it has no channel is refused with *choose a Slack channel first*.
 
-- **Choosing a route's channel.** No screen creates a Slack route or binds one to a channel
-  yet. A Slack route that already exists is listed in the **Notifications** section with its
-  switch; switching one on while it has no channel is refused with *choose a Slack channel
-  first*.
+Two things are not in the app yet:
+
 - **Designating the on-call person.** **Needs-you decisions → Slack DM** can be switched on in
   Settings once Slack is connected, and it then sends each question to the workspace's on-call
   person — but nobody can be designated on call in the app yet, so until someone is, it sends

@@ -174,6 +174,11 @@ the card links into the product to confirm. An unanswered decision escalates whe
 ends: the card is annotated, the item moves to the top of the Needs-you inbox and the on-call
 person is sent a DM.
 
-Where a message goes is the workspace's notification routes. A route is bound to a channel in
-the database today; the screen that binds one arrives with #541 and #542. Build-green and
+CA.1 (#541) delivers the **Chat Ops page** (`/chatops`): the install journey, the connection's
+health, and binding a channel to a purpose — which points that purpose's default routes at it.
+The bot is not given `channels:join`: add it to a channel with `/invite @Ouroboros` before
+binding.
+
+Where a message goes is the workspace's notification routes. A route is bound to a channel on the
+Chat Ops page (#541). Build-green and
 build-failed cards are rendered and tested but nothing reports a build result to publish yet.

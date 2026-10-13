@@ -204,6 +204,16 @@ const TEMPLATES: Readonly<Record<string, Template>> = {
       ? "answered a decision from Slack"
       : `answered a decision from Slack (${action.replaceAll("_", " ")})`;
   },
+  "chat.channel_bound": (f) => {
+    const name = text(f, "channelName");
+    const purpose = text(f, "purpose");
+    const channel = name === undefined ? "a Slack channel" : `#${name}`;
+    return purpose === undefined ? `bound ${channel}` : `bound ${channel} for ${purpose}`;
+  },
+  "chat.channel_unbound": (f) => {
+    const name = text(f, "channelName");
+    return name === undefined ? "unbound a Slack channel" : `unbound #${name}`;
+  },
 };
 
 /**

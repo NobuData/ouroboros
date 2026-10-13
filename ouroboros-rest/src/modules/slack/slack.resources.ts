@@ -4,9 +4,10 @@
  * integrations tile, the inbox's channel rows and the Chat Ops health strip (#541) read.
  */
 
-import type { ChatDeliveryHealthRow } from "../chat/chat.outbox";
-import type { ChatConnectionPublic } from "../db/schema";
+import { DM_PURPOSE_TAG, type ChatDeliveryHealthRow } from "../chat/chat.outbox";
+import type { ChatChannel, ChatConnectionPublic } from "../db/schema";
 import { SLACK_BOT_SCOPES, SLACK_PATH_PREFIX } from "./slack.app";
+import type { ChannelRouteRow } from "./slack.repository";
 
 /**
  * Where Slack stands for a workspace.
@@ -159,5 +160,120 @@ export function connectionResource(input: {
     channels: input.channels,
     socketMode: input.socketMode,
     delivery: deliveryResource(input.delivery ?? NO_DELIVERY),
+  };
+}
+
+/**
+ * What a channel can be bound for (CA.1, [#541](https://github.com/NobuData/ouroboros/issues/541))
+ * — mockup 19's three: where loops report, where failures alert, where leads read the digest.
+ * In the order the page lists them.
+ */
+export const CHANNEL_PURPOSES = ["loops", "alerts", "leads"] as const;
+
+/** One of {@link CHANNEL_PURPOSES}. */
+export type SlackChannelPurpose = (typeof CHANNEL_PURPOSES)[number];
+
+/** One Slack channel the workspace's connection knows. */
+export interface SlackChannelResource {
+  /** The workspace's channel row — what a binding is addressed by. */
+  readonly id: string;
+  /** Slack's own id for the channel (`C071LOOPS`). */
+  readonly platformChannelId: string;
+  /** Without the leading `#`. */
+  readonly name: string;
+  readonly isPrivate: boolean;
+  /** Whether the bot is a member — it can post, and be bound, only where it is. */
+  readonly joined: boolean;
+  /** How many members Slack last reported — `null` until it has. */
+  readonly memberCount: number | null;
+  /** What the channel is bound for — `null` when it is not bound. */
+  readonly purpose: SlackChannelPurpose | null;
+  readonly archived: boolean;
+  /** The channel, opened in Slack. */
+  readonly url: string;
+  /** The kinds of the Slack notification routes that post here, sorted. */
+  readonly routes: readonly string[];
+}
+
+/** `GET /api/v1/slack/channels`, and what every channel write answers with. */
+export interface SlackChannelsResource {
+  /** Whether the workspace has an active Slack connection. Without one there are no channels. */
+  readonly connected: boolean;
+  /** When a channel row last changed — in practice, when the list was last refreshed. */
+  readonly refreshedAt: string | null;
+  readonly channels: readonly SlackChannelResource[];
+}
+
+/**
+ * Whether a purpose tag is one a channel can be bound for.
+ *
+ * @param tag - A `chat_channels.purpose_tag`, or null.
+ * @returns True for `loops`, `alerts` and `leads`.
+ */
+export function isChannelPurpose(tag: string | null): tag is SlackChannelPurpose {
+  return (CHANNEL_PURPOSES as readonly (string | null)[]).includes(tag);
+}
+
+/**
+ * Where a channel opens in Slack.
+ *
+ * @param workspaceId - Slack's team id (`T024AB`).
+ * @param platformChannelId - Slack's channel id (`C071LOOPS`).
+ * @returns The web client's URL, which the desktop app takes over when it is installed.
+ */
+export function channelUrl(workspaceId: string, platformChannelId: string): string {
+  return `https://app.slack.com/client/${encodeURIComponent(workspaceId)}/${encodeURIComponent(platformChannelId)}`;
+}
+
+/**
+ * Compose the channel list.
+ *
+ * @param input - The workspace's connection if any, its channel rows, and the Slack routes that
+ *   post to a channel.
+ * @returns The resource: nothing listed without an active connection; otherwise every channel
+ *   but the DM conversations the publisher opened (#536) — bound ones first, in the order of
+ *   {@link CHANNEL_PURPOSES}, then by name.
+ */
+export function channelsResource(input: {
+  connection: ChatConnectionPublic | undefined;
+  channels: readonly ChatChannel[];
+  routes: readonly ChannelRouteRow[];
+}): SlackChannelsResource {
+  const { connection } = input;
+
+  if (connection?.status !== "active") {
+    return { connected: false, refreshedAt: null, channels: [] };
+  }
+
+  const rows = input.channels.filter((row) => row.purpose_tag !== DM_PURPOSE_TAG);
+  const newest = rows.reduce((latest, row) => Math.max(latest, row.updated_at.getTime()), 0);
+  const channels = rows.map((row): SlackChannelResource => {
+    return {
+      id: row.id,
+      platformChannelId: row.channel_id,
+      name: row.channel_name,
+      isPrivate: row.is_private,
+      joined: row.joined,
+      memberCount: row.member_count,
+      purpose: isChannelPurpose(row.purpose_tag) ? row.purpose_tag : null,
+      archived: row.archived,
+      url: channelUrl(connection.workspace_id, row.channel_id),
+      routes: input.routes
+        .filter((route) => route.chatChannelId === row.id)
+        .map((route) => route.kind)
+        .sort(),
+    };
+  });
+
+  /** A bound channel's place among the purposes; an unbound one sorts after them all. */
+  const rank = (channel: SlackChannelResource): number =>
+    channel.purpose === null ? CHANNEL_PURPOSES.length : CHANNEL_PURPOSES.indexOf(channel.purpose);
+
+  return {
+    connected: true,
+    refreshedAt: rows.length === 0 ? null : new Date(newest).toISOString(),
+    channels: channels.sort(
+      (a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
+    ),
   };
 }

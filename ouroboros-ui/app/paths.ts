@@ -223,6 +223,17 @@ export const INSIGHTS_PATH = "/insights";
 export const RESEARCH_PATH = "/research";
 
 /**
+ * Chat Ops (CA.1, [#541](https://github.com/NobuData/ouroboros/issues/541)) — mockup 19.
+ *
+ * Where the workspace's Slack connection is installed, read and bound to channels
+ * (`app/(app)/chatops/page.tsx`). **It has no sidebar entry** — its in-app pieces are this page
+ * and the palette console — so the surfaces that used to say *arrives with Chat Ops* are how a
+ * reader gets here: the inbox's *Answer from anywhere* card, the Insights head, and the Settings
+ * integrations tile for Slack. Written down here so they agree about the address.
+ */
+export const CHATOPS_PATH = "/chatops";
+
+/**
  * The Needs-You inbox ([#466](https://github.com/NobuData/ouroboros/issues/466)) — mockup 16.
  *
  * The sidebar's **Needs You** entry (`app/shell/nav-modules.ts`) names it, so `isActiveRoute`

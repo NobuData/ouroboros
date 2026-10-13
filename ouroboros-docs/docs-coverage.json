@@ -6,6 +6,7 @@
     },
     "/analyzer": "user-guide/analyzer",
     "/build-farm": "administration/build-farm",
+    "/chatops": "user-guide/chatops",
     "/dashboard": "user-guide/dashboard",
     "/get-started": "user-guide/getting-started/wizard",
     "/inbox": "user-guide/inbox",

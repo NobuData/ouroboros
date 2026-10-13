@@ -326,23 +326,29 @@ export class SlackInstallService {
   }
 
   /**
-   * List the workspace's channels and store them. A failure is noted and never thrown.
+   * List the workspace's channels and store them. A failure is noted and never thrown: an
+   * install and a verification stand whether or not the listing does, and the caller that does
+   * care (`POST /slack/channels/refresh`, #541) reads the answer.
    *
    * @param connection - The connection.
    * @param botToken - Its token, unsealed.
+   * @returns `undefined` when the listing was stored; otherwise Slack's error code, with nothing
+   *   stored — and the connection flipped to `revoked` when the error means the install is over.
    */
-  private async refreshChannels(
+  async refreshChannels(
     connection: Pick<ChatConnectionPublic, "id" | "organization_id">,
     botToken: string,
-  ): Promise<void> {
+  ): Promise<string | undefined> {
     const listing = await this.slack.listChannels(botToken);
 
     if (!listing.ok) {
       await this.noteFailure(connection, listing.error, "conversations.list");
 
-      return;
+      return listing.error;
     }
 
     await this.repository.saveChannels(connection, listing.channels, new Date());
+
+    return undefined;
   }
 }

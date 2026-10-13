@@ -460,14 +460,14 @@ describe("the email digest", () => {
 });
 
 describe("Chat Ops", () => {
-  it("is an honest soon, not a link to a page that is not there", () => {
+  it("is a link to the Chat Ops page, with no soon mark left on it (#541)", () => {
     card();
 
-    const chatOps = within(region()).getByRole("button", { name: "Chat Ops soon" });
+    const chatOps = within(region()).getByRole("link", { name: "Chat Ops" });
 
-    expect(within(region()).queryByRole("link", { name: /Chat Ops/ })).toBeNull();
-    expect(chatOps).toHaveAttribute("aria-disabled", "true");
-    expect(chatOps).toHaveAccessibleDescription("The Chat Ops page arrives with #541.");
+    expect(chatOps).toHaveAttribute("href", "/chatops");
+    expect(chatOps).not.toHaveAttribute("aria-disabled");
+    expect(within(region()).queryByText("soon")).toBeNull();
   });
 });
 

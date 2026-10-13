@@ -4,6 +4,7 @@ import { type FormEvent, useId, useState } from "react";
 
 import type { InboxChannel, InboxChannels, NotificationPreferences } from "@/app/api/inbox";
 import type { Reading } from "@/app/api/reading";
+import { CHATOPS_PATH } from "@/app/paths";
 import { Button, Card, CardHead, TextField, Toggle } from "@/app/ui";
 import { cx } from "@/app/ui/class-names";
 
@@ -20,12 +21,10 @@ import {
   CHANNELS_TITLE,
   CHANNEL_SETTINGS_LABEL,
   CHAT_OPS_LABEL,
-  CHAT_OPS_SOON,
   DIGEST_LEAD,
   DIGEST_SAVING,
   DIGEST_TIME_FIELD,
   DIGEST_TIME_SAVE,
-  SOON_MARK,
   carriesDigest,
   channelStanding,
   digestSummary,
@@ -206,7 +205,8 @@ function ChannelRow({
  *
  * **Controls only where they do something.** The daily digest's switch and time live on the email
  * row, and only while email is connected; push has no switch at all until it can deliver. *Chat
- * Ops* is an honest *soon* rather than a link to a page that is not there, and the card's own
+ * Ops* is a link to the page CA.1 ([#541](https://github.com/NobuData/ouroboros/issues/541))
+ * built — where Slack is installed and its channels are bound — and the card's own
  * *All notification settings* opens the same sheet the page head does.
  *
  * @param props See {@link ChannelsCardProps}.
@@ -222,9 +222,8 @@ export function ChannelsCard({ channels, failure, preferences, onPreferences }: 
         title={CHANNELS_TITLE}
         titleId={title}
         trailing={
-          <Button reason={CHAT_OPS_SOON} size="sm" tone="ghost">
-            {/* The space keeps the accessible name's words apart — "Chat Ops soon". */}
-            {CHAT_OPS_LABEL} <span className="inbox-channels__soon">{SOON_MARK}</span>
+          <Button href={CHATOPS_PATH} size="sm" tone="ghost">
+            {CHAT_OPS_LABEL}
           </Button>
         }
       />

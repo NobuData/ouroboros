@@ -24,6 +24,10 @@ export const SLACK_ERRORS = {
   installFailed: "slack_install_failed",
   alreadyConnected: "slack_already_connected",
   notConnected: "slack_not_connected",
+  channelNotFound: "slack_channel_not_found",
+  channelArchived: "slack_channel_archived",
+  channelNotJoined: "slack_channel_not_joined",
+  channelListFailed: "slack_channel_list_failed",
 } as const;
 
 /**
@@ -104,5 +108,77 @@ export function slackAlreadyConnected(workspaceName: string): ConflictError {
     SLACK_ERRORS.alreadyConnected,
     `This workspace is already connected to the Slack workspace ${workspaceName}. Remove the app there before connecting another.`,
     { workspaceName },
+  );
+}
+
+/**
+ * The workspace has no active Slack connection, so there are no channels to list or bind.
+ *
+ * @returns `409 slack_not_connected`.
+ */
+export function slackNotConnected(): ConflictError {
+  return new ConflictError(
+    SLACK_ERRORS.notConnected,
+    "This workspace is not connected to Slack. Connect Slack from Settings, then try again.",
+    {},
+  );
+}
+
+/**
+ * A channel id that names no channel of this workspace's Slack connection — or names a DM
+ * conversation, which is stored beside the channels and is not one.
+ *
+ * @param id - The id asked for.
+ * @returns `404 slack_channel_not_found`.
+ */
+export function slackChannelNotFound(id: string): NotFoundError {
+  return new NotFoundError(
+    SLACK_ERRORS.channelNotFound,
+    "No such Slack channel in this workspace. Refresh the channel list and pick one from it.",
+    { id },
+  );
+}
+
+/**
+ * A channel that was archived in Slack: nobody can post there, the app included.
+ *
+ * @param name - The channel's name, without `#`.
+ * @returns `409 slack_channel_archived`.
+ */
+export function slackChannelArchived(name: string): ConflictError {
+  return new ConflictError(
+    SLACK_ERRORS.channelArchived,
+    `#${name} is archived in Slack, so nothing can be posted there. Unarchive it in Slack, or pick another channel.`,
+    { channelName: name },
+  );
+}
+
+/**
+ * A channel the bot is not a member of. The app holds no scope to join one by itself (a product
+ * decision, #541), so the person adds it in Slack — the same for a public and a private channel.
+ *
+ * @param name - The channel's name, without `#`.
+ * @returns `409 slack_channel_not_joined`, saying exactly what to type.
+ */
+export function slackChannelNotJoined(name: string): ConflictError {
+  return new ConflictError(
+    SLACK_ERRORS.channelNotJoined,
+    `Ouroboros is not a member of #${name}, and it cannot join a channel by itself. In Slack, type /invite @Ouroboros in #${name}, then refresh the channel list and try again. Private channels work the same way.`,
+    { channelName: name },
+  );
+}
+
+/**
+ * Slack did not list the workspace's channels. Nothing stored was changed.
+ *
+ * @param reason - Slack's error code, or `token_unavailable` when the stored token could not be
+ *   read.
+ * @returns `502 slack_channel_list_failed`.
+ */
+export function slackChannelListFailed(reason: string): UpstreamError {
+  return new UpstreamError(
+    SLACK_ERRORS.channelListFailed,
+    "Slack did not list this workspace's channels. The list was left as it was — try again.",
+    { reason },
   );
 }

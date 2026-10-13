@@ -135,14 +135,26 @@ describe("the seeded grid", () => {
     }
   });
 
-  it("renders Slack's honest absence — not built yet, with why, and nothing to press", () => {
+  it("renders an unbuilt Slack tile honestly — with why, and nothing to press but the way to Chat Ops", () => {
     render(card());
     const slack = tileOf("Slack");
 
     expect(slack).toHaveClass("integrations__tile--unbuilt");
     expect(slack).toHaveTextContent("not built yet");
     expect(slack).toHaveTextContent(SLACK_REASON);
-    expect(slack.querySelector("a, button")).toBeNull();
+    expect(slack.querySelectorAll("a, button")).toHaveLength(1);
+    expect(within(slack).getByRole("link", { name: "Open Chat Ops" })).toHaveAttribute("href", "/chatops");
+  });
+
+  it("links the Slack tile — and no other — to Chat Ops, in every state (#541)", () => {
+    render(card());
+
+    const links = screen.getAllByRole("link", { name: "Open Chat Ops" });
+
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveTextContent("Chat Ops →");
+    expect(links[0]!.closest("li")).toBe(tileOf("Slack"));
+    expect(links[0]).not.toHaveAttribute("aria-disabled");
   });
 
   it("draws the Slack tile the service sends once its install exists (#535)", () => {
@@ -184,7 +196,9 @@ describe("the seeded grid", () => {
     expect(tileOf("Slack")).toHaveTextContent(
       "No Slack app is registered on this deployment",
     );
-    expect(tileOf("Slack").querySelector("a, button")).toBeNull();
+    // Nothing to install, so no Connect — only the way to Chat Ops, which explains the setup.
+    expect(tileOf("Slack").querySelectorAll("a, button")).toHaveLength(1);
+    expect(within(tileOf("Slack")).getByRole("link", { name: "Open Chat Ops" })).toBeInTheDocument();
 
     rerender(
       card({

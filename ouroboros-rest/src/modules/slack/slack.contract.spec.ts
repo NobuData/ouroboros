@@ -8,10 +8,10 @@ import Ajv2020 from "ajv/dist/2020";
 import addFormats from "ajv-formats";
 
 import { document } from "../../openapi/specification";
-import type { ChatConnectionPublic } from "../db/schema";
+import type { ChatChannel, ChatConnectionPublic } from "../db/schema";
 import { composeIntegrations } from "../integrations/integrations.tiles";
 import { COMMAND_ACK } from "./slack.inbound.service";
-import { connectionResource } from "./slack.resources";
+import { channelsResource, connectionResource } from "./slack.resources";
 
 /**
  * A validator for one documented schema.
@@ -122,6 +122,105 @@ describe("the Slack connection on the wire", () => {
     };
 
     expect(connection(wire(leaked))).toContain("additional properties");
+  });
+});
+
+describe("the Slack channels on the wire (#541)", () => {
+  const channels = validatorFor("SlackChannels");
+  const binding = validatorFor("SlackChannelBinding");
+  const ROW: ChatChannel = {
+    id: "5eed009c-0000-4000-8000-000000000011",
+    organization_id: "org-acme",
+    connection_id: CONNECTION.id,
+    platform: "slack",
+    channel_id: "C071LOOPS",
+    channel_name: "ouroboros-loops",
+    is_private: false,
+    joined: true,
+    joined_at: new Date("2026-10-01T09:00:00Z"),
+    member_count: 24,
+    purpose_tag: "loops",
+    archived: false,
+    created_at: new Date("2026-10-01T09:00:00Z"),
+    updated_at: new Date("2026-10-12T14:02:11Z"),
+  };
+
+  it("matches SlackChannels for a bound channel, an unbound one never counted, and a foreign tag", () => {
+    const answer = channelsResource({
+      connection: CONNECTION,
+      channels: [
+        ROW,
+        {
+          ...ROW,
+          id: "5eed009c-0000-4000-8000-000000000014",
+          channel_id: "G074PRIV",
+          channel_name: "eng-leads",
+          is_private: true,
+          joined: false,
+          joined_at: null,
+          member_count: null,
+          purpose_tag: null,
+        },
+        { ...ROW, id: "5eed009c-0000-4000-8000-000000000015", purpose_tag: "incidents" },
+      ],
+      routes: [{ kind: "custom:loop-finished", chatChannelId: ROW.id }],
+    });
+
+    expect(channels(wire(answer))).toBeUndefined();
+    expect(answer.channels.map((channel) => channel.purpose)).toEqual(["loops", null, null]);
+  });
+
+  it.each([
+    ["never installed", undefined],
+    ["revoked", { ...CONNECTION, status: "revoked" as const }],
+  ])("matches SlackChannels when %s", (_label, connection) => {
+    const answer = channelsResource({ connection, channels: [ROW], routes: [] });
+
+    expect(channels(wire(answer))).toBeUndefined();
+    expect(answer).toEqual({ connected: false, refreshedAt: null, channels: [] });
+  });
+
+  it("refuses a channel that grew a field, and a purpose that is not one of the three", () => {
+    const answer = channelsResource({ connection: CONNECTION, channels: [ROW], routes: [] });
+    const grown = { ...answer, channels: [{ ...answer.channels[0], botToken: "xoxb-1" }] };
+    const tagged = { ...answer, channels: [{ ...answer.channels[0], purpose: "dm" }] };
+
+    expect(channels(wire(grown))).toContain("additional properties");
+    expect(channels(wire(tagged))).toBeDefined();
+  });
+
+  it("takes the three purposes as a binding and nothing else", () => {
+    for (const purpose of ["loops", "alerts", "leads"]) {
+      expect(binding({ purpose })).toBeUndefined();
+    }
+
+    expect(binding({ purpose: "dm" })).toBeDefined();
+    expect(binding({})).toBeDefined();
+    expect(binding({ purpose: "loops", channel: "C071LOOPS" })).toContain("additional properties");
+  });
+
+  it("documents every refusal's code under the status it is answered with", () => {
+    const paths = document().paths as Record<
+      string,
+      Record<string, { responses: Record<string, { description: string }> }>
+    >;
+    const bind = paths["/api/v1/slack/channels/{id}/binding"].put.responses;
+    const unbind = paths["/api/v1/slack/channels/{id}/binding"].delete.responses;
+    const refresh = paths["/api/v1/slack/channels/refresh"].post.responses;
+
+    expect(bind["404"].description).toContain("slack_channel_not_found");
+    for (const code of [
+      "slack_not_connected",
+      "slack_channel_archived",
+      "slack_channel_not_joined",
+    ]) {
+      expect(bind["409"].description).toContain(code);
+    }
+    expect(bind["422"].description).toContain("validation_failed");
+    expect(unbind["404"].description).toContain("slack_channel_not_found");
+    expect(unbind["409"].description).toContain("slack_not_connected");
+    expect(refresh["409"].description).toContain("slack_not_connected");
+    expect(refresh["502"].description).toContain("slack_channel_list_failed");
   });
 });
 

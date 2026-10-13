@@ -587,7 +587,7 @@ the #16 tokens (both themes; the mockup is dark-only).
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CA.1 | #541 | 🟡 Open | ouroboros-ui: [CA.1] ChatOps route, head & connection flow | Frame, add-channel, open-channel, install/setup states | mvp, chatops, ui, design | N (after #41, BZ.1, BA-D.5) | Y | M | ouroboros-ui |
+| CA.1 | #541 ✅ | 🟢 Done | ouroboros-ui: [CA.1] ChatOps route, head & connection flow | Frame, add-channel, open-channel, install/setup states | mvp, chatops, ui, design | N (after #41, BZ.1, BA-D.5) | Y | M | ouroboros-ui |
 | CA.2 | #542 | 🟡 Open | ouroboros-ui: [CA.2] Channel mirror card | The truthful stream (C7): all archetypes + composer console | mvp, chatops, ui, design | N (after CA.1, BZ.2) | Y | L | ouroboros-ui |
 | CA.3 | #543 | 🟡 Open | ouroboros-ui: [CA.3] Commands & routing cards | Registry-driven command list; BR.4 binding editors | mvp, chatops, ui, design | N (after CA.1, BZ.3, BR.4) | Y | M | ouroboros-ui |
 | CA.4 | #544 | 🟡 Open | ouroboros-ui: [CA.4] AI-presence card & honest preview | The C8 designed preview + the CB.1 activation slot | mvp, chatops, ui, design | N (after CA.1) | Y | S | ouroboros-ui |
@@ -595,7 +595,13 @@ the #16 tokens (both themes; the mockup is dark-only).
 
 ### Issue CA.1 — ouroboros-ui: [CA.1] ChatOps route, head & connection flow
 
-> **GitHub issue:** #541 · **Status:** 🟡 Open · **Parent epic:** #529
+> **GitHub issue:** #541 ✅ · **Status:** 🟢 Done · **Parent epic:** #529
+>
+> **Delivered (#541 — `ouroboros-ui` 0.157.0, `ouroboros-rest` 0.41.28, `ouroboros-docs` 0.5.3; no migration):** **`/chatops`** (`app/(app)/chatops/`, `app/chatops/`) — mockup 19's head inside the shell, no sidebar entry; **Open #<loops channel> ↗** built from REST's `url` and absent when no channel is bound for Loops; the **connection strip** (workspace · app version · scopes · `active`/`revoked`/`error` with the platform's reason · last verification, with **Verify now** and **Re-install** for an owner or admin); the **no-connection journey** for `not_configured` (per-deployment registration, the four steps, the setup guide) and `not_connected` (**Install**, admins only; others see what is missing and who can fix it); **Bind your first channels** after install; **Bound channels**; and the **+ Add channel ▾** picker (list, purpose, **Bind**, **Refresh from Slack**, **Unbind**), which prints REST's refusal inline. The page polls every 15 s. **REST** (built here): `GET /api/v1/slack/channels`, `POST …/channels/refresh`, `PUT`/`DELETE …/channels/{id}/binding`, audit `chat.channel_bound`/`chat.channel_unbound` (webhook registry v13). Binding tags the channel's purpose (one channel per purpose) and points that purpose's default `custom:*` routes at it — created when absent, otherwise re-pointed with the workspace's switch kept. **Flipped placeholders:** the inbox's **Chat Ops** link (#469), the Get Started Slack row's link (#394, served by REST), Insights' **Weekly digest in Slack →** (#443) and **Chat Ops →** on the Settings Slack tile (#495).
+>
+> **Decided with the user:** the missing REST routes are built in this ticket; the bot gets **no `channels:join` scope** — a channel is bound only where the bot already is, and the refusal says `/invite @Ouroboros`; binding asks the channel's purpose and switches on mockup 19's default routes; the screenshots are captured here.
+>
+> **Not delivered, and why:** *install → bind → open end to end against a test workspace* (acceptance criterion 2) was not run against real Slack — bind, unbind, the not-joined refusal and the refresh failure were driven against the seeded stack's REST and database, and the picker by jsdom tests, not by a browser. **No `/chatops` placeholder existed** to retire (#49 never built one). The seeded connection lists three missing scopes, so the strip never reads `scopes ✓` on a seeded stack. Fine-grained route editing is #543; the mirror card is #542. Unbind has no confirmation step. Sending the Insights page to Slack on demand is still #448.
 
 - **Problem Statement:** The frame plus the real install/connect journey —
   this page doubles as the Slack integration's home surface.
@@ -895,7 +901,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    BY.4 (#534) ✅
 3. **Phase 2 — App & services:** BZ.1 (#535) ✅ → { BZ.2 (#536) ✅ ⊕ BZ.3 (#537) ✅ }
    → { BZ.4 (#538) ✅ ⊕ BZ.5 (#539) } → BZ.6 (#540)
-4. **Phase 3 — UI:** CA.1 (#541) → { CA.2 (#542) ⊕ CA.3 (#543) ⊕
+4. **Phase 3 — UI:** CA.1 (#541) ✅ → { CA.2 (#542) ⊕ CA.3 (#543) ⊕
    CA.4 (#544) } → **CA.5 (#545) ✅** *(MVP gate, amending #56)*
 5. **v2:** CB.1 (#546) after AF.2 (#235); CB.2 (#547) ⊕ CB.3 (#548) ⊕
    CB.4 (#549) ⊕ CB.5 (#550) after their dependencies.
@@ -986,7 +992,7 @@ Issue-level impact:
 
 | Issue | GitHub | Status | Amendment |
 |---|:---:|:---:|---|
-| CA.1 | #541 | 🟡 Open | In-app surfaces (palette console mount, settings cards) render inside the shell (palette portals over the content pane and locks its scroll); no sidebar entry is added |
+| CA.1 | #541 ✅ | 🟢 Done | In-app surfaces (palette console mount, settings cards) render inside the shell (palette portals over the content pane and locks its scroll); no sidebar entry is added |
 | CA.2, CA.3, CA.4 | #542, #543, #544 | 🟡 Open | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
 | CA.5 | #545 | 🟡 Open | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 | BZ.5 | #539 | 🟡 Open | The ⌘K command console portals over the content pane and restores its scroll on close; rem-based type |

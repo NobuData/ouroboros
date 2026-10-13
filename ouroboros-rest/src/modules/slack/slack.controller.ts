@@ -13,6 +13,8 @@
  * POST /api/v1/slack/connection/verify owner/admin      ask Slack now, refresh channels
  * ```
  *
+ * The channel list and its bindings (#541) are `slack.channels.controller.ts`.
+ *
  * The whole family is forwarded by the UI origin (`ouroboros-ui/proxy.ts`), so the browser
  * routes carry the session cookie and an operator may give Slack either origin.
  *

@@ -38,12 +38,11 @@ export const NOT_CONNECTED = "not connected";
 export const NOT_YET = "not yet";
 
 /**
- * The card's link to Chat Ops — honest about being unbuilt: mockup 19's page arrives with
- * [#541](https://github.com/NobuData/ouroboros/issues/541), which turns this into a real link.
+ * The card's link to Chat Ops — mockup 19's page, built by CA.1
+ * ([#541](https://github.com/NobuData/ouroboros/issues/541)). It goes to `CHATOPS_PATH`, where
+ * the Slack connection is installed, read and bound to channels.
  */
 export const CHAT_OPS_LABEL = "Chat Ops";
-export const CHAT_OPS_SOON = "The Chat Ops page arrives with #541.";
-export const SOON_MARK = "soon";
 
 /** The email row's digest controls. */
 export const DIGEST_LEAD = "Daily digest";

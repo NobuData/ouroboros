@@ -57,7 +57,6 @@ function section(heading: string): string {
 const NAMED_LABELS: readonly (readonly [file: string, name: string])[] = [
   ["view.ts", "NO_MERGES"],
   ["view.ts", "NOTHING_NEEDED_A_HUMAN"],
-  ["view.ts", "SOON_MARK"],
   ["view.ts", "NOT_MEASURED"],
   ["view.ts", "NOTHING_MEASURED"],
   ["view.ts", "UNTOUCHED_CONTEXT"],

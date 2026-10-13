@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.27"
+  version: "0.41.28"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -9250,6 +9250,393 @@ paths:
         "404":
           description: |-
             `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/slack/channels:
+    get:
+      tags: [chatops]
+      summary: The workspace's Slack channels, and what each is for
+      description: |-
+        The channels the workspace's Slack connection knows
+        ([#541](https://github.com/NobuData/ouroboros/issues/541)), as Slack last listed them —
+        what the Chat Ops page's *Add channel* picker draws. Each says whether the bot is a
+        member (`joined`), which is the one condition for binding it; what it is bound for
+        (`purpose`), if anything; and the kinds of the Slack notification routes that post to it
+        (`routes`). Bound channels come first — `loops`, `alerts`, `leads` — then the rest by
+        name. The direct-message conversations the publisher opens are not channels and are never
+        listed. A workspace without an active Slack connection is answered `connected` false and
+        no channels, not an error. Any member may read it.
+      operationId: listSlackChannels
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The channels.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SlackChannels"
+              example:
+                connected: true
+                refreshedAt: "2026-10-12T14:02:11.000Z"
+                channels:
+                  - id: 5eed009c-0000-4000-8000-000000000011
+                    platformChannelId: C071LOOPS
+                    name: ouroboros-loops
+                    isPrivate: false
+                    joined: true
+                    memberCount: 24
+                    purpose: loops
+                    archived: false
+                    url: https://app.slack.com/client/T024AB/C071LOOPS
+                    routes: ["custom:blocking-questions", "custom:loop-finished", "custom:stage-transitions"]
+                  - id: 5eed009c-0000-4000-8000-000000000014
+                    platformChannelId: C074RANDOM
+                    name: random
+                    isPrivate: false
+                    joined: false
+                    memberCount: 112
+                    purpose: null
+                    archived: false
+                    url: https://app.slack.com/client/T024AB/C074RANDOM
+                    routes: []
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `service_scope_missing` — a service token without `api.read`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/slack/channels/refresh:
+    post:
+      tags: [chatops]
+      summary: Ask Slack for the workspace's channels again
+      description: |-
+        Lists the workspace's channels from Slack with the stored token
+        ([#541](https://github.com/NobuData/ouroboros/issues/541)) and stores what it reports —
+        new channels added, known ones refreshed (name, privacy, membership, member count,
+        archived). This is how a channel the bot was just invited to becomes bindable. Bindings
+        are not touched. When Slack does not answer with a list, **nothing stored is changed**
+        and the refusal carries Slack's own error as `details.reason`; an error that means the
+        install is over (`invalid_auth`, `token_revoked`, …) also marks the connection `revoked`,
+        exactly as a verification would. Owners and admins.
+      operationId: refreshSlackChannels
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The channels after the listing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SlackChannels"
+              example:
+                connected: true
+                refreshedAt: "2026-10-12T14:02:11.000Z"
+                channels:
+                  - id: 5eed009c-0000-4000-8000-000000000011
+                    platformChannelId: C071LOOPS
+                    name: ouroboros-loops
+                    isPrivate: false
+                    joined: true
+                    memberCount: 24
+                    purpose: loops
+                    archived: false
+                    url: https://app.slack.com/client/T024AB/C071LOOPS
+                    routes: ["custom:blocking-questions", "custom:loop-finished", "custom:stage-transitions"]
+                  - id: 5eed009c-0000-4000-8000-000000000014
+                    platformChannelId: C074RANDOM
+                    name: random
+                    isPrivate: false
+                    joined: false
+                    memberCount: 112
+                    purpose: null
+                    archived: false
+                    url: https://app.slack.com/client/T024AB/C074RANDOM
+                    routes: []
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            this route is for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `slack_not_connected` — this workspace has no active Slack connection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: |-
+            `slack_channel_list_failed` — Slack did not list the channels; `details.reason` is
+            Slack's error code, or `token_unavailable` when the stored token could not be read.
+            The stored list is unchanged.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/slack/channels/{id}/binding:
+    put:
+      tags: [chatops]
+      summary: Bind a Slack channel for a purpose
+      description: |-
+        Says what a channel is for ([#541](https://github.com/NobuData/ouroboros/issues/541)) —
+        `loops`, `alerts` or `leads` — and points that purpose's default notification routes at
+        it, in one transaction.
+
+        | Purpose | Routes pointed at the channel | Created as |
+        |---|---|---|
+        | `loops` | `custom:blocking-questions`, `custom:loop-finished`, `custom:stage-transitions` | blocking questions on, with the on-call DM; loop finished on; stage transitions **off** |
+        | `alerts` | `custom:build-failures` | on |
+        | `leads` | `custom:weekly-insights` | on |
+
+        A route the workspace does not have yet is created on Slack as the table says. One it
+        already has is only re-pointed — whether it is on, its on-call DM and its `config` stay as
+        the workspace set them — and one bound to email or PagerDuty is left alone. **One channel
+        per purpose**, so binding a second channel for `loops` moves the purpose, and those
+        routes, off the first. A channel bound for something else changes purpose, and the routes
+        that posted to it for the old one are detached as an unbind would.
+
+        **The bot must already be a member.** The app holds no scope to join a channel by itself,
+        so a channel with `joined` false is refused `409 slack_channel_not_joined`, and the
+        message says what to do — type `/invite @Ouroboros` in the channel, refresh the list, try
+        again. A private channel is the same case. Recorded as `chat.channel_bound`. Owners and
+        admins.
+      operationId: bindSlackChannel
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          description: The channel's id in this workspace — `id` in the channel list, not Slack's own channel id.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SlackChannelBinding"
+            example:
+              purpose: loops
+      responses:
+        "200":
+          description: The channels after the binding.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SlackChannels"
+              example:
+                connected: true
+                refreshedAt: "2026-10-12T14:02:11.000Z"
+                channels:
+                  - id: 5eed009c-0000-4000-8000-000000000011
+                    platformChannelId: C071LOOPS
+                    name: ouroboros-loops
+                    isPrivate: false
+                    joined: true
+                    memberCount: 24
+                    purpose: loops
+                    archived: false
+                    url: https://app.slack.com/client/T024AB/C071LOOPS
+                    routes: ["custom:blocking-questions", "custom:loop-finished", "custom:stage-transitions"]
+                  - id: 5eed009c-0000-4000-8000-000000000014
+                    platformChannelId: C074RANDOM
+                    name: random
+                    isPrivate: false
+                    joined: false
+                    memberCount: 112
+                    purpose: null
+                    archived: false
+                    url: https://app.slack.com/client/T024AB/C074RANDOM
+                    routes: []
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            this route is for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+            `slack_channel_not_found` — no channel of this workspace's Slack connection has that
+            id, or it names a direct-message conversation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `slack_not_connected` — this workspace has no active Slack connection.
+            `slack_channel_archived` — the channel is archived in Slack and takes no posts.
+            `slack_channel_not_joined` — the bot is not a member of the channel; add it in Slack
+            with `/invite @Ouroboros`, refresh the list and try again. `details.channelName`
+            names the channel in both.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — a malformed body, or a `purpose` that is not `loops`, `alerts`
+            or `leads`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [chatops]
+      summary: Unbind a Slack channel
+      description: |-
+        Clears what a channel is for ([#541](https://github.com/NobuData/ouroboros/issues/541))
+        and detaches every Slack notification route posting to it, in one transaction. A route
+        left with nowhere to post is switched off; one that also DMs the on-call person keeps
+        doing that. **Idempotent** — a channel that was not bound is answered the same `200`.
+        Nothing is removed from Slack, and the bot stays a member of the channel. Recorded as
+        `chat.channel_unbound` when something changed. Owners and admins.
+      operationId: unbindSlackChannel
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          description: The channel's id in this workspace — `id` in the channel list, not Slack's own channel id.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The channels after it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SlackChannels"
+              example:
+                connected: true
+                refreshedAt: "2026-10-12T14:02:11.000Z"
+                channels:
+                  - id: 5eed009c-0000-4000-8000-000000000011
+                    platformChannelId: C071LOOPS
+                    name: ouroboros-loops
+                    isPrivate: false
+                    joined: true
+                    memberCount: 24
+                    purpose: loops
+                    archived: false
+                    url: https://app.slack.com/client/T024AB/C071LOOPS
+                    routes: ["custom:blocking-questions", "custom:loop-finished", "custom:stage-transitions"]
+                  - id: 5eed009c-0000-4000-8000-000000000014
+                    platformChannelId: C074RANDOM
+                    name: random
+                    isPrivate: false
+                    joined: false
+                    memberCount: 112
+                    purpose: null
+                    archived: false
+                    url: https://app.slack.com/client/T024AB/C074RANDOM
+                    routes: []
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            this route is for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+            `slack_channel_not_found` — no channel of this workspace's Slack connection has that
+            id, or it names a direct-message conversation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `slack_not_connected` — this workspace has no active Slack connection.
           content:
             application/json:
               schema:
@@ -57550,6 +57937,89 @@ components:
           enum: [verified, revoked, unreachable, not_connected]
         connection:
           $ref: "#/components/schemas/SlackConnection"
+
+    SlackChannels:
+      type: object
+      title: SlackChannels
+      description: |-
+        The workspace's Slack channels ([#541](https://github.com/NobuData/ouroboros/issues/541))
+        — what the list answers, and what every channel write answers with.
+      additionalProperties: false
+      required: [connected, refreshedAt, channels]
+      properties:
+        connected:
+          type: boolean
+          description: Whether the workspace has an active Slack connection. Without one, `channels` is empty.
+        refreshedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When a listed channel last changed — in practice, when the list was last refreshed. Null when there are none.
+        channels:
+          type: array
+          description: Bound channels first (`loops`, `alerts`, `leads`), then the rest by name.
+          items:
+            $ref: "#/components/schemas/SlackChannel"
+
+    SlackChannel:
+      type: object
+      title: SlackChannel
+      description: One Slack channel, as Slack last listed it.
+      additionalProperties: false
+      required: [id, platformChannelId, name, isPrivate, joined, memberCount, purpose, archived, url, routes]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The channel's id in this workspace — what a binding is addressed by.
+        platformChannelId:
+          type: string
+          description: Slack's own id for the channel.
+          examples: [C071LOOPS]
+        name:
+          type: string
+          description: Without the leading `#`.
+          examples: [ouroboros-loops]
+        isPrivate:
+          type: boolean
+        joined:
+          type: boolean
+          description: Whether the bot is a member. It can post, and be bound, only where it is.
+        memberCount:
+          type: [integer, "null"]
+          minimum: 0
+          description: How many members Slack last reported. Null until it has.
+        purpose:
+          type: [string, "null"]
+          enum: [loops, alerts, leads, null]
+          description: What the channel is bound for. Null when it is not bound.
+        archived:
+          type: boolean
+          description: Archived in Slack. An archived channel cannot be bound.
+        url:
+          type: string
+          format: uri
+          description: The channel, opened in Slack.
+          examples: ["https://app.slack.com/client/T024AB/C071LOOPS"]
+        routes:
+          type: array
+          description: The kinds of the Slack notification routes that post to this channel, sorted.
+          items:
+            type: string
+          examples: [["custom:blocking-questions", "custom:loop-finished"]]
+
+    SlackChannelBinding:
+      type: object
+      title: SlackChannelBinding
+      description: What a channel is for.
+      additionalProperties: false
+      required: [purpose]
+      properties:
+        purpose:
+          type: string
+          enum: [loops, alerts, leads]
+          description: |-
+            `loops` — questions, finished loops and stage transitions. `alerts` — build failures.
+            `leads` — the weekly insights digest.
 
     ChatGrammar:
       type: object

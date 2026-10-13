@@ -18,6 +18,7 @@
  */
 
 import type { IntegrationTile } from "@/app/api/settings-integrations";
+import { CHATOPS_PATH } from "@/app/paths";
 
 /** What a tile is, as the card draws it — one modifier class and one phrase each. */
 export type TileStanding =
@@ -154,6 +155,26 @@ export function opensWebhookSheet(
  */
 export function linksAway(tile: Pick<IntegrationTile, "kind" | "deepLink">): boolean {
   return tile.kind !== "webhooks" && tile.deepLink !== null;
+}
+
+/** The Slack tile's link to the page that owns its channels — its label and its accessible name. */
+export const CHAT_OPS_LINK_LABEL = "Chat Ops →";
+export const CHAT_OPS_LINK_NAME = "Open Chat Ops";
+
+/**
+ * Where a tile's own page is, beside its connect action (CA.1,
+ * [#541](https://github.com/NobuData/ouroboros/issues/541)).
+ *
+ * The Slack tile's `deepLink` is the install route — *Connect*, or *Reinstall*. Everything else
+ * about Slack lives on Chat Ops: the connection's health, the setup guide when no app is
+ * registered, and the channels a route can be pointed at. So the tile links there in every
+ * state, and the page links back with *Manage in Settings →*.
+ *
+ * @param tile The tile's kind.
+ * @returns The page's path for the Slack tile; null for every other tile.
+ */
+export function ownPagePath(tile: Pick<IntegrationTile, "kind">): string | null {
+  return tile.kind === "slack" ? CHATOPS_PATH : null;
 }
 
 /**

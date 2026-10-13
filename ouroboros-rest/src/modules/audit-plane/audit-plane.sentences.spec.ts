@@ -127,6 +127,27 @@ describe("composing the audit card's lines", () => {
       "answered a decision from Slack",
     );
   });
+
+  it("says which Slack channel was bound, and for what (#541)", () => {
+    expect(
+      eventSentence({
+        action: "chat.channel_bound",
+        detail: { channelName: "ouroboros-loops", purpose: "loops" },
+      }),
+    ).toBe("bound #ouroboros-loops for loops");
+    expect(
+      eventSentence({ action: "chat.channel_bound", detail: { channelName: "helios-alerts" } }),
+    ).toBe("bound #helios-alerts");
+    expect(eventSentence({ action: "chat.channel_bound", detail: {} })).toBe(
+      "bound a Slack channel",
+    );
+    expect(
+      eventSentence({ action: "chat.channel_unbound", detail: { channelName: "helios-alerts" } }),
+    ).toBe("unbound #helios-alerts");
+    expect(eventSentence({ action: "chat.channel_unbound", detail: {} })).toBe(
+      "unbound a Slack channel",
+    );
+  });
 });
 
 describe("the actor column", () => {

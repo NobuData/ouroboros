@@ -49,13 +49,14 @@ Owner or Maintainer changes it and chooses **Save changes**.
 | **Weekly insights report → email** | The week's figures from [Insights](../user-guide/insights.mdx). | **Weekly insights recipients** — addresses separated by commas or new lines; left empty, the Owners and Maintainers. Mondays. |
 
 A workspace with Slack routes lists them under these four, by name — such as
-`custom:loop-finished → Slack`. What each posts is in
-[Chat Ops — connecting Slack](./chatops.mdx#where-messages-go).
+`custom:loop-finished → Slack`. They are created, and pointed at a channel, by
+[binding a channel on the Chat Ops page](./chatops.mdx#bind-the-first-channels). What each
+posts is in [Chat Ops — connecting Slack](./chatops.mdx#where-messages-go).
 
 Switch a route on or off with its switch. A **locked** route cannot be switched on: its channel
 cannot deliver. PagerDuty cannot be connected yet. A Slack route is locked only until Slack is
 connected — see [Chat Ops — connecting Slack](./chatops.mdx), which also covers what Slack
-routes post and the parts that cannot be set up in the app yet.
+routes post, binding a channel, and the parts that cannot be set up in the app yet.
 
 The routes are the workspace's own mail, and they are separate from each person's mail:
 
