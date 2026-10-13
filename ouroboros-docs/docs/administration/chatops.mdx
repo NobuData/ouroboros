@@ -176,7 +176,18 @@ unbinding a channel are recorded in the [audit trail](./retention-audit-lifecycl
 
 When the app is removed from the Slack workspace, or its token is revoked, the Chat Ops page's
 connection strip reads **revoked** with Slack's reason, and nothing reaches your channels.
-Choose **Re-install** there. Your bound channels and routes are kept.
+Until it is installed again the page shows each bound channel's mirror as history only: it can
+be read, and nothing can be run, bound or unbound.
+
+To re-install:
+
+1. Open <UiPath path="Chat Ops" /> as an Owner or a Maintainer.
+2. Choose **Re-install** on the connection strip.
+3. Approve the app in Slack. You return to <UiPath path="Settings" />, which reads the
+   connection as working.
+
+Your bound channels, routes and linked identities are kept. Messages that could not be sent
+while the app was revoked were set aside, not queued: they are not sent afterwards.
 
 One Slack workspace connects to one Ouroboros workspace. The token Slack grants is encrypted
 before it is stored, is never shown again, and is never written to a log.
@@ -311,12 +322,36 @@ restart, a network failure or a rate limit.
 | `retrying` | At least one message failed and will be tried again. |
 | `dead_lettered` | At least one message was given up on in the last seven days. `lastError` carries Slack's error for the most recent one. |
 
-`pending`, `retrying` and `deadLettered` are the counts. No screen shows this yet. Dead letters
-are also written to the REST service's log, and are kept for 30 days.
+`pending`, `retrying` and `deadLettered` are the counts. `stuck` counts the messages that have
+failed three times and are still being retried, and `affectedRoutes` lists the routes that have
+a dead letter or a stuck message. Dead letters are also written to the REST service's log, and
+are kept for 30 days.
+
+The Chat Ops page shows the same thing as a banner under the connection strip, while
+`deadLettered` or `stuck` is above zero. The User Guide describes it under
+[Messages are not reaching Slack](../user-guide/chatops.mdx#messages-are-not-reaching-slack).
+
+### Retry undelivered messages
+
+A dead letter is not retried by itself. To send the dead letters again:
+
+1. Fix the cause — the list below says how for the common errors.
+2. Open <UiPath path="Chat Ops" /> as an Owner or a Maintainer.
+3. Choose **Retry now** on the banner.
+
+Every message given up on in the last seven days is queued again and gets the full eight
+attempts. A message is never posted twice. The banner goes away once they are delivered; if a
+message fails again, the banner returns with Slack's new answer.
+
+The same action is `POST /api/v1/slack/connection/delivery/retry`. It answers
+`409 slack_not_connected` when the workspace has no working connection — re-install the app
+first. Each retry is recorded in the [audit trail](./retention-audit-lifecycle.mdx) as
+`chat.delivery_retried`.
 
 Common errors on a dead letter:
 
-- `channel_not_found`, `not_in_channel` — add the bot to the channel.
+- `channel_not_found`, `not_in_channel` — add the bot to the channel: send `/invite @Ouroboros`
+  in it, then choose **I invited it — refresh** on that channel's mirror.
 - `missing_scope` — the app was installed before a scope was added; choose **Reinstall** on the
   Slack tile.
 - `bot_token_unreadable` — the stored token could not be decrypted; check the deployment's

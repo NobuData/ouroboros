@@ -53,6 +53,8 @@ export interface Entry {
   workspace?: string;
   /** Capture signed out (the sign-in page), with no workspace. */
   signedOut?: true;
+  /** The email of the seeded person to capture as, when not the capture's own. */
+  as?: string;
   /** A Playwright selector that must match before the capture. */
   ready: string;
   /** `page`, `fullPage`, or a selector. */

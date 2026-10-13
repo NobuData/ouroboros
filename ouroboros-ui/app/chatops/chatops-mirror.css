@@ -135,14 +135,114 @@
 /* ---------- what stands over the stream ---------- */
 
 .chatops-mirror__warning {
-  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
   padding: var(--sp-5) var(--sp-8);
   border-bottom: 1px solid var(--warn-line);
   background: var(--warn-tint);
+  overflow-wrap: anywhere;
+}
+
+.chatops-mirror__warning-text {
+  margin: 0;
   color: var(--warn);
   font-size: var(--t-sm);
   line-height: var(--lh-body);
   overflow-wrap: anywhere;
+}
+
+/* The removed channel's two ways out, under the sentence that says why they are there. */
+.chatops-mirror__warning-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+/*
+ * The unlinked reader's banner (CA.5, #545): information, not a fault — nothing in the app is
+ * broken for them — so it takes the accent's quiet tint rather than the warning's.
+ */
+.chatops-mirror__notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4) var(--sp-6);
+  padding: var(--sp-5) var(--sp-8);
+  border-bottom: 1px solid var(--line);
+  background: var(--raised);
+}
+
+.chatops-mirror__notice-text {
+  flex: 1 1 28ch;
+  max-width: 72ch;
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.chatops-mirror__notice-title {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.chatops-mirror__notice-code {
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* Where the composer was, under a connection that is gone: the card is history. */
+.chatops-mirror__history {
+  margin: 0;
+  padding: var(--sp-6) var(--sp-8);
+  border-top: 1px solid var(--line);
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the stream's skeleton, while its first read is in flight ---------- */
+
+.chatops-mirror__sk {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-7);
+}
+
+.chatops-mirror__sk-row {
+  display: flex;
+  gap: var(--sp-5);
+}
+
+.chatops-mirror__sk-avatar {
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+.chatops-mirror__sk-lines {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.chatops-mirror__sk-bar {
+  display: block;
+  height: 0.875rem;
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+.chatops-mirror__sk-bar--name {
+  width: 9rem;
 }
 
 .chatops-mirror__stale {

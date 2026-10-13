@@ -1,6 +1,8 @@
+import type { AuditService } from "../audit/audit.service";
 import type { AppConfigService } from "../config/config.service";
 import type { Organization } from "../db/schema";
 import type { Principal } from "../auth/principal";
+import { ADMINISTRATORS, REQUIRED_ROLES } from "../tenancy/roles.guard";
 import { SLACK_ERRORS, slackAlreadyConnected } from "./slack.errors";
 import {
   OAUTH_STATE_COOKIE,
@@ -13,7 +15,8 @@ import {
   stateCookie,
   stateMatches,
 } from "./slack.controller";
-import { FakeSlackStore, KEN, ORG, slackConfig } from "./slack.fixture";
+import { SlackDeliveryService } from "./slack.delivery.service";
+import { FakeSlackStore, KEN, ORG, RecordingAudit, slackConfig } from "./slack.fixture";
 import type { SlackInstallService } from "./slack.install.service";
 import type { SlackLinkService } from "./slack.link.service";
 import type { SlackRepository } from "./slack.repository";
@@ -221,8 +224,30 @@ describe("GET /slack/oauth/callback", () => {
 });
 
 describe("GET /slack/connection", () => {
+  /** The connection every case below installs. */
+  const CONNECTION_ID = "c5360000-0000-4000-8000-000000000001";
+
+  /**
+   * Install the connection into a store.
+   *
+   * @param store - The store.
+   */
+  async function install(store: FakeSlackStore): Promise<void> {
+    await store.saveInstall({
+      id: CONNECTION_ID,
+      organizationId: ORG,
+      workspaceId: "T024AB",
+      workspaceName: "acme-robotics",
+      botTokenSealed: "sealed",
+      botUserId: "U07OUROBOT",
+      installMeta: {},
+      installedBy: KEN.userId,
+      at: new Date("2026-10-12T14:00:00Z"),
+    });
+  }
+
   /** The status controller over a store. */
-  function status(store: FakeSlackStore, configured = true) {
+  function status(store: FakeSlackStore, configured = true, audit = new RecordingAudit()) {
     return new SlackConnectionController(
       {
         credentials: () => (configured ? { clientId: "c", clientSecret: "s" } : undefined),
@@ -230,6 +255,10 @@ describe("GET /slack/connection", () => {
       } as unknown as SlackInstallService,
       store as unknown as SlackRepository,
       slackConfig() as unknown as AppConfigService,
+      new SlackDeliveryService(
+        store as unknown as SlackRepository,
+        audit as unknown as AuditService,
+      ),
     );
   }
 
@@ -294,6 +323,8 @@ describe("GET /slack/connection", () => {
       pending: 0,
       retrying: 0,
       deadLettered: 2,
+      stuck: 1,
+      affectedRoutes: ["custom:build-failures"],
       lastError: "channel_not_found",
       lastDeadLetteredAt: at,
       lastSentAt: null,
@@ -305,6 +336,8 @@ describe("GET /slack/connection", () => {
     expect(answer.delivery).toMatchObject({
       state: "dead_lettered",
       deadLettered: 2,
+      stuck: 1,
+      affectedRoutes: ["custom:build-failures"],
       lastError: "channel_not_found",
     });
   });
@@ -321,6 +354,127 @@ describe("GET /slack/connection", () => {
 
     expect(answer.result).toBe("verified");
     expect(answer.connection.state).toBe("not_connected");
+  });
+
+  describe("viewerLinked (#545)", () => {
+    /**
+     * Give Ken a link on the installed connection.
+     *
+     * @param store - The store.
+     * @param state - The link's state.
+     */
+    function link(store: FakeSlackStore, state: "linked" | "pending" | "revoked"): void {
+      store.links.push({
+        connection_id: CONNECTION_ID,
+        user_id: KEN.userId,
+        state,
+      } as (typeof store.links)[number]);
+    }
+
+    it("is true for a reader with a linked identity on the active connection", async () => {
+      const store = new FakeSlackStore();
+
+      await install(store);
+      link(store, "linked");
+
+      expect((await status(store).status(TENANT, PRINCIPAL)).viewerLinked).toBe(true);
+    });
+
+    it.each(["pending", "revoked"] as const)("is false for a %s link", async (state) => {
+      const store = new FakeSlackStore();
+
+      await install(store);
+      link(store, state);
+
+      expect((await status(store).status(TENANT, PRINCIPAL)).viewerLinked).toBe(false);
+    });
+
+    it("is false for a reader with no link, with no session, and with no connection", async () => {
+      const store = new FakeSlackStore();
+
+      expect((await status(store).status(TENANT, PRINCIPAL)).viewerLinked).toBe(false);
+
+      await install(store);
+
+      expect((await status(store).status(TENANT, PRINCIPAL)).viewerLinked).toBe(false);
+
+      link(store, "linked");
+
+      expect((await status(store).status(TENANT)).viewerLinked).toBe(false);
+    });
+
+    it("is false once the connection is revoked, whatever link stands", async () => {
+      const store = new FakeSlackStore();
+
+      await install(store);
+      link(store, "linked");
+      await store.markRevoked(CONNECTION_ID, "app_uninstalled");
+
+      expect((await status(store).status(TENANT, PRINCIPAL)).viewerLinked).toBe(false);
+    });
+  });
+
+  describe("POST /slack/connection/delivery/retry (#545)", () => {
+    it("queues the dead letters again, audits it once, and answers the status", async () => {
+      const store = new FakeSlackStore();
+      const audit = new RecordingAudit();
+
+      await install(store);
+      store.deadLetters.set(CONNECTION_ID, [
+        "custom:loop-finished",
+        "custom:build-failures",
+        "custom:build-failures",
+      ]);
+
+      const answer = await status(store, true, audit).retryDelivery(TENANT, PRINCIPAL);
+
+      expect(answer.state).toBe("connected");
+      expect(store.deadLetters.has(CONNECTION_ID)).toBe(false);
+      expect(audit.events).toEqual([
+        expect.objectContaining({
+          organizationId: ORG,
+          actorId: KEN.userId,
+          action: "chat.delivery_retried",
+          subjectType: "chat_connection",
+          subjectId: CONNECTION_ID,
+          detail: { messages: 3, routes: "custom:build-failures,custom:loop-finished" },
+        }),
+      ]);
+    });
+
+    it("writes no audit event when there was nothing to retry", async () => {
+      const store = new FakeSlackStore();
+      const audit = new RecordingAudit();
+
+      await install(store);
+      await status(store, true, audit).retryDelivery(TENANT, PRINCIPAL);
+
+      expect(audit.events).toEqual([]);
+    });
+
+    it("refuses without an active connection — never installed, or revoked", async () => {
+      const store = new FakeSlackStore();
+      const controller = status(store);
+
+      await expect(controller.retryDelivery(TENANT, PRINCIPAL)).rejects.toMatchObject({
+        code: SLACK_ERRORS.notConnected,
+      });
+
+      await install(store);
+      store.deadLetters.set(CONNECTION_ID, ["custom:build-failures"]);
+      await store.markRevoked(CONNECTION_ID, "app_uninstalled");
+
+      await expect(controller.retryDelivery(TENANT, PRINCIPAL)).rejects.toMatchObject({
+        code: SLACK_ERRORS.notConnected,
+      });
+      expect(store.deadLetters.get(CONNECTION_ID)).toEqual(["custom:build-failures"]);
+    });
+
+    it("is an owner's or an admin's", () => {
+      expect(
+        Reflect.getMetadata(REQUIRED_ROLES, SlackConnectionController.prototype.retryDelivery),
+      ).toEqual([...ADMINISTRATORS]);
+    });
   });
 });
 

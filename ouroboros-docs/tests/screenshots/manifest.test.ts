@@ -209,6 +209,29 @@ describe("signed-out entries", () => {
   });
 });
 
+describe("entries captured as another person", () => {
+  it("validates an entry that names a seeded person by email", () => {
+    expect(() =>
+      validateManifest(manifestOf({ ...ENTRY, as: "jorge@acme-robotics.dev" })),
+    ).not.toThrow();
+  });
+
+  it("refuses a name that is not an email", () => {
+    expect(() => validateManifest(manifestOf({ ...ENTRY, as: "Jorge" }))).toThrow(/as/);
+  });
+
+  it("refuses it on a signed-out entry — nobody is signed in there", () => {
+    const rest: Entry = { ...ENTRY };
+    delete rest.workspace;
+
+    expect(() =>
+      validateManifest(
+        manifestOf({ ...rest, route: "/login", signedOut: true, as: "jorge@acme-robotics.dev" }),
+      ),
+    ).toThrow(/entries\/0/);
+  });
+});
+
 describe("signInRedirectError", () => {
   it("fails a signed-in entry that lands on sign-in, naming the entry and route", () => {
     expect(signInRedirectError(ENTRY, "/login")).toBe(

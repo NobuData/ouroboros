@@ -598,10 +598,30 @@ export class FakeSlackStore {
         pending: 0,
         retrying: 0,
         deadLettered: 0,
+        stuck: 0,
+        affectedRoutes: [],
         lastError: null,
         lastDeadLetteredAt: null,
         lastSentAt: null,
       }
+    );
+  }
+
+  /** The route kind of each dead letter a connection holds; a retry empties it. */
+  readonly deadLetters = new Map<string, string[]>();
+
+  async requeueDeadLetters(connectionId: string): Promise<string[]> {
+    const queued = this.deadLetters.get(connectionId) ?? [];
+
+    this.deadLetters.delete(connectionId);
+
+    return queued;
+  }
+
+  async userLinked(connectionId: string, userId: string): Promise<boolean> {
+    return this.links.some(
+      (link) =>
+        link.connection_id === connectionId && link.user_id === userId && link.state === "linked",
     );
   }
 

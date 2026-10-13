@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.41.31",
+    "version": "0.41.32",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -9691,7 +9691,7 @@
           "chatops"
         ],
         "summary": "Where Slack stands for this workspace",
-        "description": "The connection status (#535) — one source for every surface that says whether Slack is\nconnected: the workspace, the app version it was installed at, the scopes granted and any\nthe app asks for that were not, when the token was last seen to work, and the platform's\nreason when it does not; `delivery` says how the cards and lines published through it are\nfaring (#536), dead letters included. `state` separates a deployment with no Slack app\n(`not_configured`) from a workspace that has not installed it (`not_connected`). **Never\nthe bot token**, sealed or otherwise. Any member may read it.",
+        "description": "The connection status (#535) — one source for every surface that says whether Slack is\nconnected: the workspace, the app version it was installed at, the scopes granted and any\nthe app asks for that were not, when the token was last seen to work, and the platform's\nreason when it does not; `delivery` says how the cards and lines published through it are\nfaring (#536), dead letters included. `state` separates a deployment with no Slack app\n(`not_configured`) from a workspace that has not installed it (`not_connected`).\n`viewerLinked` is about the reader: whether their own Slack identity is linked (#545).\n**Never the bot token**, sealed or otherwise. Any member may read it.",
         "operationId": "getSlackConnection",
         "parameters": [
           {
@@ -9819,13 +9819,90 @@
         }
       }
     },
+    "/api/v1/slack/connection/delivery/retry": {
+      "post": {
+        "tags": [
+          "chatops"
+        ],
+        "summary": "Queue the connection's dead-lettered messages again",
+        "description": "Every message the publisher gave up on in the last seven days — the ones\n`delivery.deadLettered` counts — becomes pending and due now, with its attempts cleared, so\neach gets the whole retry schedule again (#545). A message is queued again as itself, so\nnothing is posted twice. Answers the status after it, in which those messages are pending;\nwith nothing to retry it changes nothing and still answers the status. Recorded as\n`chat.delivery_retried` when anything was queued. Owners and admins.",
+        "operationId": "retrySlackDelivery",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The status after it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlackConnection"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session. `service_token_invalid` — a\nservice token that was rotated, revoked or never existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — not an owner or admin. `service_principal_refused` — a service token;\nthis route is for people.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no such workspace, or none you are a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`slack_not_connected` — the workspace has no active Slack connection to publish\nthrough. Re-install the app first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/slack/channels": {
       "get": {
         "tags": [
           "chatops"
         ],
         "summary": "The workspace's Slack channels, and what each is for",
-        "description": "The channels the workspace's Slack connection knows\n([#541](https://github.com/NobuData/ouroboros/issues/541)), as Slack last listed them —\nwhat the Chat Ops page's *Add channel* picker draws. Each says whether the bot is a\nmember (`joined`), which is the one condition for binding it; what it is bound for\n(`purpose`), if anything; and the kinds of the Slack notification routes that post to it\n(`routes`). Bound channels come first — `loops`, `alerts`, `leads` — then the rest by\nname. The direct-message conversations the publisher opens are not channels and are never\nlisted. A workspace without an active Slack connection is answered `connected` false and\nno channels, not an error. Any member may read it.",
+        "description": "The channels the workspace's Slack connection knows\n([#541](https://github.com/NobuData/ouroboros/issues/541)), as Slack last listed them —\nwhat the Chat Ops page's *Add channel* picker draws. Each says whether the bot is a\nmember (`joined`), which is the one condition for binding it; what it is bound for\n(`purpose`), if anything; and the kinds of the Slack notification routes that post to it\n(`routes`). Bound channels come first — `loops`, `alerts`, `leads` — then the rest by\nname. The direct-message conversations the publisher opens are not channels and are never\nlisted. A workspace where Slack was never installed is answered `connected` false and no\nchannels, not an error; one whose connection was revoked or is failing is answered\n`connected` false with its channels as they last stood (#545). Any member may read it.",
         "operationId": "listSlackChannels",
         "parameters": [
           {
@@ -75069,7 +75146,8 @@
           "lastVerifiedAt",
           "channels",
           "socketMode",
-          "delivery"
+          "delivery",
+          "viewerLinked"
         ],
         "properties": {
           "state": {
@@ -75214,6 +75292,10 @@
           },
           "delivery": {
             "$ref": "#/components/schemas/SlackDelivery"
+          },
+          "viewerLinked": {
+            "type": "boolean",
+            "description": "Whether the reader has a linked Slack identity on the workspace's active connection\n([#545](https://github.com/NobuData/ouroboros/issues/545)). False without an active\nconnection, and for a caller that is not a person. It gates nothing in the app —\ncommands typed there run under the session — and says only whether Slack's buttons and\ncommands will act as this person."
           }
         }
       },
@@ -75227,6 +75309,8 @@
           "pending",
           "retrying",
           "deadLettered",
+          "stuck",
+          "affectedRoutes",
           "lastError",
           "lastDeadLetteredAt",
           "lastSentAt"
@@ -75256,6 +75340,23 @@
             "type": "integer",
             "minimum": 0,
             "description": "Messages given up on in the last seven days."
+          },
+          "stuck": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Messages still failing after three attempts — retrying persistently, which is when a\nretry stops being weather and starts being worth saying\n([#545](https://github.com/NobuData/ouroboros/issues/545)). Counted among `retrying`."
+          },
+          "affectedRoutes": {
+            "type": "array",
+            "description": "The kinds of the notification routes with a dead letter in the last seven days or a\nstuck message, sorted. Empty when there is neither.",
+            "items": {
+              "type": "string"
+            },
+            "examples": [
+              [
+                "custom:build-failures"
+              ]
+            ]
           },
           "lastError": {
             "type": [
@@ -75320,7 +75421,7 @@
         "properties": {
           "connected": {
             "type": "boolean",
-            "description": "Whether the workspace has an active Slack connection. Without one, `channels` is empty."
+            "description": "Whether the workspace has an active Slack connection. Where Slack was never installed,\n`channels` is empty. A revoked or failing connection's channels are still listed as\nthey last stood ([#545](https://github.com/NobuData/ouroboros/issues/545)) — what was\npublished to them stays readable — and every channel write answers\n`409 slack_not_connected`."
           },
           "refreshedAt": {
             "type": [

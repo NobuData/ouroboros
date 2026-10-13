@@ -30,6 +30,7 @@ import {
   DEFAULT_GITHUB_API_BASE_URL,
   DEFAULT_PROVIDER_HEALTH_INTERVAL_SECONDS,
   DEFAULT_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
+  DEFAULT_SLACK_API_BASE_URL,
   DEFAULT_PORT,
   LOOPBACK_HOST,
   MAX_DASHBOARD_POLL_SECONDS,
@@ -151,6 +152,7 @@ describe("the development defaults", () => {
       webhookMaxAttempts: DEFAULT_WEBHOOK_MAX_ATTEMPTS,
       webhookInternalAllowlist: [],
       slackSocketMode: false,
+      slackApiBaseUrl: DEFAULT_SLACK_API_BASE_URL,
       researchSearxngUrl: "http://localhost:8888",
       researchFetchTimeoutMs: 15_000,
       researchFetchMaxBytes: 5_242_880,
@@ -613,6 +615,20 @@ describe("the Slack app's variables (#535)", () => {
         }),
       ),
     ).toContain(`${VARIABLES.slackSocketMode}: Socket Mode is for development`);
+  });
+
+  it("reach Slack's own Web API unless OURO_SLACK_API_BASE_URL moves it (#545)", () => {
+    expect(loadConfiguration(testEnvironment()).slackApiBaseUrl).toBe(DEFAULT_SLACK_API_BASE_URL);
+    expect(
+      loadConfiguration(testEnvironment({ OURO_SLACK_API_BASE_URL: "http://slack-stub:8080/api" }))
+        .slackApiBaseUrl,
+    ).toBe("http://slack-stub:8080/api");
+  });
+
+  it("refuse a Web API base that is not an absolute http(s) address", () => {
+    expect(failureFor(testEnvironment({ OURO_SLACK_API_BASE_URL: "slack-stub" }))).toContain(
+      `${VARIABLES.slackApiBaseUrl}: expected an absolute http:// or https:// URL`,
+    );
   });
 });
 

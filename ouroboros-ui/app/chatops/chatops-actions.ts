@@ -8,7 +8,13 @@
  * the control that was pressed, in the service's own words, and never a spinner left turning.
  */
 
-import { type ChannelPurpose, type SlackChannels, type SlackVerification, chatops } from "@/app/api/chatops";
+import {
+  type ChannelPurpose,
+  type SlackChannels,
+  type SlackConnection,
+  type SlackVerification,
+  chatops,
+} from "@/app/api/chatops";
 import { isApiError } from "@/app/api/errors";
 
 import type { ChatOpsOutcome } from "./view";
@@ -68,4 +74,13 @@ export async function bindChannel(id: string, purpose: ChannelPurpose): Promise<
  */
 export async function unbindChannel(id: string): Promise<ChatOpsOutcome<SlackChannels>> {
   return outcomeOf(() => chatops.unbind(id));
+}
+
+/**
+ * Queue the connection's dead-lettered messages again (CA.5, #545).
+ *
+ * @returns The connection as it now stands, or the service's refusal.
+ */
+export async function retryDelivery(): Promise<ChatOpsOutcome<SlackConnection>> {
+  return outcomeOf(() => chatops.retryDelivery());
 }

@@ -49,6 +49,12 @@ export interface SlackConnectionResource {
   readonly socketMode: boolean;
   /** How the messages Ouroboros publishes through this connection are faring (#536). */
   readonly delivery: SlackDeliveryResource;
+  /**
+   * Whether the reader has a linked Slack identity on the workspace's active connection (#545).
+   * False without an active connection. It gates nothing in the app — commands typed there run
+   * under the session — and says only whether Slack's buttons will act as this person.
+   */
+  readonly viewerLinked: boolean;
 }
 
 /**
@@ -71,6 +77,10 @@ export interface SlackDeliveryResource {
   readonly retrying: number;
   /** Messages given up on in the last seven days. */
   readonly deadLettered: number;
+  /** Messages still failing after several attempts — retrying persistently. */
+  readonly stuck: number;
+  /** The kinds of the routes with a dead letter or a stuck message, sorted. */
+  readonly affectedRoutes: readonly string[];
   /** The most recent dead letter's error and instant — `null` when there is none. */
   readonly lastError: string | null;
   readonly lastDeadLetteredAt: string | null;
@@ -83,6 +93,8 @@ export const NO_DELIVERY: ChatDeliveryHealthRow = {
   pending: 0,
   retrying: 0,
   deadLettered: 0,
+  stuck: 0,
+  affectedRoutes: [],
   lastError: null,
   lastDeadLetteredAt: null,
   lastSentAt: null,
@@ -107,6 +119,8 @@ export function deliveryResource(health: ChatDeliveryHealthRow): SlackDeliveryRe
     pending: health.pending,
     retrying: health.retrying,
     deadLettered: health.deadLettered,
+    stuck: health.stuck,
+    affectedRoutes: health.affectedRoutes,
     lastError: health.lastError,
     lastDeadLetteredAt: health.lastDeadLetteredAt?.toISOString() ?? null,
     lastSentAt: health.lastSentAt?.toISOString() ?? null,
@@ -126,6 +140,7 @@ export function connectionResource(input: {
   channels: { total: number; joined: number };
   socketMode: boolean;
   delivery?: ChatDeliveryHealthRow;
+  viewerLinked?: boolean;
 }): SlackConnectionResource {
   const { configured, connection } = input;
   const scopes = connection?.install_meta.scopes ?? [];
@@ -160,6 +175,8 @@ export function connectionResource(input: {
     channels: input.channels,
     socketMode: input.socketMode,
     delivery: deliveryResource(input.delivery ?? NO_DELIVERY),
+    // A link is to an active connection: with none, nobody is linked.
+    viewerLinked: connection?.status === "active" && input.viewerLinked === true,
   };
 }
 
@@ -260,9 +277,11 @@ export function channelResource(
  *
  * @param input - The workspace's connection if any, its channel rows, and the Slack routes that
  *   post to a channel.
- * @returns The resource: nothing listed without an active connection; otherwise every channel
+ * @returns The resource: nothing listed where Slack was never installed; otherwise every channel
  *   but the DM conversations the publisher opened (#536) — bound ones first, in the order of
- *   {@link CHANNEL_PURPOSES}, then by name.
+ *   {@link CHANNEL_PURPOSES}, then by name. A revoked or failing connection's channels are
+ *   still listed, with `connected: false` (#545): what was published to them stays readable,
+ *   and every write refuses.
  */
 export function channelsResource(input: {
   connection: ChatConnectionPublic | undefined;
@@ -271,7 +290,7 @@ export function channelsResource(input: {
 }): SlackChannelsResource {
   const { connection } = input;
 
-  if (connection?.status !== "active") {
+  if (connection === undefined) {
     return { connected: false, refreshedAt: null, channels: [] };
   }
 
@@ -284,7 +303,7 @@ export function channelsResource(input: {
     channel.purpose === null ? CHANNEL_PURPOSES.length : CHANNEL_PURPOSES.indexOf(channel.purpose);
 
   return {
-    connected: true,
+    connected: connection.status === "active",
     refreshedAt: rows.length === 0 ? null : new Date(newest).toISOString(),
     channels: channels.sort(
       (a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id),

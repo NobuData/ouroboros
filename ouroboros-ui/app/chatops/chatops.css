@@ -183,6 +183,62 @@
   line-height: var(--lh-body);
 }
 
+/* Why Slack stopped accepting the app, in words — the first thing read under the segments. */
+.chatops__health-reason {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  line-height: var(--lh-body);
+}
+
+/*
+ * The publish-health banner (CA.5, #545): messages that did not reach Slack. The warning's tint,
+ * and a sentence that says what failed — the hue is never the only signal.
+ */
+.chatops__delivery {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-5) var(--sp-6);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+}
+
+.chatops__delivery-text {
+  display: flex;
+  flex: 1 1 28ch;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.chatops__delivery-headline {
+  margin: 0;
+  color: var(--warn);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  line-height: var(--lh-body);
+}
+
+.chatops__delivery-detail {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.chatops__delivery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-5);
+}
+
 /* A refusal, in the service's words, beside the control that was pressed. */
 .chatops__refusal {
   margin: 0;

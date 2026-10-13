@@ -35,7 +35,7 @@ import { TENANT_HEADER } from "../tenancy/tenant.resolver";
 import { BACKOFF_BASE_MS, BACKOFF_JITTER } from "../webhooks/webhook.backoff";
 import { boundScene, openRun } from "./slack.decisions.integration.fixture";
 import { MAX_CHAT_ATTEMPTS } from "../chat/chat.dispatcher";
-import { enqueueBuildCard } from "../chat/chat.outbox";
+import { PERSISTENT_RETRY_ATTEMPTS, enqueueBuildCard } from "../chat/chat.outbox";
 
 /** A weekly slot long before anything a test writes: Monday 1 January 2024, 09:00 UTC. */
 const DIGEST_DUE = new Date("2024-01-01T09:05:00.000Z");
@@ -428,6 +428,99 @@ describe("the chat outbox, against Slack as it misbehaves", () => {
       // The dead letter still shows after a later success.
       expect(await health(at)).toMatchObject({ state: "dead_lettered", deadLettered: 1 });
       expect((await health(at)).lastSentAt).not.toBeNull();
+    });
+  });
+
+  describe("delivery that needs saying, and its retry (#545)", () => {
+    /**
+     * Ask for the connection's dead letters to be queued again.
+     *
+     * @param at - The scene.
+     * @returns The request, for the caller to expect a status of.
+     */
+    function retry(at: Scene) {
+      return bench.api
+        .as(at.owner)("post", "/api/v1/slack/connection/delivery/retry")
+        .set(TENANT_HEADER, at.ingest.workspace.slug);
+    }
+
+    it(`names the route once a message has failed ${String(PERSISTENT_RETRY_ATTEMPTS)} times, not before`, async () => {
+      const at = await scene();
+
+      await failedBuild(at, 1);
+      bench.slack.script(
+        "chat.postMessage",
+        ...Array.from({ length: PERSISTENT_RETRY_ATTEMPTS }, () => ({ error: "internal_error" })),
+      );
+
+      let now = bench.soon();
+
+      for (let attempt = 1; attempt <= PERSISTENT_RETRY_ATTEMPTS; attempt += 1) {
+        if (attempt === PERSISTENT_RETRY_ATTEMPTS) {
+          expect(await health(at)).toMatchObject({ retrying: 1, stuck: 0, affectedRoutes: [] });
+        }
+
+        await bench.tick(now);
+
+        const [row] = await outbox();
+
+        now = new Date((row?.next_attempt_at?.getTime() ?? now.getTime()) + 1);
+      }
+
+      expect(await health(at)).toMatchObject({
+        state: "retrying",
+        retrying: 1,
+        stuck: 1,
+        affectedRoutes: ["custom:build-failures"],
+      });
+
+      // Slack is well again: the message goes out and the route is no longer named.
+      expect((await bench.tick(now)).dispatch).toMatchObject({ claimed: 1, sent: 1 });
+      expect(await health(at)).toMatchObject({ state: "healthy", stuck: 0, affectedRoutes: [] });
+    });
+
+    it("queues a dead letter again as the same row, and the status drains once it is sent", async () => {
+      const at = await scene();
+
+      await failedBuild(at, 1);
+      bench.slack.script("chat.postMessage", { error: "invalid_blocks" });
+      await bench.tick(bench.soon());
+
+      const [dead] = await outbox();
+
+      expect(await health(at)).toMatchObject({
+        state: "dead_lettered",
+        deadLettered: 1,
+        affectedRoutes: ["custom:build-failures"],
+      });
+
+      const answered = bodyOf<SlackConnectionResource>(await retry(at).expect(200));
+
+      expect(answered.delivery).toMatchObject({ deadLettered: 0, pending: 1, affectedRoutes: [] });
+      expect(await outbox()).toMatchObject([{ id: dead?.id, status: "pending", attempts: 0 }]);
+
+      expect((await bench.tick(bench.soon())).dispatch).toMatchObject({ claimed: 1, sent: 1 });
+      expect(bench.slack.messagesIn("C0ALERTS")).toHaveLength(1);
+      expect(await health(at)).toMatchObject({
+        state: "healthy",
+        deadLettered: 0,
+        stuck: 0,
+        affectedRoutes: [],
+        lastError: null,
+      });
+      expect(await bench.rows("audit_events", "action = 'chat.delivery_retried'")).toMatchObject([
+        { detail: { messages: 1, routes: "custom:build-failures" } },
+      ]);
+    });
+
+    it("changes nothing, and audits nothing, when there is no dead letter", async () => {
+      const at = await scene();
+
+      expect(bodyOf<SlackConnectionResource>(await retry(at).expect(200)).delivery).toMatchObject({
+        state: "idle",
+        pending: 0,
+      });
+      expect(await bench.rows("audit_events", "action = 'chat.delivery_retried'")).toEqual([]);
     });
   });
 });

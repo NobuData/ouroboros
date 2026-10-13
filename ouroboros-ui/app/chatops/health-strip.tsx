@@ -19,6 +19,7 @@ import {
   refusalText,
   refused,
   repairFor,
+  revokedReason,
   verificationNote,
 } from "./view";
 
@@ -66,6 +67,7 @@ export function HealthStrip({ connection, mayAdminister, now, onVerified }: Heal
   const facts = healthFacts(connection, now);
   const note = brokenNote(connection);
   const repair = repairFor(connection, mayAdminister);
+  const reason = revokedReason(connection);
 
   /** Ask Slack whether the token still works, and hand the answer up. */
   function verify(): void {
@@ -111,6 +113,8 @@ export function HealthStrip({ connection, mayAdminister, now, onVerified }: Heal
           </Button>
         )}
       </div>
+
+      {reason !== null && <p className="chatops__health-reason">{reason}</p>}
 
       {note !== null && (
         <div className="chatops__health-broken">

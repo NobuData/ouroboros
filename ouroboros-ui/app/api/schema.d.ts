@@ -2912,8 +2912,9 @@ export interface paths {
          *     the app asks for that were not, when the token was last seen to work, and the platform's
          *     reason when it does not; `delivery` says how the cards and lines published through it are
          *     faring (#536), dead letters included. `state` separates a deployment with no Slack app
-         *     (`not_configured`) from a workspace that has not installed it (`not_connected`). **Never
-         *     the bot token**, sealed or otherwise. Any member may read it.
+         *     (`not_configured`) from a workspace that has not installed it (`not_connected`).
+         *     `viewerLinked` is about the reader: whether their own Slack identity is linked (#545).
+         *     **Never the bot token**, sealed or otherwise. Any member may read it.
          */
         get: operations["getSlackConnection"];
         put?: never;
@@ -2949,6 +2950,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/slack/connection/delivery/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue the connection's dead-lettered messages again
+         * @description Every message the publisher gave up on in the last seven days — the ones
+         *     `delivery.deadLettered` counts — becomes pending and due now, with its attempts cleared, so
+         *     each gets the whole retry schedule again (#545). A message is queued again as itself, so
+         *     nothing is posted twice. Answers the status after it, in which those messages are pending;
+         *     with nothing to retry it changes nothing and still answers the status. Recorded as
+         *     `chat.delivery_retried` when anything was queued. Owners and admins.
+         */
+        post: operations["retrySlackDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/slack/channels": {
         parameters: {
             query?: never;
@@ -2965,8 +2991,9 @@ export interface paths {
          *     (`purpose`), if anything; and the kinds of the Slack notification routes that post to it
          *     (`routes`). Bound channels come first — `loops`, `alerts`, `leads` — then the rest by
          *     name. The direct-message conversations the publisher opens are not channels and are never
-         *     listed. A workspace without an active Slack connection is answered `connected` false and
-         *     no channels, not an error. Any member may read it.
+         *     listed. A workspace where Slack was never installed is answered `connected` false and no
+         *     channels, not an error; one whose connection was revoked or is failing is answered
+         *     `connected` false with its channels as they last stood (#545). Any member may read it.
          */
         get: operations["listSlackChannels"];
         put?: never;
@@ -23505,6 +23532,14 @@ export interface components {
             /** @description Whether this deployment reaches Slack over Socket Mode — development only. */
             socketMode: boolean;
             delivery: components["schemas"]["SlackDelivery"];
+            /**
+             * @description Whether the reader has a linked Slack identity on the workspace's active connection
+             *     ([#545](https://github.com/NobuData/ouroboros/issues/545)). False without an active
+             *     connection, and for a caller that is not a person. It gates nothing in the app —
+             *     commands typed there run under the session — and says only whether Slack's buttons and
+             *     commands will act as this person.
+             */
+            viewerLinked: boolean;
         };
         /**
          * SlackDelivery
@@ -23527,6 +23562,20 @@ export interface components {
             retrying: number;
             /** @description Messages given up on in the last seven days. */
             deadLettered: number;
+            /**
+             * @description Messages still failing after three attempts — retrying persistently, which is when a
+             *     retry stops being weather and starts being worth saying
+             *     ([#545](https://github.com/NobuData/ouroboros/issues/545)). Counted among `retrying`.
+             */
+            stuck: number;
+            /**
+             * @description The kinds of the notification routes with a dead letter in the last seven days or a
+             *     stuck message, sorted. Empty when there is neither.
+             * @example [
+             *       "custom:build-failures"
+             *     ]
+             */
+            affectedRoutes: string[];
             /**
              * @description The most recent dead letter's error.
              * @example channel_not_found
@@ -23552,7 +23601,13 @@ export interface components {
          *     — what the list answers, and what every channel write answers with.
          */
         SlackChannels: {
-            /** @description Whether the workspace has an active Slack connection. Without one, `channels` is empty. */
+            /**
+             * @description Whether the workspace has an active Slack connection. Where Slack was never installed,
+             *     `channels` is empty. A revoked or failing connection's channels are still listed as
+             *     they last stood ([#545](https://github.com/NobuData/ouroboros/issues/545)) — what was
+             *     published to them stays readable — and every channel write answers
+             *     `409 slack_not_connected`.
+             */
             connected: boolean;
             /**
              * Format: date-time
@@ -44691,6 +44746,116 @@ export interface operations {
             };
             /** @description `tenant_not_found` — no such workspace, or none you are a member of. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    retrySlackDelivery: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The status after it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SlackConnection"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+             *     this route is for people.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found` — no such workspace, or none you are a member of. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `slack_not_connected` — the workspace has no active Slack connection to publish
+             *     through. Re-install the app first.
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

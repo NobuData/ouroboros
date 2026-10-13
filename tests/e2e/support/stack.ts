@@ -79,6 +79,18 @@ export const TAP_URL = address("OURO_E2E_TAP_URL", "http://localhost:4200");
 export const RECEIVER_URL = address("OURO_E2E_RECEIVER_URL", "http://localhost:4300");
 
 /**
+ * The suite's Slack — `fixtures/slack-stub`, published on 4400
+ * ([#545](https://github.com/NobuData/ouroboros/issues/545), the chatops leg).
+ *
+ * The product reaches it only as Slack, from inside the compose network at
+ * `http://slack-stub:8080/api` (`OURO_SLACK_API_BASE_URL`). What is published here is the same
+ * workspace seen from outside: its controls — declare a team, script a failure, revoke a token —
+ * and what the product posted to it, which is how *the card was published* becomes a question put
+ * to Slack's side rather than a claim read back off the mirror that drew it.
+ */
+export const SLACK_URL = address("OURO_E2E_SLACK_URL", "http://localhost:4400");
+
+/**
  * The suite's whole wall-clock budget, in milliseconds.
  *
  * Ten minutes, which is issue [#56](https://github.com/NobuData/ouroboros/issues/56)'s

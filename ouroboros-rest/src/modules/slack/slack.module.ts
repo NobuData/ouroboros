@@ -21,6 +21,7 @@ import { Module } from "@nestjs/common";
 
 import { AuditModule } from "../audit/audit.module";
 import { ChatopsModule } from "../chatops/chatops.module";
+import { AppConfigService } from "../config/config.service";
 import { DbModule } from "../db/db.module";
 import { VaultModule } from "../vault/vault.module";
 import { SlackChannelsController } from "./slack.channels.controller";
@@ -32,6 +33,7 @@ import {
   SlackLinkController,
   SlackOauthController,
 } from "./slack.controller";
+import { SlackDeliveryService } from "./slack.delivery.service";
 import { SlackInboundService } from "./slack.inbound.service";
 import { SlackInstallService } from "./slack.install.service";
 import { SlackLinkService } from "./slack.link.service";
@@ -55,15 +57,22 @@ import { SlackStoreModule } from "./slack.store.module";
   providers: [
     SlackInstallService,
     SlackChannelsService,
+    SlackDeliveryService,
     SlackOnCallRepository,
     SlackOnCallService,
     SlackLinkService,
     SlackInboundService,
     SlackSignatureGuard,
     SlackSocketMode,
-    // A factory rather than `useClass`: the client's one constructor parameter is the fetch to
-    // call through, which Nest must not try to resolve.
-    { provide: SLACK_API, useFactory: (): HttpSlackApi => new HttpSlackApi() },
+    // A factory rather than `useClass`: the client's first constructor parameter is the fetch to
+    // call through, which Nest must not try to resolve. The base is Slack's unless
+    // `OURO_SLACK_API_BASE_URL` moves it (#545's e2e stand-in).
+    {
+      provide: SLACK_API,
+      inject: [AppConfigService],
+      useFactory: (config: AppConfigService): HttpSlackApi =>
+        new HttpSlackApi(fetch, config.slackApiBaseUrl),
+    },
   ],
   // `SlackStoreModule` is re-exported for `SlackRepository`, which this module used to provide.
   exports: [SLACK_API, SlackInstallService, SlackInboundService, SlackStoreModule],

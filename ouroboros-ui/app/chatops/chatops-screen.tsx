@@ -21,6 +21,7 @@ import { ChannelPicker } from "./channel-picker";
 import { ChatOpsHead } from "./chatops-head";
 import { type ChatOpsPollOptions, createChatOpsPoll } from "./chatops-poll";
 import { CommandsCard } from "./commands-card";
+import { DeliveryBanner } from "./delivery-banner";
 import { FirstChannels } from "./first-channels";
 import { HealthStrip } from "./health-strip";
 import { InstallJourney } from "./install-journey";
@@ -31,17 +32,20 @@ import {
   CHANNELS_UNREAD,
   CHATOPS_ENDPOINT,
   type ChatOpsPage,
+  HISTORY_LABEL,
   MANAGE_SETTINGS_LABEL,
   MANAGE_SETTINGS_PATH,
   STALE_HEADLINE,
   UNREAD_HEADLINE,
   channelsBody,
+  deliveryBanner,
   journeyFor,
   mirrorAddress,
   mirrorChannel,
   offersAddChannel,
   openChannelLink,
   showsHealth,
+  showsUnlinked,
   withRoute,
 } from "./view";
 
@@ -89,7 +93,11 @@ interface Written {
  * **The page is whatever the connection is** (`app/chatops/view.ts`):
  *
  * - no app on the deployment, or an app this workspace has not installed → the install journey;
- * - a connection that exists — working, revoked or failing → the health strip under the head;
+ * - a connection that exists — working, revoked or failing → the health strip under the head,
+ *   and under that the **publish-health banner** while messages are not reaching Slack (CA.5,
+ *   [#545](https://github.com/NobuData/ouroboros/issues/545));
+ * - revoked or failing, with channels that were bound → their mirrors as **history**: what was
+ *   published, read-only, beside the list that chooses between them;
  * - connected, and no channel has a purpose → the post-install step, *Bind your first channels*;
  * - connected, with bound channels → the **channel mirror** (CA.2,
  *   [#542](https://github.com/NobuData/ouroboros/issues/542)) in the main column — our record of
@@ -170,6 +178,7 @@ export function ChatOpsScreen({
 
   const onChannels = (channels: SlackChannels) => land({ channels });
   const onVerified = (verification: SlackVerification) => land({ connection: verification.connection });
+  const onRetried = (connection: SlackConnection) => land({ connection });
   const onOnCall = (onCall: ChatOnCall) => land({ onCall });
 
   /**
@@ -201,7 +210,11 @@ export function ChatOpsScreen({
   const journey = journeyFor(page.connection);
   const body = channelsBody(page);
   // An unbound page has no mirror: that is the post-install step's journey, not this card's.
-  const mirrored = body === "bound" && page.channels.ok ? mirrorChannel(page.channels.value.channels, wanted) : null;
+  const mirrored =
+    (body === "bound" || body === "history") && page.channels.ok
+      ? mirrorChannel(page.channels.value.channels, wanted)
+      : null;
+  const delivery = deliveryBanner(page.connection, page.routes);
 
   return (
     <main className="chatops">
@@ -215,6 +228,7 @@ export function ChatOpsScreen({
       {showsHealth(page.connection) && (
         <HealthStrip connection={page.connection} mayAdminister={mayAdminister} now={now} onVerified={onVerified} />
       )}
+      {delivery !== null && <DeliveryBanner banner={delivery} mayAdminister={mayAdminister} onRetried={onRetried} />}
 
       <div className={cx("chatops__body", mirrored !== null && "chatops__body--wide")}>
         {journey !== null && (
@@ -241,8 +255,11 @@ export function ChatOpsScreen({
                   channel={mirrored}
                   composerRef={composer}
                   key={mirrored.id}
+                  mayAdminister={mayAdminister}
+                  onChannels={onChannels}
                   poll={mirror}
                   readAt={readAt}
+                  unlinked={showsUnlinked(page.connection)}
                 />
               </div>
             )}
@@ -275,6 +292,33 @@ export function ChatOpsScreen({
               />
             </div>
           </div>
+        )}
+        {body === "history" && page.channels.ok && (
+          <section aria-label={HISTORY_LABEL} className="chatops__columns">
+            {mirrored !== null && (
+              <div className="chatops__main">
+                <MirrorCard
+                  appVersion={page.connection.appVersion}
+                  channel={mirrored}
+                  key={mirrored.id}
+                  poll={mirror}
+                  readAt={readAt}
+                  readOnly
+                />
+              </div>
+            )}
+            <div className="chatops__side">
+              {/* Nothing here can be unbound while Slack is gone: the rows only choose a mirror. */}
+              <BoundChannels
+                channels={page.channels.value.channels}
+                mayAdminister={false}
+                onChanged={onChannels}
+                onShow={showMirror}
+                shown={mirrored?.id ?? null}
+                titleId={channelsTitle}
+              />
+            </div>
+          </section>
         )}
         {body === "unread" && !page.channels.ok && (
           <Card>

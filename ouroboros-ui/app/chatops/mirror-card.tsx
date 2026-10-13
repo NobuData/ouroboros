@@ -2,10 +2,11 @@
 
 import { useCallback, useImperativeHandle, useLayoutEffect, useMemo, useRef } from "react";
 
-import type { SlackChannel } from "@/app/api/chatops";
+import type { SlackChannel, SlackChannels } from "@/app/api/chatops";
 import { runningLabel } from "@/app/shell/console";
 import { Button, EmptyState, RETRY_LABEL, RetryBanner } from "@/app/ui";
 
+import { RemovedBanner, UnlinkedBanner } from "./mirror-banners";
 import { MirrorComposer } from "./mirror-composer";
 import { MirrorEntry } from "./mirror-entry";
 import { MirrorHead } from "./mirror-head";
@@ -13,6 +14,7 @@ import type { MirrorPollOptions } from "./mirror-poll";
 import { useMirror } from "./use-mirror";
 import { useMirrorComposer } from "./use-mirror-composer";
 import {
+  HISTORY_NOTE,
   LOADING_EARLIER_LABEL,
   LOAD_EARLIER_LABEL,
   MIRROR_EMPTY_TITLE,
@@ -21,6 +23,7 @@ import {
   MIRROR_UNREAD,
   PLATFORM_LABELS,
   STREAM_LABEL,
+  botRemoved,
   entryKey,
   mirrorDays,
   mirrorEmptyNote,
@@ -42,7 +45,25 @@ export interface MirrorCardProps {
   readonly poll?: MirrorPollOptions;
   /** Where the card puts its composer's handle, for the commands card's **Try it** (CA.3, #543). */
   readonly composerRef?: React.Ref<MirrorComposerHandle>;
+  /** Whether this reader may refresh the channels and unbind — an owner or an admin (CA.5, #545). */
+  readonly mayAdminister?: boolean;
+  /** Whether to say the reader's Slack identity is not linked. */
+  readonly unlinked?: boolean;
+  /**
+   * Whether the card shows history only: no composer, and no way to mend the channel from here —
+   * the page's revoked or failing connection is what needs mending.
+   */
+  readonly readOnly?: boolean;
+  /**
+   * Called with the channels as a refresh or an unbind made from the card left them.
+   *
+   * @param channels The channels.
+   */
+  readonly onChannels?: (channels: SlackChannels) => void;
 }
+
+/** How many placeholder messages stand in for the stream while its first read is in flight. */
+const SKELETON_MESSAGES = 3;
 
 /** What the page may ask of the mirror's composer. */
 export interface MirrorComposerHandle {
@@ -75,12 +96,27 @@ const AT_BOTTOM_SLACK = 24;
  * only while the reader is already at the end; a reader who has scrolled up to read is left
  * where they are, and a page loaded above them is prepended without moving what they see.
  *
+ * **It says when the picture is not the happy one** (CA.5,
+ * [#545](https://github.com/NobuData/ouroboros/issues/545)): a reader with no linked Slack
+ * identity, a channel the bot was removed from — with the way back — and a connection that is
+ * gone, under which the card is history: the stream as it stood, and no composer.
+ *
  * Mounted with the channel's id as its `key`, so nothing held here outlives the channel.
  *
  * @param props See {@link MirrorCardProps}.
  * @returns The card.
  */
-export function MirrorCard({ channel: listed, appVersion, readAt, poll, composerRef }: MirrorCardProps) {
+export function MirrorCard({
+  channel: listed,
+  appVersion,
+  readAt,
+  poll,
+  composerRef,
+  mayAdminister = false,
+  unlinked = false,
+  readOnly = false,
+  onChannels,
+}: MirrorCardProps) {
   const mirror = useMirror(listed.id, poll);
   const { refresh } = mirror;
 
@@ -153,11 +189,23 @@ export function MirrorCard({ channel: listed, appVersion, readAt, poll, composer
         updatedAt={mirror.updatedAt}
       />
 
-      {warning !== null && (
-        <p className="chatops-mirror__warning" role="note">
-          {warning}
-        </p>
-      )}
+      {unlinked && !readOnly && <UnlinkedBanner channel={channel} />}
+
+      {warning !== null &&
+        (botRemoved(channel) && !readOnly ? (
+          <RemovedBanner
+            channel={channel}
+            mayAdminister={mayAdminister}
+            onChanged={(channels) => {
+              onChannels?.(channels);
+              refresh();
+            }}
+          />
+        ) : (
+          <div className="chatops-mirror__warning" role="note">
+            <p className="chatops-mirror__warning-text">{warning}</p>
+          </div>
+        ))}
 
       {mirror.page !== null && mirror.error !== null && (
         <RetryBanner
@@ -177,7 +225,20 @@ export function MirrorCard({ channel: listed, appVersion, readAt, poll, composer
             </Button>
           </EmptyState>
         )}
-        {reading && <p className="chatops-mirror__reading">{MIRROR_READING}</p>}
+        {reading && (
+          <div className="chatops-mirror__sk" role="status">
+            <p className="chatops-mirror__reading">{MIRROR_READING}</p>
+            {Array.from({ length: SKELETON_MESSAGES }, (_, index) => (
+              <span aria-hidden="true" className="chatops-mirror__sk-row" key={index}>
+                <span className="chatops-mirror__sk-avatar" />
+                <span className="chatops-mirror__sk-lines">
+                  <span className="chatops-mirror__sk-bar chatops-mirror__sk-bar--name" />
+                  <span className="chatops-mirror__sk-bar" />
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
         {empty && sending === null && (
           <EmptyState note={mirrorEmptyNote(channel)} title={MIRROR_EMPTY_TITLE} variant="flush" />
         )}
@@ -222,7 +283,13 @@ export function MirrorCard({ channel: listed, appVersion, readAt, poll, composer
         )}
       </div>
 
-      <MirrorComposer channel={channel} composer={composer} inputRef={box} />
+      {readOnly ? (
+        <p className="chatops-mirror__history" role="note">
+          {HISTORY_NOTE}
+        </p>
+      ) : (
+        <MirrorComposer channel={channel} composer={composer} inputRef={box} />
+      )}
     </section>
   );
 }

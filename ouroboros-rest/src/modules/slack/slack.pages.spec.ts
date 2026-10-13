@@ -119,10 +119,13 @@ describe("the connection status resource", () => {
         pending: 0,
         retrying: 0,
         deadLettered: 0,
+        stuck: 0,
+        affectedRoutes: [],
         lastError: null,
         lastDeadLetteredAt: null,
         lastSentAt: null,
       },
+      viewerLinked: false,
     });
   });
 
@@ -131,6 +134,8 @@ describe("the connection status resource", () => {
       pending: 0,
       retrying: 0,
       deadLettered: 0,
+      stuck: 0,
+      affectedRoutes: [] as string[],
       lastError: null,
       lastDeadLetteredAt: null,
       lastSentAt: null,
@@ -169,6 +174,8 @@ describe("the connection status resource", () => {
         delivery: {
           ...quiet,
           deadLettered: 3,
+          stuck: 2,
+          affectedRoutes: ["custom:build-failures", "custom:loop-finished"],
           lastError: "channel_not_found",
           lastDeadLetteredAt: sent,
         },
@@ -179,6 +186,8 @@ describe("the connection status resource", () => {
         pending: 0,
         retrying: 0,
         deadLettered: 3,
+        stuck: 2,
+        affectedRoutes: ["custom:build-failures", "custom:loop-finished"],
         lastError: "channel_not_found",
         lastDeadLetteredAt: "2026-10-12T14:00:00.000Z",
         lastSentAt: null,

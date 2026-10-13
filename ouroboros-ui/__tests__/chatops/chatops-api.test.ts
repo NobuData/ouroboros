@@ -37,6 +37,13 @@ describe("the connection", () => {
     await chatops.verify(one.client);
     expect(one.verbs.POST.mock.calls[0]![0]).toBe("/api/v1/slack/connection/verify");
   });
+
+  it("has its dead letters queued again at #545's route, which answers the connection", async () => {
+    const one = client(connection());
+
+    expect(await chatops.retryDelivery(one.client)).toEqual(connection());
+    expect(one.verbs.POST.mock.calls[0]![0]).toBe("/api/v1/slack/connection/delivery/retry");
+  });
 });
 
 describe("the channels", () => {

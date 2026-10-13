@@ -401,6 +401,11 @@ export class AppConfigService {
     return this.config.get<string>("slackAppToken");
   }
 
+  /** `OURO_SLACK_API_BASE_URL` — where Slack's Web API is; Slack itself unless overridden (#545). */
+  get slackApiBaseUrl(): string {
+    return this.config.getOrThrow<string>("slackApiBaseUrl");
+  }
+
   /** `OURO_RESEARCH_SEARXNG_URL` — where the web research tool searches by default (#615). */
   get researchSearxngUrl(): string {
     return this.config.getOrThrow<string>("researchSearxngUrl");
@@ -679,6 +684,7 @@ export class AppConfigService {
       slackSigningSecret: this.slackSigningSecret,
       slackSocketMode: this.slackSocketMode,
       slackAppToken: this.slackAppToken,
+      slackApiBaseUrl: this.slackApiBaseUrl,
       researchSearxngUrl: this.researchSearxngUrl,
       researchFetchTimeoutMs: this.researchFetchTimeoutMs,
       researchFetchMaxBytes: this.researchFetchMaxBytes,

@@ -4,6 +4,7 @@ import type {
   SlackChannel,
   SlackChannels,
   SlackConnection,
+  SlackDelivery,
 } from "@/app/api/chatops";
 import type {
   ChatMirror,
@@ -363,6 +364,29 @@ export function repairFor(
   return { kind: "reinstall", href: connection.installPath };
 }
 
+/** What Slack's own reason for a revocation means, in a sentence. */
+const REVOKED_REASONS: Readonly<Record<string, string | undefined>> = {
+  app_uninstalled: "The app was removed from the Slack workspace.",
+  tokens_revoked: "The app's token was revoked in Slack.",
+  token_revoked: "The app's token was revoked in Slack.",
+  account_inactive: "The Slack account that installed the app was deactivated.",
+  invalid_auth: "Slack no longer recognises the app's token.",
+};
+
+/**
+ * Why Slack stopped accepting the app, in words (CA.5,
+ * [#545](https://github.com/NobuData/ouroboros/issues/545)) — the strip's status segment keeps
+ * Slack's own code beside it.
+ *
+ * @param connection The connection's state and Slack's reason.
+ * @returns The sentence, or null for a connection that is not revoked or a reason not known here.
+ */
+export function revokedReason(connection: Pick<SlackConnection, "state" | "statusDetail">): string | null {
+  if (connection.state !== "revoked" || connection.statusDetail === null) return null;
+
+  return REVOKED_REASONS[connection.statusDetail] ?? null;
+}
+
 /**
  * What a verification that answered says, where its result is not simply *verified* — the strip
  * itself shows the rest.
@@ -372,6 +396,129 @@ export function repairFor(
  */
 export function verificationNote(result: string): string | null {
   return result === "unreachable" ? "Slack could not be reached, so the connection was not re-checked." : null;
+}
+
+/* ------------------------------------------------------------------ publish health */
+
+/*
+ * CA.5 ([#545](https://github.com/NobuData/ouroboros/issues/545)). A message that was not
+ * delivered leaves nothing behind in the app — the channel is only quiet, and quiet reads as
+ * *nothing failed*. This banner is how anybody finds out.
+ */
+
+/** The banner's accessible name. */
+export const DELIVERY_LABEL = "Slack delivery";
+
+/** The banner's controls. */
+export const DELIVERY_RETRY_LABEL = "Retry now";
+export const DELIVERY_RETRYING_LABEL = "Retrying…";
+export const DELIVERY_AUDIT_LABEL = "Open the audit log";
+
+/** Where the audit log is — Settings' own section. */
+export const DELIVERY_AUDIT_PATH = settingsSectionPath("audit");
+
+/** Who can retry, for a reader who cannot. */
+export const DELIVERY_ROLE_NOTE = "An Owner or a Maintainer can retry them.";
+
+/** What is said when a retry could not be made at all. */
+export const DELIVERY_RETRY_FAILED = "The messages could not be queued again. Try again.";
+
+/** What the banner says. */
+export interface DeliveryBannerView {
+  /** What happened, with its count. */
+  readonly headline: string;
+  /** Which routes, and Slack's last error — or null when neither is known. */
+  readonly detail: string | null;
+  /** Whether there is a dead letter to queue again; a message still retrying needs no help. */
+  readonly retryable: boolean;
+}
+
+/**
+ * A count with its noun.
+ *
+ * @param count How many messages.
+ * @returns `1 message`, `3 messages`.
+ */
+function messages(count: number): string {
+  return `${String(count)} ${count === 1 ? "message" : "messages"}`;
+}
+
+/** The route an escalated question's direct message travels by — it is on no routing row. */
+export const ON_CALL_DM_ROUTE = "needs_you_dm";
+
+/** What that route is called. */
+export const ON_CALL_DM_LABEL = "On-call DM";
+
+/**
+ * What a route kind is called — the routing card's own label for it.
+ *
+ * @param kind The route's kind.
+ * @param routes The notification routes, when they could be read.
+ * @returns `Build failures`; `On-call DM` for the escalation's direct message, which no routing
+ *   row carries; or the kind itself where no route by it is known.
+ */
+function routeLabel(kind: string, routes: Reading<NotificationRoutes>): string {
+  const route = routes.ok ? routes.value.items.find((item) => item.kind === kind) : undefined;
+
+  return route?.chat?.label ?? (kind === ON_CALL_DM_ROUTE ? ON_CALL_DM_LABEL : kind);
+}
+
+/**
+ * The publish-health banner: drawn while a message was given up on in the last seven days, or
+ * one keeps failing — and gone the moment neither is true.
+ *
+ * @param connection The connection's state and how its messages are faring.
+ * @param routes The notification routes, for the affected routes' names.
+ * @returns What to say, or null when delivery needs nothing said. A revoked connection is its
+ *   own, louder state: the banner is not drawn under it.
+ */
+export function deliveryBanner(
+  connection: Pick<SlackConnection, "state"> & { readonly delivery: SlackDelivery },
+  routes: Reading<NotificationRoutes>,
+): DeliveryBannerView | null {
+  const { delivery } = connection;
+
+  if (connection.state !== "connected" && connection.state !== "error") return null;
+  if (delivery.deadLettered === 0 && delivery.stuck === 0) return null;
+
+  const dead = delivery.deadLettered > 0;
+  const headline = dead
+    ? `${messages(delivery.deadLettered)} could not be delivered to Slack.`
+    : `${messages(delivery.stuck)} ${delivery.stuck === 1 ? "keeps" : "keep"} failing to reach Slack, and ${delivery.stuck === 1 ? "is" : "are"} still being retried.`;
+  const parts: string[] = [];
+
+  if (delivery.affectedRoutes.length > 0) {
+    parts.push(`Affected: ${delivery.affectedRoutes.map((kind) => routeLabel(kind, routes)).join(", ")}.`);
+  }
+  if (dead && delivery.lastError !== null) parts.push(`Slack's last answer: ${delivery.lastError}.`);
+
+  return { headline, detail: parts.length === 0 ? null : parts.join(" "), retryable: dead && connection.state === "connected" };
+}
+
+/* ------------------------------------------------------------------ the unlinked reader */
+
+/** The command that links a Slack identity — typed in Slack, where the identity is. */
+export const LINK_COMMAND = `${CONSOLE_PREFIX} link`;
+
+/** The banner's accessible name and its two sentences. */
+export const UNLINKED_LABEL = "Your Slack identity";
+export const UNLINKED_TITLE = "Your Slack identity is not linked.";
+export const UNLINKED_LEAD =
+  "Commands you run here work as you. In Slack, buttons and commands will not act as you until you link: send";
+export const UNLINKED_TAIL = "in Slack, then open the link it answers with.";
+
+/** The banner's way out to where the command is typed. */
+export const OPEN_SLACK_LABEL = "Open Slack ↗";
+
+/**
+ * Whether the reader is told their Slack identity is not linked: only while Slack is connected —
+ * with no working connection there is nothing to link to.
+ *
+ * @param connection The connection's state and whether the reader is linked.
+ * @returns Whether the banner is drawn.
+ */
+export function showsUnlinked(connection: Pick<SlackConnection, "state" | "viewerLinked">): boolean {
+  return connection.state === "connected" && !connection.viewerLinked;
 }
 
 /* ------------------------------------------------------------------ the install journey */
@@ -536,10 +683,18 @@ export function boundChannels(channels: readonly SlackChannel[]): readonly Slack
  *
  * @param page The connection and the channels.
  * @returns `first` — the post-install block — while no channel has a purpose; `bound` once one
- *   does; `unread` when the channels could not be read; null when Slack is not connected.
+ *   does; `unread` when the channels could not be read; `history` for a revoked or failing
+ *   connection that had bound channels — what was published to them, read-only (CA.5, #545);
+ *   null where there is no connection, or a broken one with nothing bound to look back on.
  */
-export function channelsBody(page: ChatOpsPage): "first" | "bound" | "unread" | null {
-  if (page.connection.state !== "connected") return null;
+export function channelsBody(page: ChatOpsPage): "first" | "bound" | "unread" | "history" | null {
+  const { state } = page.connection;
+
+  if (state === "revoked" || state === "error") {
+    return page.channels.ok && boundChannels(page.channels.value.channels).length > 0 ? "history" : null;
+  }
+
+  if (state !== "connected") return null;
   if (!page.channels.ok) return "unread";
 
   return boundChannels(page.channels.value.channels).length === 0 ? "first" : "bound";
@@ -1174,6 +1329,29 @@ export function mirrorEmptyNote(channel: Pick<SlackChannel, "name">): string {
 export function removedNote(channel: Pick<SlackChannel, "name">): string {
   return `Ouroboros was removed from ${channelName(channel)}, so nothing new is being posted there. In Slack, open the channel and send ${INVITE_COMMAND} to bring it back.`;
 }
+
+/** Who can mend a channel the bot was removed from, for a reader who cannot. */
+export const REMOVED_ROLE_NOTE = "An Owner or a Maintainer can refresh the channel list, or unbind the channel.";
+
+/** The removed channel's first way out: read the channels from Slack again, once the bot is back. */
+export const REJOINED_LABEL = "I invited it — refresh";
+
+/**
+ * Whether a channel is one the bot was removed from — bound, live in Slack, and without the bot.
+ *
+ * @param channel The channel, as the mirror last read it.
+ * @returns Whether the mirror offers the way back.
+ */
+export function botRemoved(channel: Pick<SlackChannel, "joined" | "archived">): boolean {
+  return !channel.joined && !channel.archived;
+}
+
+/** What stands where the composer was while the connection is revoked or failing. */
+export const HISTORY_NOTE =
+  "Slack is disconnected, so this is the record as it stood. Nothing new is published, and nothing can be run from here, until the app is installed again.";
+
+/** The body's accessible name while it shows history. */
+export const HISTORY_LABEL = "Channel history";
 
 /**
  * The warning on a channel archived in Slack.

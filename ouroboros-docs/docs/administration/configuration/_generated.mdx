@@ -517,6 +517,12 @@ Reach Slack over Socket Mode instead of the three HTTPS endpoints, so a local st
 
 The app-level token (xapp-…, scope connections:write) Socket Mode connects with. Required when OURO_SLACK_SOCKET_MODE is true, unused otherwise.
 
+### `OURO_SLACK_API_BASE_URL`
+
+**Development default:** unset. Example: `https://slack.com/api`
+
+Where Slack's Web API is. Leave it unset: the default is Slack. It exists for a test stack that stands a local Slack in (docker-compose.e2e.yml). Every Web API call, the OAuth code exchange and replies to a response_url on the same origin go to this address — with the bot token — so never point it at a host that may not hold this deployment's Slack credentials.
+
 ## Research — the web search & page reader and the competitor tracker
 
 ### `OURO_RESEARCH_SEARXNG_URL`

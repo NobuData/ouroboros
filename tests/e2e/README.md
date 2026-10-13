@@ -14,7 +14,7 @@ to the product — and that question is what this directory exists to ask.
 
 It is deliberately a **smoke** suite. It does not re-test what a module already covers; it
 walks one path through each boundary and asserts the things that are only true of a running
-deployment. Five legs from the issue, and twenty-two amended in since:
+deployment. Five legs from the issue, and twenty-five amended in since:
 
 | Leg | Spec | What only this can see |
 |---|---|---|
@@ -47,6 +47,7 @@ deployment. Five legs from the issue, and twenty-two amended in since:
 | 27 | [`specs/wizard.spec.ts`](specs/wizard.spec.ts) | **The Get Started wizard's MVP gate (#395)** — the states mockup 13 cannot draw, and the chain that certifies the onboarding roadmap from a cold rail: standalone chrome (no shell header, sidebar or pane; nothing fixed to the viewport; no mockup topbar), the head, rail and action bar holding still while only the step content scrolls, the 125 % step, the seeded wizard in both palettes, and a fresh workspace's dashboard offer dismissed for good while `/get-started` stays reachable; then, in `acme-robotics` on a repository it has never onboarded (the sandbox tracker's `helios-bootloader`), **every step undone and done for real**: GitHub connected through the embedded add-source dialog (the service validates the token against the sandbox tracker), the repository switched on through the embedded enablement switch — recorded, enabled, scanned — **detection rows read off the fixture repository's own files**, the issue the leg filed sized through the engine and picked, *Quick fixes* selected and **found in the Studio**, *Run my first loop →* and its receipt, the **dashboard's** queue count moving by exactly one with the queue API holding the issue pinned `quick-fixes` v1 `explicit`, **dry-run really flipped on** by the launch (Settings → Policies and the policy API), the simulated driver's `first-loop` opening a **watermarked** run of that issue under the wizard's own workflow and walking it to *Open PR & auto-merge* — the rail reading *run started* — and the **regression leg**: the source paused in its own row, step 1 un-ticked with the service's reason and a fix path, resumed and done again. Named to sort last: it files a ticket and a queue row the planning, intake and dashboard legs' parity counts. Cold-only: a repository is onboarded once |
 | 28 | [`specs/research.spec.ts`](specs/research.spec.ts) | **The Research MVP gate (#634)** against the #613 seed: mockup 22's seven regions photographed one by one in both palettes; **every superscript of the featured brief resolving to the source row the ledger holds under that marker**, and lighting it; the exported artifact read back — claims with their markers, the matrix, the proposal and all 44 sources; `ROADMAP.md` as projected and the tracker's issue rows agreeing item for item; the page **without the invocation gateway** — said once, both start controls inert with the reason, and an owner's *Apply* refused by the engine with nothing changed; a member's page read-only and the service refusing past it; fixed chrome, *Research* lit and the 125 % step; a tool **enabled through the schema-driven sheet** and its dot turning healthy; *Draft epic from gaps* opening a batch in Planning whose drafts name their gap and cite their sources **with nothing filed on the tracker**; and a **planted drift detected by a real nightly comparison**, rested at *needs repro* by the scheduler's pass and dismissed by an owner. Four chains — investigate → brief, cancel, apply → re-run → writeback, and bisected → forensics → fix draft — are parked on #235 and #991 |
 | 29 | [`specs/copilot.spec.ts`](specs/copilot.spec.ts) | **The Workflow Copilot MVP gate (#569)** against the #558 seed: the safety strip's columns **equal to the columns `GET …/dry-runs/safety` asserts**, in its order and verbatim, each ⓘ opening the mechanism the payload names; the page **without the invocation gateway** — the prerequisite named, the workspace's provider status reported, the link to Providers, the conversation readable and the composer inert with the reason; the seeded dry run's pill, rows with their `how` labels, simulated diff and suggestions; a member's page read-only with promote and discard inert; fixed chrome, *Workflows* and *Copilot* lit, **the surface segment sticky in the pane** and the 125 % step; and the strip photographed in both palettes, closed and with a mechanism open. The chain — brief → draft → chips → dry run → apply → re-run → promote → tri-surface parity — is parked on #235, #1748 and #1744 |
+| 30 | [`specs/chatops.spec.ts`](specs/chatops.spec.ts), [`specs/slack.spec.ts`](specs/slack.spec.ts) | **The Chat Ops MVP gate (#545)** against the #534 seed and the suite's own Slack ([`fixtures/slack-stub`](fixtures/slack-stub/server.mjs)): mockup 19's page photographed whole in both palettes; a member with no linked Slack identity **told so once, in the mirror**, and a linked owner not; and the chain no module can walk alone — the app **installed** through Slack's consent screen and a channel **bound** in the picker; a simulated loop's question **published to Slack and shown in the mirror within a poll**; **Allow once pressed in Slack**, signed as Slack signs, **resuming the driver's run**, the card edited and the system line posted in both places; `/ouro status` and `/ouro queue` answering **the console and Slack alike**; a route moved on the card **changing where the next card lands**; an unanswered question **escalating** — inbox priority, the card's annotation, the on-call DM; a post Slack refuses raising **the publish-health banner**, gone once **Retry now** delivers it; a bot removed from a channel explained with the way back; and a revoked app turning the page to **history** until it is re-installed |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
 route-migration gate. Its containment assertions come with their own falsifier:
@@ -701,6 +702,44 @@ and it sorts after the planning leg, which counts batches.
 
 The last three are the registered pairs (`scripts/verify-failure-modes.sh`).
 
+Leg 30 is [#545](https://github.com/NobuData/ouroboros/issues/545)'s — CA.5, the Chat Ops roadmap's
+MVP gate — over #541–#544's page, #534's seed and #540's Slack harness: seven tests in two files,
+about two minutes together. The issue's allowance is three added minutes.
+
+**Two files, because of where each has to sort.** `specs/chatops.spec.ts` reads the seeded page
+and writes nothing: parity in both palettes, the shell, and what a member with no Slack link is
+told. `specs/slack.spec.ts` is the chain, and it answers decisions in the seeded workspace — which
+the inbox leg counts a week of and the dashboard leg reads the runs of. Playwright runs files in
+name order, so the chain is named for what it talks to and runs after both.
+
+**The suite's own Slack.** [`fixtures/slack-stub`](fixtures/slack-stub/server.mjs) is the receiving
+half of `ouroboros-rest`'s integration harness (#540) as a container: the Web API methods the
+service calls, the `response_url`s it answers, a declared workspace, and failures scripted one call
+at a time. `docker-compose.e2e.yml` registers a Slack app on the stack and points
+`OURO_SLACK_API_BASE_URL` at it. The emitting half is [`support/slack.ts`](support/slack.ts), which
+signs a command or a button press as Slack does and sends it to the service's own inbound routes.
+Slack's consent screen is the one thing a browser would leave the stack for; the leg answers that
+redirect with the return an approving admin's click makes.
+
+**What the chain borrows, and gives back.** The seeded connection holds a token no Slack honours,
+so the leg re-installs the seeded workspace against the stub, binds one channel of its own
+(`#e2e-drills`), moves the *Blocking questions* route to it and shortens one decision kind's
+escalation window to six seconds. Binding its channel for alerts takes that purpose from the seeded
+`#helios-alerts` — a purpose has one channel. Its `afterAll` restores the connection row, the
+route and the window, unbinds its channel and binds the seeded one again. The cards it published stay in the mirror's record. Before it
+starts it also delivers whatever the outbox was holding — questions earlier legs' loops asked,
+which the seeded token could not send — so that *one message could not be delivered* means the
+one it refused.
+
+**What it asserts the resume on.** The driver's own output: `resume: resumed at implement`. The
+scenario then re-reports its change-set, and whether that passes its guardrails is the guardrail
+plane's and the inbox leg's to hold — an in-app answer and a press in Slack go through one
+executor.
+
+**It can go red.** [`scripts/verify-chatops.sh`](scripts/verify-chatops.sh) breaks publishing,
+the interactivity handler, the dispatcher and the timer in turn, each beneath the service, and
+requires the one test that should notice to fail naming it.
+
 Leg 29 is [#569](https://github.com/NobuData/ouroboros/issues/569)'s — CE.5, the Workflow Copilot
 roadmap's MVP gate — over #565–#568's page and #558's seed: ten tests in one file, nine that run in
 about ten seconds and one that is parked. The issue's allowance is four added minutes.
@@ -819,6 +858,12 @@ service stopped (§ leg 26):
 scripts/verify-settings.sh             # #496: nine layers, each broken once, each named
 ```
 
+And one of the Chat Ops chain's four (§ leg 30):
+
+```bash
+scripts/verify-chatops.sh              # #545: publishing, interactivity, dispatcher, timer
+```
+
 Each plants an offence, runs the leg that should catch it, and requires the run to go red
 with the matching assertion *by name*. The plants live in
 [`support/plants.ts`](support/plants.ts), in one table beside the list of which assertion
@@ -843,6 +888,8 @@ works as-is. Override only when the stack is somewhere else.
 | `OURO_E2E_TRACKER_URL` | `http://localhost:4100` | Where the suite's own sandbox tracker answers (legs 15, 21 and 24) |
 | `OURO_E2E_TAP_URL` | `http://localhost:4200` | Where the engine tap's **controls** answer — the estimate requests it has seen (leg 21) |
 | `OURO_E2E_RECEIVER_URL` | `http://localhost:4300` | Where the webhook receiver's **controls** answer — the deliveries it was sent (leg 26) |
+| `OURO_E2E_SLACK_URL` | `http://localhost:4400` | Where the Slack stub answers — its controls, and what the service posted to it (leg 30) |
+| `OURO_E2E_CHATOPS_BREAK` | unset | One of `publishing`, `interactivity`, `dispatcher`, `timer` — set by `scripts/verify-chatops.sh` to break that layer beneath the service (leg 30) |
 
 There is no address for `ouroboros-engine`, and there cannot be: it publishes no host port
 (`docs/ARCHITECTURE.md` § 10). Leg 4 reaches it the only way anything outside the compose
@@ -932,6 +979,8 @@ tests/e2e/
 │   ├── settings.ts             # the font scale and the auto-merge switch, set and put back
 │   ├── settings-hub.ts         # mockup 17's hub: what it says, the planes beneath each card, the rows no route gives, and the nine breakages (leg 26)
 │   ├── receiver.ts             # the webhook receiver as a client: what it was sent, and the signature a delivery must carry (leg 26)
+│   ├── chatops.ts              # mockup 19's page: what it says, the install the chain stands on, the seeded connection held and put back, and the four breakages (leg 30)
+│   ├── slack.ts                # the Slack stub as a client, and Slack as an emitter: signed commands and button presses (leg 30)
 │   ├── rest.ts                 # a write on a context's behalf, and a restore that never throws
 │   └── api.ts                  # scripted requests and their failure messages
 ├── fixtures/
@@ -939,6 +988,7 @@ tests/e2e/
 │   ├── tracker-stub/           # the sandbox tracker legs 15 and 24 push to, and read back — the host leg 21 imports rules files from (repos/), and the PR `#504` leg 25 merges and annotates
 │   ├── engine-tap/             # the wire between rest and the engine: forwards everything, remembers each estimate request (leg 21)
 │   ├── webhook-receiver/       # an https endpoint that keeps what rest delivers to it, with a certificate made on first start (leg 26)
+│   ├── slack-stub/             # the workspace rest posts to as Slack: Web API, response_urls, scripted failures (leg 30)
 │   ├── farm-gateway/           # TLS in front of rest, forwarding the runner's client certificate (leg 16)
 │   ├── runner-release/         # this checkout's agent release, for rest to serve (leg 16)
 │   └── runner-machine/         # the bare machine the copied enroll command is pasted into (leg 16)
@@ -947,7 +997,8 @@ tests/e2e/
     ├── verify-failure-modes.sh # #56 acceptance criterion 2
     ├── verify-containment.sh   # #647's spot-verify: planted offences must go red
     ├── verify-readability.sh   # #650's, at 150%: four offences, four probes
-    └── verify-settings.sh      # #496's: nine layers of the settings leg, each broken once
+    ├── verify-settings.sh      # #496's: nine layers of the settings leg, each broken once
+    └── verify-chatops.sh       # #545's: the Chat Ops chain's four layers, each broken once
 ```
 
 ### The two budgets
@@ -1086,6 +1137,12 @@ mockup 22's regions each photographed alone through a 1440 × 1100 window, **unm
 the page prints is measured against the clock (a tool's latency is in its dot's tooltip, not on the
 card). They are of the seeded page with the gateway notice above the grid, which is every stack's
 page until #235; that issue re-records `head` and `composer`.
+
+Leg 30's pair is one: `chatops-{light,dark}` — the seeded Chat Ops page whole, through a
+1440 × 2200 window, with the mirror's own scroller let grow to its content for the photograph (a
+mask is painted at an element's layout box even where a scroller clips it). Masked: when the
+token was verified, the mirror's freshness, the seed's clock times and day rules, and how long
+the open question has waited. The strip's *3 scopes missing* is the seed's own grant.
 
 Leg 29's pairs are two: `copilot-safety-{light,dark}` and `copilot-safety-mechanism-{light,dark}` —
 the safety strip alone, closed and with **Simulated writes**' mechanism open, through the leg's
@@ -1285,6 +1342,10 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
    runs waits on a model. The parked chain is where the allowance goes when #235 lands — two dry
    runs and a promote, as a single `slow()` test. `SUITE_BUDGET_MS` did not move.
 
+   Leg 30's stated allowance is **three minutes** and it spends about two: the seeded page in
+   six seconds, and a chain that waits on two simulated loops, the dispatcher's five-second tick
+   and a six-second escalation window. `SUITE_BUDGET_MS` did not move.
+
    Leg 8 is the exception that proves the rule and is allowed to be one for a stated
    reason: its runtime *is* an acceptance criterion of a different issue, so it has a
    config, a budget and a CI step of its own rather than three minutes of #56's ten (§ *The
@@ -1373,6 +1434,8 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
 - [#613](https://github.com/NobuData/ouroboros/issues/613) — the research seed leg 28's parity asserts against
 - [#235](https://github.com/NobuData/ouroboros/issues/235) — the invocation gateway, which un-parks three of leg 28's chains
 - [#991](https://github.com/NobuData/ouroboros/issues/991) — runner source checkout, which un-parks the bisect half of leg 28's watch chain
+- [#545](https://github.com/NobuData/ouroboros/issues/545) — leg 30, the Chat Ops page's states and the install → publish → answer → command → escalation chain, and the Chat Ops MVP gate
+- [#541](https://github.com/NobuData/ouroboros/issues/541)–[#544](https://github.com/NobuData/ouroboros/issues/544) — the page leg 30 reads; [#534](https://github.com/NobuData/ouroboros/issues/534) — its seed; [#540](https://github.com/NobuData/ouroboros/issues/540) — the harness its Slack stub is the container of
 - [#569](https://github.com/NobuData/ouroboros/issues/569) — leg 29, the Copilot page's safety strip, states and shell, and the Workflow Copilot MVP gate
 - [#565](https://github.com/NobuData/ouroboros/issues/565)–[#568](https://github.com/NobuData/ouroboros/issues/568) — the frame and the cards leg 29 drives
 - [#558](https://github.com/NobuData/ouroboros/issues/558) — the copilot seed leg 29 asserts against
