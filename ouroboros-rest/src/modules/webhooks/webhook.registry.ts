@@ -274,6 +274,11 @@ export const WEBHOOK_REGISTRY: readonly WebhookRegistryVersion[] = [
     // CA.3 (#543): who is on call for decisions changed.
     adds: ["audit.chat.on_call_changed"],
   },
+  {
+    version: 15,
+    // CA.5 (#545): the Slack connection's dead-lettered messages were queued again.
+    adds: ["audit.chat.delivery_retried"],
+  },
 ];
 
 /** The newest registry version — what a new endpoint subscribes under. */

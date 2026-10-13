@@ -232,6 +232,10 @@ export interface ChatDeliveryHealthRow {
   readonly retrying: number;
   /** Rows whose attempts ran out, in the window. */
   readonly deadLettered: number;
+  /** Rows still pending after {@link PERSISTENT_RETRY_ATTEMPTS} tries — retrying persistently. */
+  readonly stuck: number;
+  /** The route kinds with a dead letter in the window or a stuck row, sorted. */
+  readonly affectedRoutes: readonly string[];
   /** The most recent dead letter's error and instant, or null. */
   readonly lastError: string | null;
   readonly lastDeadLetteredAt: Date | null;
@@ -241,6 +245,23 @@ export interface ChatDeliveryHealthRow {
 
 /** How far back a dead letter still counts towards a connection's health. */
 export const DEAD_LETTER_WINDOW_DAYS = 7;
+
+/**
+ * How many failed attempts make a pending row *persistently* retrying (#545). One failure is
+ * weather — a rate limit, a blip — and is retried within the minute; by the third the backoff
+ * has run for minutes and something is wrong enough to say so.
+ */
+export const PERSISTENT_RETRY_ATTEMPTS = 3;
+
+/**
+ * The instant the dead-letter window opens.
+ *
+ * @param now - The instant it is measured from.
+ * @returns {@link DEAD_LETTER_WINDOW_DAYS} earlier.
+ */
+function deadLetterWindowStart(now: Date): Date {
+  return new Date(now.getTime() - DEAD_LETTER_WINDOW_DAYS * 86_400_000);
+}
 
 /**
  * A connection's delivery health — what the status API and #545's banner read.
@@ -255,11 +276,13 @@ export async function readChatDeliveryHealth(
   connectionId: string,
   now: Date,
 ): Promise<ChatDeliveryHealthRow> {
-  const since = new Date(now.getTime() - DEAD_LETTER_WINDOW_DAYS * 86_400_000);
+  const since = deadLetterWindowStart(now);
   const { rows } = await sql<{
     pending: string;
     retrying: string;
     dead_lettered: string;
+    stuck: string;
+    affected_routes: string[] | null;
     last_error: string | null;
     last_dead_lettered_at: Date | null;
     last_sent_at: Date | null;
@@ -268,6 +291,13 @@ export async function readChatDeliveryHealth(
            count(*) filter (where o.status = 'pending' and o.attempts > 0)  as retrying,
            count(*) filter (where o.status = 'dead_lettered' and o.settled_at >= ${since})
                                                                             as dead_lettered,
+           count(*) filter (where o.status = 'pending'
+                              and o.attempts >= ${PERSISTENT_RETRY_ATTEMPTS})  as stuck,
+           array(select distinct a.route_kind from ouroboros.chat_outbox a
+                  where a.connection_id = ${connectionId}::uuid
+                    and ((a.status = 'dead_lettered' and a.settled_at >= ${since})
+                      or (a.status = 'pending' and a.attempts >= ${PERSISTENT_RETRY_ATTEMPTS}))
+                  order by a.route_kind)                                    as affected_routes,
            (select d.last_error from ouroboros.chat_outbox d
              where d.connection_id = ${connectionId}::uuid and d.status = 'dead_lettered'
                and d.settled_at >= ${since}
@@ -283,8 +313,39 @@ export async function readChatDeliveryHealth(
     pending: Number(row?.pending ?? 0),
     retrying: Number(row?.retrying ?? 0),
     deadLettered: Number(row?.dead_lettered ?? 0),
+    stuck: Number(row?.stuck ?? 0),
+    affectedRoutes: row?.affected_routes ?? [],
     lastError: row?.last_error ?? null,
     lastDeadLetteredAt: row?.last_dead_lettered_at ?? null,
     lastSentAt: row?.last_sent_at ?? null,
   };
+}
+
+/**
+ * Queue a connection's dead letters again (#545) — the ones {@link readChatDeliveryHealth}
+ * counts: given up on within the window.
+ *
+ * Each becomes pending and due now with its attempts cleared, so it gets the whole retry
+ * schedule again; `last_error` is kept until an attempt replaces it. The row is the same row, so
+ * its dedupe key and its message stand and nothing is said twice.
+ *
+ * @param executor - The writer.
+ * @param connectionId - The connection.
+ * @param now - The instant the rows become due, and the window is measured from.
+ * @returns The route kinds of the rows queued, one per row.
+ */
+export async function requeueChatDeadLetters(
+  executor: ChatOutboxExecutor,
+  connectionId: string,
+  now: Date,
+): Promise<string[]> {
+  const { rows } = await sql<{ route_kind: string }>`
+    update ouroboros.chat_outbox
+       set status = 'pending', attempts = 0, next_attempt_at = ${now}, settled_at = null
+     where connection_id = ${connectionId}::uuid
+       and status = 'dead_lettered'
+       and settled_at >= ${deadLetterWindowStart(now)}
+    returning route_kind`.execute(executor);
+
+  return rows.map((row) => row.route_kind);
 }

@@ -218,6 +218,12 @@ const TEMPLATES: Readonly<Record<string, Template>> = {
     text(f, "memberId") === undefined
       ? "left nobody on call for decisions"
       : "changed who is on call for decisions",
+  "chat.delivery_retried": (f) => {
+    const messages = f.messages;
+    return typeof messages === "number" && messages !== 1
+      ? `retried ${messages} undelivered Slack messages`
+      : "retried an undelivered Slack message";
+  },
 };
 
 /**

@@ -103,13 +103,14 @@ export class SlackChannelsService {
    * The workspace's channels, as last listed.
    *
    * @param organizationId - The workspace.
-   * @returns The channels with what each is bound for; none without an active connection.
+   * @returns The channels with what each is bound for; none where Slack was never installed. A
+   *   revoked or failing connection's are listed as they last stood, `connected: false` (#545).
    */
   async list(organizationId: string): Promise<SlackChannelsResource> {
     const connection = await this.repository.connectionOf(organizationId);
 
-    if (connection?.status !== "active") {
-      return channelsResource({ connection: undefined, channels: [], routes: [] });
+    if (connection === undefined) {
+      return channelsResource({ connection, channels: [], routes: [] });
     }
 
     const [channels, routes] = await Promise.all([

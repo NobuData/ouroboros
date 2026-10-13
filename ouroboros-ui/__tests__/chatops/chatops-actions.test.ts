@@ -13,6 +13,7 @@ const verify = vi.fn();
 const refresh = vi.fn();
 const bind = vi.fn();
 const unbind = vi.fn();
+const retry = vi.fn();
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/app/api/chatops", () => ({
@@ -21,15 +22,16 @@ vi.mock("@/app/api/chatops", () => ({
     refresh: () => refresh(),
     bind: (id: unknown, purpose: unknown) => bind(id, purpose),
     unbind: (id: unknown) => unbind(id),
+    retryDelivery: () => retry(),
   },
 }));
 
-const { bindChannel, refreshChannels, unbindChannel, verifyConnection } = await import(
+const { bindChannel, refreshChannels, retryDelivery, unbindChannel, verifyConnection } = await import(
   "@/app/chatops/chatops-actions"
 );
 
 beforeEach(() => {
-  for (const mock of [verify, refresh, bind, unbind]) mock.mockReset();
+  for (const mock of [verify, refresh, bind, unbind, retry]) mock.mockReset();
 });
 
 describe("the page's writes", () => {
@@ -59,6 +61,14 @@ describe("the page's writes", () => {
     expect(await refreshChannels()).toEqual({ error: "Slack refused to list the channels." });
     expect(await unbindChannel("channel-1")).toEqual({ error: "Only an owner or an admin may unbind a channel." });
     expect(await verifyConnection()).toEqual({ error: "Only an owner or an admin may verify." });
+  });
+
+  it("queue the dead letters again, answering the connection or the refusal (#545)", async () => {
+    retry.mockResolvedValueOnce(connection());
+    retry.mockRejectedValueOnce(new ApiError(409, "slack_not_connected", "This workspace is not connected to Slack."));
+
+    expect(await retryDelivery()).toEqual(connection());
+    expect(await retryDelivery()).toEqual({ error: "This workspace is not connected to Slack." });
   });
 
   it("let what is not an answer from the service travel — the redirect signal, a dropped connection", async () => {

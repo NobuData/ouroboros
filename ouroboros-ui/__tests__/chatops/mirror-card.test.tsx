@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ChatMirror, ChatMirrorEntry } from "@/app/api/chatops-mirror";
@@ -14,6 +14,8 @@ import {
   CONSOLE_SURFACE_MARK,
   EARLIER_FAILED,
   ESCALATED_MARK,
+  HISTORY_NOTE,
+  LINK_COMMAND,
   LOADING_EARLIER_LABEL,
   LOAD_EARLIER_LABEL,
   MIRROR_EMPTY_TITLE,
@@ -24,17 +26,24 @@ import {
   MIRROR_TIP_LABEL,
   MIRROR_TOOLTIP,
   MIRROR_UNREAD,
+  OPEN_SLACK_LABEL,
   PENDING_NOTE,
   PLAIN_TEXT_HINT,
   PLATFORM_SEGMENT_LABEL,
+  REJOINED_LABEL,
+  REMOVED_ROLE_NOTE,
   SENDING_LABEL,
   SEND_LABEL,
   SEND_NEEDS_COMMAND,
   STREAM_LABEL,
   TEAMS_REASON,
   TODAY_LABEL,
+  UNBIND_FAILED,
   UNKNOWN_AUTHOR,
   UNKNOWN_INITIALS,
+  UNLINKED_LABEL,
+  UNLINKED_LEAD,
+  UNLINKED_TITLE,
   YESTERDAY_LABEL,
   clockText,
   mirrorEmptyNote,
@@ -70,6 +79,15 @@ import { settle } from "../helpers/settle";
 vi.mock("@/app/api/auth-client", async () => (await import("../helpers/account")).authClientModule());
 vi.mock("@/app/shell/console-actions", async () => (await import("../helpers/console")).consoleActionsModule());
 
+const refreshChannels = vi.fn();
+const unbindChannel = vi.fn();
+
+// The removed-channel warning's two writes (#545) are Server Actions: kept off the server here.
+vi.mock("@/app/chatops/chatops-actions", () => ({
+  refreshChannels: () => refreshChannels(),
+  unbindChannel: (id: unknown) => unbindChannel(id),
+}));
+
 const { MirrorCard } = await import("@/app/chatops/mirror-card");
 
 /** The channel the card is of. */
@@ -78,6 +96,8 @@ const LOOPS = channel("ouroboros-loops", { purpose: "loops" });
 beforeEach(() => {
   resetConsoleActions();
   signedIn();
+  refreshChannels.mockReset();
+  unbindChannel.mockReset();
 });
 
 /**
@@ -692,6 +712,23 @@ describe("the card's states", () => {
     expect(screen.queryByText(MIRROR_EMPTY_TITLE)).toBeNull();
   });
 
+  it("holds the stream's shape while it reads: bars a screen reader is not read, gone with the answer (#545)", async () => {
+    const answer = deferred<ReturnType<typeof freshMirror>>();
+    render(Mirror({ read: () => answer.promise }));
+
+    const skeleton = screen.getByText(MIRROR_READING).closest(".chatops-mirror__sk") as HTMLElement;
+
+    expect(skeleton).toHaveAttribute("role", "status");
+    expect(skeleton.querySelectorAll(".chatops-mirror__sk-row")).toHaveLength(3);
+    for (const row of skeleton.querySelectorAll(".chatops-mirror__sk-row")) expect(row).toHaveAttribute("aria-hidden", "true");
+
+    await act(async () => {
+      answer.resolve(freshMirror(mirror({ entries: [mirrorLine()] })));
+    });
+
+    await waitFor(() => expect(document.querySelector(".chatops-mirror__sk")).toBeNull());
+  });
+
   it("says nothing has been published to a channel with no entries", async () => {
     await showing([]);
 
@@ -702,7 +739,10 @@ describe("the card's states", () => {
   it("warns inline when the bot was removed from the channel", async () => {
     await showing([mirrorLine()], { channel: channel("ouroboros-loops", { purpose: "loops", joined: false }) });
 
-    expect(screen.getByText(removedNote(LOOPS))).toHaveClass("chatops-mirror__warning");
+    const warning = document.querySelector(".chatops-mirror__warning");
+
+    expect(warning).toHaveAttribute("role", "note");
+    expect(warning).toHaveTextContent(removedNote(LOOPS));
     expect(removedNote(LOOPS)).toContain("/invite @Ouroboros");
     // What was published before is still the record, and commands are still ours to run.
     expect(screen.getByText(mirrorLine().text)).toBeInTheDocument();
@@ -890,5 +930,161 @@ describe("the composer", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/^You cannot run \/ouro /);
     expect(consoleActions.runConsoleCommand).not.toHaveBeenCalled();
+  });
+});
+
+describe("a channel the bot was removed from (#545)", () => {
+  const REMOVED = channel("ouroboros-loops", { purpose: "loops", joined: false });
+
+  /** The warning over the stream — one of several notes the card holds. */
+  function warning(): HTMLElement {
+    return document.querySelector(".chatops-mirror__warning") as HTMLElement;
+  }
+
+  /**
+   * The card on the removed channel, once its page is drawn.
+   *
+   * @param over What differs.
+   */
+  async function removed(over: Partial<MirrorCardProps> = {}): Promise<void> {
+    render(Mirror({ read: answering(mirror({ entries: [mirrorLine()], channel: REMOVED })) }, over));
+    await waitFor(() => expect(screen.queryByText(MIRROR_READING)).toBeNull());
+  }
+
+  it("offers an owner or an admin both ways out", async () => {
+    await removed({ mayAdminister: true });
+
+    expect(within(warning()).getByRole("button", { name: REJOINED_LABEL })).toBeInTheDocument();
+    expect(within(warning()).getByRole("button", { name: "Unbind #ouroboros-loops" })).toBeInTheDocument();
+    expect(warning()).not.toHaveTextContent(REMOVED_ROLE_NOTE);
+  });
+
+  it("tells everyone else who can, and offers neither", async () => {
+    await removed();
+
+    expect(warning()).toHaveTextContent(REMOVED_ROLE_NOTE);
+    expect(within(warning()).queryByRole("button")).toBeNull();
+  });
+
+  it("reads the channels from Slack again, hands them up and re-reads the mirror", async () => {
+    const onChannels = vi.fn();
+    const read = answering(mirror({ entries: [mirrorLine()], channel: REMOVED }));
+    const listed = { connected: true, refreshedAt: CHATOPS_READ_AT, channels: [LOOPS] };
+
+    refreshChannels.mockResolvedValueOnce(listed);
+    render(Mirror({ read }, { mayAdminister: true, onChannels }));
+    await waitFor(() => expect(screen.queryByText(MIRROR_READING)).toBeNull());
+
+    const asked = read.mock.calls.length;
+
+    fireEvent.click(within(warning()).getByRole("button", { name: REJOINED_LABEL }));
+
+    await waitFor(() => expect(onChannels).toHaveBeenCalledWith(listed));
+    await waitFor(() => expect(read.mock.calls.length).toBeGreaterThan(asked));
+  });
+
+  it("unbinds the channel, and hands the channels up", async () => {
+    const onChannels = vi.fn();
+    const listed = { connected: true, refreshedAt: CHATOPS_READ_AT, channels: [{ ...REMOVED, purpose: null }] };
+
+    unbindChannel.mockResolvedValueOnce(listed);
+    await removed({ mayAdminister: true, onChannels });
+
+    fireEvent.click(within(warning()).getByRole("button", { name: "Unbind #ouroboros-loops" }));
+
+    await waitFor(() => expect(onChannels).toHaveBeenCalledWith(listed));
+    expect(unbindChannel).toHaveBeenCalledWith(REMOVED.id);
+  });
+
+  it("prints a refusal in the service's words, and what to say when the call itself fails", async () => {
+    refreshChannels.mockResolvedValueOnce({ error: "Slack refused to list the channels." });
+    unbindChannel.mockRejectedValueOnce(new Error("network"));
+    await removed({ mayAdminister: true });
+
+    fireEvent.click(within(warning()).getByRole("button", { name: REJOINED_LABEL }));
+    expect(await within(warning()).findByRole("alert")).toHaveTextContent("Slack refused to list the channels.");
+
+    fireEvent.click(within(warning()).getByRole("button", { name: "Unbind #ouroboros-loops" }));
+    await waitFor(() => expect(within(warning()).getByRole("alert")).toHaveTextContent(UNBIND_FAILED));
+  });
+
+  it("offers nothing on an archived channel — there is no way back from here", async () => {
+    render(
+      Mirror(
+        { read: answering(mirror({ channel: channel("ouroboros-loops", { purpose: "loops", archived: true }) })) },
+        { mayAdminister: true },
+      ),
+    );
+    await waitFor(() => expect(screen.queryByText(MIRROR_READING)).toBeNull());
+
+    expect(within(warning()).queryByRole("button")).toBeNull();
+  });
+});
+
+describe("the unlinked reader's banner (#545)", () => {
+  it("says what works and what does not, names the command and opens the channel in Slack", async () => {
+    render(Mirror(undefined, { unlinked: true }));
+
+    const banner = screen.getByRole("region", { name: UNLINKED_LABEL });
+
+    expect(banner).toHaveTextContent(UNLINKED_TITLE);
+    expect(banner).toHaveTextContent(UNLINKED_LEAD);
+    expect(within(banner).getByText(LINK_COMMAND).tagName).toBe("CODE");
+
+    const out = within(banner).getByRole("link", { name: OPEN_SLACK_LABEL });
+
+    expect(out).toHaveAttribute("href", LOOPS.url);
+    expect(out).toHaveAttribute("target", "_blank");
+    expect(out).toHaveAttribute("rel", "noopener noreferrer");
+    // The reader loses nothing in the app.
+    expect(box()).not.toHaveAttribute("disabled");
+  });
+
+  it("is not drawn for a linked reader", () => {
+    render(Mirror());
+
+    expect(screen.queryByRole("region", { name: UNLINKED_LABEL })).toBeNull();
+  });
+
+  it("offers no way out where the channel has no Slack link", () => {
+    render(
+      <MirrorCard
+        appVersion="v2.4"
+        channel={{ ...LOOPS, url: "" }}
+        poll={{ read: () => new Promise(() => undefined) }}
+        readAt={CHATOPS_READ_AT}
+        unlinked
+      />,
+    );
+
+    expect(within(screen.getByRole("region", { name: UNLINKED_LABEL })).queryByRole("link")).toBeNull();
+  });
+});
+
+describe("history, under a connection that is gone (#545)", () => {
+  it("keeps the stream and says why there is no composer", async () => {
+    render(
+      Mirror({ read: answering(mirror({ entries: [mirrorLine()] })) }, { readOnly: true, unlinked: true, mayAdminister: true }),
+    );
+    await waitFor(() => expect(screen.queryByText(MIRROR_READING)).toBeNull());
+
+    expect(screen.getByText(mirrorLine().text)).toBeInTheDocument();
+    expect(screen.getByText(HISTORY_NOTE)).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    // Linking is beside the point until the app is back.
+    expect(screen.queryByRole("region", { name: UNLINKED_LABEL })).toBeNull();
+  });
+
+  it("warns of a removed channel in words only: what needs mending is the connection", async () => {
+    render(
+      Mirror(
+        { read: answering(mirror({ channel: channel("ouroboros-loops", { purpose: "loops", joined: false }) })) },
+        { readOnly: true, mayAdminister: true },
+      ),
+    );
+    await waitFor(() => expect(screen.queryByText(MIRROR_READING)).toBeNull());
+
+    expect(screen.getByText(removedNote(LOOPS))).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: REJOINED_LABEL })).toBeNull();
   });
 });

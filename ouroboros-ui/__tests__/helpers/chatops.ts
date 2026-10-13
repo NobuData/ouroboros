@@ -53,9 +53,45 @@ export function connection(over: Partial<SlackConnection> = {}): SlackConnection
     lastVerifiedAt: "2026-10-12T13:58:00.000Z",
     channels: { total: 4, joined: 3 },
     socketMode: false,
-    delivery: { state: "idle" } as SlackConnection["delivery"],
+    delivery: delivery(),
+    viewerLinked: true,
     ...over,
   };
+}
+
+/**
+ * How a connection's messages are faring — nothing published and nothing waiting unless told
+ * otherwise.
+ *
+ * @param over What differs.
+ * @returns The delivery.
+ */
+export function delivery(over: Partial<SlackConnection["delivery"]> = {}): SlackConnection["delivery"] {
+  return {
+    state: "idle",
+    pending: 0,
+    retrying: 0,
+    deadLettered: 0,
+    stuck: 0,
+    affectedRoutes: [],
+    lastError: null,
+    lastDeadLetteredAt: null,
+    lastSentAt: null,
+    ...over,
+  };
+}
+
+/** A connection with messages Slack did not take: two dead letters on the build-failures route. */
+export function deadLettering(): SlackConnection {
+  return connection({
+    delivery: delivery({
+      state: "dead_lettered",
+      deadLettered: 2,
+      affectedRoutes: ["custom:build-failures"],
+      lastError: "channel_not_found",
+      lastDeadLetteredAt: "2026-10-12T13:40:00.000Z",
+    }),
+  });
 }
 
 /** A deployment that registered no Slack app. */
@@ -82,7 +118,7 @@ export function notConnected(): SlackConnection {
 
 /** A connection Slack revoked, with its reason. */
 export function revoked(): SlackConnection {
-  return connection({ state: "revoked", statusDetail: "app_uninstalled" });
+  return connection({ state: "revoked", statusDetail: "app_uninstalled", viewerLinked: false });
 }
 
 /**

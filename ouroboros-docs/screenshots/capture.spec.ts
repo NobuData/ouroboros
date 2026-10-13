@@ -14,7 +14,7 @@ import {
   type Entry,
   type Theme,
 } from "./lib/manifest.ts";
-import { ONLY_ENV, READY_TIMEOUT_MS, RESULTS_ENV } from "./settings.ts";
+import { CAPTURE_USER, ONLY_ENV, READY_TIMEOUT_MS, RESULTS_ENV } from "./settings.ts";
 
 /**
  * One test per selected manifest entry, run once per theme project (CZ.1, #1170). A failing
@@ -41,6 +41,27 @@ const instant = captureInstant(manifest);
  * @param entry the entry.
  * @throws {Error} naming the workspace when the switch is refused.
  */
+/**
+ * Signs this capture in as another seeded person — every seeded account shares the capture
+ * user's password. Each test has its own context, so no other capture's session moves.
+ *
+ * @param page the page whose session to replace.
+ * @param entry the entry, naming the person in `as`.
+ * @throws {Error} naming the person when the sign-in is refused.
+ */
+async function signInAs(page: Page, entry: Entry): Promise<void> {
+  await page.context().clearCookies();
+  const response = await page.request.post("/api/auth/sign-in/email", {
+    data: { email: entry.as, password: CAPTURE_USER.password },
+  });
+  if (!response.ok()) {
+    throw new Error(
+      `${entry.id}: sign-in as ${String(entry.as)} answered ${response.status()}: ` +
+        `${await response.text()}`,
+    );
+  }
+}
+
 async function enterWorkspace(page: Page, entry: Entry): Promise<void> {
   if (!entry.workspace) throw new Error(`${entry.id}: names no workspace`);
   const response = await page.request.post("/api/auth/organization/set-active", {
@@ -193,7 +214,10 @@ for (const entry of entries) {
     await page.clock.setFixedTime(instant);
     // Each test has its own context, so clearing its cookies signs out this capture only.
     if (entry.signedOut) await page.context().clearCookies();
-    else await enterWorkspace(page, entry);
+    else {
+      if (entry.as) await signInAs(page, entry);
+      await enterWorkspace(page, entry);
+    }
 
     const response = await page.goto(entry.route);
     if (response && response.status() >= 400) {

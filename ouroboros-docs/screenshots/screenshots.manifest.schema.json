@@ -68,7 +68,7 @@
       "additionalProperties": false,
       "required": ["id", "route", "ready", "clip", "caption", "alt"],
       "if": { "required": ["signedOut"] },
-      "then": { "not": { "required": ["workspace"] } },
+      "then": { "not": { "anyOf": [{ "required": ["workspace"] }, { "required": ["as"] }] } },
       "else": { "required": ["workspace"] },
       "properties": {
         "id": {
@@ -89,6 +89,11 @@
         "signedOut": {
           "description": "Capture the page signed out — the session's cookies are cleared first — for the sign-in page. Such an entry names no `workspace`.",
           "const": true
+        },
+        "as": {
+          "description": "The email of the seeded person the page is captured as, when it is not the capture's own: `jorge@acme-robotics.dev`, a member. For a page that reads differently by who is reading it.",
+          "type": "string",
+          "pattern": "^[a-z0-9.]+@[a-z0-9.-]+$"
         },
         "ready": {
           "$ref": "#/$defs/selector",

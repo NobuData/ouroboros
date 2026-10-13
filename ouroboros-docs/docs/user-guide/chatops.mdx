@@ -255,6 +255,88 @@ The page then explains what is missing instead:
 Both link the setup guide. The steps are in
 [Chat Ops — connecting Slack](../administration/chatops.mdx).
 
+### What can go wrong
+
+When something stops working, a quiet channel looks the same as a channel with nothing to say.
+The page tells you instead. Each of these appears by itself — the page refreshes every few
+seconds — and goes away when the cause does. <Since version="0.162.0" module="ouroboros-ui" />
+
+#### Your Slack identity is not linked
+
+<Screenshot id="user-guide.chatops.unlinked" />
+
+A banner at the top of the channel mirror reads **Your Slack identity is not linked.** It
+appears only while Slack is connected and you have no linked identity.
+
+- **What still works:** everything in Ouroboros. Commands you run from the mirror or the
+  console run as you.
+- **What does not:** in Slack, buttons and `/ouro` commands will not act as you.
+- **What to do:** choose **Open Slack ↗**, send `/ouro link` there, and open the link Slack
+  answers with. The steps are in [Link your identity](#link-your-identity).
+
+#### Messages are not reaching Slack
+
+A banner under the connection strip reads, for example, **2 messages could not be delivered to
+Slack.** It names the affected routes — such as **Affected: Build failures.** — and Slack's
+last answer, such as **channel_not_found**. A message sent straight to the on-call person is
+named **On-call DM**.
+
+- An Owner or a Maintainer sees **Retry now**, which sends the undelivered messages again.
+  Fix the cause first — for example, invite the bot back to the channel. Everyone else is told
+  that an Owner or a Maintainer can retry them.
+- **Open the audit log** goes to the **Audit** section of <UiPath path="Settings" />.
+- The banner goes away by itself once the messages have been delivered.
+
+The banner may instead read **1 message keeps failing to reach Slack, and is still being
+retried.** Ouroboros is still trying; there is nothing to press. What an operator can check is
+in [Delivery: retries and failures](../administration/chatops.mdx#delivery-retries-and-failures).
+
+#### Slack revoked the app
+
+The connection strip reads **revoked**, with Slack's reason in words — such as **The app was
+removed from the Slack workspace.** — and nothing reaches your channels.
+
+- The page shows **Channel history**: the mirror of each channel that was bound, as it stood.
+  You can read it and switch between channels. There is no box to run commands in, and nothing
+  can be bound or unbound.
+- An Owner or a Maintainer chooses **Re-install** on the strip. Everyone else is told that an
+  Owner or a Maintainer can re-install the app.
+- After the re-install, the bound channels and routes are as they were.
+
+The page looks the same while the strip reads **error**.
+
+#### Ouroboros was removed from a channel
+
+The mirror of that channel shows a warning: **Ouroboros was removed from #helios-alerts, so
+nothing new is being posted there.** What was posted before stays in the mirror.
+
+- **To bring it back:** in Slack, open the channel and send `/invite @Ouroboros`. Then an Owner
+  or a Maintainer chooses **I invited it — refresh** on the warning.
+- **To stop posting there:** an Owner or a Maintainer chooses **Unbind** on the warning.
+
+Everyone else is told that an Owner or a Maintainer can refresh the channel list or unbind the
+channel.
+
+#### You can read but not change
+
+If you are not an Owner or a Maintainer, the page is the same page with the controls that are
+not yours left out or explained:
+
+| You see | It means |
+| --- | --- |
+| No **Verify now**, **Re-install** or **Retry now** | Checking, re-installing and retrying are for an Owner or a Maintainer. |
+| **+ Add channel ▾** that cannot be pressed, and no **Unbind** | Binding a channel is for an Owner or a Maintainer. |
+| Channel names instead of pickers under **What gets published where** | Changing what gets published where is for an Owner or a Maintainer. |
+| A command without **Try it**, with a reason beside it | Your role may not run that command. The reason is given under it. |
+
+You can still read every mirror and run the commands your role allows.
+
+#### The page could not be read
+
+A banner reading **The Slack connection could not be re-read.**, or **The channel mirror could
+not be re-read.**, means the page is showing what it last read. Choose **Retry** on the banner.
+While a mirror is being read for the first time, grey bars stand where its messages will be.
+
 ## What Ouroboros posts
 
 Every message is a **card**: a headline, the facts, sometimes a line of figures, and buttons.

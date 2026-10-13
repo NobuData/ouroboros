@@ -9,10 +9,19 @@ import {
   CHANNELS_UNREAD,
   CHATOPS_HEADLINE,
   CHATOPS_SUBLINE,
+  COMPOSER_LABEL,
+  DELIVERY_AUDIT_LABEL,
+  DELIVERY_LABEL,
+  DELIVERY_RETRYING_LABEL,
+  DELIVERY_RETRY_FAILED,
+  DELIVERY_RETRY_LABEL,
+  DELIVERY_ROLE_NOTE,
   ERROR_NOTE,
   FIRST_CHANNELS_LEAD,
   FIRST_CHANNELS_TITLE,
   HEALTH_LABEL,
+  HISTORY_LABEL,
+  HISTORY_NOTE,
   INSTALL_NOTE,
   INSTALL_ROLE_NOTE,
   NOT_CONFIGURED_MISSING,
@@ -30,6 +39,8 @@ import {
   SHOWING_MIRROR_LABEL,
   SHOW_MIRROR_LABEL,
   STALE_HEADLINE,
+  UNLINKED_LABEL,
+  UNLINKED_TITLE,
   UNREAD_HEADLINE,
   VERIFY_FAILED,
 } from "@/app/chatops/view";
@@ -41,7 +52,9 @@ import {
   channels,
   chatOpsPage,
   connection,
+  deadLettering,
   deferred,
+  delivery,
   fresh,
   freshMirror,
   mirror,
@@ -63,6 +76,7 @@ const verifyConnection = vi.fn();
 const refreshChannels = vi.fn();
 const bindChannel = vi.fn();
 const unbindChannel = vi.fn();
+const retryDelivery = vi.fn();
 
 // The routing card's writes (#543) have a suite of their own; here they are only kept off the server.
 vi.mock("@/app/chatops/routing-actions", () => ({
@@ -76,6 +90,7 @@ vi.mock("@/app/chatops/chatops-actions", () => ({
   refreshChannels: () => refreshChannels(),
   bindChannel: (id: unknown, purpose: unknown) => bindChannel(id, purpose),
   unbindChannel: (id: unknown) => unbindChannel(id),
+  retryDelivery: () => retryDelivery(),
 }));
 
 // The channel mirror's composer (#542) is the console's: its Server Actions and the session it
@@ -86,7 +101,7 @@ vi.mock("@/app/shell/console-actions", async () => (await import("../helpers/con
 const { ChatOpsScreen } = await import("@/app/chatops/chatops-screen");
 
 beforeEach(() => {
-  for (const mock of [verifyConnection, refreshChannels, bindChannel, unbindChannel]) mock.mockReset();
+  for (const mock of [verifyConnection, refreshChannels, bindChannel, unbindChannel, retryDelivery]) mock.mockReset();
 });
 
 /** A workspace with its loops and alerts channels bound. */
@@ -157,7 +172,7 @@ describe("the head", () => {
     render(<Screen />);
 
     expect(screen.getByRole("button", { name: ADD_CHANNEL_LABEL })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /^Open #/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Open #.* ↗$/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Open #/ })).toBeNull();
   });
 
@@ -184,7 +199,7 @@ describe("the head", () => {
     render(on(chatOpsPage({ connection: slack, channels: channels(boundChannelList()) })));
 
     expect(screen.queryByRole("button", { name: ADD_CHANNEL_LABEL })).toBeNull();
-    expect(screen.queryByRole("link", { name: /^Open #/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Open #.* ↗$/ })).toBeNull();
   });
 
   it("opens the picker from Add channel", () => {
@@ -289,7 +304,7 @@ describe("the connection health strip", () => {
     expect(within(strip()).getByRole("button", { name: "Verify now" })).not.toHaveAttribute("aria-disabled");
     // Revoked: the head's actions go with the connection.
     expect(screen.queryByRole("button", { name: ADD_CHANNEL_LABEL })).toBeNull();
-    expect(screen.queryByRole("link", { name: /^Open #/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Open #.* ↗$/ })).toBeNull();
   });
 
   it("prints a refused verification in the service's words, and is a button again", async () => {
@@ -534,8 +549,9 @@ describe("staying current", () => {
 
     expect(await within(strip()).findByText("revoked — app_uninstalled")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: ADD_CHANNEL_LABEL })).toBeNull();
-    expect(screen.queryByRole("link", { name: /^Open #/ })).toBeNull();
-    expect(screen.queryByRole("region", { name: BOUND_TITLE })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Open #.* ↗$/ })).toBeNull();
+    // What was bound is still listed — to look back on, not to change (#545).
+    expect(within(screen.getByRole("region", { name: BOUND_TITLE })).queryByRole("button", { name: /^Unbind/ })).toBeNull();
   });
 
   it("raises a retry banner over the page as last read when a re-read fails", async () => {
@@ -585,7 +601,7 @@ describe("staying current", () => {
     expect(screen.getByText(CHANNELS_UNREAD)).toBeInTheDocument();
     expect(screen.getByText("Slack did not answer.")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: FIRST_CHANNELS_TITLE })).toBeNull();
-    expect(screen.queryByRole("link", { name: /^Open #/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Open #.* ↗$/ })).toBeNull();
   });
 });
 
@@ -680,9 +696,177 @@ describe("the channel mirror", () => {
   });
 });
 
+describe("publish health (#545)", () => {
+  /** The banner, or null when it is not drawn. */
+  function banner(): HTMLElement | null {
+    return screen.queryByRole("status", { name: DELIVERY_LABEL });
+  }
+
+  /** A bound workspace whose connection has dead letters. */
+  const DEAD = chatOpsPage({ connection: deadLettering(), channels: channels(boundChannelList()) });
+
+  it("is not drawn while every message is going out", () => {
+    render(on(BOUND));
+
+    expect(banner()).toBeNull();
+  });
+
+  it("says how many messages were not delivered, on which route, and Slack's last answer", () => {
+    render(on(DEAD));
+
+    expect(banner()).toHaveTextContent("2 messages could not be delivered to Slack.");
+    expect(banner()).toHaveTextContent("Affected: Build failures.");
+    expect(banner()).toHaveTextContent("Slack's last answer: channel_not_found.");
+    expect(within(banner()!).getByRole("link", { name: DELIVERY_AUDIT_LABEL })).toHaveAttribute(
+      "href",
+      "/settings#audit",
+    );
+  });
+
+  it("offers the retry to an owner or an admin, and tells everyone else who can", () => {
+    const { unmount } = render(on(DEAD));
+
+    expect(within(banner()!).getByRole("button", { name: DELIVERY_RETRY_LABEL })).toBeInTheDocument();
+    expect(banner()).not.toHaveTextContent(DELIVERY_ROLE_NOTE);
+    unmount();
+
+    render(on(DEAD, false));
+
+    expect(within(banner()!).queryByRole("button", { name: DELIVERY_RETRY_LABEL })).toBeNull();
+    expect(banner()).toHaveTextContent(DELIVERY_ROLE_NOTE);
+  });
+
+  it("retries: the control says so while it is out, and the banner goes with the drained queue", async () => {
+    const answer = deferred<unknown>();
+    retryDelivery.mockReturnValueOnce(answer.promise);
+    render(on(DEAD));
+
+    fireEvent.click(within(banner()!).getByRole("button", { name: DELIVERY_RETRY_LABEL }));
+
+    const retrying = await within(banner()!).findByRole("button", { name: DELIVERY_RETRYING_LABEL });
+
+    expect(retrying).toHaveAttribute("aria-disabled", "true");
+
+    await act(async () => {
+      answer.resolve(connection({ delivery: delivery({ state: "healthy", pending: 2 }) }));
+    });
+
+    await waitFor(() => expect(banner()).toBeNull());
+    expect(retryDelivery).toHaveBeenCalledTimes(1);
+  });
+
+  it("prints a refused retry in the service's words, and is a button again", async () => {
+    retryDelivery.mockResolvedValueOnce({ error: "This workspace is not connected to Slack." });
+    render(on(DEAD));
+
+    fireEvent.click(within(banner()!).getByRole("button", { name: DELIVERY_RETRY_LABEL }));
+
+    expect(await within(banner()!).findByRole("alert")).toHaveTextContent("This workspace is not connected to Slack.");
+    expect(within(banner()!).getByRole("button", { name: DELIVERY_RETRY_LABEL })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("says a retry could not be made at all when the call itself fails", async () => {
+    retryDelivery.mockRejectedValueOnce(new Error("network"));
+    render(on(DEAD));
+
+    fireEvent.click(within(banner()!).getByRole("button", { name: DELIVERY_RETRY_LABEL }));
+
+    expect(await within(banner()!).findByRole("alert")).toHaveTextContent(DELIVERY_RETRY_FAILED);
+  });
+
+  it("appears on the page's own poll, without a reload", async () => {
+    const read = vi.fn().mockResolvedValue(fresh(DEAD));
+
+    render(<Screen page={{ ok: true, value: BOUND }} poll={{ read, visible: () => true }} />);
+
+    expect(banner()).toBeNull();
+    expect(await screen.findByRole("status", { name: DELIVERY_LABEL })).toBeInTheDocument();
+  });
+
+  it("disappears on the poll that reads a drained queue", async () => {
+    const read = vi.fn().mockResolvedValue(fresh(BOUND));
+
+    render(<Screen page={{ ok: true, value: DEAD }} poll={{ read, visible: () => true }} />);
+
+    expect(banner()).not.toBeNull();
+    await waitFor(() => expect(banner()).toBeNull());
+  });
+
+  it("says a message keeps failing while it is still being retried, and offers no retry", () => {
+    const stuck = connection({
+      delivery: delivery({ state: "retrying", retrying: 1, stuck: 1, affectedRoutes: ["custom:loop-finished"] }),
+    });
+
+    render(on(chatOpsPage({ connection: stuck, channels: channels(boundChannelList()) })));
+
+    expect(banner()).toHaveTextContent("1 message keeps failing to reach Slack, and is still being retried.");
+    expect(within(banner()!).queryByRole("button", { name: DELIVERY_RETRY_LABEL })).toBeNull();
+  });
+});
+
+describe("the unlinked reader (#545)", () => {
+  it("is told once, in the mirror, while Slack is connected and they have no link", () => {
+    const unlinked = chatOpsPage({ connection: connection({ viewerLinked: false }), channels: channels(boundChannelList()) });
+
+    render(on(unlinked));
+
+    expect(screen.getByRole("region", { name: UNLINKED_LABEL })).toHaveTextContent(UNLINKED_TITLE);
+    // Nothing in the app is taken away: the composer is still there.
+    expect(screen.getByRole("combobox", { name: COMPOSER_LABEL })).toBeInTheDocument();
+  });
+
+  it("is told nothing when linked", () => {
+    render(on(BOUND));
+
+    expect(screen.queryByRole("region", { name: UNLINKED_LABEL })).toBeNull();
+  });
+});
+
+describe("a revoked or failing connection's history (#545)", () => {
+  it.each([
+    ["revoked", revoked()],
+    ["error", connection({ state: "error", statusDetail: "ratelimited", viewerLinked: false })],
+  ])("keeps the %s workspace's mirror, read-only: no composer, no unbind, no unlinked banner", (_state, slack) => {
+    render(on(chatOpsPage({ connection: slack, channels: channels(boundChannelList(), { connected: false }) })));
+
+    const history = screen.getByRole("region", { name: HISTORY_LABEL });
+
+    expect(within(history).getByRole("region", { name: "Mirror of #ouroboros-loops" })).toHaveTextContent(HISTORY_NOTE);
+    expect(within(history).queryByRole("combobox", { name: COMPOSER_LABEL })).toBeNull();
+    expect(within(history).queryByRole("button", { name: /^Unbind/ })).toBeNull();
+    expect(within(history).queryByRole("region", { name: UNLINKED_LABEL })).toBeNull();
+    // The side cards that write — commands, routing, AI presence — are not drawn.
+    expect(screen.queryByRole("region", { name: "COMMANDS" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "WHAT GETS PUBLISHED WHERE" })).toBeNull();
+  });
+
+  it("still chooses between the channels that were bound", () => {
+    render(on(chatOpsPage({ connection: revoked(), channels: channels(boundChannelList(), { connected: false }) })));
+
+    fireEvent.click(screen.getByRole("button", { name: "Show the mirror of #helios-alerts" }));
+
+    expect(screen.getByRole("region", { name: "Mirror of #helios-alerts" })).toBeInTheDocument();
+  });
+
+  it("draws no history where nothing was bound", () => {
+    render(on(chatOpsPage({ connection: revoked(), channels: channels(undefined, { connected: false }) })));
+
+    expect(screen.queryByRole("region", { name: HISTORY_LABEL })).toBeNull();
+  });
+
+  it("says why Slack stopped accepting the app, in words, on the strip", () => {
+    render(on(chatOpsPage({ connection: revoked() })));
+
+    expect(strip()).toHaveTextContent("The app was removed from the Slack workspace.");
+  });
+});
+
 describe("both themes", () => {
   it.each([
     ["bound", BOUND],
+    ["dead-lettering", chatOpsPage({ connection: deadLettering(), channels: channels(boundChannelList()) })],
+    ["unlinked", chatOpsPage({ connection: connection({ viewerLinked: false }), channels: channels(boundChannelList()) })],
+    ["revoked with history", chatOpsPage({ connection: revoked(), channels: channels(boundChannelList(), { connected: false }) })],
     ["revoked", chatOpsPage({ connection: revoked() })],
     ["not configured", chatOpsPage({ connection: notConfigured() })],
     ["not installed", chatOpsPage({ connection: notConnected() })],

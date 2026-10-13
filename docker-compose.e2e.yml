@@ -335,6 +335,27 @@
 # nightly comparison has nothing to read, and the three seeded items are at states a pass leaves
 # alone (#623).
 #
+#
+# ---------------------------------------------------------------------------
+# The Slack stand-in and its four lines, and the leg they exist for (issue #545, CA.5).
+# ---------------------------------------------------------------------------
+#
+#   * `OURO_SLACK_CLIENT_ID`, `OURO_SLACK_CLIENT_SECRET`, `OURO_SLACK_SIGNING_SECRET` — this
+#     stack's own Slack app: values no real app has, shared with `slack-stub` (which checks the
+#     first two at the code exchange) and with `tests/e2e/support/slack.ts` (which signs with the
+#     third, as Slack does).
+#   * `OURO_SLACK_API_BASE_URL: http://slack-stub:8080/api` — where Slack is, for this stack.
+#
+# **What it is for.** The chatops leg (specs/chatops.spec.ts) is the Chat Ops MVP gate: install →
+# publish → answer → command → escalation, walked against something that is not the service.
+# `slack-stub` receives every Web API call and every `response_url` reply; the suite emits the
+# events, commands and button presses Slack would, signed. Nothing leaves the compose network.
+#
+# **What it changes for every other leg.** A Slack app is now registered on this stack, so a
+# workspace with no connection reads *not connected* where it read *no Slack app registered*
+# (Settings → Integrations' Slack tile, and `/chatops`). The seeded workspace's connection is
+# untouched until the chatops leg re-installs it, and that leg puts back what it changed.
+#
 # Everything else — images, healthchecks, the shared ui/rest network namespace, the
 # loopback-only port publishing — is the base file's, unrepeated here so it cannot drift.
 services:
@@ -351,6 +372,10 @@ services:
       OURO_RESEARCH_REGRESSION_TICK_MS: "10000"
       OURO_WEBHOOK_INTERNAL_ALLOWLIST: "webhook-receiver"
       NODE_EXTRA_CA_CERTS: /webhook-ca/ca.pem
+      OURO_SLACK_CLIENT_ID: "5450000000.5450000000545"
+      OURO_SLACK_CLIENT_SECRET: "e2e-slack-client-secret-0123456789abcdef"
+      OURO_SLACK_SIGNING_SECRET: "e2e-slack-signing-secret-0123456789abcdef"
+      OURO_SLACK_API_BASE_URL: "http://slack-stub:8080/api"
     volumes:
       # Appended to the base file's two. The receiver's CA certificate, and nothing else of its.
       - ouroboros-webhook-ca:/webhook-ca:ro
@@ -364,6 +389,9 @@ services:
         condition: service_healthy
       # And *the receiver's CA has been written*, which `rest` reads once, at start (#496).
       webhook-receiver:
+        condition: service_healthy
+      # And *Slack can be reached*, by way of its stand-in (#545).
+      slack-stub:
         condition: service_healthy
 
   # The `runner` profile's three, moved into `full` too. Nothing else about them is restated.
@@ -462,6 +490,29 @@ services:
       # The controls only — what the settings leg reads back. The receiving port (8443) is
       # deliberately not published: only `rest` delivers to it. Loopback only, as every port is.
       - "127.0.0.1:4300:8081"
+    networks:
+      - ouroboros
+    profiles:
+      - full
+
+  slack-stub:
+    build:
+      context: ./tests/e2e/fixtures/slack-stub
+    environment:
+      # The app `rest` is configured with above: the code exchange is refused for any other.
+      SLACK_STUB_CLIENT_ID: "5450000000.5450000000545"
+      SLACK_STUB_CLIENT_SECRET: "e2e-slack-client-secret-0123456789abcdef"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+      start_interval: 1s
+    ports:
+      # Published, as `tracker-stub` is, because the chatops leg reads what was posted from
+      # Slack's side and declares the workspace it stands in for. Loopback only.
+      - "127.0.0.1:4400:8080"
     networks:
       - ouroboros
     profiles:

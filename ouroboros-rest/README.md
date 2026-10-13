@@ -5014,6 +5014,14 @@ decision resolved ─▶ chat.update of each posted card ─▶ system line
   already held it), `skipped` (nowhere left to say it), retried with #487's backoff — honouring
   `Retry-After`, which also parks the rest of that connection's batch — or `dead_lettered` after
   eight attempts. Dead letters surface as `delivery` on `GET /api/v1/slack/connection`.
+- **Delivery that needs saying (CA.5, #545).** `delivery.stuck` counts pending rows that have
+  failed three times (`PERSISTENT_RETRY_ATTEMPTS`) and `delivery.affectedRoutes` names the route
+  kinds with a dead letter or a stuck row — what the Chat Ops page's banner reads.
+  `POST /api/v1/slack/connection/delivery/retry` (owner/admin, `SlackDeliveryService`) queues the
+  last seven days' dead letters again as the same rows, attempts cleared; `409
+  slack_not_connected` without an active connection. Audited as `chat.delivery_retried` (webhook
+  registry v15): `messages`, `routes`. The same resource carries `viewerLinked` — whether the
+  reader's own Slack identity is linked on the active connection.
 - **Routes decide where.** Mockup 19's `custom:*` kinds (and the core kinds when bound to Slack):
   blocking questions, loop finished, build failures, weekly insights, stage transitions. A
   *DM on-call* route also DMs the on-call member's linked identity; a DM is recorded as a message

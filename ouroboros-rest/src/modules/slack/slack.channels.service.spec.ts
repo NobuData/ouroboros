@@ -230,16 +230,14 @@ describe("the channel list", () => {
     });
   });
 
-  it("answers not connected once the install is revoked, though its channel rows remain", async () => {
+  it("answers not connected once the install is revoked, still listing its channels as they stood (#545)", async () => {
     const { service, installs, store } = await setup();
+    const before = await service.list(ORG);
+
     await installs.revoke(store.connections[0], "app_uninstalled", "event");
 
-    await expect(service.list(ORG)).resolves.toEqual({
-      connected: false,
-      refreshedAt: null,
-      channels: [],
-    });
-    expect(store.channelRows).toHaveLength(LISTED.length);
+    await expect(service.list(ORG)).resolves.toEqual({ ...before, connected: false });
+    expect(before.channels).toHaveLength(LISTED.length);
   });
 
   it("answers connected with a null refresh time before any channel is known", async () => {

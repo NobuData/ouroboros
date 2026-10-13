@@ -18,6 +18,7 @@ import {
   DM_PURPOSE_TAG,
   DM_ROUTE_KIND,
   readChatDeliveryHealth,
+  requeueChatDeadLetters,
   type ChatDeliveryHealthRow,
 } from "../chat/chat.outbox";
 import { DatabaseService } from "../db/db.service";
@@ -533,6 +534,36 @@ export class SlackRepository {
    */
   deliveryHealth(connectionId: string, now: Date): Promise<ChatDeliveryHealthRow> {
     return readChatDeliveryHealth(this.database.db, connectionId, now);
+  }
+
+  /**
+   * Queue a connection's dead letters again (#545).
+   *
+   * @param connectionId - The connection.
+   * @param now - The instant they become due.
+   * @returns The route kind of each row queued.
+   */
+  requeueDeadLetters(connectionId: string, now: Date): Promise<string[]> {
+    return requeueChatDeadLetters(this.database.db, connectionId, now);
+  }
+
+  /**
+   * Whether a person has a linked identity on a connection (#545) — one indexed read.
+   *
+   * @param connectionId - The connection.
+   * @param userId - The person.
+   * @returns True for a `linked` row; a pending or revoked one is not a link.
+   */
+  async userLinked(connectionId: string, userId: string): Promise<boolean> {
+    const row = await this.database.db
+      .selectFrom("chat_identity_links")
+      .select("id")
+      .where("connection_id", "=", connectionId)
+      .where("user_id", "=", userId)
+      .where("state", "=", "linked")
+      .executeTakeFirst();
+
+    return row !== undefined;
   }
 
   /**

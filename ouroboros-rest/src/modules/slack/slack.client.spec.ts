@@ -288,6 +288,57 @@ describe("replying to a response_url", () => {
   });
 });
 
+describe("a moved Web API base (OURO_SLACK_API_BASE_URL, #545)", () => {
+  const STAND_IN = "http://slack-stub:8080/api";
+
+  it("calls every method at the base it was given, a trailing slash or not", async () => {
+    const { impl, calls } = fakeFetch({ ok: true, team_id: "T1" }, { ok: true, team_id: "T1" });
+
+    await new HttpSlackApi(impl, STAND_IN).authTest(BOT_TOKEN);
+    await new HttpSlackApi(impl, `${STAND_IN}/`).authTest(BOT_TOKEN);
+
+    expect(calls.map((call) => call.url)).toEqual([
+      `${STAND_IN}/auth.test`,
+      `${STAND_IN}/auth.test`,
+    ]);
+  });
+
+  it("replies to a response_url on the stand-in's origin, and still to Slack's", async () => {
+    const { impl, calls } = fakeFetch({ ok: true }, { ok: true });
+    const api = new HttpSlackApi(impl, STAND_IN);
+
+    await expect(
+      api.respond("http://slack-stub:8080/hooks/commands/1", { ephemeral: true, text: "x" }),
+    ).resolves.toEqual({ ok: true });
+    await expect(
+      api.respond("https://hooks.slack.com/commands/1", { ephemeral: true, text: "x" }),
+    ).resolves.toEqual({ ok: true });
+    expect(calls).toHaveLength(2);
+  });
+
+  it.each([
+    ["another port of the stand-in's host", "http://slack-stub:9090/hooks/1"],
+    ["another host", "http://elsewhere:8080/hooks/1"],
+    ["plain http to Slack's host", "http://hooks.slack.com/commands/1"],
+  ])("posts nothing to %s", async (_label, url) => {
+    const { impl, calls } = fakeFetch({ ok: true });
+
+    await expect(
+      new HttpSlackApi(impl, STAND_IN).respond(url, { ephemeral: true, text: "x" }),
+    ).resolves.toEqual({ ok: false, error: "response_url_not_slack" });
+    expect(calls).toEqual([]);
+  });
+
+  it("widens nothing when the base is Slack's own", async () => {
+    const { impl, calls } = fakeFetch({ ok: true });
+
+    await expect(
+      new HttpSlackApi(impl).respond("https://slack.com/hooks/1", { ephemeral: true, text: "x" }),
+    ).resolves.toEqual({ ok: false, error: "response_url_not_slack" });
+    expect(calls).toEqual([]);
+  });
+});
+
 describe("publishing a message (#536)", () => {
   const message = {
     text: "✓ Loop #1846 finished",

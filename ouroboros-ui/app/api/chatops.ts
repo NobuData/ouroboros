@@ -5,8 +5,9 @@ import "server-only";
  * [#541](https://github.com/NobuData/ouroboros/issues/541)) — one page's calls to one tag, kept
  * together the way `app/api/research.ts` keeps the research plane's.
  *
- * Eight operations: the **connection** and its **verification** (BZ.1,
- * [#535](https://github.com/NobuData/ouroboros/issues/535)), and the workspace's **channels** —
+ * Nine operations: the **connection**, its **verification** (BZ.1,
+ * [#535](https://github.com/NobuData/ouroboros/issues/535)) and the **retry** of what it could not
+ * deliver (CA.5, #545), and the workspace's **channels** —
  * listed, re-listed from Slack, bound to a purpose and unbound (#541's own routes) — and the
  * **on-call designee** the routing card names and changes (#543).
  *
@@ -24,6 +25,9 @@ import { api } from "@/app/api/server";
 
 /** Where Slack stands for the workspace — `openapi.yaml` § `SlackConnection`. */
 export type SlackConnection = components["schemas"]["SlackConnection"];
+
+/** How the messages published through the connection are faring — `openapi.yaml` § `SlackDelivery`. */
+export type SlackDelivery = components["schemas"]["SlackDelivery"];
 
 /** What a verification answers: its result, and the connection as it now stands. */
 export type SlackVerification = components["schemas"]["SlackVerification"];
@@ -63,6 +67,19 @@ export const chatops = {
    */
   async verify(client: ApiClient = api()): Promise<SlackVerification> {
     return unwrap(await client.POST("/api/v1/slack/connection/verify", {}));
+  },
+
+  /**
+   * Queue the connection's dead-lettered messages again (CA.5,
+   * [#545](https://github.com/NobuData/ouroboros/issues/545)).
+   *
+   * @param client The client to call through.
+   * @returns The connection as it now stands, its dead letters pending again.
+   * @throws {ApiError} `409 slack_not_connected`; `403` for a reader who is not an owner or an
+   *   admin.
+   */
+  async retryDelivery(client: ApiClient = api()): Promise<SlackConnection> {
+    return unwrap(await client.POST("/api/v1/slack/connection/delivery/retry", {}));
   },
 
   /**

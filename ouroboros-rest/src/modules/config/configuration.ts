@@ -246,6 +246,14 @@ export const MAX_PROVIDER_HEALTH_SECONDS = 86400;
 export const DEFAULT_GITHUB_API_BASE_URL = "https://api.github.com";
 
 /**
+ * Where Slack's Web API is when `OURO_SLACK_API_BASE_URL` is not set — Slack itself.
+ *
+ * Written down for the reason {@link DEFAULT_GITHUB_API_BASE_URL} is: the template and the code
+ * state one value.
+ */
+export const DEFAULT_SLACK_API_BASE_URL = "https://slack.com/api";
+
+/**
  * Seconds between backlog sync cycles when `OURO_BACKLOG_SYNC_INTERVAL_SECONDS` is not set —
  * five minutes.
  *
@@ -1170,6 +1178,19 @@ export interface Configuration {
   /** The app-level token (`xapp-…`) Socket Mode connects with. From `OURO_SLACK_APP_TOKEN`. */
   readonly slackAppToken?: string;
   /**
+   * Where Slack's Web API is. From `OURO_SLACK_API_BASE_URL`, {@link DEFAULT_SLACK_API_BASE_URL}
+   * when unset — which is every deployment talking to Slack.
+   *
+   * It exists for the e2e compose override (repo-root `docker-compose.e2e.yml`,
+   * [#545](https://github.com/NobuData/ouroboros/issues/545)), which points it at the suite's
+   * Slack stand-in, the way {@link githubApiBaseUrl} is pointed at the sandbox tracker.
+   *
+   * **It moves the address and nothing else** — and it moves the bot token with it: every Web API
+   * call, the OAuth code exchange and a `response_url` on the same origin go there. Set it only
+   * to a host that may hold this deployment's Slack credentials.
+   */
+  readonly slackApiBaseUrl: string;
+  /**
    * The SearXNG instance the web research tool searches through when a workspace's configuration
    * names none. From `OURO_RESEARCH_SEARXNG_URL`, {@link DEFAULT_RESEARCH_SEARXNG_URL} when unset
    * (#615).
@@ -1425,6 +1446,7 @@ export const VARIABLES = {
   slackSigningSecret: "OURO_SLACK_SIGNING_SECRET",
   slackSocketMode: "OURO_SLACK_SOCKET_MODE",
   slackAppToken: "OURO_SLACK_APP_TOKEN",
+  slackApiBaseUrl: "OURO_SLACK_API_BASE_URL",
   researchSearxngUrl: "OURO_RESEARCH_SEARXNG_URL",
   researchFetchTimeoutMs: "OURO_RESEARCH_FETCH_TIMEOUT_MS",
   researchFetchMaxBytes: "OURO_RESEARCH_FETCH_MAX_BYTES",
@@ -2072,6 +2094,15 @@ const environmentShape = z.object({
     .string()
     .regex(/^xapp-/, "expected an app-level token, which starts with xapp-")
     .optional(),
+  // #545's one: where Slack's Web API is. Validated as an address for the reason
+  // OURO_GITHUB_API_BASE_URL is — an unparseable value fails at boot, not on the first call.
+  OURO_SLACK_API_BASE_URL: z
+    .string()
+    .refine(
+      (value) => isAbsoluteUrl(value, ["http:", "https:"]),
+      "expected an absolute http:// or https:// URL, such as https://slack.com/api",
+    )
+    .default(DEFAULT_SLACK_API_BASE_URL),
 
   // CL.2's (#615) six: where the web research tool searches by default, and the politeness and
   // safety bounds of the page reader every provider shares.
@@ -2571,6 +2602,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     slackSigningSecret: values.OURO_SLACK_SIGNING_SECRET,
     slackSocketMode: values.OURO_SLACK_SOCKET_MODE,
     slackAppToken: values.OURO_SLACK_APP_TOKEN,
+    slackApiBaseUrl: values.OURO_SLACK_API_BASE_URL,
     researchSearxngUrl: values.OURO_RESEARCH_SEARXNG_URL,
     researchFetchTimeoutMs: values.OURO_RESEARCH_FETCH_TIMEOUT_MS,
     researchFetchMaxBytes: values.OURO_RESEARCH_FETCH_MAX_BYTES,

@@ -246,6 +246,17 @@ function stamped(answer: CallAnswer): SlackDelivery<{ ts: string }> {
 const RESPONSE_HOSTS: ReadonlySet<string> = new Set(["hooks.slack.com", "hooks.slack-gov.com"]);
 
 /**
+ * The one other origin a `response_url` may name: a stand-in's, when the Web API base was moved.
+ *
+ * @param baseUrl - Where the Web API is.
+ * @returns The stand-in's origin, or null when the base is Slack's — the normal case, in which
+ *   only {@link RESPONSE_HOSTS} over HTTPS are posted to.
+ */
+function standInOrigin(baseUrl: string): string | null {
+  return baseUrl === SLACK_API_URL ? null : new URL(baseUrl).origin;
+}
+
+/**
  * A reply as the Block Kit payload Slack takes.
  *
  * @param reply - The reply.
@@ -311,8 +322,23 @@ function part(source: unknown, key: string): Record<string, unknown> | undefined
 /** {@link SlackApi} over HTTPS. */
 @Injectable()
 export class HttpSlackApi implements SlackApi {
-  /** @param fetchImpl - The fetch to call through; the platform's by default. */
-  constructor(private readonly fetchImpl: typeof fetch = fetch) {}
+  /** Where the Web API is, without a trailing slash. */
+  private readonly baseUrl: string;
+
+  /** The stand-in origin a `response_url` may also name, or null — see {@link standInOrigin}. */
+  private readonly responseOrigin: string | null;
+
+  /**
+   * @param fetchImpl - The fetch to call through; the platform's by default.
+   * @param baseUrl - Where the Web API is (`OURO_SLACK_API_BASE_URL`, #545); Slack's by default.
+   */
+  constructor(
+    private readonly fetchImpl: typeof fetch = fetch,
+    baseUrl: string = SLACK_API_URL,
+  ) {
+    this.baseUrl = baseUrl.replace(/\/+$/, "");
+    this.responseOrigin = standInOrigin(this.baseUrl);
+  }
 
   /** @inheritdoc */
   async exchangeCode(input: {
@@ -528,7 +554,9 @@ export class HttpSlackApi implements SlackApi {
       return { ok: false, error: "response_url_malformed" };
     }
 
-    if (target.protocol !== "https:" || !RESPONSE_HOSTS.has(target.hostname)) {
+    const slacks = target.protocol === "https:" && RESPONSE_HOSTS.has(target.hostname);
+
+    if (!slacks && target.origin !== this.responseOrigin) {
       return { ok: false, error: "response_url_not_slack" };
     }
 
@@ -559,7 +587,7 @@ export class HttpSlackApi implements SlackApi {
     request: { token?: string; form?: Record<string, string> },
   ): Promise<CallAnswer> {
     try {
-      const response = await this.fetchImpl(`${SLACK_API_URL}/${method}`, {
+      const response = await this.fetchImpl(`${this.baseUrl}/${method}`, {
         method: "POST",
         headers: {
           "content-type": "application/x-www-form-urlencoded",

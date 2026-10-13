@@ -163,6 +163,21 @@ describe("composing the audit card's lines", () => {
       }),
     ).toBe("left nobody on call for decisions");
   });
+
+  it("says how many undelivered Slack messages were retried (#545)", () => {
+    expect(
+      eventSentence({
+        action: "chat.delivery_retried",
+        detail: { messages: 3, routes: "custom:build-failures" },
+      }),
+    ).toBe("retried 3 undelivered Slack messages");
+    expect(eventSentence({ action: "chat.delivery_retried", detail: { messages: 1 } })).toBe(
+      "retried an undelivered Slack message",
+    );
+    expect(eventSentence({ action: "chat.delivery_retried", detail: {} })).toBe(
+      "retried an undelivered Slack message",
+    );
+  });
 });
 
 describe("the actor column", () => {

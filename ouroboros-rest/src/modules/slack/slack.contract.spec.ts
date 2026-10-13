@@ -112,6 +112,8 @@ describe("the Slack connection on the wire", () => {
         pending: 1,
         retrying: 2,
         deadLettered: 1,
+        stuck: 1,
+        affectedRoutes: ["custom:build-failures"],
         lastError: "channel_not_found",
         lastDeadLetteredAt: new Date("2026-10-12T14:00:00Z"),
         lastSentAt: new Date("2026-10-12T13:00:00Z"),
@@ -177,14 +179,22 @@ describe("the Slack channels on the wire (#541)", () => {
     expect(answer.channels.map((channel) => channel.purpose)).toEqual(["loops", null, null]);
   });
 
-  it.each([
-    ["never installed", undefined],
-    ["revoked", { ...CONNECTION, status: "revoked" as const }],
-  ])("matches SlackChannels when %s", (_label, connection) => {
-    const answer = channelsResource({ connection, channels: [ROW], routes: [] });
+  it("matches SlackChannels when never installed — not connected, and nothing listed", () => {
+    const answer = channelsResource({ connection: undefined, channels: [ROW], routes: [] });
 
     expect(channels(wire(answer))).toBeUndefined();
     expect(answer).toEqual({ connected: false, refreshedAt: null, channels: [] });
+  });
+
+  it("matches SlackChannels when revoked — not connected, its channels still listed (#545)", () => {
+    const revoked = { ...CONNECTION, status: "revoked" as const };
+    const answer = channelsResource({ connection: revoked, channels: [ROW], routes: [] });
+
+    expect(channels(wire(answer))).toBeUndefined();
+    expect(answer.connected).toBe(false);
+    expect(answer.channels).toEqual(
+      channelsResource({ connection: CONNECTION, channels: [ROW], routes: [] }).channels,
+    );
   });
 
   it("refuses a channel that grew a field, and a purpose that is not one of the three", () => {

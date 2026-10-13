@@ -52,6 +52,7 @@ import { CurrentTenant, TenantOptional } from "../tenancy/tenant.decorators";
 import { SLACK_PATH_PREFIX, SLACK_ROUTE } from "./slack.app";
 import { slackInstallDenied, slackStateInvalid } from "./slack.errors";
 import { COMMAND_ACK, SlackInboundService } from "./slack.inbound.service";
+import { SlackDeliveryService } from "./slack.delivery.service";
 import { SlackInstallService, type SlackVerification } from "./slack.install.service";
 import { type LinkSession, SlackLinkService } from "./slack.link.service";
 import type { SlackLinkPage } from "./slack.pages";
@@ -410,28 +411,37 @@ export class SlackConnectionController {
    * @param installs - Verifies a connection.
    * @param repository - Reads it.
    * @param config - Whether Socket Mode is on.
+   * @param delivery - Queues dead letters again.
    */
   constructor(
     private readonly installs: SlackInstallService,
     private readonly repository: SlackRepository,
     private readonly config: AppConfigService,
+    private readonly delivery: SlackDeliveryService,
   ) {}
 
   /**
-   * `GET /slack/connection` — where Slack stands for this workspace.
+   * `GET /slack/connection` — where Slack stands for this workspace, and for its reader.
    *
    * @param tenant - The workspace.
+   * @param principal - The reader, whose own Slack link `viewerLinked` reports. A caller with
+   *   no session — a service account — is linked to nobody.
    * @returns The status. Never the bot token.
    */
   @Get()
-  async status(@CurrentTenant() tenant: Organization): Promise<SlackConnectionResource> {
+  async status(
+    @CurrentTenant() tenant: Organization,
+    @Session() principal?: Principal,
+  ): Promise<SlackConnectionResource> {
     const connection = await this.repository.connectionOf(tenant.id);
-    const [channels, delivery] =
+    const userId = principal?.user.id;
+    const [channels, delivery, viewerLinked] =
       connection === undefined
-        ? [[], undefined]
+        ? [[], undefined, false]
         : await Promise.all([
             this.repository.channels(connection.id),
             this.repository.deliveryHealth(connection.id, new Date()),
+            userId === undefined ? false : this.repository.userLinked(connection.id, userId),
           ]);
 
     return connectionResource({
@@ -443,6 +453,7 @@ export class SlackConnectionController {
       },
       socketMode: this.config.slackSocketMode,
       delivery,
+      viewerLinked,
     });
   }
 
@@ -451,14 +462,38 @@ export class SlackConnectionController {
    * its channels.
    *
    * @param tenant - The workspace.
+   * @param principal - The reader, for the status.
    * @returns What Slack said, and the status after it.
    */
   @Post("verify")
   @HttpCode(HttpStatus.OK)
   @Roles(...ADMINISTRATORS)
-  async verify(@CurrentTenant() tenant: Organization): Promise<SlackVerificationResource> {
+  async verify(
+    @CurrentTenant() tenant: Organization,
+    @Session() principal?: Principal,
+  ): Promise<SlackVerificationResource> {
     const result = await this.installs.verify(tenant.id);
 
-    return { result, connection: await this.status(tenant) };
+    return { result, connection: await this.status(tenant, principal) };
+  }
+
+  /**
+   * `POST /slack/connection/delivery/retry` — queue the connection's dead letters again (#545).
+   *
+   * @param tenant - The workspace.
+   * @param principal - Who asked — the audit actor.
+   * @returns The status after it, in which the dead letters are pending again.
+   * @throws {ConflictError} `409 slack_not_connected` without an active connection.
+   */
+  @Post("delivery/retry")
+  @HttpCode(HttpStatus.OK)
+  @Roles(...ADMINISTRATORS)
+  async retryDelivery(
+    @CurrentTenant() tenant: Organization,
+    @Session() principal: Principal,
+  ): Promise<SlackConnectionResource> {
+    await this.delivery.retry(tenant.id, principal.user.id);
+
+    return this.status(tenant, principal);
   }
 }

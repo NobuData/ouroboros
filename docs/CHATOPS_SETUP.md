@@ -102,6 +102,10 @@ Set all three or none — `ouroboros-rest` refuses to boot with only some of the
 Slack routes refuse every request and the Slack tile in Settings says no Slack app is registered.
 Restart `ouroboros-rest` after setting them.
 
+`OURO_SLACK_API_BASE_URL` is **not** part of setting an app up: leave it unset. It moves where
+`ouroboros-rest` reaches Slack's Web API — bot token included — and exists for the e2e stack,
+which points it at a local stand-in (`tests/e2e/fixtures/slack-stub`, #545).
+
 Slack verifies the Events request URL the moment you save it, so the deployment must be running
 **with the signing secret set** before the manifest's event subscription will save. If Slack
 reports the URL as unverified, set the variables, restart, and press **Retry**.

@@ -727,6 +727,13 @@ export const CHAT_CHANNEL_UNBOUND_EVENT = "chat.channel_unbound";
 export const CHAT_ON_CALL_CHANGED_EVENT = "chat.on_call_changed";
 
 /**
+ * An owner or admin queued the Slack connection's dead-lettered messages again (CA.5, #545).
+ * Subject `chat_connection`. The detail is flat: `messages`, how many were queued, and `routes`,
+ * the kinds of the routes they belong to, comma-joined. Not written when there was nothing to retry.
+ */
+export const CHAT_DELIVERY_RETRIED_EVENT = "chat.delivery_retried";
+
+/**
  * Every action this service writes.
  *
  * A named list rather than a dozen loose constants, so `openapi.yaml`'s prose, the trail
@@ -834,6 +841,7 @@ export const AUDIT_ACTIONS = [
   CHAT_CHANNEL_BOUND_EVENT,
   CHAT_CHANNEL_UNBOUND_EVENT,
   CHAT_ON_CALL_CHANGED_EVENT,
+  CHAT_DELIVERY_RETRIED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

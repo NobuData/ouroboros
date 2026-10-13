@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.31"
+  version: "0.41.32"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -9173,8 +9173,9 @@ paths:
         the app asks for that were not, when the token was last seen to work, and the platform's
         reason when it does not; `delivery` says how the cards and lines published through it are
         faring (#536), dead letters included. `state` separates a deployment with no Slack app
-        (`not_configured`) from a workspace that has not installed it (`not_connected`). **Never
-        the bot token**, sealed or otherwise. Any member may read it.
+        (`not_configured`) from a workspace that has not installed it (`not_connected`).
+        `viewerLinked` is about the reader: whether their own Slack identity is linked (#545).
+        **Never the bot token**, sealed or otherwise. Any member may read it.
       operationId: getSlackConnection
       parameters:
         - $ref: "#/components/parameters/TenantHeader"
@@ -9265,6 +9266,65 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/v1/slack/connection/delivery/retry:
+    post:
+      tags: [chatops]
+      summary: Queue the connection's dead-lettered messages again
+      description: |-
+        Every message the publisher gave up on in the last seven days — the ones
+        `delivery.deadLettered` counts — becomes pending and due now, with its attempts cleared, so
+        each gets the whole retry schedule again (#545). A message is queued again as itself, so
+        nothing is posted twice. Answers the status after it, in which those messages are pending;
+        with nothing to retry it changes nothing and still answers the status. Recorded as
+        `chat.delivery_retried` when anything was queued. Owners and admins.
+      operationId: retrySlackDelivery
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The status after it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SlackConnection"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            this route is for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `slack_not_connected` — the workspace has no active Slack connection to publish
+            through. Re-install the app first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/slack/channels:
     get:
       tags: [chatops]
@@ -9277,8 +9337,9 @@ paths:
         (`purpose`), if anything; and the kinds of the Slack notification routes that post to it
         (`routes`). Bound channels come first — `loops`, `alerts`, `leads` — then the rest by
         name. The direct-message conversations the publisher opens are not channels and are never
-        listed. A workspace without an active Slack connection is answered `connected` false and
-        no channels, not an error. Any member may read it.
+        listed. A workspace where Slack was never installed is answered `connected` false and no
+        channels, not an error; one whose connection was revoked or is failing is answered
+        `connected` false with its channels as they last stood (#545). Any member may read it.
       operationId: listSlackChannels
       parameters:
         - $ref: "#/components/parameters/TenantHeader"
@@ -58455,7 +58516,7 @@ components:
       description: Where Slack stands for a workspace. Never carries the bot token.
       additionalProperties: false
       required:
-        [state, configured, installPath, connectionId, workspace, appId, appVersion, scopes, missingScopes, statusDetail, installedAt, lastVerifiedAt, channels, socketMode, delivery]
+        [state, configured, installPath, connectionId, workspace, appId, appVersion, scopes, missingScopes, statusDetail, installedAt, lastVerifiedAt, channels, socketMode, delivery, viewerLinked]
       properties:
         state:
           type: string
@@ -58533,6 +58594,14 @@ components:
           description: Whether this deployment reaches Slack over Socket Mode — development only.
         delivery:
           $ref: "#/components/schemas/SlackDelivery"
+        viewerLinked:
+          type: boolean
+          description: |-
+            Whether the reader has a linked Slack identity on the workspace's active connection
+            ([#545](https://github.com/NobuData/ouroboros/issues/545)). False without an active
+            connection, and for a caller that is not a person. It gates nothing in the app —
+            commands typed there run under the session — and says only whether Slack's buttons and
+            commands will act as this person.
 
     SlackDelivery:
       type: object
@@ -58543,7 +58612,7 @@ components:
         counts. Every message is retried with backoff (honouring Slack's `Retry-After`) and, when
         its attempts run out, kept as a dead letter with its error rather than dropped.
       additionalProperties: false
-      required: [state, pending, retrying, deadLettered, lastError, lastDeadLetteredAt, lastSentAt]
+      required: [state, pending, retrying, deadLettered, stuck, affectedRoutes, lastError, lastDeadLetteredAt, lastSentAt]
       properties:
         state:
           type: string
@@ -58564,6 +58633,21 @@ components:
           type: integer
           minimum: 0
           description: Messages given up on in the last seven days.
+        stuck:
+          type: integer
+          minimum: 0
+          description: |-
+            Messages still failing after three attempts — retrying persistently, which is when a
+            retry stops being weather and starts being worth saying
+            ([#545](https://github.com/NobuData/ouroboros/issues/545)). Counted among `retrying`.
+        affectedRoutes:
+          type: array
+          description: |-
+            The kinds of the notification routes with a dead letter in the last seven days or a
+            stuck message, sorted. Empty when there is neither.
+          items:
+            type: string
+          examples: [["custom:build-failures"]]
         lastError:
           type: [string, "null"]
           description: The most recent dead letter's error.
@@ -58599,7 +58683,12 @@ components:
       properties:
         connected:
           type: boolean
-          description: Whether the workspace has an active Slack connection. Without one, `channels` is empty.
+          description: |-
+            Whether the workspace has an active Slack connection. Where Slack was never installed,
+            `channels` is empty. A revoked or failing connection's channels are still listed as
+            they last stood ([#545](https://github.com/NobuData/ouroboros/issues/545)) — what was
+            published to them stays readable — and every channel write answers
+            `409 slack_not_connected`.
         refreshedAt:
           type: [string, "null"]
           format: date-time

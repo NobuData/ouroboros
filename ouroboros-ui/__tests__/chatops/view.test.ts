@@ -6,8 +6,10 @@ import {
   CHATOPS_HEADLINE,
   CHATOPS_POLL_SECONDS,
   CHATOPS_SUBLINE,
+  DELIVERY_AUDIT_PATH,
   ERROR_NOTE,
   INSTALL_ROLE_NOTE,
+  LINK_COMMAND,
   MANAGE_SETTINGS_PATH,
   NEVER_LISTED,
   NEVER_VERIFIED,
@@ -22,6 +24,7 @@ import {
   SETUP_GUIDE_HREF,
   SETUP_STEPS,
   appText,
+  botRemoved,
   botText,
   boundChannels,
   boundNotice,
@@ -30,6 +33,7 @@ import {
   channelName,
   channelsBody,
   chooseChannelLabel,
+  deliveryBanner,
   healthFacts,
   healthLine,
   installHref,
@@ -48,9 +52,11 @@ import {
   refusalText,
   refused,
   repairFor,
+  revokedReason,
   routesText,
   scopesText,
   showsHealth,
+  showsUnlinked,
   statusText,
   unbindName,
   unboundNotice,
@@ -66,6 +72,8 @@ import {
   channels,
   chatOpsPage,
   connection,
+  deadLettering,
+  delivery,
   notConfigured,
   notConnected,
   revoked,
@@ -232,6 +240,127 @@ describe("the health strip", () => {
   });
 });
 
+describe("publish health (#545)", () => {
+  const routes = chatOpsPage().routes;
+
+  it("says nothing while nothing was given up on and nothing keeps failing", () => {
+    expect(deliveryBanner(connection(), routes)).toBeNull();
+    expect(
+      deliveryBanner(connection({ delivery: delivery({ state: "retrying", retrying: 2 }) }), routes),
+      "a first failure is weather",
+    ).toBeNull();
+  });
+
+  it("counts the dead letters, names the routes by their labels and quotes Slack", () => {
+    expect(deliveryBanner(deadLettering(), routes)).toEqual({
+      headline: "2 messages could not be delivered to Slack.",
+      detail: "Affected: Build failures. Slack's last answer: channel_not_found.",
+      retryable: true,
+    });
+    expect(
+      deliveryBanner(connection({ delivery: delivery({ state: "dead_lettered", deadLettered: 1 }) }), routes),
+    ).toEqual({ headline: "1 message could not be delivered to Slack.", detail: null, retryable: true });
+  });
+
+  it("falls back to a route's kind where the routes could not be read, or name no such route", () => {
+    const unread = { ok: false, reason: "nope" } as const;
+
+    expect(deliveryBanner(deadLettering(), unread)?.detail).toContain("Affected: custom:build-failures.");
+    expect(
+      deliveryBanner(
+        connection({ delivery: delivery({ state: "dead_lettered", deadLettered: 1, affectedRoutes: ["custom:unknown"] }) }),
+        routes,
+      )?.detail,
+    ).toBe("Affected: custom:unknown.");
+  });
+
+  it("names the escalation's direct message, which is on no routing row", () => {
+    const dm = connection({
+      delivery: delivery({ state: "dead_lettered", deadLettered: 1, affectedRoutes: ["needs_you_dm"] }),
+    });
+
+    expect(deliveryBanner(dm, routes)?.detail).toBe("Affected: On-call DM.");
+    expect(deliveryBanner(dm, { ok: false, reason: "nope" })?.detail).toBe("Affected: On-call DM.");
+  });
+
+  it("says a message keeps failing while it is retried — which needs no retry of its own", () => {
+    const one = connection({ delivery: delivery({ state: "retrying", retrying: 1, stuck: 1 }) });
+    const three = connection({
+      delivery: delivery({
+        state: "retrying",
+        retrying: 3,
+        stuck: 3,
+        affectedRoutes: ["custom:build-failures", "custom:loop-finished"],
+        lastError: "ignored_without_a_dead_letter",
+      }),
+    });
+
+    expect(deliveryBanner(one, routes)).toEqual({
+      headline: "1 message keeps failing to reach Slack, and is still being retried.",
+      detail: null,
+      retryable: false,
+    });
+    expect(deliveryBanner(three, routes)).toEqual({
+      headline: "3 messages keep failing to reach Slack, and are still being retried.",
+      detail: "Affected: Build failures, Loop finished (merged).",
+      retryable: false,
+    });
+  });
+
+  it("is drawn for a failing connection without a retry, and never under a revoked one or none", () => {
+    const dead = deadLettering().delivery;
+
+    expect(deliveryBanner(connection({ state: "error", delivery: dead }), routes)?.retryable).toBe(false);
+    for (const state of ["revoked", "not_connected", "not_configured"] as const) {
+      expect(deliveryBanner(connection({ state, delivery: dead }), routes), state).toBeNull();
+    }
+  });
+
+  it("links the audit log's own section", () => {
+    expect(DELIVERY_AUDIT_PATH).toBe("/settings#audit");
+  });
+});
+
+describe("the unlinked reader (#545)", () => {
+  it("is told only while Slack is connected and they have no link", () => {
+    expect(showsUnlinked(connection({ viewerLinked: false }))).toBe(true);
+    expect(showsUnlinked(connection())).toBe(false);
+    for (const state of STATES.filter((one) => one !== "connected")) {
+      expect(showsUnlinked(connection({ state, viewerLinked: false })), state).toBe(false);
+    }
+  });
+
+  it("names the command that links, typed in Slack", () => {
+    expect(LINK_COMMAND).toBe("/ouro link");
+  });
+});
+
+describe("a revoked connection's reason (#545)", () => {
+  it.each([
+    ["app_uninstalled", "The app was removed from the Slack workspace."],
+    ["tokens_revoked", "The app's token was revoked in Slack."],
+    ["token_revoked", "The app's token was revoked in Slack."],
+    ["account_inactive", "The Slack account that installed the app was deactivated."],
+    ["invalid_auth", "Slack no longer recognises the app's token."],
+  ])("reads %s in words", (statusDetail, sentence) => {
+    expect(revokedReason({ state: "revoked", statusDetail })).toBe(sentence);
+  });
+
+  it("says nothing for a reason it does not know, no reason, or a connection that is not revoked", () => {
+    expect(revokedReason({ state: "revoked", statusDetail: "something_new" })).toBeNull();
+    expect(revokedReason({ state: "revoked", statusDetail: null })).toBeNull();
+    expect(revokedReason({ state: "error", statusDetail: "app_uninstalled" })).toBeNull();
+  });
+});
+
+describe("a channel the bot was removed from (#545)", () => {
+  it("is one that is live in Slack and without the bot", () => {
+    expect(botRemoved({ joined: false, archived: false })).toBe(true);
+    expect(botRemoved({ joined: true, archived: false })).toBe(false);
+    expect(botRemoved({ joined: false, archived: true })).toBe(false);
+  });
+});
+
 describe("the install journey", () => {
   it("is the page for the two states with no connection, and for no other", () => {
     expect(STATES.map((state) => journeyFor({ state }))).toEqual([
@@ -309,6 +438,21 @@ describe("the channels", () => {
     expect(channelsBody({ ...chatOpsPage(), channels: { ok: false, reason: "nope" } })).toBe("unread");
     for (const state of STATES.filter((one) => one !== "connected")) {
       expect(channelsBody(chatOpsPage({ connection: connection({ state }) })), state).toBeNull();
+    }
+  });
+
+  it("keeps a revoked or failing connection's bound channels as history, and nothing else (#545)", () => {
+    const bound = channels(boundChannelList(), { connected: false });
+
+    for (const state of ["revoked", "error"] as const) {
+      expect(channelsBody(chatOpsPage({ connection: connection({ state }), channels: bound })), state).toBe("history");
+      expect(
+        channelsBody({ ...chatOpsPage({ connection: connection({ state }) }), channels: { ok: false, reason: "nope" } }),
+        state,
+      ).toBeNull();
+    }
+    for (const state of ["not_configured", "not_connected"] as const) {
+      expect(channelsBody(chatOpsPage({ connection: connection({ state }), channels: bound })), state).toBeNull();
     }
   });
 
