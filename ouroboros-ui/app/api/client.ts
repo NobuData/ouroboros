@@ -61,8 +61,28 @@ export const SESSION_COOKIE = "better-auth.session_token";
  */
 export const SESSION_CACHE_COOKIE = "better-auth.session_data";
 
-/** Both, in the order they are sent. */
-export const SESSION_COOKIES = [SESSION_COOKIE, SESSION_CACHE_COOKIE] as const;
+/**
+ * What the service puts in front of both names when it is reached over `https://`.
+ *
+ * BetterAuth adds it by itself when its base URL is `https://` (see `SESSION_COOKIE` in
+ * `ouroboros-rest/src/auth/session.options.ts`), so on a deployment the browser holds
+ * `__Secure-better-auth.session_token` and never the bare name. A client that forwarded only
+ * the bare names would find no session there at all, and every signed-in visitor would be
+ * sent back to `/login`.
+ */
+export const SECURE_COOKIE_PREFIX = "__Secure-";
+
+/**
+ * Every name the pair can arrive under, in the order they are sent: the `https://` names
+ * first, then the plain-HTTP ones a development stack uses. Each is forwarded under the name
+ * it arrived with, because that is the name the service reads.
+ */
+export const SESSION_COOKIES = [
+  `${SECURE_COOKIE_PREFIX}${SESSION_COOKIE}`,
+  `${SECURE_COOKIE_PREFIX}${SESSION_CACHE_COOKIE}`,
+  SESSION_COOKIE,
+  SESSION_CACHE_COOKIE,
+] as const;
 
 /** One of the cookies this client forwards. */
 export type SessionCookieName = (typeof SESSION_COOKIES)[number];

@@ -30,6 +30,8 @@ vi.mock("server-only", () => ({}));
 const jar = new Map<string, string>();
 /** Cookies deleted while serving it. */
 const deleted: string[] = [];
+/** Cookies written while serving it — a `__Secure-` cookie is cleared by a write. */
+const written: { name: string; value: string; maxAge?: number; secure?: boolean }[] = [];
 /**
  * The headers of the request under test. Two are read through this module: `origin`, which
  * it forwards so BetterAuth's origin check is satisfied, and `x-ouro-path`, which
@@ -42,7 +44,10 @@ vi.mock("next/headers", () => ({
   cookies: () =>
     Promise.resolve({
       get: (name: string) => (jar.has(name) ? { name, value: jar.get(name) } : undefined),
-      set: () => {},
+      set: (cookie: { name: string; value: string; maxAge?: number; secure?: boolean }) => {
+        written.push(cookie);
+        if (cookie.maxAge === 0) jar.delete(cookie.name);
+      },
       delete: (name: string) => {
         deleted.push(name);
         jar.delete(name);
@@ -180,6 +185,7 @@ const BROWSER = "http://localhost:3000";
 beforeEach(() => {
   jar.clear();
   deleted.length = 0;
+  written.length = 0;
   incoming.set("origin", BROWSER);
   incoming.delete(REQUEST_PATH_HEADER);
   redirectedTo = undefined;
@@ -251,6 +257,21 @@ describe("readSession", () => {
     await readSession();
 
     expect(new URL(stub.urls[0]).origin).toBe(REST);
+  });
+
+  it("forwards the cookies under their https names, which is what a deployment sets", async () => {
+    // BetterAuth prefixes both cookies when its base URL is `https://`. A client that looked
+    // for the bare names found no session on a deployment and sent everybody back to /login.
+    jar.set("__Secure-better-auth.session_token", "token-value");
+    jar.set("__Secure-better-auth.session_data", "cached-snapshot");
+    const stub = serviceAnswering({});
+
+    await readSession();
+
+    expect(stub.headers[0].get("cookie")).toBe(
+      "__Secure-better-auth.session_token=token-value; " +
+        "__Secure-better-auth.session_data=cached-snapshot",
+    );
   });
 
   it("forwards both of BetterAuth's cookies, not just the token", async () => {
@@ -580,6 +601,19 @@ describe("signOutSession", () => {
       "better-auth.session_token",
       "better-auth.session_data",
       "ouro_tenant",
+    ]);
+  });
+
+  it("clears the https cookies with a Secure write, which is the only one a browser takes", async () => {
+    jar.set("__Secure-better-auth.session_token", "token-value");
+    jar.set("__Secure-better-auth.session_data", "cached-snapshot");
+    serviceAnswering({});
+
+    await signOutSession().catch(() => undefined);
+
+    expect(written).toEqual([
+      { name: "__Secure-better-auth.session_token", value: "", maxAge: 0, path: "/", secure: true },
+      { name: "__Secure-better-auth.session_data", value: "", maxAge: 0, path: "/", secure: true },
     ]);
   });
 

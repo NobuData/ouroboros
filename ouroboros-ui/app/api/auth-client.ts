@@ -78,10 +78,28 @@ export const AUTH_BASE_PATH = "/api/auth";
  * contract, like the paths beside them, and `client.test.ts` asserts the other copy against
  * the same literal.
  *
- * Read on the server (`app/api/auth-server.ts`), never here: both are `HttpOnly`, so script
+ * Four names, not two: each cookie arrives as `__Secure-…` from a service reached over
+ * `https://` and bare from one reached over plain HTTP.
+ *
+ * Read on the server (`app/api/auth-server.ts`), never here: all are `HttpOnly`, so script
  * cannot see them and the browser sends them by itself.
  */
-export const AUTH_COOKIES = ["better-auth.session_token", "better-auth.session_data"] as const;
+export const AUTH_COOKIES = [
+  "__Secure-better-auth.session_token",
+  "__Secure-better-auth.session_data",
+  "better-auth.session_token",
+  "better-auth.session_data",
+] as const;
+
+/**
+ * What marks the two names the service uses over `https://`.
+ *
+ * BetterAuth prefixes both cookies when its base URL is `https://`, so those are the names a
+ * deployment's browser holds; the bare ones are a plain-HTTP development stack's. A browser
+ * accepts a cookie with this prefix — including the one that clears it — only when it is
+ * marked `Secure`.
+ */
+export const SECURE_AUTH_COOKIE_PREFIX = "__Secure-";
 
 /**
  * A failure one of the auth routes answered with.
