@@ -63,19 +63,19 @@ describe("insightsHeadline", () => {
 });
 
 describe("the head's actions", () => {
-  it("are the mockup's three, in its order, each unbuilt one saying which issue builds it", () => {
+  it("are three, in the mockup's order, and none is unbuilt: Slack's leads to Chat Ops (#541)", () => {
     expect(INSIGHTS_ACTIONS.map((action) => action.label)).toEqual([
       "✦ Build Analyzer",
       "Email weekly digest",
-      "Send to Slack",
+      "Weekly digest in Slack →",
     ]);
     expect(INSIGHTS_ACTIONS.map((action) => action.soonNote)).toEqual([
-      // The analyzer is built (#516) and the digest's subscribe sheet too (#447): no notes.
+      // The analyzer is built (#516), the digest's subscribe sheet too (#447), and Chat Ops (#541).
       null,
       null,
-      expect.stringMatching(/arrives? with #536/),
+      null,
     ]);
-    expect(INSIGHTS_ACTIONS.map((action) => action.href)).toEqual([ANALYZER_PATH, null, null]);
+    expect(INSIGHTS_ACTIONS.map((action) => action.href)).toEqual([ANALYZER_PATH, null, "/chatops"]);
   });
 });
 

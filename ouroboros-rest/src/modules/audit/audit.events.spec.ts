@@ -97,6 +97,8 @@ import {
   CHAT_IDENTITY_UNLINKED_EVENT,
   CHAT_COMMAND_INVOKED_EVENT,
   CHAT_DECISION_ANSWERED_EVENT,
+  CHAT_CHANNEL_BOUND_EVENT,
+  CHAT_CHANNEL_UNBOUND_EVENT,
   ROADMAP_SUGGESTION_DISMISSED_EVENT,
 } from "./audit.events";
 
@@ -252,6 +254,8 @@ describe("the vocabulary", () => {
       "chat.identity_unlinked",
       "chat.command_invoked",
       "chat.decision_answered",
+      "chat.channel_bound",
+      "chat.channel_unbound",
     ]);
   });
 
@@ -418,6 +422,8 @@ describe("the vocabulary", () => {
       CHAT_IDENTITY_UNLINKED_EVENT,
       CHAT_COMMAND_INVOKED_EVENT,
       CHAT_DECISION_ANSWERED_EVENT,
+      CHAT_CHANNEL_BOUND_EVENT,
+      CHAT_CHANNEL_UNBOUND_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

@@ -88,7 +88,6 @@ const NAMED_LABELS: readonly (readonly [file: string, name: string])[] = [
   ["side-view.ts", "NOT_CONNECTED"],
   ["side-view.ts", "NOT_YET"],
   ["side-view.ts", "CHAT_OPS_LABEL"],
-  ["side-view.ts", "SOON_MARK"],
   ["side-view.ts", "DIGEST_LEAD"],
   ["side-view.ts", "DIGEST_TIME_FIELD"],
   ["side-view.ts", "DIGEST_TIME_SAVE"],

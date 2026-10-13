@@ -12,9 +12,11 @@
  */
 
 import { Injectable } from "@nestjs/common";
+import { sql, type Transaction } from "kysely";
 
 import {
   DM_PURPOSE_TAG,
+  DM_ROUTE_KIND,
   readChatDeliveryHealth,
   type ChatDeliveryHealthRow,
 } from "../chat/chat.outbox";
@@ -25,6 +27,8 @@ import type {
   ChatIdentityLink,
   ChatIdentityVerification,
   ChatInstallMeta,
+  Database,
+  NotificationRouteConfig,
 } from "../db/schema";
 import type { SlackChannelSummary } from "./slack.client";
 
@@ -66,6 +70,21 @@ export interface InstallWrite {
   readonly installMeta: ChatInstallMeta;
   readonly installedBy: string;
   readonly at: Date;
+}
+
+/** A Slack notification route that posts to a channel: which kind, and which channel row. */
+export interface ChannelRouteRow {
+  readonly kind: string;
+  readonly chatChannelId: string;
+}
+
+/** A route a binding points at a channel — and what it is created as when the workspace has none. */
+export interface ChannelRouteWrite {
+  readonly kind: string;
+  /** Used only when the route is created: an existing route keeps its own. */
+  readonly enabled: boolean;
+  readonly dmOnCall: boolean;
+  readonly config: NotificationRouteConfig;
 }
 
 @Injectable()
@@ -302,6 +321,184 @@ export class SlackRepository {
       )
       .orderBy("channel_name")
       .execute();
+  }
+
+  /**
+   * One channel row of a workspace, whatever its connection and purpose.
+   *
+   * @param organizationId - The workspace.
+   * @param id - The row's id — a UUID; the caller has checked its shape.
+   * @returns The row, or `undefined` when the workspace has none by that id.
+   */
+  async channel(organizationId: string, id: string): Promise<ChatChannel | undefined> {
+    return this.database.db
+      .selectFrom("chat_channels")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .where("id", "=", id)
+      .executeTakeFirst();
+  }
+
+  /**
+   * The workspace's Slack routes that post to a channel.
+   *
+   * @param organizationId - The workspace.
+   * @returns One row per route with a channel, by kind.
+   */
+  async channelRoutes(organizationId: string): Promise<ChannelRouteRow[]> {
+    const rows = await this.database.db
+      .selectFrom("notification_routes")
+      .select(["kind", "chat_channel_id"])
+      .where("organization_id", "=", organizationId)
+      .where("channel", "=", SLACK)
+      .where("chat_channel_id", "is not", null)
+      .orderBy("kind")
+      .execute();
+
+    return rows.flatMap((row) =>
+      row.chat_channel_id === null ? [] : [{ kind: row.kind, chatChannelId: row.chat_channel_id }],
+    );
+  }
+
+  /**
+   * Run work in one transaction.
+   *
+   * @param work - The statements.
+   * @returns What the work returned.
+   */
+  transaction<T>(work: (trx: Transaction<Database>) => Promise<T>): Promise<T> {
+    return this.database.transaction(work);
+  }
+
+  /**
+   * A connection's channels, locked for the binding that read them — so two bindings of one
+   * connection run one after the other, and "one channel per purpose" holds under a race.
+   *
+   * @param trx - The binding's transaction.
+   * @param connectionId - The connection.
+   * @returns Every row of the connection, DM conversations included, as they are now.
+   */
+  async lockChannels(
+    trx: Transaction<Database>,
+    connectionId: string,
+  ): Promise<Pick<ChatChannel, "id" | "purpose_tag">[]> {
+    return trx
+      .selectFrom("chat_channels")
+      .select(["id", "purpose_tag"])
+      .where("connection_id", "=", connectionId)
+      .orderBy("id")
+      .forUpdate()
+      .execute();
+  }
+
+  /**
+   * Set, or clear, what a channel is for.
+   *
+   * @param trx - The binding's transaction.
+   * @param id - The channel row.
+   * @param purpose - The purpose tag, or `null` for none.
+   */
+  async setChannelPurpose(
+    trx: Transaction<Database>,
+    id: string,
+    purpose: string | null,
+  ): Promise<void> {
+    await trx
+      .updateTable("chat_channels")
+      .set({ purpose_tag: purpose })
+      .where("id", "=", id)
+      .execute();
+  }
+
+  /**
+   * Point a Slack route at a channel: created when the workspace has no route of the kind,
+   * re-pointed when it has — leaving `enabled`, `dm_on_call` and `config` as the workspace set
+   * them. The one exception: a route that had no channel and was off — which is exactly what an
+   * unbind leaves behind — takes the purpose's default `enabled`, so binding again switches back
+   * on what unbinding switched off.
+   *
+   * @param trx - The binding's transaction.
+   * @param organizationId - The workspace.
+   * @param chatChannelId - The channel row.
+   * @param route - The kind, and what a new route starts as.
+   * @param updatedBy - Who bound the channel.
+   * @returns Whether the route now posts to the channel — `false` when the workspace's route of
+   *   that kind is bound to email or PagerDuty, which carries no chat target
+   *   (`notification_routes_chat_target_slack_only`) and is left exactly as it was.
+   */
+  async pointRoute(
+    trx: Transaction<Database>,
+    organizationId: string,
+    chatChannelId: string,
+    route: ChannelRouteWrite,
+    updatedBy: string,
+  ): Promise<boolean> {
+    const row = await trx
+      .insertInto("notification_routes")
+      .values({
+        organization_id: organizationId,
+        kind: route.kind,
+        channel: SLACK,
+        config: JSON.stringify(route.config),
+        enabled: route.enabled,
+        dm_on_call: route.dmOnCall,
+        chat_channel_id: chatChannelId,
+        updated_by: updatedBy,
+      })
+      .onConflict((conflict) =>
+        conflict
+          .columns(["organization_id", "kind"])
+          .doUpdateSet({
+            chat_channel_id: chatChannelId,
+            updated_by: updatedBy,
+            enabled: sql<boolean>`case
+              when notification_routes.chat_channel_id is null and not notification_routes.enabled
+                then excluded.enabled
+              else notification_routes.enabled
+            end`,
+          })
+          .where("notification_routes.channel", "=", SLACK),
+      )
+      .returning("kind")
+      .executeTakeFirst();
+
+    return row !== undefined;
+  }
+
+  /**
+   * Detach the Slack routes posting to a channel. A route left with nowhere to post — no
+   * channel, no on-call DM, and not the kind that is a DM by nature — is switched off in the
+   * same statement, which is what `notification_routes_slack_target` (V130) requires of it.
+   *
+   * @param trx - The binding's transaction.
+   * @param organizationId - The workspace.
+   * @param chatChannelId - The channel row.
+   * @param keep - Kinds to leave pointing at the channel.
+   * @param updatedBy - Who unbound the channel.
+   * @returns The kinds detached, sorted.
+   */
+  async detachRoutes(
+    trx: Transaction<Database>,
+    organizationId: string,
+    chatChannelId: string,
+    keep: readonly string[],
+    updatedBy: string,
+  ): Promise<string[]> {
+    const detach = trx
+      .updateTable("notification_routes")
+      .set({
+        chat_channel_id: null,
+        enabled: sql<boolean>`enabled and (dm_on_call or kind = ${DM_ROUTE_KIND})`,
+        updated_by: updatedBy,
+      })
+      .where("organization_id", "=", organizationId)
+      .where("channel", "=", SLACK)
+      .where("chat_channel_id", "=", chatChannelId);
+    const rows = await (keep.length === 0 ? detach : detach.where("kind", "not in", [...keep]))
+      .returning("kind")
+      .execute();
+
+    return rows.map((row) => row.kind).sort();
   }
 
   /**

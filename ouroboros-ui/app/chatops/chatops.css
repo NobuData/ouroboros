@@ -1,0 +1,467 @@
+/*
+ * Chat Ops (#541) — mockup 19's page head, and under it the connection health strip, the install
+ * journey, the post-install step, the bound channels and the channel picker's contents.
+ *
+ * The mockup is docs/mockups/19-chatops.html over docs/mockups/assets/ouroboros.css. What is
+ * taken from it is the head; what is not is its topbar — this page renders inside the app shell
+ * (#41) and adds no fixed or sticky chrome of its own, so the header and the sidebar stay put
+ * while the pane scrolls. Nothing here scrolls on its own either: the picker's list grows inside
+ * the shell's overlay panel, which is the one thing allowed to scroll over the pane.
+ *
+ * The buttons, the eyebrow, the card, the tag and the empty note are the primitives in `app/ui/`.
+ *
+ * Held to the two rules every sheet here is (docs/CONVENTIONS.md § 6): every colour is a token
+ * from app/tokens.css, which is what makes both palettes one sheet — the mockup is dark-only —
+ * and every length that should follow the reader's font-size preference is rem, which is what
+ * makes the 125% step correct.
+ */
+
+/* ---------- the page frame ---------- */
+
+.chatops {
+  padding: var(--sp-11) var(--sp-10) var(--sp-12);
+}
+
+.chatops__head {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-8);
+  margin-bottom: var(--sp-10);
+}
+
+/* The floor keeps the headline from being squeezed beside the two actions. */
+.chatops__headings {
+  flex: 1;
+  min-width: 20rem;
+}
+
+.chatops__title {
+  font-size: var(--t-2xl);
+  letter-spacing: var(--tr-tight);
+  text-wrap: balance;
+}
+
+.chatops__sub {
+  max-width: 72ch;
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-mut);
+  line-height: var(--lh-body);
+}
+
+.chatops__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-6);
+}
+
+.chatops__stale {
+  margin-bottom: var(--sp-8);
+}
+
+/* The page under the strip: one column of cards at a reading measure. */
+.chatops__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  max-width: 64rem;
+  min-width: 0;
+}
+
+.chatops__foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ---------- the connection health strip ---------- */
+
+.chatops__health {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  max-width: 64rem;
+  margin-bottom: var(--sp-8);
+  padding: var(--sp-6) var(--sp-8);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.chatops__health-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-6);
+}
+
+.chatops__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  list-style: none;
+}
+
+.chatops__fact {
+  display: flex;
+  gap: var(--sp-4);
+  overflow-wrap: anywhere;
+}
+
+.chatops__fact-sep {
+  color: var(--ink-faint);
+}
+
+/* The hue is beside the word, never in its place: every tone's fact says what it means. */
+.chatops__fact--ok {
+  color: var(--ok);
+}
+
+.chatops__fact--warn {
+  color: var(--warn);
+}
+
+.chatops__fact--err {
+  color: var(--err);
+}
+
+.chatops__health-broken {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-6);
+}
+
+.chatops__health-note {
+  max-width: 72ch;
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* A refusal, in the service's words, beside the control that was pressed. */
+.chatops__refusal {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the install journey and the post-install step ---------- */
+
+.chatops__journey,
+.chatops__first,
+.chatops__bound {
+  min-width: 0;
+}
+
+.chatops__lead {
+  max-width: 72ch;
+  margin: 0 0 var(--sp-6);
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.chatops__steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  max-width: 72ch;
+  margin: 0 0 var(--sp-6);
+  padding-left: var(--sp-9);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.chatops__step {
+  overflow-wrap: anywhere;
+}
+
+/* What is missing, and who supplies it — set apart from the explanation above it. */
+.chatops__missing {
+  max-width: 72ch;
+  margin: 0 0 var(--sp-6);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-sm);
+  background: var(--warn-tint);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.chatops__journey-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-8);
+}
+
+.chatops__link {
+  color: var(--accent);
+  font-size: var(--t-sm);
+  text-decoration: underline;
+}
+
+.chatops__purposes,
+.chatops__channels,
+.chatops__picks {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chatops__purpose,
+.chatops__channel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-5) var(--sp-8);
+  padding: var(--sp-6) 0;
+  border-top: 1px solid var(--line);
+}
+
+.chatops__purpose-text,
+.chatops__channel-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 14rem;
+}
+
+.chatops__purpose-name {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.chatops__purpose-routes {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.chatops__invite {
+  margin: var(--sp-6) 0 0;
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--line);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.chatops__code {
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-xs);
+  background: var(--inset);
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* ---------- the bound channels ---------- */
+
+.chatops__channel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.chatops__channel-name {
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.chatops__channel-mark {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.chatops__channel-meta {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.chatops__channel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-6);
+}
+
+/* ---------- the channel picker ---------- */
+
+.chatops__picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  min-width: 0;
+}
+
+.chatops__picker-text {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.chatops__picker-notice {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-6);
+  border: 1px solid var(--ok-line);
+  border-radius: var(--r-sm);
+  background: var(--ok-tint);
+  color: var(--ink);
+  font-size: var(--t-sm);
+}
+
+.chatops__picker-warning {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-5);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-sm);
+  background: var(--warn-tint);
+}
+
+.chatops__picker-warning .chatops__picker-text {
+  color: var(--ink);
+}
+
+.chatops__pick-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+
+/* A channel's row is a button: the whole of it chooses the channel. */
+.chatops__pick {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  min-width: 12rem;
+  padding: var(--sp-5) var(--sp-4);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chatops__pick:hover {
+  background: var(--raised);
+}
+
+.chatops__pick:focus-visible {
+  outline: 1px solid var(--accent);
+}
+
+.chatops__pick-facts {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.chatops__choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.chatops__choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-5);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.chatops__choice-input {
+  margin: var(--sp-2) 0 0;
+  accent-color: var(--accent);
+}
+
+.chatops__choice-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.chatops__picker-actions,
+.chatops__picker-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-6);
+}
+
+.chatops__picker-listed {
+  flex: 1;
+  min-width: 10rem;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+}
+
+/* ---------- the loading skeleton ---------- */
+
+.chatops__sk-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.chatops__sk-bar {
+  display: block;
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+.chatops__sk-bar--strip {
+  height: 2.75rem;
+}
+
+.chatops__sk-bar--title {
+  width: 14rem;
+  height: 1.5rem;
+}
+
+.chatops__sk-bar--row {
+  height: 3.25rem;
+}

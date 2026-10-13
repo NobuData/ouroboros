@@ -290,6 +290,22 @@ describe("verifying a connection", () => {
   });
 });
 
+describe("listing channels", () => {
+  it("answers nothing when the listing was stored, and Slack's error — with nothing stored — when it was not (#541)", async () => {
+    const { service, slack, store } = setup();
+    const connection = await service.complete(ORG, KEN.userId, "code-1");
+    const before = JSON.stringify(store.channelRows);
+
+    await expect(service.refreshChannels(connection, BOT_TOKEN)).resolves.toBeUndefined();
+
+    slack.channelList = { ok: false, error: "ratelimited" };
+
+    await expect(service.refreshChannels(connection, BOT_TOKEN)).resolves.toBe("ratelimited");
+    expect(JSON.stringify(store.channelRows)).toBe(before);
+    expect(store.connections[0].status).toBe("active");
+  });
+});
+
 describe("revoking", () => {
   it("is idempotent: a redelivered uninstall event changes and records nothing more", async () => {
     const { service, audit } = setup();

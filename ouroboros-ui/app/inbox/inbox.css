@@ -889,19 +889,6 @@
   margin-top: var(--sp-5);
 }
 
-/* *Chat Ops* is not built: the mark says so beside the name, in the insights frame's manner. */
-.inbox-channels__soon {
-  margin-left: var(--sp-2);
-  padding: 0 var(--sp-3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  color: var(--ink-faint);
-  font-family: var(--f-mono);
-  font-size: var(--t-2xs);
-  letter-spacing: var(--tr-wide);
-  text-transform: uppercase;
-}
-
 /* ---------- the side column: What Needs A Human ---------- */
 
 .inbox-rules {

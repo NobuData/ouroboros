@@ -220,8 +220,8 @@ describe("the defaults card", () => {
     );
     expect(slack.querySelector(".defaults__affix")).toBeNull();
     expect(
-      within(slack).getByRole("link", { name: "Integrations" }),
-    ).toHaveAttribute("href", "/settings#integrations");
+      within(slack).getByRole("link", { name: "Chat Ops" }),
+    ).toHaveAttribute("href", "/chatops");
     unmount();
 
     // A row the service sends unlinked and waiting — the Slack row before its install was built —

@@ -84,7 +84,8 @@ export type AuditSubjectType =
   | "roadmap_pipeline_settings"
   | "chat_connection"
   | "chat_identity_link"
-  | "chat_command";
+  | "chat_command"
+  | "chat_channel";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -698,6 +699,23 @@ export const AUDIT_EXPORTED_EVENT = "audit.exported";
 export const AUDIT_PURGED_EVENT = "audit.purged";
 
 /**
+ * An owner or admin bound a Slack channel to a purpose (CA.1, #541) — `loops`, `alerts` or
+ * `leads` — which points that purpose's default notification routes at it. Subject
+ * `chat_channel`, the workspace's channel row. The detail is flat: `connectionId`,
+ * `platformChannelId`, `channelName`, `purpose`, and `routes` — the route kinds now posting to
+ * the channel, comma-joined.
+ */
+export const CHAT_CHANNEL_BOUND_EVENT = "chat.channel_bound";
+
+/**
+ * An owner or admin unbound a Slack channel (CA.1, #541): its purpose was cleared and every
+ * route posting to it detached. Subject `chat_channel`. The detail is flat: `connectionId`,
+ * `platformChannelId`, `channelName`, `purpose` — the one it carried, or null — and `routes`,
+ * the kinds detached, comma-joined. Not written for a channel that was already unbound.
+ */
+export const CHAT_CHANNEL_UNBOUND_EVENT = "chat.channel_unbound";
+
+/**
  * Every action this service writes.
  *
  * A named list rather than a dozen loose constants, so `openapi.yaml`'s prose, the trail
@@ -802,6 +820,8 @@ export const AUDIT_ACTIONS = [
   CHAT_IDENTITY_UNLINKED_EVENT,
   CHAT_COMMAND_INVOKED_EVENT,
   CHAT_DECISION_ANSWERED_EVENT,
+  CHAT_CHANNEL_BOUND_EVENT,
+  CHAT_CHANNEL_UNBOUND_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

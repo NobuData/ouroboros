@@ -11,6 +11,8 @@ import type {
   ChatConnectionPublic,
   ChatIdentityLink,
   ChatIdentityVerification,
+  NotificationRouteChannel,
+  NotificationRouteConfig,
 } from "../db/schema";
 import type { ChatDeliveryHealthRow } from "../chat/chat.outbox";
 import type {
@@ -23,7 +25,12 @@ import type {
   SlackDelivery,
   SlackMessage,
 } from "./slack.client";
-import type { InstallWrite, WorkspaceMember } from "./slack.repository";
+import type {
+  ChannelRouteRow,
+  ChannelRouteWrite,
+  InstallWrite,
+  WorkspaceMember,
+} from "./slack.repository";
 
 /** The workspace, Slack workspace and people the specs share. */
 export const ORG = "org-acme";
@@ -250,13 +257,41 @@ interface StoredConnection extends ChatConnectionPublic {
   bot_token_sealed: string | null;
 }
 
+/** A stored notification route — the columns a channel binding reads and writes. */
+export interface StoredRoute {
+  organization_id: string;
+  kind: string;
+  channel: NotificationRouteChannel;
+  config: NotificationRouteConfig;
+  enabled: boolean;
+  chat_channel_id: string | null;
+  dm_on_call: boolean;
+  updated_by: string | null;
+}
+
+/** One stored route, as a spec seeds it. */
+export function route(overrides: Partial<StoredRoute> & Pick<StoredRoute, "kind">): StoredRoute {
+  return {
+    organization_id: ORG,
+    channel: "slack",
+    config: {},
+    enabled: true,
+    chat_channel_id: null,
+    dm_on_call: false,
+    updated_by: null,
+    ...overrides,
+  };
+}
+
 /**
- * The repository, in memory — with the two rules of the database the services lean on: one
- * active Slack connection per workspace, and a handshake that completes once.
+ * The repository, in memory — with the rules of the database the services lean on: one active
+ * Slack connection per workspace, a handshake that completes once, a transaction that keeps
+ * nothing when it throws, and V130's two CHECKs on a route's chat target.
  */
 export class FakeSlackStore {
   readonly connections: StoredConnection[] = [];
   readonly channelRows: ChatChannel[] = [];
+  readonly routeRows: StoredRoute[] = [];
   readonly links: ChatIdentityLink[] = [];
   readonly members = new Map<string, WorkspaceMember>([
     [`${ORG}:${KEN.userId}`, { id: "mem-ken", role: "owner" }],
@@ -401,6 +436,157 @@ export class FakeSlackStore {
     return this.channelRows.filter(
       (row) => row.connection_id === connectionId && row.purpose_tag !== "dm",
     );
+  }
+
+  async channel(organizationId: string, id: string): Promise<ChatChannel | undefined> {
+    return this.channelRows.find((row) => row.organization_id === organizationId && row.id === id);
+  }
+
+  async channelRoutes(organizationId: string): Promise<ChannelRouteRow[]> {
+    return this.routeRows
+      .filter((row) => row.organization_id === organizationId && row.channel === "slack")
+      .flatMap((row) =>
+        row.chat_channel_id === null
+          ? []
+          : [{ kind: row.kind, chatChannelId: row.chat_channel_id }],
+      )
+      .sort((a, b) => a.kind.localeCompare(b.kind));
+  }
+
+  /** How many transactions were opened — a refused call opens none. */
+  transactions = 0;
+
+  /** Runs the work at once; when it throws, channels and routes are put back as they were. */
+  async transaction<T>(work: (trx: never) => Promise<T>): Promise<T> {
+    this.transactions += 1;
+    const channels = this.channelRows.map((row) => ({ ...row }));
+    const routes = this.routeRows.map((row) => ({ ...row }));
+
+    try {
+      return await work(undefined as never);
+    } catch (error) {
+      this.channelRows.splice(0, this.channelRows.length, ...channels);
+      this.routeRows.splice(0, this.routeRows.length, ...routes);
+      throw error;
+    }
+  }
+
+  async lockChannels(
+    _trx: unknown,
+    connectionId: string,
+  ): Promise<Pick<ChatChannel, "id" | "purpose_tag">[]> {
+    return this.channelRows
+      .filter((row) => row.connection_id === connectionId)
+      .map((row) => ({ id: row.id, purpose_tag: row.purpose_tag }));
+  }
+
+  async setChannelPurpose(_trx: unknown, id: string, purpose: string | null): Promise<void> {
+    const row = this.channelRows.find((found) => found.id === id);
+
+    if (row !== undefined) {
+      Object.assign(row, { purpose_tag: purpose, updated_at: new Date() });
+    }
+  }
+
+  async pointRoute(
+    _trx: unknown,
+    organizationId: string,
+    chatChannelId: string,
+    write: ChannelRouteWrite,
+    updatedBy: string,
+  ): Promise<boolean> {
+    const stored = this.routeRows.find(
+      (row) => row.organization_id === organizationId && row.kind === write.kind,
+    );
+
+    if (stored === undefined) {
+      this.routeRows.push(
+        this.checked({
+          organization_id: organizationId,
+          kind: write.kind,
+          channel: "slack",
+          config: { ...write.config },
+          enabled: write.enabled,
+          chat_channel_id: chatChannelId,
+          dm_on_call: write.dmOnCall,
+          updated_by: updatedBy,
+        }),
+      );
+
+      return true;
+    }
+
+    if (stored.channel !== "slack") {
+      return false;
+    }
+
+    // A route left off with no channel — what an unbind leaves — takes the default again.
+    const enabled =
+      stored.chat_channel_id === null && !stored.enabled ? write.enabled : stored.enabled;
+
+    Object.assign(stored, this.checked({ ...stored, chat_channel_id: chatChannelId, enabled }), {
+      updated_by: updatedBy,
+    });
+
+    return true;
+  }
+
+  async detachRoutes(
+    _trx: unknown,
+    organizationId: string,
+    chatChannelId: string,
+    keep: readonly string[],
+    updatedBy: string,
+  ): Promise<string[]> {
+    const detached = this.routeRows.filter(
+      (row) =>
+        row.organization_id === organizationId &&
+        row.channel === "slack" &&
+        row.chat_channel_id === chatChannelId &&
+        !keep.includes(row.kind),
+    );
+
+    for (const row of detached) {
+      Object.assign(
+        row,
+        this.checked({
+          ...row,
+          chat_channel_id: null,
+          enabled: row.enabled && (row.dm_on_call || row.kind === "needs_you_dm"),
+          updated_by: updatedBy,
+        }),
+      );
+    }
+
+    return detached.map((row) => row.kind).sort();
+  }
+
+  /**
+   * V130's rules for a route's chat target, as the database would refuse a row that broke them.
+   *
+   * @param row - The row about to be stored.
+   * @returns The row.
+   */
+  private checked(row: StoredRoute): StoredRoute {
+    const violated =
+      row.channel !== "slack" && (row.chat_channel_id !== null || row.dm_on_call)
+        ? "notification_routes_chat_target_slack_only"
+        : row.channel === "slack" &&
+            row.enabled &&
+            row.kind !== "needs_you_dm" &&
+            row.chat_channel_id === null &&
+            !row.dm_on_call
+          ? "notification_routes_slack_target"
+          : undefined;
+
+    if (violated !== undefined) {
+      throw Object.assign(new Error(`violates check constraint "${violated}"`), {
+        code: "23514",
+        constraint: violated,
+      });
+    }
+
+    return row;
   }
 
   /** What the publisher's outbox reports for each connection; absent means nothing published. */

@@ -4935,6 +4935,64 @@ card intended ─▶ decision_escalation_timers ─▶ due ─▶ item.escalated
 Not here: an API for escalation overrides or the on-call designee (#541, #542, #548), and the
 end-to-end run against Slack (#545).
 
+## Slack channels & bindings
+
+> **Issue:** [#541](https://github.com/NobuData/ouroboros/issues/541) — *[CA.1] ChatOps route,
+> head & connection flow* · epic [#528](https://github.com/NobuData/ouroboros/issues/528) · no
+> migration (V130's `chat_channels` and `notification_routes`)
+
+What the Chat Ops page's *+ Add channel* picker reads and writes: the workspace's Slack channels,
+and which of them loops, alerts and the leads' digest are posted to.
+
+```
+GET    /api/v1/slack/channels               any member    the channels, and what each is for
+POST   /api/v1/slack/channels/refresh       owner/admin   ask Slack for the list again
+PUT    /api/v1/slack/channels/:id/binding   owner/admin   { purpose: loops | alerts | leads }
+DELETE /api/v1/slack/channels/:id/binding   owner/admin   unbind — idempotent
+```
+
+All four answer the same payload — `{ connected, refreshedAt, channels: [{ id,
+platformChannelId, name, isPrivate, joined, memberCount, purpose, archived, url, routes }] }` —
+so the picker redraws from whichever it called. Bound channels come first (`loops`, `alerts`,
+`leads`), then the rest by name; the DM conversations the publisher opens (#536) are stored in the
+same table and never listed. `src/modules/slack/slack.channels.{controller,service,dto}.ts`.
+
+- **There is no bindings table.** `chat_channels.purpose_tag` says what a channel is for and
+  `notification_routes.chat_channel_id` says what is posted where (V130). A binding is both,
+  written in one transaction.
+- **A purpose is its default routes** (`PURPOSE_ROUTES`, mockup 19's rows as the development
+  seed stores them):
+
+  | Purpose | Routes | Created as |
+  |---|---|---|
+  | `loops` | `custom:blocking-questions`, `custom:loop-finished`, `custom:stage-transitions` | questions on with the on-call DM, finished on, stage transitions **off** |
+  | `alerts` | `custom:build-failures` | on |
+  | `leads` | `custom:weekly-insights` | on, `config` `{}` |
+
+  A route the workspace lacks is created on Slack; one it has is only re-pointed (`enabled`,
+  `dm_on_call` and `config` stay the workspace's); one bound to email or PagerDuty is left
+  alone, because only a Slack route carries a chat target. Route-by-route editing is #543.
+- **One channel per purpose.** Binding a second channel for `loops` clears the first one's
+  purpose and re-points the routes. A channel bound for something else changes purpose, and the
+  routes it carried for the old one are detached. The binding locks the connection's channel
+  rows, so two at once run one after the other.
+- **The bot is never joined from here.** The app asks for no `channels:join` scope: a channel
+  with `joined` false is refused `409 slack_channel_not_joined`, and the message says to type
+  `/invite @Ouroboros` in the channel, refresh and try again — the same for a private channel.
+  The other refusals: `404 slack_channel_not_found` (not this workspace's connection's, or a DM
+  row), `409 slack_not_connected`, `409 slack_channel_archived`, `422 validation_failed` (a
+  purpose that is not one of the three).
+- **Unbind** clears the purpose and detaches every Slack route posting to the channel. A route
+  left with no channel and no on-call DM is switched off in the same statement
+  (`notification_routes_slack_target`); one with the on-call DM stays on.
+- **Refresh** reuses the install's listing (`SlackInstallService.refreshChannels`). When Slack
+  does not answer with a list the route is `502 slack_channel_list_failed` with Slack's error as
+  `details.reason` and nothing stored is changed — except that an error meaning the install is
+  over flips the connection to `revoked`, as a verification does.
+- **Audit.** `chat.channel_bound` and `chat.channel_unbound` (webhook registry v13), subject
+  `chat_channel`: `connectionId`, `platformChannelId`, `channelName`, `purpose` and `routes`
+  (comma-joined). An unbind that changed nothing records nothing.
+
 ## Build logs
 
 > **Issue:** [#253](https://github.com/NobuData/ouroboros/issues/253) — *[AH.5] Log ingest &

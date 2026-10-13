@@ -23,7 +23,6 @@
 
 import type { BacklogHealthResource } from "../planning/planning.resources";
 import { projectTimeline, type TimelineFacts, type TimelineResource } from "./launch.timeline";
-import { SETTINGS_PATH } from "./resources";
 
 /** Providers & keys (mockup 07). Mirrors the UI route. */
 export const PROVIDERS_PATH = "/models/providers";
@@ -44,6 +43,9 @@ export interface DeploymentCapabilities {
   /** A hosted runner pool — `OURO_HOSTED_RUNNER_POOL`. */
   readonly hostedRunnerPool: boolean;
 }
+
+/** The UI's Chat Ops page (#541) — where Slack is installed, bound and watched. */
+export const CHATOPS_PATH = "/chatops";
 
 /** A row's place on the card. */
 export type DefaultRowKey = "models" | "build" | "estimator" | "slack";
@@ -81,7 +83,7 @@ export interface DefaultRowResource {
   readonly estimator?: BacklogHealthResource["reestimation"];
   /**
    * What the row waits for. The Slack row carried *ChatOps* until its install was built (BZ.1,
-   * #535) and now carries a link instead; no row sets this today.
+   * #535) and now carries a link to the Chat Ops page instead (#541); no row sets this today.
    */
   readonly arrivesWith?: string;
 }
@@ -250,9 +252,9 @@ export function defaultRows(
       variant: "slack_future",
       status: "optional",
       text: "Slack: connect after your first PR (optional)",
-      // Still optional and dim; the Slack app's install (BZ.1, #535) is offered from the
-      // integrations grid, so that is where the row leads.
-      link: { label: "Integrations", path: `${SETTINGS_PATH}#integrations` },
+      // Still optional and dim; the row leads to the Chat Ops page (CA.1, #541), whose first
+      // state is the install journey and whose strip says how the connection stands.
+      link: { label: "Chat Ops", path: CHATOPS_PATH },
     },
   ];
 }

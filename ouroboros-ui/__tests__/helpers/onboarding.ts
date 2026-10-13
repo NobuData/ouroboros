@@ -702,7 +702,7 @@ export function defaultRow(overrides: Partial<OnboardingDefaultRow> & Pick<Onboa
       variant: "slack_future",
       status: "optional",
       text: "Slack: connect after your first PR (optional)",
-      link: { label: "Integrations", path: "/settings#integrations" },
+      link: { label: "Chat Ops", path: "/chatops" },
     },
   };
 

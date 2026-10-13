@@ -91,12 +91,13 @@ describe("the head", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("No PRs merged this week. Nothing needed a human.");
   });
 
-  it("renders each unbuilt action inert, saying why, rather than doing nothing", () => {
+  it("links the Slack action to Chat Ops, with no soon mark and no promise of a send (#541)", () => {
     render(<InsightsScreen poll={POLL} readings={insightsReadings()} />);
 
-    const slack = screen.getByRole("button", { name: "Send to Slack soon" });
-    expect(slack).toHaveAttribute("aria-disabled", "true");
-    expect(slack).toHaveAttribute("title", expect.stringMatching(/#536/));
+    const slack = screen.getByRole("link", { name: "Weekly digest in Slack →" });
+    expect(slack).toHaveAttribute("href", "/chatops");
+    expect(screen.queryByRole("button", { name: /soon/ })).toBeNull();
+    expect(screen.queryByText("Send to Slack")).toBeNull();
 
     // The analyzer is built (#516): its action is a link there.
     expect(screen.getByRole("link", { name: "✦ Build Analyzer" })).toHaveAttribute("href", ANALYZER_PATH);

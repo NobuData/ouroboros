@@ -27,7 +27,7 @@
 
 import type { InsightsHead, InsightsKpi, InsightsRange, MetricMethodology } from "@/app/api/insights";
 import { moneyOfCents, spanOfMs, tokenCount } from "@/app/format";
-import { ANALYZER_PATH } from "@/app/paths";
+import { ANALYZER_PATH, CHATOPS_PATH } from "@/app/paths";
 import type { StatTone, StatValueTone } from "@/app/ui/stat-card";
 
 import { RANGE_DAYS } from "./range";
@@ -108,23 +108,26 @@ export interface InsightsAction {
 }
 
 /**
- * The head's three actions, in the mockup's order — the one not built yet **honestly
- * unavailable**.
+ * The head's three actions, in the mockup's order — each one goes somewhere real.
  *
  * - **✦ Build Analyzer** links to mockup 18's `/analyzer` (BW.1,
  *   [#516](https://github.com/NobuData/ouroboros/issues/516)) — the amendment on #443 acted on.
  * - **Email weekly digest** opens BK.6's subscribe sheet
  *   ([#447](https://github.com/NobuData/ouroboros/issues/447)) — it works, so it has no note.
- * - **Send to Slack** is chat-ops' card publisher, BZ.2
- *   ([#536](https://github.com/NobuData/ouroboros/issues/536)), per the amendment on #443.
+ * - **Weekly digest in Slack →** links to Chat Ops (CA.1,
+ *   [#541](https://github.com/NobuData/ouroboros/issues/541)), where the workspace's Slack
+ *   connection lives and a channel is bound for the weekly digest. It replaces mockup 15's *Send
+ *   to Slack*: sending this page on demand is not built
+ *   ([#448](https://github.com/NobuData/ouroboros/issues/448)), so the action names what Slack
+ *   does carry rather than promising a send.
  *
- * An unbuilt one is an inert button with the reason as its tooltip rather than a control that
- * does nothing when pressed.
+ * An unbuilt action would be an inert button with the reason as its tooltip rather than a control
+ * that does nothing when pressed; none is unbuilt today.
  */
 export const INSIGHTS_ACTIONS: readonly InsightsAction[] = [
   { id: "analyzer", label: "✦ Build Analyzer", soonNote: null, href: ANALYZER_PATH },
   { id: "digest", label: "Email weekly digest", soonNote: null, href: null },
-  { id: "slack", label: "Send to Slack", soonNote: "Slack sends arrive with #536.", href: null },
+  { id: "slack", label: "Weekly digest in Slack →", soonNote: null, href: CHATOPS_PATH },
 ];
 
 /* ------------------------------------------------------------------ the KPI row */

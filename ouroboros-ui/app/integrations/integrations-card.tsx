@@ -9,11 +9,14 @@ import { Button, Card, CardHead, Tag, cx } from "@/app/ui";
 import { WebhookSheet } from "@/app/webhooks/webhook-sheet";
 
 import {
+  CHAT_OPS_LINK_LABEL,
+  CHAT_OPS_LINK_NAME,
   type TileStanding,
   actionName,
   connectedTag,
   linksAway,
   opensWebhookSheet,
+  ownPagePath,
   statusLine,
   tileMark,
   tileStanding,
@@ -100,7 +103,8 @@ export function IntegrationsCard({
 }
 
 /**
- * One tile: mark, name, status in words, the reason when there is one, and its action.
+ * One tile: mark, name, status in words, the reason when there is one, and its action — and,
+ * for Slack, the link to Chat Ops, where its channels are bound (#541).
  *
  * @param props.tile The tile.
  * @param props.onManageWebhooks Open the webhook sheet — given only for the webhooks tile of a
@@ -112,6 +116,7 @@ function Tile({
   onManageWebhooks,
 }: Readonly<{ tile: IntegrationTile; onManageWebhooks?: () => void }>) {
   const standing = tileStanding(tile);
+  const page = ownPagePath(tile);
 
   return (
     <li className={cx("integrations__tile", STANDING_CLASS[standing])}>
@@ -152,6 +157,12 @@ function Tile({
           {tile.deepLink.label}
         </Button>
       ) : null}
+
+      {page !== null && (
+        <Button aria-label={CHAT_OPS_LINK_NAME} className="integrations__action" href={page} size="sm" tone="ghost">
+          {CHAT_OPS_LINK_LABEL}
+        </Button>
+      )}
     </li>
   );
 }

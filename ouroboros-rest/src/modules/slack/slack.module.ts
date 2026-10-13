@@ -2,7 +2,8 @@
  * The Slack app (BZ.1, [#535](https://github.com/NobuData/ouroboros/issues/535)) — this
  * deployment's own, per decision **C1**: OAuth install per workspace, three signature-verified
  * endpoints, the identity-linking flow, the connection's status, and Socket Mode for a
- * development stack with no public URL.
+ * development stack with no public URL. CA.1 (#541) adds the channel list and its bindings —
+ * which of the workspace's channels loops, alerts and the leads' digest are posted to.
  *
  * It publishes nothing: cards are BZ.2 and BZ.4 (#536, #538), which take {@link SLACK_API} and
  * the connection this module keeps.
@@ -21,6 +22,8 @@ import { AuditModule } from "../audit/audit.module";
 import { ChatopsModule } from "../chatops/chatops.module";
 import { DbModule } from "../db/db.module";
 import { VaultModule } from "../vault/vault.module";
+import { SlackChannelsController } from "./slack.channels.controller";
+import { SlackChannelsService } from "./slack.channels.service";
 import { HttpSlackApi, SLACK_API } from "./slack.client";
 import {
   SlackConnectionController,
@@ -42,9 +45,11 @@ import { SlackStoreModule } from "./slack.store.module";
     SlackOauthController,
     SlackLinkController,
     SlackConnectionController,
+    SlackChannelsController,
   ],
   providers: [
     SlackInstallService,
+    SlackChannelsService,
     SlackLinkService,
     SlackInboundService,
     SlackSignatureGuard,

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.41.27",
+    "version": "0.41.28",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -9798,6 +9798,491 @@
           },
           "404": {
             "description": "`tenant_not_found` — no such workspace, or none you are a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/slack/channels": {
+      "get": {
+        "tags": [
+          "chatops"
+        ],
+        "summary": "The workspace's Slack channels, and what each is for",
+        "description": "The channels the workspace's Slack connection knows\n([#541](https://github.com/NobuData/ouroboros/issues/541)), as Slack last listed them —\nwhat the Chat Ops page's *Add channel* picker draws. Each says whether the bot is a\nmember (`joined`), which is the one condition for binding it; what it is bound for\n(`purpose`), if anything; and the kinds of the Slack notification routes that post to it\n(`routes`). Bound channels come first — `loops`, `alerts`, `leads` — then the rest by\nname. The direct-message conversations the publisher opens are not channels and are never\nlisted. A workspace without an active Slack connection is answered `connected` false and\nno channels, not an error. Any member may read it.",
+        "operationId": "listSlackChannels",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The channels.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlackChannels"
+                },
+                "example": {
+                  "connected": true,
+                  "refreshedAt": "2026-10-12T14:02:11.000Z",
+                  "channels": [
+                    {
+                      "id": "5eed009c-0000-4000-8000-000000000011",
+                      "platformChannelId": "C071LOOPS",
+                      "name": "ouroboros-loops",
+                      "isPrivate": false,
+                      "joined": true,
+                      "memberCount": 24,
+                      "purpose": "loops",
+                      "archived": false,
+                      "url": "https://app.slack.com/client/T024AB/C071LOOPS",
+                      "routes": [
+                        "custom:blocking-questions",
+                        "custom:loop-finished",
+                        "custom:stage-transitions"
+                      ]
+                    },
+                    {
+                      "id": "5eed009c-0000-4000-8000-000000000014",
+                      "platformChannelId": "C074RANDOM",
+                      "name": "random",
+                      "isPrivate": false,
+                      "joined": false,
+                      "memberCount": 112,
+                      "purpose": null,
+                      "archived": false,
+                      "url": "https://app.slack.com/client/T024AB/C074RANDOM",
+                      "routes": []
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session. `service_token_invalid` — a\nservice token that was rotated, revoked or never existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`service_scope_missing` — a service token without `api.read`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no such workspace, or none you are a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/slack/channels/refresh": {
+      "post": {
+        "tags": [
+          "chatops"
+        ],
+        "summary": "Ask Slack for the workspace's channels again",
+        "description": "Lists the workspace's channels from Slack with the stored token\n([#541](https://github.com/NobuData/ouroboros/issues/541)) and stores what it reports —\nnew channels added, known ones refreshed (name, privacy, membership, member count,\narchived). This is how a channel the bot was just invited to becomes bindable. Bindings\nare not touched. When Slack does not answer with a list, **nothing stored is changed**\nand the refusal carries Slack's own error as `details.reason`; an error that means the\ninstall is over (`invalid_auth`, `token_revoked`, …) also marks the connection `revoked`,\nexactly as a verification would. Owners and admins.",
+        "operationId": "refreshSlackChannels",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The channels after the listing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlackChannels"
+                },
+                "example": {
+                  "connected": true,
+                  "refreshedAt": "2026-10-12T14:02:11.000Z",
+                  "channels": [
+                    {
+                      "id": "5eed009c-0000-4000-8000-000000000011",
+                      "platformChannelId": "C071LOOPS",
+                      "name": "ouroboros-loops",
+                      "isPrivate": false,
+                      "joined": true,
+                      "memberCount": 24,
+                      "purpose": "loops",
+                      "archived": false,
+                      "url": "https://app.slack.com/client/T024AB/C071LOOPS",
+                      "routes": [
+                        "custom:blocking-questions",
+                        "custom:loop-finished",
+                        "custom:stage-transitions"
+                      ]
+                    },
+                    {
+                      "id": "5eed009c-0000-4000-8000-000000000014",
+                      "platformChannelId": "C074RANDOM",
+                      "name": "random",
+                      "isPrivate": false,
+                      "joined": false,
+                      "memberCount": 112,
+                      "purpose": null,
+                      "archived": false,
+                      "url": "https://app.slack.com/client/T024AB/C074RANDOM",
+                      "routes": []
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session. `service_token_invalid` — a\nservice token that was rotated, revoked or never existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — not an owner or admin. `service_principal_refused` — a service token;\nthis route is for people.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no such workspace, or none you are a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`slack_not_connected` — this workspace has no active Slack connection.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`slack_channel_list_failed` — Slack did not list the channels; `details.reason` is\nSlack's error code, or `token_unavailable` when the stored token could not be read.\nThe stored list is unchanged.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/slack/channels/{id}/binding": {
+      "put": {
+        "tags": [
+          "chatops"
+        ],
+        "summary": "Bind a Slack channel for a purpose",
+        "description": "Says what a channel is for ([#541](https://github.com/NobuData/ouroboros/issues/541)) —\n`loops`, `alerts` or `leads` — and points that purpose's default notification routes at\nit, in one transaction.\n\n| Purpose | Routes pointed at the channel | Created as |\n|---|---|---|\n| `loops` | `custom:blocking-questions`, `custom:loop-finished`, `custom:stage-transitions` | blocking questions on, with the on-call DM; loop finished on; stage transitions **off** |\n| `alerts` | `custom:build-failures` | on |\n| `leads` | `custom:weekly-insights` | on |\n\nA route the workspace does not have yet is created on Slack as the table says. One it\nalready has is only re-pointed — whether it is on, its on-call DM and its `config` stay as\nthe workspace set them — and one bound to email or PagerDuty is left alone. **One channel\nper purpose**, so binding a second channel for `loops` moves the purpose, and those\nroutes, off the first. A channel bound for something else changes purpose, and the routes\nthat posted to it for the old one are detached as an unbind would.\n\n**The bot must already be a member.** The app holds no scope to join a channel by itself,\nso a channel with `joined` false is refused `409 slack_channel_not_joined`, and the\nmessage says what to do — type `/invite @Ouroboros` in the channel, refresh the list, try\nagain. A private channel is the same case. Recorded as `chat.channel_bound`. Owners and\nadmins.",
+        "operationId": "bindSlackChannel",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The channel's id in this workspace — `id` in the channel list, not Slack's own channel id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SlackChannelBinding"
+              },
+              "example": {
+                "purpose": "loops"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The channels after the binding.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlackChannels"
+                },
+                "example": {
+                  "connected": true,
+                  "refreshedAt": "2026-10-12T14:02:11.000Z",
+                  "channels": [
+                    {
+                      "id": "5eed009c-0000-4000-8000-000000000011",
+                      "platformChannelId": "C071LOOPS",
+                      "name": "ouroboros-loops",
+                      "isPrivate": false,
+                      "joined": true,
+                      "memberCount": 24,
+                      "purpose": "loops",
+                      "archived": false,
+                      "url": "https://app.slack.com/client/T024AB/C071LOOPS",
+                      "routes": [
+                        "custom:blocking-questions",
+                        "custom:loop-finished",
+                        "custom:stage-transitions"
+                      ]
+                    },
+                    {
+                      "id": "5eed009c-0000-4000-8000-000000000014",
+                      "platformChannelId": "C074RANDOM",
+                      "name": "random",
+                      "isPrivate": false,
+                      "joined": false,
+                      "memberCount": 112,
+                      "purpose": null,
+                      "archived": false,
+                      "url": "https://app.slack.com/client/T024AB/C074RANDOM",
+                      "routes": []
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session. `service_token_invalid` — a\nservice token that was rotated, revoked or never existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — not an owner or admin. `service_principal_refused` — a service token;\nthis route is for people.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no such workspace, or none you are a member of.\n`slack_channel_not_found` — no channel of this workspace's Slack connection has that\nid, or it names a direct-message conversation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`slack_not_connected` — this workspace has no active Slack connection.\n`slack_channel_archived` — the channel is archived in Slack and takes no posts.\n`slack_channel_not_joined` — the bot is not a member of the channel; add it in Slack\nwith `/invite @Ouroboros`, refresh the list and try again. `details.channelName`\nnames the channel in both.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a malformed body, or a `purpose` that is not `loops`, `alerts`\nor `leads`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "chatops"
+        ],
+        "summary": "Unbind a Slack channel",
+        "description": "Clears what a channel is for ([#541](https://github.com/NobuData/ouroboros/issues/541))\nand detaches every Slack notification route posting to it, in one transaction. A route\nleft with nowhere to post is switched off; one that also DMs the on-call person keeps\ndoing that. **Idempotent** — a channel that was not bound is answered the same `200`.\nNothing is removed from Slack, and the bot stays a member of the channel. Recorded as\n`chat.channel_unbound` when something changed. Owners and admins.",
+        "operationId": "unbindSlackChannel",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The channel's id in this workspace — `id` in the channel list, not Slack's own channel id.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The channels after it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlackChannels"
+                },
+                "example": {
+                  "connected": true,
+                  "refreshedAt": "2026-10-12T14:02:11.000Z",
+                  "channels": [
+                    {
+                      "id": "5eed009c-0000-4000-8000-000000000011",
+                      "platformChannelId": "C071LOOPS",
+                      "name": "ouroboros-loops",
+                      "isPrivate": false,
+                      "joined": true,
+                      "memberCount": 24,
+                      "purpose": "loops",
+                      "archived": false,
+                      "url": "https://app.slack.com/client/T024AB/C071LOOPS",
+                      "routes": [
+                        "custom:blocking-questions",
+                        "custom:loop-finished",
+                        "custom:stage-transitions"
+                      ]
+                    },
+                    {
+                      "id": "5eed009c-0000-4000-8000-000000000014",
+                      "platformChannelId": "C074RANDOM",
+                      "name": "random",
+                      "isPrivate": false,
+                      "joined": false,
+                      "memberCount": 112,
+                      "purpose": null,
+                      "archived": false,
+                      "url": "https://app.slack.com/client/T024AB/C074RANDOM",
+                      "routes": []
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session. `service_token_invalid` — a\nservice token that was rotated, revoked or never existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — not an owner or admin. `service_principal_refused` — a service token;\nthis route is for people.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no such workspace, or none you are a member of.\n`slack_channel_not_found` — no channel of this workspace's Slack connection has that\nid, or it names a direct-message conversation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`slack_not_connected` — this workspace has no active Slack connection.",
             "content": {
               "application/json": {
                 "schema": {
@@ -74104,6 +74589,150 @@
           },
           "connection": {
             "$ref": "#/components/schemas/SlackConnection"
+          }
+        }
+      },
+      "SlackChannels": {
+        "type": "object",
+        "title": "SlackChannels",
+        "description": "The workspace's Slack channels ([#541](https://github.com/NobuData/ouroboros/issues/541))\n— what the list answers, and what every channel write answers with.",
+        "additionalProperties": false,
+        "required": [
+          "connected",
+          "refreshedAt",
+          "channels"
+        ],
+        "properties": {
+          "connected": {
+            "type": "boolean",
+            "description": "Whether the workspace has an active Slack connection. Without one, `channels` is empty."
+          },
+          "refreshedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When a listed channel last changed — in practice, when the list was last refreshed. Null when there are none."
+          },
+          "channels": {
+            "type": "array",
+            "description": "Bound channels first (`loops`, `alerts`, `leads`), then the rest by name.",
+            "items": {
+              "$ref": "#/components/schemas/SlackChannel"
+            }
+          }
+        }
+      },
+      "SlackChannel": {
+        "type": "object",
+        "title": "SlackChannel",
+        "description": "One Slack channel, as Slack last listed it.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "platformChannelId",
+          "name",
+          "isPrivate",
+          "joined",
+          "memberCount",
+          "purpose",
+          "archived",
+          "url",
+          "routes"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The channel's id in this workspace — what a binding is addressed by."
+          },
+          "platformChannelId": {
+            "type": "string",
+            "description": "Slack's own id for the channel.",
+            "examples": [
+              "C071LOOPS"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Without the leading `#`.",
+            "examples": [
+              "ouroboros-loops"
+            ]
+          },
+          "isPrivate": {
+            "type": "boolean"
+          },
+          "joined": {
+            "type": "boolean",
+            "description": "Whether the bot is a member. It can post, and be bound, only where it is."
+          },
+          "memberCount": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "How many members Slack last reported. Null until it has."
+          },
+          "purpose": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "loops",
+              "alerts",
+              "leads",
+              null
+            ],
+            "description": "What the channel is bound for. Null when it is not bound."
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "Archived in Slack. An archived channel cannot be bound."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "The channel, opened in Slack.",
+            "examples": [
+              "https://app.slack.com/client/T024AB/C071LOOPS"
+            ]
+          },
+          "routes": {
+            "type": "array",
+            "description": "The kinds of the Slack notification routes that post to this channel, sorted.",
+            "items": {
+              "type": "string"
+            },
+            "examples": [
+              [
+                "custom:blocking-questions",
+                "custom:loop-finished"
+              ]
+            ]
+          }
+        }
+      },
+      "SlackChannelBinding": {
+        "type": "object",
+        "title": "SlackChannelBinding",
+        "description": "What a channel is for.",
+        "additionalProperties": false,
+        "required": [
+          "purpose"
+        ],
+        "properties": {
+          "purpose": {
+            "type": "string",
+            "enum": [
+              "loops",
+              "alerts",
+              "leads"
+            ],
+            "description": "`loops` — questions, finished loops and stage transitions. `alerts` — build failures.\n`leads` — the weekly insights digest."
           }
         }
       },

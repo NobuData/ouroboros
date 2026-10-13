@@ -2,11 +2,13 @@
 title: "Chat Ops — Ouroboros in Slack"
 sidebar_label: "Chat Ops"
 sidebar_position: 18
-description: "What Ouroboros posts to your Slack channels, linking your Slack identity to your account with /ouro link, and the /ouro commands you can then type."
+description: "The Chat Ops page, what Ouroboros posts to your Slack channels, linking your Slack identity to your account with /ouro link, and the /ouro commands you can then type."
 ---
 
-Chat Ops brings Ouroboros into Slack. This page covers two things:
+Chat Ops brings Ouroboros into Slack. This page covers three things:
 
+- [the Chat Ops page](#the-chat-ops-page) in Ouroboros — how Slack is connected, and which
+  channels it posts to;
 - [what Ouroboros posts](#what-ouroboros-posts) to your channels — the questions loops are
   waiting on, finished loops and the weekly digest;
 - [linking your Slack identity](#why-you-link) to your Ouroboros account, which you do once.
@@ -22,6 +24,95 @@ Ouroboros posts cards to Slack; linking, unlinking and the `/ouro` commands work
 when its countdown ends.
 
 :::
+
+## The Chat Ops page
+
+The Chat Ops page is at `/chatops`. It is not in the sidebar. Reach it from:
+
+- **Chat Ops →** on the **Slack** tile, in the **Integrations** section of
+  <UiPath path="Settings" />;
+- **Chat Ops** beside **Answer from anywhere** in the [Needs-you inbox](./inbox.mdx);
+- **Weekly digest in Slack →** at the top of [Insights](./insights.mdx);
+- the **Chat Ops** link on the Slack row of [Get Started](./getting-started/wizard.mdx).
+
+<Screenshot id="user-guide.chatops" />
+
+The page refreshes itself every few seconds. Every member can read it; binding channels,
+installing and verifying are for an Owner or a Maintainer.
+
+### The connection strip
+
+Under the heading, one line says how the Slack connection stands — such as
+**acme-robotics · app v2.4 · scopes ✓ · active · verified 2m ago**:
+
+| Part | It means |
+| --- | --- |
+| The first name | The Slack workspace that is connected. |
+| **app v2.4** | The version of the Slack app that was installed. |
+| **scopes ✓** | Slack granted everything the app asks for. Otherwise it reads, for example, **1 scope missing: groups:read** — re-install the app to grant it. |
+| **active** | Slack accepts the connection. |
+| **revoked** | The app was removed from the Slack workspace, or its token was revoked. Slack's reason follows, such as **revoked — app_uninstalled**. Nothing reaches your channels until the app is installed again. |
+| **error** | Slack is answering with an error, such as **error — ratelimited**. Messages may not reach your channels. |
+| **verified 2m ago** | When Ouroboros last checked the connection with Slack. **not verified yet** means it has not. |
+
+An Owner or a Maintainer also sees **Verify now**, which checks the connection with Slack at
+once, and — when the connection is **revoked** or in **error** — **Re-install**. Everyone else
+is told that an Owner or a Maintainer can re-install the app.
+
+### Open the channel in Slack
+
+**Open #ouroboros-loops ↗** at the top right opens your workspace's **Loops** channel in
+Slack, in a new tab. It carries that channel's own name. The button is there only when a
+channel has been bound for Loops; until then there is nothing to open, so it is not shown.
+
+### Bound channels
+
+**Bound channels** lists each channel Ouroboros posts to: its name, what it is for
+(**Loops**, **Alerts** or **Leads**), how many members it has, and which notification routes
+point at it. **Open ↗** opens that channel in Slack.
+
+### Add a channel
+
+An Owner or a Maintainer binds a channel with **+ Add channel ▾**:
+
+1. Choose **+ Add channel ▾**. **Add a channel** lists the Slack workspace's channels. Each
+   row says whether it is private, how many members it has, and whether **bot is a member** or
+   **bot is not in this channel**.
+2. Choose a channel, then say what it is for:
+
+   | Purpose | Binding it switches on |
+   | --- | --- |
+   | **Loops** | Blocking questions, with a DM to the on-call person · loop finished · stage transitions (off) |
+   | **Alerts** | Build failures |
+   | **Leads** | The weekly digest |
+
+3. Choose **Bind**. The page confirms, such as **#ouroboros-loops is bound for Loops.**
+   Choose another channel, or **Done**.
+
+**Ouroboros can only post where it is a member.** If the row reads **bot is not in this
+channel**, open the channel in Slack and send `/invite @Ouroboros`, then choose **Refresh from
+Slack** in the picker. Private channels are added the same way: the bot cannot join a channel
+on its own. Binding a channel the bot is not in is refused, with that explanation.
+
+Each purpose has one channel. Binding a second channel for **Loops** moves Loops to it.
+**Unbind**, on a bound channel, stops Ouroboros posting there: the routes that pointed at it
+are left without a channel.
+
+**Manage in Settings →** at the foot of the page opens the **Notifications** section, where
+each route has its switch — see
+[Notifications, email & webhooks](../administration/notifications-and-webhooks.mdx).
+
+### When Slack is not connected yet
+
+The page then explains what is missing instead:
+
+- **This deployment has no Slack app yet** — whoever operates the deployment has to register
+  one first.
+- **Install the Slack app into your workspace** — the deployment has an app, and an Owner or
+  a Maintainer can install it with **Install**.
+
+Both link the setup guide. The steps are in
+[Chat Ops — connecting Slack](../administration/chatops.mdx).
 
 ## What Ouroboros posts
 
