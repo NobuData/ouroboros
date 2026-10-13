@@ -85,7 +85,8 @@ export type AuditSubjectType =
   | "chat_connection"
   | "chat_identity_link"
   | "chat_command"
-  | "chat_channel";
+  | "chat_channel"
+  | "on_call_assignment";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -718,6 +719,14 @@ export const CHAT_CHANNEL_BOUND_EVENT = "chat.channel_bound";
 export const CHAT_CHANNEL_UNBOUND_EVENT = "chat.channel_unbound";
 
 /**
+ * An owner or admin changed who is on call for decisions (CA.3, #543) — the person a *DM on-call*
+ * route reaches. Subject `on_call_assignment`, whose id is the scope (`decisions`). The detail is
+ * flat: `scope`, `previousMemberId` and `memberId` — member row ids, either null for nobody. Not
+ * written when the member named was already on call.
+ */
+export const CHAT_ON_CALL_CHANGED_EVENT = "chat.on_call_changed";
+
+/**
  * Every action this service writes.
  *
  * A named list rather than a dozen loose constants, so `openapi.yaml`'s prose, the trail
@@ -824,6 +833,7 @@ export const AUDIT_ACTIONS = [
   CHAT_DECISION_ANSWERED_EVENT,
   CHAT_CHANNEL_BOUND_EVENT,
   CHAT_CHANNEL_UNBOUND_EVENT,
+  CHAT_ON_CALL_CHANGED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

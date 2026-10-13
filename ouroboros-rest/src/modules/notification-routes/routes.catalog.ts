@@ -47,7 +47,8 @@ export const ROUTE_CHANNELS = [
 /**
  * The channel a core kind is bound to before anybody saves it — the card's own bindings:
  * *Needs-you decisions → Slack DM*, *Daily digest → email*, *Loop failures → PagerDuty*,
- * *Weekly insights report → email*. A custom kind defaults to email.
+ * *Weekly insights report → email*. A chat route ({@link CHAT_ROUTES}) defaults to Slack; any
+ * other custom kind to email.
  */
 export const DEFAULT_CHANNELS: Readonly<Record<CoreRouteKind, NotificationRouteChannel>> = {
   needs_you_dm: "slack",
@@ -55,6 +56,86 @@ export const DEFAULT_CHANNELS: Readonly<Record<CoreRouteKind, NotificationRouteC
   loop_failures: "pagerduty",
   weekly_insights: "email",
 };
+
+/**
+ * One route mockup 19's *What gets published where* card lists — a `custom:<slug>` kind that
+ * posts to a chat channel (CA.3, [#543](https://github.com/NobuData/ouroboros/issues/543)).
+ *
+ * `enabled` and `dmOnCall` are what the route is before anybody saves it, and what binding a
+ * channel for `purpose` creates it as (`PURPOSE_ROUTES`, `slack/slack.channels.service.ts`, is
+ * derived from this list — there is no second one).
+ */
+export interface ChatRouteDefault {
+  /** The route kind — one of the publisher's `CHAT_ROUTE_KINDS` (`chat/chat.outbox.ts`). */
+  readonly kind: string;
+  /** The row's name on the card. */
+  readonly label: string;
+  /** The warning the card prints beside the name, or null. */
+  readonly note: string | null;
+  /** The channel purpose whose binding points this route at a channel (#541). */
+  readonly purpose: "loops" | "alerts" | "leads";
+  /** Whether the route is on before anybody switches it. */
+  readonly enabled: boolean;
+  /** Whether the route also DMs the on-call designee. */
+  readonly dmOnCall: boolean;
+}
+
+/**
+ * The chat routes, in the card's order. *Every stage transition* is the one that starts switched
+ * off: it is noisy, and says so.
+ */
+export const CHAT_ROUTES: readonly ChatRouteDefault[] = [
+  {
+    kind: "custom:loop-finished",
+    label: "Loop finished (merged)",
+    note: null,
+    purpose: "loops",
+    enabled: true,
+    dmOnCall: false,
+  },
+  {
+    kind: "custom:blocking-questions",
+    label: "Blocking questions",
+    note: null,
+    purpose: "loops",
+    enabled: true,
+    dmOnCall: true,
+  },
+  {
+    kind: "custom:build-failures",
+    label: "Build failures",
+    note: null,
+    purpose: "alerts",
+    enabled: true,
+    dmOnCall: false,
+  },
+  {
+    kind: "custom:weekly-insights",
+    label: "Weekly insights report",
+    note: null,
+    purpose: "leads",
+    enabled: true,
+    dmOnCall: false,
+  },
+  {
+    kind: "custom:stage-transitions",
+    label: "Every stage transition",
+    note: "noisy, off by default",
+    purpose: "loops",
+    enabled: false,
+    dmOnCall: false,
+  },
+];
+
+/**
+ * The chat route a kind names.
+ *
+ * @param kind - A route kind.
+ * @returns Its entry in {@link CHAT_ROUTES}, or undefined for any other kind.
+ */
+export function chatRoute(kind: string): ChatRouteDefault | undefined {
+  return CHAT_ROUTES.find((route) => route.kind === kind);
+}
 
 /** The route kinds that send mail in this build — what V103's send log admits. */
 export const MAILING_KINDS = ["daily_digest", "weekly_insights"] as const;
@@ -99,6 +180,10 @@ export function isRouteKind(kind: string): boolean {
  * @returns Its default channel.
  */
 export function defaultChannel(kind: string): NotificationRouteChannel {
+  if (chatRoute(kind) !== undefined) {
+    return "slack";
+  }
+
   return DEFAULT_CHANNELS[kind as CoreRouteKind] ?? "email";
 }
 

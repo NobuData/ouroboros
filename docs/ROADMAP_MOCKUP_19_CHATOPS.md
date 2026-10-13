@@ -595,7 +595,7 @@ the #16 tokens (both themes; the mockup is dark-only).
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CA.1 | #541 ✅ | 🟢 Done | ouroboros-ui: [CA.1] ChatOps route, head & connection flow | Frame, add-channel, open-channel, install/setup states | mvp, chatops, ui, design | N (after #41, BZ.1, BA-D.5) | Y | M | ouroboros-ui |
 | CA.2 | #542 ✅ | 🟢 Done | ouroboros-ui: [CA.2] Channel mirror card | The truthful stream (C7): all archetypes + composer console | mvp, chatops, ui, design | N (after CA.1, BZ.2) | Y | L | ouroboros-ui |
-| CA.3 | #543 | 🟡 Open | ouroboros-ui: [CA.3] Commands & routing cards | Registry-driven command list; BR.4 binding editors | mvp, chatops, ui, design | N (after CA.1, BZ.3, BR.4) | Y | M | ouroboros-ui |
+| CA.3 | #543 ✅ | 🟢 Done | ouroboros-ui: [CA.3] Commands & routing cards | Registry-driven command list; BR.4 binding editors | mvp, chatops, ui, design | N (after CA.1, BZ.3, BR.4) | Y | M | ouroboros-ui |
 | CA.4 | #544 | 🟡 Open | ouroboros-ui: [CA.4] AI-presence card & honest preview | The C8 designed preview + the CB.1 activation slot | mvp, chatops, ui, design | N (after CA.1) | Y | S | ouroboros-ui |
 | CA.5 | #545 | 🟡 Open | ouroboros-ui: [CA.5] ChatOps states & e2e leg | No-connection/unlinked/error states; full-chain e2e | mvp, chatops, ui, ci | N (after CA.2–CA.4) | Y | M | ouroboros-ui, .github |
 
@@ -671,7 +671,13 @@ the #16 tokens (both themes; the mockup is dark-only).
 
 ### Issue CA.3 — ouroboros-ui: [CA.3] Commands & routing cards
 
-> **GitHub issue:** #543 · **Status:** 🟡 Open · **Parent epic:** #529
+> **GitHub issue:** #543 ✅ · **Status:** 🟢 Done · **Parent epic:** #529
+>
+> **Delivered (#543 — `ouroboros-rest` 0.41.31, `ouroboros-ui` 0.160.0, `ouroboros-docs` 0.5.6; no migration):** two cards in `/chatops`'s side column (`app/chatops/commands-card.tsx`, `routing-card.tsx`, `chatops-side.css`). **COMMANDS** — one row per command of `GET /chat/grammar`, nothing hard-coded: code form with optional arguments dimmed, purpose, a command the viewer may not run dimmed with its reason, `explain pr` with a `v2 · #546` chip and no **Try it**, **Try it** prefilling the mirror's composer with `/ouro <command> `, and the caption with `Teams arrives with #547`. **WHAT GETS PUBLISHED WHERE** — the five chat routes of the #488 store, each with a channel list of the bound channels (and **+ Add a channel…**), an optimistic switch that rolls back with the service's reason, `Every stage transition — noisy, off by default`, **+ DM on-call (name)** with `rotations arrive with #548` and a **Change** picker, read-only with its explanation for other roles, and **Manage in Settings →**. **REST:** every notification route carries `chat` (label, note, channel, dmOnCall) — the five chat kinds are always listed, from one list (`CHAT_ROUTES`) that `PURPOSE_ROUTES` now derives from; `PATCH /settings/notifications/{kind}` takes `chatChannelId`; `GET|PUT /api/v1/chat/on-call` reads and designates the on-call person (audit `chat.on_call_changed`, webhook registry v14).
+>
+> **Decided with the user:** the on-call person is changed with a picker **on the routing card** (a new REST write to `on_call_assignments`).
+>
+> **Not delivered, and why:** *flipping build failures to another channel changes the delivery* is proven at statement level (`chat.outbox.routes.spec.ts`: the save writes the column the publisher's one statement reads) and by a live PATCH read back from the database — not by a card arriving in Slack, which the seeded connection cannot do. Only members with a linked Slack identity can be designated (V132's rule); a route's channel cannot be cleared from the card (an enabled Slack route needs a target), and whether a route DMs the on-call person is not editable. Settings → Notifications lists a chat route only once it is stored, and its Slack rows now follow the mockup's order. Two concurrent first designations can collide on the one-active index and answer 500. 125% type scale is held by the rem/token style suite, not checked by eye. e2e is CA.5's (#545).
 
 - **Problem Statement:** The command reference (registry-driven, never
   hand-maintained) and the routing card editing the BR.4 bindings.
@@ -913,7 +919,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    BY.4 (#534) ✅
 3. **Phase 2 — App & services:** BZ.1 (#535) ✅ → { BZ.2 (#536) ✅ ⊕ BZ.3 (#537) ✅ }
    → { BZ.4 (#538) ✅ ⊕ BZ.5 (#539) ✅ } → BZ.6 (#540)
-4. **Phase 3 — UI:** CA.1 (#541) ✅ → { CA.2 (#542) ✅ ⊕ CA.3 (#543) ⊕
+4. **Phase 3 — UI:** CA.1 (#541) ✅ → { CA.2 (#542) ✅ ⊕ CA.3 (#543) ✅ ⊕
    CA.4 (#544) } → **CA.5 (#545) ✅** *(MVP gate, amending #56)*
 5. **v2:** CB.1 (#546) after AF.2 (#235); CB.2 (#547) ⊕ CB.3 (#548) ⊕
    CB.4 (#549) ⊕ CB.5 (#550) after their dependencies.

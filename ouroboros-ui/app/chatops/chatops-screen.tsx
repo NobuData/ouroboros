@@ -1,9 +1,16 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 
-import type { ChannelPurpose, SlackChannels, SlackConnection, SlackVerification } from "@/app/api/chatops";
+import type {
+  ChannelPurpose,
+  ChatOnCall,
+  SlackChannels,
+  SlackConnection,
+  SlackVerification,
+} from "@/app/api/chatops";
 import type { Reading } from "@/app/api/reading";
+import type { NotificationRoute, NotificationRoutes } from "@/app/api/settings-integrations";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
 import { Button, Card, EmptyState, RetryBanner } from "@/app/ui";
 import { cx } from "@/app/ui/class-names";
@@ -12,11 +19,13 @@ import { BoundChannels } from "./bound-channels";
 import { ChannelPicker } from "./channel-picker";
 import { ChatOpsHead } from "./chatops-head";
 import { type ChatOpsPollOptions, createChatOpsPoll } from "./chatops-poll";
+import { CommandsCard } from "./commands-card";
 import { FirstChannels } from "./first-channels";
 import { HealthStrip } from "./health-strip";
 import { InstallJourney } from "./install-journey";
-import { MirrorCard } from "./mirror-card";
+import { MirrorCard, type MirrorComposerHandle } from "./mirror-card";
 import type { MirrorPollOptions } from "./mirror-poll";
+import { RoutingCard } from "./routing-card";
 import {
   CHANNELS_UNREAD,
   CHATOPS_ENDPOINT,
@@ -32,6 +41,7 @@ import {
   offersAddChannel,
   openChannelLink,
   showsHealth,
+  withRoute,
 } from "./view";
 
 import "./chatops.css";
@@ -60,6 +70,10 @@ interface Written {
   readonly connection?: SlackConnection;
   /** The channels as a refresh, a bind or an unbind left them. */
   readonly channels?: SlackChannels;
+  /** The notification routes as a switch or a channel pick left them (CA.3, #543). */
+  readonly routes?: NotificationRoutes;
+  /** The on-call resource as a designation left it. */
+  readonly onCall?: ChatOnCall;
 }
 
 /**
@@ -78,8 +92,10 @@ interface Written {
  * - connected, and no channel has a purpose → the post-install step, *Bind your first channels*;
  * - connected, with bound channels → the **channel mirror** (CA.2,
  *   [#542](https://github.com/NobuData/ouroboros/issues/542)) in the main column — our record of
- *   what was published to one of them — and the list of them beside it, each with its way out to
- *   Slack and its way to show its own mirror.
+ *   what was published to one of them — and beside it the **commands** generated from the
+ *   registry, **what gets published where** (CA.3,
+ *   [#543](https://github.com/NobuData/ouroboros/issues/543)) and the list of the channels, each
+ *   with its way out to Slack and its way to show its own mirror.
  *
  * **Which mirror shows is in the address.** `?channel=<id>` names it; without one, or with one
  * that is not a bound channel, it is the first bound channel's. Choosing a row rewrites the
@@ -87,7 +103,8 @@ interface Written {
  *
  * **It stays true without a reload.** One poll re-reads the connection and the channels every
  * cadence, so a connection Slack revoked shows on the strip by itself. A write made here — a
- * verification, a refresh, a bind, an unbind — draws its own answer at once and asks the poll to
+ * verification, a refresh, a bind, an unbind, a route switched or repointed, an on-call
+ * designation — draws its own answer at once and asks the poll to
  * read again; a re-read that fails raises a retry banner over the page **as last read**, never in
  * its place.
  *
@@ -108,6 +125,10 @@ export function ChatOpsScreen({
   const [wanted, setWanted] = useState<string | null>(named);
   const journeyTitle = useId();
   const channelsTitle = useId();
+  const commandsTitle = useId();
+  const routingTitle = useId();
+  /** The mirror's composer, for the commands card's **Try it**. */
+  const composer = useRef<MirrorComposerHandle>(null);
 
   const read = snapshot.data ?? (initial.ok ? initial.value : null);
   // What a write answered stands until the poll has answered again since.
@@ -118,6 +139,9 @@ export function ChatOpsScreen({
       : {
           connection: mine?.connection ?? read.connection,
           channels: mine?.channels === undefined ? read.channels : { ok: true, value: mine.channels },
+          grammar: read.grammar,
+          routes: mine?.routes === undefined ? read.routes : { ok: true, value: mine.routes },
+          onCall: mine?.onCall === undefined ? read.onCall : { ok: true, value: mine.onCall },
         };
   const now = new Date(snapshot.updatedAt ?? readAt);
 
@@ -143,6 +167,17 @@ export function ChatOpsScreen({
 
   const onChannels = (channels: SlackChannels) => land({ channels });
   const onVerified = (verification: SlackVerification) => land({ connection: verification.connection });
+  const onOnCall = (onCall: ChatOnCall) => land({ onCall });
+
+  /**
+   * A route was written: draw it among the routes as held.
+   *
+   * @param route The route as the write left it.
+   */
+  function onRoute(route: NotificationRoute): void {
+    if (page?.routes.ok === true) land({ routes: withRoute(page.routes.value, route) });
+    else refresh();
+  }
 
   const stale = snapshot.error !== null && (
     <RetryBanner className="chatops__stale" headline={STALE_HEADLINE} onRetry={refresh} reason={snapshot.error} />
@@ -201,6 +236,7 @@ export function ChatOpsScreen({
                 <MirrorCard
                   appVersion={page.connection.appVersion}
                   channel={mirrored}
+                  composerRef={composer}
                   key={mirrored.id}
                   poll={mirror}
                   readAt={readAt}
@@ -208,6 +244,22 @@ export function ChatOpsScreen({
               </div>
             )}
             <div className="chatops__side">
+              <CommandsCard
+                grammar={page.grammar}
+                // With no mirror there is no composer, and nothing to try a command in.
+                onTry={mirrored === null ? undefined : (line) => composer.current?.prefill(line)}
+                titleId={commandsTitle}
+              />
+              <RoutingCard
+                channels={page.channels.value.channels}
+                mayAdminister={mayAdminister}
+                onAddChannel={() => setPicker({ preset: null })}
+                onCall={page.onCall}
+                onOnCall={onOnCall}
+                onRoute={onRoute}
+                routes={page.routes}
+                titleId={routingTitle}
+              />
               <BoundChannels
                 channels={page.channels.value.channels}
                 mayAdminister={mayAdminister}
@@ -225,11 +277,14 @@ export function ChatOpsScreen({
           </Card>
         )}
 
-        <div className="chatops__foot">
-          <Button href={MANAGE_SETTINGS_PATH} size="sm" tone="ghost">
-            {MANAGE_SETTINGS_LABEL}
-          </Button>
-        </div>
+        {/* With bound channels the routing card carries this link, at its own foot. */}
+        {body !== "bound" && (
+          <div className="chatops__foot">
+            <Button href={MANAGE_SETTINGS_PATH} size="sm" tone="ghost">
+              {MANAGE_SETTINGS_LABEL}
+            </Button>
+          </div>
+        )}
       </div>
 
       <ChannelPicker

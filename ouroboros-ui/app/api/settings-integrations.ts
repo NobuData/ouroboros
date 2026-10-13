@@ -30,16 +30,20 @@ export type IntegrationTile = components["schemas"]["IntegrationTile"];
 /** Where a tile's action leads — always the surface that owns the connection. */
 export type IntegrationLink = components["schemas"]["IntegrationLink"];
 
-/** The org routes, and every channel's availability. */
-export type NotificationRoutes = components["schemas"]["NotificationRoutes"];
 /** One org-level route, with its lock derived. */
 export type NotificationRoute = components["schemas"]["NotificationRoute"];
+/** What a chat-channel route publishes, and where — null on a route that is not one. */
+export type NotificationRouteChat = NonNullable<NotificationRoute["chat"]>;
+/** The chat channel a route posts to, as the route names it. */
+export type NotificationRouteChatChannel = NonNullable<NotificationRouteChat["channel"]>;
+/** The org routes, and every channel's availability. */
+export type NotificationRoutes = components["schemas"]["NotificationRoutes"];
+/** What saving a route takes — every field optional. */
+export type NotificationRoutePatch = components["schemas"]["NotificationRoutePatch"];
 /** Where a route delivers. */
 export type NotificationRouteChannel = components["schemas"]["NotificationRouteChannel"];
 /** A route's settings — when it sends and to whom. */
 export type NotificationRouteConfig = components["schemas"]["NotificationRouteConfig"];
-/** What saving a route takes — every field optional. */
-export type NotificationRoutePatch = components["schemas"]["NotificationRoutePatch"];
 
 /** The `code` the service refuses with when a save would arm a route that cannot fire. */
 export const ROUTE_LOCKED_CODE = "notification_route_locked";
@@ -61,11 +65,12 @@ export const settingsIntegrations = {
    * The org notification routes.
    *
    * @param client The client to call through.
+   * @param signal Aborts the read.
    * @returns The four core kinds in the card's order, then any custom kind, and the channels.
    * @throws {ApiError} What the service answered.
    */
-  async routes(client: ApiClient = api()): Promise<NotificationRoutes> {
-    return unwrap(await client.GET("/api/v1/settings/notifications", {}));
+  async routes(client: ApiClient = api(), signal?: AbortSignal): Promise<NotificationRoutes> {
+    return unwrap(await client.GET("/api/v1/settings/notifications", { signal }));
   },
 
   /**

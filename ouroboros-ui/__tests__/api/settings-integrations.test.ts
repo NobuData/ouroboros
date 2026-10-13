@@ -51,6 +51,14 @@ describe("settingsIntegrations", () => {
     expect(await requests[0].json()).toEqual({ config: { time: "07:30" } });
   });
 
+  it("sends a chat route's channel as chatChannelId (#543)", async () => {
+    const { client, requests } = clientAnswering(route("custom:build-failures"));
+
+    await settingsIntegrations.updateRoute("custom:build-failures", { chatChannelId: "channel-9" }, client);
+
+    expect(await requests[0].json()).toEqual({ chatChannelId: "channel-9" });
+  });
+
   it("encodes a custom kind into the path", async () => {
     const { client, requests } = clientAnswering(route("custom:release-notes"));
 

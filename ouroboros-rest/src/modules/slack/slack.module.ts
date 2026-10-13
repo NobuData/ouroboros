@@ -3,7 +3,8 @@
  * deployment's own, per decision **C1**: OAuth install per workspace, three signature-verified
  * endpoints, the identity-linking flow, the connection's status, and Socket Mode for a
  * development stack with no public URL. CA.1 (#541) adds the channel list and its bindings —
- * which of the workspace's channels loops, alerts and the leads' digest are posted to.
+ * which of the workspace's channels loops, alerts and the leads' digest are posted to. CA.3
+ * (#543) adds the on-call designee (`/chat/on-call`): who a *DM on-call* route reaches.
  *
  * It publishes nothing: cards are BZ.2 and BZ.4 (#536, #538), which take {@link SLACK_API} and
  * the connection this module keeps.
@@ -34,6 +35,9 @@ import {
 import { SlackInboundService } from "./slack.inbound.service";
 import { SlackInstallService } from "./slack.install.service";
 import { SlackLinkService } from "./slack.link.service";
+import { SlackOnCallController } from "./slack.on-call.controller";
+import { SlackOnCallRepository } from "./slack.on-call.repository";
+import { SlackOnCallService } from "./slack.on-call.service";
 import { SlackSignatureGuard } from "./slack.signature.guard";
 import { SlackSocketMode } from "./slack.socket-mode";
 import { SlackStoreModule } from "./slack.store.module";
@@ -46,10 +50,13 @@ import { SlackStoreModule } from "./slack.store.module";
     SlackLinkController,
     SlackConnectionController,
     SlackChannelsController,
+    SlackOnCallController,
   ],
   providers: [
     SlackInstallService,
     SlackChannelsService,
+    SlackOnCallRepository,
+    SlackOnCallService,
     SlackLinkService,
     SlackInboundService,
     SlackSignatureGuard,

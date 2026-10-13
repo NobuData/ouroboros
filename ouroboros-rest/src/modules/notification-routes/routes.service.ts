@@ -3,9 +3,17 @@
  * [#488](https://github.com/NobuData/ouroboros/issues/488)).
  *
  * ```
- * list     the four core kinds (stored, or their default binding — off) · custom kinds · channels
- * update   kind check ─▶ config check ─▶ lock (row) ─▶ locked-row rule ─▶ upsert ─▶ audit
+ * list     the four core kinds (stored, or their default binding — off) · the five chat routes
+ *          (stored, or their default) · other custom kinds · channels
+ * update   kind check ─▶ config check ─▶ lock (row) ─▶ chat channel check ─▶ locked-row rule
+ *          ─▶ target rule ─▶ upsert ─▶ audit
  * ```
+ *
+ * **One store, two cards.** The Chat Ops page's *What gets published where* card (CA.3,
+ * [#543](https://github.com/NobuData/ouroboros/issues/543)) edits these same rows: a chat route
+ * carries a `chat` block — its label, its channel, whether it also DMs on-call — and the save
+ * takes `chatChannelId`. The publisher reads the row's channel each time it enqueues
+ * (`chat/chat.outbox.ts`), so a saved channel is where the next message goes.
  *
  * **Org routes are not preferences.** BN.3's `notification_preferences` say how *one person* is
  * told; a route says where the *workspace's* digest, report or pages go, which is why it is an
@@ -24,11 +32,15 @@ import { Injectable } from "@nestjs/common";
 
 import { NOTIFICATION_ROUTE_UPDATED_EVENT } from "../audit/audit.events";
 import { AuditService } from "../audit/audit.service";
-import type { NotificationRouteConfig } from "../db/schema";
+import { DM_ROUTE_KIND } from "../chat/chat.outbox";
+import { chatChannelNotFound } from "../chatops/chatops.errors";
+import type { NotificationRouteChannel, NotificationRouteConfig } from "../db/schema";
 import {
+  CHAT_ROUTES,
   CORE_ROUTE_KINDS,
   SLACK_TARGET_REQUIRED,
   channelLock,
+  chatRoute,
   type RouteReach,
   configProblems,
   defaultChannel,
@@ -36,9 +48,10 @@ import {
   normalisedConfig,
 } from "./routes.catalog";
 import type { PatchNotificationRouteDto } from "./routes.dto";
-import { routeConfigInvalid, routeKindUnknown, routeLocked } from "./routes.errors";
+import { routeConfigInvalid, routeKindUnknown, routeLocked, routeNotChat } from "./routes.errors";
 import {
   NotificationRoutesRepository,
+  type ChatTargetRow,
   type EffectiveRouteRow,
   type StoredRouteRow,
 } from "./routes.repository";
@@ -46,7 +59,17 @@ import {
   channelsResource,
   type NotificationRouteResource,
   type NotificationRoutesResource,
+  type RouteChatResource,
 } from "./routes.resources";
+
+/** A channel row's id, as the database stores one — anything else names no channel. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The kinds the card always lists: the core four, then the chat routes, each in its order. */
+const LISTED_KINDS: readonly string[] = [
+  ...CORE_ROUTE_KINDS,
+  ...CHAT_ROUTES.map((route) => route.kind),
+];
 
 /** A route as it was and as it is, for the audit. */
 interface RouteChange {
@@ -69,27 +92,31 @@ export class NotificationRoutesService {
 
   /**
    * The card: every core kind in the card's order — stored, or its default binding switched off —
-   * then any stored custom kind, and every channel's availability.
+   * then the five chat routes in theirs — stored, or their default — then any other stored custom
+   * kind, and every channel's availability.
    *
    * @param organizationId - The workspace.
    * @returns The card.
    */
   async list(organizationId: string): Promise<NotificationRoutesResource> {
-    const [rows, reach] = await Promise.all([
+    const [rows, reach, targets] = await Promise.all([
       this.routes.list(organizationId),
       this.routes.reach(organizationId),
+      this.routes.chatTargets(organizationId),
     ]);
     const stored = new Map(rows.map((row) => [row.kind, row]));
-    const core: NotificationRouteResource[] = CORE_ROUTE_KINDS.map((kind) => {
+    const target = (kind: string): ChatTargetRow | undefined =>
+      targets.find((row) => row.kind === kind);
+    const listed = LISTED_KINDS.map((kind) => {
       const row = stored.get(kind);
 
-      return row === undefined ? defaultRoute(kind, reach) : routeResource(row);
+      return row === undefined ? defaultRoute(kind, reach) : routeResource(row, target(row.kind));
     });
     const custom = [...stored.values()]
-      .filter((row) => !(CORE_ROUTE_KINDS as readonly string[]).includes(row.kind))
-      .map(routeResource);
+      .filter((row) => !LISTED_KINDS.includes(row.kind))
+      .map((row) => routeResource(row, target(row.kind)));
 
-    return { items: [...core, ...custom], channels: channelsResource(reach) };
+    return { items: [...listed, ...custom], channels: channelsResource(reach) };
   }
 
   /**
@@ -107,23 +134,36 @@ export class NotificationRoutesService {
 
     const row = (await this.routes.list(organizationId)).find((route) => route.kind === kind);
 
-    return row === undefined
-      ? defaultRoute(kind, await this.routes.reach(organizationId))
-      : routeResource(row);
+    if (row === undefined) {
+      return defaultRoute(kind, await this.routes.reach(organizationId));
+    }
+
+    const targets = await this.routes.chatTargets(organizationId);
+
+    return routeResource(
+      row,
+      targets.find((target) => target.kind === kind),
+    );
   }
 
   /**
-   * Save a route — re-bind its channel, replace its config, switch it — and audit the change.
+   * Save a route — re-bind its channel, replace its config, switch it, point a chat route at a
+   * bound chat channel — and audit the change.
    *
    * @param organizationId - The workspace.
    * @param actorId - Who saved it.
    * @param kind - The route.
    * @param patch - The fields to change; none reads back the route.
    * @returns The route as stored, its lock derived.
-   * @throws {NotFoundError} `404 notification_route_kind_unknown`.
-   * @throws {InvalidRequestError} `422 notification_route_config_invalid`, with `details.fields`.
+   * @throws {NotFoundError} `404 notification_route_kind_unknown`; `404 chat_channel_not_found`
+   *   when `chatChannelId` is not a bound channel of this workspace (unknown, another
+   *   workspace's, unbound, or a DM conversation — one answer).
+   * @throws {InvalidRequestError} `422 notification_route_config_invalid`, with `details.fields`;
+   *   `422 notification_route_not_chat` when `chatChannelId` is sent for a route that posts to no
+   *   chat channel.
    * @throws {ConflictError} `409 notification_route_locked` — the save would leave the route
-   *   enabled on a channel that cannot deliver; `details.reason` is what the card prints.
+   *   enabled on a channel that cannot deliver, or enabled on Slack with nowhere to post (no
+   *   channel and no on-call DM); `details.reason` is what the card prints.
    */
   async update(
     organizationId: string,
@@ -149,15 +189,40 @@ export class NotificationRoutesService {
 
     const change = await this.routes.transaction(async (trx): Promise<RouteChange | undefined> => {
       const stored = await this.routes.stored(trx, organizationId, kind);
-      const before: StoredRouteRow = stored ?? {
-        channel: defaultChannel(kind),
-        config: {},
-        enabled: false,
-      };
+      const before: StoredRouteRow = stored ?? defaultStored(kind);
+      const channel = patch.channel ?? before.channel;
+
+      // Only a chat route takes a channel, and the channel is a bound one of this workspace.
+      if (patch.chatChannelId !== undefined) {
+        if (!isChatRoute(kind, channel)) {
+          throw routeNotChat(kind);
+        }
+
+        if (
+          patch.chatChannelId !== null &&
+          !(
+            UUID.test(patch.chatChannelId) &&
+            (await this.routes.boundChannel(trx, organizationId, patch.chatChannelId))
+          )
+        ) {
+          throw chatChannelNotFound();
+        }
+      }
+
+      // A chat target belongs to a Slack route (V130): a route re-bound to email or PagerDuty
+      // drops its channel and its on-call DM, and one re-bound to Slack starts from the default.
+      const onSlack = channel === "slack";
+      const kept = before.channel === "slack" ? before : defaultStored(kind);
       const after: StoredRouteRow = {
-        channel: patch.channel ?? before.channel,
+        channel,
         config: config ?? before.config,
         enabled: patch.enabled ?? before.enabled,
+        chatChannelId: !onSlack
+          ? null
+          : patch.chatChannelId === undefined
+            ? kept.chatChannelId
+            : patch.chatChannelId,
+        dmOnCall: onSlack && kept.dmOnCall,
       };
 
       if (changedFields(before, after).length === 0) {
@@ -173,11 +238,7 @@ export class NotificationRoutesService {
       // A Slack route delivers to its bound channel or to the on-call person (V130). One with
       // neither has nowhere to post, and the database would refuse it as a constraint violation;
       // it is refused here instead, in the lock's own words.
-      if (
-        after.enabled &&
-        after.channel === "slack" &&
-        !(await this.routes.slackTargeted(trx, organizationId, kind))
-      ) {
+      if (after.enabled && !slackTargeted(kind, after)) {
         throw routeLocked(kind, after.channel, SLACK_TARGET_REQUIRED);
       }
 
@@ -226,6 +287,8 @@ export class NotificationRoutesService {
         enabled: after.enabled,
         previousConfig: JSON.stringify(before.config),
         config: JSON.stringify(after.config),
+        previousChatChannelId: before.chatChannelId,
+        chatChannelId: after.chatChannelId,
       },
     });
   }
@@ -236,7 +299,7 @@ export class NotificationRoutesService {
  *
  * @param before - The route as it was (or its default).
  * @param after - The route as the save leaves it.
- * @returns `channel`, `config`, `enabled` — those whose value differs.
+ * @returns `channel`, `config`, `enabled`, `chatChannel` — those whose value differs.
  */
 export function changedFields(before: StoredRouteRow, after: StoredRouteRow): string[] {
   const changed: string[] = [];
@@ -249,17 +312,91 @@ export function changedFields(before: StoredRouteRow, after: StoredRouteRow): st
     changed.push("config");
   }
   if (before.enabled !== after.enabled) changed.push("enabled");
+  if (before.chatChannelId !== after.chatChannelId || before.dmOnCall !== after.dmOnCall) {
+    changed.push("chatChannel");
+  }
 
   return changed;
+}
+
+/**
+ * What a kind is before anybody saves it: its default channel; off — unless it is a chat route,
+ * which starts as {@link CHAT_ROUTES} says — and with no chat channel.
+ *
+ * @param kind - A valid kind.
+ * @returns The route a first save starts from.
+ */
+export function defaultStored(kind: string): StoredRouteRow {
+  const chat = chatRoute(kind);
+
+  return {
+    channel: defaultChannel(kind),
+    config: {},
+    enabled: chat?.enabled ?? false,
+    chatChannelId: null,
+    dmOnCall: chat?.dmOnCall ?? false,
+  };
+}
+
+/**
+ * Whether a route is one of the card's chat routes right now: one of the five kinds, on Slack.
+ *
+ * @param kind - The route.
+ * @param channel - The channel it is bound to.
+ * @returns True when the route carries a `chat` block and may take a chat channel.
+ */
+export function isChatRoute(kind: string, channel: NotificationRouteChannel): boolean {
+  return channel === "slack" && chatRoute(kind) !== undefined;
+}
+
+/**
+ * `notification_routes_slack_target` (V130), asked before the database does: a Slack route has
+ * somewhere to post when it has a channel, DMs on-call, or is the kind that is a DM by nature.
+ *
+ * @param kind - The route.
+ * @param route - The route as a save would leave it.
+ * @returns False only for a Slack route with no target; true for every other channel.
+ */
+export function slackTargeted(kind: string, route: StoredRouteRow): boolean {
+  return (
+    route.channel !== "slack" ||
+    kind === DM_ROUTE_KIND ||
+    route.chatChannelId !== null ||
+    route.dmOnCall
+  );
+}
+
+/**
+ * A route's `chat` block.
+ *
+ * @param kind - The route.
+ * @param channel - The channel it is bound to.
+ * @param target - Where it posts: its stored chat target, or its default.
+ * @returns The block, or null for a route that is not a chat route.
+ */
+function chatResource(
+  kind: string,
+  channel: NotificationRouteChannel,
+  target: Pick<ChatTargetRow, "channel" | "dmOnCall">,
+): RouteChatResource | null {
+  const chat = chatRoute(kind);
+
+  return chat === undefined || !isChatRoute(kind, channel)
+    ? null
+    : { label: chat.label, note: chat.note, channel: target.channel, dmOnCall: target.dmOnCall };
 }
 
 /**
  * A stored route as the card shows it.
  *
  * @param row - The view's row.
+ * @param target - Where the route posts in chat, when it is a Slack route.
  * @returns The resource.
  */
-export function routeResource(row: EffectiveRouteRow): NotificationRouteResource {
+export function routeResource(
+  row: EffectiveRouteRow,
+  target?: ChatTargetRow,
+): NotificationRouteResource {
   return {
     kind: row.kind,
     channel: row.channel,
@@ -269,31 +406,34 @@ export function routeResource(row: EffectiveRouteRow): NotificationRouteResource
     lockedReason: row.lockedReason,
     delivering: row.delivering,
     stored: true,
+    chat: chatResource(row.kind, row.channel, target ?? { channel: null, dmOnCall: false }),
     updatedAt: row.updatedAt.toISOString(),
     updatedBy: row.updatedBy,
   };
 }
 
 /**
- * A kind nobody saved: its default binding, switched off, its lock derived by the same rule.
+ * A kind nobody saved: its default binding ({@link defaultStored}), its lock derived by the same
+ * rule. It never reads as delivering — nothing is stored, so nothing fires.
  *
  * @param kind - The route.
  * @param reach - What the workspace has connected.
  * @returns The resource.
  */
 export function defaultRoute(kind: string, reach: RouteReach): NotificationRouteResource {
-  const channel = defaultChannel(kind);
-  const lockedReason = channelLock(channel, reach);
+  const route = defaultStored(kind);
+  const lockedReason = channelLock(route.channel, reach);
 
   return {
     kind,
-    channel,
+    channel: route.channel,
     config: {},
-    enabled: false,
+    enabled: route.enabled,
     locked: lockedReason !== null,
     lockedReason,
     delivering: false,
     stored: false,
+    chat: chatResource(kind, route.channel, { channel: null, dmOnCall: route.dmOnCall }),
     updatedAt: null,
     updatedBy: null,
   };

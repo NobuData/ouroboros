@@ -99,6 +99,7 @@ import {
   CHAT_DECISION_ANSWERED_EVENT,
   CHAT_CHANNEL_BOUND_EVENT,
   CHAT_CHANNEL_UNBOUND_EVENT,
+  CHAT_ON_CALL_CHANGED_EVENT,
   ROADMAP_SUGGESTION_DISMISSED_EVENT,
 } from "./audit.events";
 
@@ -256,6 +257,7 @@ describe("the vocabulary", () => {
       "chat.decision_answered",
       "chat.channel_bound",
       "chat.channel_unbound",
+      "chat.on_call_changed",
     ]);
   });
 
@@ -424,6 +426,7 @@ describe("the vocabulary", () => {
       CHAT_DECISION_ANSWERED_EVENT,
       CHAT_CHANNEL_BOUND_EVENT,
       CHAT_CHANNEL_UNBOUND_EVENT,
+      CHAT_ON_CALL_CHANGED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

@@ -1,6 +1,9 @@
+import { CHAT_ROUTE_KINDS } from "../chat/chat.outbox";
 import {
+  CHAT_ROUTES,
   CORE_ROUTE_KINDS,
   channelLock,
+  chatRoute,
   configProblems,
   defaultChannel,
   isRouteKind,
@@ -28,6 +31,41 @@ describe("a route's kind", () => {
     expect(defaultChannel("loop_failures")).toBe("pagerduty");
     expect(defaultChannel("weekly_insights")).toBe("email");
     expect(defaultChannel("custom:release-notes")).toBe("email");
+  });
+
+  it("defaults a chat route to Slack (#543)", () => {
+    for (const { kind } of CHAT_ROUTES) expect(defaultChannel(kind)).toBe("slack");
+  });
+});
+
+describe("the chat routes (#543)", () => {
+  it("are mockup 19's five rows, in its order, with the noisy one off and warned about", () => {
+    expect(CHAT_ROUTES.map((route) => [route.kind, route.label, route.note])).toEqual([
+      ["custom:loop-finished", "Loop finished (merged)", null],
+      ["custom:blocking-questions", "Blocking questions", null],
+      ["custom:build-failures", "Build failures", null],
+      ["custom:weekly-insights", "Weekly insights report", null],
+      ["custom:stage-transitions", "Every stage transition", "noisy, off by default"],
+    ]);
+    expect(CHAT_ROUTES.filter((route) => !route.enabled).map((route) => route.kind)).toEqual([
+      "custom:stage-transitions",
+    ]);
+    expect(CHAT_ROUTES.filter((route) => route.dmOnCall).map((route) => route.kind)).toEqual([
+      "custom:blocking-questions",
+    ]);
+  });
+
+  it("are valid kinds the publisher rides, and nothing else is one", () => {
+    const ridden: readonly string[] = Object.values(CHAT_ROUTE_KINDS).flat();
+
+    for (const { kind } of CHAT_ROUTES) {
+      expect(isRouteKind(kind)).toBe(true);
+      expect(ridden).toContain(kind);
+      expect(chatRoute(kind)?.kind).toBe(kind);
+    }
+
+    expect(chatRoute("needs_you_dm")).toBeUndefined();
+    expect(chatRoute("custom:release-notes")).toBeUndefined();
   });
 });
 

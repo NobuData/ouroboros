@@ -34,6 +34,7 @@ import { CHAT_CHANNEL_BOUND_EVENT, CHAT_CHANNEL_UNBOUND_EVENT } from "../audit/a
 import { AuditService } from "../audit/audit.service";
 import { DM_PURPOSE_TAG } from "../chat/chat.outbox";
 import type { ChatChannel, ChatConnectionPublic } from "../db/schema";
+import { CHAT_ROUTES } from "../notification-routes/routes.catalog";
 import {
   slackChannelArchived,
   slackChannelListFailed,
@@ -52,20 +53,29 @@ import {
 
 /**
  * The routes each purpose switches on — mockup 19's five rows, as the development seed stores
- * them (`R__dev_seed_workspace_triage_slack.sql`). `enabled`, `dmOnCall` and `config` are what a
- * route is *created* as; a route the workspace already has keeps its own.
+ * them (`R__dev_seed_workspace_triage_slack.sql`), derived from the one list of chat routes
+ * ({@link CHAT_ROUTES}) and kept by kind within a purpose. `enabled`, `dmOnCall` and `config` are
+ * what a route is *created* as; a route the workspace already has keeps its own.
  *
  * *Every stage transition* is created switched off: it is noisy, and off by default.
  */
 export const PURPOSE_ROUTES: Readonly<Record<SlackChannelPurpose, readonly ChannelRouteWrite[]>> = {
-  loops: [
-    { kind: "custom:blocking-questions", enabled: true, dmOnCall: true, config: {} },
-    { kind: "custom:loop-finished", enabled: true, dmOnCall: false, config: {} },
-    { kind: "custom:stage-transitions", enabled: false, dmOnCall: false, config: {} },
-  ],
-  alerts: [{ kind: "custom:build-failures", enabled: true, dmOnCall: false, config: {} }],
-  leads: [{ kind: "custom:weekly-insights", enabled: true, dmOnCall: false, config: {} }],
+  loops: purposeRoutes("loops"),
+  alerts: purposeRoutes("alerts"),
+  leads: purposeRoutes("leads"),
 };
+
+/**
+ * The chat routes a purpose's binding points at its channel.
+ *
+ * @param purpose - What the channel is for.
+ * @returns The purpose's routes from {@link CHAT_ROUTES}, by kind.
+ */
+function purposeRoutes(purpose: SlackChannelPurpose): readonly ChannelRouteWrite[] {
+  return CHAT_ROUTES.filter((route) => route.purpose === purpose)
+    .map(({ kind, enabled, dmOnCall }) => ({ kind, enabled, dmOnCall, config: {} }))
+    .sort((a, b) => a.kind.localeCompare(b.kind));
+}
 
 /** A channel row's id, as the database stores one — anything else names no channel. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

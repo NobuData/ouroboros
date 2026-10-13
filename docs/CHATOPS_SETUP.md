@@ -186,6 +186,10 @@ CA.2 (#542) delivers the **channel mirror** on that page: Ouroboros's own record
 published to a bound channel and the commands run there, with a box that runs `/ouro` commands
 (recorded with the channel, never posted to Slack).
 
+CA.3 (#543) adds the page's **commands card** (generated from the `/ouro` registry) and the
+**routing card**: each Slack route's channel and switch — the same routes Settings → Notifications
+lists — and who is on call for decisions, chosen from the members who have linked Slack.
+
 Where a message goes is the workspace's notification routes. A route is bound to a channel on the
 Chat Ops page (#541). Build-green and
 build-failed cards are rendered and tested but nothing reports a build result to publish yet.

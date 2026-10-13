@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useMemo } from "react";
 
 import type { NotificationRoute, NotificationRoutes } from "@/app/api/settings-integrations";
 import { SAVING_LABEL } from "@/app/settings/save-model";
@@ -25,6 +26,7 @@ import {
   TIME_LABEL,
   WEEKLY_INSIGHTS,
   enabledField,
+  listedRoutes,
   mayToggle,
   parseRecipients,
   routeLabels,
@@ -65,10 +67,17 @@ import "./notifications.css";
  * Without controls: each route's position in words, the digest's time in its title, the weekly
  * recipients in its line. Nothing is drawn switched off.
  *
+ * ### A chat route appears once it is set up
+ *
+ * The service always names the five chat-channel routes, set up or not (#543), for the Chat Ops
+ * page's routing card. Here one is listed once it is stored — bound to a channel, or switched —
+ * so a workspace without Slack is not shown five routes it cannot use ({@link listedRoutes}).
+ *
  * @param props.routes The routes as read.
  * @returns The card.
  */
-export function NotificationsCard({ routes }: Readonly<{ routes: NotificationRoutes }>) {
+export function NotificationsCard({ routes: read }: Readonly<{ routes: NotificationRoutes }>) {
+  const routes = useMemo(() => listedRoutes(read), [read]);
   const section = settingsSection("notifications");
   const titleId = sectionTitleId(section.id);
   const access = useSettingsAccess();

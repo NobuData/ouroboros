@@ -110,6 +110,7 @@ export function route(kind: string, overrides: Partial<NotificationRoute> = {}):
     lockedReason: null,
     delivering: true,
     stored: true,
+    chat: null,
     updatedAt: "2026-10-01T09:00:00.000Z",
     updatedBy: "Ken",
     ...overrides,

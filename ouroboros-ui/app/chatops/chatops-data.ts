@@ -5,33 +5,39 @@ import "server-only";
  * made once on the server so the page arrives whole — and made again, the same way, for its
  * poll (`app/api/chatops-page.ts`).
  *
- * Two reads, together: the connection, which decides what the page is, and the channels, which
- * are a {@link Reading} of their own — a channel list that could not be read costs the lists and
- * leaves the head, the strip and the install journey standing.
+ * Five reads, together: the connection, which decides what the page is, and four that are each a
+ * {@link Reading} of their own — the channels, the `/ouro` grammar, the notification routes and
+ * the on-call designee (CA.3, [#543](https://github.com/NobuData/ouroboros/issues/543)). One of
+ * them refused costs its own card, or its own line, and leaves the rest of the page standing.
  */
 
 import { chatops } from "@/app/api/chatops";
 import type { ApiClient } from "@/app/api/client";
+import { consoleApi } from "@/app/api/console";
 import { type Reading, attempt } from "@/app/api/reading";
+import { settingsIntegrations } from "@/app/api/settings-integrations";
 
 import type { ChatOpsPage } from "./view";
 
 /**
- * Read the connection and the channels.
+ * Read the connection, and everything beside it.
  *
  * @param client The client to call through. Defaults to the server-side one.
  * @param signal Aborts the reads.
  * @returns The page's payload.
- * @throws {ApiError} What the service answered for the connection. A refused channel list is
- *   kept as a value.
+ * @throws {ApiError} What the service answered for the connection. Any other read that was
+ *   refused is kept as a value.
  */
 export async function loadChatOps(client?: ApiClient, signal?: AbortSignal): Promise<ChatOpsPage> {
-  const [connection, channels] = await Promise.all([
+  const [connection, channels, grammar, routes, onCall] = await Promise.all([
     chatops.connection(client, signal),
     attempt(() => chatops.channels(client, signal)),
+    attempt(() => consoleApi.grammar(client, signal)),
+    attempt(() => settingsIntegrations.routes(client, signal)),
+    attempt(() => chatops.onCall(client, signal)),
   ]);
 
-  return { connection, channels };
+  return { connection, channels, grammar, routes, onCall };
 }
 
 /** The page's first paint: what was read, and when. */

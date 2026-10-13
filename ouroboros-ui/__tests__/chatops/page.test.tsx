@@ -25,6 +25,11 @@ const readChatOps = vi.fn();
 
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
 vi.mock("@/app/chatops/chatops-data", () => ({ readChatOps: () => readChatOps() }));
+vi.mock("@/app/chatops/routing-actions", () => ({
+  setRouteEnabled: vi.fn(),
+  setRouteChannel: vi.fn(),
+  setOnCall: vi.fn(),
+}));
 vi.mock("@/app/chatops/chatops-actions", () => ({
   verifyConnection: () => Promise.resolve({ error: "x" }),
   refreshChannels: () => Promise.resolve({ error: "x" }),

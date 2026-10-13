@@ -60,6 +60,14 @@ export interface MirrorComposerState {
   readonly point: (row: ConsoleRow) => void;
   /** **Send** was pressed: run the line as it stands. */
   readonly send: () => void;
+  /**
+   * Put a line in the box and the focus on it, without sending it — the commands card's
+   * **Try it** (CA.3, [#543](https://github.com/NobuData/ouroboros/issues/543)). Asking for the
+   * line the box already holds puts the caret back at its end.
+   *
+   * @param line The line, prefix included.
+   */
+  readonly prefill: (line: string) => void;
 }
 
 /**
@@ -230,6 +238,23 @@ export function useMirrorComposer(
 
       // The button sends the line as it stands, whatever row is highlighted under it.
       cli.enter(undefined);
+    },
+
+    prefill(line) {
+      // A line still on its way is the box's; nothing replaces it under the reader.
+      if (cli.pending !== null) return;
+
+      if (line === text) {
+        // Nothing re-renders for the same line, so the caret is put back by hand.
+        input.current?.setSelectionRange(line.length, line.length);
+        setCaret(line.length);
+      } else {
+        place(line);
+      }
+
+      setNotice(null);
+      cli.edited();
+      input.current?.focus();
     },
   };
 }

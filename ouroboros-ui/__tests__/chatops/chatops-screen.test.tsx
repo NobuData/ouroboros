@@ -64,6 +64,13 @@ const refreshChannels = vi.fn();
 const bindChannel = vi.fn();
 const unbindChannel = vi.fn();
 
+// The routing card's writes (#543) have a suite of their own; here they are only kept off the server.
+vi.mock("@/app/chatops/routing-actions", () => ({
+  setRouteEnabled: vi.fn(),
+  setRouteChannel: vi.fn(),
+  setOnCall: vi.fn(),
+}));
+
 vi.mock("@/app/chatops/chatops-actions", () => ({
   verifyConnection: () => verifyConnection(),
   refreshChannels: () => refreshChannels(),
@@ -570,7 +577,7 @@ describe("staying current", () => {
   it("degrades only the lists when the channels could not be read", () => {
     render(
       <Screen
-        page={{ ok: true, value: { connection: connection(), channels: { ok: false, reason: "Slack did not answer." } } }}
+        page={{ ok: true, value: { ...chatOpsPage(), channels: { ok: false, reason: "Slack did not answer." } } }}
       />,
     );
 

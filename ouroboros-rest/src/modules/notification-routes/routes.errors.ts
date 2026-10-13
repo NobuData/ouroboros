@@ -9,6 +9,7 @@ export const ROUTE_ERRORS = {
   kindUnknown: "notification_route_kind_unknown",
   configInvalid: "notification_route_config_invalid",
   locked: "notification_route_locked",
+  notChat: "notification_route_not_chat",
 } as const;
 
 /**
@@ -53,4 +54,20 @@ export function routeLocked(kind: string, channel: string, reason: string): Conf
     `The ${kind} route cannot be enabled on ${channel}: ${reason}.`,
     { kind, channel, locked: true, reason },
   );
+}
+
+/**
+ * A chat channel was named for a route that does not post to one (#543): only the five chat
+ * routes take a channel, and only while they are on Slack.
+ *
+ * @param kind - The route.
+ * @returns A `422` whose `details.fields` names `chatChannelId`.
+ */
+export function routeNotChat(kind: string): InvalidRequestError {
+  const message = `The ${kind} route does not post to a chat channel.`;
+
+  return new InvalidRequestError(ROUTE_ERRORS.notChat, message, {
+    kind,
+    fields: { chatChannelId: [message] },
+  });
 }

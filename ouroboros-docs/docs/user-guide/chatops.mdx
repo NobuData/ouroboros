@@ -99,9 +99,8 @@ Each purpose has one channel. Binding a second channel for **Loops** moves Loops
 **Unbind**, on a bound channel, stops Ouroboros posting there: the routes that pointed at it
 are left without a channel.
 
-**Manage in Settings →** at the foot of the page opens the **Notifications** section, where
-each route has its switch — see
-[Notifications, email & webhooks](../administration/notifications-and-webhooks.mdx).
+To point a single route at a different channel, use
+[What gets published where](#what-gets-published-where).
 
 ### The channel mirror
 
@@ -168,6 +167,58 @@ If the command is refused, the reason appears under the box and what you typed s
 switched off, with the reason beside it: **messages live in Slack — commands work here**, and
 **Open ↗** to write in the channel itself.
 
+### The commands card
+
+**COMMANDS**, beside the mirror, lists every `/ouro` command — the same list, from the same
+source, as [/ouro chat commands](../cli/ouro.mdx). Each row shows the command as you would
+type it and what it does. <Since version="0.160.0" module="ouroboros-ui" />
+
+<Screenshot id="user-guide.chatops.commands" />
+
+- **Try it** puts the command in the box under the mirror, as `/ouro` and the command's name,
+  ready for you to finish and send. It does not run anything.
+- A command your role does not include is dimmed and says why — **Not available to you —**
+  followed by who it is for. It is listed so you know it exists.
+- The `explain pr` command carries a **v2 · #546** chip: it is not available yet, and has no
+  **Try it**.
+
+The card's caption — *Identical in Slack, Teams, and the in-app console. Tab-completion
+everywhere.* — is followed by **Teams arrives with #547**: Teams is not available yet.
+
+### What gets published where
+
+**WHAT GETS PUBLISHED WHERE** lists what Ouroboros posts to Slack and the channel each goes
+to. <Since version="0.160.0" module="ouroboros-ui" />
+
+<Screenshot id="user-guide.chatops.routing" />
+
+| Row | It posts |
+| --- | --- |
+| **Loop finished (merged)** | A card when a loop's pull request merges. |
+| **Blocking questions** | A question a loop is waiting on — and, with **+ DM on-call**, the same card as a direct message to the person on call. |
+| **Build failures** | A card when a build fails. |
+| **Weekly insights report** | The weekly digest. |
+| **Every stage transition — noisy, off by default** | A line for every stage a loop enters. It is off unless someone switches it on. |
+
+Every member can read the card. An Owner or a Maintainer can change it:
+
+- **The channel.** Choose one of the bound channels from the row's list.
+  **+ Add a channel…** opens [Add a channel](#add-a-channel). A row with no channel reads
+  **choose a channel**.
+- **The switch** turns the route on or off. It changes at once; if the change cannot be
+  saved, the switch goes back and the reason is shown under the row.
+- **The person on call.** **+ DM on-call** names them, such as **+ DM on-call (Ken Suenobu)**,
+  or reads **nobody designated**. **Change** lists the members who have
+  [linked their Slack identity](#link-your-identity) — only they can be chosen — and
+  **Nobody**. One person is on call at a time: **rotations arrive with #548**.
+
+Everyone else sees the same rows as text, with **Changing what gets published where is for
+an Owner or a Maintainer.**
+
+These are the same routes as the **Notifications** section of Settings: a change made in one
+shows in the other. **Manage in Settings →** at the foot of the card opens that section — see
+[Notifications, email & webhooks](../administration/notifications-and-webhooks.mdx).
+
 ### When Slack is not connected yet
 
 The page then explains what is missing instead:
@@ -203,7 +254,8 @@ When a loop reaches a decision only a person may make, Ouroboros posts it as a c
   card was last written; the card does not tick, but it is rewritten when the decision
   escalates or is answered.
 
-A workspace may also send each question as a direct message to the person on call.
+A workspace may also send each question as a direct message to the person on call — see
+[What gets published where](#what-gets-published-where).
 
 ### The same card, once it is answered
 

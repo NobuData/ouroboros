@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import { useCallback, useImperativeHandle, useLayoutEffect, useMemo, useRef } from "react";
 
 import type { SlackChannel } from "@/app/api/chatops";
 import { runningLabel } from "@/app/shell/console";
@@ -40,6 +40,18 @@ export interface MirrorCardProps {
   readonly readAt: string;
   /** Test seams for the mirror's poll and its earlier read. */
   readonly poll?: MirrorPollOptions;
+  /** Where the card puts its composer's handle, for the commands card's **Try it** (CA.3, #543). */
+  readonly composerRef?: React.Ref<MirrorComposerHandle>;
+}
+
+/** What the page may ask of the mirror's composer. */
+export interface MirrorComposerHandle {
+  /**
+   * Put a line in the box and the focus on it, without sending it.
+   *
+   * @param line The line, prefix included.
+   */
+  readonly prefill: (line: string) => void;
 }
 
 /** How near the end of the stream counts as *at* it, in CSS pixels. */
@@ -68,7 +80,7 @@ const AT_BOTTOM_SLACK = 24;
  * @param props See {@link MirrorCardProps}.
  * @returns The card.
  */
-export function MirrorCard({ channel: listed, appVersion, readAt, poll }: MirrorCardProps) {
+export function MirrorCard({ channel: listed, appVersion, readAt, poll, composerRef }: MirrorCardProps) {
   const mirror = useMirror(listed.id, poll);
   const { refresh } = mirror;
 
@@ -87,6 +99,9 @@ export function MirrorCard({ channel: listed, appVersion, readAt, poll }: Mirror
   const box = useRef<HTMLInputElement>(null);
   const composer = useMirrorComposer(listed.id, box, onSent);
   const sending = composer.cli.pending;
+  const { prefill } = composer;
+
+  useImperativeHandle(composerRef, () => ({ prefill }));
 
   // The mirror's own reading of the channel is the fresher one — whether the bot is still in it.
   const channel = mirror.page?.channel ?? listed;

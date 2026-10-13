@@ -269,6 +269,11 @@ export const WEBHOOK_REGISTRY: readonly WebhookRegistryVersion[] = [
     // CA.1 (#541): a Slack channel was bound to a purpose, or unbound.
     adds: ["audit.chat.channel_bound", "audit.chat.channel_unbound"],
   },
+  {
+    version: 14,
+    // CA.3 (#543): who is on call for decisions changed.
+    adds: ["audit.chat.on_call_changed"],
+  },
 ];
 
 /** The newest registry version — what a new endpoint subscribes under. */
