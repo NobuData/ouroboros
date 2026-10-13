@@ -1,4 +1,5 @@
 import { BACKOFF_BASE_MS } from "../webhooks/webhook.backoff";
+import { ESCALATED_ANNOTATION, decisionCard } from "./chat.cards.decision";
 import type { ChatComposer, ComposedChatMessage } from "./chat.composer";
 import {
   CHAT_DISPATCH_LEASE_MS,
@@ -6,6 +7,7 @@ import {
   MAX_CHAT_ATTEMPTS,
   payloadDigest,
 } from "./chat.dispatcher";
+import type { ChatEscalationRepository } from "./chat.escalation.repository";
 import {
   ARCHETYPES,
   CHANNEL,
@@ -13,13 +15,19 @@ import {
   FakeChatStore,
   FixtureChatBackend,
   ITEM,
+  QUESTION,
+  QUESTION_TIMER,
+  QUESTION_VALUES,
   RUN_1846,
+  UI_URL,
 } from "./chat.fixture";
 import type { ClaimedChatRow } from "./chat.repository";
 
 /**
  * The dispatcher (#536): the outbox's discipline — a post is recorded before it is sent, a
- * duplicate is absorbed, a rate limit is obeyed, and nothing that fails vanishes.
+ * duplicate is absorbed, a rate limit is obeyed, and nothing that fails vanishes. Since #538 an
+ * edit may leave a card open — its escalation annotation — and is recorded as an edit, not an
+ * answer.
  */
 
 const NOW = new Date("2026-10-11T14:11:00.000Z");
@@ -67,6 +75,23 @@ function composed(row: ClaimedChatRow): ComposedChatMessage {
   };
 }
 
+/** What the composer says for the update of an escalated, still unanswered decision (#538). */
+function escalated(now: Date): ComposedChatMessage {
+  return {
+    model: decisionCard(QUESTION, {
+      uiUrl: UI_URL,
+      values: QUESTION_VALUES,
+      now,
+      timer: { ...QUESTION_TIMER, firedAt: QUESTION_TIMER.dueAt },
+    }),
+    refs: [],
+    facts: {},
+    state: "open",
+    resolution: null,
+    digestParts: ["decision_card", ITEM],
+  };
+}
+
 /** A dispatcher over an in-memory outbox, the fixture backend and a stub composer. */
 function harness() {
   const store = new FakeChatStore();
@@ -74,15 +99,26 @@ function harness() {
   const compose = jest.fn((row: ClaimedChatRow): ReturnType<ChatComposer["compose"]> =>
     Promise.resolve(composed(row)),
   );
+  // The one write the escalation repository does for the dispatcher, over the same store.
+  const recordEdited = jest.fn((messageId: string, at: Date): Promise<void> => {
+    const message = store.messages.find((row) => row.id === messageId);
+
+    if (message?.kind === "decision_card" && message.state === "open") {
+      message.editedAt = at;
+    }
+
+    return Promise.resolve();
+  });
   // No jitter: the middle of the range.
   const dispatcher = new ChatDispatcher(
     store.repository(),
     { compose } as unknown as ChatComposer,
+    { recordEdited } as unknown as ChatEscalationRepository,
     backend,
     () => 0.5,
   );
 
-  return { store, backend, compose, dispatcher };
+  return { store, backend, compose, recordEdited, dispatcher };
 }
 
 describe("posting", () => {
@@ -672,6 +708,156 @@ describe("post → resolve → update → system line", () => {
 
     expect(card.state).toBe("resolved");
     expect(row.status).toBe("sent");
+  });
+});
+
+describe("an escalation's edit (#538)", () => {
+  const LATER = new Date(QUESTION_TIMER.dueAt.getTime() + 60_000);
+  const edit = (messageId: string) => ({
+    operation: "update" as const,
+    messageKind: "decision_card" as const,
+    cardKind: "protected_path_allow_once",
+    decisionItemId: ITEM,
+    subject: {},
+    routeKind: "custom:blocking-questions",
+    messageId,
+  });
+
+  it("edits the posted card with its annotation, records the edit, and leaves it open", async () => {
+    const { store, backend, compose, recordEdited, dispatcher } = harness();
+    const card = store.message();
+    const digest = card.payloadDigest;
+    compose.mockResolvedValueOnce(escalated(LATER));
+    const row = store.enqueue(edit(card.id));
+
+    const report = await dispatcher.tick(LATER);
+
+    expect(report).toMatchObject({ claimed: 1, sent: 1 });
+    expect(backend.posts).toEqual([]);
+    expect(backend.updates).toEqual([
+      expect.objectContaining({
+        connectionId: CONNECTION,
+        channelId: "C071LOOPS",
+        ts: card.platformTs,
+      }),
+    ]);
+    const payload = JSON.stringify(backend.updates[0].rendered.payload);
+
+    expect(payload).toContain(ESCALATED_ANNOTATION);
+    // Still answerable: the buttons are on the edited card.
+    expect(payload).toContain("<Allow once>");
+    expect(recordEdited).toHaveBeenCalledTimes(1);
+    expect(recordEdited).toHaveBeenCalledWith(card.id, LATER);
+    expect(card).toMatchObject({
+      state: "open",
+      resolution: null,
+      editedAt: LATER,
+      payloadDigest: digest,
+    });
+    expect(row).toMatchObject({
+      status: "sent",
+      attempts: 1,
+      messageId: card.id,
+      settledAt: LATER,
+    });
+    expect(store.messages).toHaveLength(1);
+  });
+
+  it("records a resolution's edit as a resolution — never as a mere edit", async () => {
+    const { store, recordEdited, dispatcher } = harness();
+    const card = store.message();
+    const row = store.enqueue(edit(card.id));
+
+    await dispatcher.tick(LATER);
+
+    expect(recordEdited).not.toHaveBeenCalled();
+    expect(card).toMatchObject({
+      state: "resolved",
+      resolution: { outcome: "allow_once", resolvedBy: "user-maya" },
+      editedAt: LATER,
+    });
+    expect(row.status).toBe("sent");
+  });
+
+  it("can still be answered afterwards: the resolution's edit closes the annotated card", async () => {
+    const { store, backend, compose, dispatcher } = harness();
+    const card = store.message();
+    compose.mockResolvedValueOnce(escalated(LATER));
+    store.enqueue(edit(card.id));
+    await dispatcher.tick(LATER);
+
+    const answered = new Date(LATER.getTime() + 120_000);
+    const resolved = store.enqueue(edit(card.id));
+    await dispatcher.tick(answered);
+
+    expect(backend.updates).toHaveLength(2);
+    expect(JSON.stringify(backend.updates[1].rendered.payload)).not.toMatch(/<Allow once>|<Deny>/);
+    expect(card).toMatchObject({ state: "resolved", editedAt: answered });
+    expect(resolved.status).toBe("sent");
+  });
+
+  it("absorbs the annotation of a card that was answered first", async () => {
+    const { store, backend, compose, recordEdited, dispatcher } = harness();
+    const card = store.message({ state: "resolved" });
+    compose.mockResolvedValueOnce(escalated(LATER));
+    const row = store.enqueue(edit(card.id));
+
+    await dispatcher.tick(LATER);
+
+    expect(backend.updates).toEqual([]);
+    expect(recordEdited).not.toHaveBeenCalled();
+    expect(row.status).toBe("absorbed");
+  });
+
+  it("skips with the composer's reason when the decision has not escalated", async () => {
+    const { store, backend, compose, recordEdited, dispatcher } = harness();
+    const card = store.message();
+    compose.mockResolvedValueOnce({ skip: "the decision is not resolved" });
+    const row = store.enqueue(edit(card.id));
+
+    await dispatcher.tick(LATER);
+
+    expect(backend.updates).toEqual([]);
+    expect(recordEdited).not.toHaveBeenCalled();
+    expect(row).toMatchObject({ status: "skipped", lastError: "the decision is not resolved" });
+    expect(card.state).toBe("open");
+  });
+
+  it("retries a failed annotation, recording no edit until it lands", async () => {
+    const { store, backend, compose, recordEdited, dispatcher } = harness();
+    const card = store.message();
+    compose.mockResolvedValue(escalated(LATER));
+    backend.answers.push({ ok: false, error: "unreachable", reason: "retry" });
+    const row = store.enqueue(edit(card.id));
+
+    await dispatcher.tick(LATER);
+
+    expect(recordEdited).not.toHaveBeenCalled();
+    expect(card.editedAt).toBeNull();
+    expect(row).toMatchObject({ status: "pending", attempts: 1, lastError: "unreachable" });
+
+    const retried = row.nextAttemptAt ?? LATER;
+    await dispatcher.tick(retried);
+
+    expect(recordEdited).toHaveBeenCalledWith(card.id, retried);
+    expect(row.status).toBe("sent");
+  });
+
+  it("treats a failure to record the edit as a failed attempt, not a lost row", async () => {
+    const { store, compose, recordEdited, dispatcher } = harness();
+    const card = store.message();
+    compose.mockResolvedValueOnce(escalated(LATER));
+    recordEdited.mockRejectedValueOnce(new Error("the database went away"));
+    const row = store.enqueue(edit(card.id));
+
+    await dispatcher.tick(LATER);
+
+    expect(row).toMatchObject({
+      status: "pending",
+      attempts: 1,
+      lastError: "the database went away",
+      messageId: card.id,
+    });
   });
 });
 

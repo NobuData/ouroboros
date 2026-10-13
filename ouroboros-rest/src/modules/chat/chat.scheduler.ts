@@ -25,6 +25,7 @@ import { SchedulerRegistry } from "@nestjs/schedule";
 import { describeForLog } from "../errors/failure";
 import { jittered } from "../scheduling/cadence";
 import { ChatDispatcher } from "./chat.dispatcher";
+import { ChatEscalation } from "./chat.escalation";
 import { ChatPublisher } from "./chat.publisher";
 import { ChatRepository } from "./chat.repository";
 
@@ -45,12 +46,14 @@ export class ChatScheduler implements OnApplicationBootstrap, OnApplicationShutd
 
   /**
    * @param dispatcher - Sends what is due.
+   * @param escalation - Fires the escalation timers that have come due.
    * @param publisher - Enqueues due digests.
    * @param repository - Prunes settled rows.
    * @param scheduler - Holds the timers.
    */
   constructor(
     private readonly dispatcher: ChatDispatcher,
+    private readonly escalation: ChatEscalation,
     private readonly publisher: ChatPublisher,
     private readonly repository: ChatRepository,
     private readonly scheduler: SchedulerRegistry,
@@ -78,6 +81,14 @@ export class ChatScheduler implements OnApplicationBootstrap, OnApplicationShutd
    */
   async dispatch(now: Date = new Date()): Promise<void> {
     this.clear(CHAT_DISPATCH_TIMEOUT);
+
+    try {
+      // Before the dispatch, so what an escalation intends goes out in the same pass.
+      await this.escalation.pass(now);
+    } catch (error) {
+      // The timers are rows: what was due is still due.
+      this.logger.error("Chat escalation failed; retrying next tick.", describeForLog(error));
+    }
 
     try {
       await this.dispatcher.tick(now);

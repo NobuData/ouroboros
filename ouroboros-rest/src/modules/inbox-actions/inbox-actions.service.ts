@@ -49,6 +49,7 @@ import { DomainError } from "../errors/error.envelope";
 import { CapabilityRepository } from "../tenancy/capability.repository";
 import { effectiveCanApproveLoops } from "../tenancy/capabilities";
 import {
+  decisionActionConfirmInApp,
   decisionActionForbidden,
   decisionActionInProgress,
   decisionActionNeedsPerson,
@@ -173,7 +174,9 @@ export class InboxActionsService {
    * @throws {NotFoundError} `decision_item_not_found`, `decision_action_not_found`.
    * @throws {InvalidRequestError} `decision_action_not_an_answer`, `decision_note_required`,
    *   `decision_note_not_taken`.
-   * @throws {ForbiddenError} `decision_action_forbidden`, `decision_action_needs_person`.
+   * @throws {ForbiddenError} `decision_action_forbidden`, `decision_action_needs_person`;
+   *   `decision_action_confirm_in_app` for a merge-class kind pressed from the `slack` channel —
+   *   chat never completes a merge (#538, X5), whichever chat path asked.
    * @throws {ConflictError} `decision_already_answered`, `decision_action_in_progress`,
    *   `decision_item_expired`, `decision_idempotency_key_reused`.
    * @throws {NotImplementedError} `decision_action_unbound`.
@@ -199,6 +202,12 @@ export class InboxActionsService {
 
     const kind = await this.registry.pinnedKind(item.kindId, item.kindVersion);
     const action = this.declaredAnswer(kind, actionId);
+
+    // Chat is not the last word on a merge (X5): a button and `/ouro answer` both end here.
+    if (kind.mergeClass && channel === "slack") {
+      throw decisionActionConfirmInApp(item.id);
+    }
+
     await this.assertMayPress(organizationId, actor, action);
     const note = this.noteFor(action, request.note);
 

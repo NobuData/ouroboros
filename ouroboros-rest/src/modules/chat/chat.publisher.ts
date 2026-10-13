@@ -29,6 +29,7 @@ import {
 } from "../decisions/decision.lifecycle";
 import { describeForLog } from "../errors/failure";
 import { dueRouteSlot } from "../notification-routes/routes.schedule";
+import { ChatEscalationRepository } from "./chat.escalation.repository";
 import { CHAT_ROUTE_KINDS, enqueueChatIntent } from "./chat.outbox";
 import { ChatRepository } from "./chat.repository";
 
@@ -45,12 +46,14 @@ export class ChatPublisher implements DecisionLifecycleListener, OnModuleInit, O
   /**
    * @param database - Where intents are written.
    * @param repository - Where a decision's cards are, and the digest routes.
+   * @param escalations - Starts a decision's escalation timer with its card.
    * @param registry - Which kinds are dormant.
    * @param lifecycle - Where filed and resolved are heard.
    */
   constructor(
     private readonly database: DatabaseService,
     private readonly repository: ChatRepository,
+    private readonly escalations: ChatEscalationRepository,
     private readonly registry: DecisionKindRegistry,
     private readonly lifecycle: DecisionLifecycle,
   ) {}
@@ -79,7 +82,10 @@ export class ChatPublisher implements DecisionLifecycleListener, OnModuleInit, O
   }
 
   /**
-   * Intend a decision card wherever the workspace routes blocking questions. Never throws.
+   * Intend a decision card wherever the workspace routes blocking questions, and start the
+   * escalation timer its footnote counts down from (#538) — in one transaction, so a card is
+   * never intended without the timer behind it. A decision nobody is told about in chat starts
+   * no timer: there is no channel for it to stop depending on. Never throws.
    *
    * @param organizationId - The workspace.
    * @param itemId - The decision.
@@ -92,14 +98,22 @@ export class ChatPublisher implements DecisionLifecycleListener, OnModuleInit, O
     }
 
     try {
-      return await enqueueChatIntent(this.database.db, {
-        organizationId,
-        messageKind: "decision_card",
-        cardKind: kindId,
-        decisionItemId: itemId,
-        subject: {},
-        routeKinds: CHAT_ROUTE_KINDS.decision,
-        dedupe: ["decision_card", itemId],
+      return await this.escalations.transaction(async (transaction) => {
+        const written = await enqueueChatIntent(transaction, {
+          organizationId,
+          messageKind: "decision_card",
+          cardKind: kindId,
+          decisionItemId: itemId,
+          subject: {},
+          routeKinds: CHAT_ROUTE_KINDS.decision,
+          dedupe: ["decision_card", itemId],
+        });
+
+        if (written > 0) {
+          await this.escalations.start(transaction, itemId);
+        }
+
+        return written;
       });
     } catch (error) {
       this.logger.error(`Could not enqueue the card of decision ${itemId}.`, describeForLog(error));

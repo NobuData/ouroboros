@@ -4841,7 +4841,7 @@ dispatch answers *"Commands cannot be run from here yet."*
 
 > **Issue:** [#536](https://github.com/NobuData/ouroboros/issues/536) — *[BZ.2] Card renderer &
 > event publisher* · epic [#528](https://github.com/NobuData/ouroboros/issues/528) · schema
-> `V131`, `V133`
+> `V131`, `V134`
 
 `src/modules/chat/` is everything Ouroboros says in a channel: one card model, one publisher, and
 an outbox between the thing that happened and the message about it.
@@ -4878,6 +4878,62 @@ decision resolved ─▶ chat.update of each posted card ─▶ system line
   in a `chat_channels` row tagged `dm`.
 - **Not wired yet:** `enqueueBuildCard` has no caller — no plane reports a build's result as an
   event. Routes cannot be bound to a channel through the API (#541/#542); the seed binds them.
+
+## Chat answers & escalation
+
+> **Issue:** [#538](https://github.com/NobuData/ouroboros/issues/538) — *[BZ.4] Interactive
+> answers & escalation* · epic [#528](https://github.com/NobuData/ouroboros/issues/528) · schema
+> `V135`
+
+A button on a decision card answers the decision, and an unanswered card escalates when its
+countdown ends. Neither is a second answer path: the button composes the inbox's action
+executor (#462), and the countdown is read off a timer row.
+
+```
+press ─▶ signed by this workspace? ─▶ on the card we posted for that decision?   else rejected
+      ─▶ presser linked?   ─▶ already answered? ─▶ merge-class? ─▶ may they press it?
+      ─▶ InboxActionsService.execute(…, channel: slack) ─▶ audit chat.decision_answered
+
+card intended ─▶ decision_escalation_timers ─▶ due ─▶ item.escalated_at · cards annotated · DM on-call
+                       └─ item answered · snoozed · withdrawn ─▶ cancelled (a trigger), never fires
+```
+
+- **`ChatAnswers.press`** (`chat/chat.answers.ts`) takes a platform-neutral press and returns an
+  outcome; only `answered` changed anything. Slack's adapter (`slack.inbound.service.ts`) resolves
+  the presser's identity link and turns each outcome into an ephemeral reply (`pressReply`).
+  `SlackPressHandler`, provided by `ChatModule`, registers the service with the inbound service
+  at start — the chat module already depends on the Slack one, so the binding runs that way.
+- **Forged or replayed.** The button's value must carry the workspace's HMAC
+  (`ChatComposer.verifiedAction`) *and* arrive from a `chat_messages` row this connection posted
+  as that decision's card. Anything else is `rejected`.
+- **Single use.** A reference names one decision; once the decision is resolved every press
+  reports who answered (`already_answered`) and executes nothing. Two simultaneous presses race
+  inside the executor, which refuses the loser with `decision_already_answered` or
+  `decision_action_in_progress`.
+- **Merge-class (X5).** `InboxActionsService.execute` refuses a merge-class kind on the `slack`
+  channel with `403 decision_action_confirm_in_app` — the card button and `/ouro answer` both
+  end there. A merge card renders one **Confirm in Ouroboros ↗** link to `/inbox?item=<id>`.
+- **Audit.** An executed press records `chat.decision_answered` (webhook registry v12): the
+  person, `permittedBy` (`can_approve_loops`, or `role:<role>`), the executor's attempt, the
+  connection, the `chat_messages` row and the platform's channel, timestamp and user ids.
+- **Timers** (`V135`). `ChatPublisher.decisionFiled` starts the item's timer in the transaction
+  that intends its card — a decision no route delivers starts none. The window is
+  `decision_escalation_overrides`' for the workspace and kind, else the pinned kind's
+  `escalation_window`. The database cancels the timer when the item leaves `open`.
+- **The pass** (`ChatEscalation.pass`, on the dispatcher's five-second tick, before it) claims
+  due timers `for update skip locked`, at most 50 a pass, one transaction each:
+  `decision_escalation_fire` stamps the timer, `decision_items.escalated_at` and the open
+  cards' `escalated_at`; then an `update` intent per posted open card and a DM of the card to
+  the on-call designee. A timer missed during downtime is still a pending row and fires once.
+- **The countdown** is `waitingFootnote(subject, now, timer)`: `paused 4m · escalates to the
+  Needs-you inbox in 26m` from `due_at`; `⚠ escalated — now in the Needs-you inbox` once fired;
+  only the wait when the timer is cancelled or absent.
+- **The inbox.** `GET /api/v1/inbox` lists escalated items first and each item carries
+  `escalatedAt`. `GET /api/v1/inbox/channels` reports Slack `connected` while the workspace has
+  an active Slack connection.
+
+Not here: an API for escalation overrides or the on-call designee (#541, #542, #548), and the
+end-to-end run against Slack (#545).
 
 ## Build logs
 

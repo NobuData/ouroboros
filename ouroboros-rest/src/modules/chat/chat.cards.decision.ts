@@ -31,7 +31,6 @@ import type {
 import type { DecisionChannel, DecisionSeverity } from "../db/schema";
 import {
   STAT_SEPARATOR,
-  intervalSeconds,
   shortDuration,
   type ChatCard,
   type ChatCardAction,
@@ -42,6 +41,25 @@ import {
 /** The mark on a decision that is waiting, and on one that has been answered. */
 export const WAITING_MARK = "⏸";
 export const ANSWERED_MARK = "✓";
+
+/** What a waiting card says once its escalation timer has fired (#538). */
+export const ESCALATED_ANNOTATION = "⚠ escalated — now in the Needs-you inbox";
+
+/** The one button a merge-class card has in chat, and the line that says why (decision X5). */
+export const CONFIRM_IN_APP_LABEL = "Confirm in Ouroboros ↗";
+export const CONFIRM_IN_APP_LINE =
+  "A merge is confirmed in Ouroboros, signed in — it cannot be answered from chat.";
+
+/**
+ * A decision's escalation timer, as the card reads it (#538) — `decision_escalation_timers`'
+ * three instants.
+ */
+export interface EscalationTimerState {
+  /** When the item escalates if nobody has answered. */
+  readonly dueAt: Date;
+  readonly firedAt: Date | null;
+  readonly cancelledAt: Date | null;
+}
 
 /** How each answering channel reads on a resolved card. */
 const CHANNEL_WORDS: Readonly<Record<DecisionChannel, string>> = {
@@ -62,11 +80,10 @@ const SEVERITIES: Readonly<Record<DecisionSeverity, ChatSeverity>> = {
 
 /** The part of a decision a card is composed from. */
 export interface DecisionCardSubject {
-  /** The kind the item is pinned to — its actions, what answers it, and its window. */
-  readonly kind: Pick<
-    PublishedDecisionKind,
-    "actions" | "resolutionSemantics" | "escalationWindow"
-  >;
+  /** The decision item — what the app's own page for it is addressed by. */
+  readonly itemId: string;
+  /** The kind the item is pinned to — its actions, what answers it, and whether it is a merge. */
+  readonly kind: Pick<PublishedDecisionKind, "actions" | "resolutionSemantics" | "mergeClass">;
   /** The kind's question and why, rendered from the item's facts as plain text. */
   readonly rendered: RenderedDecision;
   readonly severity: DecisionSeverity;
@@ -119,28 +136,44 @@ export function answers(
 /**
  * The footnote of a waiting card: how long it has waited and when it escalates.
  *
- * A decision about a run holds that run up, so it reads *paused*; any other reads *waiting*.
- * Past the window the countdown is gone and the line says so — it never counts below zero.
+ * This is the countdown computation (#538): the line is read off the timer's own state at the
+ * instant of rendering, so it cannot say anything the mechanism will not do. A decision about a
+ * run holds that run up, so it reads *paused*; any other reads *waiting*.
+ *
+ * | timer | the line |
+ * | --- | --- |
+ * | pending, due later | `paused 4m · escalates to the Needs-you inbox in 26m` |
+ * | pending, due now or overdue | `paused 31m · escalating to the Needs-you inbox` |
+ * | fired | `paused 31m · ⚠ escalated — now in the Needs-you inbox` |
+ * | cancelled, or none | `paused 4m` — nothing is counting down, so nothing is promised |
  *
  * @param subject - The decision.
  * @param now - The instant the card is rendered.
- * @returns `paused 4m · escalates to the Needs-you inbox in 26m`.
+ * @param timer - The item's escalation timer, or undefined when it has none.
+ * @returns The footnote.
  */
-export function waitingFootnote(subject: DecisionCardSubject, now: Date): string {
+export function waitingFootnote(
+  subject: Pick<DecisionCardSubject, "askedAt" | "refs">,
+  now: Date,
+  timer: EscalationTimerState | undefined,
+): string {
   const waited = Math.max(0, (now.getTime() - subject.askedAt.getTime()) / 1000);
   const verb = subject.refs.some((ref) => ref.type === "run") ? "paused" : "waiting";
   const head = `${verb} ${shortDuration(waited)}`;
-  const window = intervalSeconds(subject.kind.escalationWindow);
 
-  if (window === null) {
+  if (timer === undefined || timer.cancelledAt !== null) {
     return head;
   }
 
-  const left = window - waited;
+  if (timer.firedAt !== null) {
+    return `${head}${STAT_SEPARATOR}${ESCALATED_ANNOTATION}`;
+  }
+
+  const left = (timer.dueAt.getTime() - now.getTime()) / 1000;
 
   return left > 0
     ? `${head}${STAT_SEPARATOR}escalates to the Needs-you inbox in ${shortDuration(left)}`
-    : `${head}${STAT_SEPARATOR}escalated to the Needs-you inbox`;
+    : `${head}${STAT_SEPARATOR}escalating to the Needs-you inbox`;
 }
 
 /**
@@ -151,20 +184,38 @@ export function waitingFootnote(subject: DecisionCardSubject, now: Date): string
  * @param input.values - The signed value for each answering action, by action id. An answering
  *   action with no value gets no button: an unsigned button is never drawn.
  * @param input.now - The instant the card is rendered, for the footnote.
- * @returns The card.
+ * @param input.timer - The item's escalation timer, which the footnote counts down from.
+ * @returns The card. A merge-class decision's answers are one link into the app instead of
+ *   buttons (X5), and the card says so.
  */
 export function decisionCard(
   subject: DecisionCardSubject,
-  input: { uiUrl: string; values: ReadonlyMap<string, string>; now: Date },
+  input: {
+    uiUrl: string;
+    values: ReadonlyMap<string, string>;
+    now: Date;
+    timer?: EscalationTimerState;
+  },
 ): ChatCard {
   const origin = input.uiUrl.replace(/\/+$/, "");
   const actions: ChatCardAction[] = [];
+  const inApp = subject.kind.mergeClass;
+
+  if (inApp) {
+    actions.push({
+      type: "link",
+      id: "confirm_in_app",
+      label: CONFIRM_IN_APP_LABEL,
+      url: `${origin}/inbox?item=${encodeURIComponent(subject.itemId)}`,
+    });
+  }
 
   for (const action of subject.kind.actions) {
     if (answers(subject.kind, action)) {
       const value = input.values.get(action.id);
 
-      if (value !== undefined) {
+      // Chat never completes a merge: its answers are the one link above.
+      if (value !== undefined && !inApp) {
         actions.push({
           type: "answer",
           id: action.id,
@@ -197,10 +248,10 @@ export function decisionCard(
     severity: SEVERITIES[subject.severity],
     mark: WAITING_MARK,
     headline: subject.rendered.question,
-    lines: factLines(subject),
+    lines: inApp ? [...factLines(subject), CONFIRM_IN_APP_LINE] : factLines(subject),
     stats: null,
     actions,
-    footnote: waitingFootnote(subject, input.now),
+    footnote: waitingFootnote(subject, input.now, input.timer),
   };
 }
 

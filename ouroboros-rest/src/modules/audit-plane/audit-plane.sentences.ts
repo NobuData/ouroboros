@@ -198,6 +198,12 @@ const TEMPLATES: Readonly<Record<string, Template>> = {
       ? "typed an /ouro command"
       : `typed /ouro ${command} ${where}${how}`;
   },
+  "chat.decision_answered": (f) => {
+    const action = text(f, "actionId");
+    return action === undefined
+      ? "answered a decision from Slack"
+      : `answered a decision from Slack (${action.replaceAll("_", " ")})`;
+  },
 };
 
 /**

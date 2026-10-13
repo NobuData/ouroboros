@@ -11,7 +11,8 @@
  *         available    otherwise — "connect a git host"
  * email   connected    while this deployment has a mail server (OURO_SMTP_URL)
  *         available    otherwise — "set OURO_SMTP_URL"
- * slack   unavailable-until  Chat Ops (mockup 19, #536/#538)
+ * slack   connected    while the workspace has an active Slack connection (#538)
+ *         available    otherwise — "connect Slack"
  * push    unavailable-until  BP.2 (#472)
  * ```
  */
@@ -46,6 +47,8 @@ export interface ChannelFacts {
   readonly commentingSources: number;
   /** This deployment's mailer. */
   readonly mailTransport: MailTransport;
+  /** Whether the workspace has an active Slack connection — cards with buttons reach it (#538). */
+  readonly slackConnected: boolean;
 }
 
 /**
@@ -64,9 +67,11 @@ export function channelTruth(facts: ChannelFacts): ChannelsResource {
         id: "slack",
         label: "Slack",
         summary: "Approve with a button, right in the thread.",
-        state: "unavailable-until",
-        until: "Chat Ops",
-        reason: "Arrives with Chat Ops.",
+        state: facts.slackConnected ? "connected" : "available",
+        until: null,
+        reason: facts.slackConnected
+          ? null
+          : "Connect Slack in Settings to answer from a decision's card.",
       },
       {
         id: "email",

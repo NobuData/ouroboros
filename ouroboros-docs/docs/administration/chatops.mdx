@@ -19,9 +19,9 @@ Guide's [Chat Ops](../user-guide/chatops.mdx).
 
 :::info[What works today]
 
-Connecting Slack, linking identities, publishing cards and the
-[`/ouro` commands](../cli/ouro.mdx) work now. Answering a decision with a button in Slack replies
-that it is not available yet and changes nothing.
+Connecting Slack, linking identities, publishing cards, the
+[`/ouro` commands](../cli/ouro.mdx), answering a decision with a card's button and
+[escalation](#escalation) work now.
 
 Choosing which channel a route posts to, and designating the on-call person, cannot be done in
 the app yet — see [Where messages go](#where-messages-go).
@@ -201,6 +201,48 @@ Three things are not in the app yet:
 
 The bot posts only in channels it has been added to. In Slack, add it with `/invite @Ouroboros`.
 
+## Answers from Slack
+
+A button on a decision card answers the decision as the person who pressed it — see
+[Answer a decision from Slack](../user-guide/chatops.mdx#answer-a-decision-from-slack). Nothing
+needs configuring, and there is no separate permission for it:
+
+- The presser must have linked their Slack identity, and their account must be allowed to give
+  that answer — for most answers, the `can_approve_loops` capability
+  ([Roles](./roles.mdx)). The rule is the inbox's own.
+- A merge is never completed from Slack. A merge decision's card links into the app, and
+  `/ouro answer` refuses it.
+- Each answer is in the audit log as **answered a decision from Slack**, under the person's
+  name, with what permitted it and the channel and message it came from.
+
+## Escalation
+
+A decision posted to Slack starts a countdown — its **escalation window**, counted from when
+the question was asked. If nobody answers in time, Ouroboros marks the card **⚠ escalated — now
+in the Needs-you inbox**, moves the decision to the top of the Needs-you inbox, and sends the
+card as a direct message to the on-call person. Answering or snoozing the decision, or the
+decision being withdrawn, cancels the countdown.
+
+| Decision kind | Window |
+| --- | --- |
+| Most kinds — merge approval, protected path, claim waiver and others | 30 minutes |
+| Splits and re-sizes | 1 day |
+| Facts | 1 week |
+
+- **Changing a window for your workspace.** A workspace can have its own window for a kind,
+  of up to seven days. There is no screen or API for it yet: it is a row in the
+  database table `decision_escalation_overrides` (workspace, kind, window), which your operator
+  sets. A new window applies to decisions asked after it is set; a countdown already running
+  keeps the window it started with.
+- **The on-call person.** The direct message goes to whoever is on call for decisions, once
+  they have [linked their Slack identity](../user-guide/chatops.mdx#link-your-identity). Nobody
+  can be designated on call in the app yet; with nobody on call the decision still escalates —
+  the card is marked and the inbox reorders — and no direct message is sent.
+- **After downtime.** A countdown that ended while Ouroboros was stopped escalates once, when
+  it starts again.
+- **Decisions not posted to Slack** — because no route delivers them — start no countdown and
+  do not escalate.
+
 ## Delivery: retries and failures
 
 Ouroboros records each message it means to send before it sends it, so a message survives a
@@ -297,4 +339,10 @@ supported way to run it.
   not in the channel. Check `delivery` on `GET /api/v1/slack/connection` — see
   [Delivery: retries and failures](#delivery-retries-and-failures).
 - **A card still shows answer buttons after the decision was answered.** The edit is waiting
-  behind a rate limit or a retry; it is applied when Slack accepts it.
+  behind a rate limit or a retry; it is applied when Slack accepts it. Pressing a button on
+  such a card changes nothing: the presser is told who answered.
+- **A button answers *That button is not valid for this message*.** The press did not come
+  from a card this connection posted for that decision — for example a card posted before
+  Slack was reconnected. Nothing was changed; answer in the Needs-you inbox.
+- **A decision passed its window and nobody was messaged.** Nobody is on call for decisions,
+  or the on-call person has not linked their Slack identity.

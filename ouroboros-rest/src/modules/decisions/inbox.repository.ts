@@ -37,6 +37,8 @@ export interface InboxItemRow {
   readonly snoozedUntil: Date | null;
   readonly snoozedBy: string | null;
   readonly snoozeReason: string | null;
+  /** When the item's escalation timer fired (V135, #538); null for one that never escalated. */
+  readonly escalatedAt: Date | null;
 }
 
 /** One resolution of a day, with its item. */
@@ -87,6 +89,7 @@ const ITEM_COLUMNS = [
   "snoozed_until",
   "snoozed_by",
   "snooze_reason",
+  "escalated_at",
 ] as const;
 
 /**
@@ -117,6 +120,7 @@ function itemOf(row: {
   snoozed_until: Date | null;
   snoozed_by: string | null;
   snooze_reason: string | null;
+  escalated_at: Date | null;
 }): InboxItemRow {
   return {
     id: row.id,
@@ -132,6 +136,7 @@ function itemOf(row: {
     snoozedUntil: row.snoozed_until,
     snoozedBy: row.snoozed_by,
     snoozeReason: row.snooze_reason,
+    escalatedAt: row.escalated_at,
   };
 }
 
@@ -158,7 +163,8 @@ export class InboxRepository {
   }
 
   /**
-   * The asking items — open, or snoozed with the snooze already elapsed — newest first.
+   * The asking items — open, or snoozed with the snooze already elapsed — escalated ones first
+   * (#538), then newest first.
    *
    * @param organizationId - The workspace.
    * @param now - The instant the snoozes are judged at.
@@ -176,6 +182,8 @@ export class InboxRepository {
           w.and([w("status", "=", "snoozed"), w("snoozed_until", "<=", now)]),
         ]),
       )
+      // An escalated item went unanswered past its window (#538): it is listed first.
+      .orderBy(sql`escalated_at is not null`, "desc")
       .orderBy("created_at", "desc")
       .orderBy("id", "desc")
       .execute();

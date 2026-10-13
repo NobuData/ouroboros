@@ -198,6 +198,7 @@ function item(
     snoozedUntil: null,
     snoozedBy: null,
     snoozeReason: null,
+    escalatedAt: null,
   };
 }
 

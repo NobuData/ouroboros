@@ -252,6 +252,94 @@ describe("InboxActionsService", () => {
     });
   });
 
+  describe("a merge is never completed from chat (#538, X5)", () => {
+    it("refuses a merge-class decision pressed from Slack — nothing claimed, attempted or run", async () => {
+      const { service, repository, handlers, audit, lifecycle } = executor();
+
+      const pressed = service.execute(ORG, "item-1", "approve_merge", KEN, {}, "slack");
+
+      await expect(pressed).rejects.toBeInstanceOf(ForbiddenError);
+      await expect(pressed).rejects.toMatchObject({
+        code: "decision_action_confirm_in_app",
+        details: { itemId: "item-1" },
+      });
+      expect(repository.transaction).not.toHaveBeenCalled();
+      expect(repository.insertAttempt).not.toHaveBeenCalled();
+      expect(repository.insertResolution).not.toHaveBeenCalled();
+      expect(repository.fail).not.toHaveBeenCalled();
+      expect(handlers.execute).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(lifecycle.emit).not.toHaveBeenCalled();
+    });
+
+    it("refuses every answer of the kind, not only the merge itself", async () => {
+      const { service, handlers } = executor();
+
+      await expect(
+        service.execute(
+          ORG,
+          "item-1",
+          "return_to_loop",
+          KEN,
+          { note: "Keep the DMA path." },
+          "slack",
+        ),
+      ).rejects.toMatchObject({ code: "decision_action_confirm_in_app" });
+      expect(handlers.execute).not.toHaveBeenCalled();
+    });
+
+    it("says so before it says who may press: somebody without the capability gets the same refusal", async () => {
+      const { service, capabilities } = executor();
+
+      await expect(
+        service.execute(ORG, "item-1", "approve_merge", JORGE, {}, "slack"),
+      ).rejects.toMatchObject({ code: "decision_action_confirm_in_app" });
+      expect(capabilities.explicitFor).not.toHaveBeenCalled();
+    });
+
+    it("still refuses a link and an undeclared action as what they are", async () => {
+      const { service } = executor();
+
+      await expect(
+        service.execute(ORG, "item-1", "open_verification", KEN, {}, "slack"),
+      ).rejects.toMatchObject({ code: "decision_action_not_an_answer" });
+      await expect(
+        service.execute(ORG, "item-1", "allow_once", KEN, {}, "slack"),
+      ).rejects.toMatchObject({ code: "decision_action_not_found" });
+    });
+
+    it.each(["web", "email", "github", "push", "api"] as const)(
+      "still executes the same merge-class decision from %s",
+      async (channel) => {
+        const { service, handlers, repository } = executor();
+
+        await expect(
+          service.execute(ORG, "item-1", "approve_merge", KEN, {}, channel),
+        ).resolves.toMatchObject({ status: "resolved" });
+        expect(handlers.execute).toHaveBeenCalledTimes(1);
+        expect(repository.insertAttempt).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ channel }),
+        );
+      },
+    );
+
+    it("still executes a decision that is not a merge from Slack", async () => {
+      const { service, handlers, repository } = executor({
+        item: item("protected_path_allow_once"),
+      });
+
+      await expect(
+        service.execute(ORG, "item-1", "allow_once", KEN, {}, "slack"),
+      ).resolves.toMatchObject({ status: "resolved" });
+      expect(handlers.execute).toHaveBeenCalledWith(
+        "guardrail.allow_once",
+        expect.objectContaining({ actionId: "allow_once", actor: KEN }),
+      );
+      expect(repository.insertResolution).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("the claim — first answer wins", () => {
     it("tells the loser who answered, with what and when", async () => {
       const { service, repository, handlers } = executor();
@@ -348,22 +436,16 @@ describe("InboxActionsService", () => {
     });
 
     it("claims under the item's row lock, with the client's key", async () => {
-      const { service, repository, trx } = executor();
+      // Not a merge: chat may answer this one (#538).
+      const { service, repository, trx } = executor({ item: item("protected_path_allow_once") });
 
-      await service.execute(
-        ORG,
-        "item-1",
-        "approve_merge",
-        KEN,
-        { idempotencyKey: "key-7" },
-        "slack",
-      );
+      await service.execute(ORG, "item-1", "allow_once", KEN, { idempotencyKey: "key-7" }, "slack");
 
       expect(repository.item).toHaveBeenLastCalledWith(trx, ORG, "item-1", true);
       expect(repository.insertAttempt).toHaveBeenCalledWith(trx, {
         organizationId: ORG,
         itemId: "item-1",
-        actionId: "approve_merge",
+        actionId: "allow_once",
         actorId: KEN.id,
         channel: "slack",
         idempotencyKey: "key-7",

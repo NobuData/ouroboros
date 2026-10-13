@@ -99,9 +99,40 @@ describe("the /ouro answer binding", () => {
       "decision_already_answered",
       new ConflictError("decision_already_answered", "Somebody answered it first."),
     ],
+    [
+      // A merge-class decision: the executor refuses the slack channel itself (#538, X5).
+      "decision_action_confirm_in_app",
+      new ForbiddenError(
+        "decision_action_confirm_in_app",
+        "A merge is confirmed in Ouroboros, signed in — it cannot be answered from chat.",
+        { itemId: "item-231" },
+      ),
+    ],
   ])("relays the executor's %s refusal as the plane threw it", async (_code, refusal) => {
     execute.mockRejectedValue(refusal);
 
     await expect(binding.run(contextFor("answer", ARGS))).rejects.toBe(refusal);
+  });
+
+  it("decides nothing about a merge itself: it makes the call, and the executor refuses", async () => {
+    const refusal = new ForbiddenError(
+      "decision_action_confirm_in_app",
+      "A merge is confirmed in Ouroboros, signed in — it cannot be answered from chat.",
+      { itemId: "item-231" },
+    );
+    const merge = { ...ARGS, action: { type: "action" as const, actionId: "approve_merge" } };
+    execute.mockRejectedValue(refusal);
+
+    await expect(binding.run(contextFor("answer", merge))).rejects.toBe(refusal);
+    // The one call it made names the slack channel — which is what the executor refuses on.
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenCalledWith(
+      WORKSPACE,
+      "item-231",
+      "approve_merge",
+      REQUESTER,
+      {},
+      "slack",
+    );
   });
 });

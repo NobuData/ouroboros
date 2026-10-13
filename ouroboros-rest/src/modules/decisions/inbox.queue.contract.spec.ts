@@ -57,6 +57,7 @@ function row(kindId: string, overrides: Partial<InboxItemRow> = {}): InboxItemRo
     snoozedUntil: null,
     snoozedBy: null,
     snoozeReason: null,
+    escalatedAt: null,
     ...overrides,
   };
 }
@@ -65,7 +66,12 @@ function row(kindId: string, overrides: Partial<InboxItemRow> = {}): InboxItemRo
 function queue(week: boolean): InboxQueueService {
   const repository = {
     wake: () => Promise.resolve(0),
-    open: () => Promise.resolve([row("merge_approval"), row("protected_path_allow_once")]),
+    // One escalated, one not: `escalatedAt` goes out as a date-time and as null (#538).
+    open: () =>
+      Promise.resolve([
+        row("merge_approval", { escalatedAt: new Date(NOW.getTime() - 60_000) }),
+        row("protected_path_allow_once"),
+      ]),
     snoozed: () =>
       Promise.resolve([
         row("fact_review", {
@@ -145,6 +151,14 @@ describe("the Needs-You reads and the document", () => {
     expect(
       validate(wire(await queue(false).queue("acme", { userId: null, roles: [] }))),
     ).toBeUndefined();
+  });
+
+  it("sends an item's escalation as a date-time, or null — never absent (#538)", async () => {
+    const page = wire(await queue(true).queue("acme", { userId: "u", roles: ["member"] })) as {
+      items: { escalatedAt: unknown }[];
+    };
+
+    expect(page.items.map((item) => item.escalatedAt)).toEqual(["2026-10-04T09:59:00.000Z", null]);
   });
 
   it("sends what InboxResolved describes", async () => {

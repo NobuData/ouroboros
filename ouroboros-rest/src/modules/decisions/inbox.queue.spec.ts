@@ -41,6 +41,7 @@ function item(
     snoozedUntil: null,
     snoozedBy: null,
     snoozeReason: null,
+    escalatedAt: null,
     ...overrides,
   };
 }
@@ -196,6 +197,21 @@ describe("InboxQueueService.queue", () => {
       true,
     );
     expect(watcher.items[0].snooze.allowed).toBe(false);
+  });
+
+  it("says when an item escalated, and null for one that has not (#538)", async () => {
+    const escalatedAt = new Date("2026-10-04T09:51:00Z");
+    const { queue } = service({
+      open: [item("protected_path_allow_once", 39, { escalatedAt }), item("merge_approval", 8)],
+    });
+
+    const page = await queue.queue(ORG, { userId: "user-ken", roles: ["owner"] });
+
+    // The order is the repository's — escalated first — and the service keeps it.
+    expect(page.items.map((card) => [card.kindId, card.escalatedAt])).toEqual([
+      ["protected_path_allow_once", "2026-10-04T09:51:00.000Z"],
+      ["merge_approval", null],
+    ]);
   });
 
   it("keeps snoozed items apart with their wake time, still ageing", async () => {

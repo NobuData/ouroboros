@@ -174,6 +174,7 @@ export function inboxItem(overrides: Partial<InboxItem> = {}): InboxItem {
     actions: mergeActions(),
     createdAt: "2026-10-04T13:12:00.000Z",
     ageSeconds: 480,
+    escalatedAt: null,
     snooze: { allowed: true },
     ...overrides,
   };

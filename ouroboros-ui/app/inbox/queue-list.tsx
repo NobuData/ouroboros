@@ -14,12 +14,12 @@ import { QUEUE_LABEL } from "./view";
  *
  * An answered item leaves the queue at the next read, and its receipt would leave with it — so a
  * card the reader pressed on this page (answered, raced, snoozed, or still in flight) is kept, at
- * the place its age gives it, until the reader leaves. Newest first throughout, as the service
- * orders the queue.
+ * the place its age gives it, until the reader leaves. Escalated first, then newest first, as the
+ * service orders the queue (#538).
  *
  * @param items The asking items, as last read.
  * @param kept The cards pressed here, as they were when they were pressed.
- * @returns Every card to draw, newest first.
+ * @returns Every card to draw: escalated ones first, then newest first.
  */
 export function cardsOnScreen(items: readonly InboxItem[], kept: ReadonlyMap<string, InboxItem>): InboxItem[] {
   const asking = new Set(items.map((item) => item.id));
@@ -28,7 +28,10 @@ export function cardsOnScreen(items: readonly InboxItem[], kept: ReadonlyMap<str
   if (settled.length === 0) return [...items];
 
   return [...items, ...settled].sort(
-    (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || b.id.localeCompare(a.id),
+    (a, b) =>
+      Number(b.escalatedAt !== null) - Number(a.escalatedAt !== null) ||
+      Date.parse(b.createdAt) - Date.parse(a.createdAt) ||
+      b.id.localeCompare(a.id),
   );
 }
 

@@ -1,7 +1,8 @@
 /**
  * `ChannelsService` — the facts the channel truth payload is computed from (BN.3,
  * [#463](https://github.com/NobuData/ouroboros/issues/463)): how many of the workspace's sources
- * can comment on a PR through the SPI, and whether this deployment has a mail server.
+ * can comment on a PR through the SPI, whether this deployment has a mail server, and whether
+ * the workspace has an active Slack connection (#538).
  */
 
 import { Inject, Injectable } from "@nestjs/common";
@@ -44,6 +45,18 @@ export class ChannelsService {
       return provider !== undefined && supportsPullRequests(provider);
     }).length;
 
-    return channelTruth({ commentingSources, mailTransport: this.mailer.transport });
+    const slack = await this.database.db
+      .selectFrom("chat_connections")
+      .select("id")
+      .where("organization_id", "=", organizationId)
+      .where("platform", "=", "slack")
+      .where("status", "=", "active")
+      .executeTakeFirst();
+
+    return channelTruth({
+      commentingSources,
+      mailTransport: this.mailer.transport,
+      slackConnected: slack !== undefined,
+    });
   }
 }

@@ -3,8 +3,8 @@
  * [#464](https://github.com/NobuData/ouroboros/issues/464)).
  *
  * ```
- * queue      wake elapsed snoozes → open items newest first, prose rendered at the pinned version,
- *            facts and refs alongside, actions resolved against the viewer (disabled with a
+ * queue      wake elapsed snoozes → open items, escalated first (#538) then newest first, prose
+ *            rendered at the pinned version, facts and refs alongside, actions resolved against the viewer (disabled with a
  *            reason) → the snoozed items apart → the head (count, noun, estimate from this week's
  *            per-kind medians — X8)
  * resolved   one UTC day's answers: resolver class, policy ref, channel, the composed line; the
@@ -89,6 +89,8 @@ export interface InboxItemResource {
   readonly createdAt: string;
   /** Seconds since it was asked — counted through any snooze. */
   readonly ageSeconds: number;
+  /** When nobody had answered within the kind's escalation window (#538); null until then. */
+  readonly escalatedAt: string | null;
   readonly snooze: { readonly allowed: boolean };
 }
 
@@ -267,6 +269,7 @@ export class InboxQueueService {
         ),
         createdAt: row.createdAt.toISOString(),
         ageSeconds: secondsBetween(row.createdAt, now),
+        escalatedAt: row.escalatedAt?.toISOString() ?? null,
         snooze: { allowed: maySnooze },
       });
     }

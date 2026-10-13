@@ -60,6 +60,7 @@ const OVEN: InboxItem = {
   ],
   createdAt: "2026-10-04T13:17:00.000Z",
   ageSeconds: 180,
+  escalatedAt: null,
   snooze: { allowed: true },
 };
 
