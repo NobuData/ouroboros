@@ -1,0 +1,62 @@
+name: ouroboros-rest · integration
+
+# The integration suite `ci/rest` used to end with, as a workflow of its own that runs only
+# when somebody dispatches it:
+#
+#     gh workflow run rest-integration.yml              # main
+#     gh workflow run rest-integration.yml --ref <branch>
+#
+# It has no `push` or `pull_request` trigger, deliberately, so it is no status check and
+# gates nothing — neither a merge nor `publish/rest`. Dispatch it for a change that touches
+# what the suite reads: this module's source, `ouroboros-db`'s migrations, or the engine's
+# OpenAPI document (the path filters in rest.yml name them all).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-rest-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    name: integration/rest
+    runs-on: ubuntu-latest
+
+    # No service container and no migration step (#37). The harness starts
+    # `postgres:17-alpine` through Testcontainers and migrates it with the pinned
+    # `flyway/flyway:13-alpine` against this checkout's `ouroboros-db/flyway.toml` — the same
+    # two images and the same arguments the development stack uses. Docker is what it needs,
+    # and a GitHub-hosted Ubuntu runner has it.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Node major every TypeScript module is pinned to — the default of
+      # .github/actions/node-module, which is not used here because it also lints,
+      # typechecks, tests and builds, and that is `ci/rest`'s work.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Enable corepack (Yarn 4)
+        run: corepack enable
+
+      - name: Install dependencies
+        working-directory: ouroboros-rest
+        run: yarn install --immutable
+
+      # What a unit suite cannot answer: that a repository roundtrip works against a
+      # migrated database, that the `Database` interface still names the columns Flyway
+      # created, that the constraints map to the envelopes the contract promises, that the
+      # role guard is really on the routes that declare it, and that shutting the
+      # application down really returns its connections.
+      #
+      # OURO_DATABASE_URL is deliberately unset: with it, the harness would use whatever it
+      # named and start nothing. Reproduce this step by running the same command.
+      - name: Integration suite
+        working-directory: ouroboros-rest
+        run: yarn test:integration

@@ -589,8 +589,10 @@ yarn test:integration     # Docker is the only prerequisite
 
 The run starts `postgres:17-alpine` through Testcontainers, applies `ouroboros-db`'s Flyway
 project to it with the pinned `flyway/flyway:13-alpine`, boots the application on a random
-port, and throws the container away when it ends. `ci/rest` runs the same command with no
-setup around it, so what a pull request proves is what you just ran.
+port, and throws the container away when it ends. `ci/rest` does not run it: the suite is its
+own workflow, `integration/rest` (`.github/workflows/rest-integration.yml`), dispatched by hand
+with `gh workflow run rest-integration.yml` or from the Actions tab. It runs the same command
+with no setup around it, so what a dispatch proves is what you just ran.
 
 There is no default and no skip: a suite that passed when it was given no database would be
 reporting "the schema matches" having compared nothing.

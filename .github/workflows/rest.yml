@@ -137,20 +137,11 @@ jobs:
     name: ci/rest
     runs-on: ubuntu-latest
 
-    # No service container, and no migration step, since #37. The integration harness
-    # starts `postgres:17-alpine` through Testcontainers and migrates it with the pinned
-    # `flyway/flyway:13-alpine` against this checkout's `ouroboros-db/flyway.toml` — the
-    # same two images and the same arguments the development stack uses, which the unit
-    # suite checks against docker-compose.yml on every run.
-    #
-    # That is the issue's first acceptance criterion, *green locally and in CI without
-    # external setup*, and it is worth more than the two steps it removes: what a developer
-    # runs is now byte-for-byte what CI runs. A service container and a `migrate` step were
-    # a second way to arrange a database, described in this file and nowhere else, and a
-    # workflow that arranges its own world is a workflow that can drift from the one a
-    # developer reproduces by hand.
-    #
-    # Docker is what it needs, and a GitHub-hosted Ubuntu runner has it.
+    # The integration suite is not run here. It starts a PostgreSQL through Testcontainers and
+    # migrates it, and it runs as its own manually dispatched workflow, rest-integration.yml
+    # (`integration/rest`), so a red integration run neither fails this check nor holds back
+    # `publish/rest`. The path filters above still name the integration harness's inputs: the
+    # unit suite's drift checks read them, and they are what tells a reviewer to dispatch it.
 
     steps:
       - uses: actions/checkout@v4
@@ -164,23 +155,6 @@ jobs:
           module: ouroboros-rest
           scaffolded-by: "#27"
 
-      # -----------------------------------------------------------------------------
-      # The live pass (#30, on #37's harness) — everything above runs against no
-      # database; everything below runs against one this step starts for itself.
-      # -----------------------------------------------------------------------------
-
-      # What a unit suite cannot answer: that a repository roundtrip works against a
-      # migrated database, that the `Database` interface still names the columns Flyway
-      # created, that the constraints map to the envelopes the contract promises, that the
-      # role guard is really on the routes that declare it, and that shutting the
-      # application down really returns its connections.
-      #
-      # OURO_DATABASE_URL is deliberately unset: with it, the harness would use whatever it
-      # named and start nothing. Reproduce this step by running the same command.
-      - name: Integration suite
-        working-directory: ouroboros-rest
-        run: yarn test:integration
-
   # ---------------------------------------------------------------------------
   # The published artefact — ouroboros-rest/Dockerfile, this module in the form something
   # other than a laptop can run: `nest build`'s JavaScript and a production node_modules
@@ -188,9 +162,10 @@ jobs:
   #
   # It lives in this workflow rather than in docker-publish.yml for the reason `publish/db`
   # does: `needs: ci` is what makes the tag mean something. The image is the code the job
-  # above linted, typechecked, unit-tested, built *and* ran against a migrated PostgreSQL,
-  # so a red run publishes nothing. A second workflow watching the same directory would
-  # publish on its own schedule and there would be no order between the two.
+  # above linted, typechecked, unit-tested and built, so a red run publishes nothing. The
+  # integration suite is not part of that gate — see rest-integration.yml. A second workflow
+  # watching the same directory would publish on its own schedule and there would be no
+  # order between the two.
   # ---------------------------------------------------------------------------
   publish:
     name: publish/rest
