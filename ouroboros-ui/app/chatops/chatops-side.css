@@ -1,0 +1,245 @@
+/*
+ * The Chat Ops page's commands and routing cards (CA.3,
+ * [#543](https://github.com/NobuData/ouroboros/issues/543)) — mockup 19's `.cmd-row` and
+ * `.route-row`, in the #16 tokens.
+ *
+ * A sheet of its own because the command list scrolls inside its card, and `chatops.css`
+ * promises the page adds no scroller. Every length is a rem or a hairline, every size and hue a
+ * token, and every row wraps: a long command, a long channel name or the 125% step makes a row
+ * taller, never the pane wider.
+ */
+
+.chatops-side__commands,
+.chatops-side__routing {
+  min-width: 0;
+}
+
+/* ---------- commands (`.cmd-list`, `.cmd-row`) ---------- */
+
+/* The card's one scroller: bounded, so a long grammar is read here and the pane stays put. */
+.chatops-side__cmd-scroll {
+  min-width: 0;
+  max-height: 24rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.chatops-side__cmd-scroll:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -0.0625rem;
+}
+
+.chatops-side__cmds,
+.chatops-side__routes {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chatops-side__cmd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-4) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.chatops-side__cmd:last-child,
+.chatops-side__route:last-child {
+  border-bottom: none;
+}
+
+.chatops-side__cmd-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2) var(--sp-6);
+  min-width: 0;
+}
+
+.chatops-side__cmd-code {
+  min-width: 0;
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.chatops-side__cmd-arg {
+  color: var(--ink-mut);
+}
+
+.chatops-side__cmd-what {
+  flex: 1 1 8rem;
+  min-width: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.chatops-side__cmd-stage {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.chatops-side__cmd-why {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* A command this reader may not run: still listed, in the faint ink, with its reason under it. */
+.chatops-side__cmd--denied .chatops-side__cmd-code,
+.chatops-side__cmd--denied .chatops-side__cmd-arg,
+.chatops-side__cmd--denied .chatops-side__cmd-what,
+.chatops-side__cmd--staged .chatops-side__cmd-code {
+  color: var(--ink-faint);
+}
+
+.chatops-side__caption {
+  margin: var(--sp-6) 0 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.chatops-side__qualifier {
+  display: block;
+  color: var(--warn);
+}
+
+/* ---------- routing (`.route-row`) ---------- */
+
+.chatops-side__route {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding: var(--sp-5) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.chatops-side__route-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-5);
+  min-width: 0;
+}
+
+.chatops-side__evt {
+  flex: 1 1 10rem;
+  min-width: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.chatops-side__evt-note {
+  color: var(--warn);
+  font-size: var(--t-xs);
+}
+
+.chatops-side__chan {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+/* The input primitive fills its line; here it sits beside the arrow, as wide as its channel. */
+.chatops-side__picker {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: 16rem;
+  padding: var(--sp-2) var(--sp-4);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.chatops-side__switch {
+  flex: none;
+}
+
+.chatops-side__state {
+  flex: none;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.chatops-side__route-note,
+.chatops-side__role {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.chatops-side__route-note--warn {
+  color: var(--warn);
+}
+
+.chatops-side__role {
+  margin-top: var(--sp-5);
+}
+
+.chatops-side__alert {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- + DM on-call ---------- */
+
+.chatops-side__oncall,
+.chatops-side__oncall-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
+  min-width: 0;
+}
+
+.chatops-side__oncall-who {
+  min-width: 0;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.chatops-side__oncall-who--warn {
+  color: var(--warn);
+}
+
+.chatops-side__oncall-note {
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+}
+
+.chatops-side__foot {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: var(--sp-6);
+}

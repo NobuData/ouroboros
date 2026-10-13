@@ -76,3 +76,36 @@ export function chatCursorInvalid(): InvalidRequestError {
 
   return new InvalidRequestError(CHAT_CURSOR_INVALID, message, { fields: { before: [message] } });
 }
+
+/** `404` — the workspace has no member by that id. */
+export const CHAT_MEMBER_NOT_FOUND = "chat_member_not_found";
+
+/** `422` — the member named for on-call has no linked Slack identity. */
+export const CHAT_ON_CALL_NOT_LINKED = "chat_on_call_not_linked";
+
+/**
+ * The on-call designee is named by their member row in this workspace (CA.3,
+ * [#543](https://github.com/NobuData/ouroboros/issues/543)). Another workspace's member and an
+ * id that names nobody are one answer.
+ *
+ * @returns The error to throw.
+ */
+export function chatMemberNotFound(): NotFoundError {
+  return new NotFoundError(CHAT_MEMBER_NOT_FOUND, "This workspace has no such member.");
+}
+
+/**
+ * On-call is a DM, and a DM needs somebody to send it to: a member becomes the designee only
+ * once their Slack account is linked on the workspace's active connection. Said here, before the
+ * database's own rule (`on_call_assignments_designee_linked`, V132) would say it as a failure.
+ *
+ * @param name - The member's name.
+ * @returns The error to throw.
+ */
+export function chatOnCallNotLinked(name: string): InvalidRequestError {
+  const message = `${name} has not linked a Slack account, so an on-call DM could not reach them. They link it with /ouro link in Slack.`;
+
+  return new InvalidRequestError(CHAT_ON_CALL_NOT_LINKED, message, {
+    fields: { memberId: [message] },
+  });
+}

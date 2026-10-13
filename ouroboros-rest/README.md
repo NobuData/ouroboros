@@ -4646,10 +4646,34 @@ the routes, their API and their sender.
 
 ```
 GET   /api/v1/settings/integrations           any member · tiles composed from the owning planes · connectedCount
-GET   /api/v1/settings/notifications          any member · the four core routes (stored or default) · custom · channels
+GET   /api/v1/settings/notifications          any member · the four core routes · the five chat routes (each stored or default) · custom · channels
 GET   /api/v1/settings/notifications/{kind}   any member · one route
-PATCH /api/v1/settings/notifications/{kind}   owner/admin · { channel?, config?, enabled? } · audited notification_route.updated
+PATCH /api/v1/settings/notifications/{kind}   owner/admin · { channel?, config?, enabled?, chatChannelId? } · audited notification_route.updated
 ```
+
+**Chat routes: one store, two cards (#543).** The Chat Ops page's *What gets published where* card
+edits these same rows. The five chat routes — `routes.catalog.ts`'s `CHAT_ROUTES`, the one list
+`PURPOSE_ROUTES` (the channel bindings, #541) is derived from — are always listed after the core
+four, in the card's order, each with a `chat` block: `{ label, note, channel: { id, name, joined,
+archived } | null, dmOnCall }`. One nobody saved is `stored: false` on Slack with its default
+(`enabled` true, except *Every stage transition* — `note: "noisy, off by default"`), no channel, and
+`delivering: false`. Every other route's `chat` is `null`, including a chat kind somebody re-bound
+to email.
+
+`chatChannelId` points a chat route at a **bound** channel of the workspace (`purpose_tag` set and
+not `dm` — the rule of `SlackRepository.boundChannel`), or clears it with `null`; a row that does
+not exist is created from the route's default, and a stored one keeps its `enabled` and its
+`dm_on_call`. Refusals: `404 chat_channel_not_found` (unknown, not a UUID, another workspace's,
+unbound, or a DM row — one answer), `422 notification_route_not_chat` (the field on a route that
+posts to no chat channel), and `409 notification_route_locked` with `reason: "choose a Slack
+channel first"` when the save would leave an enabled Slack route with no channel and no on-call DM
+(`notification_routes_slack_target`, asked before the database does) — clear a channel together
+with `enabled: false`. A route re-bound to email or PagerDuty drops its chat target
+(`notification_routes_chat_target_slack_only`). The audit detail gains `previousChatChannelId` /
+`chatChannelId`, and `fields` may name `chatChannel`. **Delivery follows the edit** because there
+is nothing between them: `enqueueChatIntent` (`chat/chat.outbox.ts`) reads
+`notification_routes.chat_channel_id` in the statement that enqueues
+(`chat/chat.outbox.routes.spec.ts`).
 
 **The grid is a status hub, never a second store.** Each tile is read from the plane that owns the
 connection, on every request, and nothing is written: GitHub from `github_credentials` (token),
@@ -5110,6 +5134,32 @@ same table and never listed. `src/modules/slack/slack.channels.{controller,servi
 - **Audit.** `chat.channel_bound` and `chat.channel_unbound` (webhook registry v13), subject
   `chat_channel`: `connectionId`, `platformChannelId`, `channelName`, `purpose` and `routes`
   (comma-joined). An unbind that changed nothing records nothing.
+
+### The on-call designee
+
+> **Issue:** [#543](https://github.com/NobuData/ouroboros/issues/543) — *[CA.3] Commands & routing
+> cards* · epic [#529](https://github.com/NobuData/ouroboros/issues/529) · no migration (V132's
+> `on_call_assignments`)
+
+Who a *DM on-call* route reaches — the name the routing card prints beside *+ DM on-call*, and the
+picker that changes it. The routes are under `/chat`; the code is `slack.on-call.*` in this
+module, which owns the identity links that decide who can be reached.
+
+```
+GET  /api/v1/chat/on-call   any member    { scope: "decisions", designee: { memberId, name, linked } | null, assignedAt, candidates: [{ memberId, name }] }
+PUT  /api/v1/chat/on-call   owner/admin   { memberId: string | null } — answers the same resource
+```
+
+- **Candidates** are the members with a `linked` identity on the workspace's **active** Slack
+  connection, by name — the rule V132's `on_call_assignments_designee_linked` trigger enforces.
+  `designee.linked` is false when the connection has since stopped working.
+- **The write** is one transaction: the active assignment is locked and stood down (`active =
+  false`, kept), and a new active row inserted with `assigned_by` the caller. `null` only stands
+  down. Naming whoever is already on call changes nothing. Refusals: `404 chat_member_not_found`
+  (not a member of this workspace), `422 chat_on_call_not_linked` (checked before the trigger
+  would refuse it), `403` for anyone but an owner or admin.
+- **Audit.** `chat.on_call_changed` (webhook registry v14), subject `on_call_assignment` with the
+  scope as its id: `scope`, `previousMemberId`, `memberId`. Rotations are #548.
 
 ## Build logs
 

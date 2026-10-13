@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**440 of 454 ordered issues are closed** — P0 through P10 and P12 through P15 are complete, and P11, P16 and P17 are in progress.
+**441 of 454 ordered issues are closed** — P0 through P10 and P12 through P15 are complete, and P11, P16 and P17 are in progress.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P12, P13, P14, P15 | **359** |
-| 🟡 **In progress** | P11, P16, P17 | **81** of 95 |
+| 🟡 **In progress** | P11, P16, P17 | **82** of 95 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
 > them with `gh issue list --state closed --limit 1000 --json number` whenever the plan
@@ -119,8 +119,8 @@ position is not forced by dependencies, one of these decided it.
 | **P14** | Decisions & governance — inbox, settings | ✅ 31/31 | 31 | 102 | Mockups 16, 17 |
 | **P15** | Onboarding experience | ✅ 6/6 | 6 | 18 | Mockup 13 |
 | **P16** | Intelligence — research & copilot | 🟡 34/42 | 42 | 147 | Mockups 22, 20 |
-| **P17** | ChatOps — Slack integration | 🟡 11/15 | 15 | 50 | Mockup 19 |
-| | **Total** | **440/454** | **454** | **1,404** | |
+| **P17** | ChatOps — Slack integration | 🟡 12/15 | 15 | 50 | Mockup 19 |
+| | **Total** | **441/454** | **454** | **1,404** | |
 
 ```mermaid
 flowchart TD
@@ -1787,7 +1787,7 @@ Requires a test Slack workspace — provision it during P14 so this phase is not
 | 448 | **CA.1** | ✅ [#541](https://github.com/NobuData/ouroboros/issues/541) | ChatOps route, head & connection flow | ouroboros-ui | M | 5.3, D.5, BZ.1 |
 | 449 | **BZ.5** | ✅ [#539](https://github.com/NobuData/ouroboros/issues/539) | In-app command console | ouroboros-ui | M | H.3, BZ.3 |
 | 450 | **CA.2** | ✅ [#542](https://github.com/NobuData/ouroboros/issues/542) | Channel mirror card | ouroboros-ui | L | BZ.2, CA.1 |
-| 451 | **CA.3** | [#543](https://github.com/NobuData/ouroboros/issues/543) | Commands & routing cards | ouroboros-ui | M | BR.4, BZ.3, CA.1 |
+| 451 | **CA.3** | ✅ [#543](https://github.com/NobuData/ouroboros/issues/543) | Commands & routing cards | ouroboros-ui | M | BR.4, BZ.3, CA.1 |
 | 452 | **CA.4** | [#544](https://github.com/NobuData/ouroboros/issues/544) | AI-presence card & honest preview | ouroboros-ui | S | CA.1 |
 | 453 | **BZ.6** | [#540](https://github.com/NobuData/ouroboros/issues/540) | ChatOps integration tests | ouroboros-rest | M | BZ.1, BZ.5 |
 | 454 | **CA.5** | [#545](https://github.com/NobuData/ouroboros/issues/545) | ChatOps states & e2e leg | ouroboros-ui, .github | M | CA.2, CA.4 |

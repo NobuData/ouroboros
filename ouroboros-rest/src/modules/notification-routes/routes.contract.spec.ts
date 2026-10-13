@@ -70,6 +70,51 @@ describe("the notification routes on the wire", () => {
     expect(route(wire(await service.read(ORG, "daily_digest")))).toBeUndefined();
   });
 
+  it("matches NotificationRoutes with chat routes — default, bound, DM-only and re-bound (#543)", async () => {
+    const { service, store } = routes();
+    const channel = "0a000000-0000-4000-8000-000000000002";
+
+    store.slackConnected.add(ORG);
+    store
+      .chatChannel(channel, ORG, "helios-alerts", { purpose: "alerts" })
+      .route(ORG, "custom:blocking-questions", {
+        channel: "slack",
+        config: {},
+        enabled: true,
+        dmOnCall: true,
+      })
+      .route(ORG, "custom:weekly-insights", { channel: "email", config: {}, enabled: true });
+
+    const saved = await service.update(ORG, "u-ken", "custom:build-failures", {
+      chatChannelId: channel,
+    });
+    const answer = await service.list(ORG);
+
+    expect(route(wire(saved))).toBeUndefined();
+    expect(card(wire(answer))).toBeUndefined();
+    expect(validatorFor("NotificationRouteChat")(wire(saved.chat))).toBeUndefined();
+    expect(answer.items.map((item) => item.chat?.channel?.name ?? null)).toEqual([
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      "helios-alerts",
+      null,
+      null,
+    ]);
+    // A block that grew a field is refused, as every schema here is closed.
+    expect(route(wire({ ...saved, chat: { ...saved.chat, purpose: "alerts" } }))).toBeDefined();
+  });
+
+  it("documents the chat channel a save may carry — an id, or null (#543)", () => {
+    expect(patch({ chatChannelId: "0a000000-0000-4000-8000-000000000002" })).toBeUndefined();
+    expect(patch({ chatChannelId: null, enabled: false })).toBeUndefined();
+    expect(patch({ chatChannelId: 7 })).toBeDefined();
+    expect(patch({ chatChannel: "helios-alerts" })).toBeDefined();
+  });
+
   it("documents the bodies the card sends, and refuses others", () => {
     expect(patch({ enabled: true })).toBeUndefined();
     expect(

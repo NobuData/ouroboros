@@ -3250,6 +3250,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chat/on-call": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who is on call for decisions
+         * @description The person a *DM on-call* notification route reaches
+         *     ([#543](https://github.com/NobuData/ouroboros/issues/543)) — the name the Chat Ops page's
+         *     routing card prints beside *+ DM on-call* — and the members who could be chosen instead.
+         *     One designee per workspace for the one scope, `decisions`; rotations are
+         *     [#548](https://github.com/NobuData/ouroboros/issues/548). `candidates` are the members
+         *     with a linked Slack identity on the workspace's active connection, by name: nobody else
+         *     can be DMed. Without an active Slack connection there are none, and a designee chosen
+         *     earlier reads `linked: false`. Any member may read it.
+         */
+        get: operations["readOnCall"];
+        /**
+         * Put a member on call, or nobody
+         * @description Chooses the on-call designee ([#543](https://github.com/NobuData/ouroboros/issues/543)):
+         *     the current assignment is stood down and a new one made for `memberId`, in one
+         *     transaction; `null` leaves nobody on call. Earlier assignments are kept, inactive. The
+         *     publisher reads the active assignment each time it enqueues, so the next blocking question
+         *     DMs whoever was just chosen. The member must be one of `candidates` — a member of this
+         *     workspace (`404 chat_member_not_found` otherwise) with a linked Slack identity on its
+         *     active connection (`422 chat_on_call_not_linked` otherwise). Naming whoever is already on
+         *     call changes nothing. Recorded as `chat.on_call_changed`. Owners and admins.
+         */
+        put: operations["assignOnCall"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/integrations": {
         parameters: {
             query?: never;
@@ -3294,7 +3332,25 @@ export interface paths {
          *     the workspace's **org-level** routes, layered above each person's own preferences
          *     (`/api/v1/inbox/notifications`), which they never change. The four core kinds are always
          *     listed in the card's order — a kind nobody saved shows its default binding, switched off
-         *     (`stored: false`) — then any stored `custom:*` kind, and every channel's availability.
+         *     (`stored: false`) — then the five **chat routes**, then any other stored `custom:*` kind,
+         *     and every channel's availability.
+         *
+         *     **Chat routes** ([#543](https://github.com/NobuData/ouroboros/issues/543)) are the Chat
+         *     Ops page's *What gets published where* rows, and this is the one store both pages edit.
+         *     Each carries a `chat` block — its label, the bound channel it posts to, whether it also
+         *     DMs the on-call designee — and all five are always listed, in the card's order:
+         *
+         *     | Kind | `chat.label` | Before anybody saves it |
+         *     |---|---|---|
+         *     | `custom:loop-finished` | Loop finished (merged) | on |
+         *     | `custom:blocking-questions` | Blocking questions | on, with the on-call DM |
+         *     | `custom:build-failures` | Build failures | on |
+         *     | `custom:weekly-insights` | Weekly insights report | on |
+         *     | `custom:stage-transitions` | Every stage transition — `chat.note` *noisy, off by default* | **off** |
+         *
+         *     One nobody saved is `stored: false` on Slack with `chat.channel` null, and delivers
+         *     nothing until a channel is chosen. Every other route's `chat` is null.
+         *
          *     A route whose channel cannot deliver is `locked` with the reason the card prints
          *     (`connect PagerDuty first`). **A Slack route is locked exactly while the workspace has no
          *     active Slack connection** ([#536](https://github.com/NobuData/ouroboros/issues/536)) —
@@ -3336,8 +3392,20 @@ export interface paths {
          *     `409 notification_route_locked`, with `details.reason` the sentence the card prints — a
          *     locked route may still be stored disabled. A Slack route additionally needs somewhere to
          *     post — a bound channel, the on-call DM, or the `needs_you_dm` kind, which DMs whoever is on
-         *     call — and is refused the same way without one (`choose a Slack channel first`); binding a
-         *     channel is not part of this body yet. The daily digest route mails the workspace's
+         *     call — and is refused the same way without one (`choose a Slack channel first`).
+         *
+         *     **`chatChannelId`** ([#543](https://github.com/NobuData/ouroboros/issues/543)) points a
+         *     chat route — one whose `chat` is not null — at a **bound** channel of this workspace
+         *     (`GET /api/v1/slack/channels`, a channel with a `purpose`), or with `null` clears it. The
+         *     publisher reads the route's channel each time it enqueues, so the next message goes where
+         *     the save says. A chat route nobody saved is created from its default — on, except *every
+         *     stage transition* — and a stored one keeps whether it is on and its on-call DM. Anything
+         *     but a bound channel of this workspace is `404 chat_channel_not_found`; the field on any
+         *     other route is `422 notification_route_not_chat`; and clearing the channel of an enabled
+         *     route that does not DM on-call is the `409` above — send `enabled: false` with it. A route
+         *     re-bound to email or PagerDuty drops its chat channel.
+         *
+         *     The daily digest route mails the workspace's
          *     open decisions at `config.time`, and the weekly insights route the Insights digest at
          *     `config.weekday`/`config.time`, to `config.recipients` (else the owners and admins). Every
          *     change is audited as `notification_route.updated` with its before and after values.
@@ -24009,8 +24077,17 @@ export interface components {
             lockedReason: string | null;
             /** @description `enabled` and not `locked` — whether the route can actually fire. */
             delivering: boolean;
-            /** @description False for a core kind nobody has saved — its default binding, off. */
+            /**
+             * @description False for a kind nobody has saved — a core kind's default binding, off, or a chat
+             *     route's default, which posts nowhere until a channel is chosen.
+             */
             stored: boolean;
+            /**
+             * @description Where the route posts in chat — for the five chat routes while they are on Slack.
+             *     Null for every other route: email, PagerDuty, and `needs_you_dm`, whose target is a
+             *     person.
+             */
+            chat: components["schemas"]["NotificationRouteChat"] | null;
             /** Format: date-time */
             updatedAt: string | null;
             updatedBy: string | null;
@@ -24024,7 +24101,10 @@ export interface components {
         };
         /** NotificationRoutes */
         NotificationRoutes: {
-            /** @description The four core kinds in the card's order, then any custom kind. */
+            /**
+             * @description The four core kinds in the card's order, then the five chat routes in theirs, then
+             *     any other custom kind.
+             */
             items: components["schemas"]["NotificationRoute"][];
             channels: components["schemas"]["NotificationRouteChannelAvailability"][];
         };
@@ -24033,6 +24113,92 @@ export interface components {
             channel?: components["schemas"]["NotificationRouteChannel"];
             config?: components["schemas"]["NotificationRouteConfig"];
             enabled?: boolean;
+            /**
+             * Format: uuid
+             * @description The bound chat channel a chat route posts to — a channel's `id` from
+             *     `GET /api/v1/slack/channels` — or null for none. Left out, the channel stays.
+             */
+            chatChannelId?: string | null;
+        };
+        /**
+         * NotificationRouteChat
+         * @description A chat route's row on the Chat Ops page's *What gets published where* card.
+         */
+        NotificationRouteChat: {
+            /**
+             * @description The row's name.
+             * @example Loop finished (merged)
+             * @example Every stage transition
+             */
+            label: string;
+            /**
+             * @description The warning printed beside the name, or null.
+             * @example noisy, off by default
+             */
+            note: string | null;
+            /** @description The channel the route posts to, or null while none is chosen. */
+            channel: components["schemas"]["NotificationRouteChatChannel"] | null;
+            /** @description Whether the route also DMs the on-call designee (`GET /api/v1/chat/on-call`). */
+            dmOnCall: boolean;
+        };
+        /**
+         * NotificationRouteChatChannel
+         * @description The chat channel a route posts to — one of `GET /api/v1/slack/channels`.
+         */
+        NotificationRouteChatChannel: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description The channel's name, without the leading `#`.
+             * @example helios-alerts
+             */
+            name: string;
+            /** @description Whether the bot is a member — it cannot post where it is not. */
+            joined: boolean;
+            archived: boolean;
+        };
+        /**
+         * OnCall
+         * @description Who a *DM on-call* route reaches, and who could be chosen.
+         */
+        OnCall: {
+            /**
+             * @description The one scope this build assigns.
+             * @enum {string}
+             */
+            scope: "decisions";
+            /** @description The active assignment's person, or null when nobody is on call. */
+            designee: components["schemas"]["OnCallDesignee"] | null;
+            /**
+             * Format: date-time
+             * @description When the designee was chosen.
+             */
+            assignedAt: string | null;
+            /** @description The members with a linked Slack identity on the active connection, by name. */
+            candidates: components["schemas"]["OnCallMember"][];
+        };
+        /** OnCallMember */
+        OnCallMember: {
+            /** @description The member's id in this workspace — what `PUT /api/v1/chat/on-call` takes. */
+            memberId: string;
+            /** @example Maya Chen */
+            name: string;
+        };
+        /** OnCallDesignee */
+        OnCallDesignee: {
+            memberId: string;
+            /** @example Ken Suenobu */
+            name: string;
+            /**
+             * @description Whether their Slack identity is linked on the workspace's active connection. False
+             *     when the connection has since stopped working — the DM reaches nobody.
+             */
+            linked: boolean;
+        };
+        /** OnCallAssignment */
+        OnCallAssignment: {
+            /** @description The `memberId` of one of `candidates`, or null to leave nobody on call. */
+            memberId: string | null;
         };
         /**
          * WebhookDelivery
@@ -45858,6 +46024,245 @@ export interface operations {
             };
         };
     };
+    readOnCall: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The designee, or none, and the candidates. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "scope": "decisions",
+                     *       "designee": {
+                     *         "memberId": "mem_ken",
+                     *         "name": "Ken Suenobu",
+                     *         "linked": true
+                     *       },
+                     *       "assignedAt": "2026-10-12T14:02:11.000Z",
+                     *       "candidates": [
+                     *         {
+                     *           "memberId": "mem_ken",
+                     *           "name": "Ken Suenobu"
+                     *         },
+                     *         {
+                     *           "memberId": "mem_maya",
+                     *           "name": "Maya Chen"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["OnCall"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `service_scope_missing` — a service token without `api.read`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found` — no such workspace, or none you are a member of. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    assignOnCall: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "memberId": "mem_maya"
+                 *     }
+                 */
+                "application/json": components["schemas"]["OnCallAssignment"];
+            };
+        };
+        responses: {
+            /** @description Who is on call after it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnCall"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+             *     this route is for people.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — no such workspace, or none you are a member of.
+             *     `chat_member_not_found` — `memberId` is not a member of this workspace.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — a malformed body. `chat_on_call_not_linked` — the member has no
+             *     linked Slack identity on the workspace's active connection; `details.fields` names
+             *     `memberId`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listIntegrations: {
         parameters: {
             query?: never;
@@ -46248,7 +46653,8 @@ export interface operations {
             };
             /**
              * @description `tenant_not_found` — no such workspace, or none you are a member of.
-             *     `notification_route_kind_unknown` — not a route kind.
+             *     `notification_route_kind_unknown` — not a route kind. `chat_channel_not_found` —
+             *     `chatChannelId` is not a bound channel of this workspace.
              */
             404: {
                 headers: {
@@ -46274,6 +46680,8 @@ export interface operations {
             /**
              * @description `validation_failed` — a malformed body. `notification_route_config_invalid` — a config
              *     setting is malformed; `details.fields` names it (`config.time`).
+             *     `notification_route_not_chat` — `chatChannelId` was sent for a route that posts to no
+             *     chat channel; `details.fields` names it.
              */
             422: {
                 headers: {

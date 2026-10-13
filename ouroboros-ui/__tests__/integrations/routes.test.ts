@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  listedRoutes,
   RECIPIENTS_FIELD,
   ROUTES_NOT_SAVED,
   ROUTE_SAVE_FAILED,
@@ -33,6 +34,28 @@ import { notificationRoutes, route } from "../helpers/integrations";
 
 const ROUTES = notificationRoutes();
 const BASELINE = routesBaseline(ROUTES);
+
+describe("the routes the card lists", () => {
+  const chat = { label: "Build failures", note: null, channel: null, dmOnCall: false };
+
+  it("leaves out a chat route nobody has stored, and keeps every other route", () => {
+    const read = notificationRoutes({
+      items: [
+        route("daily_digest"),
+        route("custom:build-failures", { channel: "slack", chat, stored: false }),
+        route("custom:loop-finished", { channel: "slack", chat, stored: true }),
+        route("custom:mine", { stored: false }),
+      ],
+    });
+
+    expect(listedRoutes(read).items.map((item) => item.kind)).toEqual([
+      "daily_digest",
+      "custom:loop-finished",
+      "custom:mine",
+    ]);
+    expect(listedRoutes(read).channels).toBe(read.channels);
+  });
+});
 
 describe("the baseline", () => {
   it("holds a switch per route, the digest's time and the weekly recipients", () => {

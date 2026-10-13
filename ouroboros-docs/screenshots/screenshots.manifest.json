@@ -654,10 +654,10 @@
       "ready": ".chatops-mirror__msg",
       "clip": "page",
       "caption": "Chat Ops: how Slack is connected, and the channels Ouroboros posts to.",
-      "alt": "The Chat Ops page, headed The loop reports where your team already lives., with + Add channel and Open #ouroboros-loops at the top right; the connection strip reading acme-robotics, app v2.4, 3 scopes missing: groups:read, im:write, users:read.email, active, verified 0s ago, with Verify now; the channel mirror of #ouroboros-loops, marked mirror, showing the /ouro status and /ouro dry-run commands with their answers, a Loop #1847 build green card and the start of an open question card; and, beside it, Bound channels listing #ouroboros-loops for Loops with 24 members and the routes custom:blocking-questions, custom:loop-finished and custom:stage-transitions, #helios-alerts for Alerts with 11 members and custom:build-failures, and the private #eng-leads for Leads with 5 members and custom:weekly-insights, each with Showing or Show mirror, Open and Unbind.",
-      "capturedAt": "2026-10-13T03:59:51.440Z",
-      "uiVersion": "0.158.0",
-      "seedRef": "8a9e0c80970f809f81bde6b4262fe3fd7f8e4b70"
+      "alt": "The Chat Ops page, headed The loop reports where your team already lives., with + Add channel and Open #ouroboros-loops at the top right; the connection strip reading acme-robotics, app v2.4, 3 scopes missing: groups:read, im:write, users:read.email, active, verified 0s ago, with Verify now; the channel mirror of #ouroboros-loops, marked mirror, showing the /ouro status and /ouro dry-run commands with their answers, a Loop #1847 build green card and the start of an open question card; and, beside it, the COMMANDS card listing the /ouro commands, each with Try it, and the start of the WHAT GETS PUBLISHED WHERE card.",
+      "capturedAt": "2026-10-13T04:35:02.623Z",
+      "uiVersion": "0.159.0",
+      "seedRef": "5f173b1ea15e6858e9fc639f74e2e0048959526a"
     },
     {
       "id": "user-guide.chatops.mirror",
@@ -676,6 +676,30 @@
       "capturedAt": "2026-10-13T03:59:22.675Z",
       "uiVersion": "0.158.0",
       "seedRef": "8a9e0c80970f809f81bde6b4262fe3fd7f8e4b70"
+    },
+    {
+      "id": "user-guide.chatops.commands",
+      "route": "/chatops",
+      "workspace": "acme-robotics",
+      "ready": ".chatops-side__commands .chatops-side__cmd",
+      "clip": ".chatops-side__commands",
+      "caption": "The commands card: every /ouro command, with Try it.",
+      "alt": "The COMMANDS card: rows /ouro status — everything live, in one line; /ouro queue #485 [workflow] — send an issue into the loop; /ouro pause loop 1847 — hold a loop mid-flight; /ouro resume loop 1847 — let a held loop continue; /ouro abort loop 1847 — stop and clean up; /ouro answer q-231 allow_once — answer a blocking question; /ouro dry-run #486 [workflow] — rehearse with no writes; and /ouro route implement claude-fable-5 — repin a stage's model, each with a Try it button, the list scrolling on; and the caption Identical in Slack, Teams, and the in-app console. Tab-completion everywhere. Teams arrives with #547.",
+      "capturedAt": "2026-10-13T04:34:12.603Z",
+      "uiVersion": "0.159.0",
+      "seedRef": "5f173b1ea15e6858e9fc639f74e2e0048959526a"
+    },
+    {
+      "id": "user-guide.chatops.routing",
+      "route": "/chatops",
+      "workspace": "acme-robotics",
+      "ready": ".chatops-side__routing .chatops-side__oncall-who",
+      "clip": ".chatops-side__routing",
+      "caption": "What gets published where: each Slack route, its channel, its switch and the person on call.",
+      "alt": "The WHAT GETS PUBLISHED WHERE card: Loop finished (merged) → #ouroboros-loops, on; Blocking questions → #ouroboros-loops, on, with + DM on-call (Ken Suenobu), rotations arrive with #548 and a Change button; Build failures → #helios-alerts, on; Weekly insights report → #eng-leads, on; Every stage transition — noisy, off by default → #ouroboros-loops, off; each channel a list to choose from; then Manage in Settings.",
+      "capturedAt": "2026-10-13T04:34:59.431Z",
+      "uiVersion": "0.159.0",
+      "seedRef": "5f173b1ea15e6858e9fc639f74e2e0048959526a"
     },
     {
       "id": "user-guide.chatops.console",
@@ -1680,10 +1704,10 @@
       "ready": "#settings-notifications-title",
       "clip": "section[aria-labelledby='settings-notifications-title']",
       "caption": "Notifications: the workspace's notification routes, where each one goes and when.",
-      "alt": "The Notifications section: Needs-you decisions → Slack DM, switched off, approvals, waivers, allow-once requests; Daily digest 09:00 UTC → email, switched on, merges, spend, interventions since yesterday, with Daily digest time (UTC) set to 09:00; Loop failures → PagerDuty, locked — connect PagerDuty first, with See PagerDuty in Integrations; Weekly insights report → email, switched on, Mondays, from the Insights screen, to eng-leads@acme-robotics.dev, with Weekly insights recipients; then five Slack routes — custom:blocking-questions, custom:build-failures, custom:loop-finished and custom:weekly-insights switched on, and custom:stage-transitions switched off.",
-      "capturedAt": "2026-10-13T02:09:16.851Z",
-      "uiVersion": "0.157.0",
-      "seedRef": "c6994c0a81655b77a6c4ba67b509d3d367379838"
+      "alt": "The Notifications section: Needs-you decisions → Slack DM, switched off, approvals, waivers, allow-once requests; Daily digest 09:00 UTC → email, switched on, merges, spend, interventions since yesterday, with Daily digest time (UTC) set to 09:00; Loop failures → PagerDuty, locked — connect PagerDuty first, with See PagerDuty in Integrations; Weekly insights report → email, switched on, Mondays, from the Insights screen, to eng-leads@acme-robotics.dev, with Weekly insights recipients; then five Slack routes — custom:loop-finished, custom:blocking-questions, custom:build-failures and custom:weekly-insights switched on, and custom:stage-transitions switched off.",
+      "capturedAt": "2026-10-13T04:35:05.094Z",
+      "uiVersion": "0.159.0",
+      "seedRef": "5f173b1ea15e6858e9fc639f74e2e0048959526a"
     },
     {
       "id": "administration.retention",

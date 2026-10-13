@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ApiClient } from "@/app/api/client";
 
-import { channels, connection } from "../helpers/chatops";
+import { channels, connection, onCall } from "../helpers/chatops";
 
 /**
  * The Slack plane's calls (#541): each names the route the contract does, and the four channel
@@ -64,5 +64,21 @@ describe("the channels", () => {
       "/api/v1/slack/channels/{id}/binding",
       { params: { path: { id: "channel-1" } } },
     ]);
+  });
+});
+
+describe("the on-call designee (#543)", () => {
+  it("is read from, and written to, the chat plane's on-call route", async () => {
+    const one = client(onCall());
+    const signal = new AbortController().signal;
+
+    expect(await chatops.onCall(one.client, signal)).toEqual(onCall());
+    expect(one.verbs.GET.mock.calls[0]).toEqual(["/api/v1/chat/on-call", { signal }]);
+
+    expect(await chatops.setOnCall("member-ken", one.client)).toEqual(onCall());
+    expect(one.verbs.PUT.mock.calls[0]).toEqual(["/api/v1/chat/on-call", { body: { memberId: "member-ken" } }]);
+
+    await chatops.setOnCall(null, one.client);
+    expect(one.verbs.PUT.mock.calls[1]).toEqual(["/api/v1/chat/on-call", { body: { memberId: null } }]);
   });
 });

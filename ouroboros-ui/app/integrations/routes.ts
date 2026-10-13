@@ -76,6 +76,19 @@ export const TIME_FIELD = `time:${DAILY_DIGEST}`;
 export const RECIPIENTS_FIELD = `recipients:${WEEKLY_INSIGHTS}`;
 
 /**
+ * The routes the Notifications card lists.
+ *
+ * The service names every chat-channel route whether or not the workspace has set it up (#543);
+ * one that is not stored yet belongs to the Chat Ops page's routing card, not here.
+ *
+ * @param routes The routes as read.
+ * @returns The same reading, without the chat routes nobody has stored.
+ */
+export function listedRoutes(routes: NotificationRoutes): NotificationRoutes {
+  return { ...routes, items: routes.items.filter((route) => route.chat === null || route.stored) };
+}
+
+/**
  * The name of a route's switch field.
  *
  * @param kind The route's kind.

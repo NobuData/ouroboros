@@ -23,9 +23,6 @@ Connecting Slack, linking identities, publishing cards, the
 [`/ouro` commands](../cli/ouro.mdx), answering a decision with a card's button and
 [escalation](#escalation) work now.
 
-Designating the on-call person cannot be done in the app yet — see
-[Where messages go](#where-messages-go).
-
 :::
 
 ## Each deployment registers its own app
@@ -226,17 +223,20 @@ A message goes only to a route that is switched on, and each channel gets a give
 once, even when two routes name the same channel.
 
 A route's channel is chosen by [binding a channel](#bind-the-first-channels) on the Chat Ops
-page. A Slack route is listed in the **Notifications** section with its switch; switching one
+page, and changed route by route on that page's
+[What gets published where](../user-guide/chatops.mdx#what-gets-published-where) card. A Slack route is listed in the **Notifications** section with its switch; switching one
 on while it has no channel is refused with *choose a Slack channel first*.
 
-Two things are not in the app yet:
+Direct messages go to the person on call:
 
-- **Designating the on-call person.** **Needs-you decisions → Slack DM** can be switched on in
-  Settings once Slack is connected, and it then sends each question to the workspace's on-call
-  person — but nobody can be designated on call in the app yet, so until someone is, it sends
-  nothing.
-- **Direct messages need a link.** The on-call person receives them only after
-  [linking their Slack identity](../user-guide/chatops.mdx#link-your-identity).
+- **Designating the on-call person.** An Owner or a Maintainer chooses them with **Change**,
+  beside **+ DM on-call** on the Chat Ops page's
+  [What gets published where](../user-guide/chatops.mdx#what-gets-published-where) card. One
+  person is on call at a time; rotations are not available yet. **Needs-you decisions → Slack
+  DM** sends each question to that person — and nothing while nobody is designated.
+- **Direct messages need a link.** Only a member who has
+  [linked their Slack identity](../user-guide/chatops.mdx#link-your-identity) can be
+  designated.
 
 The bot posts only in channels it has been added to. In Slack, add it with `/invite @Ouroboros`.
 
@@ -274,8 +274,8 @@ decision being withdrawn, cancels the countdown.
   sets. A new window applies to decisions asked after it is set; a countdown already running
   keeps the window it started with.
 - **The on-call person.** The direct message goes to whoever is on call for decisions, once
-  they have [linked their Slack identity](../user-guide/chatops.mdx#link-your-identity). Nobody
-  can be designated on call in the app yet; with nobody on call the decision still escalates —
+  they have [linked their Slack identity](../user-guide/chatops.mdx#link-your-identity). An Owner
+  or a Maintainer [designates them](#where-messages-go); with nobody on call the decision still escalates —
   the card is marked and the inbox reorders — and no direct message is sent.
 - **After downtime.** A countdown that ended while Ouroboros was stopped escalates once, when
   it starts again.

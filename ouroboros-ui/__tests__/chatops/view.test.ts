@@ -130,7 +130,7 @@ describe("Open #channel ↗", () => {
 
     expect(openChannelLink(chatOpsPage({ channels: archived }))).toBeNull();
     expect(openChannelLink(chatOpsPage({ channels: linkless }))).toBeNull();
-    expect(openChannelLink({ connection: connection(), channels: { ok: false, reason: "nope" } })).toBeNull();
+    expect(openChannelLink({ ...chatOpsPage(), channels: { ok: false, reason: "nope" } })).toBeNull();
   });
 });
 
@@ -306,7 +306,7 @@ describe("the channels", () => {
   it("decides the connected page's body", () => {
     expect(channelsBody(chatOpsPage())).toBe("first");
     expect(channelsBody(chatOpsPage({ channels: channels(boundChannelList()) }))).toBe("bound");
-    expect(channelsBody({ connection: connection(), channels: { ok: false, reason: "nope" } })).toBe("unread");
+    expect(channelsBody({ ...chatOpsPage(), channels: { ok: false, reason: "nope" } })).toBe("unread");
     for (const state of STATES.filter((one) => one !== "connected")) {
       expect(channelsBody(chatOpsPage({ connection: connection({ state }) })), state).toBeNull();
     }
@@ -377,7 +377,10 @@ describe("writes and reads", () => {
 
   it("recognises the page's payload", () => {
     expect(isChatOpsPage(chatOpsPage())).toBe(true);
-    expect(isChatOpsPage({ connection: connection(), channels: { ok: false, reason: "x" } })).toBe(true);
+    expect(isChatOpsPage({ ...chatOpsPage(), channels: { ok: false, reason: "x" } })).toBe(true);
+    expect(isChatOpsPage({ ...chatOpsPage(), grammar: { ok: false, reason: "x" } })).toBe(true);
+    // A payload from before #543 — no grammar, routes or on-call — is not this page's.
+    expect(isChatOpsPage({ connection: connection(), channels: { ok: true, value: {} } })).toBe(false);
     expect(isChatOpsPage({ connection: connection() })).toBe(false);
     expect(isChatOpsPage({ channels: { ok: true } })).toBe(false);
     expect(isChatOpsPage(null)).toBe(false);

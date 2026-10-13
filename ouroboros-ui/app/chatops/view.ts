@@ -1,4 +1,10 @@
-import type { ChannelPurpose, SlackChannel, SlackChannels, SlackConnection } from "@/app/api/chatops";
+import type {
+  ChannelPurpose,
+  ChatOnCall,
+  SlackChannel,
+  SlackChannels,
+  SlackConnection,
+} from "@/app/api/chatops";
 import type {
   ChatMirror,
   ChatMirrorEntry,
@@ -7,7 +13,14 @@ import type {
   MirrorResolution,
   MirrorSeverity,
 } from "@/app/api/chatops-mirror";
+import type { ConsoleCommand, ConsoleGrammar } from "@/app/api/console";
 import type { Reading } from "@/app/api/reading";
+import type {
+  NotificationRoute,
+  NotificationRouteChat,
+  NotificationRouteChatChannel,
+  NotificationRoutes,
+} from "@/app/api/settings-integrations";
 import { ageOfSeconds, relativeAgo } from "@/app/format";
 import { settingsSectionPath } from "@/app/paths";
 import { CONSOLE_PREFIX } from "@/app/shell/console";
@@ -32,6 +45,12 @@ export interface ChatOpsPage {
   readonly connection: SlackConnection;
   /** The workspace's channels — a reading of their own, so a failed list costs only the lists. */
   readonly channels: Reading<SlackChannels>;
+  /** The `/ouro` grammar the commands card is generated from (CA.3, #543). */
+  readonly grammar: Reading<ConsoleGrammar>;
+  /** The notification routes — #488's store, the one Settings → Notifications edits. */
+  readonly routes: Reading<NotificationRoutes>;
+  /** Who **+ DM on-call** reaches. */
+  readonly onCall: Reading<ChatOnCall>;
 }
 
 /** Where this origin serves the page's poll. */
@@ -70,12 +89,18 @@ export const LOADING_LABEL = "Loading Chat Ops";
 export function isChatOpsPage(value: unknown): value is ChatOpsPage {
   if (typeof value !== "object" || value === null) return false;
 
-  const { connection, channels } = value as {
+  const { connection, channels, grammar, routes, onCall } = value as {
     connection?: { state?: unknown } | null;
     channels?: { ok?: unknown } | null;
+    grammar?: { ok?: unknown } | null;
+    routes?: { ok?: unknown } | null;
+    onCall?: { ok?: unknown } | null;
   };
 
-  return typeof connection?.state === "string" && typeof channels?.ok === "boolean";
+  return (
+    typeof connection?.state === "string" &&
+    [channels, grammar, routes, onCall].every((reading) => typeof reading?.ok === "boolean")
+  );
 }
 
 /* ------------------------------------------------------------------ the head */
@@ -1254,4 +1279,341 @@ export const SHOWING_MIRROR_LABEL = "Showing";
  */
 export function showMirrorName(channel: Pick<SlackChannel, "name">): string {
   return `Show the mirror of ${channelName(channel)}`;
+}
+
+/* ------------------------------------------------------------------ the commands card */
+
+/*
+ * CA.3 ([#543](https://github.com/NobuData/ouroboros/issues/543)). Every row is the grammar's:
+ * its example, its one-line purpose, whether this reader may run it. Nothing below names a
+ * command — a hand-kept list would teach a grammar the dispatcher stopped accepting — so what is
+ * written here is only the frame: the title, the caption and what a row's marks say.
+ */
+
+/** The card's title, as mockup 19 prints it. */
+export const COMMANDS_TITLE = "COMMANDS";
+
+/** The scrolling list's accessible name. */
+export const COMMANDS_LIST_LABEL = "Command list";
+
+/** The mockup's caption — the design intent, kept verbatim. */
+export const COMMANDS_CAPTION = "Identical in Slack, Teams, and the in-app console. Tab-completion everywhere.";
+
+/** The caption's honest third: Teams is not here yet. */
+export const TEAMS_QUALIFIER = "Teams arrives with #547";
+
+/** What stands in for the rows when the grammar could not be read. */
+export const COMMANDS_UNREAD = "The commands could not be read.";
+
+/** What stands in for the rows when the grammar lists no command. */
+export const COMMANDS_EMPTY = "No commands are registered.";
+
+/** The control that puts a command in the composer. */
+export const TRY_LABEL = "Try it";
+
+/** The stage chip of a command that is listed and not yet runnable. */
+export const V2_CHIP = "v2";
+
+/** One piece of a command's code form. */
+export interface UsagePart {
+  /** The text, with the space that precedes it when it is not the first. */
+  readonly text: string;
+  /** Whether it is a hint rather than a required word — mockup 19's `.arg`. */
+  readonly hint: boolean;
+}
+
+/**
+ * A command's code form, with the parts that are hints told apart.
+ *
+ * The example is the grammar's (`usage`); which of its words are optional is the grammar's too —
+ * the words after the command's name stand for its arguments in the order they are typed, and
+ * one standing for an argument the grammar marks `optional` is a hint. So is a word the example
+ * itself brackets.
+ *
+ * @param command The command.
+ * @returns The prefix and the name as one part, then each further word.
+ */
+export function usageParts(command: Pick<ConsoleCommand, "id" | "usage" | "arguments">): readonly UsagePart[] {
+  const usage = command.usage.trim();
+  const named = usage === command.id || usage.startsWith(`${command.id} `);
+  const head = named ? command.id : (usage.split(/\s+/)[0] ?? "");
+  const words = usage.slice(head.length).trim().split(/\s+/).filter((word) => word !== "");
+
+  return [
+    { text: `${CONSOLE_PREFIX} ${head}`.trimEnd(), hint: false },
+    ...words.map((word, index) => ({
+      text: ` ${word}`,
+      hint: (named && command.arguments[index]?.optional === true) || /^\[.*\]$/.test(word),
+    })),
+  ];
+}
+
+/**
+ * What **Try it** puts in the composer: the prefix and the command's name, and a space — so the
+ * completions for its first argument open, and a command that takes none is ready to send.
+ *
+ * @param command The command.
+ * @returns The line.
+ */
+export function tryLine(command: Pick<ConsoleCommand, "id">): string {
+  return `${CONSOLE_PREFIX} ${command.id} `;
+}
+
+/**
+ * Whether a row offers **Try it**.
+ *
+ * @param command The command.
+ * @returns Whether it is available and this reader may run it.
+ */
+export function runnable(command: Pick<ConsoleCommand, "stage" | "allowed">): boolean {
+  return command.stage === "available" && command.allowed;
+}
+
+/**
+ * **Try it**'s accessible name.
+ *
+ * @param command The command.
+ * @returns `Try /ouro status in the composer`.
+ */
+export function tryName(command: Pick<ConsoleCommand, "id">): string {
+  return `Try ${CONSOLE_PREFIX} ${command.id} in the composer`;
+}
+
+/** The reason of last resort, for a denial that arrived with none. */
+const DENIED_FALLBACK = "it is not open to you";
+
+/**
+ * Why a dimmed row is dimmed.
+ *
+ * @param command The command.
+ * @returns `Not available to you — for workspace owners and admins`, or null for one the reader
+ *   may run.
+ */
+export function deniedText(command: Pick<ConsoleCommand, "allowed" | "deniedReason">): string | null {
+  if (command.allowed) return null;
+
+  const reason = command.deniedReason?.trim() ?? "";
+
+  return `Not available to you — ${reason === "" ? DENIED_FALLBACK : reason}`;
+}
+
+/**
+ * What the grammar says about a command that is listed and not runnable.
+ *
+ * @param command The command.
+ * @returns Its note — what it says instead of running — or null.
+ */
+export function stageNote(command: Pick<ConsoleCommand, "stage" | "unavailableReply">): string | null {
+  if (command.stage === "available") return null;
+
+  const note = command.unavailableReply?.trim() ?? "";
+
+  return note === "" ? null : note;
+}
+
+/**
+ * A staged command's chip.
+ *
+ * The issue it waits for is read out of the grammar's own note, never written here: with one,
+ * the chip names it; without, it is the stage alone and the note says the rest.
+ *
+ * @param command The command.
+ * @returns `v2 · #546`, `v2`, or null for an available command.
+ */
+export function stageChip(command: Pick<ConsoleCommand, "stage" | "unavailableReply">): string | null {
+  if (command.stage === "available") return null;
+
+  const issue = /#\d+/.exec(command.unavailableReply ?? "")?.[0];
+
+  return issue === undefined ? command.stage : `${command.stage} · ${issue}`;
+}
+
+/**
+ * The accessible name of the control that opens a staged command's note.
+ *
+ * @param command The command.
+ * @returns `Why /ouro explain pr cannot be run yet`.
+ */
+export function stageTipName(command: Pick<ConsoleCommand, "id">): string {
+  return `Why ${CONSOLE_PREFIX} ${command.id} cannot be run yet`;
+}
+
+/* ------------------------------------------------------------------ the routing card */
+
+/*
+ * The rows are #488's notification routes that post to a chat channel — the store Settings →
+ * Notifications edits — and every label and qualifier on them is the service's.
+ */
+
+/** The card's title, as mockup 19 prints it. */
+export const ROUTING_TITLE = "WHAT GETS PUBLISHED WHERE";
+
+/** What stands in for the rows when the routes could not be read. */
+export const ROUTES_UNREAD = "The routes could not be read.";
+
+/** What stands in for the rows when no route posts to a chat channel. */
+export const ROUTES_EMPTY = "No route publishes to a chat channel yet.";
+
+/** Why a reader who cannot edit sees words where the controls would be. */
+export const ROUTING_ROLE_NOTE = "Changing what gets published where is for an Owner or a Maintainer.";
+
+/** What points from an event to its channel. */
+export const ROUTE_ARROW = "→";
+
+/** What stands where a channel would, on a route with none. */
+export const CHOOSE_CHANNEL = "choose a channel";
+
+/** The same, for a reader who cannot choose. */
+export const NO_CHANNEL = "no channel chosen";
+
+/** The picker's way back to #541's sheet. */
+export const ADD_CHANNEL_CHOICE = "+ Add a channel…";
+
+/** The picker's value for {@link ADD_CHANNEL_CHOICE} — not a channel's id. */
+export const ADD_CHANNEL_VALUE = "+";
+
+/** A route's position, in words, for a reader with no switch. */
+export const ROUTE_ON = "on";
+export const ROUTE_OFF = "off";
+
+/** What is said when a write failed without the service saying why. */
+export const ROUTE_FAILED = "The route could not be saved. Try again.";
+
+/** A route that posts to a chat channel. */
+export type ChatRoute = NotificationRoute & { readonly chat: NotificationRouteChat };
+
+/**
+ * The routes the card lists.
+ *
+ * @param routes Every route, as served.
+ * @returns Those that post to a chat channel, in the served order.
+ */
+export function chatRoutes(routes: readonly NotificationRoute[]): readonly ChatRoute[] {
+  return routes.filter((route): route is ChatRoute => route.chat !== null && route.chat !== undefined);
+}
+
+/**
+ * The routes with one of them replaced by what a write answered.
+ *
+ * @param routes The routes as held.
+ * @param route The route as it now stands.
+ * @returns The routes, in the same order.
+ */
+export function withRoute(routes: NotificationRoutes, route: NotificationRoute): NotificationRoutes {
+  return { ...routes, items: routes.items.map((one) => (one.kind === route.kind ? route : one)) };
+}
+
+/**
+ * A switch's accessible name.
+ *
+ * @param route The route.
+ * @returns `Publish: Build failures`.
+ */
+export function routeSwitchName(route: ChatRoute): string {
+  return `Publish: ${route.chat.label}`;
+}
+
+/**
+ * A channel picker's accessible name.
+ *
+ * @param route The route.
+ * @returns `Channel for Build failures`.
+ */
+export function routePickerName(route: ChatRoute): string {
+  return `Channel for ${route.chat.label}`;
+}
+
+/**
+ * What a row's picker offers: the bound channels, and the route's own channel when it is no
+ * longer one of them — so the picker never shows a channel the route does not post to.
+ *
+ * @param channels The workspace's channels, as served.
+ * @param current The route's channel, or null.
+ * @returns The choices, as ids and `#names`.
+ */
+export function routeChoices(
+  channels: readonly SlackChannel[],
+  current: Pick<NotificationRouteChatChannel, "id" | "name"> | null,
+): readonly { readonly id: string; readonly name: string }[] {
+  const bound = boundChannels(channels).map((channel) => ({ id: channel.id, name: channelName(channel) }));
+
+  if (current === null || bound.some((choice) => choice.id === current.id)) return bound;
+
+  return [{ id: current.id, name: channelName(current) }, ...bound];
+}
+
+/**
+ * What is wrong with the channel a route posts to.
+ *
+ * @param channel The channel, or null.
+ * @returns The warning, or null for a channel in good standing — or none.
+ */
+export function routeChannelWarning(
+  channel: Pick<NotificationRouteChatChannel, "joined" | "archived"> | null,
+): string | null {
+  if (channel === null) return null;
+  if (channel.archived) return "archived in Slack — nothing is posted there";
+
+  return channel.joined ? null : "Ouroboros is not in this channel — nothing is posted there";
+}
+
+/* ---- + DM on-call ---- */
+
+/** The affix, as mockup 19 prints it. */
+export const DM_ON_CALL = "+ DM on-call";
+
+/** What stands for the designee when there is none. */
+export const NOBODY_DESIGNATED = "nobody designated";
+
+/** The flag on a designee who cannot be reached. */
+export const NOT_LINKED = "not linked to Slack";
+
+/** What the affix says about rotations. */
+export const ROTATIONS_NOTE = "rotations arrive with #548";
+
+/** What stands for the designee when the on-call resource could not be read. */
+export const ON_CALL_UNREAD = "designee could not be read";
+
+/** The control that opens the designee picker, and its accessible name. */
+export const CHANGE_LABEL = "Change";
+export const CHANGE_NAME = "Change the on-call designee";
+
+/** The designee picker's accessible name, and its choice for nobody. */
+export const ON_CALL_PICKER_LABEL = "On-call designee";
+export const NOBODY_CHOICE = "Nobody";
+
+/** The control that closes the designee picker. */
+export const CANCEL_LABEL = "Cancel";
+
+/** What is said where there is nobody to choose from. */
+export const NO_CANDIDATES = `Members must link their Slack identity first (${CONSOLE_PREFIX} link).`;
+
+/** What is said when the designation failed without the service saying why. */
+export const ON_CALL_FAILED = "The on-call designee could not be changed. Try again.";
+
+/** Who the affix names, and whether it is a warning. */
+export interface OnCallView {
+  /** What stands in the affix's brackets. */
+  readonly text: string;
+  /** Whether a DM would reach nobody as things stand. */
+  readonly warn: boolean;
+}
+
+/**
+ * Who **+ DM on-call** reaches.
+ *
+ * @param onCall The on-call resource, or why it could not be read.
+ * @returns The designee's name; *nobody designated*; the name flagged as not linked; or that it
+ *   could not be read.
+ */
+export function onCallView(onCall: Reading<ChatOnCall>): OnCallView {
+  if (!onCall.ok) return { text: ON_CALL_UNREAD, warn: true };
+
+  const { designee } = onCall.value;
+
+  if (designee === null) return { text: NOBODY_DESIGNATED, warn: true };
+
+  return designee.linked
+    ? { text: designee.name, warn: false }
+    : { text: `${designee.name} — ${NOT_LINKED}`, warn: true };
 }

@@ -1,4 +1,4 @@
-import type { SlackChannel, SlackChannels, SlackConnection } from "@/app/api/chatops";
+import type { ChatOnCall, SlackChannel, SlackChannels, SlackConnection } from "@/app/api/chatops";
 import type {
   ChatMirror,
   ChatMirrorEntry,
@@ -6,7 +6,15 @@ import type {
   MirrorCommand,
   MirrorLine,
 } from "@/app/api/chatops-mirror";
+import type { ConsoleGrammar } from "@/app/api/console";
+import type {
+  NotificationRoute,
+  NotificationRouteChat,
+  NotificationRoutes,
+} from "@/app/api/settings-integrations";
 import type { ChatOpsPage } from "@/app/chatops/view";
+
+import { grammar } from "./console";
 
 /**
  * Fixtures for the Chat Ops page (#541): a connection in each of its five states, the seeded
@@ -134,13 +142,110 @@ export function channels(list: SlackChannel[] = unboundChannels(), over: Partial
   return { connected: true, refreshedAt: "2026-10-12T13:55:00.000Z", channels: list, ...over };
 }
 
+/* ------------------------------------------------------------------ the routing card (#543) */
+
+/**
+ * One chat route — stored, on, unlocked and with no channel unless told otherwise.
+ *
+ * @param kind Its kind.
+ * @param chat What it publishes and where; null makes it a route that is not a chat route.
+ * @param over What differs on the route itself.
+ * @returns The route.
+ */
+export function chatRoute(
+  kind: string,
+  chat: Partial<NotificationRouteChat> | null,
+  over: Partial<NotificationRoute> = {},
+): NotificationRoute {
+  return {
+    kind,
+    channel: "slack",
+    config: {} as NotificationRoute["config"],
+    enabled: true,
+    locked: false,
+    lockedReason: null,
+    delivering: true,
+    stored: true,
+    updatedAt: "2026-10-10T09:00:00.000Z",
+    updatedBy: null,
+    chat: chat === null ? null : { label: kind, note: null, channel: null, dmOnCall: false, ...chat },
+    ...over,
+  };
+}
+
+/**
+ * A route's channel, as the route names it.
+ *
+ * @param name The bound channel's name.
+ * @param over What differs.
+ * @returns The channel, with the id {@link channel} gives the same name.
+ */
+export function routeChannel(name: string, over: Partial<NonNullable<NotificationRouteChat["channel"]>> = {}) {
+  return { id: channel(name).id, name, joined: true, archived: false, ...over };
+}
+
+/**
+ * The seeded workspace's routes: an email route that is no chat route, then mockup 19's five in
+ * the service's order — the stage-transition one off, unstored and with no channel.
+ *
+ * @returns The routes payload.
+ */
+export function chatRoutes(): NotificationRoutes {
+  return {
+    items: [
+      chatRoute("daily_digest", null, { channel: "email" }),
+      chatRoute("custom:loop-finished", { label: "Loop finished (merged)", channel: routeChannel("ouroboros-loops") }),
+      chatRoute("custom:blocking-questions", {
+        label: "Blocking questions",
+        channel: routeChannel("ouroboros-loops"),
+        dmOnCall: true,
+      }),
+      chatRoute("custom:build-failures", { label: "Build failures", channel: routeChannel("helios-alerts") }),
+      chatRoute("custom:weekly-insights", { label: "Weekly insights report" }, { enabled: false, delivering: false }),
+      chatRoute(
+        "custom:stage-transitions",
+        { label: "Every stage transition", note: "noisy, off by default" },
+        { enabled: false, delivering: false, stored: false, updatedAt: null },
+      ),
+    ],
+    channels: [],
+  };
+}
+
+/**
+ * The on-call resource — Maya Chen designated and linked, two candidates — unless told otherwise.
+ *
+ * @param over What differs.
+ * @returns The resource.
+ */
+export function onCall(over: Partial<ChatOnCall> = {}): ChatOnCall {
+  return {
+    scope: "decisions",
+    designee: { memberId: "member-maya", name: "Maya Chen", linked: true },
+    assignedAt: "2026-10-09T08:00:00.000Z",
+    candidates: [
+      { memberId: "member-ken", name: "Ken Suenobu" },
+      { memberId: "member-maya", name: "Maya Chen" },
+    ],
+    ...over,
+  };
+}
+
 /**
  * The page's payload.
  *
- * @param of The connection, and the channels beside it.
+ * @param of The connection, and what is read beside it.
  * @returns The page.
  */
-export function chatOpsPage(of: { connection?: SlackConnection; channels?: SlackChannels } = {}): ChatOpsPage {
+export function chatOpsPage(
+  of: {
+    connection?: SlackConnection;
+    channels?: SlackChannels;
+    grammar?: ConsoleGrammar;
+    routes?: NotificationRoutes;
+    onCall?: ChatOnCall;
+  } = {},
+): ChatOpsPage {
   const conn = of.connection ?? connection();
 
   return {
@@ -149,6 +254,9 @@ export function chatOpsPage(of: { connection?: SlackConnection; channels?: Slack
       ok: true,
       value: of.channels ?? (conn.state === "connected" ? channels() : channels([], { connected: false, refreshedAt: null })),
     },
+    grammar: { ok: true, value: of.grammar ?? grammar() },
+    routes: { ok: true, value: of.routes ?? chatRoutes() },
+    onCall: { ok: true, value: of.onCall ?? onCall() },
   };
 }
 

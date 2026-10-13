@@ -7,9 +7,12 @@
  * the whole thing), and its keys are checked by the service, whose refusal names the field
  * (`422 notification_route_config_invalid`). Enabling a route on a channel that cannot deliver is
  * the service's `409 notification_route_locked`, never a silent store.
+ *
+ * `chatChannelId` (CA.3, [#543](https://github.com/NobuData/ouroboros/issues/543)) is the one
+ * field where `null` and absent differ: `null` clears the route's channel, absent leaves it.
  */
 
-import { IsBoolean, IsIn, IsObject, ValidateIf } from "class-validator";
+import { IsBoolean, IsIn, IsObject, IsString, ValidateIf } from "class-validator";
 
 import type { NotificationRouteChannel } from "../db/schema";
 import { ROUTE_CHANNELS } from "./routes.catalog";
@@ -30,4 +33,15 @@ export class PatchNotificationRouteDto {
   @ValidateIf((body: PatchNotificationRouteDto) => body.enabled !== undefined)
   @IsBoolean({ message: "enabled must be true or false" })
   enabled?: boolean;
+
+  /**
+   * The bound chat channel a chat route posts to — a channel's `id` from
+   * `GET /api/v1/slack/channels` — or `null` for none. Only a chat route takes one.
+   */
+  @ValidateIf(
+    (body: PatchNotificationRouteDto) =>
+      body.chatChannelId !== undefined && body.chatChannelId !== null,
+  )
+  @IsString({ message: "chatChannelId must be a channel id or null" })
+  chatChannelId?: string | null;
 }

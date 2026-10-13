@@ -214,6 +214,10 @@ const TEMPLATES: Readonly<Record<string, Template>> = {
     const name = text(f, "channelName");
     return name === undefined ? "unbound a Slack channel" : `unbound #${name}`;
   },
+  "chat.on_call_changed": (f) =>
+    text(f, "memberId") === undefined
+      ? "left nobody on call for decisions"
+      : "changed who is on call for decisions",
 };
 
 /**

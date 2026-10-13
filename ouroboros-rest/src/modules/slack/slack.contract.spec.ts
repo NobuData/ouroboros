@@ -8,9 +8,16 @@ import Ajv2020 from "ajv/dist/2020";
 import addFormats from "ajv-formats";
 
 import { document } from "../../openapi/specification";
+import type { AuditService } from "../audit/audit.service";
 import type { ChatChannel, ChatConnectionPublic } from "../db/schema";
 import { composeIntegrations } from "../integrations/integrations.tiles";
 import { COMMAND_ACK } from "./slack.inbound.service";
+import type {
+  OnCallDesignee,
+  OnCallMember,
+  SlackOnCallRepository,
+} from "./slack.on-call.repository";
+import { type OnCallResource, SlackOnCallService } from "./slack.on-call.service";
 import { channelsResource, connectionResource } from "./slack.resources";
 
 /**
@@ -221,6 +228,70 @@ describe("the Slack channels on the wire (#541)", () => {
     expect(unbind["409"].description).toContain("slack_not_connected");
     expect(refresh["409"].description).toContain("slack_not_connected");
     expect(refresh["502"].description).toContain("slack_channel_list_failed");
+  });
+});
+
+describe("the on-call designee on the wire (#543)", () => {
+  const onCall = validatorFor("OnCall");
+  const assignment = validatorFor("OnCallAssignment");
+  const MAYA = { memberId: "mem-maya", name: "Maya Chen" };
+  const KEN_MEMBER = { memberId: "mem-ken", name: "Ken Suenobu" };
+
+  /**
+   * The service's answer for a designee and the members a DM could reach.
+   *
+   * @param designee - Who is on call, if anybody.
+   * @param linked - The linked members.
+   * @returns The resource.
+   */
+  function answer(
+    designee: OnCallDesignee | undefined,
+    linked: OnCallMember[],
+  ): Promise<OnCallResource> {
+    const repository = {
+      designee: () => Promise.resolve(designee),
+      linkedMembers: () => Promise.resolve(linked),
+    } as unknown as SlackOnCallRepository;
+
+    return new SlackOnCallService(repository, {} as AuditService).read("org-acme");
+  }
+
+  it("matches OnCall with nobody on call, a linked designee, and one whose link is gone", async () => {
+    const at = new Date("2026-10-12T14:02:11Z");
+
+    expect(onCall(wire(await answer(undefined, [])))).toBeUndefined();
+    expect(
+      onCall(wire(await answer({ ...MAYA, assignedAt: at }, [MAYA, KEN_MEMBER]))),
+    ).toBeUndefined();
+    expect(onCall(wire(await answer({ ...MAYA, assignedAt: at }, [])))).toBeUndefined();
+    expect(onCall(wire({ ...(await answer(undefined, [])), rotation: [] }))).toContain(
+      "additional properties",
+    );
+  });
+
+  it("takes a member id or null as the body, and always one of them", () => {
+    expect(assignment({ memberId: "mem-maya" })).toBeUndefined();
+    expect(assignment({ memberId: null })).toBeUndefined();
+    expect(assignment({})).toBeDefined();
+    expect(assignment({ memberId: 7 })).toBeDefined();
+    expect(assignment({ memberId: null, scope: "pages" })).toContain("additional properties");
+  });
+
+  it("documents every refusal's code under the status it is answered with", () => {
+    const paths = document().paths as Record<
+      string,
+      Record<string, { responses: Record<string, { description: string }> }>
+    >;
+    const put = paths["/api/v1/chat/on-call"].put.responses;
+    const patch = paths["/api/v1/settings/notifications/{kind}"].patch.responses;
+
+    expect(Object.keys(paths["/api/v1/chat/on-call"])).toEqual(["get", "put"]);
+    expect(put["403"].description).toContain("forbidden");
+    expect(put["404"].description).toContain("chat_member_not_found");
+    expect(put["422"].description).toContain("chat_on_call_not_linked");
+    expect(patch["404"].description).toContain("chat_channel_not_found");
+    expect(patch["409"].description).toContain("notification_route_locked");
+    expect(patch["422"].description).toContain("notification_route_not_chat");
   });
 });
 

@@ -18,7 +18,7 @@ import type {
 } from "../db/schema";
 import { rolesFrom } from "../tenancy/organization.repository";
 import { ADMINISTRATORS } from "../tenancy/roles.guard";
-import { DM_ROUTE_KIND } from "../chat/chat.outbox";
+import { DM_PURPOSE_TAG } from "../chat/chat.outbox";
 import { MAILING_KINDS, type MailingKind, type RouteReach } from "./routes.catalog";
 
 /** One route as `notification_routes_effective` derives it. */
@@ -39,14 +39,28 @@ export interface StoredRouteRow {
   readonly channel: NotificationRouteChannel;
   readonly config: NotificationRouteConfig;
   readonly enabled: boolean;
+  /** The chat channel row a Slack route posts to (V130), or null. */
+  readonly chatChannelId: string | null;
+  /** Whether a Slack route also DMs the on-call designee (V130). */
+  readonly dmOnCall: boolean;
 }
 
 /** What a save writes. */
-export interface RouteWrite {
-  readonly channel: NotificationRouteChannel;
-  readonly config: NotificationRouteConfig;
-  readonly enabled: boolean;
+export interface RouteWrite extends StoredRouteRow {
   readonly updatedBy: string;
+}
+
+/** Where a stored Slack route posts — what the route's `chat` block is drawn from (#543). */
+export interface ChatTargetRow {
+  readonly kind: string;
+  readonly dmOnCall: boolean;
+  /** The channel row the route posts to, or null when it has none. */
+  readonly channel: {
+    readonly id: string;
+    readonly name: string;
+    readonly joined: boolean;
+    readonly archived: boolean;
+  } | null;
 }
 
 /** A route that can mail right now, in some workspace. */
@@ -126,18 +140,86 @@ export class NotificationRoutesRepository {
    * @param kind - The route.
    * @returns The row, or undefined when the kind has never been saved.
    */
-  stored(
+  async stored(
     trx: Transaction<Database>,
     organizationId: string,
     kind: string,
   ): Promise<StoredRouteRow | undefined> {
-    return trx
+    const row = await trx
       .selectFrom("notification_routes")
-      .select(["channel", "config", "enabled"])
+      .select(["channel", "config", "enabled", "chat_channel_id", "dm_on_call"])
       .where("organization_id", "=", organizationId)
       .where("kind", "=", kind)
       .forUpdate()
       .executeTakeFirst();
+
+    return row === undefined
+      ? undefined
+      : {
+          channel: row.channel,
+          config: row.config,
+          enabled: row.enabled,
+          chatChannelId: row.chat_channel_id,
+          dmOnCall: row.dm_on_call,
+        };
+  }
+
+  /**
+   * Where the workspace's stored Slack routes post: each one's channel row, when it has one, and
+   * whether it also DMs on-call (#543).
+   *
+   * @param organizationId - The workspace.
+   * @returns One row per stored Slack route.
+   */
+  async chatTargets(organizationId: string): Promise<ChatTargetRow[]> {
+    const rows = await this.database.db
+      .selectFrom("notification_routes as r")
+      .leftJoin("chat_channels as c", "c.id", "r.chat_channel_id")
+      .select(["r.kind", "r.dm_on_call", "c.id", "c.channel_name", "c.joined", "c.archived"])
+      .where("r.organization_id", "=", organizationId)
+      .where("r.channel", "=", "slack")
+      .execute();
+
+    return rows.map((row) => ({
+      kind: row.kind,
+      dmOnCall: row.dm_on_call,
+      channel:
+        row.id === null
+          ? null
+          : {
+              id: row.id,
+              name: row.channel_name ?? "",
+              joined: row.joined ?? false,
+              archived: row.archived ?? false,
+            },
+    }));
+  }
+
+  /**
+   * Whether an id names a channel of the workspace a route may post to: **bound** — it has a
+   * purpose — and not one of the DM conversations the publisher opened, which share the table
+   * (the rule of `SlackRepository.boundChannel`, read here under the save's transaction).
+   *
+   * @param trx - The save's transaction.
+   * @param organizationId - The workspace.
+   * @param id - The channel row's id — a UUID; the caller has checked its shape.
+   * @returns True for a bound channel of this workspace.
+   */
+  async boundChannel(
+    trx: Transaction<Database>,
+    organizationId: string,
+    id: string,
+  ): Promise<boolean> {
+    const row = await trx
+      .selectFrom("chat_channels")
+      .select("id")
+      .where("organization_id", "=", organizationId)
+      .where("id", "=", id)
+      .where("purpose_tag", "is not", null)
+      .where("purpose_tag", "<>", DM_PURPOSE_TAG)
+      .executeTakeFirst();
+
+    return row !== undefined;
   }
 
   /**
@@ -161,35 +243,9 @@ export class NotificationRoutesRepository {
   }
 
   /**
-   * Whether a Slack route of this kind would have somewhere to post: a bound channel, the on-call
-   * DM, or the kind that is a DM by nature (`notification_routes_slack_target`, V130).
-   *
-   * @param trx - The save's transaction.
-   * @param organizationId - The workspace.
-   * @param kind - The route.
-   * @returns True when it has a target.
-   */
-  async slackTargeted(
-    trx: Transaction<Database>,
-    organizationId: string,
-    kind: string,
-  ): Promise<boolean> {
-    if (kind === DM_ROUTE_KIND) {
-      return true;
-    }
-
-    const row = await trx
-      .selectFrom("notification_routes")
-      .select(["chat_channel_id", "dm_on_call"])
-      .where("organization_id", "=", organizationId)
-      .where("kind", "=", kind)
-      .executeTakeFirst();
-
-    return row !== undefined && (row.chat_channel_id !== null || row.dm_on_call);
-  }
-
-  /**
-   * Store a route, replacing the workspace's previous one for the kind.
+   * Store a route, replacing the workspace's previous one for the kind — its chat target
+   * included, so the publisher (`chat/chat.outbox.ts`), which reads `chat_channel_id` and
+   * `dm_on_call` from this row each time it enqueues, follows the save.
    *
    * @param trx - The save's transaction.
    * @param organizationId - The workspace.
@@ -206,6 +262,8 @@ export class NotificationRoutesRepository {
       channel: write.channel,
       config: JSON.stringify(write.config),
       enabled: write.enabled,
+      chat_channel_id: write.chatChannelId,
+      dm_on_call: write.dmOnCall,
       updated_by: write.updatedBy,
     };
 

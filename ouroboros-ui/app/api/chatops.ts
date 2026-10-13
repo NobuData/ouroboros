@@ -5,9 +5,10 @@ import "server-only";
  * [#541](https://github.com/NobuData/ouroboros/issues/541)) — one page's calls to one tag, kept
  * together the way `app/api/research.ts` keeps the research plane's.
  *
- * Six operations: the **connection** and its **verification** (BZ.1,
+ * Eight operations: the **connection** and its **verification** (BZ.1,
  * [#535](https://github.com/NobuData/ouroboros/issues/535)), and the workspace's **channels** —
- * listed, re-listed from Slack, bound to a purpose and unbound (#541's own routes).
+ * listed, re-listed from Slack, bound to a purpose and unbound (#541's own routes) — and the
+ * **on-call designee** the routing card names and changes (#543).
  *
  * ### The workspace is the session's
  * No call names a workspace. Any member reads the connection and the channels; verifying,
@@ -35,6 +36,9 @@ export type SlackChannels = components["schemas"]["SlackChannels"];
 
 /** What a channel is bound for — which default routes point at it. */
 export type ChannelPurpose = NonNullable<SlackChannel["purpose"]>;
+
+/** Who a route's **+ DM on-call** reaches, and who could be designated instead. */
+export type ChatOnCall = components["schemas"]["OnCall"];
 
 /** The Slack connection and its channels, as `ouroboros-rest` serves them. */
 export const chatops = {
@@ -120,5 +124,31 @@ export const chatops = {
         params: { path: { id } },
       }),
     );
+  },
+
+  /**
+   * Who the **+ DM on-call** affix reaches (CA.3,
+   * [#543](https://github.com/NobuData/ouroboros/issues/543)).
+   *
+   * @param client The client to call through.
+   * @param signal Aborts the read.
+   * @returns The designee, and the members who could be designated.
+   * @throws {ApiError} What the service answered.
+   */
+  async onCall(client: ApiClient = api(), signal?: AbortSignal): Promise<ChatOnCall> {
+    return unwrap(await client.GET("/api/v1/chat/on-call", { signal }));
+  },
+
+  /**
+   * Designate the on-call member, or nobody.
+   *
+   * @param memberId The member; null removes the designee.
+   * @param client The client to call through.
+   * @returns The resource as it now stands.
+   * @throws {ApiError} `404 chat_member_not_found`; `422 chat_on_call_not_linked` for a member
+   *   with no linked Slack identity; `403` for a reader who is not an owner or an admin.
+   */
+  async setOnCall(memberId: string | null, client: ApiClient = api()): Promise<ChatOnCall> {
+    return unwrap(await client.PUT("/api/v1/chat/on-call", { body: { memberId } }));
   },
 };

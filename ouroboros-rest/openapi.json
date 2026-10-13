@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.41.30",
+    "version": "0.41.31",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -11002,6 +11002,180 @@
         }
       }
     },
+    "/api/v1/chat/on-call": {
+      "get": {
+        "tags": [
+          "chatops"
+        ],
+        "summary": "Who is on call for decisions",
+        "description": "The person a *DM on-call* notification route reaches\n([#543](https://github.com/NobuData/ouroboros/issues/543)) — the name the Chat Ops page's\nrouting card prints beside *+ DM on-call* — and the members who could be chosen instead.\nOne designee per workspace for the one scope, `decisions`; rotations are\n[#548](https://github.com/NobuData/ouroboros/issues/548). `candidates` are the members\nwith a linked Slack identity on the workspace's active connection, by name: nobody else\ncan be DMed. Without an active Slack connection there are none, and a designee chosen\nearlier reads `linked: false`. Any member may read it.",
+        "operationId": "readOnCall",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The designee, or none, and the candidates.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnCall"
+                },
+                "example": {
+                  "scope": "decisions",
+                  "designee": {
+                    "memberId": "mem_ken",
+                    "name": "Ken Suenobu",
+                    "linked": true
+                  },
+                  "assignedAt": "2026-10-12T14:02:11.000Z",
+                  "candidates": [
+                    {
+                      "memberId": "mem_ken",
+                      "name": "Ken Suenobu"
+                    },
+                    {
+                      "memberId": "mem_maya",
+                      "name": "Maya Chen"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session. `service_token_invalid` — a\nservice token that was rotated, revoked or never existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`service_scope_missing` — a service token without `api.read`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no such workspace, or none you are a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "chatops"
+        ],
+        "summary": "Put a member on call, or nobody",
+        "description": "Chooses the on-call designee ([#543](https://github.com/NobuData/ouroboros/issues/543)):\nthe current assignment is stood down and a new one made for `memberId`, in one\ntransaction; `null` leaves nobody on call. Earlier assignments are kept, inactive. The\npublisher reads the active assignment each time it enqueues, so the next blocking question\nDMs whoever was just chosen. The member must be one of `candidates` — a member of this\nworkspace (`404 chat_member_not_found` otherwise) with a linked Slack identity on its\nactive connection (`422 chat_on_call_not_linked` otherwise). Naming whoever is already on\ncall changes nothing. Recorded as `chat.on_call_changed`. Owners and admins.",
+        "operationId": "assignOnCall",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnCallAssignment"
+              },
+              "example": {
+                "memberId": "mem_maya"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Who is on call after it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnCall"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session. `service_token_invalid` — a\nservice token that was rotated, revoked or never existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — not an owner or admin. `service_principal_refused` — a service token;\nthis route is for people.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no such workspace, or none you are a member of.\n`chat_member_not_found` — `memberId` is not a member of this workspace.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a malformed body. `chat_on_call_not_linked` — the member has no\nlinked Slack identity on the workspace's active connection; `details.fields` names\n`memberId`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/settings/integrations": {
       "get": {
         "tags": [
@@ -11075,7 +11249,7 @@
           "notification-routes"
         ],
         "summary": "The org notification routes",
-        "description": "The Settings notifications card ([#488](https://github.com/NobuData/ouroboros/issues/488)):\nthe workspace's **org-level** routes, layered above each person's own preferences\n(`/api/v1/inbox/notifications`), which they never change. The four core kinds are always\nlisted in the card's order — a kind nobody saved shows its default binding, switched off\n(`stored: false`) — then any stored `custom:*` kind, and every channel's availability.\nA route whose channel cannot deliver is `locked` with the reason the card prints\n(`connect PagerDuty first`). **A Slack route is locked exactly while the workspace has no\nactive Slack connection** ([#536](https://github.com/NobuData/ouroboros/issues/536)) —\n`connect Slack first` — and unlocked once it has one. Any member may read it.",
+        "description": "The Settings notifications card ([#488](https://github.com/NobuData/ouroboros/issues/488)):\nthe workspace's **org-level** routes, layered above each person's own preferences\n(`/api/v1/inbox/notifications`), which they never change. The four core kinds are always\nlisted in the card's order — a kind nobody saved shows its default binding, switched off\n(`stored: false`) — then the five **chat routes**, then any other stored `custom:*` kind,\nand every channel's availability.\n\n**Chat routes** ([#543](https://github.com/NobuData/ouroboros/issues/543)) are the Chat\nOps page's *What gets published where* rows, and this is the one store both pages edit.\nEach carries a `chat` block — its label, the bound channel it posts to, whether it also\nDMs the on-call designee — and all five are always listed, in the card's order:\n\n| Kind | `chat.label` | Before anybody saves it |\n|---|---|---|\n| `custom:loop-finished` | Loop finished (merged) | on |\n| `custom:blocking-questions` | Blocking questions | on, with the on-call DM |\n| `custom:build-failures` | Build failures | on |\n| `custom:weekly-insights` | Weekly insights report | on |\n| `custom:stage-transitions` | Every stage transition — `chat.note` *noisy, off by default* | **off** |\n\nOne nobody saved is `stored: false` on Slack with `chat.channel` null, and delivers\nnothing until a channel is chosen. Every other route's `chat` is null.\n\nA route whose channel cannot deliver is `locked` with the reason the card prints\n(`connect PagerDuty first`). **A Slack route is locked exactly while the workspace has no\nactive Slack connection** ([#536](https://github.com/NobuData/ouroboros/issues/536)) —\n`connect Slack first` — and unlocked once it has one. Any member may read it.",
         "operationId": "listNotificationRoutes",
         "parameters": [
           {
@@ -11219,7 +11393,7 @@
           "notification-routes"
         ],
         "summary": "Save an org notification route",
-        "description": "Re-bind a route's channel, replace its `config`, or switch it\n([#488](https://github.com/NobuData/ouroboros/issues/488)). Every field is optional; a body\ncarrying none reads back the route. **The locked-row rule is enforced here**: a save that\nwould leave a route *enabled* on a channel that cannot deliver is refused\n`409 notification_route_locked`, with `details.reason` the sentence the card prints — a\nlocked route may still be stored disabled. A Slack route additionally needs somewhere to\npost — a bound channel, the on-call DM, or the `needs_you_dm` kind, which DMs whoever is on\ncall — and is refused the same way without one (`choose a Slack channel first`); binding a\nchannel is not part of this body yet. The daily digest route mails the workspace's\nopen decisions at `config.time`, and the weekly insights route the Insights digest at\n`config.weekday`/`config.time`, to `config.recipients` (else the owners and admins). Every\nchange is audited as `notification_route.updated` with its before and after values.\nOwners and admins only.",
+        "description": "Re-bind a route's channel, replace its `config`, or switch it\n([#488](https://github.com/NobuData/ouroboros/issues/488)). Every field is optional; a body\ncarrying none reads back the route. **The locked-row rule is enforced here**: a save that\nwould leave a route *enabled* on a channel that cannot deliver is refused\n`409 notification_route_locked`, with `details.reason` the sentence the card prints — a\nlocked route may still be stored disabled. A Slack route additionally needs somewhere to\npost — a bound channel, the on-call DM, or the `needs_you_dm` kind, which DMs whoever is on\ncall — and is refused the same way without one (`choose a Slack channel first`).\n\n**`chatChannelId`** ([#543](https://github.com/NobuData/ouroboros/issues/543)) points a\nchat route — one whose `chat` is not null — at a **bound** channel of this workspace\n(`GET /api/v1/slack/channels`, a channel with a `purpose`), or with `null` clears it. The\npublisher reads the route's channel each time it enqueues, so the next message goes where\nthe save says. A chat route nobody saved is created from its default — on, except *every\nstage transition* — and a stored one keeps whether it is on and its on-call DM. Anything\nbut a bound channel of this workspace is `404 chat_channel_not_found`; the field on any\nother route is `422 notification_route_not_chat`; and clearing the channel of an enabled\nroute that does not DM on-call is the `409` above — send `enabled: false` with it. A route\nre-bound to email or PagerDuty drops its chat channel.\n\nThe daily digest route mails the workspace's\nopen decisions at `config.time`, and the weekly insights route the Insights digest at\n`config.weekday`/`config.time`, to `config.recipients` (else the owners and admins). Every\nchange is audited as `notification_route.updated` with its before and after values.\nOwners and admins only.",
         "operationId": "updateNotificationRoute",
         "parameters": [
           {
@@ -11290,7 +11464,7 @@
             }
           },
           "404": {
-            "description": "`tenant_not_found` — no such workspace, or none you are a member of.\n`notification_route_kind_unknown` — not a route kind.",
+            "description": "`tenant_not_found` — no such workspace, or none you are a member of.\n`notification_route_kind_unknown` — not a route kind. `chat_channel_not_found` —\n`chatChannelId` is not a bound channel of this workspace.",
             "content": {
               "application/json": {
                 "schema": {
@@ -11310,7 +11484,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a malformed body. `notification_route_config_invalid` — a config\nsetting is malformed; `details.fields` names it (`config.time`).",
+            "description": "`validation_failed` — a malformed body. `notification_route_config_invalid` — a config\nsetting is malformed; `details.fields` names it (`config.time`).\n`notification_route_not_chat` — `chatChannelId` was sent for a route that posts to no\nchat channel; `details.fields` names it.",
             "content": {
               "application/json": {
                 "schema": {
@@ -76311,6 +76485,7 @@
           "lockedReason",
           "delivering",
           "stored",
+          "chat",
           "updatedAt",
           "updatedBy"
         ],
@@ -76351,7 +76526,18 @@
           },
           "stored": {
             "type": "boolean",
-            "description": "False for a core kind nobody has saved — its default binding, off."
+            "description": "False for a kind nobody has saved — a core kind's default binding, off, or a chat\nroute's default, which posts nowhere until a channel is chosen."
+          },
+          "chat": {
+            "description": "Where the route posts in chat — for the five chat routes while they are on Slack.\nNull for every other route: email, PagerDuty, and `needs_you_dm`, whose target is a\nperson.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/NotificationRouteChat"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "updatedAt": {
             "type": [
@@ -76404,7 +76590,7 @@
         "properties": {
           "items": {
             "type": "array",
-            "description": "The four core kinds in the card's order, then any custom kind.",
+            "description": "The four core kinds in the card's order, then the five chat routes in theirs, then\nany other custom kind.",
             "items": {
               "$ref": "#/components/schemas/NotificationRoute"
             }
@@ -76430,6 +76616,204 @@
           },
           "enabled": {
             "type": "boolean"
+          },
+          "chatChannelId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The bound chat channel a chat route posts to — a channel's `id` from\n`GET /api/v1/slack/channels` — or null for none. Left out, the channel stays."
+          }
+        }
+      },
+      "NotificationRouteChat": {
+        "type": "object",
+        "title": "NotificationRouteChat",
+        "description": "A chat route's row on the Chat Ops page's *What gets published where* card.",
+        "additionalProperties": false,
+        "required": [
+          "label",
+          "note",
+          "channel",
+          "dmOnCall"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "The row's name.",
+            "examples": [
+              "Loop finished (merged)",
+              "Every stage transition"
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The warning printed beside the name, or null.",
+            "examples": [
+              "noisy, off by default"
+            ]
+          },
+          "channel": {
+            "description": "The channel the route posts to, or null while none is chosen.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/NotificationRouteChatChannel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dmOnCall": {
+            "type": "boolean",
+            "description": "Whether the route also DMs the on-call designee (`GET /api/v1/chat/on-call`)."
+          }
+        }
+      },
+      "NotificationRouteChatChannel": {
+        "type": "object",
+        "title": "NotificationRouteChatChannel",
+        "description": "The chat channel a route posts to — one of `GET /api/v1/slack/channels`.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "joined",
+          "archived"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "The channel's name, without the leading `#`.",
+            "examples": [
+              "helios-alerts"
+            ]
+          },
+          "joined": {
+            "type": "boolean",
+            "description": "Whether the bot is a member — it cannot post where it is not."
+          },
+          "archived": {
+            "type": "boolean"
+          }
+        }
+      },
+      "OnCall": {
+        "type": "object",
+        "title": "OnCall",
+        "description": "Who a *DM on-call* route reaches, and who could be chosen.",
+        "additionalProperties": false,
+        "required": [
+          "scope",
+          "designee",
+          "assignedAt",
+          "candidates"
+        ],
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "decisions"
+            ],
+            "description": "The one scope this build assigns."
+          },
+          "designee": {
+            "description": "The active assignment's person, or null when nobody is on call.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OnCallDesignee"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assignedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the designee was chosen."
+          },
+          "candidates": {
+            "type": "array",
+            "description": "The members with a linked Slack identity on the active connection, by name.",
+            "items": {
+              "$ref": "#/components/schemas/OnCallMember"
+            }
+          }
+        }
+      },
+      "OnCallMember": {
+        "type": "object",
+        "title": "OnCallMember",
+        "additionalProperties": false,
+        "required": [
+          "memberId",
+          "name"
+        ],
+        "properties": {
+          "memberId": {
+            "type": "string",
+            "description": "The member's id in this workspace — what `PUT /api/v1/chat/on-call` takes."
+          },
+          "name": {
+            "type": "string",
+            "examples": [
+              "Maya Chen"
+            ]
+          }
+        }
+      },
+      "OnCallDesignee": {
+        "type": "object",
+        "title": "OnCallDesignee",
+        "additionalProperties": false,
+        "required": [
+          "memberId",
+          "name",
+          "linked"
+        ],
+        "properties": {
+          "memberId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "examples": [
+              "Ken Suenobu"
+            ]
+          },
+          "linked": {
+            "type": "boolean",
+            "description": "Whether their Slack identity is linked on the workspace's active connection. False\nwhen the connection has since stopped working — the DM reaches nobody."
+          }
+        }
+      },
+      "OnCallAssignment": {
+        "type": "object",
+        "title": "OnCallAssignment",
+        "additionalProperties": false,
+        "required": [
+          "memberId"
+        ],
+        "properties": {
+          "memberId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "description": "The `memberId` of one of `candidates`, or null to leave nobody on call."
           }
         }
       },

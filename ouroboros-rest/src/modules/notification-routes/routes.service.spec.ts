@@ -6,7 +6,13 @@ import {
   InvalidRequestError,
   NotFoundError,
 } from "../errors/error.envelope";
-import { NotificationRoutesService, changedFields, defaultRoute } from "./routes.service";
+import {
+  NotificationRoutesService,
+  changedFields,
+  defaultRoute,
+  defaultStored,
+  slackTargeted,
+} from "./routes.service";
 import { FakeRouteStore } from "./routes.store.fixture";
 
 /**
@@ -16,6 +22,17 @@ import { FakeRouteStore } from "./routes.store.fixture";
 
 const ORG = "org-acme";
 const KEN = "u-ken";
+/** Two bound channels of the workspace, and the ids their rows carry. */
+const LOOPS = "0a000000-0000-4000-8000-000000000001";
+const ALERTS = "0a000000-0000-4000-8000-000000000002";
+/** An enabled email route with no chat target — what the helpers compare. */
+const UNTARGETED = {
+  channel: "email",
+  config: {},
+  enabled: true,
+  chatChannelId: null,
+  dmOnCall: false,
+} as const;
 
 /**
  * The service over an in-memory store and a recording trail.
@@ -58,7 +75,9 @@ describe("the notifications card", () => {
 
     const card = await service.list(ORG);
 
-    expect(card.items.map((item) => [item.kind, item.channel, item.enabled, item.stored])).toEqual([
+    expect(
+      card.items.slice(0, 4).map((item) => [item.kind, item.channel, item.enabled, item.stored]),
+    ).toEqual([
       ["needs_you_dm", "slack", false, false],
       ["daily_digest", "email", false, false],
       ["loop_failures", "pagerduty", false, false],
@@ -71,7 +90,7 @@ describe("the notifications card", () => {
     ]);
   });
 
-  it("derives a stored route's lock, and lists custom kinds after the core four", async () => {
+  it("derives a stored route's lock, and lists other custom kinds last", async () => {
     const { service, store } = harness();
     store
       .route(ORG, "loop_failures", { channel: "pagerduty", config: {}, enabled: false })
@@ -97,6 +116,12 @@ describe("the notifications card", () => {
       "daily_digest",
       "loop_failures",
       "weekly_insights",
+      // The five chat routes are always listed between them (#543).
+      "custom:loop-finished",
+      "custom:blocking-questions",
+      "custom:build-failures",
+      "custom:weekly-insights",
+      "custom:stage-transitions",
       "custom:release-notes",
     ]);
   });
@@ -260,8 +285,12 @@ describe("Slack routes once Slack is connected (#536)", () => {
   it("enables a Slack route whose channel is already bound", async () => {
     const { service, store } = harness();
     store.slackConnected.add(ORG);
-    store.route(ORG, "custom:loop-finished", { channel: "slack", config: {}, enabled: false });
-    store.slackTargets.add(`${ORG}|custom:loop-finished`);
+    store.chatChannel(LOOPS, ORG, "ouroboros-loops").route(ORG, "custom:loop-finished", {
+      channel: "slack",
+      config: {},
+      enabled: false,
+      chatChannelId: LOOPS,
+    });
 
     const route = await service.update(ORG, "user-ken", "custom:loop-finished", { enabled: true });
 
@@ -343,12 +372,404 @@ describe("the audit of a route change", () => {
   });
 });
 
+describe("a route's chat block (#543)", () => {
+  const CHAT_KINDS = [
+    "custom:loop-finished",
+    "custom:blocking-questions",
+    "custom:build-failures",
+    "custom:weekly-insights",
+    "custom:stage-transitions",
+  ];
+
+  it("lists all five chat routes after the core four, in the card's order, with their defaults", async () => {
+    const { service } = harness();
+
+    const card = await service.list(ORG);
+
+    expect(card.items.map((item) => item.kind)).toEqual([
+      "needs_you_dm",
+      "daily_digest",
+      "loop_failures",
+      "weekly_insights",
+      ...CHAT_KINDS,
+    ]);
+    expect(
+      card.items.slice(4).map((item) => [item.chat?.label, item.chat?.note, item.enabled]),
+    ).toEqual([
+      ["Loop finished (merged)", null, true],
+      ["Blocking questions", null, true],
+      ["Build failures", null, true],
+      ["Weekly insights report", null, true],
+      ["Every stage transition", "noisy, off by default", false],
+    ]);
+    expect(card.items.slice(4).map((item) => item.chat?.dmOnCall)).toEqual([
+      false,
+      true,
+      false,
+      false,
+      false,
+    ]);
+
+    for (const item of card.items.slice(4)) {
+      expect(item).toMatchObject({
+        channel: "slack",
+        stored: false,
+        delivering: false,
+        locked: true,
+        lockedReason: "connect Slack first",
+        chat: { channel: null },
+      });
+    }
+  });
+
+  it("gives every route that is not a chat route a null block", async () => {
+    const { service, store } = harness();
+    store
+      .route(ORG, "custom:release-notes", { channel: "email", config: {}, enabled: true })
+      .route(ORG, "custom:pager", { channel: "slack", config: {}, enabled: false })
+      .route(ORG, "custom:build-failures", { channel: "email", config: {}, enabled: true });
+
+    const card = await service.list(ORG);
+    const chat = (kind: string) => card.items.find((item) => item.kind === kind)?.chat;
+
+    expect(chat("needs_you_dm")).toBeNull();
+    expect(chat("daily_digest")).toBeNull();
+    expect(chat("loop_failures")).toBeNull();
+    expect(chat("weekly_insights")).toBeNull();
+    // A custom kind the card does not list, on either channel.
+    expect(chat("custom:release-notes")).toBeNull();
+    expect(chat("custom:pager")).toBeNull();
+    // A chat route somebody re-bound to email posts to no chat channel while it is there.
+    expect(chat("custom:build-failures")).toBeNull();
+    // …and other custom kinds still follow the listed ones, by kind.
+    expect(card.items.slice(9).map((item) => item.kind)).toEqual([
+      "custom:pager",
+      "custom:release-notes",
+    ]);
+  });
+
+  it("draws a stored chat route from its row: the channel it posts to and its own on-call DM", async () => {
+    const { service, store } = harness();
+    store.slackConnected.add(ORG);
+    store
+      .chatChannel(LOOPS, ORG, "ouroboros-loops")
+      .chatChannel(ALERTS, ORG, "helios-alerts", { joined: false, archived: true })
+      .route(ORG, "custom:blocking-questions", {
+        channel: "slack",
+        config: {},
+        enabled: true,
+        chatChannelId: LOOPS,
+        dmOnCall: false,
+      })
+      .route(ORG, "custom:build-failures", {
+        channel: "slack",
+        config: {},
+        enabled: false,
+        chatChannelId: ALERTS,
+      });
+
+    const card = await service.list(ORG);
+
+    expect(card.items.find((item) => item.kind === "custom:blocking-questions")).toMatchObject({
+      stored: true,
+      enabled: true,
+      delivering: true,
+      // The row's own value, not the default's true.
+      chat: {
+        label: "Blocking questions",
+        note: null,
+        channel: { id: LOOPS, name: "ouroboros-loops", joined: true, archived: false },
+        dmOnCall: false,
+      },
+    });
+    expect(await service.read(ORG, "custom:build-failures")).toMatchObject({
+      stored: true,
+      enabled: false,
+      chat: {
+        label: "Build failures",
+        channel: { id: ALERTS, name: "helios-alerts", joined: false, archived: true },
+        dmOnCall: false,
+      },
+    });
+    // The single-kind read of an unstored chat route is the list's default.
+    expect(await service.read(ORG, "custom:stage-transitions")).toEqual(
+      card.items.find((item) => item.kind === "custom:stage-transitions"),
+    );
+  });
+});
+
+describe("pointing a chat route at a channel (#543)", () => {
+  /** A connected workspace with two bound channels and build failures posting to the first. */
+  function bound(): ReturnType<typeof harness> {
+    const made = harness();
+
+    made.store.slackConnected.add(ORG);
+    made.store
+      .chatChannel(LOOPS, ORG, "ouroboros-loops")
+      .chatChannel(ALERTS, ORG, "helios-alerts", { purpose: "alerts" })
+      .route(ORG, "custom:build-failures", {
+        channel: "slack",
+        config: {},
+        enabled: true,
+        chatChannelId: LOOPS,
+      });
+
+    return made;
+  }
+
+  it("moves a stored route to another bound channel, leaving everything else as it was", async () => {
+    const { service, store } = bound();
+
+    const route = await service.update(ORG, KEN, "custom:build-failures", {
+      chatChannelId: ALERTS,
+    });
+
+    expect(route).toMatchObject({
+      enabled: true,
+      delivering: true,
+      chat: { channel: { id: ALERTS, name: "helios-alerts" }, dmOnCall: false },
+    });
+    expect(store.routes.get(`${ORG}|custom:build-failures`)).toMatchObject({
+      channel: "slack",
+      enabled: true,
+      chatChannelId: ALERTS,
+      dmOnCall: false,
+      updatedBy: KEN,
+    });
+  });
+
+  it("creates the row from the route's default when nobody saved it", async () => {
+    const { service, store } = bound();
+
+    const questions = await service.update(ORG, KEN, "custom:blocking-questions", {
+      chatChannelId: LOOPS,
+    });
+    const transitions = await service.update(ORG, KEN, "custom:stage-transitions", {
+      chatChannelId: LOOPS,
+    });
+
+    expect(questions).toMatchObject({
+      stored: true,
+      enabled: true,
+      chat: { channel: { id: LOOPS }, dmOnCall: true },
+    });
+    expect(store.routes.get(`${ORG}|custom:blocking-questions`)).toMatchObject({
+      channel: "slack",
+      enabled: true,
+      chatChannelId: LOOPS,
+      dmOnCall: true,
+    });
+    // The noisy one stays off until somebody switches it on.
+    expect(transitions).toMatchObject({ stored: true, enabled: false, delivering: false });
+  });
+
+  it("keeps a stored route's own on-call DM through a move", async () => {
+    const { service, store } = bound();
+    store.route(ORG, "custom:loop-finished", {
+      channel: "slack",
+      config: {},
+      enabled: true,
+      chatChannelId: LOOPS,
+      dmOnCall: true,
+    });
+
+    await service.update(ORG, KEN, "custom:loop-finished", { chatChannelId: ALERTS });
+
+    expect(store.routes.get(`${ORG}|custom:loop-finished`)).toMatchObject({
+      chatChannelId: ALERTS,
+      dmOnCall: true,
+    });
+  });
+
+  it.each([
+    ["an id that names nothing", "0a000000-0000-4000-8000-0000000000ff"],
+    ["an id that is not a UUID", "C071LOOPS"],
+    ["an unbound channel", "0a000000-0000-4000-8000-000000000003"],
+    ["a DM conversation", "0a000000-0000-4000-8000-000000000004"],
+    ["another workspace's channel", "0a000000-0000-4000-8000-000000000005"],
+  ])("answers 404 chat_channel_not_found for %s, and stores nothing", async (_label, id) => {
+    const { service, store, trail } = bound();
+    store
+      .chatChannel("0a000000-0000-4000-8000-000000000003", ORG, "random", { purpose: null })
+      .chatChannel("0a000000-0000-4000-8000-000000000004", ORG, "D0KEN", { purpose: "dm" })
+      .chatChannel("0a000000-0000-4000-8000-000000000005", "org-other", "their-loops");
+
+    const error = await refusal(
+      service.update(ORG, KEN, "custom:build-failures", { chatChannelId: id }),
+    );
+
+    expect(error).toBeInstanceOf(NotFoundError);
+    expect([error.code, error.getStatus()]).toEqual(["chat_channel_not_found", 404]);
+    expect(store.routes.get(`${ORG}|custom:build-failures`)?.chatChannelId).toBe(LOOPS);
+    expect(trail).toHaveLength(0);
+  });
+
+  it.each([
+    ["needs_you_dm", {}],
+    ["daily_digest", {}],
+    ["custom:release-notes", {}],
+    // A chat kind the same save binds to email is not a chat route either.
+    ["custom:build-failures", { channel: "email" as const }],
+  ])("answers 422 for %s, which posts to no chat channel", async (kind, patch) => {
+    const { service, trail } = bound();
+
+    for (const chatChannelId of [ALERTS, null]) {
+      const error = await refusal(service.update(ORG, KEN, kind, { ...patch, chatChannelId }));
+
+      expect(error).toBeInstanceOf(InvalidRequestError);
+      expect([error.code, error.getStatus()]).toEqual(["notification_route_not_chat", 422]);
+      expect(error.message).toBe(`The ${kind} route does not post to a chat channel.`);
+      expect(error.envelope().details).toMatchObject({
+        fields: { chatChannelId: [`The ${kind} route does not post to a chat channel.`] },
+      });
+    }
+
+    expect(trail).toHaveLength(0);
+  });
+
+  it("refuses to clear the channel of an enabled route with nowhere else to post — cleanly", async () => {
+    const { service, store, trail } = bound();
+
+    const error = await refusal(
+      service.update(ORG, KEN, "custom:build-failures", { chatChannelId: null }),
+    );
+
+    expect(error).toBeInstanceOf(ConflictError);
+    expect([error.code, error.getStatus()]).toEqual(["notification_route_locked", 409]);
+    expect(error.message).toBe(
+      "The custom:build-failures route cannot be enabled on slack: choose a Slack channel first.",
+    );
+    expect(error.envelope().details).toMatchObject({ reason: "choose a Slack channel first" });
+    expect(store.routes.get(`${ORG}|custom:build-failures`)?.chatChannelId).toBe(LOOPS);
+    expect(trail).toHaveLength(0);
+  });
+
+  it("refuses to switch on a route nobody chose a channel for, the same way", async () => {
+    const { service, store } = bound();
+
+    const error = await refusal(
+      service.update(ORG, KEN, "custom:stage-transitions", { enabled: true }),
+    );
+
+    expect([error.code, error.getStatus()]).toEqual(["notification_route_locked", 409]);
+    expect(store.routes.has(`${ORG}|custom:stage-transitions`)).toBe(false);
+  });
+
+  it("clears the channel when the same save switches the route off", async () => {
+    const { service, store } = bound();
+
+    const route = await service.update(ORG, KEN, "custom:build-failures", {
+      chatChannelId: null,
+      enabled: false,
+    });
+
+    expect(route).toMatchObject({ enabled: false, stored: true, chat: { channel: null } });
+    expect(store.routes.get(`${ORG}|custom:build-failures`)?.chatChannelId).toBeNull();
+  });
+
+  it("clears the channel of a route that still DMs on-call, which stays on", async () => {
+    const { service, store } = bound();
+    store.route(ORG, "custom:blocking-questions", {
+      channel: "slack",
+      config: {},
+      enabled: true,
+      chatChannelId: LOOPS,
+      dmOnCall: true,
+    });
+
+    const route = await service.update(ORG, KEN, "custom:blocking-questions", {
+      chatChannelId: null,
+    });
+
+    expect(route).toMatchObject({ enabled: true, chat: { channel: null, dmOnCall: true } });
+  });
+
+  it("drops the chat target of a route re-bound to email, as V130 requires", async () => {
+    const { service, store } = bound();
+
+    const route = await service.update(ORG, KEN, "custom:build-failures", { channel: "email" });
+
+    expect(route).toMatchObject({ channel: "email", chat: null });
+    expect(store.routes.get(`${ORG}|custom:build-failures`)).toMatchObject({
+      chatChannelId: null,
+      dmOnCall: false,
+    });
+  });
+
+  it("audits the move like any other save, naming both channels", async () => {
+    const { service, trail } = bound();
+
+    await service.update(ORG, KEN, "custom:build-failures", { chatChannelId: ALERTS });
+    await service.update(ORG, KEN, "custom:build-failures", { chatChannelId: ALERTS });
+
+    expect(trail).toHaveLength(1);
+    expect(trail[0]).toMatchObject({
+      organizationId: ORG,
+      actorId: KEN,
+      action: "notification_route.updated",
+      subjectType: "notification_route",
+      subjectId: "custom:build-failures",
+      detail: {
+        kind: "custom:build-failures",
+        fields: "chatChannel",
+        previousSource: "stored",
+        previousChatChannelId: LOOPS,
+        chatChannelId: ALERTS,
+      },
+    });
+  });
+
+  it("says a first save of a chat route replaced its default", async () => {
+    const { service, trail } = bound();
+
+    await service.update(ORG, KEN, "custom:weekly-insights", { chatChannelId: ALERTS });
+
+    expect(trail[0]?.detail).toMatchObject({
+      fields: "chatChannel",
+      previousSource: "default",
+      previousChannel: "slack",
+      previousEnabled: true,
+      enabled: true,
+      previousChatChannelId: null,
+      chatChannelId: ALERTS,
+    });
+  });
+});
+
 describe("the helpers", () => {
+  it("start a chat route from the card's default, and every other kind off with no target", () => {
+    expect(defaultStored("custom:blocking-questions")).toEqual({
+      channel: "slack",
+      config: {},
+      enabled: true,
+      chatChannelId: null,
+      dmOnCall: true,
+    });
+    expect(defaultStored("custom:stage-transitions")).toMatchObject({ enabled: false });
+    expect(defaultStored("needs_you_dm")).toEqual({
+      channel: "slack",
+      config: {},
+      enabled: false,
+      chatChannelId: null,
+      dmOnCall: false,
+    });
+  });
+
+  it("ask V130's target rule of a Slack route only", () => {
+    const slack = { ...UNTARGETED, channel: "slack" } as const;
+
+    expect(slackTargeted("custom:build-failures", slack)).toBe(false);
+    expect(slackTargeted("custom:build-failures", { ...slack, chatChannelId: LOOPS })).toBe(true);
+    expect(slackTargeted("custom:build-failures", { ...slack, dmOnCall: true })).toBe(true);
+    expect(slackTargeted("needs_you_dm", slack)).toBe(true);
+    expect(slackTargeted("daily_digest", UNTARGETED)).toBe(true);
+  });
+
   it("compare configs as stored, so a reordered list is no change", () => {
     expect(
       changedFields(
-        { channel: "email", config: { recipients: ["a@x.dev"], time: "09:00" }, enabled: true },
-        { channel: "email", config: { time: "09:00", recipients: ["a@x.dev"] }, enabled: true },
+        { ...UNTARGETED, config: { recipients: ["a@x.dev"], time: "09:00" } },
+        { ...UNTARGETED, config: { time: "09:00", recipients: ["a@x.dev"] } },
       ),
     ).toEqual([]);
   });

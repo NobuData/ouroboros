@@ -148,6 +148,21 @@ describe("composing the audit card's lines", () => {
       "unbound a Slack channel",
     );
   });
+
+  it("says the on-call designee changed, or that nobody is on call now (#543)", () => {
+    expect(
+      eventSentence({
+        action: "chat.on_call_changed",
+        detail: { scope: "decisions", previousMemberId: null, memberId: "mem-maya" },
+      }),
+    ).toBe("changed who is on call for decisions");
+    expect(
+      eventSentence({
+        action: "chat.on_call_changed",
+        detail: { scope: "decisions", previousMemberId: "mem-maya", memberId: null },
+      }),
+    ).toBe("left nobody on call for decisions");
+  });
 });
 
 describe("the actor column", () => {

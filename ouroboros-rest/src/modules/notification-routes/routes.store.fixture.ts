@@ -10,6 +10,7 @@ import type { Transaction } from "kysely";
 import type { Database, NotificationRouteSendStatus } from "../db/schema";
 import { MAILING_KINDS, channelLock, type MailingKind } from "./routes.catalog";
 import type {
+  ChatTargetRow,
   EffectiveRouteRow,
   MailingRouteRow,
   NotificationRoutesRepository,
@@ -25,6 +26,20 @@ interface StoredRoute extends StoredRouteRow {
   readonly kind: string;
   readonly updatedBy: string | null;
   readonly updatedAt: Date;
+}
+
+/** A route as a suite seeds it — its chat target is none unless given. */
+export type SeededRoute = Pick<StoredRouteRow, "channel" | "config" | "enabled"> &
+  Partial<Pick<StoredRouteRow, "chatChannelId" | "dmOnCall">>;
+
+/** One `chat_channels` row, as far as a route's chat target reads it. */
+export interface FakeChatChannel {
+  readonly organizationId: string;
+  readonly name: string;
+  readonly joined: boolean;
+  readonly archived: boolean;
+  /** `loops`, `alerts`, `leads`; `dm` for a DM conversation; null for an unbound channel. */
+  readonly purpose: string | null;
 }
 
 /** One logged send. */
@@ -51,8 +66,8 @@ export class FakeRouteStore {
   now = new Date("2026-10-05T09:00:30.000Z");
   /** Workspaces with an active Slack connection. */
   readonly slackConnected = new Set<string>();
-  /** Slack routes with a bound channel or the on-call DM, keyed `org|kind`. */
-  readonly slackTargets = new Set<string>();
+  /** `chat_channels`, by row id. */
+  readonly channels = new Map<string, FakeChatChannel>();
 
   /**
    * Store a route directly, as a seed or another surface would.
@@ -62,13 +77,41 @@ export class FakeRouteStore {
    * @param route - Its binding.
    * @returns This store.
    */
-  route(organizationId: string, kind: string, route: StoredRouteRow): this {
+  route(organizationId: string, kind: string, route: SeededRoute): this {
     this.routes.set(`${organizationId}|${kind}`, {
+      chatChannelId: null,
+      dmOnCall: false,
       ...route,
       organizationId,
       kind,
       updatedBy: null,
       updatedAt: new Date("2026-09-15T00:00:00.000Z"),
+    });
+    return this;
+  }
+
+  /**
+   * Store a chat channel row — bound for `loops` and joined unless said otherwise.
+   *
+   * @param id - The row's id.
+   * @param organizationId - The workspace it belongs to.
+   * @param name - Its name, without the `#`.
+   * @param overrides - What differs from a bound, joined, live channel.
+   * @returns This store.
+   */
+  chatChannel(
+    id: string,
+    organizationId: string,
+    name: string,
+    overrides: Partial<Pick<FakeChatChannel, "joined" | "archived" | "purpose">> = {},
+  ): this {
+    this.channels.set(id, {
+      organizationId,
+      name,
+      joined: true,
+      archived: false,
+      purpose: "loops",
+      ...overrides,
     });
     return this;
   }
@@ -125,7 +168,13 @@ export class FakeRouteStore {
         return Promise.resolve(
           route === undefined
             ? undefined
-            : { channel: route.channel, config: route.config, enabled: route.enabled },
+            : {
+                channel: route.channel,
+                config: route.config,
+                enabled: route.enabled,
+                chatChannelId: route.chatChannelId,
+                dmOnCall: route.dmOnCall,
+              },
         );
       },
       upsert: (
@@ -134,12 +183,28 @@ export class FakeRouteStore {
         kind: string,
         write: RouteWrite,
       ) => {
+        // V130's two CHECKs on a route's chat target, as the database would refuse the row.
+        if (write.channel !== "slack" && (write.chatChannelId !== null || write.dmOnCall)) {
+          return Promise.reject(new Error("notification_routes_chat_target_slack_only"));
+        }
+        if (
+          write.channel === "slack" &&
+          write.enabled &&
+          kind !== "needs_you_dm" &&
+          write.chatChannelId === null &&
+          !write.dmOnCall
+        ) {
+          return Promise.reject(new Error("notification_routes_slack_target"));
+        }
+
         this.routes.set(`${organizationId}|${kind}`, {
           organizationId,
           kind,
           channel: write.channel,
           config: write.config,
           enabled: write.enabled,
+          chatChannelId: write.chatChannelId,
+          dmOnCall: write.dmOnCall,
           updatedBy: write.updatedBy,
           updatedAt: this.now,
         });
@@ -148,10 +213,38 @@ export class FakeRouteStore {
       transaction: <T>(work: (trx: Transaction<Database>) => Promise<T>) => work(TRX),
       reach: (organizationId: string) =>
         Promise.resolve({ slackConnected: this.slackConnected.has(organizationId) }),
-      slackTargeted: (_trx: Transaction<Database>, organizationId: string, kind: string) =>
+      chatTargets: (organizationId: string) =>
         Promise.resolve(
-          kind === "needs_you_dm" || this.slackTargets.has(`${organizationId}|${kind}`),
+          [...this.routes.values()]
+            .filter((route) => route.organizationId === organizationId && route.channel === "slack")
+            .map((route): ChatTargetRow => {
+              const channel =
+                route.chatChannelId === null ? undefined : this.channels.get(route.chatChannelId);
+
+              return {
+                kind: route.kind,
+                dmOnCall: route.dmOnCall,
+                channel:
+                  route.chatChannelId === null || channel === undefined
+                    ? null
+                    : {
+                        id: route.chatChannelId,
+                        name: channel.name,
+                        joined: channel.joined,
+                        archived: channel.archived,
+                      },
+              };
+            }),
         ),
+      boundChannel: (_trx: Transaction<Database>, organizationId: string, id: string) => {
+        const channel = this.channels.get(id);
+
+        return Promise.resolve(
+          channel?.organizationId === organizationId &&
+            channel.purpose !== null &&
+            channel.purpose !== "dm",
+        );
+      },
       mailingRoutes: () =>
         Promise.resolve(
           [...this.routes.values()]
