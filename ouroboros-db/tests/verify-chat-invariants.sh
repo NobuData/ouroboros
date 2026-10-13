@@ -27,6 +27,7 @@
 #   a bot token is stored in the clear                 token_sealed
 #   the resolved card loses its edit                   resolved_card_fixture
 #   the revoked link is erased                         links_seeded
+#   a seeded command forgets who it acted as           command_invoker_recorded
 #   the stage-transition route is switched on          stage_transitions_off
 #
 # **It needs the seeded database**, and says so rather than going red for the wrong reason. In
@@ -60,6 +61,7 @@ KEN_LINK=5eed009c-0000-4000-8000-000000000301
 REVOKED_LINK=5eed009c-0000-4000-8000-000000000303
 COMPLETION_CARD=5eed009c-0000-4000-8000-000000000101
 RESOLVED_CARD=5eed009c-0000-4000-8000-000000000103
+STATUS_COMMAND=5eed009c-0000-4000-8000-000000000201
 SEALED=ouro.v1.1.ZGV2LXNlZWQtbm9uY2U.ZGV2LXNlZWQtdmFsdWUtbm90LWEtcmVhbC1ib3QtdG9rZW4
 
 die() {
@@ -324,6 +326,10 @@ expect_red 'the resolved card loses its edit' \
 expect_red 'the revoked link is erased' \
   'links_seeded: Ken and Maya' \
   "delete from ouroboros.chat_identity_links where id = '$REVOKED_LINK';"
+
+expect_red 'a seeded command forgets who it acted as' \
+  'command_invoker_recorded: every Slack command' \
+  "update ouroboros.chat_commands set invoker_user_id = null where id = '$STATUS_COMMAND';"
 
 expect_red 'the stage-transition route is switched on' \
   'stage_transitions_off: the every-stage-transition' \

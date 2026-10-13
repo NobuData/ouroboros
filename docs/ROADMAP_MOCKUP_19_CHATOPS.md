@@ -370,7 +370,7 @@ seeds: connection(app v2.4) · 3 channels · 6-message stream (refs live) ·
 | BZ.2 | #536 ✅ | 🟢 Done | ouroboros-rest: [BZ.2] Card renderer & event publisher | Block Kit kinds, outbox publishing, chat.update lifecycle | mvp, chatops, rest, inbox | N (after BY.2, BN.1, BR.3) | Y | L | ouroboros-rest |
 | BZ.3 | #537 ✅ | 🟢 Done | ouroboros-rest: [BZ.3] `/ouro` grammar & dispatcher | The command registry + nine bindings; console mount contract | mvp, chatops, rest | N (after BZ.1, plane APIs) | Y | L | ouroboros-rest |
 | BZ.4 | #538 ✅ | 🟢 Done | ouroboros-rest: [BZ.4] Interactive answers & escalation | Button→BN.2 flows, session-confirm gating, timers (C5) | mvp, chatops, rest, inbox | N (after BZ.2, BN.2) | Y | M | ouroboros-rest |
-| BZ.5 | #539 | 🟡 Open | ouroboros-ui: [BZ.5] In-app command console | The `/ouro` surface in ⌘K (H.3 extension) with completions | mvp, chatops, ui | N (after BZ.3, H.3) | Y | M | ouroboros-ui |
+| BZ.5 | #539 ✅ | 🟢 Done | ouroboros-ui: [BZ.5] In-app command console | The `/ouro` surface in ⌘K (H.3 extension) with completions | mvp, chatops, ui | N (after BZ.3, H.3) | Y | M | ouroboros-ui |
 | BZ.6 | #540 | 🟡 Open | ouroboros-rest: [BZ.6] ChatOps integration tests | Signatures, renderer goldens, command matrix, escalation | mvp, chatops, rest, ci | N (after BZ.1–BZ.5) | Y | M | ouroboros-rest |
 
 ### Issue BZ.1 — ouroboros-rest: [BZ.1] Slack app — install, endpoints & identity
@@ -528,7 +528,13 @@ unanswered 30m ─▶ escalate: inbox ↑ + DM on-call + card "⚠ escalated"
 
 ### Issue BZ.5 — ouroboros-ui: [BZ.5] In-app command console
 
-> **GitHub issue:** #539 · **Status:** 🟡 Open · **Parent epic:** #528
+> **GitHub issue:** #539 ✅ · **Status:** 🟢 Done · **Parent epic:** #528
+>
+> **Delivered (#539 — `V136__chat_commands_console.sql`, `ouroboros-rest` 0.41.29, `ouroboros-ui` 0.158.0, `ouroboros-docs` 0.5.4):** **the console** — typing `/ouro ` in the ⌘K palette (or choosing **Run a command**) switches it to command mode on the palette's own listbox and keyboard model (`app/shell/console*.ts(x)`, `use-console.ts`): the grammar's commands with usage and summary, a command the caller may not run dimmed with its reason, `explain pr` tagged `v2`; argument completions from `GET /chat/completions` (Tab accepts; an empty answer says what did not match); the reply in a boxed mono seat marked **Done** / **Error** / **Denied** / **Started** / **Not run yet**; the confirm rule's preview with a button that fills — never runs — the confirmed line; history per person and workspace in `localStorage` (↑ on an empty line). An asynchronous result is polled at shell level (`console-watch.ts`, every 3 s, surviving the palette closing) and arrives as a toast with its link. **REST** (built here): `POST /api/v1/chat/commands` runs a line through the same `ChatDispatcher` as the session's member; `GET /api/v1/chat/commands/{id}` reads the caller's own console command; `GET /chat/grammar` carries `allowed` and `deniedReason` per command, resolved with the dispatcher's own rule; completions name their `source`. **DB:** `chat_commands.connection_id` is nullable (a console command has no connection), `invoker_user_id` records who it acted as on both surfaces, `settled_reply` keeps what an async command finally said, and the table gains its own key to the workspace. **Parity:** `chatops/parity.spec.ts` runs a shared corpus through both surfaces and asserts identical outcome, reply, recorded row and audit detail, modulo surface.
+>
+> **Decided with the user:** console commands are recorded for every workspace through a migration (V136) rather than requiring a Slack connection; history lives in the browser; an async result is found by polling the command.
+>
+> **Not delivered, and why:** the prefix is the constant `/ouro`, not configurable. The app had no global toast, so this ticket adds a shell-level seat for command results only. An asynchronous command was not driven to its toast on a live stack — the seeded workspace's `dry-run` is refused for want of a draft — so that path is covered by unit tests and the parity suite. Completions go through a server action, which cannot be aborted: a stale answer is discarded, not cancelled. Enter on a command row fills its name; it does not run it.
 
 - **Problem Statement:** The caption's third surface: the same grammar in
   the app, mounted in the ⌘K palette (C3).
@@ -900,7 +906,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 2. **Phase 1 — Domain:** BY.1 (#531) ✅ → { BY.2 (#532) ✅ ⊕ BY.3 (#533) ✅ } →
    BY.4 (#534) ✅
 3. **Phase 2 — App & services:** BZ.1 (#535) ✅ → { BZ.2 (#536) ✅ ⊕ BZ.3 (#537) ✅ }
-   → { BZ.4 (#538) ✅ ⊕ BZ.5 (#539) } → BZ.6 (#540)
+   → { BZ.4 (#538) ✅ ⊕ BZ.5 (#539) ✅ } → BZ.6 (#540)
 4. **Phase 3 — UI:** CA.1 (#541) ✅ → { CA.2 (#542) ⊕ CA.3 (#543) ⊕
    CA.4 (#544) } → **CA.5 (#545) ✅** *(MVP gate, amending #56)*
 5. **v2:** CB.1 (#546) after AF.2 (#235); CB.2 (#547) ⊕ CB.3 (#548) ⊕
@@ -995,7 +1001,7 @@ Issue-level impact:
 | CA.1 | #541 ✅ | 🟢 Done | In-app surfaces (palette console mount, settings cards) render inside the shell (palette portals over the content pane and locks its scroll); no sidebar entry is added |
 | CA.2, CA.3, CA.4 | #542, #543, #544 | 🟡 Open | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
 | CA.5 | #545 | 🟡 Open | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
-| BZ.5 | #539 | 🟡 Open | The ⌘K command console portals over the content pane and restores its scroll on close; rem-based type |
+| BZ.5 | #539 ✅ | 🟢 Done | The ⌘K command console portals over the content pane and restores its scroll on close; rem-based type |
 
 ## Next Step
 

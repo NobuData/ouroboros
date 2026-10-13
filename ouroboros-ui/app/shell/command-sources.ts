@@ -1,7 +1,8 @@
-import { LogOut, Moon, Sun } from "lucide-react";
+import { LogOut, Moon, Sun, Terminal } from "lucide-react";
 
 import type { CommandAction, CommandContext, CommandSource } from "./command";
 import { registerCommandSource } from "./command-registry";
+import { CONSOLE_ENTRY_LABEL, CONSOLE_GROUP, CONSOLE_PREFIX, consoleQuery } from "./console";
 import { type NavEntry, navStatus } from "./nav";
 
 /**
@@ -13,7 +14,7 @@ import { type NavEntry, navStatus } from "./nav";
  * and `app/shell/command-palette.tsx` renders whatever is in it, so a surface arriving later
  * registers its own source from its own directory and touches nothing here.
  *
- * What these two have in common is only that they are the shell's own: every action below is
+ * What these have in common is only that they are the shell's own: every action below is
  * something the shell can already do, which is exactly the scope H.3 decided on — *navigation
  * only*, because content search needs data that does not exist yet
  * ([#93](https://github.com/NobuData/ouroboros/issues/93) adds it, and adds it as a third
@@ -117,9 +118,38 @@ export const sessionCommands: CommandSource = {
   },
 };
 
+/**
+ * The way into command mode (BZ.5, [#539](https://github.com/NobuData/ouroboros/issues/539)).
+ *
+ * Typing `/ouro ` is what switches the palette over, and nobody types a prefix they have not
+ * been told about — so the mode is also a row, findable by the words a reader would reach for,
+ * whose press does the typing for them. It **stays** open behind itself: its whole effect is
+ * the box's new content.
+ *
+ * One row and not one per command: the commands are the grammar's, read from the service once
+ * the mode is entered (`app/shell/use-console.ts`), and a `list` must not fetch.
+ */
+export const consoleCommands: CommandSource = {
+  id: "console",
+  sort: 15,
+  list: (context) => [
+    {
+      id: "console:enter",
+      label: CONSOLE_ENTRY_LABEL,
+      group: CONSOLE_GROUP,
+      icon: Terminal,
+      hint: CONSOLE_PREFIX,
+      keywords: [CONSOLE_PREFIX, "ouro", "slash", "console", "chat ops", "chatops", "slack"],
+      run: () => context.fill(consoleQuery("")),
+      stays: true,
+    },
+  ],
+};
+
 /** The shell's own sources, in the order they are registered. */
 export const SEEDED_COMMAND_SOURCES: readonly CommandSource[] = [
   navigationCommands,
+  consoleCommands,
   sessionCommands,
 ];
 

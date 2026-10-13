@@ -6,14 +6,25 @@
  * ```
  * record   one transaction: the reply's message row (when the channel is one of ours), then the
  *          command row naming it in result_ref
- * settle   async_pending → ok | error, with completed_at — and only from pending
+ * settle   async_pending → ok | error, with completed_at and what it finally said — and only
+ *          from pending
  * audit    the command's audit event id, once the event exists
+ * own      one console command, for the person who typed it (BZ.5, #539)
  * ```
  *
- * **Only rows V131 accepts.** `outcome = 'error'` always carries `error_detail`; `ok` and
+ * **Only rows V131 and V136 accept.** `outcome = 'error'` always carries `error_detail`; `ok` and
  * `async_pending` never do; `completed_at` is null exactly while pending; a Slack row always
- * carries the platform user. {@link CommandRecord} is shaped so a caller cannot build the
- * combinations the CHECKs refuse, and `chatops.repository.spec.ts` holds each write to them.
+ * carries its connection and the platform user, and a console row carries neither — nor a
+ * channel or an identity link (`chat_commands_surface_shape`). {@link CommandRecord} is shaped
+ * so a caller cannot build the combinations the CHECKs refuse, and `chatops.repository.spec.ts`
+ * holds each write to them.
+ *
+ * **Who it acted as is a column on both surfaces** (`invoker_user_id`, V136): the linked person
+ * in Slack, the session's person in the console.
+ *
+ * **A late result is kept** (`settled_reply`, V136): what an async command said when it
+ * finished, on both surfaces. Slack is also told through its `response_url`; the console has no
+ * such address and reads it back with {@link ChatopsRepository.ownConsoleCommand}.
  *
  * **What a reply's message row holds, and what it does not.** A `command_reply` row is facts,
  * never prose (V131), and a command's reply here is a sentence — so the row carries no `facts`
@@ -32,7 +43,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../db/db.service";
-import type { ChatCommandSurface } from "../db/schema";
+import type { ChatCommand, ChatSettledReply } from "../db/schema";
 
 /** `chat_commands.raw_text`'s length bound (V131). */
 export const RAW_TEXT_LIMIT = 4000;
@@ -49,19 +60,37 @@ export type RecordedOutcome =
   /** `detail` is the short stable reason — `unknown_command`, a plane's error code. */
   | { readonly outcome: "error"; readonly detail: string };
 
-/** One invocation, as it is written. */
-export interface CommandRecord {
-  /** Chosen by the caller, so the reply's digest and the audit event can name it. */
-  readonly id: string;
-  readonly organizationId: string;
+/** Where a Slack command came from — everything `chat_commands_surface_shape` asks of one. */
+export interface SlackCommandOrigin {
+  readonly surface: "slack";
   readonly connectionId: string;
   /** The `chat_channels` row, when the channel is one the connection has joined. */
   readonly channelId: string | null;
   /** The invoker's identity link; null for an unlinked attempt. */
   readonly invokerLinkId: string | null;
-  /** The platform's user id — required on the slack surface. */
+  /** The platform's user id. */
   readonly platformUserId: string;
-  readonly surface: Extract<ChatCommandSurface, "slack">;
+}
+
+/**
+ * Where a console command came from: nowhere but the session (V136). The four are spelled out
+ * as nulls rather than left off, so a console record and a Slack record have the same keys.
+ */
+export interface ConsoleCommandOrigin {
+  readonly surface: "console";
+  readonly connectionId: null;
+  readonly channelId: null;
+  readonly invokerLinkId: null;
+  readonly platformUserId: null;
+}
+
+/** One invocation, as it is written. */
+export type CommandRecord = (SlackCommandOrigin | ConsoleCommandOrigin) & {
+  /** Chosen by the caller, so the reply's digest and the audit event can name it. */
+  readonly id: string;
+  readonly organizationId: string;
+  /** The person it acted as; null only for an unlinked Slack attempt. */
+  readonly invokerUserId: string | null;
   /** The command's id — matching `chat_commands_command_present`. */
   readonly command: string;
   /** The arguments as parsed, by name. */
@@ -74,9 +103,25 @@ export interface CommandRecord {
   readonly invokedAt: Date;
   /** When it finished — ignored for `async_pending`, which has not. */
   readonly completedAt: Date;
-  /** Whether the reply is recorded as a message. Needs {@link channelId}. */
+  /** Whether the reply is recorded as a message. Needs a channel, so never true in the console. */
   readonly withReplyMessage: boolean;
-}
+};
+
+/** What a command says, as `settled_reply` keeps it: the text and its one link, nothing else. */
+export type SettledReply = ChatSettledReply;
+
+/** A console command as the person who typed it reads it back. */
+export type OwnConsoleCommand = Pick<
+  ChatCommand,
+  | "id"
+  | "command"
+  | "outcome"
+  | "raw_text"
+  | "invoked_at"
+  | "completed_at"
+  | "settled_reply"
+  | "error_detail"
+>;
 
 /** What {@link ChatopsRepository.record} wrote. */
 export interface RecordedCommand {
@@ -109,6 +154,19 @@ export function replyDigest(commandId: string, part: "reply" | "result"): string
  */
 function bounded(text: string, limit: number): string {
   return text.length > limit ? text.slice(0, limit) : text;
+}
+
+/**
+ * A reply as `chat_commands_settled_reply_shape` accepts it: `text`, and `link` only when there
+ * is one — never a key the CHECK does not know, and never a link with half its fields.
+ *
+ * @param reply - The reply.
+ * @returns The object to store.
+ */
+export function settledReply(reply: SettledReply): SettledReply {
+  return reply.link === undefined
+    ? { text: reply.text }
+    : { text: reply.text, link: { label: reply.link.label, url: reply.link.url } };
 }
 
 @Injectable()
@@ -210,6 +268,7 @@ export class ChatopsRepository {
           channel_id: channelId,
           invoker_link_id: command.invokerLinkId,
           platform_user_id: command.platformUserId,
+          invoker_user_id: command.invokerUserId,
           surface: command.surface,
           command: command.command,
           args: JSON.stringify(command.args),
@@ -235,17 +294,20 @@ export class ChatopsRepository {
    * Only a row still `async_pending` moves, so a result that settles twice — or after a
    * restart's sweep — changes nothing the second time. The result is its own message: when the
    * command was typed in a joined channel a second `command_reply` row is written and named in
-   * `result_ref.result_message`.
+   * `result_ref.result_message`. What it said is kept in `settled_reply` on every surface: it is
+   * the only way the console learns the result.
    *
    * @param commandId - The command.
    * @param ended - `ok`, or `error` with its reason.
    * @param at - When it settled.
+   * @param reply - What the command finally said; `null` when it said nothing that can be kept.
    * @returns `true` when the row moved; `false` when it was not pending (or does not exist).
    */
   async settle(
     commandId: string,
     ended: Extract<RecordedOutcome, { outcome: "ok" | "error" }>,
     at: Date,
+    reply: SettledReply | null,
   ): Promise<boolean> {
     return this.database.db.transaction().execute(async (transaction) => {
       const row = await transaction
@@ -288,6 +350,7 @@ export class ChatopsRepository {
             ended.outcome === "error" ? bounded(ended.detail.trim(), ERROR_DETAIL_LIMIT) : null,
           completed_at: at,
           result_ref: produced === null ? null : JSON.stringify(produced),
+          settled_reply: reply === null ? null : JSON.stringify(settledReply(reply)),
         })
         .where("id", "=", commandId)
         .where("outcome", "=", "async_pending")
@@ -295,6 +358,42 @@ export class ChatopsRepository {
 
       return true;
     });
+  }
+
+  /**
+   * One console command, for the person who typed it (BZ.5, #539).
+   *
+   * Every condition is part of the question: the row is in this workspace, was typed in the
+   * console, and acted as this person. A Slack command, somebody else's, or another workspace's
+   * is not found — the same answer as an id that names nothing.
+   *
+   * @param organizationId - The workspace the request is in.
+   * @param userId - The signed-in person.
+   * @param commandId - A UUID.
+   * @returns The row, or `undefined`.
+   */
+  async ownConsoleCommand(
+    organizationId: string,
+    userId: string,
+    commandId: string,
+  ): Promise<OwnConsoleCommand | undefined> {
+    return this.database.db
+      .selectFrom("chat_commands")
+      .select([
+        "id",
+        "command",
+        "outcome",
+        "raw_text",
+        "invoked_at",
+        "completed_at",
+        "settled_reply",
+        "error_detail",
+      ])
+      .where("id", "=", commandId)
+      .where("organization_id", "=", organizationId)
+      .where("surface", "=", "console")
+      .where("invoker_user_id", "=", userId)
+      .executeTakeFirst();
   }
 
   /**

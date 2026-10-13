@@ -9,7 +9,8 @@
  * grammar.help.ts         /ouro help, chat-grammar.json     │
  * dispatcher.service.ts   who · may they · confirm · run   ─┘
  * chatops.repository.ts   chat_commands, chat_messages
- * chatops.controller.ts   GET /api/v1/chat/{grammar,completions}
+ * chatops.controller.ts   GET /api/v1/chat/{grammar,completions} · POST /api/v1/chat/commands
+ *                         and GET …/commands/{id} — the console's surface (BZ.5, #539)
  * planes/                 the bindings, resolvers and completions — the only code here that
  *                         imports another plane, and each binding makes one call the UI makes
  * ```
@@ -35,7 +36,8 @@
  * reads over the library's membership tables, and `TenancyModule` — which registers the global
  * guards — exports nothing by design.
  *
- * **{@link ChatDispatcher} is the module's whole outward surface.**
+ * **{@link ChatDispatcher} is the module's whole outward surface.** The console's routes are
+ * this module's own and call it directly — the console is the one surface with no adapter.
  */
 
 import { Module } from "@nestjs/common";

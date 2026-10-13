@@ -542,6 +542,32 @@ describe("TABLE_COLUMNS", () => {
     expect(TABLE_NAMES).toHaveLength(183);
   });
 
+  it("mirrors what V136 made of a command typed in the console", () => {
+    // #539: `invoker_user_id` — who a command acted as, on both surfaces — and
+    // `settled_reply`, what an async command finally said. `connection_id` stays in the list
+    // and became nullable, which the column list cannot say and `ChatCommandsTable` does.
+    expect(TABLE_COLUMNS.chat_commands).toEqual([
+      "id",
+      "organization_id",
+      "connection_id",
+      "channel_id",
+      "invoker_link_id",
+      "platform_user_id",
+      "surface",
+      "command",
+      "args",
+      "raw_text",
+      "outcome",
+      "result_ref",
+      "error_detail",
+      "audit_event_id",
+      "invoked_at",
+      "completed_at",
+      "invoker_user_id",
+      "settled_reply",
+    ]);
+  });
+
   it("mirrors the person a trail names, and only so a select can say their name", () => {
     // The library still owns the rows — `LIBRARY_OWNED_TABLES` is what says so, and
     // `organization.repository.spec.ts` is what enforces it against this module's source.

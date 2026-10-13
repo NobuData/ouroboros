@@ -16,6 +16,17 @@
  * the {@link CompletionSources} port for that argument's source. An argument with no source
  * answers an empty list, honestly.
  *
+ * **An empty list says which kind of empty it is** (BZ.5, #539), so a surface can say *"no open
+ * tickets match"* rather than show an empty menu:
+ *
+ * ```
+ * command  argument  source     completions
+ * null     null      null       []   no command starts that way
+ * queue    ticket    tickets    []   the plane was asked, and nothing matches
+ * explain  pr        null       []   an argument with no vocabulary to offer
+ * status   null      null       []   nothing left to type
+ * ```
+ *
  * Nothing here resolves or validates what was already typed: completion must stay cheap and must
  * work while the line is still wrong.
  */
@@ -23,7 +34,13 @@
 import { CONFIRM_WORD, matchCommand, tokenize } from "./grammar.parser";
 import type { Completion, CompletionSources } from "./grammar.ports";
 import { BUILTINS } from "./grammar.registry";
-import type { ArgumentSpec, CommandDefinition, Grammar, Invoker } from "./grammar.types";
+import type {
+  ArgumentSpec,
+  CommandDefinition,
+  CompletionSource,
+  Grammar,
+  Invoker,
+} from "./grammar.types";
 
 /** The most completions an argument is offered. Commands are never cut: there are few. */
 export const COMPLETION_LIMIT = 10;
@@ -36,6 +53,12 @@ export interface ChatCompletionsResource {
   readonly command: string | null;
   /** The argument being typed; null while the command is, or when nothing is left to type. */
   readonly argument: string | null;
+  /**
+   * The vocabulary the argument being typed is completed from — `tickets`; null when no argument
+   * is being typed, or it has none (a pull request number, a fixed word). With an empty
+   * `completions`, a source says the plane was asked and nothing matches.
+   */
+  readonly source: CompletionSource | null;
   readonly completions: readonly Completion[];
 }
 
@@ -145,6 +168,7 @@ export async function complete(
       grammarVersion: grammar.version,
       command: null,
       argument: null,
+      source: null,
       completions: commandCompletions(grammar, position.typed),
     };
   }
@@ -154,6 +178,7 @@ export async function complete(
       grammarVersion: grammar.version,
       command: position.definition.id,
       argument: null,
+      source: null,
       completions: [],
     };
   }
@@ -184,6 +209,7 @@ export async function complete(
     grammarVersion: grammar.version,
     command: definition.id,
     argument: argument.name,
+    source: argument.completion ?? null,
     completions,
   };
 }

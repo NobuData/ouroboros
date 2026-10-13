@@ -3,9 +3,21 @@
  * one path every surface's commands take.
  *
  * ```
- * text ─▶ connection ─▶ help? ─▶ who typed it ─▶ which command ─▶ arguments ─▶ v2?
+ * text ─▶ where from ─▶ help? ─▶ who typed it ─▶ which command ─▶ arguments ─▶ v2?
  *      ─▶ may they? ─▶ confirmed? ─▶ binding.run ─▶ reply ─▶ chat_commands row ─▶ audit event
  * ```
+ *
+ * **Two surfaces, one path** (BZ.5, [#539](https://github.com/NobuData/ouroboros/issues/539)).
+ * Slack and the app's console differ in exactly one step — *who typed it* — and nowhere after:
+ *
+ * ```
+ * slack    team ─▶ active connection ─▶ identity link ─▶ person ─▶ member
+ * console  session (workspace, person) ───────────────────────────▶ member
+ * ```
+ *
+ * The console has no connection to find and no link to follow, so it has no `notConnected` and
+ * no `unlinked`; from the member onwards the same code runs, and `parity.spec.ts` holds the two
+ * to the same outcome, words, row and audit event for the same text.
  *
  * **A command is not a new control path.** The dispatcher never touches a plane: it finds the
  * command's {@link CommandBinding} and calls it, and the binding makes the one call the UI's own
@@ -23,8 +35,9 @@
  *
  * **A slow command does not lie.** A binding that answers `started` is acknowledged with its own
  * honest sentence and recorded `async_pending`; when its result settles the row becomes `ok` or
- * `error` and the result goes out through the surface's `followUp`. That work outlives the call,
- * so it is tracked ({@link ChatDispatcher.idle}) and awaited at shutdown.
+ * `error`, what it said is kept on the row (`settled_reply`), and the result goes out through the
+ * surface's `followUp` when it has one — the console has none and reads the row instead. That
+ * work outlives the call, so it is tracked ({@link ChatDispatcher.idle}) and awaited at shutdown.
  *
  * **Outcomes** — `chat_commands.outcome` with `error_detail`:
  *
@@ -32,7 +45,7 @@
  * |---|---|---|
  * | ran, or a `v2` command answered honestly | `ok` | — |
  * | acknowledged, result to follow | `async_pending` → `ok` / `error` | — / the failure's code |
- * | not linked | `unlinked` | — |
+ * | not linked (Slack only) | `unlinked` | — |
  * | the member may not, or is no longer a member | `denied` | — |
  * | no such command | `error` | `unknown_command` |
  * | arguments missing, extra or naming nothing | `error` | `bad_arguments` |
@@ -40,10 +53,11 @@
  * | the plane refused | `error` | the plane's error code |
  * | anything else failed | `error` | `internal_error` |
  *
- * **Every invocation that has a connection is one row and one audit event** — except `help`,
+ * **Every invocation that has a workspace is one row and one audit event** — except `help`,
  * which is not a command of the grammar, runs nothing and is answered for anybody. A Slack
  * workspace with no active connection has no organisation to record under: it is told so, and
- * nothing is written.
+ * nothing is written. A reply is a `chat_messages` row only where there is a channel for it to
+ * be a message of — never in the console.
  *
  * **Recording never changes what is said.** By the time the row is written the command has run;
  * a failure to record it is logged loudly and the truthful reply still goes out, because
@@ -57,16 +71,21 @@ import { Inject, Injectable, Logger, type OnApplicationShutdown } from "@nestjs/
 import { CHAT_COMMAND_INVOKED_EVENT } from "../audit/audit.events";
 import { AuditService } from "../audit/audit.service";
 import { AppConfigService } from "../config/config.service";
-import type { ChatConnectionPublic } from "../db/schema";
 import { DomainError, SERVER_ERROR_FLOOR } from "../errors/error.envelope";
 import { SlackRepository } from "../slack/slack.repository";
 import { effectiveCanApproveLoops } from "../tenancy/capabilities";
 import { CapabilityRepository } from "../tenancy/capability.repository";
 import { OrganizationRepository } from "../tenancy/organization.repository";
 import { CHAT_REPLIES, deniedText, fill } from "./chatops.replies";
-import { ChatopsRepository, type RecordedOutcome } from "./chatops.repository";
+import {
+  ChatopsRepository,
+  type ConsoleCommandOrigin,
+  type RecordedOutcome,
+  type SlackCommandOrigin,
+} from "./chatops.repository";
 import { help, helpTopic } from "./grammar.help";
 import {
+  CONFIRM_WORD,
   argumentErrorText,
   failureText,
   matchCommand,
@@ -113,15 +132,47 @@ const UNNAMED_COMMAND = "unknown";
 /** A single lower-case word `chat_commands.command` accepts. */
 const COMMAND_WORD = /^[a-z][a-z0-9-]*$/;
 
+/**
+ * Where an invocation came from — the only part of it that depends on the surface. A Slack
+ * command has what its row records plus the platform's own channel id, which only the audit
+ * event keeps; a console command has nothing but its surface.
+ */
+type Origin =
+  (SlackCommandOrigin & { readonly platformChannelId: string | null }) | ConsoleCommandOrigin;
+
+/** The console's origin: the same for every command typed there. */
+const CONSOLE_ORIGIN: ConsoleCommandOrigin = {
+  surface: "console",
+  connectionId: null,
+  channelId: null,
+  invokerLinkId: null,
+  platformUserId: null,
+};
+
+/** Where a command came from, and the person it acts as — nobody, for an unlinked Slack user. */
+interface Identity {
+  readonly origin: Origin;
+  readonly userId: string | null;
+}
+
+/** A surface's answer to *which workspace* — known at once — and *who*, asked only for a command. */
+interface Source {
+  readonly organizationId: string;
+  /** Not called for `help`, which is answered for anybody. */
+  identify(): Promise<Identity>;
+}
+
 /** What is known about an invocation by the time it is recorded. */
 interface Invocation {
   readonly id: string;
-  readonly connection: ChatConnectionPublic;
-  readonly slack: NonNullable<DispatchInput["slack"]>;
-  readonly channelId: string | null;
-  readonly linkId: string | null;
+  readonly organizationId: string;
+  readonly origin: Origin;
+  /** The person it acts as; null only for an unlinked Slack attempt. */
   readonly userId: string | null;
+  /** What `chat_commands.command` records. */
   readonly command: string;
+  /** The grammar command the text named, if it named one. */
+  readonly matched: string | null;
   readonly rawText: string;
   readonly invokedAt: Date;
 }
@@ -134,6 +185,29 @@ interface Ending {
   readonly ref?: Readonly<Record<string, string | number>>;
   /** An async command's result, still to come. */
   readonly pending?: Promise<CommandReply>;
+  /** For a describe-first refusal: the text that really does it. */
+  readonly confirmWith?: string;
+}
+
+/**
+ * Whether a member may run a command — the one rule, for the dispatcher that enforces it and
+ * for the grammar route that says in advance what it would decide (#539).
+ *
+ * @param definition - The command.
+ * @param invoker - The member: their roles and explicit capability.
+ * @returns True when they hold one of its roles (or it asks for none) and its capability.
+ */
+export function permitted(
+  definition: Pick<CommandDefinition, "requires">,
+  invoker: Pick<Invoker, "roles" | "canApproveLoops">,
+): boolean {
+  const { roles, capability } = definition.requires;
+  const role = roles.length === 0 || roles.some((wanted) => invoker.roles.includes(wanted));
+
+  return (
+    role &&
+    (capability === undefined || effectiveCanApproveLoops(invoker.roles, invoker.canApproveLoops))
+  );
 }
 
 /**
@@ -218,7 +292,8 @@ export class ChatDispatcher implements OnApplicationShutdown {
    * @param grammar - The grammar to run.
    * @param bindings - One binding per available command.
    * @param resolvers - Turns typed arguments into what they name.
-   * @param slack - Finds the connection a Slack workspace belongs to, and identity links.
+   * @param slack - Finds the connection a Slack workspace belongs to, and identity links. Never
+   *   asked anything for a console command.
    * @param commands - The command trail.
    * @param organizations - A member's roles.
    * @param capabilities - A member's explicit capability.
@@ -251,26 +326,42 @@ export class ChatDispatcher implements OnApplicationShutdown {
   /**
    * Run what was typed.
    *
-   * @param input - The surface, the text after `/ouro`, and who typed it where.
+   * @param input - The surface, the text after `/ouro`, and who typed it where: Slack's team,
+   *   user and channel, or the console's session.
    * @returns The outcome, what to say back at once, and the command row's id when one was
    *   written. It does not reject for anything a person typed or a plane refused; it rejects
    *   only when the workspace or the invoker could not be read at all — before anything ran.
    */
   async dispatch(input: DispatchInput): Promise<DispatchResult> {
-    if (input.surface !== "slack" || input.slack === undefined) {
-      // The console's invoker is a session, which `DispatchInput` does not carry yet (#539).
-      return {
-        outcome: "error",
-        reply: { text: CHAT_REPLIES.surfaceUnavailable },
-        commandId: null,
-      };
-    }
-
     const invokedAt = new Date();
-    const connection = await this.slack.activeByWorkspace(input.slack.teamId);
+    let source: Source;
 
-    if (connection === undefined) {
-      return { outcome: "error", reply: { text: CHAT_REPLIES.notConnected }, commandId: null };
+    if (input.surface === "slack") {
+      // Slack's workspace is found before anything is answered — help included — because a
+      // workspace nobody has connected is told so whatever was typed.
+      const connection = await this.slack.activeByWorkspace(input.slack.teamId);
+
+      if (connection === undefined) {
+        return {
+          outcome: "error",
+          reply: { text: CHAT_REPLIES.notConnected },
+          commandId: null,
+          command: null,
+        };
+      }
+
+      source = {
+        organizationId: connection.organization_id,
+        identify: () => this.slackIdentity(connection.id, input.slack),
+      };
+    } else {
+      // The session is the identity: no connection to find, no link to follow.
+      const { organizationId, userId } = input.console;
+
+      source = {
+        organizationId,
+        identify: () => Promise.resolve({ origin: CONSOLE_ORIGIN, userId }),
+      };
     }
 
     const topic = helpTopic(input.text);
@@ -280,36 +371,32 @@ export class ChatDispatcher implements OnApplicationShutdown {
         outcome: "ok",
         reply: { text: help(this.grammar, input.surface, topic) },
         commandId: null,
+        command: null,
       };
     }
 
     const tokens = tokenize(input.text);
     const match = matchCommand(this.grammar, tokens);
-    const link = await this.slack.liveLink(connection.id, input.slack.userId);
-    const linked = link?.state === "linked" && link.user_id !== null ? link : undefined;
+    const who = await source.identify();
     const invocation: Invocation = {
       id: randomUUID(),
-      connection,
-      slack: input.slack,
-      channelId:
-        input.slack.channelId === null
-          ? null
-          : ((await this.commands.joinedChannel(connection.id, input.slack.channelId)) ?? null),
-      linkId: linked?.id ?? null,
-      userId: linked?.user_id ?? null,
+      organizationId: source.organizationId,
+      origin: who.origin,
+      userId: who.userId,
       command: match?.definition.id ?? commandWord(tokens),
+      matched: match?.definition.id ?? null,
       rawText: `${COMMAND_PREFIX} ${input.text.trim()}`,
       invokedAt,
     };
 
-    if (linked === undefined || linked.user_id === null) {
+    if (who.userId === null) {
       return this.finish(invocation, {
         ended: { outcome: "unlinked" },
         reply: { text: CHAT_REPLIES.unlinked },
       });
     }
 
-    const invoker = await this.invoker(connection.organization_id, linked.user_id);
+    const invoker = await this.invoker(source.organizationId, who.userId);
 
     if (invoker === undefined) {
       return this.finish(invocation, {
@@ -373,7 +460,7 @@ export class ChatDispatcher implements OnApplicationShutdown {
     rest: readonly string[],
     input: DispatchInput,
   ): Promise<Ending> {
-    const organizationId = invocation.connection.organization_id;
+    const { organizationId } = invocation;
 
     try {
       const parsed = await parseArguments(definition, rest, (spec, raw, previous) =>
@@ -397,7 +484,7 @@ export class ChatDispatcher implements OnApplicationShutdown {
         };
       }
 
-      if (!this.permitted(definition, invoker)) {
+      if (!permitted(definition, invoker)) {
         return { ended: { outcome: "denied" }, reply: { text: deniedText(definition) }, args };
       }
 
@@ -406,6 +493,8 @@ export class ChatDispatcher implements OnApplicationShutdown {
           ended: { outcome: "error", detail: DISPATCH_ERRORS.confirmationRequired },
           reply: { text: await this.confirmPrompt(definition, args, organizationId) },
           args,
+          // `confirm` is always the last argument, so what was typed plus the word is the command.
+          confirmWith: [definition.id, ...rest, CONFIRM_WORD].join(" "),
         };
       }
 
@@ -461,20 +550,25 @@ export class ChatDispatcher implements OnApplicationShutdown {
    * @returns The dispatch result. `commandId` is null when the row could not be written.
    */
   private async finish(invocation: Invocation, ending: Ending): Promise<DispatchResult> {
-    const { connection } = invocation;
+    const { organizationId, origin } = invocation;
     const outcome = ending.ended.outcome;
     const at = new Date();
     let commandId: string | null = invocation.id;
 
     try {
       await this.commands.record({
+        ...(origin.surface === "slack"
+          ? {
+              surface: origin.surface,
+              connectionId: origin.connectionId,
+              channelId: origin.channelId,
+              invokerLinkId: origin.invokerLinkId,
+              platformUserId: origin.platformUserId,
+            }
+          : origin),
         id: invocation.id,
-        organizationId: connection.organization_id,
-        connectionId: connection.id,
-        channelId: invocation.channelId,
-        invokerLinkId: invocation.linkId,
-        platformUserId: invocation.slack.userId,
-        surface: "slack",
+        organizationId,
+        invokerUserId: invocation.userId,
         command: invocation.command,
         args: Object.fromEntries(
           Object.entries(ending.args ?? {}).map(([name, argument]) => [
@@ -488,25 +582,32 @@ export class ChatDispatcher implements OnApplicationShutdown {
         invokedAt: invocation.invokedAt,
         completedAt: at,
         // A reply is a message of the channel only when the command was answered: a refusal
-        // produced nothing (`result_ref` stays null).
-        withReplyMessage: outcome === "ok" || outcome === "async_pending",
+        // produced nothing (`result_ref` stays null). The console has no channel for a reply
+        // to be a message of, so it never writes one.
+        withReplyMessage:
+          origin.surface === "slack" && (outcome === "ok" || outcome === "async_pending"),
       });
 
       const auditEventId = await this.audit.record({
-        organizationId: connection.organization_id,
+        organizationId,
         actorId: invocation.userId,
         action: CHAT_COMMAND_INVOKED_EVENT,
         subjectType: "chat_command",
         subjectId: invocation.id,
         at,
         detail: {
-          surface: "slack",
+          surface: origin.surface,
           command: invocation.command,
           outcome,
-          connectionId: connection.id,
-          channelId: invocation.channelId,
-          platformChannelId: invocation.slack.channelId,
-          platformUserId: invocation.slack.userId,
+          // Chat provenance is Slack's alone: the console's is the actor and nothing else.
+          ...(origin.surface === "slack"
+            ? {
+                connectionId: origin.connectionId,
+                channelId: origin.channelId,
+                platformChannelId: origin.platformChannelId,
+                platformUserId: origin.platformUserId,
+              }
+            : {}),
           grammarVersion: this.grammar.version,
         },
       });
@@ -521,14 +622,22 @@ export class ChatDispatcher implements OnApplicationShutdown {
       );
     }
 
-    return { outcome, reply: ending.reply, commandId };
+    return {
+      outcome,
+      reply: ending.reply,
+      commandId,
+      command: invocation.matched,
+      ...(ending.confirmWith === undefined ? {} : { confirmWith: ending.confirmWith }),
+    };
   }
 
   /**
-   * Follow an async command to its end: settle the row, then post the result.
+   * Follow an async command to its end: settle the row — with what it said — then post the
+   * result where the surface has somewhere to post it.
    *
    * The row is settled **before** the surface is asked to post, and a failure to post is only
-   * logged — an undelivered message must not cost the recorded outcome.
+   * logged — an undelivered message must not cost the recorded outcome. What it said is kept on
+   * the row whatever the surface, so both record the same thing and the console can read it.
    *
    * @param invocation - The invocation.
    * @param definition - The command.
@@ -563,7 +672,13 @@ export class ChatDispatcher implements OnApplicationShutdown {
       }
 
       try {
-        await this.commands.settle(invocation.id, ended, new Date());
+        await this.commands.settle(
+          invocation.id,
+          ended,
+          new Date(),
+          // `settled_reply` refuses empty text; a reply with nothing to say keeps nothing.
+          reply.text === "" ? null : reply,
+        );
       } catch (error) {
         this.logger.error(
           `/ouro ${definition.id} (${invocation.id}) ended ${ended.outcome} and could not be settled: ${String(error)}`,
@@ -593,10 +708,10 @@ export class ChatDispatcher implements OnApplicationShutdown {
   }
 
   /**
-   * The member a linked person is in a workspace.
+   * The member a person is in a workspace.
    *
    * @param organizationId - The workspace.
-   * @param userId - The person their link names.
+   * @param userId - The person their link names, or the session's.
    * @returns The invoker, or `undefined` when they are no longer a member.
    */
   private async invoker(organizationId: string, userId: string): Promise<Invoker | undefined> {
@@ -615,20 +730,33 @@ export class ChatDispatcher implements OnApplicationShutdown {
   }
 
   /**
-   * Whether a member may run a command.
+   * Who a Slack user is here: their channel, their identity link, and through it a person.
    *
-   * @param definition - The command.
-   * @param invoker - The member.
-   * @returns True when they hold one of its roles (or it asks for none) and its capability.
+   * @param connectionId - The workspace's active connection.
+   * @param slack - The platform's ids for where and who.
+   * @returns Where the command came from and who it acts as — nobody, when they are not linked.
    */
-  private permitted(definition: CommandDefinition, invoker: Invoker): boolean {
-    const { roles, capability } = definition.requires;
-    const role = roles.length === 0 || roles.some((wanted) => invoker.roles.includes(wanted));
+  private async slackIdentity(
+    connectionId: string,
+    slack: { readonly userId: string; readonly channelId: string | null },
+  ): Promise<Identity> {
+    const link = await this.slack.liveLink(connectionId, slack.userId);
+    const linked = link?.state === "linked" && link.user_id !== null ? link : undefined;
 
-    return (
-      role &&
-      (capability === undefined || effectiveCanApproveLoops(invoker.roles, invoker.canApproveLoops))
-    );
+    return {
+      origin: {
+        surface: "slack",
+        connectionId,
+        channelId:
+          slack.channelId === null
+            ? null
+            : ((await this.commands.joinedChannel(connectionId, slack.channelId)) ?? null),
+        invokerLinkId: linked?.id ?? null,
+        platformUserId: slack.userId,
+        platformChannelId: slack.channelId,
+      },
+      userId: linked?.user_id ?? null,
+    };
   }
 
   /**

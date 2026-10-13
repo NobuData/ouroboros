@@ -30,6 +30,16 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: 
 
 vi.mock("@/app/shell/actions", () => ({ signOutOfSession: vi.fn() }));
 
+/** The session the palette's command mode keys its history by (#539). */
+vi.mock("@/app/api/auth-client", async () =>
+  (await import("../helpers/account")).authClientModule(),
+);
+
+/** The console's Server Actions, which sit over a `server-only` client (#539). */
+vi.mock("@/app/shell/console-actions", async () =>
+  (await import("../helpers/console")).consoleActionsModule(),
+);
+
 const { SearchPill } = await import("@/app/shell/search-pill");
 
 /** Render the pill, the way the header does. */

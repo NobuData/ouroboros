@@ -666,10 +666,12 @@ export const CHAT_IDENTITY_UNLINKED_EVENT = "chat.identity_unlinked";
  * Somebody typed an `/ouro` command (BZ.3, #537) — recorded for every invocation that has a
  * `chat_commands` row, whatever came of it. Subject `chat_command`, the row's id. The actor is
  * the person the command acted as, or nobody when the platform user was not linked. The detail
- * is the chat provenance, flat: `surface`, `command`, `outcome`, `connectionId`, `channelId`
- * (the workspace's channel row, when the app has joined it), `platformChannelId`,
- * `platformUserId` and `grammarVersion`. Never the arguments or the raw text — those are the
- * row's. What the command *did* is the owning plane's own event, unchanged.
+ * is the chat provenance, flat: `surface`, `command`, `outcome`, `grammarVersion` — and, for a
+ * command typed in Slack, `connectionId`, `channelId` (the workspace's channel row, when the app
+ * has joined it), `platformChannelId` and `platformUserId`. A command typed in the app's console
+ * (BZ.5, #539) has none of those four: its provenance is the actor. Never the arguments or the
+ * raw text — those are the row's. What the command *did* is the owning plane's own event,
+ * unchanged.
  */
 export const CHAT_COMMAND_INVOKED_EVENT = "chat.command_invoked";
 

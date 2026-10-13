@@ -12,6 +12,8 @@
 --   * **One active Slack connection per workspace**, by index and in the rows.
 --   * **A retried publish is one row.** The dedupe key is in force and no two rows share it.
 --   * **A platform user is one member, and a member one platform user**, among live links.
+--   * **A command says who it acted as** (#539). A Slack command with an identity link records
+--     the link's person, and a console command is of no connection.
 --   * **On-call is reachable.** The rule is in force and every active designee has a linked
 --     identity on an active Slack connection.
 --   * **Every ref resolves.** No seeded or stored message names a row that is not there.
@@ -221,6 +223,21 @@ select pg_temp.must_hold(
   and (select revoked_at is not null and revoked_by is not null
          from ouroboros.chat_identity_links where id = '5eed009c-0000-4000-8000-000000000303'),
   'links_seeded: Ken and Maya are linked by oauth_session, and one link — Jorge''s — is revoked, kept with when and by whom');
+
+-- Who a command acted as (#539): the link's person in Slack, and no console row is of a connection.
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from ouroboros.chat_commands c
+     join ouroboros.chat_identity_links link on link.id = c.invoker_link_id
+    where c.surface = 'slack' and link.user_id is not null
+      and c.invoker_user_id is distinct from link.user_id)
+  and (select count(*) = 0 from ouroboros.chat_commands
+        where surface = 'console' and connection_id is not null)
+  and (select count(*) = 2 and bool_and(person."email" = 'ken@acme-robotics.dev')
+         from ouroboros.chat_commands c
+         join ouroboros."user" person on person."id" = c.invoker_user_id
+        where c.channel_id = '5eed009c-0000-4000-8000-0000000000a1'),
+  'command_invoker_recorded: every Slack command with an identity link acts as that link''s person — the two seeded ones as Ken — and no console command has a connection');
 
 select pg_temp.must_hold(
   (select array_agg(r.kind || ' → #' || ch.channel_name

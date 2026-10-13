@@ -9,7 +9,13 @@ import type { CapabilityRepository } from "../tenancy/capability.repository";
 import type { OrganizationRepository } from "../tenancy/organization.repository";
 import { CHAT_REPLIES, deniedText } from "./chatops.replies";
 import type { ChatopsRepository, CommandRecord, RecordedOutcome } from "./chatops.repository";
-import { ChatDispatcher, DISPATCH_ERRORS, failureOf, recordedArgument } from "./dispatcher.service";
+import {
+  ChatDispatcher,
+  DISPATCH_ERRORS,
+  failureOf,
+  permitted,
+  recordedArgument,
+} from "./dispatcher.service";
 import { help, helpText, requirementWords } from "./grammar.help";
 import { failureText, syntaxOf, unknownCommand } from "./grammar.parser";
 import { ChatArgumentError, type ArgumentResolvers } from "./grammar.ports";
@@ -22,9 +28,10 @@ import type {
   CommandContext,
   CommandDefinition,
   CommandReply,
-  DispatchInput,
+  ConsoleDispatchInput,
   Grammar,
   ResolvedArgument,
+  SlackDispatchInput,
 } from "./grammar.types";
 
 /**
@@ -200,7 +207,13 @@ function world(changes: Partial<Scene> = {}) {
     ...changes,
   };
   const records: CommandRecord[] = [];
-  const settles: { id: string; ended: RecordedOutcome; at: Date }[] = [];
+  const settles: {
+    id: string;
+    ended: RecordedOutcome;
+    at: Date;
+    reply: CommandReply | null;
+  }[] = [];
+  const memberships: { organizationId: string; userId: string }[] = [];
   const attached: { commandId: string; auditEventId: string }[] = [];
   const audits: Record<string, unknown>[] = [];
   const resolved: { organizationId: string; argument: string; raw: string; previous: string[] }[] =
@@ -247,12 +260,12 @@ function world(changes: Partial<Scene> = {}) {
 
       return Promise.resolve({ id: command.id, messageId: null });
     },
-    settle: (id: string, ended: RecordedOutcome, at: Date) => {
+    settle: (id: string, ended: RecordedOutcome, at: Date, reply: CommandReply | null) => {
       if (scene.settleFails) {
         return Promise.reject(new Error("chat_commands is unreachable"));
       }
 
-      settles.push({ id, ended, at });
+      settles.push({ id, ended, at, reply });
       order.push("settle");
 
       return Promise.resolve(true);
@@ -290,7 +303,11 @@ function world(changes: Partial<Scene> = {}) {
       slack as unknown as SlackRepository,
       commands as unknown as ChatopsRepository,
       {
-        rolesFor: () => Promise.resolve(scene.roles),
+        rolesFor: (organizationId: string, userId: string) => {
+          memberships.push({ organizationId, userId });
+
+          return Promise.resolve(scene.roles);
+        },
       } as unknown as OrganizationRepository,
       {
         explicitFor: () => Promise.resolve(scene.explicit),
@@ -316,6 +333,7 @@ function world(changes: Partial<Scene> = {}) {
     build,
     records,
     settles,
+    memberships,
     attached,
     audits,
     resolved,
@@ -343,7 +361,7 @@ function world(changes: Partial<Scene> = {}) {
  * @param extra - Anything else about the invocation.
  * @returns The dispatcher's input.
  */
-function slackInput(text: string, extra: Partial<DispatchInput> = {}): DispatchInput {
+function slackInput(text: string, extra: Partial<SlackDispatchInput> = {}): SlackDispatchInput {
   return {
     surface: "slack",
     text,
@@ -351,6 +369,23 @@ function slackInput(text: string, extra: Partial<DispatchInput> = {}): DispatchI
     ...extra,
   };
 }
+
+/**
+ * What the console's route hands over: the text and the signed-in session.
+ *
+ * @param text - The text after `/ouro`.
+ * @param extra - Anything else about the invocation.
+ * @returns The dispatcher's input.
+ */
+function consoleInput(
+  text: string,
+  extra: Partial<ConsoleDispatchInput> = {},
+): ConsoleDispatchInput {
+  return { surface: "console", text, console: { organizationId: ORG, userId: MAYA }, ...extra };
+}
+
+/** The keys a console command's audit detail holds: no chat provenance, because there is none. */
+const CONSOLE_AUDIT_DETAIL_KEYS = ["command", "grammarVersion", "outcome", "surface"];
 
 /** The keys a `chat.command_invoked` event's detail holds — provenance, and nothing typed. */
 const AUDIT_DETAIL_KEYS = [
@@ -398,6 +433,7 @@ describe("the command matrix", () => {
           channelId: CHANNEL_ROW,
           invokerLinkId: LINK.id,
           platformUserId: SLACK_MAYA,
+          invokerUserId: MAYA,
           surface: "slack",
           command: id,
           args,
@@ -441,6 +477,7 @@ describe("the command matrix", () => {
           rawText: `/ouro ${text}`,
           invokerLinkId: null,
           platformUserId: SLACK_MAYA,
+          invokerUserId: null,
           ended: { outcome: "unlinked" },
           withReplyMessage: false,
         });
@@ -753,6 +790,27 @@ describe("destructive commands", () => {
       withReplyMessage: false,
     });
     expect(audits[0]).toMatchObject({ detail: { command: "abort loop", outcome: "error" } });
+    // The text that really does it: what was typed, and the word.
+    expect(result.confirmWith).toBe("abort loop 1847 confirm");
+    expect(result.reply.text).toContain(`\`/ouro ${String(result.confirmWith)}\``);
+  });
+
+  it("names the confirming text from what was typed, and only on the describe-first reply", async () => {
+    const { build } = world();
+    const dispatcher = build();
+
+    expect(await dispatcher.dispatch(slackInput("  ABORT  loop   #1847 "))).toMatchObject({
+      command: "abort loop",
+      confirmWith: "abort loop #1847 confirm",
+    });
+    expect(await dispatcher.dispatch(slackInput("pause all"))).toMatchObject({
+      command: "pause all",
+      confirmWith: "pause all confirm",
+    });
+
+    for (const text of ["abort loop 1847 confirm", "pause all confirm", "status", "abort loop"]) {
+      expect(await dispatcher.dispatch(slackInput(text))).not.toHaveProperty("confirmWith");
+    }
   });
 
   it("abort loop with confirm calls its binding once", async () => {
@@ -927,6 +985,7 @@ describe("an async command", () => {
       outcome: "async_pending",
       reply: ACK,
       commandId: records[0].id,
+      command: "dry-run",
     });
     expect(records).toHaveLength(1);
     expect(records[0]).toMatchObject({
@@ -943,8 +1002,9 @@ describe("an async command", () => {
     result.resolve(RESULT);
     await dispatcher.idle();
 
+    // What it said is kept on the row as well as posted (#539).
     expect(settles).toEqual([
-      { id: records[0].id, ended: { outcome: "ok" }, at: expect.any(Date) as Date },
+      { id: records[0].id, ended: { outcome: "ok" }, at: expect.any(Date) as Date, reply: RESULT },
     ]);
     expect(followUp).toHaveBeenCalledTimes(1);
     expect(followUp).toHaveBeenCalledWith(RESULT);
@@ -968,6 +1028,8 @@ describe("an async command", () => {
         id: records[0].id,
         ended: { outcome: "error", detail: "dry_run_harness_failed" },
         at: expect.any(Date) as Date,
+        // A refusal's words are what it said: kept, as they are posted.
+        reply: { text: "The harness stopped at build." },
       },
     ]);
     expect(followUp).toHaveBeenCalledWith({ text: "The harness stopped at build." });
@@ -982,6 +1044,8 @@ describe("an async command", () => {
     await dispatcher.idle();
 
     expect(settles[0].ended).toEqual({ outcome: "error", detail: "internal_error" });
+    expect(settles[0].reply).toEqual({ text: CHAT_REPLIES.asyncFailed("dry-run") });
+    expect(JSON.stringify(settles)).not.toContain("hunter2");
     expect(followUp).toHaveBeenCalledWith({ text: CHAT_REPLIES.asyncFailed("dry-run") });
     expect(JSON.stringify(followUp.mock.calls)).not.toContain("hunter2");
     expect(errors).toHaveBeenCalledTimes(1);
@@ -999,7 +1063,7 @@ describe("an async command", () => {
 
     expect(followUp).toHaveBeenCalledTimes(1);
     expect(settles).toEqual([
-      { id: records[0].id, ended: { outcome: "ok" }, at: expect.any(Date) as Date },
+      { id: records[0].id, ended: { outcome: "ok" }, at: expect.any(Date) as Date, reply: RESULT },
     ]);
     expect(warnings).toHaveBeenCalledTimes(1);
   });
@@ -1068,6 +1132,7 @@ describe("recording", () => {
       channelId: CHANNEL_ROW,
       invokerLinkId: LINK.id,
       platformUserId: SLACK_MAYA,
+      invokerUserId: MAYA,
       surface: "slack",
       command: "queue",
       args: { ticket: "acme/helios#485", workflow: "standard-fix" },
@@ -1219,6 +1284,7 @@ describe("recording", () => {
         outcome: "error",
         reply: { text: CHAT_REPLIES.notConnected },
         commandId: null,
+        command: null,
       });
     }
 
@@ -1236,7 +1302,12 @@ describe("recording", () => {
 
     // The command ran: saying "nothing was changed" would be a lie.
     expect(run("queue")).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ outcome: "ok", reply: { text: "ran queue" }, commandId: null });
+    expect(result).toEqual({
+      outcome: "ok",
+      reply: { text: "ran queue" },
+      commandId: null,
+      command: "queue",
+    });
     expect(records).toEqual([]);
     expect(audits).toEqual([]);
     expect(errors).toHaveBeenCalledTimes(1);
@@ -1251,7 +1322,12 @@ describe("recording", () => {
 
     const result = await build().dispatch(slackInput("status"));
 
-    expect(result).toEqual({ outcome: "ok", reply: { text: "ran status" }, commandId: null });
+    expect(result).toEqual({
+      outcome: "ok",
+      reply: { text: "ran status" },
+      commandId: null,
+      command: "status",
+    });
     expect(records).toHaveLength(1);
     expect(attached).toEqual([]);
   });
@@ -1263,6 +1339,7 @@ describe("recording", () => {
       outcome: "unlinked",
       reply: { text: CHAT_REPLIES.unlinked },
       commandId: null,
+      command: "status",
     });
   });
 });
@@ -1414,32 +1491,377 @@ describe("text that names no command", () => {
   });
 });
 
-describe("a surface that is not Slack", () => {
-  it("is told commands cannot be run from there yet, and nothing is read or written", async () => {
-    const { build, records, audits, slack } = world();
+describe("the console (#539)", () => {
+  it("runs a command as the session's person, through the same binding, with no Slack lookup at all", async () => {
+    const { build, records, audits, attached, memberships, slack, commands, run } = world({
+      // Slack is not installed here at all: the console does not need it.
+      connection: undefined,
+      link: undefined,
+    });
+
+    const result = await build().dispatch(consoleInput("queue #485 standard-fix"));
+
+    expect(result).toEqual({
+      outcome: "ok",
+      reply: { text: "ran queue" },
+      commandId: records[0].id,
+      command: "queue",
+    });
+    expect(run("queue")).toHaveBeenCalledTimes(1);
+    expect(run("queue").mock.calls[0][0]).toMatchObject({
+      organizationId: ORG,
+      surface: "console",
+      invoker: { userId: MAYA, name: "Maya Chen", roles: ["owner"], canApproveLoops: null },
+      appUrl: "https://app.example.test",
+    });
+    // Who they are is the session: the membership is read for it, and nothing of Slack's is.
+    expect(memberships).toEqual([{ organizationId: ORG, userId: MAYA }]);
+    expect(slack.activeByWorkspace).not.toHaveBeenCalled();
+    expect(slack.liveLink).not.toHaveBeenCalled();
+    expect(commands.joinedChannel).not.toHaveBeenCalled();
+
+    expect(records).toEqual([
+      {
+        id: result.commandId,
+        organizationId: ORG,
+        surface: "console",
+        connectionId: null,
+        channelId: null,
+        invokerLinkId: null,
+        platformUserId: null,
+        invokerUserId: MAYA,
+        command: "queue",
+        args: { ticket: "acme/helios#485", workflow: "standard-fix" },
+        rawText: "/ouro queue #485 standard-fix",
+        ended: { outcome: "ok" },
+        ref: { made: "queue" },
+        invokedAt: expect.any(Date) as Date,
+        completedAt: expect.any(Date) as Date,
+        // There is no channel for the reply to be a message of.
+        withReplyMessage: false,
+      },
+    ]);
+    expect(audits).toEqual([
+      {
+        organizationId: ORG,
+        actorId: MAYA,
+        action: "chat.command_invoked",
+        subjectType: "chat_command",
+        subjectId: result.commandId,
+        at: records[0].completedAt,
+        detail: {
+          surface: "console",
+          command: "queue",
+          outcome: "ok",
+          grammarVersion: GRAMMAR_VERSION,
+        },
+      },
+    ]);
+    expect(Object.keys(audits[0].detail as object).sort()).toEqual(CONSOLE_AUDIT_DETAIL_KEYS);
+    expect(JSON.stringify(audits[0])).not.toContain("#485");
+    expect(attached).toEqual([{ commandId: result.commandId, auditEventId: AUDIT_EVENT }]);
+  });
+
+  it.each(GRAMMAR.commands.map((definition) => [definition.id, definition] as const))(
+    "/ouro %s is recorded on the console surface, with no reply message",
+    async (id, definition) => {
+      const { build, records, audits } = world();
+
+      const result = await build().dispatch(consoleInput(typed(definition).text));
+
+      expect(result).toMatchObject({ outcome: "ok", command: id });
+      expect(records[0]).toMatchObject({
+        surface: "console",
+        connectionId: null,
+        channelId: null,
+        invokerLinkId: null,
+        platformUserId: null,
+        invokerUserId: MAYA,
+        command: id,
+        withReplyMessage: false,
+      });
+      expect(audits[0]).toMatchObject({ actorId: MAYA, detail: { surface: "console" } });
+    },
+  );
+
+  it("has no unlinked outcome: somebody with no Slack link at all runs commands", async () => {
+    const { build, records } = world({ link: undefined });
+
+    const result = await build().dispatch(consoleInput("status"));
+
+    expect(result.outcome).toBe("ok");
+    expect(records[0].ended).toEqual({ outcome: "ok" });
+  });
+
+  it("refuses somebody who is not a member of the workspace as Slack refuses one, and records it", async () => {
+    const { build, records, audits, runs } = world({ roles: undefined });
+
+    const result = await build().dispatch(consoleInput("pause all confirm"));
+
+    expect(result).toEqual({
+      outcome: "denied",
+      reply: { text: CHAT_REPLIES.notAMember },
+      commandId: records[0].id,
+      command: "pause all",
+    });
+    expect(records[0]).toMatchObject({
+      surface: "console",
+      invokerUserId: MAYA,
+      ended: { outcome: "denied" },
+      withReplyMessage: false,
+    });
+    expect(audits[0]).toMatchObject({ actorId: MAYA, detail: { outcome: "denied" } });
+
+    for (const run of runs.values()) {
+      expect(run).not.toHaveBeenCalled();
+    }
+  });
+
+  it("denies a command the session's roles do not carry, in the words Slack uses", async () => {
+    const { build, records, run } = world({ roles: ["viewer"] });
+
+    const result = await build().dispatch(consoleInput("route implement claude-fable-5"));
+
+    expect(result).toMatchObject({
+      outcome: "denied",
+      reply: { text: "`/ouro route` is for workspace owners and admins." },
+      command: "route",
+    });
+    expect(run("route")).not.toHaveBeenCalled();
+    expect(records[0]).toMatchObject({ surface: "console", ended: { outcome: "denied" } });
+  });
+
+  it.each([
+    [
+      "abort loop 1847",
+      "abort loop",
+      "Add `confirm` to abort — this stops loop 1847 for good and closes its run as canceled. Its branch is kept; nothing is reverted or deleted. `/ouro abort loop 1847 confirm`",
+    ],
+    [
+      "pause all",
+      "pause all",
+      "Add `confirm` to pause everything — this stops every loop in Acme Robotics from starting anything new. Stages already running finish, and queued work stays queued until an owner or admin resumes the workspace. `/ouro pause all confirm`",
+    ],
+  ])(
+    "follows the confirm rule: %s describes, and runs only with confirm",
+    async (text, id, said) => {
+      const { build, records, run } = world();
+      const dispatcher = build();
+
+      const first = await dispatcher.dispatch(consoleInput(text));
+
+      expect(first).toEqual({
+        outcome: "error",
+        reply: { text: said },
+        commandId: records[0].id,
+        command: id,
+        confirmWith: `${text} confirm`,
+      });
+      expect(records[0].ended).toEqual({ outcome: "error", detail: "confirmation_required" });
+      expect(run(id)).not.toHaveBeenCalled();
+
+      const second = await dispatcher.dispatch(consoleInput(first.confirmWith ?? ""));
+
+      expect(second).toMatchObject({ outcome: "ok", reply: { text: `ran ${id}` } });
+      expect(second).not.toHaveProperty("confirmWith");
+      expect(run(id)).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("answers explain pr with its v2 text, exactly as Slack does", async () => {
+    const { build, records, runs } = world({ roles: ["viewer"] });
+
+    const result = await build().dispatch(consoleInput("explain pr 514"));
+
+    expect(result).toMatchObject({
+      outcome: "ok",
+      reply: {
+        text: "Plain-language PR summaries arrive with AI presence (CB.1, #546). `/ouro explain pr` is listed so you know it is coming; it does not summarise anything yet.",
+      },
+      command: "explain pr",
+    });
+    expect(records[0]).toMatchObject({ surface: "console", args: { pr: 514 } });
+
+    for (const run of runs.values()) {
+      expect(run).not.toHaveBeenCalled();
+    }
+  });
+
+  it("answers help from the grammar, listing only what the console has, and writes nothing", async () => {
+    const { build, records, audits, memberships } = world();
     const dispatcher = build();
 
-    expect(await dispatcher.dispatch({ surface: "console", text: "status" })).toEqual({
-      outcome: "error",
-      reply: { text: CHAT_REPLIES.surfaceUnavailable },
-      commandId: null,
-    });
-    // The console's invoker is a session: a Slack identity handed with it changes nothing.
-    expect(
-      await dispatcher.dispatch({
-        surface: "console",
-        text: "status",
-        slack: { teamId: TEAM, userId: SLACK_MAYA, channelId: CHANNEL },
-      }),
-    ).toMatchObject({ outcome: "error", commandId: null });
-    expect(await dispatcher.dispatch({ surface: "slack", text: "status" })).toMatchObject({
-      outcome: "error",
-      reply: { text: CHAT_REPLIES.surfaceUnavailable },
-    });
+    const list = await dispatcher.dispatch(consoleInput("help"));
+    const bare = await dispatcher.dispatch(consoleInput(""));
+    const one = await dispatcher.dispatch(consoleInput("help abort loop"));
 
-    expect(slack.activeByWorkspace).not.toHaveBeenCalled();
+    expect(list).toEqual({
+      outcome: "ok",
+      reply: { text: helpText(GRAMMAR, "console") },
+      commandId: null,
+      command: null,
+    });
+    expect(bare).toEqual(list);
+    expect(one.reply.text).toBe(help(GRAMMAR, "slack", ["abort", "loop"]));
+    // `link` and `unlink` are Slack's: the console has no linking step to offer.
+    expect(list.reply.text).not.toContain("/ouro link");
+    expect(helpText(GRAMMAR, "slack")).toContain("/ouro link");
     expect(records).toEqual([]);
     expect(audits).toEqual([]);
+    expect(memberships).toEqual([]);
+  });
+
+  it("records unknown text and bad arguments as Slack does", async () => {
+    const { build, records } = world();
+    const dispatcher = build();
+
+    const unknown = await dispatcher.dispatch(consoleInput("statsu"));
+    const bad = await dispatcher.dispatch(consoleInput("queue"));
+
+    expect(unknown).toMatchObject({ outcome: "error", command: null });
+    expect(unknown.reply.text).toBe(failureText(unknownCommand(GRAMMAR, ["statsu"])));
+    expect(bad).toMatchObject({ outcome: "error", command: "queue" });
+    expect(records.map((record) => [record.surface, record.command, record.ended])).toEqual([
+      ["console", "statsu", { outcome: "error", detail: "unknown_command" }],
+      ["console", "queue", { outcome: "error", detail: "bad_arguments" }],
+    ]);
+  });
+
+  it("keeps an async command's result on the row, having nowhere to post it", async () => {
+    const result = deferred<CommandReply>();
+    const said = {
+      text: "Dry run of #486 finished: no writes.",
+      link: { label: "Open the dry run", url: "https://app.example.test/dry-runs/dr-1" },
+    };
+    const { build, records, settles, order } = world({
+      bindings: [
+        {
+          command: "dry-run",
+          run: () =>
+            Promise.resolve({
+              kind: "started",
+              reply: { text: "Rehearsing #486 — the result follows here." },
+              result: result.promise,
+            }),
+        },
+      ],
+    });
+    const dispatcher = build();
+
+    const dispatched = await dispatcher.dispatch(consoleInput("dry-run #486"));
+
+    expect(dispatched).toMatchObject({ outcome: "async_pending", command: "dry-run" });
+    expect(records[0]).toMatchObject({
+      surface: "console",
+      ended: { outcome: "async_pending" },
+      withReplyMessage: false,
+    });
+    expect(settles).toEqual([]);
+
+    result.resolve(said);
+    await dispatcher.idle();
+
+    expect(settles).toEqual([
+      {
+        id: dispatched.commandId,
+        ended: { outcome: "ok" },
+        at: expect.any(Date) as Date,
+        reply: said,
+      },
+    ]);
+    expect(order).toEqual(["record", "audit", "settle"]);
+  });
+
+  it("keeps an async command's failure on the row too, in the words Slack would have posted", async () => {
+    const result = deferred<CommandReply>();
+    const { build, settles } = world({
+      bindings: [
+        {
+          command: "dry-run",
+          run: () =>
+            Promise.resolve({
+              kind: "started",
+              reply: { text: "Rehearsing." },
+              result: result.promise,
+            }),
+        },
+      ],
+    });
+    const dispatcher = build();
+
+    await dispatcher.dispatch(consoleInput("dry-run #486"));
+    result.reject(new ConflictError("dry_run_harness_failed", "The harness stopped at build."));
+    await dispatcher.idle();
+
+    expect(settles.map(({ ended, reply }) => ({ ended, reply }))).toEqual([
+      {
+        ended: { outcome: "error", detail: "dry_run_harness_failed" },
+        reply: { text: "The harness stopped at build." },
+      },
+    ]);
+  });
+
+  it("keeps nothing for a result that said nothing: the column refuses empty text", async () => {
+    const { build, settles } = world({
+      bindings: [
+        {
+          command: "dry-run",
+          run: () =>
+            Promise.resolve({
+              kind: "started",
+              reply: { text: "Rehearsing." },
+              result: Promise.resolve({ text: "" }),
+            }),
+        },
+      ],
+    });
+    const dispatcher = build();
+
+    await dispatcher.dispatch(consoleInput("dry-run #486"));
+    await dispatcher.idle();
+
+    expect(settles.map((settled) => settled.reply)).toEqual([null]);
+  });
+
+  it("still says what happened when the row cannot be written, with no command id", async () => {
+    const { build, run } = world({ recordFails: true });
+
+    expect(await build().dispatch(consoleInput("status"))).toEqual({
+      outcome: "ok",
+      reply: { text: "ran status" },
+      commandId: null,
+      command: "status",
+    });
+    expect(run("status")).toHaveBeenCalledTimes(1);
+    expect(errors).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("permitted", () => {
+  const CAPABLE: CommandDefinition = {
+    ...GRAMMAR.commands[0],
+    id: "approve",
+    requires: { roles: ["owner", "admin", "member"], capability: "can_approve_loops" },
+  };
+
+  it.each<[OrganizationRole, string[]]>([
+    ["owner", GRAMMAR.commands.map((command) => command.id)],
+    ["admin", GRAMMAR.commands.map((command) => command.id)],
+    ["member", ["status", "queue", "answer", "dry-run", "explain pr", "estimate"]],
+    ["viewer", ["status", "answer", "explain pr", "estimate"]],
+  ])("lets a workspace %s run exactly the commands their role carries", (role, expected) => {
+    expect(
+      GRAMMAR.commands
+        .filter((command) => permitted(command, { roles: [role], canApproveLoops: null }))
+        .map((command) => command.id),
+    ).toEqual(expected);
+  });
+
+  it("asks for the capability as well as the role, when a command names one", () => {
+    expect(permitted(CAPABLE, { roles: ["member"], canApproveLoops: true })).toBe(true);
+    expect(permitted(CAPABLE, { roles: ["member"], canApproveLoops: false })).toBe(false);
+    // An explicit grant does not stand in for the role.
+    expect(permitted(CAPABLE, { roles: ["viewer"], canApproveLoops: true })).toBe(false);
   });
 });
 

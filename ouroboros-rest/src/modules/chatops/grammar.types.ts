@@ -199,23 +199,44 @@ export interface CommandBinding {
 /** How an invocation ended. `chat_commands.outcome` (V131). */
 export type CommandOutcome = "ok" | "error" | "denied" | "unlinked" | "async_pending";
 
-/** What a surface hands the dispatcher. */
-export interface DispatchInput {
-  readonly surface: ChatSurface;
+/** What every surface hands the dispatcher. */
+interface DispatchInputBase {
   /** The text after `/ouro`, as typed. */
   readonly text: string;
-  /** The Slack workspace and user, for the slack surface. */
-  readonly slack?: {
+  /**
+   * Where a later message for this invocation goes — the surface's own way of posting one. Called
+   * at most once, with an async command's result. A surface with nowhere to post one (the
+   * console) leaves it out and reads `chat_commands.settled_reply` instead.
+   */
+  readonly followUp?: (reply: CommandReply) => Promise<void>;
+}
+
+/** A command typed in Slack: who typed it is a platform user, still to be resolved to a person. */
+export interface SlackDispatchInput extends DispatchInputBase {
+  readonly surface: "slack";
+  /** The Slack workspace and user. */
+  readonly slack: {
     readonly teamId: string;
     readonly userId: string;
     readonly channelId: string | null;
   };
-  /**
-   * Where a later message for this invocation goes — the surface's own way of posting one. Called
-   * at most once, with an async command's result.
-   */
-  readonly followUp?: (reply: CommandReply) => Promise<void>;
 }
+
+/**
+ * A command typed in the app's own console (BZ.5, #539): who typed it is the signed-in session,
+ * so there is no connection to find and no identity link to follow.
+ */
+export interface ConsoleDispatchInput extends DispatchInputBase {
+  readonly surface: "console";
+  /** The session: the workspace the request is in, and the person signed in. */
+  readonly console: {
+    readonly organizationId: string;
+    readonly userId: string;
+  };
+}
+
+/** What a surface hands the dispatcher — the text, and its own way of saying who typed it. */
+export type DispatchInput = SlackDispatchInput | ConsoleDispatchInput;
 
 /** What the dispatcher hands back at once. */
 export interface DispatchResult {
@@ -223,4 +244,15 @@ export interface DispatchResult {
   readonly reply: CommandReply;
   /** The `chat_commands` row, when one could be written (a workspace with no connection has none). */
   readonly commandId: string | null;
+  /**
+   * The grammar command the text named — its {@link CommandDefinition.id}, whatever alias or case
+   * was typed. Null for `help`, for text that names no command, and when nobody could be asked.
+   */
+  readonly command: string | null;
+  /**
+   * Present exactly when the reply is a destructive command's describe-first preview
+   * (`confirmation_required`): the text after `/ouro` that really does it — what was typed, with
+   * `confirm` as its last word.
+   */
+  readonly confirmWith?: string;
 }

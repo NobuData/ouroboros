@@ -35,6 +35,11 @@ vi.mock("@/app/api/auth-client", async () =>
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/app/shell/actions", () => ({ signOutOfSession: vi.fn() }));
 
+/** The console's Server Actions, which sit over a `server-only` client (#539). */
+vi.mock("@/app/shell/console-actions", async () =>
+  (await import("../helpers/console")).consoleActionsModule(),
+);
+
 // The menu's stepper persists through a Server Action over the server-only client — same
 // mock, same reason as `actions` above. What it does is the menu suite's to assert.
 vi.mock("@/app/shell/preference-actions", () => ({

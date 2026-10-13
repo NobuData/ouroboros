@@ -1,4 +1,4 @@
-import { CHAT_REPLIES, deniedText, fill } from "./chatops.replies";
+import { CHAT_REPLIES, deniedReason, deniedText, fill } from "./chatops.replies";
 import { requirementWords } from "./grammar.help";
 import { GRAMMAR, commandOf } from "./grammar.registry";
 import type { CommandDefinition } from "./grammar.types";
@@ -59,6 +59,17 @@ describe("deniedText", () => {
     expect(deniedText({ ...approve, requires: { ...approve.requires, roles: ["owner"] } })).toBe(
       "`/ouro approve` is for workspace owners who can approve loops.",
     );
+  });
+
+  it("is built on the phrase the grammar route lists a denied command with (#539)", () => {
+    expect(deniedReason(registered("route"))).toBe("for workspace owners and admins");
+    expect(deniedReason(registered("queue"))).toBe("for workspace owners, admins and members");
+
+    for (const definition of GRAMMAR.commands) {
+      expect(deniedText(definition)).toBe(
+        `\`/ouro ${definition.id}\` is ${deniedReason(definition)}.`,
+      );
+    }
   });
 
   it("says of every command exactly what help says of it", () => {
@@ -142,8 +153,8 @@ describe("the dispatcher's fixed replies", () => {
     );
   });
 
-  it("says plainly when a surface cannot run commands yet", () => {
-    expect(CHAT_REPLIES.surfaceUnavailable).toBe("Commands cannot be run from here yet.");
+  it("has no sentence for a surface that cannot run commands: every surface can (#539)", () => {
+    expect(Object.keys(CHAT_REPLIES)).not.toContain("surfaceUnavailable");
   });
 });
 

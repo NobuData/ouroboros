@@ -2,6 +2,7 @@ import { Suspense } from "react";
 
 import { LifecycleBanner } from "@/app/lifecycle/lifecycle-banner";
 
+import { ConsoleToasts } from "./console-toasts";
 import { FontScaleSync } from "./font-scale-sync";
 import { PaneRestoration } from "./pane-restoration";
 import { CONTENT_ID, OVERLAY_LAYER_ID, PANE_ATTRIBUTE } from "./regions";
@@ -99,6 +100,13 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
         each overlay positions itself. `app/shell/overlay.tsx` is what portals into it.
       */}
       <div className="shell-overlays" id={OVERLAY_LAYER_ID} />
+      {/*
+        The results of `/ouro` commands that settle after they were acknowledged (#539). Here,
+        beside the layer and for the layer's reason: the palette that ran the command is gone by
+        the time its result arrives, and may have been closed on another page. Empty, it draws
+        nothing; its unmount is what ends every wait.
+      */}
+      <ConsoleToasts />
     </div>
   );
 }

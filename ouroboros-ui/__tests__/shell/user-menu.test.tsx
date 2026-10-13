@@ -49,6 +49,11 @@ const signOutOfSession = vi.fn();
 
 vi.mock("@/app/shell/actions", () => ({ signOutOfSession: () => signOutOfSession() }));
 
+/** The console's Server Actions, which sit over a `server-only` client (#539). */
+vi.mock("@/app/shell/console-actions", async () =>
+  (await import("../helpers/console")).consoleActionsModule(),
+);
+
 /** The Server Action the stepper persists through — stubbed for the reason `actions` is. */
 const { saveFontScale } = vi.hoisted(() => ({
   saveFontScale: vi.fn<(scale: string) => Promise<boolean>>().mockResolvedValue(true),

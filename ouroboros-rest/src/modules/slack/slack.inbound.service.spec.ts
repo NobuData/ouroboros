@@ -68,6 +68,7 @@ class FakeDispatcher {
     outcome: "ok",
     reply: { text: "3 loops live · 1 question waiting" },
     commandId: "command-1",
+    command: "status",
   };
   /** When set, every dispatch rejects with it. */
   failure: Error | undefined;
@@ -428,7 +429,12 @@ describe("slash commands", () => {
     const { inbound, slack, dispatcher } = await setup();
     const link = { label: "Open the loop", url: "https://app.example.test/runs/run-1848" };
 
-    dispatcher.result = { outcome: "ok", reply: { text: "Queued #485.", link }, commandId: "c-1" };
+    dispatcher.result = {
+      outcome: "ok",
+      reply: { text: "Queued #485.", link },
+      commandId: "c-1",
+      command: "queue",
+    };
     inbound.command(command("queue #485"));
     await inbound.idle();
 
@@ -445,7 +451,7 @@ describe("slash commands", () => {
   ])("says what the dispatcher said for a %s outcome, and adds nothing", async (outcome, text) => {
     const { inbound, slack, dispatcher, store } = await setup();
 
-    dispatcher.result = { outcome, reply: { text }, commandId: null };
+    dispatcher.result = { outcome, reply: { text }, commandId: null, command: null };
     inbound.command(command("pause all"));
     await inbound.idle();
 
@@ -460,6 +466,7 @@ describe("slash commands", () => {
       outcome: "unlinked",
       reply: { text: CHAT_REPLIES.unlinked },
       commandId: "c-1",
+      command: "status",
     };
     inbound.command(command("status"));
     await inbound.idle();
@@ -479,7 +486,12 @@ describe("slash commands", () => {
   it("the button under an unlinked command completes the same flow /ouro link does", async () => {
     const { inbound, links, slack, dispatcher, store } = await setup();
 
-    dispatcher.result = { outcome: "unlinked", reply: { text: "Link first." }, commandId: "c-1" };
+    dispatcher.result = {
+      outcome: "unlinked",
+      reply: { text: "Link first." },
+      commandId: "c-1",
+      command: "status",
+    };
     inbound.command(command("status"));
     await inbound.idle();
     const token = slack.replies[0].reply.link!.url.split("/link/")[1];
@@ -496,6 +508,7 @@ describe("slash commands", () => {
       outcome: "unlinked",
       reply: { text: CHAT_REPLIES.unlinked },
       commandId: "c-1",
+      command: "status",
     };
     await installs.revoke(connection, "app_uninstalled", "event");
     inbound.command(command("status"));
@@ -513,6 +526,7 @@ describe("slash commands", () => {
       outcome: "async_pending",
       reply: { text: "Rehearsing #486 — the result follows here." },
       commandId: "c-1",
+      command: "dry-run",
     };
     inbound.command(command("dry-run #486"));
     await inbound.idle();

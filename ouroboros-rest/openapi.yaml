@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.41.28"
+  version: "0.41.29"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -752,8 +752,12 @@ tags:
       **The `/ouro` grammar** (issue [#537](https://github.com/NobuData/ouroboros/issues/537)) —
       one versioned registry of commands that Slack and the in-app console both run through one
       dispatcher: the grammar itself and completion hints are read here; a command is typed in
-      Slack (`POST /api/v1/slack/commands`). A command calls the API the UI calls, as the person
-      who typed it — never a path of its own, and never with the app's permissions.
+      Slack (`POST /api/v1/slack/commands`) or in the app's console (`POST /api/v1/chat/commands`,
+      issue [#539](https://github.com/NobuData/ouroboros/issues/539)). A command calls the API the
+      UI calls, as the person who typed it — never a path of its own, and never with the app's
+      permissions. The two surfaces differ only in who typed it — a linked Slack identity, or the
+      signed-in session — and answer the same text with the same outcome, words, recorded
+      command and audit event.
   - name: notification-routes
     description: |-
       **Org notification routes** (mockup 17, issue [#488](https://github.com/NobuData/ouroboros/issues/488))
@@ -9662,12 +9666,21 @@ paths:
         and `unlink` in Slack. The same document as the committed `chat-grammar.json`; the
         in-app console and the commands card list from it, so neither can show a command the
         dispatcher does not have. It runs nothing. Any member may read it.
+
+        Laid over that document, and in no committed file, is the caller's own standing (#539) —
+        on every command `allowed`, and `deniedReason` when it is false. They are computed with
+        the rule the dispatcher enforces, so a command listed as allowed is not then refused for
+        who the caller is, and `deniedReason` is the phrase the dispatcher's refusal uses (*`/ouro
+        route` is for workspace owners and admins.*). Every command is listed whatever the
+        caller may run — a surface dims what is not allowed and says why; it never hides it. A
+        `v2` command is allowed for everybody, because it runs nothing. A service account is
+        allowed none.
       operationId: getChatGrammar
       parameters:
         - $ref: "#/components/parameters/TenantHeader"
       responses:
         "200":
-          description: The grammar.
+          description: The grammar, with what the caller may run.
           content:
             application/json:
               schema:
@@ -9715,6 +9728,13 @@ paths:
         finished command, answers an empty list. The text is read exactly as the dispatcher reads
         it, so what is offered is what would be accepted — and nothing is resolved, validated or
         run. Any member may ask; a source may offer only what the caller can see.
+
+        An empty `completions` says which kind of empty it is (#539), so a surface can say *no
+        open tickets match* instead of showing an empty menu. `command` null — no command starts
+        that way. `argument` and `source` both set — the plane that owns `source` was asked and
+        nothing matches. `argument` set and `source` null — the argument has no vocabulary to
+        offer (a pull request number). `command` set and `argument` null — nothing is left to
+        type.
       operationId: getChatCompletions
       parameters:
         - $ref: "#/components/parameters/TenantHeader"
@@ -9759,6 +9779,233 @@ paths:
         "404":
           description: |-
             `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/chat/commands:
+    post:
+      tags: [chatops]
+      summary: Run an `/ouro` command from the console
+      description: |-
+        Run what was typed in the app's console (#539), as the signed-in person. The text goes
+        to the dispatcher Slack's commands go to — the same grammar, the same argument
+        resolution, the same permission check, the same confirm rule, the same bindings — and the
+        answer is what Slack would have been told. The only difference is who typed it — the
+        session, so there is no identity link to follow and `unlinked` is never answered here.
+
+        **A command a person typed is always `200`**; `outcome` says how it went. `ok` — it ran
+        (or a `v2` command, or `help`, answered). `async_pending` — it started (`dry-run`); ask
+        `GET /api/v1/chat/commands/{commandId}` until `outcome` leaves `async_pending`, then read
+        `settledReply`. `denied` — the caller may not run it; `reply` says who may. `error` —
+        the text names no command, its arguments are wrong, a destructive command was typed
+        without `confirm`, or the plane it calls refused; `reply` says which, in the plane's own
+        words when it was the plane.
+
+        **Destructive commands describe first.** `abort loop` and `pause all` typed without
+        `confirm` change nothing; `reply` says exactly what would happen and `confirmWith` is
+        the text to send to really do it.
+
+        Every invocation except `help` is recorded (`chat_commands`, `surface = console`) and
+        audited (`chat.command_invoked`), whatever came of it. `text` may carry the `/ouro`
+        prefix or not. Any member may call this; what they may run is the dispatcher's to say.
+      operationId: runChatCommand
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCommandRequest"
+            examples:
+              bare:
+                summary: The text after the prefix
+                value:
+                  text: "queue #485 standard-fix"
+              prefixed:
+                summary: With the prefix, as the palette shows it
+                value:
+                  text: "/ouro pause all"
+      responses:
+        "200":
+          description: How the command went, and what it said.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatCommandResult"
+              examples:
+                ran:
+                  summary: A command that ran
+                  value:
+                    commandId: 0b0c6a9e-6f0b-4c53-9d6f-0d1c6f8a1b11
+                    command: queue
+                    outcome: ok
+                    reply:
+                      text: "Queued #485 on standard-fix."
+                      link:
+                        label: Open in the backlog
+                        url: https://ouroboros.example/backlog?ticket=485
+                preview:
+                  summary: A destructive command typed without confirm
+                  value:
+                    commandId: 5d0f3c1e-2a44-4f0e-8a51-3c7f1d0b9e22
+                    command: pause all
+                    outcome: error
+                    reply:
+                      text: "Add `confirm` to pause everything — this stops every loop in Acme Robotics from starting anything new. Stages already running finish, and queued work stays queued until an owner or admin resumes the workspace. `/ouro pause all confirm`"
+                    confirmWith: pause all confirm
+                denied:
+                  summary: A command the caller may not run
+                  value:
+                    commandId: 9a1b7f60-0c1d-4b9e-9f3a-6f2d4e8c7a33
+                    command: route
+                    outcome: denied
+                    reply:
+                      text: "`/ouro route` is for workspace owners and admins."
+                started:
+                  summary: An async command, acknowledged
+                  value:
+                    commandId: 3f2e1d0c-9b8a-4c7d-8e6f-5a4b3c2d1e44
+                    command: dry-run
+                    outcome: async_pending
+                    reply:
+                      text: "Rehearsing standard-fix on #486 with no writes — the result follows."
+                help:
+                  summary: Help, which records nothing
+                  value:
+                    commandId: null
+                    command: null
+                    outcome: ok
+                    reply:
+                      text: "Ouroboros commands (grammar v1) …"
+        "422":
+          description: |-
+            `validation_failed` — `text` is missing, not a string, blank, or longer than 2000
+            characters once trimmed; or the body carries a field other than `text`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `service_principal_refused` — a service token; a command acts as the person who
+            typed it. `chat_person_required` — the same refusal from the route itself, for a
+            caller that is admitted and is not a person. A command the caller may not run is not
+            a `403` — it is a `200` with `outcome` `denied`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed before the command was read. A failure
+            inside a command is a `200` with `outcome` `error`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/chat/commands/{id}:
+    get:
+      tags: [chatops]
+      summary: A console command the caller ran
+      description: |-
+        One command the caller typed in the console (#539), as it stands now — what the console
+        asks until an async command's `outcome` leaves `async_pending`. `settledReply` is then
+        what the command finally said — the text and its one link, the message Slack is sent for
+        the same command — whether it finished (`ok`) or failed (`error`, with `errorDetail`).
+        A command that answered at once has no `settledReply`; its reply was the response to
+        `POST /api/v1/chat/commands`.
+
+        Only the caller's own console commands are here. Somebody else's command, one typed in
+        Slack, one in another workspace and an id that names nothing are all the same `404`.
+      operationId: getChatCommand
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          description: The command's id — `commandId` of `POST /api/v1/chat/commands`.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The command.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatCommand"
+              examples:
+                pending:
+                  summary: Still running
+                  value:
+                    id: 3f2e1d0c-9b8a-4c7d-8e6f-5a4b3c2d1e44
+                    command: dry-run
+                    outcome: async_pending
+                    rawText: "/ouro dry-run #486"
+                    invokedAt: "2026-10-12T16:00:00.000Z"
+                    completedAt: null
+                    settledReply: null
+                    errorDetail: null
+                settled:
+                  summary: Finished
+                  value:
+                    id: 3f2e1d0c-9b8a-4c7d-8e6f-5a4b3c2d1e44
+                    command: dry-run
+                    outcome: ok
+                    rawText: "/ouro dry-run #486"
+                    invokedAt: "2026-10-12T16:00:00.000Z"
+                    completedAt: "2026-10-12T16:00:41.000Z"
+                    settledReply:
+                      text: "Dry run of standard-fix on #486 passed in 41s — no writes, guards clean."
+                      link:
+                        label: Open in Copilot
+                        url: https://ouroboros.example/copilot/standard-fix
+                    errorDetail: null
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `chat_person_required` — a service account; a console command belongs to the person
+            who typed it. `service_scope_missing` — a service token without `api.read`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `chat_command_not_found` — no console command of the caller's has that id in this
+            workspace, or the id is not a UUID. `tenant_not_found` — no such workspace, or none
+            you are a member of.
           content:
             application/json:
               schema:
@@ -58080,6 +58327,8 @@ components:
         - stage
         - unavailableReply
         - binds
+        - allowed
+        - deniedReason
       properties:
         id:
           type: string
@@ -58167,12 +58416,144 @@ components:
         binds:
           type: string
           description: The existing API the command calls.
+        allowed:
+          type: boolean
+          description: |-
+            Whether the caller would get past the dispatcher's permission check for this command
+            (#539). The caller's own — not part of `chat-grammar.json`. True for a `v2` command,
+            which runs nothing.
+        deniedReason:
+          type: [string, "null"]
+          description: |-
+            What is missing when `allowed` is false, as the dispatcher's refusal words it; null
+            when allowed.
+          examples: ["for workspace owners and admins"]
+
+    ChatCommandRequest:
+      type: object
+      title: ChatCommandRequest
+      additionalProperties: false
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: |-
+            What was typed, with or without the `/ouro` prefix. Trimmed before it is measured; a
+            bare `/ouro` asks for help, as in Slack.
+          examples: ["queue #485 standard-fix"]
+
+    ChatCommandReply:
+      type: object
+      title: ChatCommandReply
+      description: What a command says — plain text and at most one link, on every surface.
+      additionalProperties: false
+      required: [text]
+      properties:
+        text:
+          type: string
+          description: The reply. Backticks mark what is typed; lines are separated by newlines.
+        link:
+          type: object
+          additionalProperties: false
+          required: [label, url]
+          properties:
+            label:
+              type: string
+            url:
+              type: string
+              description: Absolute.
+
+    ChatCommandResult:
+      type: object
+      title: ChatCommandResult
+      additionalProperties: false
+      required: [commandId, command, outcome, reply]
+      properties:
+        commandId:
+          type: [string, "null"]
+          format: uuid
+          description: |-
+            The recorded command — the id `GET /api/v1/chat/commands/{id}` takes. Null for
+            `help`, which records nothing, and when the command ran and could not be recorded.
+        command:
+          type: [string, "null"]
+          description: |-
+            The grammar command the text named — its id, whatever alias or case was typed. Null
+            for `help` and for text that names no command.
+          examples: ["pause all"]
+        outcome:
+          type: string
+          enum: [ok, error, denied, async_pending]
+          description: |-
+            `ok` ran, or answered; `async_pending` started, result to follow; `denied` the
+            caller may not; `error` unknown command, bad arguments, confirmation needed, or the
+            plane refused.
+        reply:
+          $ref: "#/components/schemas/ChatCommandReply"
+        confirmWith:
+          type: string
+          description: |-
+            Present only when `reply` is a destructive command's describe-first preview — the
+            text to send to really do it, without the prefix — what was typed, then `confirm`.
+          examples: ["abort loop 1847 confirm"]
+
+    ChatCommand:
+      type: object
+      title: ChatCommand
+      additionalProperties: false
+      required:
+        - id
+        - command
+        - outcome
+        - rawText
+        - invokedAt
+        - completedAt
+        - settledReply
+        - errorDetail
+      properties:
+        id:
+          type: string
+          format: uuid
+        command:
+          type: string
+          description: |-
+            The command's id as recorded — or, for text that named no command, its first word
+            (`unknown` when that is not a word).
+        outcome:
+          type: string
+          enum: [ok, error, denied, async_pending]
+        rawText:
+          type: string
+          description: The text as typed, with its `/ouro` prefix.
+          examples: ["/ouro dry-run #486"]
+        invokedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: [string, "null"]
+          format: date-time
+          description: Null exactly while `outcome` is `async_pending`.
+        settledReply:
+          oneOf:
+            - $ref: "#/components/schemas/ChatCommandReply"
+            - type: "null"
+          description: |-
+            What an async command said when it finished or failed. Null while it is pending, and
+            for a command that answered at once.
+        errorDetail:
+          type: [string, "null"]
+          description: |-
+            The stable reason of an `error` outcome — `unknown_command`, `bad_arguments`,
+            `confirmation_required`, `internal_error`, or the refusing plane's error code. Null
+            otherwise.
 
     ChatCompletions:
       type: object
       title: ChatCompletions
       additionalProperties: false
-      required: [grammarVersion, command, argument, completions]
+      required: [grammarVersion, command, argument, source, completions]
       properties:
         grammarVersion:
           type: integer
@@ -58184,6 +58565,13 @@ components:
           type: [string, "null"]
           description: |-
             The argument being typed; null while the command is, or when nothing is left to type.
+        source:
+          type: [string, "null"]
+          enum: [tickets, loops, workflows, aliases, questions, actions, task_kinds, null]
+          description: |-
+            The vocabulary the argument being typed is completed from; null when no argument is
+            being typed or it has none. With an empty `completions`, a source says the plane was
+            asked and nothing matches.
         completions:
           type: array
           description: |-

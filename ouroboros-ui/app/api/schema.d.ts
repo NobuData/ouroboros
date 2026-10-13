@@ -3072,6 +3072,15 @@ export interface paths {
          *     and `unlink` in Slack. The same document as the committed `chat-grammar.json`; the
          *     in-app console and the commands card list from it, so neither can show a command the
          *     dispatcher does not have. It runs nothing. Any member may read it.
+         *
+         *     Laid over that document, and in no committed file, is the caller's own standing (#539) —
+         *     on every command `allowed`, and `deniedReason` when it is false. They are computed with
+         *     the rule the dispatcher enforces, so a command listed as allowed is not then refused for
+         *     who the caller is, and `deniedReason` is the phrase the dispatcher's refusal uses (*`/ouro
+         *     route` is for workspace owners and admins.*). Every command is listed whatever the
+         *     caller may run — a surface dims what is not allowed and says why; it never hides it. A
+         *     `v2` command is allowed for everybody, because it runs nothing. A service account is
+         *     allowed none.
          */
         get: operations["getChatGrammar"];
         put?: never;
@@ -3100,8 +3109,83 @@ export interface paths {
          *     finished command, answers an empty list. The text is read exactly as the dispatcher reads
          *     it, so what is offered is what would be accepted — and nothing is resolved, validated or
          *     run. Any member may ask; a source may offer only what the caller can see.
+         *
+         *     An empty `completions` says which kind of empty it is (#539), so a surface can say *no
+         *     open tickets match* instead of showing an empty menu. `command` null — no command starts
+         *     that way. `argument` and `source` both set — the plane that owns `source` was asked and
+         *     nothing matches. `argument` set and `source` null — the argument has no vocabulary to
+         *     offer (a pull request number). `command` set and `argument` null — nothing is left to
+         *     type.
          */
         get: operations["getChatCompletions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run an `/ouro` command from the console
+         * @description Run what was typed in the app's console (#539), as the signed-in person. The text goes
+         *     to the dispatcher Slack's commands go to — the same grammar, the same argument
+         *     resolution, the same permission check, the same confirm rule, the same bindings — and the
+         *     answer is what Slack would have been told. The only difference is who typed it — the
+         *     session, so there is no identity link to follow and `unlinked` is never answered here.
+         *
+         *     **A command a person typed is always `200`**; `outcome` says how it went. `ok` — it ran
+         *     (or a `v2` command, or `help`, answered). `async_pending` — it started (`dry-run`); ask
+         *     `GET /api/v1/chat/commands/{commandId}` until `outcome` leaves `async_pending`, then read
+         *     `settledReply`. `denied` — the caller may not run it; `reply` says who may. `error` —
+         *     the text names no command, its arguments are wrong, a destructive command was typed
+         *     without `confirm`, or the plane it calls refused; `reply` says which, in the plane's own
+         *     words when it was the plane.
+         *
+         *     **Destructive commands describe first.** `abort loop` and `pause all` typed without
+         *     `confirm` change nothing; `reply` says exactly what would happen and `confirmWith` is
+         *     the text to send to really do it.
+         *
+         *     Every invocation except `help` is recorded (`chat_commands`, `surface = console`) and
+         *     audited (`chat.command_invoked`), whatever came of it. `text` may carry the `/ouro`
+         *     prefix or not. Any member may call this; what they may run is the dispatcher's to say.
+         */
+        post: operations["runChatCommand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/commands/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A console command the caller ran
+         * @description One command the caller typed in the console (#539), as it stands now — what the console
+         *     asks until an async command's `outcome` leaves `async_pending`. `settledReply` is then
+         *     what the command finally said — the text and its one link, the message Slack is sent for
+         *     the same command — whether it finished (`ok`) or failed (`error`, with `errorDetail`).
+         *     A command that answered at once has no `settledReply`; its reply was the response to
+         *     `POST /api/v1/chat/commands`.
+         *
+         *     Only the caller's own console commands are here. Somebody else's command, one typed in
+         *     Slack, one in another workspace and an id that names nothing are all the same `404`.
+         */
+        get: operations["getChatCommand"];
         put?: never;
         post?: never;
         delete?: never;
@@ -23489,6 +23573,104 @@ export interface components {
             unavailableReply: string | null;
             /** @description The existing API the command calls. */
             binds: string;
+            /**
+             * @description Whether the caller would get past the dispatcher's permission check for this command
+             *     (#539). The caller's own — not part of `chat-grammar.json`. True for a `v2` command,
+             *     which runs nothing.
+             */
+            allowed: boolean;
+            /**
+             * @description What is missing when `allowed` is false, as the dispatcher's refusal words it; null
+             *     when allowed.
+             * @example for workspace owners and admins
+             */
+            deniedReason: string | null;
+        };
+        /** ChatCommandRequest */
+        ChatCommandRequest: {
+            /**
+             * @description What was typed, with or without the `/ouro` prefix. Trimmed before it is measured; a
+             *     bare `/ouro` asks for help, as in Slack.
+             * @example queue #485 standard-fix
+             */
+            text: string;
+        };
+        /**
+         * ChatCommandReply
+         * @description What a command says — plain text and at most one link, on every surface.
+         */
+        ChatCommandReply: {
+            /** @description The reply. Backticks mark what is typed; lines are separated by newlines. */
+            text: string;
+            link?: {
+                label: string;
+                /** @description Absolute. */
+                url: string;
+            };
+        };
+        /** ChatCommandResult */
+        ChatCommandResult: {
+            /**
+             * Format: uuid
+             * @description The recorded command — the id `GET /api/v1/chat/commands/{id}` takes. Null for
+             *     `help`, which records nothing, and when the command ran and could not be recorded.
+             */
+            commandId: string | null;
+            /**
+             * @description The grammar command the text named — its id, whatever alias or case was typed. Null
+             *     for `help` and for text that names no command.
+             * @example pause all
+             */
+            command: string | null;
+            /**
+             * @description `ok` ran, or answered; `async_pending` started, result to follow; `denied` the
+             *     caller may not; `error` unknown command, bad arguments, confirmation needed, or the
+             *     plane refused.
+             * @enum {string}
+             */
+            outcome: "ok" | "error" | "denied" | "async_pending";
+            reply: components["schemas"]["ChatCommandReply"];
+            /**
+             * @description Present only when `reply` is a destructive command's describe-first preview — the
+             *     text to send to really do it, without the prefix — what was typed, then `confirm`.
+             * @example abort loop 1847 confirm
+             */
+            confirmWith?: string;
+        };
+        /** ChatCommand */
+        ChatCommand: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description The command's id as recorded — or, for text that named no command, its first word
+             *     (`unknown` when that is not a word).
+             */
+            command: string;
+            /** @enum {string} */
+            outcome: "ok" | "error" | "denied" | "async_pending";
+            /**
+             * @description The text as typed, with its `/ouro` prefix.
+             * @example /ouro dry-run #486
+             */
+            rawText: string;
+            /** Format: date-time */
+            invokedAt: string;
+            /**
+             * Format: date-time
+             * @description Null exactly while `outcome` is `async_pending`.
+             */
+            completedAt: string | null;
+            /**
+             * @description What an async command said when it finished or failed. Null while it is pending, and
+             *     for a command that answered at once.
+             */
+            settledReply: components["schemas"]["ChatCommandReply"] | null;
+            /**
+             * @description The stable reason of an `error` outcome — `unknown_command`, `bad_arguments`,
+             *     `confirmation_required`, `internal_error`, or the refusing plane's error code. Null
+             *     otherwise.
+             */
+            errorDetail: string | null;
         };
         /** ChatCompletions */
         ChatCompletions: {
@@ -23497,6 +23679,13 @@ export interface components {
             command: string | null;
             /** @description The argument being typed; null while the command is, or when nothing is left to type. */
             argument: string | null;
+            /**
+             * @description The vocabulary the argument being typed is completed from; null when no argument is
+             *     being typed or it has none. With an empty `completions`, a source says the plane was
+             *     asked and nothing matches.
+             * @enum {string|null}
+             */
+            source: "tickets" | "loops" | "workflows" | "aliases" | "questions" | "actions" | "task_kinds" | null;
             /**
              * @description Command ids while the command is being typed — all that match, there are few; an
              *     argument's vocabulary afterwards, at most ten.
@@ -44744,7 +44933,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The grammar. */
+            /** @description The grammar, with what the caller may run. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -44886,6 +45075,230 @@ export interface operations {
             };
             /** @description `validation_failed` — `text` is longer than 4000 characters. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    runChatCommand: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatCommandRequest"];
+            };
+        };
+        responses: {
+            /** @description How the command went, and what it said. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatCommandResult"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `service_principal_refused` — a service token; a command acts as the person who
+             *     typed it. `chat_person_required` — the same refusal from the route itself, for a
+             *     caller that is admitted and is not a person. A command the caller may not run is not
+             *     a `403` — it is a `200` with `outcome` `denied`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found` — no such workspace, or none you are a member of. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `text` is missing, not a string, blank, or longer than 2000
+             *     characters once trimmed; or the body carries a field other than `text`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed before the command was read. A failure
+             *     inside a command is a `200` with `outcome` `error`.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getChatCommand: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The command's id — `commandId` of `POST /api/v1/chat/commands`. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The command. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatCommand"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `chat_person_required` — a service account; a console command belongs to the person
+             *     who typed it. `service_scope_missing` — a service token without `api.read`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `chat_command_not_found` — no console command of the caller's has that id in this
+             *     workspace, or the id is not a UUID. `tenant_not_found` — no such workspace, or none
+             *     you are a member of.
+             */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -68,8 +68,20 @@ interface CommandActionBase {
 
 /** An action the palette can carry out. */
 export interface RunnableCommandAction extends CommandActionBase {
-  /** What activating it does. The palette closes itself immediately afterwards. */
+  /**
+   * What activating it does. The palette closes itself immediately afterwards — unless the
+   * action {@link RunnableCommandAction.stays}.
+   */
   readonly run: () => void;
+  /**
+   * Whether the palette stays open after it runs.
+   *
+   * For the one kind of action whose whole effect is *inside* the palette: the way into
+   * command mode ([#539](https://github.com/NobuData/ouroboros/issues/539)) fills the box, and
+   * closing behind that would throw away what it just did. Everything that navigates or
+   * changes the page leaves it unset.
+   */
+  readonly stays?: boolean;
   /** Never both — a runnable action has no reason to give. */
   readonly unavailable?: never;
 }
@@ -136,6 +148,14 @@ export interface CommandContext {
   readonly setTheme: (theme: Theme) => void;
   /** End the session. Redirects, so nothing runs after it. */
   readonly signOut: () => void;
+  /**
+   * Put text in the palette's own box, as though it had been typed, and leave the caret after
+   * it. What the way into command mode
+   * ([#539](https://github.com/NobuData/ouroboros/issues/539)) is built from.
+   *
+   * @param text The box's new content.
+   */
+  readonly fill: (text: string) => void;
 }
 
 /**
