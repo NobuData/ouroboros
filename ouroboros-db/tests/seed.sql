@@ -6765,8 +6765,12 @@ select pg_temp.must_hold(
         where d.event_type = 'audit.' || event.action),
   'the delivery log is not uniformly green — one 503, retried — and each of today''s audit lines reached the SIEM as audit.<action>');
 
+-- Connected is `active`: the research seed's `Support` desk (#618) is a third source, `custom`
+-- and `paused`, which nothing syncs and no tile counts.
 select pg_temp.must_hold(
-  (select array_agg(src.kind || ':' || src.status order by src.kind) = array['github:active', 'jira:active']
+  (select array_agg(src.kind || ':' || src.status order by src.kind) filter (where src.status = 'active')
+            = array['github:active', 'jira:active']
+          and count(*) filter (where src.kind = 'linear') = 0
      from ouroboros.ticket_sources src
     where src.organization_id = '5eed0001-0000-4000-8000-000000000001'),
   'GitHub ✓ and Jira ✓ are the two connected sources, and no Linear source exists — its tile reads Connect');
@@ -7738,10 +7742,12 @@ select pg_temp.must_hold(
     group by org."id"),
   'the index counts every ticket and pull request of the workspace — the sub-line''s numbers');
 
--- A search for the diagram's query finds both halves of the corpus.
+-- A search for the diagram's query finds both halves of the corpus. Seven interviews, not the
+-- nine that cite docking: the search is for both words, and two of the nine — Ridgeline Utilities
+-- and Kestrel Security — say *docking reliability* without ever saying *abort*.
 select pg_temp.must_hold(
   (select count(*) filter (where e.kind = 'document_set') = 1
-          and count(*) filter (where e.kind = 'document') >= 9
+          and count(*) filter (where e.kind = 'document') = 7
           and count(*) filter (where e.kind = 'ticket') >= 44
      from ouroboros.history_index_entries e
      join ouroboros.organization org on org."id" = e.organization_id and org."slug" = 'acme-robotics'

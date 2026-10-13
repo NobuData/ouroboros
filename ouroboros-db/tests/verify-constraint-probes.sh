@@ -2619,7 +2619,7 @@ expect_red 'the decision ref resolver may forget the workspace' \
    $$;'
 
 expect_red 'the decision ref resolver may run as the caller' \
-  'decision ref resolver and #459.s TTL settings reader are the only functions' \
+  '#457.s decision ref resolver.*are the only functions in the schema that run as the owner' \
   'alter function ouroboros.decision_ref_resolves(text, jsonb) security invoker;'
 
 expect_red 'a decision item may miss a ref its kind requires' \

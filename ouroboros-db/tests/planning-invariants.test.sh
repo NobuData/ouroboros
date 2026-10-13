@@ -80,13 +80,17 @@ markers=$(awk "/^expect_red '/ { getline; sub(/^ *'/, \"\"); sub(/' \\\\\$/, \"\
 marker_count=$(printf '%s\n' "$markers" | grep -c .)
 check_equals 10 "$marker_count" 'the verifier plants ten bad rows'
 
-printf '%s\n' "$markers" | while IFS= read -r marker; do
+# Read from a here-document, not a pipe: a piped loop runs in a subshell, and a check that
+# fails in one is printed and never counted.
+while IFS= read -r marker; do
   if grep -qF -- "'$marker" "$FRAGMENT"; then
     pass "the fragment asserts [$marker]"
   else
     fail "the fragment asserts [$marker] (no assertion message opens with it)"
   fi
-done
+done <<MARKERS
+$markers
+MARKERS
 
 # The invariant names AK.5's scope lists, each opening a stored-row assertion.
 for invariant in \

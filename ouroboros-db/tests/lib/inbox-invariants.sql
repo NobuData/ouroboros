@@ -64,13 +64,15 @@ select pg_temp.must_hold(
   'decision_vocabularies_seeded: every status, severity, resolver and channel the CHECKs admit is a seeded row');
 
 -- spend_approval is declared dormant (#461) — no plane asks it yet — and constraints.sql's V097
--- section files and renders one; every other declared kind is a seeded card.
+-- section files and renders one. Research's two (#623, V124) are asked by the regression watch's
+-- own pass against a live baseline, which no seed runs; constraints.sql's V124 section asserts
+-- their declarations. Every other declared kind is a seeded card.
 select pg_temp.must_hold(
   not exists (select 1 from ouroboros.decision_kinds_current k
-               where k.kind_id <> 'spend_approval'
+               where k.kind_id not in ('spend_approval', 'regression_drift_detected', 'bisect_complete')
                  and not exists (select 1 from ouroboros.decision_items i
                                   where i.id::text like '5eed0082-%' and i.kind_id = k.kind_id)),
-  'decision_vocabularies_seeded: every declared kind but the dormant spend_approval is a seeded card');
+  'decision_vocabularies_seeded: every declared kind but the dormant spend_approval and the regression watch''s two is a seeded card');
 
 -- ===========================================================================
 -- 2. Keys

@@ -286,7 +286,7 @@ expect_red 'the release bot is sent an audit event' \
 # Rules the rows carry — the schema accepts these writes, which is the point.
 # ---------------------------------------------------------------------------
 expect_red 'the PagerDuty route reads as delivering' \
-  'notification_routes_lock_derived: only email' \
+  'notification_routes_lock_derived: PagerDuty routes read locked' \
   "create or replace view ouroboros.notification_routes_effective with (security_invoker = true) as
    select r.organization_id, r.kind, r.channel, r.config, r.enabled,
           null::text as locked_reason, false as locked, r.enabled as delivering,

@@ -331,6 +331,12 @@ on conflict do nothing;
 -- that is the snapshot doing its job, and the reason CD.3's (#561) configuration class must be
 -- read off the job rather than through the pool.
 --
+-- `#446` finishes at 14:00 rather than on the three-hour beat the other pool-a builds keep. An
+-- hour later it would queue inside pool-a's 14:00–16:00 window on whichever weekday five days
+-- ago was, and the Build Analyzer's queue_correlation finding counts every pool-a job queued in
+-- that window as its sample: one more job is one more point of confidence on the *Move forge-02*
+-- card, on five days of the week out of seven.
+--
 -- `#450` and `#452` were retried — `#451` and `#453` are the attempts that replaced them — and
 -- `#454` failed outright. `#447` and `#448` ran on `forge-00`, which has since been removed;
 -- the rows outliving the runner is why a removal keeps its row.
@@ -378,7 +384,7 @@ select ('5eed0028-0000-4000-8000-' || lpad(seed.number::text, 12, '0'))::uuid,
          (445, 'pool-a', 'forge-02', 'helios-firmware', 'zephyr build', 'BLE: allocate UUIDs for the provisioning GATT service',
           'container', 'ghcr.io/acme-robotics/zephyr-sdk:0.16', 'west build -b helios_mainboard app', 'succeeded', 0, null, 301, 402, 173, 4, 12),
          (446, 'pool-a', 'forge-03', 'helios-firmware', 'zephyr build', 'Debounce the e-stop interrupt handler',
-          'container', 'ghcr.io/acme-robotics/zephyr-sdk:0.16', 'west build -b helios_mainboard app', 'succeeded', 0, null, 308, 322, 138, 5, 15),
+          'container', 'ghcr.io/acme-robotics/zephyr-sdk:0.16', 'west build -b helios_mainboard app', 'succeeded', 0, null, 308, 322, 138, 5, 14),
          (447, 'pool-a', 'forge-00', 'helios-firmware', 'zephyr build', 'Refactor the telemetry buffer allocation',
           'container', 'ghcr.io/acme-robotics/zephyr-sdk:0.16', 'west build -b helios_mainboard app', 'succeeded', 0, null, 315, 182, 78, 6, 18),
          (448, 'pool-a', 'forge-00', 'helios-firmware', 'zephyr build', 'Motor PID: clamp the integral term on saturation',
